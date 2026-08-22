@@ -51,6 +51,63 @@ export const CROP_RATIOS: ReadonlyArray<{ key: string; value: number }> = [
 ];
 
 /**
+ * One item of the preset row. `original` is the eighth ratio (#1991): its
+ * value is the material's own aspect, so it is not a constant like the seven.
+ */
+export type CropPreset = { kind: 'original' } | { kind: 'ratio'; value: number };
+
+/**
+ * The preset row in display order — `Original` first, then the seven ratios.
+ * Derived from {@link CROP_RATIOS} so a ratio cannot exist in one list and not
+ * the other. Every label is a literal: the seven already carried their key as
+ * their label, and the eighth does the same (user 2026-08-21), so the row
+ * reads identically in every locale and none of it goes through `t()`.
+ */
+export const CROP_PRESETS: ReadonlyArray<{
+  key: string;
+  label: string;
+  preset: CropPreset;
+}> = [
+  { key: 'original', label: 'Original', preset: { kind: 'original' } },
+  ...CROP_RATIOS.map(({ key, value }) => ({
+    key,
+    label: key,
+    preset: { kind: 'ratio', value } as CropPreset,
+  })),
+];
+
+/**
+ * The width/height a preset constrains to.
+ * @param preset - The selected item, or null for free cropping.
+ * @param natural - The material's intrinsic size, null until it decodes.
+ * @returns The ratio, or null when nothing constrains the marquee — either
+ *   because no preset is selected, or because `original` cannot be evaluated
+ *   until the material reports its own size.
+ */
+export function presetRatio(
+  preset: CropPreset | null,
+  natural: CropSize | null,
+): number | null {
+  if (preset === null) return null;
+  if (preset.kind === 'ratio') return preset.value;
+  return natural && natural.height > 0 ? natural.width / natural.height : null;
+}
+
+/**
+ * Whether two selections are the same item of the row. Identity is the item,
+ * NOT its numeric value: a square material makes `original` equal 1:1, and
+ * comparing numbers would light both (#1991).
+ * @param a - One selection.
+ * @param b - The other.
+ * @returns True when they are the same row item.
+ */
+export function samePreset(a: CropPreset | null, b: CropPreset | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.kind !== b.kind) return false;
+  return a.kind === 'original' || b.kind === 'original' || a.value === b.value;
+}
+
+/**
  * Clamp a value into `[min, max]`.
  * @param v - The value.
  * @param min - Lower bound.

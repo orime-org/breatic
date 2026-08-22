@@ -13,6 +13,20 @@ import * as React from 'react';
 
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { toast } from '@web/lib/toast';
+import en from '../../../../../../../locales/en.json';
+import ja from '../../../../../../../locales/ja.json';
+import ko from '../../../../../../../locales/ko.json';
+import zhCN from '../../../../../../../locales/zh-CN.json';
+import zhTW from '../../../../../../../locales/zh-TW.json';
+
+/** The five shipped catalogs, for the assertions that compare across locales. */
+const CATALOGS: Record<string, Record<string, Record<string, unknown>>> = {
+  en,
+  ja,
+  ko,
+  'zh-CN': zhCN,
+  'zh-TW': zhTW,
+};
 
 /** Screen boxes: overlay root at (0,0); node img at (100,50) — MUTABLE so
  * tests can simulate a zoom (box rescale) between measures. */
@@ -114,14 +128,19 @@ describe('FocusCropOverlay', () => {
     expect(screen.getByTestId('focus-crop-handle-se')).toBeInTheDocument();
   });
 
-  it('a ratio preset constrains the drawn marquee; re-click clears it', () => {
+  it('a lit preset constrains a freshly drawn marquee; re-click unlights it', () => {
     renderOverlay();
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    draw({ x: 150, y: 100 }, { x: 250, y: 120 });
+    // The click now draws a 300×300 marquee at img-local x 50..350 (#1991), so
+    // the press has to start on capture layer the marquee does NOT cover or
+    // this gesture is a MOVE. jsdom does no hit-testing and would run the draw
+    // branch either way — the coordinates keep the test on a gesture a real
+    // pointer can produce. Screen x 100..150 is the bare left strip.
+    draw({ x: 110, y: 100 }, { x: 310, y: 250 });
     const rect = screen.getByTestId('focus-crop-rect');
-    // Dominant axis 100 wide → square 100×100.
-    expect(rect.style.width).toBe('100px');
-    expect(rect.style.height).toBe('100px');
+    // Dominant axis 200 wide → square 200×200.
+    expect(rect.style.width).toBe('200px');
+    expect(rect.style.height).toBe('200px');
     expect(
       screen.getByTestId('focus-ratio-1:1').getAttribute('aria-pressed'),
     ).toBe('true');
@@ -1247,6 +1266,51 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     // 它排在七个比例之前
     const row = original.parentElement as HTMLElement;
     expect(row.firstElementChild).toBe(original);
+  });
+
+  it('这一项不进 i18n：五个 catalog 都没有为它新增的 key（A6）', () => {
+    // 防的是有人后来「顺手」把它 i18n 化 —— 那会让八个按钮回到两种写法
+    for (const [name, catalog] of Object.entries(CATALOGS)) {
+      const panel = catalog.canvas?.generatePanel ?? {};
+      const keys = Object.keys(panel).filter((k) => /focusRatio|focusOriginal/i.test(k));
+      expect(keys, `${name} 不该有这一项的 key`).toEqual([]);
+    }
+  });
+
+  it('视频源上同样成立：点 Original 出的框就是素材比例（A7）', () => {
+    // 视频显示盒跟素材同比例（w-full + 内在比例），素材 1600×900
+    IMG_BOX.width = 400;
+    IMG_BOX.height = 225;
+    renderVideoOverlay({ duration: 10, currentTime: 0, videoWidth: 1600, videoHeight: 900 });
+    fireEvent.click(screen.getByTestId('focus-ratio-original'));
+    const r = rectSize();
+    expect(r.width).toBe(400);
+    expect(r.height).toBe(225);
+  });
+
+  it('选中之后拉手柄，框仍保持该比例（A4 第三条路径）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    const before = rectSize();
+    const handle = screen.getByTestId('focus-crop-handle-se');
+    fireEvent.pointerDown(handle, {
+      clientX: 100 + before.left + before.width,
+      clientY: 50 + before.top + before.height,
+      button: 0,
+      pointerId: 3,
+    });
+    fireEvent.pointerMove(screen.getByTestId('focus-crop-layer'), {
+      clientX: 100 + before.left + before.width - 80,
+      clientY: 50 + before.top + before.height - 20,
+      pointerId: 3,
+    });
+    fireEvent.pointerUp(screen.getByTestId('focus-crop-layer'), { pointerId: 3 });
+    const after = rectSize();
+    expect(after.width).toBe(after.height);
+    expect(after.width).toBeLessThan(before.width);
+    expect(
+      screen.getByTestId('focus-ratio-1:1').getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 
   it('Original 的比例就是素材自身：5:2 的素材上拖出的框是 5:2（A1）', () => {

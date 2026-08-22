@@ -9,7 +9,7 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
-  CROP_RATIOS,
+  CROP_PRESETS,
   MIN_CROP_PX,
   MIN_NATURAL_CROP_PX,
   captureResize,
@@ -20,7 +20,10 @@ import {
   moveRect,
   applyRatioPreset,
   toNaturalCrop,
+  presetRatio,
+  samePreset,
   type CropHandle,
+  type CropPreset,
   type CropRect,
 } from '@web/spaces/canvas/focus/crop-math';
 import { Slider } from '@web/components/ui/slider';
@@ -233,7 +236,17 @@ export function FocusCropOverlay({
     height: number;
   } | null>(null);
   const [rect, setRect] = React.useState<CropRect | null>(null);
-  const [ratio, setRatio] = React.useState<number | null>(null);
+  const [preset, setPreset] = React.useState<CropPreset | null>(null);
+  // Clearing the marquee clears the selection with it (#1991): the lit button
+  // promises a constraint, and a constraint with nothing to constrain leaves
+  // the row's two rules — re-click unlights, click-with-no-marquee draws —
+  // answering the same click differently. Single writer so a new clearing
+  // path cannot honour one half. useCallback is load-bearing: three call
+  // sites are inside `measure`, whose identity feeds the layout effect below.
+  const clearMarquee = React.useCallback((): void => {
+    setRect(null);
+    setPreset(null);
+  }, []);
   const interactionRef = React.useRef<Interaction | null>(null);
   // Force a state tick on interaction end so the controls bar re-evaluates.
   const [, setTick] = React.useState(0);
@@ -287,7 +300,7 @@ export function FocusCropOverlay({
           nat && b
             ? isNaturalCropValid(rectRef.current, b, nat)
             : isCropValid(rectRef.current);
-        if (!valid) setRect(null);
+        if (!valid) clearMarquee();
       }
       interactionRef.current = null;
       lastSourceElRef.current = null;
@@ -311,7 +324,7 @@ export function FocusCropOverlay({
         // it (round-4). A same-src remount (viewport culling return,
         // round-8) keeps the marquee — only the observer rebinds below.
         interactionRef.current = null;
-        setRect(null);
+        clearMarquee();
         measuredSrcRef.current = null;
         prevBoxRef.current = null;
       }
@@ -352,7 +365,7 @@ export function FocusCropOverlay({
       // discard it rather than crop the wrong thing. Abort the in-flight
       // gesture too (round-4: same resurrection mode as the Esc fix).
       interactionRef.current = null;
-      setRect(null);
+      clearMarquee();
     } else if (
       prev &&
       rectRef.current &&
@@ -420,8 +433,7 @@ export function FocusCropOverlay({
   // reset used to run AFTER the mount measure and wipe the baseline, which
   // silently disabled the confirm-time src-swap check (adversarial R2).
   React.useLayoutEffect(() => {
-    setRect(null);
-    setRatio(null);
+    clearMarquee();
     interactionRef.current = null;
     measuredSrcRef.current = null;
     // The geometry baseline must die with the target too — a surviving
@@ -617,7 +629,7 @@ export function FocusCropOverlay({
         // culled off-viewport, Esc would silently eat the kept selection
         // and look dead — it peels back to the pick state instead.
         interactionRef.current = null;
-        setRect(null);
+        clearMarquee();
       } else {
         // Stage two = back to the pick state, aligned with Cancel (user
         // 2026-07-17): the session survives; a further Esc in the pick
@@ -635,6 +647,12 @@ export function FocusCropOverlay({
   const bounds = box
     ? { width: box.width, height: box.height }
     : { width: 0, height: 0 };
+
+  // What the selected row item constrains to, for the three paths that hold a
+  // gesture to it (start a marquee / drag it out / pull a handle). Derived
+  // rather than stored: `original` follows the material, so a stored number
+  // would go stale the moment the target changes (#1991).
+  const ratio = presetRatio(preset, naturalSize);
 
   /**
    * Pointer position in the source box's local pixel space.
@@ -787,49 +805,56 @@ export function FocusCropOverlay({
         nat && b
           ? isNaturalCropValid(rectRef.current, b, nat)
           : isCropValid(rectRef.current);
-      if (!valid) setRect(null);
+      if (!valid) clearMarquee();
     }
     setTick((n) => n + 1);
   };
 
   /**
-   * Apply (or clear, when re-clicked) a ratio preset.
-   * @param value - The preset's width/height value.
+   * Apply (or unlight, when re-clicked) a preset from the row.
+   *
+   * The decision runs BEFORE the light (#1991). Lighting first and judging
+   * afterwards left the button lit over nothing whenever the result was
+   * degenerate, and in that state the row's two rules disagree about what the
+   * next click on it means: A4.2 says unlight, A2 says draw.
+   * @param next - The row item that was clicked.
    */
-  const onRatioClick = (value: number): void => {
-    const next = ratio === value ? null : value;
-    setRatio(next);
-    if (next !== null) {
-      // The degenerate-rect invariant covers preset clicks too (round-4):
-      // applyRatioPreset grows the seed to the minimum, but a tiny image
-      // whose bounds cannot hold the minimum at this ratio yields an
-      // invalid rect — discard it rather than strand a sub-minimum sliver.
-      setRect((prev) => {
-        if (!prev) return prev;
-        // Seed the reshape with NATURAL-aware display minimums (round-11):
-        // at zoom-in the natural gauge demands more display px than
-        // MIN_CROP_PX, and a display-seeded reshape landed below the gauge
-        // — a preset click destroyed a selection that a valid 16:9 rect
-        // trivially fit.
-        const minW =
-          naturalSize && box
-            ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.width) / naturalSize.width)
-            : MIN_CROP_PX;
-        const minH =
-          naturalSize && box
-            ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.height) / naturalSize.height)
-            : MIN_CROP_PX;
-        const shaped = applyRatioPreset(prev, next, bounds, minW, minH);
-        // The THIRD validity decision joins the unified gauge (round-10):
-        // display-px here was eating a zoom-out selection that pointer-up
-        // and Confirm deliberately accept.
-        const valid =
-          naturalSize && box
-            ? isNaturalCropValid(shaped, box, naturalSize)
-            : isCropValid(shaped);
-        return valid ? shaped : null;
-      });
+  const onPresetClick = (next: CropPreset): void => {
+    // Re-click unlights: the marquee stays, the ratio stops constraining.
+    if (samePreset(preset, next)) {
+      setPreset(null);
+      return;
     }
+    // G1: `original` has no value until the material reports its own size.
+    const nextRatio = presetRatio(next, naturalSize);
+    if (nextRatio === null || !box) return;
+    // Seed the reshape with NATURAL-aware display minimums (round-11): at
+    // zoom-in the natural gauge demands more display px than MIN_CROP_PX, and
+    // a display-seeded reshape landed below the gauge — a preset click
+    // destroyed a selection that a valid 16:9 rect trivially fit.
+    const minW = naturalSize
+      ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.width) / naturalSize.width)
+      : MIN_CROP_PX;
+    const minH = naturalSize
+      ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.height) / naturalSize.height)
+      : MIN_CROP_PX;
+    // With no marquee yet, the whole material is the seed (#1991): the same
+    // reshape then fills one axis, derives the other and centres — the rect
+    // a "fit the ratio inside the material" pass would produce, without a
+    // second copy of the geometry.
+    const seed = rect ?? { x: 0, y: 0, width: bounds.width, height: bounds.height };
+    const shaped = applyRatioPreset(seed, nextRatio, bounds, minW, minH);
+    // G2, the degenerate-rect invariant (round-4): applyRatioPreset grows the
+    // seed to the minimum, but a tiny material whose bounds cannot hold it at
+    // this ratio yields an invalid rect. The THIRD validity decision joins the
+    // unified gauge (round-10): display-px here was eating a zoom-out
+    // selection that pointer-up and Confirm deliberately accept.
+    const valid = naturalSize
+      ? isNaturalCropValid(shaped, box, naturalSize)
+      : isCropValid(shaped);
+    if (!valid) return;
+    setPreset(next);
+    setRect(shaped);
   };
 
   /** Confirm the current marquee: map to natural pixels and hand off. */
@@ -847,7 +872,7 @@ export function FocusCropOverlay({
       measuredSrcRef.current !== null &&
       el.getAttribute('src') !== measuredSrcRef.current
     ) {
-      setRect(null);
+      clearMarquee();
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
       return;
     }
@@ -934,7 +959,12 @@ export function FocusCropOverlay({
                   <div
                     key={id}
                     data-testid={`focus-crop-handle-${id}`}
-                    className={`absolute h-2 w-2 rounded-full border border-foreground bg-background ${className}`}
+                    // Shape says whether the ratio is locked (#1991, user
+                    // 2026-08-21): round while a preset holds the marquee,
+                    // square while it is free. The signal sits on the handle
+                    // because the handle IS the control that changes the
+                    // shape. Size and stroke stay put — only the corner.
+                    className={`absolute h-2 w-2 border border-foreground bg-background ${preset !== null ? 'rounded-full ' : ''}${className}`}
                     onPointerDown={onHandlePointerDown(id)}
                   />
                 ))}
@@ -1014,27 +1044,30 @@ export function FocusCropOverlay({
               </div>
             ) : null}
             <div className='flex items-center gap-1'>
-              {CROP_RATIOS.map(({ key, value }) => (
+              {CROP_PRESETS.map(({ key, label, preset: item }) => (
                 <Button
                   key={key}
                   type='button'
                   variant={null}
                   size={null}
                   data-testid={`focus-ratio-${key}`}
-                  aria-pressed={ratio === value}
-                  onClick={() => onRatioClick(value)}
+                  aria-pressed={samePreset(preset, item)}
+                  onClick={() => onPresetClick(item)}
                   // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
                   // abspos bar near the viewport edge shrink-to-fits against
                   // the available width, and without these the CJK button
                   // labels wrapped one character per line.
                   className={
-                    'shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 tabular-nums transition-colors ' +
-              (ratio === value
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
+                    'shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 transition-colors ' +
+                    // Tabular figures line the seven numeric labels up; the
+                    // word carries no digits and takes the normal face.
+                    (item.kind === 'ratio' ? 'tabular-nums ' : '') +
+                    (samePreset(preset, item)
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
                   }
                 >
-                  {key}
+                  {label}
                 </Button>
               ))}
               <span aria-hidden='true' className='mx-1 h-4 w-px bg-border' />
