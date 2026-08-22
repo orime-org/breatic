@@ -30,6 +30,7 @@ export {
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
+import { creditLotService } from "@breatic/domain";
 
 /**
  * Shared fields every canvas-bound mini-tool / AIGC task carries:
@@ -253,6 +254,26 @@ export const textToolSchema = z.discriminatedUnion("tool", [
   textToolBase.extend({ tool: z.literal("storyboard"), instructions: z.string(), scene_count: z.number().int().optional() }),
   textToolBase.extend({ tool: z.literal("script"), scene_description: z.string(), characters: z.array(z.string()).optional() }),
 ]);
+
+/**
+ * The `Idempotency-Key` header, as the charge will read it.
+ *
+ * The header travels into the charge as its reference key, where
+ * `REFKEY_PATTERN` refuses anything outside it. Refusing there is refusing
+ * too late: the model has already run and the tokens are already spent, so
+ * the caller pays for a run whose charge cannot be recorded. The same pattern
+ * is asked here, at the door, and the answer is a `422` before any of that.
+ *
+ * Absent is fine — the route then mints a key of its own and each retry is
+ * its own charge, which is what a text tool means when it regenerates.
+ * Hono lowercases header names, so the key below is the name as it arrives.
+ */
+export const idempotencyKeyHeaderSchema = z.object({
+  "idempotency-key": z
+    .string()
+    .regex(creditLotService.REFKEY_PATTERN)
+    .optional(),
+});
 
 // Skill Market
 export const skillMarketQuerySchema = z.object({

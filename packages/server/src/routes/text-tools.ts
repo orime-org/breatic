@@ -13,7 +13,10 @@ import { newId } from "@breatic/shared";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { validate } from "@server/middleware/validate.js";
-import { textToolSchema } from "@server/routes/schemas.js";
+import {
+  idempotencyKeyHeaderSchema,
+  textToolSchema,
+} from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { textToolService } from "@server/modules";
@@ -35,6 +38,7 @@ textTools.use(requireAuth);
 textTools.post(
   "/",
   validate("json", textToolSchema),
+  validate("header", idempotencyKeyHeaderSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -47,7 +51,10 @@ textTools.post(
     // to a server-generated UUID - each retry then becomes a separate
     // logical charge, which is acceptable since text tools re-generate
     // content on every call.
-    const idempotencyKey = c.req.header("Idempotency-Key") ?? newId();
+    //
+    // Read from the validated header rather than from the raw request, so
+    // the value that reaches the charge is the one the schema passed.
+    const idempotencyKey = c.req.valid("header")["idempotency-key"] ?? newId();
 
     // Set SSE headers
     c.header("Content-Type", "text/event-stream");
