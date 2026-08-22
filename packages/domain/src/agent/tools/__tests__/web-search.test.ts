@@ -228,6 +228,27 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel).toMatch(/fault on their side/i);
   });
 
+  it("does not offer a reworded query for a failure that has nothing to do with the query", async () => {
+    // Both halves of one sentence cannot be true: if the service being down
+    // is not a problem with the query, rewording the query reaches nothing.
+    // The other tool says of the same status not to call it again this turn,
+    // and one of the two was going to be disobeyed.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).not.toMatch(/different wording/i);
+    expect(forModel.toLowerCase()).toMatch(/do not call this tool again|do not search again/);
+  });
+
+  it("does offer a reworded query for a request the service would not take", async () => {
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 422 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/different wording/i);
+  });
+
   it("throws when the search service cannot be reached", async () => {
     httpRequestMock.mockImplementation(async () => {
       throw new Error("http request to https://api.search.brave.com failed after 3 attempts");
@@ -250,6 +271,44 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel).toContain("breatic"); // what was refused
     expect(forModel).toContain("503"); // why
     expect(forModel.toLowerCase()).toMatch(/without search|do not repeat|tell the user/); // what instead
+  });
+
+  it("does not say a service that answered could not be reached", async () => {
+    // A 200 whose body parses but is not the shape this tool reads: an error
+    // envelope, a schema that moved, a proxy answering in its own words. The
+    // service was reached and it did answer, and a model told otherwise stops
+    // searching for the rest of the turn over a network problem that is not
+    // there.
+    httpRequestMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: "quota exceeded" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const { forModel, readerKey } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).not.toMatch(/could not be reached|unreachable/i);
+    expect(forModel).toMatch(/not with results/i);
+    expect(readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("does not call an answer it cannot read a search that found nothing", async () => {
+    // Answering "no results" for a body this tool could not read hands the
+    // model a fact -- that nothing matches this query -- which it then builds
+    // its reply on. Every other failure here throws; this one returned.
+    httpRequestMock.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ web: { results: { 0: "not an array" } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/not with results/i);
   });
 
   it("does not call a service that answered unreachable", async () => {

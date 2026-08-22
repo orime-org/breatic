@@ -41,9 +41,9 @@ function refusalReason(query: string, status: number): string {
   const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
   if (status >= 500 || status === 429) {
     return (
-      `${opening} That is a fault on their side, not a problem with the query. Try a ` +
-      "different wording at most once, then continue without search results and tell the " +
-      "user search is unavailable."
+      `${opening} That is a fault on their side, not a problem with the query, so no ` +
+      "wording of it reaches past this. Do not search again on this turn; continue " +
+      "without search results and tell the user search is unavailable."
     );
   }
   if (status === 401 || status === 403) {
@@ -57,6 +57,25 @@ function refusalReason(query: string, status: number): string {
     `${opening} The service is reachable, so it is this request it would not take. Try a ` +
     "different wording at most once, then continue without search results and tell the " +
     "user search is unavailable."
+  );
+}
+
+/**
+ * What to tell the model when the service answered with something else.
+ *
+ * Both callers reach it the same way -- the request went through and came
+ * back 200 -- and differ only in how far the answer got before it stopped
+ * being readable.
+ * @param query - What was searched for.
+ * @param detail - What made it unreadable, when there is something to name.
+ * @returns The reason, ending in what the model may do instead.
+ */
+function notResultsReason(query: string, detail?: string): string {
+  const why = detail === undefined ? "" : ` (${detail})`;
+  return (
+    `Searching for "${query}" failed: the search service answered, but not with results${why}. ` +
+    "That is a fault on their side. Continue without search results and tell the user search " +
+    "is unavailable."
   );
 }
 
@@ -152,14 +171,19 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // detail, and the outer guard passes anything carrying detail straight
         // through -- past the question of whether the user stopped.
         if (isStop(err, abortSignal)) throw stoppedByUser();
-        throw toolFailed(
-          `Searching for "${query}" failed: the search service answered, but not with results ` +
-            `(${reasonOf(err)}). That is a fault on their side. Continue without search results ` +
-            "and tell the user search is unavailable.",
-          FAILURE_LINES.upstream,
-        );
+        throw toolFailed(notResultsReason(query, reasonOf(err)), FAILURE_LINES.upstream);
       }
-      const results = (data.web?.results ?? []).slice(0, n);
+      // Parsing said it is JSON, which says nothing about it being what this
+      // tool reads. An error envelope, a schema that moved, a proxy answering
+      // in its own words all arrive here as an object with no result list.
+      // Read straight past that and the answer is either a TypeError, which
+      // the guard below calls a service that could not be reached while it
+      // plainly was, or an empty list, which is a search that found nothing --
+      // a fact the model then builds its reply on.
+      const found: unknown = (data as { web?: { results?: unknown } } | null)?.web?.results;
+      if (!Array.isArray(found)) throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+
+      const results = (found as NonNullable<NonNullable<typeof data.web>["results"]>).slice(0, n);
       if (results.length === 0) return `No results found for: ${query}`;
 
       const lines = [`Results for: ${query}\n`];
