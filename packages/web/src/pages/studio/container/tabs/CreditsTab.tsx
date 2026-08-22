@@ -38,11 +38,21 @@ function formatAmount(value: number): string {
  * day to everyone, and for a reader eight hours ahead a third of every day
  * lands on the one before — on a record of money, where this column is the
  * only time it carries.
+ * The parts come off the local Date, so the day is the reader's; the shape is
+ * the one the confirmed design draws, and it reads the same in every language
+ * this product ships.
  * @param iso - An ISO-8601 timestamp.
- * @returns The date in the reader's timezone and language.
+ * @returns The date in the reader's timezone, as `YYYY-MM-DD`.
  */
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(getLocale());
+  const at = new Date(iso);
+  /**
+   * Two digits, so every row lines up.
+   * @param n - A month or a day.
+   * @returns It, zero-padded.
+   */
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
 
 /**
@@ -114,7 +124,12 @@ const SummaryRow = React.memo(function SummaryRow({
       )}
     >
       <span className='text-sm'>{label}</span>
-      <span className='ml-auto text-right text-sm font-semibold tabular-nums'>
+      <span
+        className={cn(
+          'ml-auto text-right text-sm tabular-nums',
+          strong ? 'font-bold' : 'font-semibold',
+        )}
+      >
         {formatAmount(amount)}
       </span>
     </li>
