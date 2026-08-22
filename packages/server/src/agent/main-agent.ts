@@ -8,7 +8,7 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
-import { createUIMessageStream, hasToolCall, stepCountIs } from "ai";
+import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
@@ -210,7 +210,17 @@ export class MainAgent {
     const stopIfItAsked = async (options: {
       steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
     }): Promise<boolean> => {
-      const asked = await hasToolCall(...TOOLS_THAT_BLOCK)(options);
+      // A question counts once it exists, which is what a `tool-result` on
+      // one of these tools says. The SDK's own `hasToolCall` answers a
+      // different question -- whether the step holds a call by that name --
+      // and a call refused over its arguments is still one of those: it is
+      // enqueued first and the error follows. Stopping on it ends the turn
+      // over a question that was never put, so the model never reads the
+      // complaint telling it which field to fix, and the reader is left with
+      // nothing to answer.
+      const asked = (options.steps[options.steps.length - 1]?.content ?? []).some(
+        (part) => part.type === "tool-result" && TOOLS_THAT_BLOCK.includes(part.toolName),
+      );
       if (asked) askedTheUser = true;
       return asked;
     };

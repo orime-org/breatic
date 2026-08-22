@@ -21,7 +21,7 @@ import { tool } from "ai";
 import { carrying } from "@breatic/shared";
 import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
-import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
+import { FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
@@ -35,6 +35,10 @@ const thisCase = vi.hoisted(() => ({
   stopper: undefined as AbortController | undefined,
   /** What the tool does when called. */
   toolDoes: "answers",
+  /** How many times the model has been asked, this case. */
+  modelCalls: 0,
+  /** What the model produces from the second ask on, when a case sets it. */
+  laterParts: undefined as unknown[] | undefined,
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -118,13 +122,29 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             return "两条链接";
           },
         }),
+        // 会把这一轮停在那儿等人回答的那一类。参数要求跟真工具同形:至少两个
+        // 选项,每个都得有 id 和 label —— 这是模型最容易写错的一个。
+        ask_user_choice: tool({
+          description: "问用户一个多选题",
+          inputSchema: z.object({
+            question: z.string(),
+            choices: z.array(z.object({ id: z.string(), label: z.string() })).min(2),
+          }),
+          execute: async (input: { question: string }) => input,
+        }),
       },
     }),
     finalizeTurn: async (opts: { steps: { persist?: () => Promise<void> } }) => {
       await opts.steps.persist?.();
       return [];
     },
-    getModel: () => modelProducing(() => thisCase.parts as ModelStreamPart[]),
+    getModel: () =>
+      modelProducing(() => {
+        thisCase.modelCalls += 1;
+        const later = thisCase.laterParts as ModelStreamPart[] | undefined;
+        if (thisCase.modelCalls > 1 && later !== undefined) return later;
+        return thisCase.parts as ModelStreamPart[];
+      }),
   };
 });
 
@@ -206,6 +226,47 @@ async function storedPartsWhenTool(
 function toolPart(parts: MessagePart[]): Extract<MessagePart, { type: "tool" }> | undefined {
   return parts.find((p): p is Extract<MessagePart, { type: "tool" }> => p.type === "tool");
 }
+
+// 每个用例都从同一个已知状态开始。继承上一个用例留下的设置,用例就到不了它
+// 自己写的那个分支 —— 而它照样会绿。
+beforeEach(() => {
+  addMessage.mockClear();
+  thisCase.modelCalls = 0;
+  thisCase.laterParts = undefined;
+  thisCase.stopper = undefined;
+  thisCase.toolDoes = "answers";
+  thisCase.parts = [];
+});
+
+describe("一次问用户的调用,参数没过 schema 的时候", () => {
+
+  it("这一轮不停在那儿等人回答", async () => {
+    // 会问用户的那两个工具,调用成功时这一轮就停下等人。判断「问过没有」用的
+    // 若是「这一步有没有发起过这个调用」,那么参数被拒的那一次也算数 —— SDK 把
+    // 被拒的调用照样放进 toolCalls,只是另外附一条错误。于是轮次当场结束:模型
+    // 收不到那条「哪个字段不合规则」,而屏幕上没有任何东西可答。
+    thisCase.parts = [
+      {
+        type: "tool-call",
+        toolCallId: "tc-ask",
+        toolName: "ask_user_choice",
+        // 少了 choices,过不了 schema。
+        input: JSON.stringify({ question: "要什么风格?" }),
+      },
+      FINISHED_ASKING_FOR_A_TOOL,
+    ];
+    thisCase.laterParts = saying("那我按默认的来");
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("帮我做张海报");
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+
+    expect(thisCase.modelCalls).toBeGreaterThan(1);
+  });
+});
 
 describe("how a tool use is recorded when it does not come back", () => {
   beforeEach(() => {

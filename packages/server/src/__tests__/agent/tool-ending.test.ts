@@ -28,17 +28,39 @@ import { endingOf, TURN_ENDED_AROUND_IT } from "@server/agent/tool-ending.js";
  * 各条的下一步并不相同 —— 从没跑过的那条值得再调一次,被拒的地址一次都不该
  * 再调 —— 所以这里认的是「说了某种下一步」,不是某一句固定的话。
  */
-const SAYS_WHAT_NEXT =
-  /call it again|try once more|try it again|do not call|do not retry|correct|tell the user|ask/i;
+const EACH_SAYS = [
+  {
+    name: "TURN_ENDED_AROUND_IT",
+    failure: TURN_ENDED_AROUND_IT,
+    says: /call it again/i,
+    notSays: /do not call it again/i,
+  },
+  {
+    name: "STOPPED_BY_USER",
+    failure: STOPPED_BY_USER,
+    says: /do not call it again/i,
+    // 不指认是谁结束的。服务端只有一个信号,它盖住停止按钮、关标签页、断网和
+    // 笔记本睡眠;把继续与否挂在「等用户再问一次」上,只有用户真按了停止时才
+    // 说得通。掉线那几种里用户什么都没取消,却被要求非等他重新开口不可。
+    notSays: /the user asks|user stopped|user pressed/i,
+  },
+  {
+    name: "NOTHING_SAID_WHY",
+    failure: NOTHING_SAID_WHY,
+    says: /try it once more/i,
+    notSays: /do not/i,
+  },
+] as const;
 
-describe("轮次替一次调用说的每句话,都说了下一步", () => {
-  it.each([
-    ["TURN_ENDED_AROUND_IT", TURN_ENDED_AROUND_IT],
-    ["STOPPED_BY_USER", STOPPED_BY_USER],
-    ["NOTHING_SAID_WHY", NOTHING_SAID_WHY],
-  ])("%s", (_name: string, failure: ToolFailure) => {
+describe("轮次替一次调用说的每句话,都说了它自己那个下一步", () => {
+  // 逐条钉各自该说的内容,不共用一条「说了某种下一步」的正则 —— 那样的正则要
+  // 同时认「再调一次」和「别再调」,于是把两条常量的下一步对调也照样全绿(实测
+  // 过),一句话和它的反面在它眼里是一样的。而这几条的分歧正好在这里:从没跑过
+  // 的那次值得再调,已经结束的那次一次都不该再调。
+  it.each(EACH_SAYS)("$name", ({ failure, says, notSays }) => {
     expect(failure.forModel.trim()).not.toBe("");
-    expect(failure.forModel).toMatch(SAYS_WHAT_NEXT);
+    expect(failure.forModel).toMatch(says);
+    expect(failure.forModel).not.toMatch(notSays);
   });
 
   it("SDK 拒掉的调用,在它自己那句话后面接上下一步", () => {
@@ -48,7 +70,7 @@ describe("轮次替一次调用说的每句话,都说了下一步", () => {
     const ending = endingOf(new Error("AI_InvalidToolInputError: url must be a string"));
 
     expect(ending.forModel).toContain("url must be a string");
-    expect(ending.forModel).toMatch(SAYS_WHAT_NEXT);
+    expect(ending.forModel).toMatch(/correct the call and try once more/i);
   });
 
   it("工具自己带了理由时,一个字都不改地交回去", () => {
