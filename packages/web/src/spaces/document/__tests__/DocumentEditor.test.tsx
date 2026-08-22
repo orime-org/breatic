@@ -74,6 +74,17 @@ describe('DocumentEditor', () => {
     doc.destroy();
   });
 
+  it('顶部横条不存在：一个 doc-toolbar-tool-* 都渲染不出来', () => {
+    // 横条整条去掉（user 2026-08-21 拍定，任务 #129）。用前缀查而不是逐个点名，
+    // 是因为要断言的是「一个都没有」，点名只能证明点到的那几个没有。
+    // 这里仍然传 history，是为了让今天那条横条真的渲染出来 —— 不传它组件会崩，
+    // 那样红灯红在崩溃上，证明不了横条还在。横条删掉后这个参数一起去掉。
+    render(<DocumentEditor editor={editor} history={history} />);
+    expect(
+      document.querySelectorAll('[data-testid^="doc-toolbar-tool-"]'),
+    ).toHaveLength(0);
+  });
+
   it('renders the toolbar and the editor body', () => {
     render(<DocumentEditor editor={editor} history={history} />);
     expect(screen.getByTestId('document-toolbar')).toBeInTheDocument();
