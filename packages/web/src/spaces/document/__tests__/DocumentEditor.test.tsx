@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * The editor chrome: the scrolling body, the command rail, the bubble bar. The
- * editor comes from the container, so these tests drive a real one through the
- * real user path — no test-only hooks into the component.
+ * The editor chrome: the scrolling body, the whole-document entry, the bubble
+ * bar. The editor comes from the container, so these tests drive a real one
+ * through the real user path — no test-only hooks into the component.
  *
- * ## 只读那两条去哪了
+ * ## Where the two viewer tests went
  *
- * 这里原来有两条 viewer 测试，钉的是「横条的控件对 viewer 全部禁用」和
- * 「viewer 点横条按钮改不了共享文档」。横条整条去掉之后，它们钉的那个入口
- * 不存在了 —— **保护由 `selection-bubble-bar.test.tsx` 的 A7 接手**：viewer
- * 眼里浮出条整条不出现（`doc-bubble-tool-*` 一个都查不到），所以那条路上
- * 没有任何控件可点。删掉的是测试，不是那条不变量。
+ * Two tests here used to pin that the toolbar's controls were all disabled for
+ * a viewer, and that clicking one changed nothing in the shared document. The
+ * toolbar is gone, and with it the entry point they named.
+ * `selection-bubble-bar.test.tsx` carries that ground now (A7): a viewer never
+ * sees the bar at all, so there is no control on that path to click. What was
+ * deleted is the tests, not the invariant.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -81,7 +82,7 @@ describe('DocumentEditor', () => {
     ).toBeTruthy();
   });
 
-  it('渲染正文和右上角那个整篇文档命令的入口', () => {
+  it('renders the body and the whole-document entry', () => {
     render(<DocumentEditor editor={editor} />);
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();

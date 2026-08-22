@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * 整篇文档命令那个入口的 E2E（任务 #129）。
+ * End-to-end coverage for the whole-document command entry (task #129).
  *
- * 这里只放 jsdom 量不了的那些：入口在屏幕上的实际位置、常驻面积、点开之后
- * 菜单画在哪儿、它跟正文列和浮出条的几何关系、滚轮落在它上面时正文照样滚。
- * 展开后装哪两项、每项的尚未开放态由 `document-menu-entry.test.tsx` 逐条钉住
- * （jsdom 答得了），这里不重复。
+ * Only what jsdom cannot answer lives here: where the button actually lands,
+ * how much it occupies at rest, where the menu draws once open, how it sits
+ * against the page and the bubble bar, and whether a wheel over it scrolls the
+ * body. Which two commands it opens onto, and how their not-open-yet state
+ * looks, are pinned in `document-menu-entry.test.tsx`.
  *
- * 需要 dev 起着 + smoke 账号：
+ * Needs the dev server and a smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
@@ -19,8 +20,8 @@ const password = process.env.SMOKE_PASSWORD;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
-// 一次登录，全文件共用一个页面 —— 登录限流是 5 次每分钟，理由同
-// `selection-bubble-bar.spec.ts`。
+// One login for the whole file: the rate limit is five a minute. Same reason
+// as `selection-bubble-bar.spec.ts`.
 test.describe.configure({ mode: 'serial' });
 
 let page: Page;
@@ -38,7 +39,7 @@ test.afterAll(async () => {
   await page?.close();
 });
 
-/** 进到一个新建的 Document Space。 */
+/** Opens a freshly created Document Space. */
 async function openFreshDocument(p: Page): Promise<void> {
   await p.goto('/studio');
   const firstProject = p.locator('a[href^="/project/"]').first();
@@ -82,7 +83,7 @@ test('the entry sticks inside the scroller, not beside it', async () => {
   expect(layout.position).toBe('sticky');
 });
 
-test('常驻在正文区上的只有那一个入口，32×32，贴右上角', async () => {
+test('rests as a single 32×32 button in the top right corner', async () => {
   await openFreshDocument(page);
   const trigger = page.getByTestId('doc-doc-menu-trigger');
   await expect(trigger).toBeVisible({ timeout: 10_000 });
@@ -97,10 +98,11 @@ test('常驻在正文区上的只有那一个入口，32×32，贴右上角', as
     return {
       width: Math.round(tb.width),
       height: Math.round(tb.height),
-      // 贴右上角 —— 距离现场量，不写死：正文区的位置会随外壳变。
+      // Measured against the viewport rather than the window: the body area
+      // moves with whatever chrome is open.
       insetRight: Math.round(vb.right - tb.right),
       insetTop: Math.round(tb.top - vb.top),
-      // 打在它自己身上：命中自己才说明那块像素真的画出来了。
+      // Hitting itself is what says those pixels were really painted.
       hitsItself: !!document
         .elementFromPoint(tb.left + tb.width / 2, tb.top + tb.height / 2)
         ?.closest('[data-testid="doc-doc-menu-trigger"]'),
@@ -117,12 +119,13 @@ test('常驻在正文区上的只有那一个入口，32×32，贴右上角', as
   expect(geometry.hitsItself).toBe(true);
 });
 
-test('点开出菜单，菜单落在入口下方且没被裁掉', async () => {
+test('opens a menu below the trigger, uncropped', async () => {
   await openFreshDocument(page);
   const trigger = page.getByTestId('doc-doc-menu-trigger');
   await expect(trigger).toBeVisible({ timeout: 10_000 });
 
-  // 展开之前，命令一个都不在屏上 —— 这条是「常驻面积恒定」的另一半。
+  // Nothing on screen before it opens — the other half of a constant
+  // resting footprint.
   await expect(page.getByTestId('doc-doc-menu-save-snapshot')).toHaveCount(0);
 
   await trigger.click();
@@ -154,7 +157,7 @@ test('点开出菜单，菜单落在入口下方且没被裁掉', async () => {
   expect(placement.hitsItself).toBe(true);
 });
 
-test('点尚未开放的那一项，菜单不关、文档不变', async () => {
+test('clicking a not-open-yet item leaves menu and document alone', async () => {
   await openFreshDocument(page);
   await page.getByTestId('doc-doc-menu-trigger').click();
   const item = page.getByTestId('doc-doc-menu-save-snapshot');
@@ -162,25 +165,28 @@ test('点尚未开放的那一项，菜单不关、文档不变', async () => {
 
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   const before = await editor.innerHTML();
-  // `force` 跳过 playwright 自己的可点性检查 —— 它把 `aria-disabled` 当成不可
-  // 点，而浏览器不看这个属性：真实用户点下去，事件照常派发，靠 `onSelect` 里
-  // 的 preventDefault 拦住。不加 force 就等不到「enabled」，一直重试到超时，
-  // 测的成了框架的保护而不是产品的行为。
+  // `force` skips playwright's own actionability check, which treats
+  // `aria-disabled` as unclickable. Browsers do not read that attribute: a real
+  // click dispatches, and `onSelect`'s preventDefault is what stops it. Without
+  // force this waits for an "enabled" that never comes, and what gets measured
+  // is the framework's guard rather than the product's behaviour.
   await item.click({ force: true });
 
-  // `onSelect` 里 preventDefault：菜单留在原地，文档一个字没变。
+  // preventDefault inside `onSelect`: the menu stays put, the document is
+  // untouched.
   await expect(item).toBeVisible();
   expect(await editor.innerHTML()).toBe(before);
 });
 
-test('点正文那一下既关掉菜单，也让光标落进正文', async () => {
-  // 用户开着菜单、想回去接着写，点正文一下就该能写。默认的 modal 菜单会在
-  // body 上加 `pointer-events: none` 把那次点击吞掉，只用来关菜单，焦点还被
-  // 还给触发器 —— 于是要点两次才写得了字（实测）。
+test('clicking the body both dismisses the menu and lands the caret', async () => {
+  // Someone with the menu open who wants to go back to writing clicks the body
+  // once. A modal menu puts `pointer-events: none` on the body, so that click
+  // only dismisses and focus returns to the trigger — two clicks to write again
+  // (measured).
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();
-  await page.keyboard.type('第一句。');
+  await page.keyboard.type('first sentence.');
 
   const trigger = page.getByTestId('doc-doc-menu-trigger');
   const box = (await trigger.boundingBox())!;
@@ -193,14 +199,14 @@ test('点正文那一下既关掉菜单，也让光标落进正文', async () =>
   await page.mouse.click(eb.x + 200, eb.y + 30);
   await expect(page.getByTestId('doc-doc-menu-save-snapshot')).toHaveCount(0);
 
-  await page.keyboard.type('第二句。');
-  await expect(editor).toContainText('第二句。', { timeout: 5_000 });
+  await page.keyboard.type('second sentence.');
+  await expect(editor).toContainText('second sentence.', { timeout: 5_000 });
 });
 
-test('再点一次入口收起菜单', async () => {
-  // user 2026-08-22 要的形态：「点击小按钮，这一排按钮就会弹出来；再点一下，
-  // 这一排按钮就消失了。」用真实鼠标坐标点，不走 playwright 的可点性检查 ——
-  // 菜单开着时它会认为触发器被上层拦住。
+test('a second click on the trigger closes the menu', async () => {
+  // The shape user asked for on 2026-08-22: click the small button and the
+  // commands appear, click again and they go. Driven at real coordinates,
+  // because with the menu open playwright reads the trigger as covered.
   await openFreshDocument(page);
   const trigger = page.getByTestId('doc-doc-menu-trigger');
   const box = (await trigger.boundingBox())!;
@@ -233,8 +239,10 @@ test('the page clears the entry, down to the width where it used to not', async 
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();
   await page.keyboard.type(
-    '这是一段刻意写得很长的正文它会在正文列里折成好几行每一行的行尾都会顶到列的右边界' +
-      '所以拿它来量入口有没有压住正文最合适不过了继续写下去让它至少折出三四行来',
+    'A deliberately long paragraph, long enough that it wraps several times and ' +
+      'every line but the last one ends flush against the right edge of the ' +
+      'page, which is what makes it useful for measuring whether the entry ' +
+      'covers any of it.',
   );
 
   const contentWidths: number[] = [];
@@ -252,7 +260,7 @@ test('the page clears the entry, down to the width where it used to not', async 
       const page_ = pm.getBoundingClientRect();
       const t = trigger.getBoundingClientRect();
 
-      // 第一条视觉行的最后一个字符
+      // The last character on the first visual line
       const text = pm.querySelector('p')!.firstChild as Text;
       const topOf = (i: number): number => {
         const r = document.createRange();
@@ -317,15 +325,16 @@ test('the page clears the entry, down to the width where it used to not', async 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
 
-test('浮出条压过入口：重叠的那一块归浮出条', async () => {
-  // 两者是同一个隔离容器里的定位兄弟，条的横向位置跟着选区走、能一直伸到
-  // 入口那个角（2026-08-22 实测 1440 档两者只差 1px）。真实重叠只在很窄的
-  // 一条边界上出现，所以这里把条挪过去造出重叠 —— 钉的是「重叠时谁在上」，
-  // 跟重叠是怎么来的无关。
+test('the bubble bar paints above the entry where they overlap', async () => {
+  // Both are positioned siblings in the same isolated container, and the bar
+  // follows the selection horizontally — far enough to reach that corner (at
+  // 1440 the two came within 1px, measured 2026-08-22). Real overlap only
+  // happens along a narrow band, so the bar is moved onto the entry here. What
+  // this pins is which one paints on top, not how they came to overlap.
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();
-  await page.keyboard.type('拿来选中的一段文字');
+  await page.keyboard.type('some text to select');
 
   await page.evaluate(() => {
     const pm = document.querySelector(
@@ -401,7 +410,7 @@ test('a wheel over the entry scrolls the body', async () => {
   expect(await readTop()).toBeGreaterThan(before);
 });
 
-test('按 Escape 收起菜单', async () => {
+test('Escape closes the menu', async () => {
   await openFreshDocument(page);
   await page.getByTestId('doc-doc-menu-trigger').click();
   const item = page.getByTestId('doc-doc-menu-save-snapshot');

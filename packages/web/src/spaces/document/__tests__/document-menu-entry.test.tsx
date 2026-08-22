@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 /**
- * 正文区右上角那个入口：作用对象是整篇文档的命令都收在它里面。
+ * The entry at the body's top right corner, which holds the commands whose
+ * object is the whole document.
  *
- * **常驻在屏幕上的只有一个 `⋯` 按钮**（user 2026-08-22 拍定），点开才出命令。
- * 依据是菜单体系定稿 §2.1 的六产品调研表——整篇文档那一行是「右上角的『…』
- * 菜单」，Notion / Google Docs / Coda / Confluence / Craft 五家全是一个入口。
- * 这次展开后是两个尚未开放的快照命令（功能归 #19）。
+ * One "…" button is all that stays on screen (user 2026-08-22); the commands
+ * appear when it opens. The menu-system ruling's §2.1 survey is the reason:
+ * whole-document commands sit behind a single "…" in five of the six products
+ * it looked at. What opens today is two snapshot commands, neither of them
+ * working yet (task #19).
  *
- * 「尚未开放」态照仓里既有的 `ComingEntry`（`StudioAccountMenu.tsx:99-119`）
- * 逐项照搬：变暗、`aria-disabled`、点了不做事、光标说不可点、右边一个常驻的
- * note 徽章。**不用 HTML `disabled`** —— 它会把菜单项排出焦点序，而一个要能
- * 被发现的控件得留在里面。
+ * Their not-open-yet state copies `ComingEntry` (`StudioAccountMenu.tsx:99-119`)
+ * item by item: dimmed, `aria-disabled`, does nothing when clicked, a cursor
+ * that says so, and a note badge that stays put. HTML `disabled` is what this
+ * avoids — it drops the item out of the focus order, and a control meant to be
+ * discovered has to stay in it.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -28,7 +31,7 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const ITEM_IDS = ['doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
 
-describe('整篇文档命令的入口', () => {
+describe('the whole-document command entry', () => {
   const NAME = 'project-p/document-menu-entry';
   let doc: Y.Doc;
   let awareness: Awareness;
@@ -50,9 +53,11 @@ describe('整篇文档命令的入口', () => {
     doc.destroy();
   });
 
-  it('常驻在屏幕上的只有那一个入口按钮', () => {
-    // 这一处往后要收导出、文档设置、清空文档。收进一个入口之前，命令越多常驻
-    // 面积越大；这条钉的就是「加多少命令，常驻的还是一个按钮」。
+  it('keeps one button on screen, whatever it will come to hold', () => {
+    // Export, document settings and clear-the-document are all headed here.
+    // What this pins is that the resting footprint stays one button however
+    // many of them arrive.
+
     render(<DocumentEditor editor={editor} />);
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
     for (const id of ITEM_IDS) {
@@ -60,9 +65,10 @@ describe('整篇文档命令的入口', () => {
     }
   });
 
-  it('点开之后是那两项，一个不多一个不少', async () => {
-    // 整份一起断言，不逐个查存在性：将来多加一个或少一个都要在这里红，
-    // 而两条各自的正向断言之间正好有条缝能让它溜过去。
+  it('opens onto exactly those two commands', async () => {
+    // The whole set at once: an item added or dropped has to turn this red,
+    // and two separate existence checks leave a gap for it to slip through.
+
     const user = userEvent.setup();
     render(<DocumentEditor editor={editor} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
@@ -77,7 +83,7 @@ describe('整篇文档命令的入口', () => {
     expect(ids.sort()).toEqual(ITEM_IDS);
   });
 
-  it('两项都是尚未开放态：变暗、aria-disabled、光标说不可点、带徽章', async () => {
+  it('shows both as not open yet, the way ComingEntry does', async () => {
     const user = userEvent.setup();
     render(<DocumentEditor editor={editor} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
@@ -87,16 +93,16 @@ describe('整篇文档命令的入口', () => {
       expect(item).toHaveAttribute('aria-disabled', 'true');
       expect(item.className).toContain('cursor-not-allowed');
       expect(item.querySelector('.opacity-50')).not.toBeNull();
-      // 常驻的 note 徽章 —— `ComingEntry` 用它说明为什么不可用。断言的是徽章
-      // 这个元素本身有字，不是某一种语言的字：测试跑在英文 locale 下，写死
-      // 中文只会钉住测试环境的语言，钉不住「这里有没有说明」。
+      // The badge `ComingEntry` uses to say why the item cannot be used. What
+      // is asserted is that it carries text at all — pinning a particular
+      // language would pin the test environment's locale instead.
       const note = item.querySelector('.text-2xs');
       expect(note).not.toBeNull();
       expect(note?.textContent?.trim()).toBeTruthy();
     }
   });
 
-  it('不用 HTML disabled，它会把菜单项排出焦点序', async () => {
+  it('reaches the items by keyboard, so no HTML disabled', async () => {
     const user = userEvent.setup();
     render(<DocumentEditor editor={editor} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
@@ -108,7 +114,7 @@ describe('整篇文档命令的入口', () => {
     }
   });
 
-  it('点菜单项什么都不发生', async () => {
+  it('does nothing when an item is clicked', async () => {
     const user = userEvent.setup();
     render(<DocumentEditor editor={editor} />);
     const before = editor.getHTML();
@@ -116,25 +122,38 @@ describe('整篇文档命令的入口', () => {
     const item = await screen.findByTestId('doc-doc-menu-save-snapshot');
     await user.click(item);
 
-    // 菜单没被关掉（`onSelect` 里 preventDefault），文档一个字没变。
+    // The menu stays put (`onSelect` calls preventDefault) and the document
+    // is untouched.
     expect(screen.getByTestId('doc-doc-menu-save-snapshot')).toBeInTheDocument();
     expect(editor.getHTML()).toBe(before);
   });
 
-  it('菜单开着时不给 body 挂 pointer-events: none', async () => {
-    // Radix 的 modal 菜单会把 body 的指针事件关掉，于是点正文那一下只用来关
-    // 菜单、传不下去，用户得点两次才写得了字。`modal={false}` 就是为这个，而
-    // 它留下的痕迹 jsdom 读得到：`body.style.pointerEvents`。
+  it('leaves the rest of the page reachable while the menu is open', async () => {
+    // A modal menu shuts the page off in two ways at once, and this pins both:
+    // pointer events off the body, and everything outside the menu marked
+    // aria-hidden. The first is what made the dismissing click reach nothing,
+    // so people had to click twice to get the caret back.
+    //
+    // These are Radix's marks rather than the behaviour itself — jsdom does no
+    // hit-testing, so it cannot answer whether a click lands. What it can do is
+    // notice both marks disappearing at once, which no reimplementation gets to
+    // do quietly. The behaviour is pinned in `document-command-entry.spec.ts`
+    // ("clicking the body both dismisses the menu and lands the caret"),
+    // which runs a real browser.
     const user = userEvent.setup();
     render(<DocumentEditor editor={editor} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await screen.findByTestId('doc-doc-menu-save-snapshot');
 
     expect(document.body.style.pointerEvents).not.toBe('none');
+    expect(
+      screen.getByTestId('document-editor-content').closest('[aria-hidden]'),
+    ).toBeNull();
   });
 
-  it('入口按钮有能被读出来的名字', () => {
-    // 它是纯图标按钮，没有可见文字；缺了 aria-label 就只是一个方块。
+  it('gives the trigger a name that can be read out', () => {
+    // An icon-only button with no visible text: without aria-label it is a
+    // square.
     render(<DocumentEditor editor={editor} />);
     const label = screen
       .getByTestId('doc-doc-menu-trigger')

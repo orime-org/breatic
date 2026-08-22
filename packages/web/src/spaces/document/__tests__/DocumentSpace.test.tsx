@@ -232,14 +232,15 @@ describe('DocumentSpace', () => {
     expect(root.getAttribute('data-space-id')).toBe('beta');
   });
 
-  it('把整篇文档命令的入口送到屏幕上', async () => {
-    // 生产环境挂这个入口的就是这个 Space，在这里到不了屏幕就等于谁都看不到。
-    // `document-menu-entry.test` 在下一层钉展开后装什么 —— 两层都要，因为
-    // 一个控件可以在组件里好好的，却穿不过这个容器。
+  it('gets the whole-document entry onto the screen', async () => {
+    // This Space is what mounts the entry in production: not arriving here
+    // means nobody sees it. What the entry opens onto is pinned a layer down in
+    // `document-menu-entry.test`. Both layers matter — a control can be fine
+    // inside its own component and never make it through this container.
     //
-    // 这条原来数的是顶部横条那八个按钮。横条去掉后（#129），穿过容器到达的
-    // 是这个入口；浮出条要有选区才出现，它的到达由 `selection-bubble-bar.test`
-    // 钉。
+    // This counted the toolbar's eight buttons until #129 removed it. What
+    // arrives through the container now is the entry; the bubble bar needs a
+    // selection, and its arrival is pinned in `selection-bubble-bar.test`.
     render(<DocumentSpace projectId='p' spaceId='s' />);
     await screen.findByTestId('document-editor-content');
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();

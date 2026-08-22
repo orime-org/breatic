@@ -229,10 +229,11 @@ describe('选中浮出条', () => {
     expect(markupOf()).toContain(marker);
   });
 
-  // A13：命令按钮的 testid 带载体前缀。横条去掉后浮出条是唯一渲染这批
-  // `ToolDef` 的载体，但前缀留着 —— 块手柄菜单（#113）会渲染同一批定义，
-  // 到那时无前缀的 id 会一名两指。
-  it('浮出条的命令按钮 testid 带自己的载体前缀', async () => {
+  // A13: the command buttons carry a carrier prefix in their test id. With the
+  // toolbar gone the bar is the only carrier rendering these `ToolDef`s, and
+  // the prefix stays: the block handle menu (#113) will render the same
+  // definitions, and an unprefixed id would then name two buttons.
+  it('prefixes the command test ids with the carrier', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1310,23 +1311,24 @@ describe('选中浮出条', () => {
     }
   });
 
-  // A8：按钮的亮暗必须就是它那条命令 `canRun` 的答案。
+  // A8: whether a button is lit has to be exactly its command's `canRun`.
   //
-  // 这一条原来写作「两个载体的同名按钮亮暗一致」，横条去掉后只剩一个载体，
-  // 那个说法失去对象。**它独有的价值不在「两个一致」，在接线**：
-  // `document-tools-availability.test.ts` 钉的是 `canRun` 这个纯函数在各种
-  // 选区形状下的答案，钉不到「那个答案有没有被接到 DOM 的 disabled 上」。
-  // 所以改成直接比这两样。
+  // This used to read "the same button is lit the same way in both carriers",
+  // which lost its subject when the toolbar went. What it uniquely covers is
+  // the wiring rather than the agreement: `document-tools-availability.test.ts`
+  // pins what the pure `canRun` answers across selection shapes, and cannot
+  // reach whether that answer arrives at the DOM's `disabled`. So it compares
+  // those two directly.
   it.each([
     ['整段普通文字都能用', '<p>hello world</p>', 1, 6, false],
     ['代码块里标记类命令用不了', '<pre><code>hello</code></pre>', 1, 6, true],
-  ])('%s：按钮亮暗跟 canRun 一致', async (_name, body, from, to, hasDark) => {
+  ])('%s: the buttons agree with canRun', async (_name, body, from, to, hasDark) => {
     const editor = open(body);
     mount(editor);
     await selectWithFocus(editor, from, to);
 
     // 先确认这个选区真的造出了要测的那种局面。少了这一句，将来某天六个按钮
-    // 全亮或全暗，两边照样「一致」，这条测试就变成了空话。
+    // All lit or all dark would still "agree", and this would say nothing.
     const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
     ).filter((b) => b.disabled).length;

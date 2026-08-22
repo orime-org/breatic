@@ -75,12 +75,14 @@ describe('服务器那份跟我不一样时', () => {
     expect(screen.getByTestId('document-schema-outdated')).toBeInTheDocument();
   });
 
-  it('面板是整块取代编辑区 —— 正文和命令入口都不在（验收 19 的第一件）', () => {
+  it('replaces the editor outright: no body, no command entry', () => {
     // 「面板出现」跟「编辑区没了」是两件事：面板出现在编辑区上方也满足前者，
-    // 而那样正文还在、命令入口还按得动。这一条钉的是后者。
+    // Overlaying it would leave the body there and the entry clickable. This
+    // pins that it does not.
     //
-    // 原来这里钉的是 `document-toolbar`，横条随 #129 删掉之后那条断言恒真；
-    // 现在编辑 chrome 只剩正文区右上角那个入口，钉它。
+    // This named `document-toolbar` until #129 removed the toolbar, which left
+    // the assertion vacuous. The editing chrome is now the entry at the body's
+    // top right corner, so that is what it names.
     publishDifferentSchema();
 
     renderOutlet(<SpaceOutlet projectId={PROJECT} spaceId='s1' type='document' />);
