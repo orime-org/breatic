@@ -441,12 +441,16 @@ export const MIN_NATURAL_CROP_PX = 8;
  * Relative slack on the natural-pixel minimum, absorbing float noise in the
  * scaling that reaches it.
  *
- * A rect sized to exactly the minimum arrives here through a multiply and a
- * divide, and the round trip can land a last-bit below its own target: a 64×64
- * source in a 201.6px box yields 7.999999999999999 for a rect built to measure
- * 8. The value is PEP 485's default `rel_tol` for `math.isclose`, chosen there
- * as about half the precision a double carries; the error it forgives here is
- * near 1e-16, and a rect a thousandth of a pixel short is 1e-4 off and still
+ * `shapeForPreset` solves a display-px floor out of this gauge and hands it to
+ * `applyRatioPreset`, which multiplies it by the ratio and divides back — and
+ * that pass can land a last bit below the floor it started from. On a 64×64
+ * source in a 201.6px box the floor is 25.2, which measures exactly 8 natural
+ * px; after the ratio pass at 4:3 the height is 25.199999999999996, which
+ * measures 7.999999999999999.
+ *
+ * The value is PEP 485's default `rel_tol` for `math.isclose`, chosen there as
+ * about half the precision a double carries; the error it forgives here is near
+ * 1e-16, and a rect a thousandth of a pixel short is 1e-4 off and still
  * refused.
  * @see https://peps.python.org/pep-0485/
  */
@@ -477,9 +481,9 @@ export function isNaturalCropValid(
 }
 
 /**
- * Whether a marquee is big enough to keep. The natural gauge applies whenever
- * the source has reported its own size; the display gauge is what is left
- * before that. Every decision in the overlay asks through here, so the button
+ * Whether a marquee is big enough to keep. The natural gauge applies once both
+ * the source's own size and its display box are known; the display gauge covers
+ * every other case. Every decision in the overlay asks through here, so the button
  * that offers an action and the guard that performs it cannot disagree.
  * @param rect - The marquee in display px.
  * @param display - The source's display size, or null before it is measured.
@@ -501,10 +505,10 @@ export function isCropUsable(
  * when it would produce none.
  *
  * One answer serves both the button's availability and the click that follows,
- * so an item can never look available and then refuse. Null has two causes,
- * both knowable before the click: the item has no ratio yet (`original` on a
- * source that has not reported its own size), and the material is too small to
- * hold this ratio at all.
+ * so an item can never look available and then refuse. Null means one of: the
+ * item has no ratio yet (`original` on a source that has not reported its own
+ * size), the display box has not been measured, or the material is too small to
+ * hold this ratio at all — each knowable before the click.
  * @param preset - The row item.
  * @param seed - The current marquee, or null to shape the whole material.
  * @param display - The material's box in display px, which is both the

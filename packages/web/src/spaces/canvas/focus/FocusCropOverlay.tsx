@@ -811,8 +811,9 @@ export function FocusCropOverlay({
   /**
    * The row, each item carrying what it would draw if clicked right now.
    * `null` means the item is unavailable and its button says so with
-   * `disabled`; when it is non-null the click applies that very rect, so an
-   * item cannot look available and then draw nothing (user 2026-08-22).
+   * `disabled`; a click on a non-null one that is not already lit applies that
+   * very rect, so an item cannot look available and then draw nothing
+   * (user 2026-08-22). Clicking the lit item unlights instead, below.
    */
   const row = CROP_PRESETS.map((entry) => ({
     ...entry,

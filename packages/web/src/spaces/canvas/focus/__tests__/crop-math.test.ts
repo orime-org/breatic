@@ -350,7 +350,7 @@ describe('shapeForPreset — what it shapes always clears the gauge that judges 
     const seed = { x: 90, y: 90, width: 20, height: 20 };
     const shaped = shapeForPreset({ kind: 'ratio', value: 4 / 3 }, seed, box, natural);
     expect(shaped).not.toBeNull();
-    // 它确实落在下限上：高度换算回自然像素就是那 8 个像素
+    // It lands on the floor: the height, converted back to natural px, is 8
     const naturalHeight = (shaped!.height * natural.height) / box.height;
     expect(naturalHeight).toBeCloseTo(MIN_NATURAL_CROP_PX, 9);
   });

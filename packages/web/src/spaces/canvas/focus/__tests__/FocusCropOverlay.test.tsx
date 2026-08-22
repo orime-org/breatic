@@ -1269,7 +1269,7 @@ describe('FocusCropOverlay — the Original preset, and a click that draws (#199
     expect(row.firstElementChild).toBe(original);
   });
 
-  it('neither guidance string tells the user to drag, and both read at pick time (A8)', () => {
+  it('neither guidance string tells the user to drag (A8)', () => {
     // The banner is on screen from the moment picking starts, before any ratio
     // row exists, so the copy can name neither the row nor a drag — a click on a
     // ratio now draws. Both strings are checked together: focusSourceChanged sits
@@ -1467,13 +1467,14 @@ describe('FocusCropOverlay — the Original preset, and a click that draws (#199
 });
 
 /**
- * 亮着的预设和框是两个状态。清框收成单一写入点之后，唯一剩下的失败模式就是
- * 「某一处没接进去」，所以每一处调用点各钉一条。
+ * The lit preset and the marquee are two pieces of state. With clearing
+ * collapsed onto a single writer, the only failure mode left is a call site
+ * that did not go through it — so each call site gets its own test.
  */
 describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
   /**
-   * 断言框没了、而且那一项也熄灭了。
-   * @param testId - 该亮着的那个预设按钮。
+   * Asserts the marquee is gone and that item is no longer lit.
+   * @param testId - The preset button that was lit.
    */
   function expectClearedAndUnlit(testId: string): void {
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
@@ -1491,7 +1492,8 @@ describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
   it('a discarded degenerate gesture takes the lit item with it', () => {
     renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
-    // 9:16 在 400×300 上得到 169×300 居中框，左右各余 116px 裸露的捕获层
+    // 9:16 on 400x300 gives a centred 169x300 rect, leaving 116px of bare
+    // capture layer on each side
     const layer = screen.getByTestId('focus-crop-layer');
     fireEvent.pointerDown(layer, { clientX: 110, clientY: 100, button: 0 });
     fireEvent.pointerUp(layer);
@@ -1513,15 +1515,17 @@ describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
   it('a gesture culled mid-flight whose marquee fails the gauge leaves nothing lit', () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    // 起一个还没拖开的新手势：此刻框是退化的，而 1:1 亮着
+    // Start a gesture without dragging it out: the marquee is degenerate at
+    // this instant while 1:1 is lit
     const layer = screen.getByTestId('focus-crop-layer');
     fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
     fireEvent.pointerMove(layer, { clientX: 151, clientY: 101, pointerId: 1 });
-    // 剔除：手势中途死掉，:290 补跑一次判定，无效就丢框
+    // Culled: the gesture dies mid-flight and the absent-source branch re-runs
+    // the gauge, discarding the marquee when it fails
     img.remove();
     fireEvent(window, new Event('resize'));
     expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
-    // 回到视口：同一个 src 重新挂上，交互层恢复
+    // Back in view: the same src remounts and the interaction layer returns
     const node = document.querySelector('.react-flow__node[data-id="n1"]')!;
     const back = document.createElement('img');
     back.setAttribute('data-testid', 'image-node-img');
@@ -1536,7 +1540,8 @@ describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
   it('a source swap caught at confirm time clears the marquee and the light', () => {
     const { img } = renderImageOverlayReady({ width: 800, height: 600 });
     fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
-    // 直接改 src 而不触发重测，让确认那一步撞上基线不符
+    // Change src without triggering a re-measure, so confirm meets a baseline
+    // that no longer matches
     img.setAttribute('src', 'https://cdn/swapped.png');
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     expectClearedAndUnlit('focus-ratio-1:1');
@@ -1569,8 +1574,8 @@ describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
 
   it('switching the crop target clears the marquee and the light', () => {
     /**
-     * @param nodeId - 当前的裁剪目标。
-     * @returns 两个节点都在画布上，浮层挂在其中一个上。
+     * @param nodeId - The current crop target.
+     * @returns Both nodes on the canvas, the overlay mounted on one of them.
      */
     const tree = (nodeId: string): React.ReactElement => (
       <ReactFlowProvider>
@@ -1605,15 +1610,18 @@ describe('FocusCropOverlay — lit implies a marquee (#1991 invariant)', () => {
 });
 
 /**
- * 一项可不可用，就看现在点它能不能得到一个合法的框（user 2026-08-22）。
+ * An item is available exactly when clicking it right now would produce a
+ * usable marquee (user 2026-08-22).
  *
- * 算不出来有两个原因，两个在渲染时就都知道：比例未知（`Original` 遇上还没报出自身
- * 尺寸的素材），以及素材太小、按这个比例塑出来的框过不了退化闸门。两种都是真禁用，
- * 点不动，也没有任何提示。
+ * The reasons it would not are known at render time: the ratio is unknown
+ * (`Original` on a source that has not reported its own size), or the material
+ * is too small for the shape this ratio produces. Both are real `disabled`:
+ * the item does not respond to a click and says nothing.
  */
 describe('FocusCropOverlay — an item that cannot draw is disabled (#1991)', () => {
   it('before the source reports its size, only Original is disabled', () => {
-    // renderOverlay 一次性挂载，mount 时 naturalWidth 还是 jsdom 的 0
+    // renderOverlay mounts both at once, so the mount measure reads jsdom's
+    // default naturalWidth of 0
     renderOverlay();
     expect(screen.getByTestId('focus-ratio-original')).toBeDisabled();
     expect(screen.getByTestId('focus-ratio-16:9')).toBeEnabled();
@@ -1621,7 +1629,7 @@ describe('FocusCropOverlay — an item that cannot draw is disabled (#1991)', ()
   });
 
   it('a ratio the material is too small to hold is disabled; the others are not', () => {
-    // 400×10 的素材：9:16 塑出来只有 5.6 自然像素宽，过不了 8 像素的闸门
+    // A 400x10 material: 9:16 shapes to 5.6 natural px wide, under the gauge
     IMG_BOX.width = 400;
     IMG_BOX.height = 10;
     renderImageOverlayReady({ width: 400, height: 10 });
