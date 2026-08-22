@@ -1004,3 +1004,183 @@ describe("欠账：不变量", () => {
     expect(row!.amount).toBe("-42.000000");
   });
 });
+
+describe("studio 流水：一次生成一行", () => {
+  it("跨笔摊扣在界面上是一行，金额是实扣", async () => {
+    // 库里按笔记多行，那是对账的依据。用户要看的是「这次生成花了多少」，
+    // 摊扣的细节不出现在界面上。
+    const fx = await seedFixture();
+    await seedLot(fx, 40, fx.studioId);
+    await seedLot(fx, 40, fx.studioId);
+    const reference = `agg-${Date.now()}`;
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 70,
+      referenceId: reference,
+      model: "seedance-1.5-pro",
+    });
+
+    const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null);
+    expect(rows.filter((r) => r.kind === "generation")).toEqual([
+      expect.objectContaining({
+        charged: "-70.000000",
+        consumed: "-70.000000",
+        owed: "0",
+        projectId: fx.projectId,
+        projectName: fx.projectName,
+        model: "seedance-1.5-pro",
+      }),
+    ]);
+  });
+
+  it("扣不满的生成：实扣、消耗、欠额三个数各是各的", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    const reference = `agg-short-${Date.now()}`;
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: reference,
+      model: "seedance-1.5-pro",
+    });
+
+    const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null);
+    const generation = rows.find((r) => r.kind === "generation");
+    expect(generation).toMatchObject({
+      charged: "-30.000000",
+      consumed: "-350.000000",
+      owed: "-320.000000",
+    });
+  });
+
+  it("没扣费的生成：消耗有数，实扣是零", async () => {
+    // 一分都扣不到时写下的行 lot_id 为空，所以它不算实扣 —— 界面上金额
+    // 显示 0，下面标「消耗多少，未扣费」。
+    const fx = await seedFixture();
+    const reference = `agg-free-${Date.now()}`;
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 42.5,
+      referenceId: reference,
+    });
+
+    const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null);
+    const generation = rows.find((r) => r.kind === "generation");
+    expect(generation).toMatchObject({
+      charged: "0",
+      consumed: "-42.500000",
+      owed: "-42.500000",
+    });
+  });
+
+  it("抵扣欠账自成一行，没有 project 也没有模型", async () => {
+    // 它不发生在任何 project 里，也不用任何模型。界面上那两列合并写事件。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `agg-owe-${Date.now()}`,
+    });
+    const fresh = await seedLot(fx, 150);
+    await creditLotService.designateLot({
+      lotId: fresh,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null);
+    const repayment = rows.filter((r) => r.kind === "debt_repayment");
+    expect(repayment).toEqual([
+      expect.objectContaining({
+        charged: "-150.000000",
+        consumed: "0",
+        owed: "0",
+        projectId: null,
+        model: null,
+      }),
+    ]);
+  });
+
+  it("按 studio 取，不按谁付的钱切", async () => {
+    // 一次扣不满的生成，spend 行的付款方是笔的主人，debt_incurred 行的
+    // 付款方是操作人。按付款方过滤会把同一次生成劈到两个人的视图里，谁都
+    // 拼不出完整的一行。
+    const fx = await seedFixture();
+    const other = await seedFixture();
+    await sql`
+      INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${fx.studioId}, ${other.userId}, 'maintainer')
+    `;
+    await seedLot(fx, 30, fx.studioId);
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: other.userId,
+      amount: 350,
+      referenceId: `agg-two-${Date.now()}`,
+    });
+
+    const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null);
+    const generation = rows.find((r) => r.kind === "generation");
+    expect(generation).toMatchObject({
+      charged: "-30.000000",
+      consumed: "-350.000000",
+      actorUserId: other.userId,
+    });
+  });
+
+  it("翻页时一次生成不会被切成两页", async () => {
+    // 一次生成的多行 created_at 几乎相同、id 不同。聚合排在分页之后，取一页
+    // 就会切在中间，那次生成被劈开、两页各显示一个残数。
+    const fx = await seedFixture();
+    await seedLot(fx, 40, fx.studioId);
+    await seedLot(fx, 40, fx.studioId);
+    for (const n of [1, 2]) {
+      await creditLotService.chargeForGeneration({
+        projectId: fx.projectId,
+        actorUserId: fx.userId,
+        amount: 35,
+        referenceId: `agg-page-${n}-${Date.now()}`,
+      });
+    }
+
+    const first = await creditLotRepo.listLedgerByStudio(fx.studioId, 1, null);
+    expect(first).toHaveLength(1);
+    expect(first[0]!.charged).toBe("-35.000000");
+
+    const second = await creditLotRepo.listLedgerByStudio(fx.studioId, 1, {
+      createdAt: first[0]!.createdAt,
+      id: first[0]!.id,
+    });
+    expect(second).toHaveLength(1);
+    expect(second[0]!.charged).toBe("-35.000000");
+    expect(second[0]!.id).not.toBe(first[0]!.id);
+  });
+
+  it("游标带的 id 是 uuid，读侧的校验过得去", async () => {
+    // 分组键是 reference_id，可能是 `texttool:xxx` 这种不是 uuid 的东西。
+    // 游标里放它会被读侧判为无效、回落到第一页，滚到底就无限重复第一页。
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 10,
+      referenceId: `texttool:not-a-uuid-${Date.now()}`,
+    });
+
+    const rows = await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null);
+    const generation = rows.find((r) => r.kind === "generation");
+    expect(generation!.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+});
