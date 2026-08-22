@@ -15,7 +15,7 @@ import { streamTextRetry } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { getModel } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
-import { env } from "@breatic/core";
+import { env, logger } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { getRedis } from "@breatic/core";
 
@@ -238,12 +238,15 @@ async function recordTokenUsage(
       },
     );
     return outcome?.charged ?? 0;
-  } catch {
-    // Don't fail the response if credit deduction fails (e.g.
-    // insufficient credits). The text was already generated.
-    // Returning 0 signals "billed nothing" to the application
-    // caller, which can decide to emit a warn audit log if the
-    // observed `creditsUsed === 0 && tokens > 0` invariant holds.
+  } catch (err) {
+    // The text is already generated and already streamed, so this failure
+    // has nowhere to go: the caller gets its `done` event either way and
+    // sees nothing. This line is the only trace the run leaves of money it
+    // used and did not collect.
+    logger.error(
+      { err, userId, tool, tokens },
+      "text_tool_credit_charge_failed",
+    );
     return 0;
   }
 }
