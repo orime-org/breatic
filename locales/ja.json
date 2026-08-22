@@ -292,7 +292,6 @@
       "removeReferenceNamed": "{name} の参照を削除",
       "removeFocusCropNamed": "{name}(フォーカス切り抜き)の参照を削除",
       "focusExportFailed": "切り抜けませんでした——もう一度お試しください。",
-      "focusSourceNotReady": "素材のサイズがまだ取得できていません",
       "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。",
       "focusSourceChanged": "元の素材が変更されました——範囲は解除されました。",
       "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。",

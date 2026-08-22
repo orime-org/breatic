@@ -301,7 +301,6 @@
       "removeReferenceNamed": "Remove reference: {name}",
       "removeFocusCropNamed": "Remove reference: {name} (Focus crop)",
       "focusExportFailed": "Could not crop — please try again.",
-      "focusSourceNotReady": "Material size not available yet",
       "focusUploadFailed": "Could not upload the focus crop — please try again.",
       "focusSourceChanged": "Source changed — the region was cleared.",
       "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",

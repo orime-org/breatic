@@ -10,14 +10,12 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
   CROP_PRESETS,
-  MIN_CROP_PX,
-  MIN_NATURAL_CROP_PX,
   captureResize,
   drawRect,
   isCropUsable,
+  shapeForPreset,
   resizeFromCapture,
   moveRect,
-  applyRatioPreset,
   toNaturalCrop,
   presetRatio,
   samePreset,
@@ -364,12 +362,6 @@ export function FocusCropOverlay({
       // gesture too (round-4: same resurrection mode as the Esc fix).
       interactionRef.current = null;
       clearMarquee();
-      // The size belongs to the material, so it dies with it — same as
-      // switching targets below. A video reports 0×0 until its metadata
-      // arrives, and the guard below only ever overwrites a non-zero size, so
-      // without this the NEW content is measured against the OLD one's
-      // resolution and `Original` draws at a ratio nothing on screen has.
-      setNaturalSize(null);
     } else if (
       prev &&
       rectRef.current &&
@@ -817,52 +809,26 @@ export function FocusCropOverlay({
   };
 
   /**
-   * Apply (or unlight, when re-clicked) a preset from the row.
-   *
-   * The decision runs BEFORE the light (#1991). Lighting first and judging
-   * afterwards left the button lit over nothing whenever the result was
-   * degenerate, and in that state the row's two rules disagree about what the
-   * next click on it means: A4.2 says unlight, A2 says draw.
-   * @param next - The row item that was clicked.
+   * What each row item would draw if clicked right now. `null` means the item
+   * is unavailable, and its button carries that as `disabled` — one answer for
+   * the offer and for the action, so an item cannot look available and then
+   * refuse (user 2026-08-22).
    */
-  const onPresetClick = (next: CropPreset): void => {
+  const shapes = CROP_PRESETS.map(({ preset: item }) =>
+    shapeForPreset(item, rect, bounds, box, naturalSize),
+  );
+
+  /**
+   * Apply (or unlight, when re-clicked) a preset from the row.
+   * @param next - The row item that was clicked.
+   * @param shaped - The marquee it draws, from {@link shapes}.
+   */
+  const onPresetClick = (next: CropPreset, shaped: CropRect): void => {
     // Re-click unlights: the marquee stays, the ratio stops constraining.
     if (samePreset(preset, next)) {
       setPreset(null);
       return;
     }
-    // G1: `original` has no value until the material reports its own size. The
-    // row is on screen in that state — a video with no cover has a non-zero
-    // layout box while its metadata is still in flight (measured: 288×150) —
-    // so the other seven draw normally and this one has to say why it cannot.
-    const nextRatio = presetRatio(next, naturalSize);
-    if (nextRatio === null) {
-      toast.warning(t('canvas.generatePanel.focusSourceNotReady'));
-      return;
-    }
-    if (!box) return;
-    // Seed the reshape with NATURAL-aware display minimums (round-11): at
-    // zoom-in the natural gauge demands more display px than MIN_CROP_PX, and
-    // a display-seeded reshape landed below the gauge — a preset click
-    // destroyed a selection that a valid 16:9 rect trivially fit.
-    const minW = naturalSize
-      ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.width) / naturalSize.width)
-      : MIN_CROP_PX;
-    const minH = naturalSize
-      ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * box.height) / naturalSize.height)
-      : MIN_CROP_PX;
-    // With no marquee yet, the whole material is the seed (#1991): the same
-    // reshape then fills one axis, derives the other and centres — the rect
-    // a "fit the ratio inside the material" pass would produce, without a
-    // second copy of the geometry.
-    const seed = rect ?? { x: 0, y: 0, width: bounds.width, height: bounds.height };
-    const shaped = applyRatioPreset(seed, nextRatio, bounds, minW, minH);
-    // G2, the degenerate-rect invariant (round-4): applyRatioPreset grows the
-    // seed to the minimum, but a tiny material whose bounds cannot hold it at
-    // this ratio yields an invalid rect. The THIRD validity decision joins the
-    // unified gauge (round-10): display-px here was eating a zoom-out
-    // selection that pointer-up and Confirm deliberately accept.
-    if (!isCropUsable(shaped, box, naturalSize)) return;
     setPreset(next);
     setRect(shaped);
   };
@@ -1047,7 +1013,7 @@ export function FocusCropOverlay({
               </div>
             ) : null}
             <div className='flex items-center gap-1'>
-              {CROP_PRESETS.map(({ key, label, preset: item }) => (
+              {CROP_PRESETS.map(({ key, label, preset: item }, i) => (
                 <Button
                   key={key}
                   type='button'
@@ -1055,12 +1021,11 @@ export function FocusCropOverlay({
                   size={null}
                   data-testid={`focus-ratio-${key}`}
                   aria-pressed={samePreset(preset, item)}
-                  // aria-disabled, never the HTML attribute: a disabled element
-                  // dispatches no click, and clicking is how the user finds out
-                  // why this one is refusing (same treatment as the reference
-                  // rail's refused rows).
-                  aria-disabled={presetRatio(item, naturalSize) === null}
-                  onClick={() => onPresetClick(item)}
+                  disabled={shapes[i] === null}
+                  onClick={() => {
+                    const shaped = shapes[i];
+                    if (shaped) onPresetClick(item, shaped);
+                  }}
                   // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
                   // abspos bar near the viewport edge shrink-to-fits against
                   // the available width, and without these the CJK button
@@ -1070,7 +1035,6 @@ export function FocusCropOverlay({
                     // Tabular figures line the seven numeric labels up; the
                     // word carries no digits and takes the normal face.
                     (item.kind === 'ratio' ? 'tabular-nums ' : '') +
-                    (presetRatio(item, naturalSize) === null ? 'opacity-50 ' : '') +
                     (samePreset(preset, item)
                       ? 'bg-foreground text-background'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')

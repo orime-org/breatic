@@ -1414,28 +1414,6 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(r.top + r.height / 2).toBe(85);
   });
 
-  it('素材尺寸还没到时点 Original：不出框，也不点亮（守卫 G1）', () => {
-    // renderOverlay 一次性挂载，mount 时 naturalWidth 还是 jsdom 的 0
-    renderOverlay();
-    fireEvent.click(screen.getByTestId('focus-ratio-original'));
-    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
-    expect(
-      screen.getByTestId('focus-ratio-original').getAttribute('aria-pressed'),
-    ).toBe('false');
-  });
-
-  it('算出来是退化框时：不出框，也不点亮（守卫 G2）', () => {
-    // 400×10 的素材，点 9:16 → Y 满 10px，宽 5.625px < 8 自然像素
-    IMG_BOX.width = 400;
-    IMG_BOX.height = 10;
-    renderImageOverlayReady({ width: 400, height: 10 });
-    fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
-    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
-    expect(
-      screen.getByTestId('focus-ratio-9:16').getAttribute('aria-pressed'),
-    ).toBe('false');
-  });
-
   it('素材比例恰好等于某个预设值时，同一时刻仍只亮一个（A4.1）', () => {
     // 素材 4:3，跟 focus-ratio-4:3 的值相等
     renderImageOverlayReady({ width: 800, height: 600 });
@@ -1487,8 +1465,8 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
 });
 
 /**
- * 亮着的预设和框是两个状态，而清框有七条路径。收成单一写入点之后，唯一剩下的
- * 失败模式就是「某一处没接进去」，所以每一处调用点各钉一条。
+ * 亮着的预设和框是两个状态。清框收成单一写入点之后，唯一剩下的失败模式就是
+ * 「某一处没接进去」，所以每一处调用点各钉一条。
  */
 describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => {
   /**
@@ -1625,38 +1603,45 @@ describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => 
 });
 
 /**
- * 源尺寸未知时 Original 的表现（实现对抗第一轮）。
+ * 一项可不可用，就看现在点它能不能得到一个合法的框（user 2026-08-22）。
  *
- * jsdom 里这个状态由「naturalWidth 是 0 而显示盒非零」构造；真浏览器里它对应的是
- * 没有封面的视频节点 —— 实测无 poster 的 `<video className='block w-full'>` 在
- * metadata 到达前布局高度是 150px，于是控件条照常渲染、八个按钮都可点，而
- * `Original` 是唯一一个算不出比例的。没有封面的视频节点可达：canvas-space.ts 的
- * `setNodeMedia` 在那一行没有封面时 `data.delete('coverUrl')`。
+ * 算不出来有两个原因，两个在渲染时就都知道：比例未知（`Original` 遇上还没报出自身
+ * 尺寸的素材），以及素材太小、按这个比例塑出来的框过不了退化闸门。两种都是真禁用，
+ * 点不动，也没有任何提示。
  */
-describe('FocusCropOverlay：源尺寸未知时的 Original（#1991）', () => {
-  it('标记为不可用并变暗，另外七个照常', () => {
+describe('FocusCropOverlay：算不出合法框的那一项是禁用的（#1991）', () => {
+  it('素材还没报出自己的尺寸时，只有 Original 禁用', () => {
+    // renderOverlay 一次性挂载，mount 时 naturalWidth 还是 jsdom 的 0
     renderOverlay();
-    const original = screen.getByTestId('focus-ratio-original');
-    expect(original.getAttribute('aria-disabled')).toBe('true');
-    // classList，不是子串：Button 的 base 带着 `disabled:opacity-50`
-    expect(original.classList.contains('opacity-50')).toBe(true);
-    const numeric = screen.getByTestId('focus-ratio-16:9');
-    expect(numeric.getAttribute('aria-disabled')).toBe('false');
-    expect(numeric.classList.contains('opacity-50')).toBe(false);
+    expect(screen.getByTestId('focus-ratio-original')).toBeDisabled();
+    expect(screen.getByTestId('focus-ratio-16:9')).toBeEnabled();
+    expect(screen.getByTestId('focus-ratio-1:1')).toBeEnabled();
   });
 
-  it('点它说出当前的情况，不出框也不点亮', () => {
-    const said = vi.spyOn(toast, 'warning');
+  it('素材太小、放不下某个比例时，那一项禁用，放得下的照常', () => {
+    // 400×10 的素材：9:16 塑出来只有 5.6 自然像素宽，过不了 8 像素的闸门
+    IMG_BOX.width = 400;
+    IMG_BOX.height = 10;
+    renderImageOverlayReady({ width: 400, height: 10 });
+    expect(screen.getByTestId('focus-ratio-9:16')).toBeDisabled();
+    expect(screen.getByTestId('focus-ratio-16:9')).toBeEnabled();
+    expect(screen.getByTestId('focus-ratio-original')).toBeEnabled();
+  });
+
+  it('禁用的那一项点不动：不出框、不点亮、不弹提示', () => {
+    const warned = vi.spyOn(toast, 'warning');
+    const errored = vi.spyOn(toast, 'error');
     renderOverlay();
     fireEvent.click(screen.getByTestId('focus-ratio-original'));
-    expect(said).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
     expect(
       screen.getByTestId('focus-ratio-original').getAttribute('aria-pressed'),
     ).toBe('false');
+    expect(warned).not.toHaveBeenCalled();
+    expect(errored).not.toHaveBeenCalled();
   });
 
-  it('尺寸到达之后它恢复可用', () => {
+  it('尺寸到达之后 Original 恢复可用', () => {
     renderOverlay();
     const img = screen.getByTestId('image-node-img');
     act(() => {
@@ -1665,26 +1650,8 @@ describe('FocusCropOverlay：源尺寸未知时的 Original（#1991）', () => {
       window.dispatchEvent(new Event('resize'));
     });
     const original = screen.getByTestId('focus-ratio-original');
-    expect(original.getAttribute('aria-disabled')).toBe('false');
+    expect(original).toBeEnabled();
     fireEvent.click(original);
     expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
-  });
-
-  it('框底下的内容换了：不拿上一个素材的比例出框', () => {
-    // 800×600 的素材上 Original 是 4:3；换成一张尺寸还没读到的图之后，
-    // 那个 4:3 必须跟着旧素材一起走。
-    const { img } = renderImageOverlayReady({ width: 800, height: 600 });
-    fireEvent.click(screen.getByTestId('focus-ratio-original'));
-    expect(rectSize()).toMatchObject({ width: 400, height: 300 });
-    act(() => {
-      Object.defineProperty(img, 'naturalWidth', { configurable: true, value: 0 });
-      Object.defineProperty(img, 'naturalHeight', { configurable: true, value: 0 });
-      img.setAttribute('src', 'https://cdn/regenerated.png');
-      window.dispatchEvent(new Event('resize'));
-    });
-    const original = screen.getByTestId('focus-ratio-original');
-    expect(original.getAttribute('aria-disabled')).toBe('true');
-    fireEvent.click(original);
-    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
 });

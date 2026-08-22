@@ -481,6 +481,55 @@ export function isCropUsable(
 }
 
 /**
+ * The marquee a row item would produce if it were clicked right now, or null
+ * when it would produce none.
+ *
+ * One answer serves both the button's availability and the click that follows,
+ * so an item can never look available and then refuse. Null has two causes,
+ * both knowable before the click: the item has no ratio yet (`original` on a
+ * source that has not reported its own size), and the material is too small to
+ * hold this ratio at all.
+ * @param preset - The row item.
+ * @param seed - The current marquee, or null to shape the whole material.
+ * @param bounds - The material's box in display px, as the marquee's limits.
+ * @param display - The material's display size, or null before it is measured.
+ * @param natural - The material's own size, or null before it reports one.
+ * @returns The shaped marquee, or null when there is none to give.
+ */
+export function shapeForPreset(
+  preset: CropPreset,
+  seed: CropRect | null,
+  bounds: CropSize,
+  display: CropSize | null,
+  natural: CropSize | null,
+): CropRect | null {
+  const ratio = presetRatio(preset, natural);
+  if (ratio === null || display === null) return null;
+  // Natural-aware display minimums: at zoom-in the natural gauge demands more
+  // display px than MIN_CROP_PX, and a display-seeded reshape landed below the
+  // gauge — a preset click destroyed a selection a valid 16:9 rect trivially
+  // fit. Solved from the gauge below so the two cannot drift apart.
+  const minW = natural
+    ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * display.width) / natural.width)
+    : MIN_CROP_PX;
+  const minH = natural
+    ? Math.max(MIN_CROP_PX, (MIN_NATURAL_CROP_PX * display.height) / natural.height)
+    : MIN_CROP_PX;
+  // With no marquee yet the whole material is the seed (#1991): the same
+  // reshape then fills one axis, derives the other and centres — the rect a
+  // "fit the ratio inside the material" pass would produce, without a second
+  // copy of the geometry.
+  const shaped = applyRatioPreset(
+    seed ?? { x: 0, y: 0, width: bounds.width, height: bounds.height },
+    ratio,
+    bounds,
+    minW,
+    minH,
+  );
+  return isCropUsable(shaped, display, natural) ? shaped : null;
+}
+
+/**
  * Map a display-space rect to source-resolution (natural) pixels for the
  * actual canvas crop: scale, round to integers, then clamp so the rect
  * stays at least 1×1 and never exceeds the natural bounds (rounding at
