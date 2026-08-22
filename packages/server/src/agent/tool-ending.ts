@@ -34,6 +34,14 @@ export const TURN_ENDED_AROUND_IT: ToolFailure = {
   // to the prompt's own answer for reasons that name none -- that calling the
   // same tool the same way will fail the same way -- which is the opposite of
   // what happened here.
+  //
+  // Whether a model ever reads it depends on how far the arguments got. The
+  // way this is reached today, they were still streaming, and a call whose
+  // arguments never finished arriving is left out of the history on purpose
+  // (`model-messages.ts`): replaying a half-parsed input puts words in the
+  // model's mouth it never sent. So on that path this sentence is written
+  // down and read by no one, and it is here for a call that reaches this with
+  // its arguments complete.
   forModel:
     "This tool was never run: the turn ended before it could start. " +
     "Nothing was attempted, so call it again if you still need it.",

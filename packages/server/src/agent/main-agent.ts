@@ -426,16 +426,17 @@ export class MainAgent {
         // the second as the first tells the next turn the user did
         // something they never did.
         //
-        // Neither of these is reachable with the tools registered today, and
-        // the reason is worth writing down because nothing about the code
-        // says it. All six declare an `execute`, and the SDK waits for a
-        // running tool to settle before the stream ends -- measured: a tool
-        // that never returns holds the turn open rather than being dropped.
-        // Once it settles one of the two callbacks above has recorded it. So
-        // this stands for a call nothing was ever reported about, which today
-        // there is no way to be. It is the floor under a record that must
-        // never say a call is still running, and it holds whether or not
-        // anything can reach it.
+        // Both arms are reached the same way: the model was still streaming
+        // the arguments when the turn ended, so the tool was never called and
+        // neither callback above ever heard of it. Which arm depends on how
+        // the turn ended around it. The `failed` side has a case of its own
+        // ("does not call a provider failure the user's doing"); the stopped
+        // side has none.
+        //
+        // A call that had started running reaches neither: the SDK waits for
+        // a running tool to settle before the stream ends -- measured, a tool
+        // that never returns holds the turn open -- and settling is what the
+        // callbacks above record.
         const leftHanging: ToolFailure =
           exit === "aborted" ? STOPPED_BY_USER : TURN_ENDED_AROUND_IT;
         for (const [i, part] of replyParts.entries()) {

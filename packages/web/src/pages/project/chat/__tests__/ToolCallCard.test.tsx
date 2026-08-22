@@ -162,6 +162,23 @@ describe('ToolCallCard', () => {
     expect(screen.getByTestId('tool-call-unfinished')).toBeDefined();
   });
 
+  it('falls back to a stopped line only in the stopped branch', () => {
+    // 两个分支各有自己的兜底句,而兜底正是没有 failureKey 时唯一决定显示哪句的
+    // 东西。把两句对调,189 条前端用例一条都不红 —— 于是一次失败会写「已停止」、
+    // 一次停止会写「执行错误」,而它们本来是相反的意思。
+    render(<ToolCallCard toolCall={call({ status: 'error', failureKind: 'user_aborted' })} />);
+
+    expect(screen.getByTestId('tool-call-unfinished').textContent).toBe(
+      t(FAILURE_LINES.stopped),
+    );
+  });
+
+  it('falls back to a failure line only in the failure branch', () => {
+    render(<ToolCallCard toolCall={call({ status: 'error' })} />);
+
+    expect(screen.getByTestId('tool-call-error').textContent).toBe(t(FAILURE_LINES.generic));
+  });
+
   it('shows nothing extra for a tool that came back normally', () => {
     render(<ToolCallCard toolCall={call({ status: 'success', result: 'two links' })} />);
 

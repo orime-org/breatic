@@ -241,6 +241,19 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel.toLowerCase()).toMatch(/do not call this tool again|do not search again/);
   });
 
+  it.each([
+    [500, /fault on their side/i],
+    [403, /credentials/i],
+  ])("puts HTTP %i on the right side of the line", async (status: number, says: RegExp) => {
+    // 三个分支的边界各自只差一个数:500 是「他们的」那一档的第一个,403 是凭据
+    // 那一档的最后一个。两条边界一个用例都没有时,把它们各挪一位 793 条测试全绿。
+    httpRequestMock.mockImplementation(async () => new Response(null, { status }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(says);
+  });
+
   it("counts being rate limited as the service's own trouble", async () => {
     // Numbered among the 4xx, but the query is not what it objects to.
     httpRequestMock.mockImplementation(async () => new Response(null, { status: 429 }));
@@ -399,6 +412,17 @@ describe("web_search says a failure is a failure", () => {
         httpRequestMock.mockImplementation(async () => {
           throw new Error("failed after 3 attempts");
         });
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+      // 这个清单原先漏掉的两支。清单是手写的,而这条用例的名字说的是「每一条」。
+      async (): Promise<ToolFailure> => {
+        // 凭据被拒。上面那条 503 走的是同一个函数的另一支。
+        httpRequestMock.mockImplementation(async () => new Response(null, { status: 401 }));
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+      async (): Promise<ToolFailure> => {
+        // 这个请求它不收。
+        httpRequestMock.mockImplementation(async () => new Response(null, { status: 422 }));
         return failureFrom(() => run({ query: "breatic" }));
       },
     ];

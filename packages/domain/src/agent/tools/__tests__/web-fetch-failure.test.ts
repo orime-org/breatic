@@ -188,6 +188,31 @@ describe("web_fetch says a failure is a failure", () => {
         fetchMock.mockRejectedValue(new Error("socket hang up"));
         return failureFrom("https://public.example/page");
       },
+      // 下面三处是这个清单原先漏掉的分支。清单是手写的,而这条用例的名字说的是
+      // 「每一条」—— 漏掉的那几条各自删掉结尾那句下一步,整套测试一条都不红。
+      () => {
+        // 对方 5xx。上面第一个站点走的是 404,跟这条是同一个 if 的两支。
+        fetchMock.mockResolvedValue(new Response(null, { status: 503 }));
+        return failureFrom("https://public.example/down");
+      },
+      () => {
+        // 站点答了 200,正文读到一半断了。
+        fetchMock.mockResolvedValue(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new Error("terminated"));
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+        return failureFrom("https://public.example/half");
+      },
+      () => {
+        // 传输层在投递之前就拒了:URL 带着凭据。
+        return failureFrom("https://user:secret@public.example/page");
+      },
     ];
 
     for (const site of sites) {
@@ -198,7 +223,9 @@ describe("web_fetch says a failure is a failure", () => {
 
       const { forModel } = await site();
       expect(forModel.toLowerCase()).toMatch(
-        /do not fetch|do not retry|try another source|tell them it cannot be read|correct it/,
+        // 这条正则跟上面那张站点表一样是手写的:补齐站点之后它当场漏掉了「再取
+        // 一次可能就好」那一支。下一步分两类,值得再试的和不值得的,两类都要认。
+        /do not fetch|do not retry|try another source|tell (them|the user)|correct it|once more/,
       );
     }
   });
