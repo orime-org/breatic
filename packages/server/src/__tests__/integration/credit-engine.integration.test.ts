@@ -28,6 +28,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import fc from "fast-check";
 import postgres from "postgres";
 import { initCore, env, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
@@ -563,6 +564,42 @@ describe("指定", () => {
   });
 });
 
+/**
+ * 闸门 2：持住这个 studio 的欠账行，两条写路径的第一把锁都在它上面。
+ * @param studioId - 要卡住的 studio。
+ * @returns 放闸门的函数。
+ */
+async function holdDebtLock(studioId: string): Promise<() => Promise<void>> {
+  const gate = postgres(inject("DATABASE_URL"), {
+    max: 1,
+    prepare: false,
+    connection: { application_name: `${PG_DRIVER_LOCAL}-debt-gate` },
+  });
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let acquired: () => void = () => {};
+  const lockHeld = new Promise<void>((resolve) => {
+    acquired = resolve;
+  });
+  await sql`
+    INSERT INTO studio_credit_debts (studio_id, amount) VALUES (${studioId}, 0)
+    ON CONFLICT (studio_id) DO NOTHING
+  `;
+  const done = gate.begin(async (tx) => {
+    await tx`SELECT id FROM studio_credit_debts WHERE studio_id = ${studioId} FOR UPDATE`;
+    acquired();
+    await held;
+  });
+  await lockHeld;
+  return async () => {
+    release();
+    await done;
+    await gate.end({ timeout: 1 });
+  };
+}
+
 describe("并发", () => {
   /**
    * 另开一条连接把某一笔的行锁攥住，当作闸门。
@@ -574,41 +611,6 @@ describe("并发", () => {
    * @param lotId - 要攥住的那一笔。
    * @returns 放闸门的函数。
    */
-  /**
-   * 闸门 2：持住这个 studio 的欠账行，两条写路径的第一把锁都在它上面。
-   * @param studioId - 要卡住的 studio。
-   * @returns 放闸门的函数。
-   */
-  async function holdDebtLock(studioId: string): Promise<() => Promise<void>> {
-    const gate = postgres(inject("DATABASE_URL"), {
-      max: 1,
-      prepare: false,
-      connection: { application_name: `${PG_DRIVER_LOCAL}-debt-gate` },
-    });
-    let release: () => void = () => {};
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let acquired: () => void = () => {};
-    const lockHeld = new Promise<void>((resolve) => {
-      acquired = resolve;
-    });
-    await sql`
-      INSERT INTO studio_credit_debts (studio_id, amount) VALUES (${studioId}, 0)
-      ON CONFLICT (studio_id) DO NOTHING
-    `;
-    const done = gate.begin(async (tx) => {
-      await tx`SELECT id FROM studio_credit_debts WHERE studio_id = ${studioId} FOR UPDATE`;
-      acquired();
-      await held;
-    });
-    await lockHeld;
-    return async () => {
-      release();
-      await done;
-      await gate.end({ timeout: 1 });
-    };
-  }
 
   async function holdLotLock(lotId: string): Promise<() => Promise<void>> {
     const gate = postgres(inject("DATABASE_URL"), {
@@ -1184,6 +1186,125 @@ describe("studio 流水：一次生成一行", () => {
     const generation = rows.find((r) => r.kind === "generation");
     expect(generation!.id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+});
+
+describe("欠账：任意序列下的两条不变量", () => {
+  it("欠着账时可花的笔加起来恒为 0，欠账恒等于两类流水之差", async () => {
+    // 不变量 2 和 3，跑在随机的充值、指定、扣费序列上。前者是转移表那格
+    // 「不可能」的凭据 —— 它一旦破了，欠账中的 studio 就能扣到钱，而那格
+    // 从没有人为它写过代码。
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(
+          fc.oneof(
+            fc
+              .integer({ min: 1, max: 200 })
+              .map((credits) => ({ kind: "assign" as const, credits })),
+            fc
+              .integer({ min: 1, max: 300 })
+              .map((amount) => ({ kind: "charge" as const, amount })),
+          ),
+          { minLength: 1, maxLength: 8 },
+        ),
+        async (steps) => {
+          const fx = await seedFixture();
+          for (const [i, step] of steps.entries()) {
+            if (step.kind === "assign") {
+              const lotId = await seedLot(fx, step.credits);
+              await creditLotService.designateLot({
+                lotId,
+                requestingUserId: fx.userId,
+                studioId: fx.studioId,
+              });
+            } else {
+              await creditLotService.chargeForGeneration({
+                projectId: fx.projectId,
+                actorUserId: fx.userId,
+                amount: step.amount,
+                referenceId: `prop-${fx.studioId}-${i}`,
+              });
+            }
+
+            const debt = await creditLotService.getStudioDebt(fx.studioId);
+            const spendable = Number(
+              await creditLotRepo.sumSpendableForStudio(fx.studioId),
+            );
+            if (debt > 0) expect(spendable).toBe(0);
+
+            const sums = await debtLedgerSums(fx.studioId);
+            expect(Number(sums.repayment) - Number(sums.incurred)).toBe(debt);
+          }
+        },
+      ),
+      { numRuns: 12 },
+    );
+  });
+});
+
+describe("欠账：并发", () => {
+  it("两次扣费同时欠账，两笔差额都记上", async () => {
+    const fx = await seedFixture();
+    const open = await holdDebtLock(fx.studioId);
+
+    const first = creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 40,
+      referenceId: `con-a-${Date.now()}`,
+    });
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 1);
+    const second = creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 60,
+      referenceId: `con-b-${Date.now()}`,
+    });
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 2);
+
+    await open();
+    await Promise.all([first, second]);
+
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(100);
+  });
+
+  it("一次扣费撞一次指定，两者排队而不是各持一半", async () => {
+    // 两条写路径都先拿欠账行、再拿笔。顺序一致，所以后到的那个等在第一把
+    // 锁上，不会握着笔去等欠账行。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `con-owe-${Date.now()}`,
+    });
+    const fresh = await seedLot(fx, 500);
+    const open = await holdDebtLock(fx.studioId);
+
+    const designating = creditLotService.designateLot({
+      lotId: fresh,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 1);
+    const charging = creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 100,
+      referenceId: `con-charge-${Date.now()}`,
+    });
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"], 2);
+
+    await open();
+    await designating;
+    await charging;
+
+    // 先抵掉 320 的债，剩 180 能花；那次扣费拿走 100，剩 80，无欠账。
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect(Number(await creditLotRepo.sumSpendableForStudio(fx.studioId))).toBe(
+      80,
     );
   });
 });
