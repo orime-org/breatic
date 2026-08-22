@@ -261,7 +261,13 @@ export async function getStudioCredits(
   rawCursor?: string,
 ): Promise<StudioCreditsView> {
   const ledgerPage = listLedger(viewerUserId, rawLimit, rawCursor, studioId);
-  if (rawCursor) return { ledger: await ledgerPage };
+  // Asked of the decoded cursor, which is what the ledger under this reads
+  // too. Asking whether the client sent a string instead splits the page in
+  // half on the one input where the two disagree: a cursor that parses but
+  // decodes to nothing takes the ledger to its first page while this half
+  // treats the request as a continuation and omits the two fields the tab
+  // opens with.
+  if (readCursor(rawCursor)) return { ledger: await ledgerPage };
 
   const [spendable, lots, ledger] = await Promise.all([
     creditLotService.getSpendableCredits(studioId),
