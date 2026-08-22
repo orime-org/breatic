@@ -47,7 +47,6 @@ import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import {
   createDocumentUndoManager,
-  type DocumentUndoManager,
 } from '@web/spaces/document/document-undo';
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -58,7 +57,7 @@ export interface DocumentEditorHandle {
    * The editor's undo manager. Held rather than looked up by plugin-key name,
    * which misses silently against a duplicated copy of the binding.
    */
-  undoManager: DocumentUndoManager;
+  undoManager: Y.UndoManager;
   /**
    * Subscribe to the guarded whole-document delete asking for confirmation.
    *

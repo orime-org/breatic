@@ -11,7 +11,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { renderHook, screen, waitFor } from '@testing-library/react';
+import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
 import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -19,10 +20,6 @@ import { Awareness } from 'y-protocols/awareness';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
-
-// 只为让今天那条横条渲染得出来 —— 不传它组件会崩，红灯就红在崩溃上、证明不了
-// 按钮不存在。横条删掉后这个 prop 一起消失，这一行跟着删。
-const HISTORY_TODAY = { canUndo: false, canRedo: false };
 
 describe('正文区右侧的命令列', () => {
   const NAME = 'project-p/document-command-rail';
@@ -49,7 +46,7 @@ describe('正文区右侧的命令列', () => {
   it('两个快照按钮都在，一个不多一个不少', () => {
     // 整列一起断言，不逐个查存在性：将来多加一个或少一个都要在这里红，
     // 而两条各自的正向断言之间正好有条缝能让它溜过去。
-    render(<DocumentEditor editor={editor} history={HISTORY_TODAY} />);
+    render(<DocumentEditor editor={editor} />);
     const ids = Array.from(
       document.querySelectorAll('[data-testid^="doc-rail-"]'),
     ).map((el) => el.getAttribute('data-testid'));
@@ -58,7 +55,7 @@ describe('正文区右侧的命令列', () => {
   });
 
   it('两个都是尚未开放态：变暗、aria-disabled、光标说不可点', () => {
-    render(<DocumentEditor editor={editor} history={HISTORY_TODAY} />);
+    render(<DocumentEditor editor={editor} />);
     for (const id of ['doc-rail-save-snapshot', 'doc-rail-restore-snapshot']) {
       const button = screen.getByTestId(id);
       expect(button).toHaveAttribute('aria-disabled', 'true');
@@ -68,7 +65,7 @@ describe('正文区右侧的命令列', () => {
   });
 
   it('不用 HTML disabled —— 它会把按钮排出焦点序，而这个控件要能被发现', () => {
-    render(<DocumentEditor editor={editor} history={HISTORY_TODAY} />);
+    render(<DocumentEditor editor={editor} />);
     for (const id of ['doc-rail-save-snapshot', 'doc-rail-restore-snapshot']) {
       const button = screen.getByTestId(id);
       expect(button).not.toBeDisabled();
@@ -77,7 +74,7 @@ describe('正文区右侧的命令列', () => {
   });
 
   it('点下去什么都不发生', () => {
-    render(<DocumentEditor editor={editor} history={HISTORY_TODAY} />);
+    render(<DocumentEditor editor={editor} />);
     const before = editor.getHTML();
     const button = screen.getByTestId('doc-rail-save-snapshot');
 
@@ -91,7 +88,7 @@ describe('正文区右侧的命令列', () => {
 
   it('每个按钮都有能被读出来的名字', () => {
     // 它们是纯图标按钮，没有可见文字；缺了 aria-label 就只是两个方块。
-    render(<DocumentEditor editor={editor} history={HISTORY_TODAY} />);
+    render(<DocumentEditor editor={editor} />);
     for (const id of ['doc-rail-save-snapshot', 'doc-rail-restore-snapshot']) {
       const label = screen.getByTestId(id).getAttribute('aria-label');
       expect(label).toBeTruthy();

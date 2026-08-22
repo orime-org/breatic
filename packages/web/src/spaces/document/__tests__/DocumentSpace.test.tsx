@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, act } from '@testing-library/react';
+import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
@@ -119,7 +120,7 @@ describe('DocumentSpace', () => {
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-revoked' />);
 
-    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+    expect(await screen.findByTestId('document-editor-content')).toBeInTheDocument();
     expect(screen.queryByTestId('document-space-unavailable')).toBeNull();
     await waitFor(() =>
       expect(
@@ -142,7 +143,7 @@ describe('DocumentSpace', () => {
     // is a separate piece of work, deliberately not in this change.
     socketState.writeAccess = 'denied';
     render(<DocumentSpace projectId='p1' spaceId='doc-capped' />);
-    await screen.findByTestId('document-toolbar');
+    await screen.findByTestId('document-editor-content');
 
     expect(toast.warning).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -173,13 +174,13 @@ describe('DocumentSpace', () => {
     const { unmount } = render(
       <DocumentSpace projectId='p1' spaceId='doc-tabswitch' />,
     );
-    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+    expect(await screen.findByTestId('document-editor-content')).toBeInTheDocument();
 
     unmount();
     socketState.synced = false;
     render(<DocumentSpace projectId='p1' spaceId='doc-tabswitch' />);
 
-    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+    expect(await screen.findByTestId('document-editor-content')).toBeInTheDocument();
     expect(screen.queryByTestId('document-space-loading')).toBeNull();
   });
 
@@ -194,12 +195,12 @@ describe('DocumentSpace', () => {
     const { rerender } = render(
       <DocumentSpace projectId='p1' spaceId='doc-reconnect' />,
     );
-    expect(await screen.findByTestId('document-toolbar')).toBeInTheDocument();
+    expect(await screen.findByTestId('document-editor-content')).toBeInTheDocument();
 
     socketState.synced = false;
     rerender(<DocumentSpace projectId='p1' spaceId='doc-reconnect' />);
 
-    expect(screen.getByTestId('document-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
     expect(screen.queryByTestId('document-space-loading')).toBeNull();
   });
 
@@ -216,14 +217,13 @@ describe('DocumentSpace', () => {
 
     expect(await screen.findByTestId('document-space')).toBeInTheDocument();
     expect(screen.getByTestId('document-space-loading')).toBeInTheDocument();
-    expect(screen.queryByTestId('document-toolbar')).toBeNull();
     expect(screen.queryByTestId('document-editor-content')).toBeNull();
   });
 
-  it('renders the editor mount and the toolbar', async () => {
+  it('renders the editor mount', async () => {
     render(<DocumentSpace projectId='p1' spaceId='doc-1' />);
     expect(await screen.findByTestId('document-space')).toBeInTheDocument();
-    expect(screen.getByTestId('document-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
   });
 
   it('forwards projectId / spaceId via data attributes', async () => {
@@ -233,32 +233,28 @@ describe('DocumentSpace', () => {
     expect(root.getAttribute('data-space-id')).toBe('beta');
   });
 
-  it('exposes history and formatting controls in the toolbar', async () => {
-    // The whole set, not a sample: this Space is what mounts the toolbar in
-    // production, so a control that stops reaching the screen here reaches
-    // nobody. `DocumentEditor.test` pins the same list one layer down; both
-    // matter, because a control can exist in the toolbar component and still
-    // fail to arrive through this container.
+  it('把整篇文档那一列命令送到屏幕上', async () => {
+    // 整列一起断言，不抽样：生产环境挂这一列的就是这个 Space，在这里到不了
+    // 屏幕就等于谁都看不到。`document-command-rail.test` 在下一层钉同一份
+    // 清单 —— 两层都要，因为一个控件可以在组件里好好的，却穿不过这个容器。
+    //
+    // 这条原来数的是顶部横条那八个按钮。横条去掉后（#129），穿过容器到达的
+    // 是这一列；浮出条要有选区才出现，它的到达由 `selection-bubble-bar.test`
+    // 钉。
     render(<DocumentSpace projectId='p' spaceId='s' />);
-    await screen.findByTestId('document-toolbar');
+    await screen.findByTestId('document-editor-content');
     const ids = Array.from(
-      document.querySelectorAll('[data-testid^="doc-toolbar-tool-"]'),
-    ).map((el) => el.getAttribute('data-testid')?.replace('doc-toolbar-tool-', ''));
+      document.querySelectorAll('[data-testid^="doc-rail-"]'),
+    ).map((el) => el.getAttribute('data-testid'));
     expect(ids.sort()).toEqual([
-      'bold',
-      'bullet-list',
-      'italic',
-      'ordered-list',
-      'quote',
-      'redo',
-      'strike',
-      'undo',
+      'doc-rail-restore-snapshot',
+      'doc-rail-save-snapshot',
     ]);
   });
 
   it('binds the editor to THIS Space’s document, not some other doc', async () => {
     render(<DocumentSpace projectId='proj' spaceId='space-7' />);
-    await screen.findByTestId('document-toolbar');
+    await screen.findByTestId('document-editor-content');
 
     // Reach the very document the container resolved — the manager hands out
     // one Y.Doc per name, so this is the same instance the editor is bound to.
@@ -282,7 +278,7 @@ describe('DocumentSpace', () => {
 
   it('renders read-only for a viewer', async () => {
     render(<DocumentSpace projectId='p' spaceId='s' readOnly />);
-    await screen.findByTestId('document-toolbar');
+    await screen.findByTestId('document-editor-content');
 
     await waitFor(() =>
       expect(

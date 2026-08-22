@@ -680,8 +680,6 @@
         "label": "Unsupported content"
       },
       "toolbar": {
-        "undo": "Undo",
-        "redo": "Redo",
         "bold": "Bold",
         "italic": "Italic",
         "bulletList": "Bullet list",
@@ -696,6 +694,11 @@
         "risksLead": "Before you refresh:",
         "riskUploads": "uploads still in progress will be interrupted — you can switch to the Space they are in and check first.",
         "action": "Refresh page"
+      },
+      "rail": {
+        "saveSnapshot": "Save snapshot",
+        "restoreSnapshot": "Restore snapshot",
+        "notOpenYet": "Not open yet"
       }
     },
     "readOnlyReconnect": "Reconnect"

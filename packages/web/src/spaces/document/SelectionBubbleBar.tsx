@@ -807,12 +807,7 @@ function BubbleBar({
     >
       {hasSelection
         ? BUBBLE_TOOLS.map((tool) => (
-          <ToolButton
-            key={tool.id}
-            tool={tool}
-            editor={editor}
-            carrier='bubble'
-          />
+          <ToolButton key={tool.id} tool={tool} editor={editor} />
         ))
         : null}
     </BubbleMenu>
