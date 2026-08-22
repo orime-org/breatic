@@ -94,9 +94,10 @@ export function presetRatio(
 }
 
 /**
- * Whether two selections are the same item of the row. Identity is the item,
- * NOT its numeric value: a square material makes `original` equal 1:1, and
- * comparing numbers would light both (#1991).
+ * Whether two selections are the same item of the row. `original` is its own
+ * item whatever it currently measures — a square material makes it equal 1:1,
+ * and comparing numbers there would light both (#1991). The seven numeric
+ * items hold seven distinct values, so among them the value IS the identity.
  * @param a - One selection.
  * @param b - The other.
  * @returns True when they are the same row item.
@@ -104,7 +105,7 @@ export function presetRatio(
 export function samePreset(a: CropPreset | null, b: CropPreset | null): boolean {
   if (a === null || b === null) return a === b;
   if (a.kind !== b.kind) return false;
-  return a.kind === 'original' || b.kind === 'original' || a.value === b.value;
+  return a.kind === 'original' || a.value === b.value;
 }
 
 /**
@@ -457,6 +458,26 @@ export function isNaturalCropValid(
     (rect.width * natural.width) / display.width >= MIN_NATURAL_CROP_PX &&
     (rect.height * natural.height) / display.height >= MIN_NATURAL_CROP_PX
   );
+}
+
+/**
+ * Whether a marquee is big enough to keep. The natural gauge applies whenever
+ * the source has reported its own size; the display gauge is what is left
+ * before that. Every decision in the overlay asks through here, so the button
+ * that offers an action and the guard that performs it cannot disagree.
+ * @param rect - The marquee in display px.
+ * @param display - The source's display size, or null before it is measured.
+ * @param natural - The source's own size, or null before it reports one.
+ * @returns True when the marquee clears whichever gauge applies.
+ */
+export function isCropUsable(
+  rect: CropRect,
+  display: CropSize | null,
+  natural: CropSize | null,
+): boolean {
+  return natural && display
+    ? isNaturalCropValid(rect, display, natural)
+    : isCropValid(rect);
 }
 
 /**

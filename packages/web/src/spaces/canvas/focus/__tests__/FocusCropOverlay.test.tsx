@@ -12,6 +12,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import * as React from 'react';
 
 import { FocusCropOverlay } from '@web/spaces/canvas/focus/FocusCropOverlay';
+import { CROP_PRESETS } from '@web/spaces/canvas/focus/crop-math';
 import { toast } from '@web/lib/toast';
 import en from '../../../../../../../locales/en.json';
 import ja from '../../../../../../../locales/ja.json';
@@ -1290,12 +1291,22 @@ describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991�
     expect(bar.className).toContain('w-max');
   });
 
-  it('这一项不进 i18n：五个 catalog 都没有为它新增的 key（A6）', () => {
-    // 防的是有人后来「顺手」把它 i18n 化 —— 那会让八个按钮回到两种写法
+  it('这一项不进 i18n：五个 catalog 里没有任何一条文案是它（A6）', () => {
+    // 防的是有人后来「顺手」把它 i18n 化 —— 那会让八个按钮回到两种写法。
+    // 钉的是「这个词不来自任何 catalog」这件事本身，key 叫什么都拦得住。
+    /**
+     * @param node - catalog 的任意一层。
+     * @returns 这一层往下的全部文案。
+     */
+    const values = (node: unknown): string[] =>
+      typeof node === 'string'
+        ? [node]
+        : typeof node === 'object' && node !== null
+          ? Object.values(node).flatMap(values)
+          : [];
+    const label = CROP_PRESETS.find((p) => p.key === 'original')!.label;
     for (const [name, catalog] of Object.entries(CATALOGS)) {
-      const panel = catalog.canvas?.generatePanel ?? {};
-      const keys = Object.keys(panel).filter((k) => /focusRatio|focusOriginal/i.test(k));
-      expect(keys, `${name} 不该有这一项的 key`).toEqual([]);
+      expect(values(catalog), `${name} 里不该有 ${label} 这条文案`).not.toContain(label);
     }
   });
 

@@ -14,8 +14,7 @@ import {
   MIN_NATURAL_CROP_PX,
   captureResize,
   drawRect,
-  isCropValid,
-  isNaturalCropValid,
+  isCropUsable,
   resizeFromCapture,
   moveRect,
   applyRatioPreset,
@@ -294,12 +293,11 @@ export function FocusCropOverlay({
       // it here so a sub-minimum sliver cannot survive into the return
       // (round-10, the degenerate-rect invariant).
       if (interactionRef.current && rectRef.current) {
-        const nat = naturalSizeRef.current;
-        const b = prevBoxRef.current;
-        const valid =
-          nat && b
-            ? isNaturalCropValid(rectRef.current, b, nat)
-            : isCropValid(rectRef.current);
+        const valid = isCropUsable(
+          rectRef.current,
+          prevBoxRef.current,
+          naturalSizeRef.current,
+        );
         if (!valid) clearMarquee();
       }
       interactionRef.current = null;
@@ -808,12 +806,11 @@ export function FocusCropOverlay({
     // gauge was destroying a zoom-out-rescaled selection that Confirm
     // deliberately still accepted (round-8).
     if (interaction && rectRef.current) {
-      const nat = naturalSizeRef.current;
-      const b = prevBoxRef.current;
-      const valid =
-        nat && b
-          ? isNaturalCropValid(rectRef.current, b, nat)
-          : isCropValid(rectRef.current);
+      const valid = isCropUsable(
+        rectRef.current,
+        prevBoxRef.current,
+        naturalSizeRef.current,
+      );
       if (!valid) clearMarquee();
     }
     setTick((n) => n + 1);
@@ -865,10 +862,7 @@ export function FocusCropOverlay({
     // this ratio yields an invalid rect. The THIRD validity decision joins the
     // unified gauge (round-10): display-px here was eating a zoom-out
     // selection that pointer-up and Confirm deliberately accept.
-    const valid = naturalSize
-      ? isNaturalCropValid(shaped, box, naturalSize)
-      : isCropValid(shaped);
-    if (!valid) return;
+    if (!isCropUsable(shaped, box, naturalSize)) return;
     setPreset(next);
     setRect(shaped);
   };
@@ -876,9 +870,7 @@ export function FocusCropOverlay({
   /** Confirm the current marquee: map to natural pixels and hand off. */
   const onConfirmClick = (): void => {
     if (!rect || box === null) return;
-    if (naturalSize ? !isNaturalCropValid(rect, box, naturalSize) : !isCropValid(rect)) {
-      return;
-    }
+    if (!isCropUsable(rect, box, naturalSize)) return;
     const el = document.querySelector(cropSourceSelector(nodeId));
     // Confirm-time swap check (round-2): the MutationObserver discards the
     // marquee live, but a swap can still land between the last measure and
@@ -929,16 +921,7 @@ export function FocusCropOverlay({
     }
   };
 
-  // Confirm validity is zoom-INDEPENDENT (round-8): a zoom-out rescale
-  // shrinks a valid selection below the display minimum without changing
-  // the natural region it selects — gauge by natural pixels when known.
-  const confirmDisabled =
-    rect === null ||
-    box === null ||
-    (naturalSize
-      ? !isNaturalCropValid(rect, box, naturalSize)
-      : !isCropValid(rect));
-
+  const confirmDisabled = rect === null || box === null || !isCropUsable(rect, box, naturalSize);
 
   return (
     <div
