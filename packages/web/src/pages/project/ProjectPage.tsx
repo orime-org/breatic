@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { useQuery } from '@tanstack/react-query';
+
+import { fetchProjectCredits } from '@web/data/api/credits';
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
@@ -180,7 +182,14 @@ function ProjectWorkspace({
   // do is HIDDEN (Agent column, share, manage, new-space, title edit). The
   // upgrade entry lives on the top-bar RoleTag.
   const isViewer = role === 'viewer';
-  const credits = 0;
+  // Its own query, so a generation can refresh what the pool has left without
+  // refetching the project's name and role, which do not change with it.
+  const creditsQuery = useQuery({
+    queryKey: ['project', projectId, 'credits'],
+    queryFn: () => fetchProjectCredits(projectId),
+    enabled: projectId !== 'demo',
+  });
+  const credits = creditsQuery.data?.spendable ?? 0;
 
   // Rename mutation (optimistic header update + studio-list refresh). Extracted
   // to `useRenameProject` so the cross-query invalidation (#1068) is unit-tested

@@ -1,11 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowLeft, Plus, Star } from 'lucide-react';
+import { ArrowLeft, Star } from 'lucide-react';
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
-import { Button } from '@web/components/ui/button';
 import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
@@ -26,7 +25,6 @@ interface TopBarProps {
   role: ProjectRole;
   credits: number;
   onRename: (next: string) => void;
-  onAddCredits?: () => void;
   /**
    * The project's roster, forwarded to both member components. Required: the
    * stack and the modal have no fallback to invent, and leaving it optional
@@ -56,7 +54,6 @@ interface TopBarProps {
  * @param root0.role - Viewer's role in this project, surfaced via the role tag.
  * @param root0.credits - Current credit balance shown in the credits pill.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
- * @param root0.onAddCredits - Called when the user clicks the add-credits button on the credits pill.
  * @param root0.members - The project's roster, forwarded to both member components.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @returns the project chrome top bar with its left identity block and right action groups.
@@ -67,7 +64,6 @@ export function TopBar({
   role,
   credits,
   onRename,
-  onAddCredits,
   members,
   currentUserId,
 }: TopBarProps): React.JSX.Element {
@@ -104,7 +100,7 @@ export function TopBar({
           />
           <LangSwitcher />
           <ThemeToggle />
-          <CreditsPill credits={credits} onAdd={onAddCredits} />
+          <CreditsPill credits={credits} />
         </div>
         <div
           className='flex items-center'
@@ -148,40 +144,26 @@ function BackLink(): React.JSX.Element {
 }
 
 /**
- * Credits pill — shows the formatted credit balance with an add-credits button.
+ * Credits pill — what the studio owning this project has left to spend.
+ *
+ * A readout, shown to everyone working in the project: they spend this pool
+ * when they generate. It goes below zero when the studio owes. Topping up is
+ * an account-level act and lives on the account credits page.
  * @param root0 - Credits pill props.
- * @param root0.credits - Current credit balance, rendered with locale grouping.
- * @param root0.onAdd - Called when the user clicks the add-credits button.
- * @returns the top-bar credits chip with its balance and add button.
+ * @param root0.credits - What the pool has left, rendered with locale grouping.
+ * @returns the top-bar credits chip.
  */
-function CreditsPill({
-  credits,
-  onAdd,
-}: {
-  credits: number;
-  onAdd?: () => void;
-}): React.JSX.Element {
+function CreditsPill({ credits }: { credits: number }): React.JSX.Element {
   const t = useTranslation();
   return (
     <span
       data-testid='credits-chip'
       aria-label={t('chrome.aria.creditsBalance')}
       className='inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover text-xs tabular-nums'
-      style={{ padding: '0 2px 0 var(--space-4)', gap: 'var(--space-3)' }}
+      style={{ padding: '0 var(--space-4)', gap: 'var(--space-3)' }}
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
       <span>{credits.toLocaleString()}</span>
-      <Button
-        variant={null}
-        size={null}
-        type='button'
-        onClick={onAdd}
-        aria-label={t('chrome.aria.addCredits')}
-        className='inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-accent'
-        data-testid='credits-add'
-      >
-        <Plus className='h-3.5 w-3.5' />
-      </Button>
     </span>
   );
 }
