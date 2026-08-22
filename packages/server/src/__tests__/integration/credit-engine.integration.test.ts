@@ -692,3 +692,304 @@ describe("并发", () => {
     expect(await readLot(lotId)).toMatchObject({ remaining: "100.000000" });
   });
 });
+
+/** 这个 studio 现在欠多少，直接读表。 */
+async function readDebt(studioId: string): Promise<string> {
+  const [row] = await sql<{ amount: string }[]>`
+    SELECT amount FROM studio_credit_debts WHERE studio_id = ${studioId}
+  `;
+  return row?.amount ?? "0";
+}
+
+/** 欠账两类流水的求和，用来验不变量 3。 */
+async function debtLedgerSums(
+  studioId: string,
+): Promise<{ incurred: string; repayment: string }> {
+  const [row] = await sql<{ incurred: string; repayment: string }[]>`
+    SELECT
+      COALESCE(SUM(amount) FILTER (WHERE entry_type = 'debt_incurred'), 0)::text
+        AS incurred,
+      COALESCE(SUM(amount) FILTER (WHERE entry_type = 'debt_repayment'), 0)::text
+        AS repayment
+    FROM credit_ledger WHERE studio_id = ${studioId}
+  `;
+  return { incurred: row!.incurred, repayment: row!.repayment };
+}
+
+describe("欠账：状态转移表逐格", () => {
+  it("无欠账 + 全额扣到 → 仍无欠账", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 30,
+    });
+
+    expect(await readDebt(fx.studioId)).toBe("0.000000");
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+  });
+
+  it("无欠账 + 扣不满 → 欠账等于差额", async () => {
+    // 预检要的是一个下限，账单是实际用量。余额见底时点一次生成，零并发就能
+    // 欠出几十分 —— 这是这套机制存在的理由本身。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `short-${Date.now()}`,
+    });
+
+    expect(outcome.charged).toBe(30);
+    expect(outcome.shortfall).toBe(320);
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(320);
+  });
+
+  it("无欠账 + 指定一笔进来 → 仍无欠账，这笔一分不动", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100);
+
+    await creditLotService.designateLot({
+      lotId,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+    expect((await readLot(lotId)).remaining).toBe("100.000000");
+  });
+
+  it("欠账中 + 又扣不满 → 累加", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `first-${Date.now()}`,
+    });
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 80,
+      referenceId: `second-${Date.now()}`,
+    });
+
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(400);
+  });
+
+  it("欠账中 + 指定进来抵不完 → 这笔归零，仍欠着", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `owe-${Date.now()}`,
+    });
+    const fresh = await seedLot(fx, 200);
+
+    await creditLotService.designateLot({
+      lotId: fresh,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const lot = await readLot(fresh);
+    expect(lot.remaining).toBe("0.000000");
+    expect(lot.lifecycle).toBe("depleted");
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(120);
+  });
+
+  it("欠账中 + 指定进来抵完有剩 → 债清零，余下的能花", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `owe2-${Date.now()}`,
+    });
+    const fresh = await seedLot(fx, 500);
+
+    await creditLotService.designateLot({
+      lotId: fresh,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const lot = await readLot(fresh);
+    expect(lot.remaining).toBe("180.000000");
+    expect(lot.lifecycle).toBe("active");
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+  });
+
+  it("欠账中 + 把一笔撤走 → 欠的还是那么多", async () => {
+    // 撤走既不产生也不消除债务。可用额更少了，欠的没变。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `owe3-${Date.now()}`,
+    });
+    const fresh = await seedLot(fx, 500);
+    await creditLotService.designateLot({
+      lotId: fresh,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 1000,
+      referenceId: `owe4-${Date.now()}`,
+    });
+    const owedBefore = await creditLotService.getStudioDebt(fx.studioId);
+
+    const another = await seedLot(fx, 10);
+    await creditLotService.designateLot({
+      lotId: another,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+    await creditLotService.designateLot({
+      lotId: another,
+      requestingUserId: fx.userId,
+      studioId: null,
+    });
+
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(
+      owedBefore - 10,
+    );
+  });
+
+  it("欠账中扣费一分也扣不到 —— 「全额扣到」那一格进不去", async () => {
+    // 转移表里那格写着「不可能」，凭据是不变量 2：欠账意味着上一次把这个
+    // studio 的笔扣空了，而让笔重新有余额只有指定这一条路，它第一件事就是
+    // 抵债。所以欠账期间可花的笔加起来必然是 0。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `imposs-${Date.now()}`,
+    });
+
+    expect(await creditLotRepo.sumSpendableForStudio(fx.studioId)).toBe(
+      "0.000000",
+    );
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 5,
+      referenceId: `imposs2-${Date.now()}`,
+    });
+    expect(outcome.charged).toBe(0);
+    expect(outcome.shortfall).toBe(5);
+  });
+});
+
+describe("欠账：不变量", () => {
+  it("不变量 3：欠账恒等于两类流水之差", async () => {
+    // 两类行金额都是负数，所以是 repayment 减 incurred：欠 320 时
+    // 0 - (-320) = 320；抵掉 150 之后 -150 - (-320) = 170。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `inv3-${Date.now()}`,
+    });
+
+    const afterCharge = await debtLedgerSums(fx.studioId);
+    expect(
+      Number(afterCharge.repayment) - Number(afterCharge.incurred),
+    ).toBe(await creditLotService.getStudioDebt(fx.studioId));
+
+    const fresh = await seedLot(fx, 150);
+    await creditLotService.designateLot({
+      lotId: fresh,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const afterRepay = await debtLedgerSums(fx.studioId);
+    expect(Number(afterRepay.repayment) - Number(afterRepay.incurred)).toBe(
+      await creditLotService.getStudioDebt(fx.studioId),
+    );
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(170);
+  });
+
+  it("不变量 4：同一次生成的流水行加起来等于这次消耗的全额", async () => {
+    // 扣到的加上欠下的，正好是账单。`tasks.billed_credits` 写全额因此重新
+    // 成立 —— 流水现在也记满了这个量。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    const reference = `inv4-${Date.now()}`;
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: reference,
+    });
+
+    const [row] = await sql<{ total: string }[]>`
+      SELECT COALESCE(SUM(amount), 0)::text AS total
+      FROM credit_ledger WHERE reference_id = ${reference}
+    `;
+    expect(Number(row!.total)).toBe(-350);
+  });
+
+  it("扣不满写下的那一行带着界面要的全套上下文", async () => {
+    // 一笔都扣不到时一行 spend 都没有，那次生成的 Project 与模型只能从这一行
+    // 取。缺了它，积分页那一行的中间两列就是空的。
+    const fx = await seedFixture();
+    const reference = `ctx-${Date.now()}`;
+
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 42,
+      referenceId: reference,
+      model: "seedance-1.5-pro",
+      provider: "volcengine",
+    });
+
+    const [row] = await sql<
+      {
+        studio_id: string | null;
+        project_id: string | null;
+        model: string | null;
+        provider: string | null;
+        actor_user_id: string | null;
+        payer_user_id: string;
+        lot_id: string | null;
+        amount: string;
+      }[]
+    >`
+      SELECT studio_id, project_id, model, provider, actor_user_id,
+             payer_user_id, lot_id, amount
+      FROM credit_ledger
+      WHERE reference_id = ${reference} AND entry_type = 'debt_incurred'
+    `;
+    expect(row).toBeDefined();
+    expect(row!.studio_id).toBe(fx.studioId);
+    expect(row!.project_id).toBe(fx.projectId);
+    expect(row!.model).toBe("seedance-1.5-pro");
+    expect(row!.provider).toBe("volcengine");
+    expect(row!.actor_user_id).toBe(fx.userId);
+    expect(row!.payer_user_id).toBe(fx.userId);
+    expect(row!.lot_id).toBeNull();
+    expect(row!.amount).toBe("-42.000000");
+  });
+});
