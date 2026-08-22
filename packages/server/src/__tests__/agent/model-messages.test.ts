@@ -304,6 +304,45 @@ describe("history on its way to the model", () => {
     expect(notes).toHaveLength(1);
   });
 
+  it("tells the model a turn that failed did not get to finish either", () => {
+    // The other way a turn ends short. The wording differs from a stop on
+    // purpose: "the user stopped you" and "you did not manage to finish" lead
+    // the model to different next moves.
+    const messages = toModelMessages([
+      stored("assistant", [{ type: "text", text: "half a sen" }, { type: "failed" }]),
+    ]);
+
+    const note = String((messages[messages.length - 1] as { content: string }).content);
+    expect(note).toMatch(/could not|did not/i);
+    expect(note).not.toMatch(/stopped by the user/i);
+  });
+
+  it("leaves out a call whose arguments never finished arriving", () => {
+    // The SDK sets `input` from a partial JSON parse on every delta, so a
+    // call cut off mid-arguments carries half an address. Replaying it tells
+    // the model it made a call it never made.
+    const messages = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-7",
+          toolName: "web_fetch",
+          input: { url: "https://en.wikipedia.org/wiki/Bau" },
+          status: "error",
+          failure: {
+            kind: "user_aborted",
+            forModel: "stopped",
+            readerKey: "chat.tool.unfinished",
+          },
+          argumentsIncomplete: true,
+        },
+        { type: "interrupted" },
+      ]),
+    ]);
+
+    expect(JSON.stringify(messages)).not.toContain("wiki/Bau");
+  });
+
   it("leaves out a call still in flight", () => {
     // The one state with nothing to replay. A stored part is never `pending`
     // -- the turn sweeps it before writing -- but the conversion is handed

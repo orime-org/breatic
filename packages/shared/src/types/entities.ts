@@ -126,6 +126,16 @@ export type MessagePart =
        * record that cannot say what happened, which is what this replaced.
        */
       failure?: ToolFailure;
+      /**
+       * The arguments never finished arriving.
+       *
+       * A turn cut off while the model was still emitting a call leaves the
+       * arguments half-parsed -- the SDK fills `input` from a partial JSON
+       * parse on every delta. The panel still shows the call, because the
+       * reader watched it start; the model is not shown it, because it would
+       * read as a call it made with arguments it never sent.
+       */
+      argumentsIncomplete?: boolean;
     }
   /**
    * The turn this message belongs to was stopped before it finished.

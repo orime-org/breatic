@@ -79,6 +79,9 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   // Written only in the state that has one. A pending row carrying an empty
   // output would read as a tool that answered with nothing.
   if (status === "success") stored.output = part.output;
+  // The model was still emitting the arguments when this ended, so whatever
+  // is in `input` came from a partial parse of them.
+  if (part.state === "input-streaming") stored.argumentsIncomplete = true;
   if (status === "error") {
     // A placeholder the turn is expected to replace. What the wire carries
     // is the SDK's one masked line for every error it streams -- masked

@@ -72,6 +72,16 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
 const STOP_NOTE = "[This turn was stopped by the user before it finished.]";
 
 /**
+ * The note that says a turn broke off on its own.
+ *
+ * Worded apart from the stop above because the two lead somewhere different:
+ * a turn the user stopped was not wanted, a turn that broke off was. Reading
+ * the second as the first would have the model wait to be asked again for
+ * something it should offer to finish.
+ */
+const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
+
+/**
  * Turn stored messages into the messages the model is sent.
  *
  * Reasoning never goes back: it is the model's own working, and returning it
@@ -106,6 +116,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     // said. Bracketed so the model reads it as a note about the turn rather
     // than as something it wrote.
     const stopped = message.parts.some((p) => p.type === "interrupted");
+    const brokeOff = message.parts.some((p) => p.type === "failed");
 
     for (const part of message.parts) {
       if (part.type === "text") {
@@ -113,7 +124,11 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         continue;
       }
 
+      // A call whose arguments never finished arriving is left out along with
+      // its own half: what was stored is a partial parse, and replaying it
+      // puts words in the model's mouth.
       if (part.type !== "tool" || part.status === "pending") continue;
+      if (part.argumentsIncomplete === true) continue;
 
       out.push({
         role: "assistant",
@@ -139,6 +154,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
       });
     }
     if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
+    else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });
   }
 
   return out;

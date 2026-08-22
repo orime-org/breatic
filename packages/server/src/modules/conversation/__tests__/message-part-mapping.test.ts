@@ -118,6 +118,34 @@ describe("what a finished turn writes down", () => {
     });
   });
 
+  it("marks a call whose arguments never finished arriving", () => {
+    // `input-streaming` means the model was still emitting the arguments, so
+    // whatever is in `input` came from a partial JSON parse.
+    const stored = toStoredParts([
+      {
+        type: "tool-web_fetch",
+        toolCallId: "call-9",
+        state: "input-streaming",
+        input: { url: "https://en.wikipedia.org/wiki/Bau" },
+      },
+    ]);
+
+    expect(stored[0]).toMatchObject({ status: "pending", argumentsIncomplete: true });
+  });
+
+  it("does not mark one whose arguments arrived whole", () => {
+    const stored = toStoredParts([
+      {
+        type: "tool-web_fetch",
+        toolCallId: "call-10",
+        state: "input-available",
+        input: { url: "https://example.com" },
+      },
+    ]);
+
+    expect(stored[0]).not.toHaveProperty("argumentsIncomplete");
+  });
+
   it("does not leave a tool that never came back looking finished", () => {
     // A turn stopped mid-tool. Written as pending rather than dropped: a
     // reader that meets a call with no result would otherwise have to invent
