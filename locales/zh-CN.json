@@ -236,7 +236,7 @@
       "focus": "聚焦",
       "reference": "参考",
       "styleTip": "从画布选一张图作为风格参考",
-      "focusTip": "在节点上框选一块区域作为参考",
+      "focusTip": "取节点上的一块区域作为参考",
       "referenceTip": "从画布选图作为参考",
       "emptyImageReference": "尚未生成或上传",
       "emptyTextReference": "暂无内容",

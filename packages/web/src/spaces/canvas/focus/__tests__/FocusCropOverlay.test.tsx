@@ -1206,8 +1206,8 @@ describe('FocusCropOverlay：聚焦时的暂停（#1987）', () => {
  * Renders an IMAGE node whose intrinsic size is already known, then mounts the
  * overlay — in that order, like {@link renderVideoOverlay}. `renderOverlay`
  * mounts both at once, so the mount measure reads jsdom's default
- * `naturalWidth` of 0 and the overlay's `naturalSize` stays null; that state is
- * the G1 guard, not the ordinary one.
+ * `naturalWidth` of 0 and the overlay's `naturalSize` stays null — the state
+ * where `Original` has no ratio yet and its button is disabled.
  * @param natural - The material's intrinsic pixel size.
  * @param onConfirm - Confirm spy.
  * @returns The render result plus the img element.

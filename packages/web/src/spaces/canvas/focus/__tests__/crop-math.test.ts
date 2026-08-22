@@ -14,6 +14,8 @@ import {
   MIN_CROP_PX,
   captureResize,
   isNaturalCropValid,
+  MIN_NATURAL_CROP_PX,
+  shapeForPreset,
   resizeFromCapture,
   drawRect,
   moveRect,
@@ -335,5 +337,48 @@ describe('validity + presets', () => {
     ]);
     const oneToOne = CROP_RATIOS.find((r) => r.key === '1:1');
     expect(oneToOne?.value).toBe(1);
+  });
+});
+
+describe('shapeForPreset — 塑形的结果一定过得了判它的那道闸门', () => {
+  it('小框上塑一个比例：结果不因为浮点往返被判成不可用', () => {
+    // 64×64 的素材铺在 201.6 显示像素的盒子里（288 宽的节点在 70% 画布缩放下），
+    // 手里已有一个 20×20 的小框。塑形把它抬到闸门要求的下限，而下限本身是从闸门
+    // 反解出来的 —— 抬完再回头判，必须仍然算合格。
+    const natural = { width: 64, height: 64 };
+    const box = { width: 201.6, height: 201.6 };
+    const seed = { x: 90, y: 90, width: 20, height: 20 };
+    const shaped = shapeForPreset({ kind: 'ratio', value: 4 / 3 }, seed, box, natural);
+    expect(shaped).not.toBeNull();
+    // 它确实落在下限上：高度换算回自然像素就是那 8 个像素
+    const naturalHeight = (shaped!.height * natural.height) / box.height;
+    expect(naturalHeight).toBeCloseTo(MIN_NATURAL_CROP_PX, 9);
+  });
+
+  it('同一素材同一比例：有没有框都给得出结果', () => {
+    const natural = { width: 64, height: 64 };
+    const box = { width: 201.6, height: 201.6 };
+    const preset = { kind: 'ratio' as const, value: 4 / 3 };
+    expect(shapeForPreset(preset, null, box, natural)).not.toBeNull();
+    expect(
+      shapeForPreset(preset, { x: 90, y: 90, width: 20, height: 20 }, box, natural),
+    ).not.toBeNull();
+  });
+
+  it('真的放不下时仍然拒绝：素材只有 10 个自然像素高，9:16 要不到 8 像素宽', () => {
+    const natural = { width: 400, height: 10 };
+    const box = { width: 400, height: 10 };
+    expect(shapeForPreset({ kind: 'ratio', value: 9 / 16 }, null, box, natural)).toBeNull();
+  });
+
+  it('闸门的容差只吸收浮点噪声，差得动真格的照样拒绝', () => {
+    const natural = { width: 100, height: 100 };
+    const display = { width: 100, height: 100 };
+    // 恰好 8 个自然像素：过
+    expect(isNaturalCropValid({ x: 0, y: 0, width: 8, height: 8 }, display, natural)).toBe(true);
+    // 差千分之一个像素：拒
+    expect(
+      isNaturalCropValid({ x: 0, y: 0, width: 7.999, height: 7.999 }, display, natural),
+    ).toBe(false);
   });
 });

@@ -809,19 +809,20 @@ export function FocusCropOverlay({
   };
 
   /**
-   * What each row item would draw if clicked right now. `null` means the item
-   * is unavailable, and its button carries that as `disabled` — one answer for
-   * the offer and for the action, so an item cannot look available and then
-   * refuse (user 2026-08-22).
+   * The row, each item carrying what it would draw if clicked right now.
+   * `null` means the item is unavailable and its button says so with
+   * `disabled`; when it is non-null the click applies that very rect, so an
+   * item cannot look available and then draw nothing (user 2026-08-22).
    */
-  const shapes = CROP_PRESETS.map(({ preset: item }) =>
-    shapeForPreset(item, rect, bounds, box, naturalSize),
-  );
+  const row = CROP_PRESETS.map((entry) => ({
+    ...entry,
+    shape: shapeForPreset(entry.preset, rect, box, naturalSize),
+  }));
 
   /**
    * Apply (or unlight, when re-clicked) a preset from the row.
    * @param next - The row item that was clicked.
-   * @param shaped - The marquee it draws, from {@link shapes}.
+   * @param shaped - The marquee it draws, from {@link row}.
    */
   const onPresetClick = (next: CropPreset, shaped: CropRect): void => {
     // Re-click unlights: the marquee stays, the ratio stops constraining.
@@ -1013,7 +1014,7 @@ export function FocusCropOverlay({
               </div>
             ) : null}
             <div className='flex items-center gap-1'>
-              {CROP_PRESETS.map(({ key, label, preset: item }, i) => (
+              {row.map(({ key, label, preset: item, shape }) => (
                 <Button
                   key={key}
                   type='button'
@@ -1021,10 +1022,9 @@ export function FocusCropOverlay({
                   size={null}
                   data-testid={`focus-ratio-${key}`}
                   aria-pressed={samePreset(preset, item)}
-                  disabled={shapes[i] === null}
+                  disabled={shape === null}
                   onClick={() => {
-                    const shaped = shapes[i];
-                    if (shaped) onPresetClick(item, shaped);
+                    if (shape) onPresetClick(item, shape);
                   }}
                   // whitespace-nowrap + shrink-0 (user 2026-07-17 #1): an
                   // abspos bar near the viewport edge shrink-to-fits against
@@ -1037,7 +1037,14 @@ export function FocusCropOverlay({
                     (item.kind === 'ratio' ? 'tabular-nums ' : '') +
                     (samePreset(preset, item)
                       ? 'bg-foreground text-background'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground')
+                      : 'text-muted-foreground ') +
+                    // The hover response belongs to items that can be clicked.
+                    // `Button`'s base deliberately omits
+                    // `disabled:pointer-events-none`, so a disabled one still
+                    // receives hover and would light up like a live item.
+                    (shape !== null && !samePreset(preset, item)
+                      ? 'hover:bg-accent hover:text-accent-foreground'
+                      : '')
                   }
                 >
                   {label}

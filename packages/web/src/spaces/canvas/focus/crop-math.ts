@@ -438,6 +438,21 @@ export function isCropValid(rect: CropRect): boolean {
 export const MIN_NATURAL_CROP_PX = 8;
 
 /**
+ * Relative slack on the natural-pixel minimum, absorbing float noise in the
+ * scaling that reaches it.
+ *
+ * A rect sized to exactly the minimum arrives here through a multiply and a
+ * divide, and the round trip can land a last-bit below its own target: a 64×64
+ * source in a 201.6px box yields 7.999999999999999 for a rect built to measure
+ * 8. The value is PEP 485's default `rel_tol` for `math.isclose`, chosen there
+ * as about half the precision a double carries; the error it forgives here is
+ * near 1e-16, and a rect a thousandth of a pixel short is 1e-4 off and still
+ * refused.
+ * @see https://peps.python.org/pep-0485/
+ */
+const NATURAL_CROP_REL_TOL = 1e-9;
+
+/**
  * Zoom-INDEPENDENT confirm validity (round-8): gauges the marquee by the
  * natural pixels it selects, not its on-screen size — zooming out rescales
  * a perfectly valid selection below the display minimum, which is a
@@ -454,9 +469,10 @@ export function isNaturalCropValid(
   natural: CropSize,
 ): boolean {
   if (display.width <= 0 || display.height <= 0) return false;
+  const floor = MIN_NATURAL_CROP_PX * (1 - NATURAL_CROP_REL_TOL);
   return (
-    (rect.width * natural.width) / display.width >= MIN_NATURAL_CROP_PX &&
-    (rect.height * natural.height) / display.height >= MIN_NATURAL_CROP_PX
+    (rect.width * natural.width) / display.width >= floor &&
+    (rect.height * natural.height) / display.height >= floor
   );
 }
 
@@ -491,15 +507,15 @@ export function isCropUsable(
  * hold this ratio at all.
  * @param preset - The row item.
  * @param seed - The current marquee, or null to shape the whole material.
- * @param bounds - The material's box in display px, as the marquee's limits.
- * @param display - The material's display size, or null before it is measured.
+ * @param display - The material's box in display px, which is both the
+ *   marquee's limits and the scale the natural gauge divides by; null before
+ *   the box is measured.
  * @param natural - The material's own size, or null before it reports one.
  * @returns The shaped marquee, or null when there is none to give.
  */
 export function shapeForPreset(
   preset: CropPreset,
   seed: CropRect | null,
-  bounds: CropSize,
   display: CropSize | null,
   natural: CropSize | null,
 ): CropRect | null {
@@ -520,9 +536,9 @@ export function shapeForPreset(
   // "fit the ratio inside the material" pass would produce, without a second
   // copy of the geometry.
   const shaped = applyRatioPreset(
-    seed ?? { x: 0, y: 0, width: bounds.width, height: bounds.height },
+    seed ?? { x: 0, y: 0, width: display.width, height: display.height },
     ratio,
-    bounds,
+    display,
     minW,
     minH,
   );
