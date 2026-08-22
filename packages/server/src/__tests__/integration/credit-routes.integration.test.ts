@@ -444,15 +444,63 @@ describe("GET /studio/:slug/credits", () => {
     const body = (await res.json()) as {
       data: {
         spendable: number;
-        lots: { id: string; remainingCredits: number }[];
-        ledger: { items: { amount: number }[] };
+        debt: number;
+        lots: { id: string; remainingCredits: number; buyerName: string | null }[];
+        ledger: {
+          items: {
+            kind: string;
+            charged: number;
+            consumed: number;
+            owed: number;
+            projectName: string | null;
+          }[];
+        };
       };
     };
     expect(body.data.spendable).toBe(70);
+    expect(body.data.debt).toBe(0);
     expect(body.data.lots).toEqual([
       expect.objectContaining({ id: lotId, remainingCredits: 70 }),
     ]);
-    expect(body.data.ledger.items.some((i) => i.amount === -30)).toBe(true);
+    expect(body.data.ledger.items).toEqual([
+      expect.objectContaining({
+        kind: "generation",
+        charged: -30,
+        consumed: -30,
+        owed: 0,
+        projectName: fx.projectName,
+      }),
+    ]);
+  });
+
+  it("欠着账时可用额是负数，欠多少单独给一个数", async () => {
+    // 两个数字讲同一件事的话，用户还得自己做减法。可用额直接是负的，欠账
+    // 那个数是「充值记录」那一块里单独的一行。
+    const fx = await seedFixture();
+    await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `route-owe-${Date.now()}`,
+    });
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        spendable: number;
+        debt: number;
+        ledger: { items: { charged: number; consumed: number; owed: number }[] };
+      };
+    };
+    expect(body.data.spendable).toBe(-320);
+    expect(body.data.debt).toBe(320);
+    expect(body.data.ledger.items).toEqual([
+      expect.objectContaining({ charged: -30, consumed: -350, owed: -320 }),
+    ]);
   });
 });
 

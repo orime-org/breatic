@@ -9,10 +9,11 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import {
   fetchStudioCredits,
-  type CreditLedgerView,
-  type CreditLotView,
+  type StudioLedgerView,
+  type StudioPurchaseView,
 } from '@web/data/api/credits';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
@@ -42,24 +43,27 @@ function formatDate(iso: string): string {
 }
 
 /**
- * One purchase making up this studio's balance.
- * @param props - The lot.
- * @param props.lot - What was bought and what is left of it.
+ * One top-up this studio received.
+ * @param props - The purchase.
+ * @param props.lot - Who bought it, when, and what is left of it.
  * @returns The row.
  */
 const LotRow = React.memo(function LotRow({
   lot,
 }: {
-  lot: CreditLotView;
+  lot: StudioPurchaseView;
 }): React.JSX.Element {
   const t = useTranslation();
   return (
     <li
       data-testid={`studio-lot-${lot.id}`}
-      className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0'
+      className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0'
     >
-      <span className='text-xs text-muted-foreground'>
-        {formatDate(lot.createdAt)}
+      <span>
+        <span className='block text-sm'>{lot.buyerName ?? '—'}</span>
+        <span className='block text-xs text-muted-foreground'>
+          {formatDate(lot.createdAt)}
+        </span>
       </span>
       <span className='ml-auto text-right tabular-nums'>
         <span className='block text-sm font-semibold'>
@@ -76,7 +80,52 @@ const LotRow = React.memo(function LotRow({
 });
 
 /**
- * One movement of the viewer's credits in this studio.
+ * One line of the purchase block that is not a purchase: what is owed, and
+ * the total the block adds up to.
+ * @param props - The line.
+ * @param props.testId - What a test reaches it by.
+ * @param props.label - What this line is.
+ * @param props.amount - Its figure.
+ * @param props.strong - Whether it is the total, which is set apart by a rule.
+ * @returns The row.
+ */
+const SummaryRow = React.memo(function SummaryRow({
+  testId,
+  label,
+  amount,
+  strong = false,
+}: {
+  testId: string;
+  label: string;
+  amount: number;
+  strong?: boolean;
+}): React.JSX.Element {
+  return (
+    <li
+      data-testid={testId}
+      className={cn(
+        'flex items-baseline gap-3 border-t border-border py-2.5',
+        strong && 'font-semibold',
+      )}
+    >
+      <span className='text-sm'>{label}</span>
+      <span className='ml-auto text-right text-sm tabular-nums'>
+        {formatAmount(amount)}
+      </span>
+    </li>
+  );
+});
+
+/**
+ * One event in this studio's ledger.
+ *
+ * The amount column is what left the pool. A run that used more than the pool
+ * could cover says so underneath, in a line that appears only when the two
+ * figures differ — no line means the run cost exactly what it was charged.
+ *
+ * A repayment merges the project and model columns and names itself there: it
+ * happened in no project and used no model, so filling those cells would be
+ * inventing values.
  * @param props - The entry.
  * @param props.entry - What happened.
  * @returns The table row.
@@ -84,15 +133,49 @@ const LotRow = React.memo(function LotRow({
 const LedgerRow = React.memo(function LedgerRow({
   entry,
 }: {
-  entry: CreditLedgerView;
+  entry: StudioLedgerView;
 }): React.JSX.Element {
+  const t = useTranslation();
+  const note =
+    entry.kind !== 'generation' || entry.charged === entry.consumed
+      ? null
+      : entry.owed !== 0 && entry.charged !== 0
+        ? t('studio.container.credits.noteShortfall', {
+          consumed: formatAmount(-entry.consumed),
+          owed: formatAmount(-entry.owed),
+        })
+        : t('studio.container.credits.noteUnbilled', {
+          consumed: formatAmount(-entry.consumed),
+        });
   return (
     <tr data-testid={`studio-ledger-${entry.id}`} className='border-t border-border'>
       <td className='py-1.5 text-muted-foreground'>{formatDate(entry.createdAt)}</td>
       <td className='py-1.5'>{entry.actorName ?? '—'}</td>
-      <td className='py-1.5 text-muted-foreground'>{entry.projectName ?? '—'}</td>
-      <td className='py-1.5 text-muted-foreground'>{entry.model ?? '—'}</td>
-      <td className='py-1.5 text-right tabular-nums'>{formatAmount(entry.amount)}</td>
+      {entry.kind === 'debt_repayment' ? (
+        <td
+          data-testid='studio-ledger-event'
+          colSpan={2}
+          className='py-1.5 text-muted-foreground'
+        >
+          {t('studio.container.credits.eventRepayment')}
+        </td>
+      ) : (
+        <>
+          <td className='py-1.5 text-muted-foreground'>{entry.projectName ?? '—'}</td>
+          <td className='py-1.5 text-muted-foreground'>{entry.model ?? '—'}</td>
+        </>
+      )}
+      <td className='py-1.5 text-right tabular-nums'>
+        {formatAmount(entry.charged)}
+        {note === null ? null : (
+          <span
+            data-testid='studio-ledger-note'
+            className='ml-1.5 whitespace-nowrap rounded-content-sm bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground'
+          >
+            {note}
+          </span>
+        )}
+      </td>
     </tr>
   );
 });
@@ -175,6 +258,18 @@ export function CreditsTab({
   }
 
   const isMember = studioRole !== null;
+  // Four situations, and each one gets its own sentence. Reading them off the
+  // balance alone cannot tell "nothing was ever assigned here" from "it was
+  // all spent" — both are zero, and only one of them is answered by assigning
+  // more.
+  const state =
+    (head.debt ?? 0) > 0
+      ? 'debt'
+      : (head.spendable ?? 0) > 0
+        ? 'spendable'
+        : (head.lots ?? []).length > 0
+          ? 'depleted'
+          : 'none';
 
   return (
     <div className='mx-auto flex max-w-3xl flex-col gap-6'>
@@ -193,21 +288,19 @@ export function CreditsTab({
             </small>
           </p>
           <p className='mt-[3px] text-xs text-muted-foreground'>
-            {(head.spendable ?? 0) > 0
-              ? t('studio.container.credits.spendableHint')
-              : t('studio.container.credits.noneHint')}
+            {t(`studio.container.credits.${state}Hint`)}
           </p>
         </div>
       </div>
 
-      {(head.spendable ?? 0) === 0 && isMember ? (
+      {state === 'spendable' || !isMember ? null : (
         <p
           data-testid='studio-credits-unassigned-notice'
           className='rounded-content-sm border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-sm'
         >
-          {t('studio.container.credits.assignPrompt')}
+          {t(`studio.container.credits.${state}Prompt`)}
         </p>
-      ) : null}
+      )}
 
       <section className='rounded-content-md border border-border p-4'>
         <h3 className='mb-3 text-sm font-semibold'>
@@ -218,10 +311,23 @@ export function CreditsTab({
             {t('studio.container.credits.lotsEmpty')}
           </p>
         ) : (
-          <ul className='flex flex-col'>
+          <ul className='flex flex-col [&>li:first-child]:border-t-0 [&>li:first-child]:pt-0'>
             {(head.lots ?? []).map((lot) => (
               <LotRow key={lot.id} lot={lot} />
             ))}
+            {(head.debt ?? 0) > 0 ? (
+              <SummaryRow
+                testId='studio-lots-debt'
+                label={t('studio.container.credits.lotsDebt')}
+                amount={-(head.debt ?? 0)}
+              />
+            ) : null}
+            <SummaryRow
+              testId='studio-lots-total'
+              label={t('studio.container.credits.lotsTotal')}
+              amount={head.spendable ?? 0}
+              strong
+            />
           </ul>
         )}
       </section>

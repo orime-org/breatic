@@ -249,47 +249,102 @@ export async function listLedger(
   }));
 }
 
+/** One line of a studio's ledger: everything one event moved. */
+export interface StudioLedgerView {
+  id: string;
+  /** A generation, or a designation paying off what the studio owed. */
+  kind: "generation" | "debt_repayment";
+  actorUserId: string | null;
+  /** Who ran it, by display name. */
+  actorName: string | null;
+  projectId: string | null;
+  /** Where it ran, by name. */
+  projectName: string | null;
+  model: string | null;
+  provider: string | null;
+  /** What left the pool. This is the figure the amount column shows. */
+  charged: number;
+  /** What the run used. Equal to `charged` unless a lot could not cover it. */
+  consumed: number;
+  /** The part of that no lot covered. */
+  owed: number;
+  createdAt: string;
+}
+
 /** What one studio holds and has spent, for its credits tab. */
 export interface StudioCreditsView {
   /** Present on the first page only — it does not change between pages. */
   spendable?: number;
+  /** What the studio owes, as a positive number. First page only. */
+  debt?: number;
   /** Present on the first page only, for the same reason. */
   lots?: StudioPurchaseView[];
-  ledger: CreditPage<CreditLedgerView>;
+  ledger: CreditPage<StudioLedgerView>;
 }
 
 /**
- * One studio's credits, as its members see them.
+ * Map one grouped ledger line to its display shape.
+ * @param row - The grouped row.
+ * @returns The view model.
+ */
+function toStudioLedgerView(
+  row: creditLotRepo.StudioLedgerRow,
+): StudioLedgerView {
+  return {
+    id: row.id,
+    kind: row.kind,
+    actorUserId: row.actorUserId,
+    actorName: row.actorName,
+    projectId: row.projectId,
+    projectName: row.projectName,
+    model: row.model,
+    provider: row.provider,
+    charged: toNumber(row.charged),
+    consumed: toNumber(row.consumed),
+    owed: toNumber(row.owed),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/**
+ * One studio's credits, as its admin sees them.
  *
- * The pool is the studio's, so every member sees what it can spend. The ledger
- * beside it is still taken by payer: it answers "where did MY money go in this
- * studio", and a member reading it sees their own contribution, not the
- * studio's whole history.
+ * The pool is the studio's and so is the ledger: the admin manages this
+ * studio's money, and taking the ledger by payer would hide what everyone
+ * else's top-ups paid for. The person on each line is whoever ran the
+ * generation.
  * @param studioId - The studio being viewed.
- * @param viewerUserId - The signed-in member.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
  * @returns The studio's credit view.
  */
 export async function getStudioCredits(
   studioId: string,
-  viewerUserId: string,
   rawLimit?: string,
   rawCursor?: string,
 ): Promise<StudioCreditsView> {
-  const ledgerPage = listLedger(viewerUserId, rawLimit, rawCursor, studioId);
-  // Asked of the decoded cursor, which is what the ledger under this reads
-  // too. Asking whether the client sent a string instead splits the page in
-  // half on the one input where the two disagree: a cursor that parses but
-  // decodes to nothing takes the ledger to its first page while this half
-  // treats the request as a continuation and omits the two fields the tab
-  // opens with.
-  if (readCursor(rawCursor)) return { ledger: await ledgerPage };
+  const size = pageSize(rawLimit);
+  const cursor = readCursor(rawCursor);
+  const ledgerPage = creditLotRepo
+    .listLedgerByStudio(studioId, size + 1, cursor)
+    .then((rows) =>
+      toPage(rows, size, toStudioLedgerView, (row) => ({
+        createdAt: row.createdAt,
+        id: row.id,
+      })),
+    );
+  // Asked of the decoded cursor, which is what the ledger above reads too.
+  // Asking whether the client sent a string instead splits the page in half
+  // on the one input where the two disagree: a cursor that parses but decodes
+  // to nothing takes the ledger to its first page while this half treats the
+  // request as a continuation and omits the fields the tab opens with.
+  if (cursor) return { ledger: await ledgerPage };
 
-  const [spendable, lots, ledger] = await Promise.all([
+  const [spendable, debt, lots, ledger] = await Promise.all([
     creditLotService.getSpendableCredits(studioId),
+    creditLotService.getStudioDebt(studioId),
     creditLotRepo.listPurchasesByStudio(studioId),
     ledgerPage,
   ]);
-  return { spendable, lots: lots.map(toPurchaseView), ledger };
+  return { spendable, debt, lots: lots.map(toPurchaseView), ledger };
 }

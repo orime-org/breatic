@@ -481,8 +481,10 @@ studio.delete(
  * page is theirs alone. The web app leaves the section out of everyone else's
  * strip, but a URL is typed as easily as it is clicked, so the door is here.
  *
- * The ledger beside it is taken by the reader's own payments: it answers
- * where THEIR money went in this studio.
+ * The ledger beside it is the studio's own, one line per generation: taking
+ * it by payer would hide what everyone else's top-ups paid for, and would
+ * split a generation that ran short between two people, since its spend rows
+ * are against the lot owner and its shortfall against whoever ran it.
  * @returns `200` with `{ data: StudioCreditsView }`; `403` for anyone who is
  *   not this studio's admin (which also hides whether the studio exists),
  *   `401` when signed out
@@ -492,14 +494,12 @@ studio.get(
   requireStudioRole("admin"),
   validate("query", creditPageQuerySchema),
   async (c) => {
-    const user = c.get("user");
     const slug = c.req.param("slug");
     const target = await studioService.getStudioBySlug(slug);
     if (!target) throw new NotFoundError(t("server.error.not_found"));
     const { limit, cursor } = c.req.valid("query");
     const data = await creditViewService.getStudioCredits(
       target.id,
-      user.id,
       limit,
       cursor,
     );

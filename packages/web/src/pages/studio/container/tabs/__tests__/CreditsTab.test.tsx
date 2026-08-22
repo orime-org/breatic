@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import type { ReactElement } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -33,6 +33,7 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
 function credits(over: Partial<StudioCredits> = {}): StudioCredits {
   return {
     spendable: 4910,
+    debt: 0,
     lots: [
       {
         id: 'lot-1',
@@ -41,6 +42,7 @@ function credits(over: Partial<StudioCredits> = {}): StudioCredits {
         designatedStudioId: 's1',
         lifecycle: 'active',
         refundAttempts: 0,
+        buyerName: '张伟',
         createdAt: '2026-08-19T00:00:00.000Z',
       },
     ],
@@ -48,18 +50,16 @@ function credits(over: Partial<StudioCredits> = {}): StudioCredits {
       items: [
         {
           id: 'e1',
-          entryType: 'spend',
-          amount: -42.5,
+          kind: 'generation',
           actorUserId: 'u-guest',
           actorName: '李静',
-          projectName: '夏季广告片',
-          studioId: 's1',
           projectId: 'p1',
-          lotId: 'lot-1',
+          projectName: '夏季广告片',
           model: 'seedance-1.5-pro',
           provider: 'volcengine',
-          tokensUsed: null,
-          description: null,
+          charged: -42.5,
+          consumed: -42.5,
+          owed: 0,
           createdAt: '2026-08-21T00:00:00.000Z',
         },
       ],
@@ -180,7 +180,7 @@ describe('CreditsTab', () => {
     });
     const second = credits({
       ledger: {
-        items: [{ ...credits().ledger.items[0]!, id: 'e2', amount: -8 }],
+        items: [{ ...credits().ledger.items[0]!, id: 'e2', charged: -8 }],
         nextCursor: null,
       },
     });
@@ -240,5 +240,128 @@ describe('CreditsTab', () => {
     await screen.findByTestId('studio-ledger-page-error');
 
     expect(reachEnd).not.toBeNull();
+  });
+  it('每一笔充值都写着谁买的', async () => {
+    fetchStudioCredits.mockResolvedValue(credits());
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    expect(await screen.findByTestId('studio-lot-lot-1')).toHaveTextContent(
+      '张伟',
+    );
+  });
+
+  it('充值记录末尾有一行合计，等于上面那个可用额', async () => {
+    // 这一块解释的就是上面那个数怎么来的。没有合计，它跟那个数之间没有看得
+    // 见的算术关系。
+    fetchStudioCredits.mockResolvedValue(credits());
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    expect(await screen.findByTestId('studio-lots-total')).toHaveTextContent(
+      '4,910',
+    );
+  });
+
+  it('欠着账时可用额是负数，欠账在充值记录里单独一行', async () => {
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        spendable: -320,
+        debt: 320,
+        lots: [{ ...credits().lots![0]!, remainingCredits: 0 }],
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    expect(await screen.findByTestId('studio-spendable')).toHaveTextContent(
+      '-320',
+    );
+    expect(screen.getByTestId('studio-lots-debt')).toHaveTextContent('-320');
+    expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('-320');
+  });
+
+  it('扣不满的生成：金额是实扣，下面标消耗多少、欠多少', async () => {
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        ledger: {
+          items: [
+            {
+              ...credits().ledger.items[0]!,
+              charged: -30,
+              consumed: -350,
+              owed: -320,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    expect(row).toHaveTextContent('-30');
+    expect(row).toHaveTextContent('350');
+    expect(row).toHaveTextContent('320');
+  });
+
+  it('没扣费的生成：金额是 0，下面标消耗多少、未扣费', async () => {
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        ledger: {
+          items: [
+            {
+              ...credits().ledger.items[0]!,
+              charged: 0,
+              consumed: -42.5,
+              owed: -42.5,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    expect(row).toHaveTextContent('42.5');
+    expect(
+      within(row).getByTestId('studio-ledger-note'),
+    ).toBeInTheDocument();
+  });
+
+  it('抵扣欠账那行把中间两列合起来写这是什么事', async () => {
+    // 它不发生在任何 project 里，也不用任何模型。往那两列填值就是编造。
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        ledger: {
+          items: [
+            {
+              ...credits().ledger.items[0]!,
+              kind: 'debt_repayment',
+              projectId: null,
+              projectName: null,
+              model: null,
+              provider: null,
+              charged: -150,
+              consumed: 0,
+              owed: 0,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    const merged = within(row).getByTestId('studio-ledger-event');
+    expect(merged).toHaveAttribute('colspan', '2');
+    expect(row).toHaveTextContent('-150');
+  });
+
+  it('消耗和实扣相等时不标小字', async () => {
+    fetchStudioCredits.mockResolvedValue(credits());
+    renderTab(<CreditsTab slug='acme' studioRole='admin' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    expect(within(row).queryByTestId('studio-ledger-note')).toBeNull();
   });
 });
