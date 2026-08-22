@@ -585,8 +585,10 @@ describe("PATCH /credits/lots/:id/designation", () => {
   });
 
   it("退款流程里的笔答 409", async () => {
+    // 这笔未指定：申请退款那一刻它就跟原来的 studio 解除了关系，0063 的
+    // CHECK 看着这一条。它想再进任何一个池子都要等退款有结果。
     const fx = await seedFixture();
-    const lotId = await seedLot(fx, 100, fx.studioId);
+    const lotId = await seedLot(fx, 100);
     await sql`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${lotId}`;
 
     const res = await app.request(`/api/v1/credits/lots/${lotId}/designation`, {

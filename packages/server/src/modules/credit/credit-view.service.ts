@@ -30,6 +30,12 @@ export interface CreditLotView {
   createdAt: string;
 }
 
+/** One purchase on a studio's page, where the buyer is a column. */
+export interface StudioPurchaseView extends CreditLotView {
+  /** Who bought it. Absent when their personal studio is gone. */
+  buyerName: string | null;
+}
+
 /** One ledger row, as the overlay shows it. */
 export interface CreditLedgerView {
   id: string;
@@ -116,6 +122,17 @@ function toLotView(lot: CreditLotEntity): CreditLotView {
     refundAttempts: lot.refundAttempts,
     createdAt: lot.createdAt.toISOString(),
   };
+}
+
+/**
+ * Map a purchase to its display shape on a studio's page.
+ * @param purchase - The stored lot, with the buyer's name joined in.
+ * @returns The view model.
+ */
+function toPurchaseView(
+  purchase: creditLotRepo.StudioPurchase,
+): StudioPurchaseView {
+  return { ...toLotView(purchase), buyerName: purchase.buyerName };
 }
 
 /**
@@ -237,7 +254,7 @@ export interface StudioCreditsView {
   /** Present on the first page only — it does not change between pages. */
   spendable?: number;
   /** Present on the first page only, for the same reason. */
-  lots?: CreditLotView[];
+  lots?: StudioPurchaseView[];
   ledger: CreditPage<CreditLedgerView>;
 }
 
@@ -271,8 +288,8 @@ export async function getStudioCredits(
 
   const [spendable, lots, ledger] = await Promise.all([
     creditLotService.getSpendableCredits(studioId),
-    creditLotRepo.listLotsByStudio(studioId),
+    creditLotRepo.listPurchasesByStudio(studioId),
     ledgerPage,
   ]);
-  return { spendable, lots: lots.map(toLotView), ledger };
+  return { spendable, lots: lots.map(toPurchaseView), ledger };
 }

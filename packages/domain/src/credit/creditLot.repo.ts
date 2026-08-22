@@ -67,6 +67,29 @@ function spendableByStudio(studioId: string): SQL | undefined {
 }
 
 /**
+ * What counts as one of a studio's purchases, stated once.
+ *
+ * Designated to a studio that is still there — and nothing about the
+ * lifecycle. A lot spent to nothing is still a top-up this studio received,
+ * and the block this feeds is what explains the number at the top of the
+ * page: leaving spent lots out makes a studio that spent everything look
+ * like one that was never given anything.
+ *
+ * The refund lifecycles are absent from here because they cannot reach it: a
+ * lot under refund carries no designation at all, which `credit_lots`' own
+ * check enforces (0063). Naming them would filter nothing.
+ * @param studioId - The studio whose purchases are being read.
+ * @returns The condition, to be combined with the caller's own.
+ */
+function purchasedByStudio(studioId: string): SQL | undefined {
+  return and(
+    eq(creditLots.designatedStudioId, studioId),
+    isNull(creditLots.deletedAt),
+    isNull(studios.deletedAt),
+  );
+}
+
+/**
  * Map a raw `credit_lots` row to the shared entity.
  * @param row - The Drizzle row.
  * @returns The mapped entity.
@@ -479,22 +502,44 @@ export async function listLotsByUser(
   return rows.map(toLotEntity);
 }
 
+/** One purchase a studio received, with the buyer's display name. */
+export interface StudioPurchase extends CreditLotEntity {
+  /** Who bought it. Absent when their personal studio is gone. */
+  buyerName: string | null;
+}
+
 /**
- * The lots making up what a studio can spend, oldest first — the order they
- * will be spent in.
+ * Every top-up designated to a studio, oldest first.
+ *
+ * The buyer's name comes from their personal studio, which is where display
+ * names live — `users` is the pure auth table. It is a different person from
+ * the one on a ledger row: this is who put the money in, that is who spent
+ * it.
  * @param studioId - The studio to read.
- * @returns Its spendable lots.
+ * @returns Its purchases, oldest first.
  */
-export async function listLotsByStudio(
+export async function listPurchasesByStudio(
   studioId: string,
-): Promise<CreditLotEntity[]> {
+): Promise<StudioPurchase[]> {
+  const buyerStudio = alias(studios, "buyer_studio");
   const rows = await db
-    .select({ lot: creditLots })
+    .select({ lot: creditLots, buyerName: buyerStudio.name })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
-    .where(spendableByStudio(studioId))
+    .leftJoin(
+      buyerStudio,
+      and(
+        eq(buyerStudio.createdByUserId, creditLots.userId),
+        eq(buyerStudio.type, "personal"),
+        isNull(buyerStudio.deletedAt),
+      ),
+    )
+    .where(purchasedByStudio(studioId))
     .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
-  return rows.map((row) => toLotEntity(row.lot));
+  return rows.map((row) => ({
+    ...toLotEntity(row.lot),
+    buyerName: row.buyerName,
+  }));
 }
 
 /**
