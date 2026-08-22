@@ -149,10 +149,11 @@ describe("history on its way to the model", () => {
       stored("assistant", [{ type: "text", text: "half a sen" }, { type: "interrupted" }]),
     ];
 
-    const [only] = toModelMessages(history);
-    const content = String((only as { content: string }).content);
-    expect(content).toContain("half a sen");
-    expect(content).toMatch(/stopped/i);
+    const [said, note] = toModelMessages(history);
+    expect(String((said as { content: string }).content)).toBe("half a sen");
+    // The note follows what was said rather than being spliced into it: the
+    // words are the model's, the note is ours.
+    expect(String((note as { content: string }).content)).toMatch(/stopped/i);
   });
 
   it("never sends the model its own reasoning back", () => {
@@ -275,6 +276,32 @@ describe("history on its way to the model", () => {
     ]);
 
     expect(JSON.stringify(messages)).toMatch(/stopped/i);
+  });
+
+  it("says a turn was stopped once, at the end, however many times it spoke", () => {
+    // The SDK opens a fresh text part per step, so a turn that spoke, called
+    // a tool and spoke again is stored as three parts plus the mark. Saying
+    // it stopped after each of them tells the model it stopped and then
+    // carried on -- and the first of those notes lands before the tool call
+    // it went on to make.
+    const messages = toModelMessages([
+      stored("assistant", [
+        { type: "text", text: "let me look that up" },
+        {
+          type: "tool",
+          toolCallId: "tc-8",
+          toolName: "web_search",
+          input: { query: "x" },
+          status: "success",
+          output: "three links",
+        },
+        { type: "text", text: "according to the page" },
+        { type: "interrupted" },
+      ]),
+    ]);
+
+    const notes = JSON.stringify(messages).match(/stopped by the user/g) ?? [];
+    expect(notes).toHaveLength(1);
   });
 
   it("leaves out a call still in flight", () => {

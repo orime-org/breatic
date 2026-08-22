@@ -44,6 +44,19 @@ function statusOf(state: string): "pending" | "success" | "error" {
 }
 
 /**
+ * The arguments a refused call arrived with, when there are any.
+ *
+ * `rawInput` is not on the part's declared type -- the SDK sets it only on
+ * the error states -- so it is read off the object rather than the type.
+ * @param part - The tool part, in whatever state it ended in.
+ * @returns What the model sent, or undefined when the SDK recorded nothing.
+ */
+function rawInputOf(part: object): unknown {
+  const raw = (part as { rawInput?: unknown }).rawInput;
+  return typeof raw === "object" && raw !== null ? raw : undefined;
+}
+
+/**
  * Turn one tool part into the single row we store for one use of one tool.
  * @param part - The tool part, in whatever state it ended in.
  * @returns Our stored shape.
@@ -54,23 +67,30 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
     type: "tool",
     toolCallId: part.toolCallId,
     toolName: getToolName(part),
-    input: (part.input ?? {}) as Record<string, unknown>,
+    // What the model sent. A call refused before it ran has no `input` --
+    // the SDK only fills that in once the arguments have passed the tool's
+    // schema -- and puts what arrived on `rawInput` instead. Recording an
+    // empty object there would hand the model back a record of itself
+    // calling the tool with nothing, next to an error about arguments it
+    // cannot see.
+    input: (part.input ?? rawInputOf(part) ?? {}) as Record<string, unknown>,
     status,
   };
   // Written only in the state that has one. A pending row carrying an empty
   // output would read as a tool that answered with nothing.
   if (status === "success") stored.output = part.output;
   if (status === "error") {
-    // What the SDK put here, which the turn overwrites when it has something
-    // better. Usually that is its one generic line for every error it
-    // streams -- deliberately generic, because that channel also carries
-    // provider failures naming endpoints and keys -- and the turn replaces it
-    // from the callback handed the error itself.
+    // A placeholder the turn is expected to replace. What the wire carries
+    // is the SDK's one masked line for every error it streams -- masked
+    // deliberately, because that channel also carries provider failures
+    // naming endpoints and keys -- so it says nothing a model could act on.
+    // The turn overwrites it from the callbacks that are handed the error
+    // itself, one for a tool that ran and failed, one for a call refused
+    // before it ran.
     //
-    // For one kind of failure this IS the better answer: a call whose
-    // arguments the model shaped wrongly is refused at the door, before any
-    // tool runs, so no callback ever fires and what the SDK wrote here (which
-    // schema the input failed) is the only account of it there is.
+    // It is written at all so that a part is never stored `error` with no
+    // account of itself, in case a path reaches storage that neither
+    // callback saw.
     stored.failure = {
       kind: "tool_failed",
       forModel: "errorText" in part && part.errorText !== undefined ? part.errorText : "",

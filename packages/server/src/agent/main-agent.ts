@@ -291,8 +291,20 @@ export class MainAgent {
         // stream within milliseconds, makes no further model call, and is
         // passed on to every tool the turn invokes.
         abortSignal: signal,
-        onStepFinish: ({ usage }) => {
+        onStepFinish: ({ usage, content }) => {
           tokensUsed += usage?.totalTokens ?? 0;
+          // The other way a call can fail, and the only place its reason is
+          // readable. A call whose arguments the model shaped wrongly is
+          // refused at the door -- the SDK never runs it, so the callback
+          // below never fires -- and on the wire its reason is replaced with
+          // one masked line. Here it is still the error itself, saying which
+          // field failed which rule, which is exactly what the model needs to
+          // send the call again correctly.
+          for (const part of content) {
+            if (part.type !== "tool-error") continue;
+            if (howToolEnded.has(part.toolCallId)) continue;
+            howToolEnded.set(part.toolCallId, endingOf(part.error));
+          }
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {
           if (toolOutput.type !== "tool-error") return;

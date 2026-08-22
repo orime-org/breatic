@@ -163,7 +163,7 @@
         "upstream": "對方回傳了錯誤",
         "unreachable": "位址無法連線",
         "blocked": "這個位址不允許存取",
-        "generic": "執行失敗"
+        "generic": "沒能執行"
       }
     },
     "loadEarlier": "載入更早的訊息",

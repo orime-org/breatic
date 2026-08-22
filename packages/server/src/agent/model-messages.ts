@@ -68,14 +68,8 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  * reply that was cut off looks, on the way back in, exactly like one it chose
  * to end there -- so it carries on as though the answer were given, and the
  * user never gets the rest.
- * @param text - What the turn managed to say.
- * @returns The same text with the note after it.
  */
-function withStopNote(text: string): string {
-  return text.length > 0
-    ? `${text}\n\n[This turn was stopped by the user before it finished.]`
-    : "[This turn was stopped by the user before it said anything.]";
-}
+const STOP_NOTE = "[This turn was stopped by the user before it finished.]";
 
 /**
  * Turn stored messages into the messages the model is sent.
@@ -101,6 +95,11 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
       continue;
     }
 
+    // A fact about the turn, so it is said once at the end of it. The SDK
+    // opens a fresh text part per step, and a note on each would tell the
+    // model it stopped and then went on -- with the first landing before a
+    // tool call it made afterwards.
+    //
     // Said on the assistant's own message rather than as a message of its
     // own: a `system` message in the middle of a conversation is a shape
     // some providers reject, and a `user` one would be words the user never
@@ -108,12 +107,9 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     // than as something it wrote.
     const stopped = message.parts.some((p) => p.type === "interrupted");
 
-    let saidSomething = false;
-
     for (const part of message.parts) {
       if (part.type === "text") {
-        saidSomething = true;
-        out.push({ role: "assistant", content: stopped ? withStopNote(part.text) : part.text });
+        out.push({ role: "assistant", content: part.text });
         continue;
       }
 
@@ -142,7 +138,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         ],
       });
     }
-    if (stopped && !saidSomething) out.push({ role: "assistant", content: withStopNote("") });
+    if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
   }
 
   return out;

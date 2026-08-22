@@ -13,7 +13,7 @@
  *
  * Catching is fine. Answering is not.
  */
-import { carrying } from "@breatic/shared";
+import { carrying, FAILURE_LINES } from "@breatic/shared";
 import type { FailureLine, ToolFailure } from "@breatic/shared";
 
 
@@ -43,9 +43,7 @@ export const STOPPED_BY_USER: ToolFailure = {
   kind: "user_aborted",
   forModel:
     "The user stopped this turn while the tool was still running, so it never returned.",
-  // The panel already has a line for a call that never finished, from when
-  // this was told apart by whether a message came with it.
-  readerKey: "chat.tool.unfinished",
+  readerKey: FAILURE_LINES.stopped,
 };
 
 /**

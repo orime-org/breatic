@@ -163,7 +163,7 @@
         "upstream": "对方返回了错误",
         "unreachable": "地址不可达",
         "blocked": "这个地址不允许访问",
-        "generic": "执行失败"
+        "generic": "没能执行"
       }
     },
     "loadEarlier": "加载更早的消息",

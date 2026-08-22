@@ -6,15 +6,6 @@ import type * as React from 'react';
 
 import { FAILURE_LINES } from '@breatic/shared';
 
-/**
- * What a call the user stopped says, when the record did not bring a line.
- *
- * A stopped call carries its own key from storage; a turn stopped mid-stream
- * has no stored record yet, and this is the same sentence that key resolves
- * to.
- */
-const STOPPED_LINE = 'chat.tool.unfinished';
-
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -67,7 +58,7 @@ export function ToolCallCard({
       </div>
       {unfinished ? (
         <div className='mt-1 text-muted-foreground' data-testid='tool-call-unfinished'>
-          {t(toolCall.failureKey ?? STOPPED_LINE)}
+          {t(toolCall.failureKey ?? FAILURE_LINES.stopped)}
         </div>
       ) : toolCall.status === 'error' ? (
         <div

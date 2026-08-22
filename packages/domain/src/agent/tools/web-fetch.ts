@@ -136,7 +136,9 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // than we know. Refusing this address meant resolving it, so the
         // error names an internal address -- handing that back would make
         // this tool a way to read the inside of the network from outside it.
-        // What went where stays in the log.
+        // Which address it was is dropped here rather than recorded: a tool
+        // is library code and writes no logs, and nothing upstream is handed
+        // the original error either.
         throw toolFailed(
           `Fetching ${url} was refused: this address is not one that may be fetched. ` +
             "Variations of it will be refused too. If the user needs this page, tell them " +

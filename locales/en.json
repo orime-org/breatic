@@ -163,7 +163,7 @@
         "upstream": "The site returned an error",
         "unreachable": "Address unreachable",
         "blocked": "This address is not allowed",
-        "generic": "Did not run"
+        "generic": "Could not run"
       }
     },
     "loadEarlier": "Load earlier messages",

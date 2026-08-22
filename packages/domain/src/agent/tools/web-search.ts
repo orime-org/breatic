@@ -105,9 +105,22 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         );
       }
 
-      const data = (await res.json()) as {
+      // Read inside its own guard. It answered, so whatever goes wrong from
+      // here is about what it said, and the catch below describes a service
+      // that could not be reached at all.
+      let data: {
         web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
       };
+      try {
+        data = (await res.json()) as typeof data;
+      } catch (err: unknown) {
+        throw toolFailed(
+          `Searching for "${query}" failed: the search service answered, but not with results ` +
+            `(${reasonOf(err)}). That is a fault on their side. Continue without search results ` +
+            "and tell the user search is unavailable.",
+          FAILURE_LINES.upstream,
+        );
+      }
       const results = (data.web?.results ?? []).slice(0, n);
       if (results.length === 0) return `No results found for: ${query}`;
 

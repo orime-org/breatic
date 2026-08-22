@@ -154,6 +154,25 @@ describe("web_search hands the request to the shared transport", () => {
   });
 });
 
+describe("what a thrown tool failure carries", () => {
+  it("puts the model's reason on the Error itself, not only in the detail", async () => {
+    // Within one turn the SDK builds the error-text it shows the model from
+    // the thrown Error's `message`; the carried detail is only read later,
+    // out of storage. The two have to say the same thing or the model gets a
+    // useful reason a turn late.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
+
+    let thrown: unknown;
+    try {
+      await run({ query: "breatic" });
+    } catch (err: unknown) {
+      thrown = err;
+    }
+
+    expect((thrown as Error).message).toBe(toolFailureOf(thrown)?.forModel);
+  });
+});
+
 describe("web_search says a failure is a failure", () => {
   beforeEach(() => {
     apiKey = "test-key";
@@ -195,6 +214,54 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel).toContain("breatic"); // what was refused
     expect(forModel).toContain("503"); // why
     expect(forModel.toLowerCase()).toMatch(/without search|do not repeat|tell the user/); // what instead
+  });
+
+  it("does not call a service that answered unreachable", async () => {
+    // A 200 whose body is not JSON — a CDN or WAF interstitial, or a
+    // content-type that drifted. `res.json()` rejects inside the same try as
+    // the request, and saying the service could not be reached sends the
+    // model looking for a network problem that is not there.
+    httpRequestMock.mockImplementation(
+      async () => new Response("<html>are you a robot</html>", { status: 200 }),
+    );
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).not.toMatch(/could not be reached|unreachable/i);
+  });
+
+  it("closes every one of its reasons with what the model may do next", async () => {
+    // Anthropic's guidance is specific AND actionable, and the second half is
+    // the one that keeps a failing tool from being called again the same way.
+    // Each site named here, so stripping the closing clause from any of them
+    // is a red test rather than a silent loss.
+    const sites = [
+      async (): Promise<ToolFailure> => {
+        apiKey = "";
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+      async (): Promise<ToolFailure> => {
+        httpRequestMock.mockImplementation(async () => new Response(null, { status: 503 }));
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+      async (): Promise<ToolFailure> => {
+        httpRequestMock.mockImplementation(async () => new Response("<html>", { status: 200 }));
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+      async (): Promise<ToolFailure> => {
+        httpRequestMock.mockImplementation(async () => {
+          throw new Error("failed after 3 attempts");
+        });
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+    ];
+
+    for (const site of sites) {
+      const { forModel } = await site();
+      expect(forModel.toLowerCase()).toMatch(
+        /do not call this tool again|try a different wording|continue without search|do not repeat/,
+      );
+    }
   });
 
   it("keeps the endpoint and the status out of what a reader is shown", async () => {

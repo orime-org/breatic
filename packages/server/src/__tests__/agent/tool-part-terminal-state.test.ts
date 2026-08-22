@@ -70,6 +70,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             if (thisCase.toolDoes === "throws") {
               throw new Error("the site refused the connection");
             }
+            if (thisCase.toolDoes === "throws a stop") {
+              throw carrying(new Error("stopped"), {
+                kind: "user_aborted",
+                forModel: "the user stopped it",
+                readerKey: "chat.tool.unfinished",
+              });
+            }
             if (thisCase.toolDoes === "throws with detail") {
               // What the real tools throw. The two halves differ on purpose:
               // a stored record that took the message would look right while
@@ -152,7 +159,7 @@ const asksForTheTool: ModelStreamPart = {
  * @returns The parts of the stored assistant message, or an empty list.
  */
 async function storedPartsWhenTool(
-  toolDoes: "answers" | "throws" | "throws with detail" | "stops the turn",
+  toolDoes: "answers" | "throws" | "throws with detail" | "throws a stop" | "stops the turn",
   input?: Record<string, unknown>,
 ): Promise<MessagePart[]> {
   thisCase.toolDoes = toolDoes;
@@ -226,8 +233,14 @@ describe("how a tool use is recorded when it does not come back", () => {
     const refused = toolPart(parts);
     expect(refused?.status).toBe("error");
     expect(refused?.failure?.kind).toBe("tool_failed");
-    expect(refused?.failure?.forModel.length).toBeGreaterThan(0);
-    expect(refused?.failure?.forModel).not.toBe("undefined");
+    // Something the model can act on. The wire carries the SDK's one masked
+    // line for every error it streams, so a record built from that says only
+    // that something went wrong -- which is the sentence this whole task
+    // exists to stop the model being handed.
+    expect(refused?.failure?.forModel).toMatch(/invalid|url|schema|input/i);
+    expect(refused?.failure?.forModel).not.toMatch(/^An error occurred/);
+    // And what it actually sent, so it can see what to correct.
+    expect(refused?.input).toMatchObject({ url: "example.com" });
   });
 
   it("does not call a provider failure the user's doing", async () => {
@@ -264,8 +277,18 @@ describe("how a tool use is recorded when it does not come back", () => {
     const parts = await storedPartsWhenTool("throws with detail");
 
     const failed = toolPart(parts);
+    expect(failed?.failure?.kind).toBe("tool_failed");
     expect(failed?.failure?.forModel).toBe("the reason only the model gets");
     expect(failed?.failure?.readerKey).toBe("chat.tool.failure.upstream");
+  });
+
+  it("carries which ending it was, not just the words", async () => {
+    // The hop from the thrown detail into the record runs through `endingOf`,
+    // and nothing else in the suite asks it about `kind` -- a version that
+    // stamped every ending `tool_failed` passed everything.
+    const parts = await storedPartsWhenTool("throws a stop");
+
+    expect(toolPart(parts)?.failure?.kind).toBe("user_aborted");
   });
 
   it("still records a normal tool use as successful", async () => {

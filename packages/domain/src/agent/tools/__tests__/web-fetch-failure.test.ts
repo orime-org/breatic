@@ -123,14 +123,22 @@ describe("web_fetch says a failure is a failure", () => {
 
   it("tells the model a name that does not resolve is a name that does not resolve", async () => {
     // Not every refusal from the fetch guard is an address-policy refusal.
-    // A hostname with no DNS records means the model got the address wrong;
-    // calling that "not allowed" sends it looking for permission it will
-    // never get, when what it needed was to check the spelling.
-    dnsLookupMock.mockResolvedValue([]);
+    // A hostname that does not resolve means the model got the address
+    // wrong; calling that "not allowed" sends it looking for permission it
+    // will never get, when what it needed was to check the spelling.
+    //
+    // Rejected rather than resolved-empty because that is what Node does:
+    // `dns.lookup` on a name with no records throws ENOTFOUND, measured on
+    // Node 24. An earlier version of this case returned `[]` and drove a
+    // branch no caller reaches.
+    const enotfound = Object.assign(new Error("getaddrinfo ENOTFOUND nowhere.example"), {
+      code: "ENOTFOUND",
+    });
+    dnsLookupMock.mockRejectedValue(enotfound);
 
     const { forModel } = await failureFrom("https://nowhere.example/page");
 
-    expect(forModel).toMatch(/dns|resolve|does not exist/i);
+    expect(forModel).toMatch(/ENOTFOUND|dns|resolve/i);
     expect(forModel).not.toMatch(/not allowed|not one that may be fetched/i);
   });
 
@@ -143,6 +151,37 @@ describe("web_fetch says a failure is a failure", () => {
 
     expect(forModel).toMatch(/redirect/i);
     expect(forModel).not.toMatch(/not allowed|not one that may be fetched/i);
+  });
+
+  it("closes every one of its reasons with what the model may do next", async () => {
+    const enotfound = Object.assign(new Error("getaddrinfo ENOTFOUND nowhere.example"), {
+      code: "ENOTFOUND",
+    });
+    const sites: Array<() => Promise<ToolFailure>> = [
+      () => {
+        fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
+        return failureFrom("https://public.example/gone");
+      },
+      () => {
+        dnsLookupMock.mockResolvedValue([{ address: "10.0.0.1", family: 4 }]);
+        return failureFrom("https://internal.example/admin");
+      },
+      () => {
+        dnsLookupMock.mockRejectedValue(enotfound);
+        return failureFrom("https://nowhere.example/page");
+      },
+      () => {
+        fetchMock.mockRejectedValue(new Error("socket hang up"));
+        return failureFrom("https://public.example/page");
+      },
+    ];
+
+    for (const site of sites) {
+      const { forModel } = await site();
+      expect(forModel.toLowerCase()).toMatch(
+        /do not fetch|do not retry|try another source|tell them it cannot be read|correct it/,
+      );
+    }
   });
 
   it("calls a stopped fetch stopped, not failed", async () => {

@@ -17,34 +17,6 @@
  * beside `finish` and `error`, each carrying its own reason.
  */
 
-/** What ended a use of a tool without a result. */
-export type ToolFailureKind =
-  /** The tool ran and could not do what it was asked. */
-  | "tool_failed"
-  /** The user stopped the turn while the tool was still running. */
-  | "user_aborted";
-
-/** Why a use of a tool ended without a result. */
-export interface ToolFailure {
-  /** What ended it. */
-  kind: ToolFailureKind;
-  /**
-   * The reason, in enough detail for the model to do something about it.
-   *
-   * Written to be specific and actionable: what was refused, why, and what
-   * the model may do instead. Never reaches the browser.
-   */
-  forModel: string;
-  /**
-   * Which line the panel shows, as a translation key.
-   *
-   * A key rather than a sentence because the row outlives the language it was
-   * written in: a message stored in one reader's language would still be in
-   * that language when a different reader opens the conversation.
-   */
-  readerKey: string;
-}
-
 /**
  * The lines a reader may be shown when a tool comes back empty.
  *
@@ -70,10 +42,50 @@ export const FAILURE_LINES = {
    * attached, and a record with nothing in it is what this replaced.
    */
   generic: "chat.tool.failure.generic",
+  /**
+   * The user stopped the turn while the tool was running.
+   *
+   * Here rather than beside the failures because every reader key belongs in
+   * one table -- the panel reads them all the same way, and a key living on
+   * its own is one nothing checks against the locale files.
+   */
+  stopped: "chat.tool.unfinished",
 } as const;
 
 /** Which line a reader is shown. */
 export type FailureLine = (typeof FAILURE_LINES)[keyof typeof FAILURE_LINES];
+
+/** The same table, for asking whether a key read off an error is one of ours. */
+const KNOWN_LINES = new Set<FailureLine>(Object.values(FAILURE_LINES));
+
+/** What ended a use of a tool without a result. */
+export type ToolFailureKind =
+  /** The tool ran and could not do what it was asked. */
+  | "tool_failed"
+  /** The user stopped the turn while the tool was still running. */
+  | "user_aborted";
+
+/** Why a use of a tool ended without a result. */
+export interface ToolFailure {
+  /** What ended it. */
+  kind: ToolFailureKind;
+  /**
+   * The reason, in enough detail for the model to do something about it.
+   *
+   * Written to be specific and actionable: what was refused, why, and what
+   * the model may do instead. Never reaches the browser.
+   */
+  forModel: string;
+  /**
+   * Which line the panel shows, as a translation key.
+   *
+   * A key rather than a sentence because the row outlives the language it was
+   * written in: a message stored in one reader's language would still be in
+   * that language when a different reader opens the conversation. Narrowed to
+   * the table below so a key nothing translates cannot be written.
+   */
+  readerKey: FailureLine;
+}
 
 /**
  * The property an error carries its failure detail on.
@@ -97,8 +109,12 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
   if (typeof carried !== "object" || carried === null) return undefined;
   const { kind, forModel, readerKey } = carried as Record<string, unknown>;
   if (kind !== "tool_failed" && kind !== "user_aborted") return undefined;
-  if (typeof forModel !== "string" || typeof readerKey !== "string") return undefined;
-  return { kind, forModel, readerKey };
+  if (typeof forModel !== "string") return undefined;
+  // Checked against the table rather than merely for being a string: a key
+  // nothing translates renders as the key itself, and the panel would show
+  // `chat.tool.failure.whatever` to whoever met it.
+  if (!KNOWN_LINES.has(readerKey as FailureLine)) return undefined;
+  return { kind, forModel, readerKey: readerKey as FailureLine };
 }
 
 /**
