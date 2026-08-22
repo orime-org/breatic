@@ -917,7 +917,7 @@
         "noteShortfall": "消費 {consumed}、未払い {owed}",
         "noteUnbilled": "消費 {consumed}、請求なし",
         "eventRepayment": "クレジット割り当て、未払い充当",
-        "lotsEmpty": "この Studio に割り当てられたクレジットはまだありません。",
+        "lotsEmpty": "まだクレジットがありません。",
         "lotPurchased": "合計 {amount}",
         "activityTitle": "使用履歴",
         "activityEmpty": "まだ使用履歴はありません。",

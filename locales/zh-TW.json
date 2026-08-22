@@ -917,7 +917,7 @@
         "noteShortfall": "消耗 {consumed}，欠 {owed}",
         "noteUnbilled": "消耗 {consumed}，未扣費",
         "eventRepayment": "指定點數，抵扣欠帳",
-        "lotsEmpty": "還沒有點數指定給這個 Studio。",
+        "lotsEmpty": "這裡還沒有點數。",
         "lotPurchased": "共 {amount}",
         "activityTitle": "消耗流水",
         "activityEmpty": "還沒有消耗紀錄。",

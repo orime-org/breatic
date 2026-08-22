@@ -917,7 +917,7 @@
         "noteShortfall": "Used {consumed}, owed {owed}",
         "noteUnbilled": "Used {consumed}, not charged",
         "eventRepayment": "Assigned credits, paid off debt",
-        "lotsEmpty": "No credits are assigned to this Studio yet.",
+        "lotsEmpty": "No credits here yet.",
         "lotPurchased": "of {amount}",
         "activityTitle": "Spending",
         "activityEmpty": "Nothing spent yet.",
