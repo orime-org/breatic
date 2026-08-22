@@ -42,21 +42,19 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     // relationships is anyone else's business. Without it both numbers would
     // be compared against every other layer on the page.
     <div className='relative isolate flex min-h-0 flex-1 flex-col'>
-      <DocumentMenuEntry />
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The side gutters live on the viewport — they are the
           margin OUTSIDE the page, and a click there is outside the document.
           The top and bottom breathing room does not: it belongs to the
           editable surface itself, or the strip of it below the last block
-          answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`). */}
-      {/* The gutters are wide enough for the entry to stand clear of the page:
-          it occupies the 32px ending 16px from the right edge, so anything
-          narrower and the page runs under it. At 768px and up the page is
-          already centred well inside them. */}
+          answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
+          The right gutter is also where the whole-document entry stands, which
+          is what sizes both of them (`--doc-body-gutter`). */}
       <ScrollArea
         className={`${BODY_SCROLLER_CLASS} flex-1`}
-        viewportClassName='px-12'
+        viewportClassName='px-[var(--doc-body-gutter)]'
       >
+        <DocumentMenuEntry />
         <EditorContent
           editor={editor}
           data-testid='document-editor-content'

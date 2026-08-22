@@ -15,8 +15,8 @@
  * 没有任何控件可点。删掉的是测试，不是那条不变量。
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
@@ -49,19 +49,36 @@ describe('DocumentEditor', () => {
     doc.destroy();
   });
 
-  it('常驻的东西只有两样：右上角那个入口，和正文的滚动容器', () => {
-    // 顶部横条整条去掉（user 2026-08-21 拍定，任务 #129）。钉的是「现在有哪
-    // 几样」而不是「那几个 testid 没有」—— 后者在横条删掉之后恒真，再也逮不
-    // 到任何东西回来；这一条对新加的常驻 chrome 一律会红，不管它叫什么。
-    // 浮出条不在其中：它只在有选区时才渲染。
+  it('renders one chrome element beside the body: the scroller', () => {
+    // The top toolbar is gone (task #129). This counts what the shell renders
+    // rather than naming test ids the toolbar used to carry — those queries
+    // went vacuous the moment it was deleted. Anything new added as a direct
+    // child of the shell turns this red. Two things do NOT: the bubble bar,
+    // which only renders while a selection exists, and anything portalled out.
     const { container } = render(<DocumentEditor editor={editor} />);
     const children = [...container.firstElementChild!.children];
 
-    expect(children).toHaveLength(2);
-    expect(children[0]).toContainElement(
-      screen.getByTestId('doc-doc-menu-trigger'),
-    );
-    expect(children[1]).toHaveClass(BODY_SCROLLER_CLASS);
+    expect(children).toHaveLength(1);
+    expect(children[0]).toHaveClass(BODY_SCROLLER_CLASS);
+  });
+
+  it('puts the whole-document entry inside the scroller, ahead of the page', () => {
+    // Inside, so a wheel over it finds the body the way the browser normally
+    // does. Ahead of the page, so it sticks to the top edge while the text
+    // scrolls under it.
+    render(<DocumentEditor editor={editor} />);
+    const viewport = document.querySelector(
+      `.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`,
+    )!;
+    const trigger = screen.getByTestId('doc-doc-menu-trigger');
+    const content = screen.getByTestId('document-editor-content');
+
+    expect(viewport.contains(trigger)).toBe(true);
+    expect(viewport.firstElementChild!.contains(trigger)).toBe(true);
+    expect(
+      trigger.compareDocumentPosition(content) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('渲染正文和右上角那个整篇文档命令的入口', () => {
@@ -70,20 +87,4 @@ describe('DocumentEditor', () => {
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
   });
 
-  it('滚轮落在入口上时，正文照样滚', () => {
-    // 入口画在滚动容器外面（它得逃出那个裁切上下文），所以浏览器沿祖先链
-    // 找不到可滚的东西 —— 指针停在刚点完的按钮上滚，正文纹丝不动。把滚动
-    // 量转交给正文那个 viewport，这块 32×32 就不再是死区。
-    render(<DocumentEditor editor={editor} />);
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    ) as HTMLElement;
-    const scrollBy = vi.fn();
-    viewport.scrollBy = scrollBy;
-
-    const layer = screen.getByTestId('doc-doc-menu-trigger').parentElement!;
-    fireEvent.wheel(layer, { deltaY: 120, deltaX: 8 });
-
-    expect(scrollBy).toHaveBeenCalledWith({ top: 120, left: 8 });
-  });
 });

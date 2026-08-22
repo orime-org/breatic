@@ -25,7 +25,6 @@ import { Camera, History, MoreHorizontal } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,22 +102,13 @@ export const DocumentMenuEntry = React.memo(
   function DocumentMenuEntry(): React.JSX.Element {
     const t = useTranslation();
     const note = t('spaces.document.docMenu.notOpenYet');
-    const forwardWheel = React.useCallback(
-      (event: React.WheelEvent<HTMLDivElement>): void => {
-        const viewport = event.currentTarget.parentElement?.querySelector(
-          `.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`,
-        );
-        if (viewport instanceof HTMLElement) {
-          viewport.scrollBy({ top: event.deltaY, left: event.deltaX });
-        }
-      },
-      [],
-    );
     return (
-      // This layer sits outside the scroller, so a wheel over it finds no
-      // scrollable ancestor and the body stays put — right where the pointer
-      // rests after using the menu. `onWheel` hands the delta back to the body.
-      <div className='absolute top-5 right-4 z-10' onWheel={forwardWheel}>
+      // Sticky rather than absolute, and rendered inside the scroller: the
+      // wheel then reaches the body the way the browser does it for everything
+      // else, and the button keeps its corner while the text scrolls under it.
+      // Zero height keeps it out of the flow; the negative margin cancels the
+      // gutter so it stands in it rather than beside the page.
+      <div className='sticky top-5 z-10 mr-[calc(var(--doc-entry-size)*-1)] flex h-0 justify-end'>
         {/* `modal={false}`, same reason as the canvas's left floating menu: a
             modal menu puts `pointer-events: none` on the body, so the click
             that dismisses it is swallowed instead of reaching what was
@@ -133,7 +123,7 @@ export const DocumentMenuEntry = React.memo(
               size='icon'
               aria-label={t('spaces.document.docMenu.label')}
               data-testid='doc-doc-menu-trigger'
-              className='h-8 w-8'
+              className='size-[var(--doc-entry-size)]'
             >
               <MoreHorizontal className='h-4 w-4' />
             </Button>

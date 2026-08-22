@@ -55,23 +55,31 @@ async function openFreshDocument(p: Page): Promise<void> {
   await expect(editor).toBeVisible({ timeout: 15_000 });
 }
 
-test('正文区上常驻的东西只有那一个入口', async () => {
-  // 顶部横条整条去掉之后，「那几个 testid 查不到」就恒真了，再也逮不到任何
-  // 东西回来。改成数正文区上真的画着几样常驻的东西 —— 新加一条 chrome 无论
-  // 叫什么都会红。浮出条不算：它只在有选区时出现，这里没有选区。
+test('the entry sticks inside the scroller, not beside it', async () => {
+  // It has to be inside for the wheel to reach the body, and stuck to the top
+  // so it keeps its corner while the text scrolls under it. Anything added as
+  // a direct child of the shell turns the first assertion red, whatever it is
+  // called; portalled layers are not children and do not count.
   await openFreshDocument(page);
-  const shell = await page.evaluate(() => {
+  const layout = await page.evaluate(() => {
     const scroller = document.querySelector('.doc-body-scroller')!;
-    return [...scroller.parentElement!.children].map((el) => ({
-      testId: el.getAttribute('data-testid'),
-      hasTrigger: !!el.querySelector('[data-testid="doc-doc-menu-trigger"]'),
-      isScroller: el.classList.contains('doc-body-scroller'),
-    }));
+    const viewport = scroller.querySelector('[data-radix-scroll-area-viewport]')!;
+    const trigger = document.querySelector(
+      '[data-testid="doc-doc-menu-trigger"]',
+    )!;
+    const layer = trigger.parentElement!;
+    return {
+      shellChildren: scroller.parentElement!.children.length,
+      insideViewport: viewport.contains(trigger),
+      aheadOfPage: viewport.firstElementChild!.contains(trigger),
+      position: getComputedStyle(layer).position,
+    };
   });
 
-  expect(shell).toHaveLength(2);
-  expect(shell[0].hasTrigger).toBe(true);
-  expect(shell[1].isScroller).toBe(true);
+  expect(layout.shellChildren).toBe(1);
+  expect(layout.insideViewport).toBe(true);
+  expect(layout.aheadOfPage).toBe(true);
+  expect(layout.position).toBe('sticky');
 });
 
 test('常驻在正文区上的只有那一个入口，32×32，贴右上角', async () => {
@@ -99,12 +107,13 @@ test('常驻在正文区上的只有那一个入口，32×32，贴右上角', as
     };
   });
 
+  // The three numbers come from `--doc-entry-size` and `--doc-entry-inset`
+  // (`index.css`), which also size the gutter the button stands in. Asserted
+  // exactly: a range wide enough to swallow a changed token proves nothing.
   expect(geometry.width).toBe(32);
   expect(geometry.height).toBe(32);
-  expect(geometry.insetRight).toBeGreaterThan(0);
-  expect(geometry.insetRight).toBeLessThan(40);
-  expect(geometry.insetTop).toBeGreaterThan(0);
-  expect(geometry.insetTop).toBeLessThan(40);
+  expect(geometry.insetRight).toBe(16);
+  expect(geometry.insetTop).toBe(20);
   expect(geometry.hitsItself).toBe(true);
 });
 
@@ -207,11 +216,19 @@ test('再点一次入口收起菜单', async () => {
   await expect(page.getByTestId('doc-doc-menu-save-snapshot')).toHaveCount(0);
 });
 
-test('正文列给入口让开，窄窗口下也点得到第一行的行尾', async () => {
-  // 入口占的是「距右 16px 起的 32px」，正文列居中在 viewport 的内边距里 ——
-  // 内边距不够宽时页面就会跑到入口底下，点行尾点开的是菜单（2026-08-22 实测：
-  // 1000 / 1060 / 1100 / 1140 四档全部如此）。这里逐档量两件事：矩形不相交，
-  // 而且行尾那一点真的落在正文上。
+test('the page clears the entry, down to the width where it used to not', async () => {
+  // The page is centred inside the viewport's padding; the entry stands in the
+  // right half of that padding. Below a certain content width the page grows
+  // into it and a click at the end of the first line opens the menu instead
+  // (measured 2026-08-22 with the old 24px gutter: 1000 / 1060 / 1100 / 1140
+  // all did this). Two things per width: the rectangles miss each other, and
+  // the end of the first line really is the page.
+  //
+  // The widths below are window widths, and what decides the outcome is the
+  // content area — narrower than the window by whatever chrome is open. The
+  // assertion after the loop keeps this test honest: unless one of the runs
+  // lands under the threshold where a too-narrow gutter would overlap, the
+  // whole loop passes with the bug present.
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();
@@ -220,6 +237,7 @@ test('正文列给入口让开，窄窗口下也点得到第一行的行尾', as
       '所以拿它来量入口有没有压住正文最合适不过了继续写下去让它至少折出三四行来',
   );
 
+  const contentWidths: number[] = [];
   for (const width of [1000, 1140, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(200);
@@ -257,17 +275,44 @@ test('正文列给入口让开，窄窗口下也点得到第一行的行尾', as
         (tail.left + tail.right) / 2,
         (tail.top + tail.bottom) / 2,
       );
+      const viewport = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      )!;
       return {
         overlaps: page_.right > t.left && page_.top < t.bottom,
         hitTestId: hit?.closest('[data-testid]')?.getAttribute('data-testid'),
+        contentWidth: viewport.getBoundingClientRect().width,
       };
     });
 
-    expect(shot.overlaps, `窗口 ${width}：正文列压在入口下面`).toBe(false);
-    expect(shot.hitTestId, `窗口 ${width}：点第一行行尾没落进正文`).toBe(
-      'document-editor-content',
+    expect(shot.overlaps, `window ${width}: the page runs under the entry`).toBe(
+      false,
     );
+    expect(
+      shot.hitTestId,
+      `window ${width}: the end of the first line is not the page`,
+    ).toBe('document-editor-content');
+    contentWidths.push(shot.contentWidth);
   }
+
+  // Overlap happens when the content area is narrower than the page plus both
+  // gutters — that is the only region where this test can tell a right gutter
+  // from a wrong one.
+  const threshold = await page.evaluate(() => {
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    )!;
+    const page_ = document.querySelector(
+      '[data-testid="document-editor-content"]',
+    )!;
+    const gutter = parseFloat(getComputedStyle(viewport).paddingLeft);
+    const maxPage = parseFloat(getComputedStyle(page_).maxWidth);
+    return maxPage + 2 * gutter;
+  });
+  expect(
+    Math.min(...contentWidths),
+    `every width tested was wide enough to pass with any gutter (threshold ${threshold})`,
+  ).toBeLessThan(threshold);
 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
@@ -317,40 +362,43 @@ test('浮出条压过入口：重叠的那一块归浮出条', async () => {
   expect(hit).toMatch(/^doc-bubble-tool-/);
 });
 
-test('滚轮落在入口上时，正文照样滚', async () => {
-  // 入口画在滚动容器外面，所以浏览器沿祖先链找不到可滚的东西 —— 指针停在
-  // 刚点完的按钮上滚，正文纹丝不动。
+test('a wheel over the entry scrolls the body', async () => {
+  // The entry sits inside the scroller, so this is the browser's own scroll
+  // chain rather than anything we wired. Driven through the real pointer:
+  // dispatching the event at the element would skip hit-testing, which is the
+  // half that decides whether a wheel there reaches the body at all.
   await openFreshDocument(page);
-  const scrolled = await page.evaluate(async () => {
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    ) as HTMLElement;
-    const trigger = document.querySelector(
-      '[data-testid="doc-doc-menu-trigger"]',
-    )!;
-    const pm = document.querySelector(
-      '[data-testid="document-space"] .ProseMirror',
-    ) as HTMLElement;
-    pm.style.minHeight = '3000px';
-    await new Promise((r) => requestAnimationFrame(r));
+  const editor = page.locator('[data-testid="document-space"] .ProseMirror');
+  await editor.click();
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.type(`line ${i} — long enough to scroll`);
+    await page.keyboard.press('Enter');
+  }
 
-    const before = viewport.scrollTop;
-    const t = trigger.getBoundingClientRect();
-    trigger.parentElement!.dispatchEvent(
-      new WheelEvent('wheel', {
-        deltaY: 200,
-        bubbles: true,
-        clientX: t.left + 16,
-        clientY: t.top + 16,
-      }),
+  const readTop = (): Promise<number> =>
+    page.evaluate(
+      () =>
+        (
+          document.querySelector(
+            '.doc-body-scroller [data-radix-scroll-area-viewport]',
+          ) as HTMLElement
+        ).scrollTop,
     );
-    await new Promise((r) => setTimeout(r, 150));
-    const after = viewport.scrollTop;
-    pm.style.minHeight = '';
-    return after > before;
+  await page.evaluate(() => {
+    (
+      document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      ) as HTMLElement
+    ).scrollTop = 0;
   });
 
-  expect(scrolled).toBe(true);
+  const box = (await page.getByTestId('doc-doc-menu-trigger').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const before = await readTop();
+  await page.mouse.wheel(0, 300);
+  await page.waitForTimeout(300);
+
+  expect(await readTop()).toBeGreaterThan(before);
 });
 
 test('按 Escape 收起菜单', async () => {
