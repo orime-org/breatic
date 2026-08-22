@@ -15,8 +15,9 @@
  * feature set is separate work — and three things about how they do it changed
  * when the document became shared:
  *
- * 1. They are disabled for a viewer. Before, nothing was: there was no viewer
- *    role to speak of, because the document was local to whoever opened it.
+ * 1. A viewer never reaches them: the bubble bar is the only thing that shows
+ *    them today, and it renders nothing at all for a viewer. Before, everyone
+ *    who opened the document could use them, because it was theirs alone.
  * 2. Their pressed state is subscribed rather than read during render. A
  *    co-editor's change arrives with no React render behind it, so a value
  *    computed in the render body would show whatever was true last time the

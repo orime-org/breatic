@@ -4,11 +4,14 @@
 /**
  * End-to-end coverage for the whole-document command entry (task #129).
  *
- * Only what jsdom cannot answer lives here: where the button actually lands,
- * how much it occupies at rest, where the menu draws once open, how it sits
- * against the page and the bubble bar, and whether a wheel over it scrolls the
- * body. Which two commands it opens onto, and how their not-open-yet state
- * looks, are pinned in `document-menu-entry.test.tsx`.
+ * Geometry, hit testing and sticky behaviour are what this file is for: where
+ * the button actually lands, how much it occupies at rest, where the menu
+ * draws once open, how it sits against the page and the bubble bar, and
+ * whether a wheel over it scrolls the body. The DOM structure those rest on is
+ * asserted in `DocumentEditor.test.tsx` and re-read here as a precondition,
+ * since a measurement of the wrong element would otherwise look like a
+ * measurement. Which two commands the menu opens onto, and how their
+ * not-open-yet state looks, are pinned in `document-menu-entry.test.tsx`.
  *
  * Needs the dev server and a smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
@@ -58,13 +61,14 @@ async function openFreshDocument(p: Page): Promise<void> {
 }
 
 /**
- * Waits until the entry has stopped moving.
+ * Waits until a click at the centre of the entry reaches the entry.
  *
- * A visible editor is not a settled one. On 2026-08-22 a click at the centre
- * of the entry's own rectangle was seen landing on nothing while the rectangle
- * itself already read correctly; why has not been established. Every geometry
- * measurement and every `page.mouse.click` below depends on that having
- * settled, which is why this waits here rather than in each of them.
+ * A visible editor is not a ready one. On 2026-08-22 a click at the centre of
+ * the entry's own rectangle was seen landing on nothing while the rectangle
+ * itself already read correctly; why has not been established. Every
+ * `page.mouse.click` below depends on that, which is why this waits here
+ * rather than in each of them. The geometry can still be moving after it
+ * returns — the tests that measure retry on their own.
  */
 async function waitForSettledEntry(p: Page): Promise<void> {
   const trigger = p.getByTestId('doc-doc-menu-trigger');
@@ -88,7 +92,9 @@ test('the entry sticks inside the scroller, not beside it', async () => {
   // It has to be inside for the wheel to reach the body, and stuck to the top
   // so it keeps its corner while the text scrolls under it. Anything added as
   // a direct child of the shell turns the first assertion red, whatever it is
-  // called; portalled layers are not children and do not count.
+  // called. Two things do not: portalled layers, which are not children, and
+  // the bubble bar, which the editor appends to this same shell but only while
+  // a selection exists — there is none here.
   await openFreshDocument(page);
   const layout = await page.evaluate(() => {
     const scroller = document.querySelector('.doc-body-scroller')!;
@@ -301,9 +307,10 @@ test('keeps a fixed gap between the page and the entry', async () => {
   // `--doc-entry-clearance`, because reading it back moves the expectation
   // along with the value and the assertion holds for any number at all.
   //
-  // Measured rather than derived from the rectangles missing each other: that
-  // weaker statement is true whatever the gutter is, since the negative margin
-  // pins the button's left edge relative to the page's right edge.
+  // Measured rather than derived from the rectangles missing each other: the
+  // negative margin pins the button to the viewport's right edge, so the two
+  // rectangles miss each other whatever the gutter is — including a gutter
+  // narrow enough for the page to run underneath the button.
   await openFreshDocument(page);
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await editor.click();

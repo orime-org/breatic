@@ -29,8 +29,6 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
 
-/** 空的撤销重做状态——本文件不测历史，给它一个静止值就够。 */
-
 const editors: Editor[] = [];
 let doc: Y.Doc;
 

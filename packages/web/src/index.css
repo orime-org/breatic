@@ -594,15 +594,18 @@ body {
    built out of the other three: the button, the gap it keeps from the padding
    box on its left, and the gap it keeps from the viewport edge on its right.
 
-   The entry sits in the gutter by cancelling everything to the left of the
-   viewport edge — its own width plus the clearance — with a negative margin
-   (`DocumentMenuEntry`). So the two edges land where each number says:
-   padding-box-right to button is the clearance, button to viewport edge is the
-   inset. The page itself is capped at `max-w-3xl` and centres inside the
-   padding box, so what it leaves the button is the clearance at the narrow end
-   and more than that once it stops filling the box. Change the gutter alone
-   and neither edge moves; the button just runs past the viewport edge and gets
-   clipped. */
+   The entry sits in the gutter with a negative margin that cancels its own
+   width plus the clearance (`DocumentMenuEntry`), which is everything from the
+   padding box's right edge to its own. So the two edges land where each number
+   says: padding-box-right to button is the clearance, button to viewport edge
+   is the inset. The page itself is capped at `max-w-3xl` and centres inside
+   the padding box, so what it leaves the button is the clearance at the narrow
+   end and more than that once it stops filling the box.
+
+   The margin reads size and clearance, the gutter is all three, so the two
+   move together. Raise the gutter alone and the button follows the padding box
+   inward, growing the inset; drop it below size + clearance and the button
+   overruns the viewport edge and gets clipped. */
 .doc-body-scroller {
   --doc-entry-size: 32px;
   --doc-entry-inset: 16px;

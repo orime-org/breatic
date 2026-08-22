@@ -6,19 +6,19 @@
  * document, behind one `⋯` button.
  *
  * The routing rule behind it (design §3.0): a command goes to the carrier that
- * matches what it acts on. Selection and block commands have their own
- * carriers; whole-document ones had none once the top bar went away, and this
- * entry is where they landed. Export, document settings and a button for
+ * matches what it acts on. Commands acting on a selection or on the block it
+ * sits in are on the bubble bar; whole-document ones had nowhere to go once
+ * the top bar went away, and this entry is where they landed. Export, document settings and a button for
  * `clearDocument` all belong here when they arrive.
  *
  * ## Why one entry rather than a column of buttons
  *
  * The menu-system ruling's §2.1 survey puts whole-document commands behind a
- * single "…" in five of the six products it looked at (Notion, Google Docs, Coda,
- * Confluence, Craft), and the block handle already works this way here: one
- * grip, click for a menu. It also keeps what sits over the body constant — a
- * column would grow with every command added, and it floats over the text
- * rather than taking a column of its own.
+ * single "…" in five of the six products it looked at (Notion, Google Docs,
+ * Coda, Confluence, Craft), and it is the shape the block handle will take
+ * when it arrives (task #113): one grip, click for a menu. It also keeps the
+ * gutter constant — the body's side padding is sized to what stands in it, and
+ * a column of buttons would widen with every command added.
  */
 
 import { Camera, History, MoreHorizontal } from 'lucide-react';
