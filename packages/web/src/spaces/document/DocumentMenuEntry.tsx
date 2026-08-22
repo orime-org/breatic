@@ -14,7 +14,7 @@
  * ## Why one entry rather than a column of buttons
  *
  * The menu-system ruling's §2.1 survey puts whole-document commands behind a
- * single "…" in all five products it looked at (Notion, Google Docs, Coda,
+ * single "…" in five of the six products it looked at (Notion, Google Docs, Coda,
  * Confluence, Craft), and the block handle already works this way here: one
  * grip, click for a menu. It also keeps what sits over the body constant — a
  * column would grow with every command added, and it floats over the text
