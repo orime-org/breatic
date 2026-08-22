@@ -65,10 +65,14 @@ const SEARCH_TIMEOUT_MS = 10_000;
  * @param args - The tool's declared input.
  * @returns Whatever string the tool produced.
  */
-async function run(args: { query: string; count?: number }): Promise<string> {
+async function run(
+  args: { query: string; count?: number },
+  abortSignal?: AbortSignal,
+): Promise<string> {
   const execute = webSearch.execute;
   if (execute === undefined) throw new Error("web_search has no execute");
   return (await execute(args, {
+    ...(abortSignal ? { abortSignal } : {}),
     toolCallId: "t1",
     messages: [],
   } as never)) as string;
@@ -235,6 +239,11 @@ describe("web_search says a failure is a failure", () => {
     // the one that keeps a failing tool from being called again the same way.
     // Each site named here, so stripping the closing clause from any of them
     // is a red test rather than a silent loss.
+    // Each site starts from the same known state. Left to inherit what the one
+    // before it set, a site never reaches the branch it is named after: with
+    // the key still cleared from the site above, every case after the first
+    // ends at the missing-key check, and three branches go unrun while the loop
+    // still passes.
     const sites = [
       async (): Promise<ToolFailure> => {
         apiKey = "";
@@ -257,11 +266,35 @@ describe("web_search says a failure is a failure", () => {
     ];
 
     for (const site of sites) {
+      apiKey = "test-key";
+      httpRequestMock.mockReset();
+      httpRequestMock.mockImplementation(async () => braveOk());
+
       const { forModel } = await site();
       expect(forModel.toLowerCase()).toMatch(
         /do not call this tool again|try a different wording|continue without search|do not repeat/,
       );
     }
+  });
+
+  it("calls a stop during the read a stop, not the service failing", async () => {
+    // The body arrives after the status does, so a turn stopped while it is
+    // still being read fails inside the guard around the read rather than the
+    // one around the request. Both endings look the same from there -- a
+    // rejected promise -- and only the signal tells them apart.
+    const gaveUp = new AbortController();
+    httpRequestMock.mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      json: async (): Promise<never> => {
+        gaveUp.abort();
+        throw new Error("The operation was aborted");
+      },
+    }));
+
+    const failure = await failureFrom(() => run({ query: "breatic" }, gaveUp.signal));
+
+    expect(failure.kind).toBe("user_aborted");
   });
 
   it("keeps the endpoint and the status out of what a reader is shown", async () => {

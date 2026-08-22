@@ -114,6 +114,11 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       try {
         data = (await res.json()) as typeof data;
       } catch (err: unknown) {
+        // Asked here rather than left to the guard below, which never sees
+        // this: what is thrown from inside this block already carries failure
+        // detail, and the outer guard passes anything carrying detail straight
+        // through -- past the question of whether the user stopped.
+        if (isStop(err, abortSignal)) throw stoppedByUser();
         throw toolFailed(
           `Searching for "${query}" failed: the search service answered, but not with results ` +
             `(${reasonOf(err)}). That is a fault on their side. Continue without search results ` +

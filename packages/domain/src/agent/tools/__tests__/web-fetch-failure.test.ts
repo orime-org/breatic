@@ -157,6 +157,11 @@ describe("web_fetch says a failure is a failure", () => {
     const enotfound = Object.assign(new Error("getaddrinfo ENOTFOUND nowhere.example"), {
       code: "ENOTFOUND",
     });
+    // Each site starts from the same known state. Left to inherit whatever the
+    // one before it set, a site never reaches the branch it is named after:
+    // with DNS still rejecting from the site above, a case about a socket that
+    // dies mid-request ends at the resolver instead, and the branch it was
+    // written for goes unrun while the loop still passes.
     const sites: Array<() => Promise<ToolFailure>> = [
       () => {
         fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
@@ -165,6 +170,10 @@ describe("web_fetch says a failure is a failure", () => {
       () => {
         dnsLookupMock.mockResolvedValue([{ address: "10.0.0.1", family: 4 }]);
         return failureFrom("https://internal.example/admin");
+      },
+      () => {
+        dnsLookupMock.mockResolvedValue([]);
+        return failureFrom("https://norecords.example/page");
       },
       () => {
         dnsLookupMock.mockRejectedValue(enotfound);
@@ -177,6 +186,11 @@ describe("web_fetch says a failure is a failure", () => {
     ];
 
     for (const site of sites) {
+      fetchMock.mockReset();
+      dnsLookupMock.mockReset();
+      dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
+      fetchMock.mockResolvedValue(new Response("<html>ok</html>", { status: 200 }));
+
       const { forModel } = await site();
       expect(forModel.toLowerCase()).toMatch(
         /do not fetch|do not retry|try another source|tell them it cannot be read|correct it/,

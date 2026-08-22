@@ -160,7 +160,7 @@
       "unfinished": "Stopped before it finished",
       "failure": {
         "unavailable": "Currently unavailable",
-        "upstream": "The site returned an error",
+        "upstream": "Got an error back",
         "unreachable": "Address unreachable",
         "blocked": "This address is not allowed",
         "generic": "Could not run"
