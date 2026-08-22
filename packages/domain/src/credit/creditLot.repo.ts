@@ -27,7 +27,7 @@
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, desc, eq, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
@@ -742,11 +742,15 @@ export async function sumSpentByStudio(
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
-        eq(creditLedger.entryType, "spend"),
+        // Both ways money leaves a purchase. A repayment is a charge the studio
+        // ran up before it had the credits: the debt was recorded first and
+        // drawn from a lot later, and the lot is smaller by exactly that much.
+        // The studio ledger totals the same two types for the same reason.
+        inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
         // Only rows that actually drew down a purchase. The three paths that
-        // record usage without charging write the same entry type with no lot,
-        // and counting those reports money that never left the account.
+        // record usage without charging write `spend` with no lot, and counting
+        // those reports money that never left the account.
         isNotNull(creditLedger.lotId),
       ),
     )

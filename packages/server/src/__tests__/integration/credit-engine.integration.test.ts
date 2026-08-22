@@ -422,6 +422,29 @@ describe("总览的两个数", () => {
     expect(mine?.spent).toBe(30);
   });
 
+  it("抵掉欠账的那部分算在「花了多少」里，两个数加起来等于买的数", async () => {
+    // 抵债跟正常生成一样从一笔里扣走了钱，只是先记成欠账、后从笔里拿。
+    // 不算它，同一笔钱走两条路会得出两个不同的账面。
+    const fx = await seedFixture();
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 300,
+      referenceId: `owe-${Date.now()}`,
+    });
+    const lotId = await seedLot(fx, 1000);
+    await creditLotService.designateLot({
+      lotId,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const overview = await creditLotService.getOverview(fx.userId);
+    const mine = overview.studios.find((s) => s.studioId === fx.studioId);
+    expect(mine?.spent).toBe(300);
+    expect((mine?.spendable ?? 0) + (mine?.spent ?? 0)).toBe(1000);
+  });
+
   it("充值记录照样列出已经花光的笔", async () => {
     // 这一块记的是进来的水：谁充的、充了多少、还剩多少。一笔花光了，它仍然
     // 是这个 studio 收到过的一笔充值 —— 已确认的 demo 第二行画的就是一笔
@@ -563,6 +586,51 @@ describe("指定", () => {
     expect(lot.designatedStudioId).toBeNull();
   });
 });
+
+/**
+ * 闸门 3：占着这个 studio 欠账行的唯一索引，但不提交。
+ *
+ * 跟 {@link holdDebtLock} 的区别在卡住的位置：那个先把行插好、让两边争
+ * `FOR UPDATE`；这个让行始终不存在，两边卡在 `INSERT ... ON CONFLICT` 的唯一
+ * 索引上。放闸门时回滚，于是先到的那个真的建出这一行，后到的那个走 DO NOTHING
+ * 之后还要再等它提交 —— 这正是「首次欠账」那一格的形状。
+ * @param studioId - 要卡住的 studio。
+ * @returns 回滚闸门事务的函数。
+ * @throws {Error} 闸门的插入没能在超时内落到未提交状态时。
+ */
+async function holdDebtRowInsert(
+  studioId: string,
+): Promise<() => Promise<void>> {
+  const gate = postgres(inject("DATABASE_URL"), {
+    max: 1,
+    prepare: false,
+    connection: { application_name: `${PG_DRIVER_LOCAL}-debt-insert-gate` },
+  });
+  let release: (reason?: unknown) => void = () => {};
+  const held = new Promise<void>((_, reject) => {
+    release = reject;
+  });
+  let inserted: () => void = () => {};
+  const rowClaimed = new Promise<void>((resolve) => {
+    inserted = resolve;
+  });
+  const done = gate
+    .begin(async (tx) => {
+      await tx`
+        INSERT INTO studio_credit_debts (studio_id, amount)
+        VALUES (${studioId}, 0)
+      `;
+      inserted();
+      await held;
+    })
+    .catch(() => undefined);
+  await rowClaimed;
+  return async () => {
+    release(new Error("gate rollback"));
+    await done;
+    await gate.end({ timeout: 1 });
+  };
+}
 
 /**
  * 闸门 2：持住这个 studio 的欠账行，两条写路径的第一把锁都在它上面。
@@ -883,6 +951,69 @@ describe("欠账：状态转移表逐格", () => {
 
     expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(
       owedBefore - 10,
+    );
+  });
+
+  it("欠账中 + 那笔申请退款 → 欠的还是那么多，笔也不再算这个 studio 的", async () => {
+    // 申请退款那一刻笔就解除指定（0063 的 CHECK 保证退款三态必然未指定），
+    // 而债是 studio 的、跟哪一笔无关。
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `refund-owe-${Date.now()}`,
+    });
+    const owedBefore = await creditLotService.getStudioDebt(fx.studioId);
+
+    await sql`
+      UPDATE credit_lots
+      SET lifecycle = 'refund_pending', designated_studio_id = NULL
+      WHERE id = ${lotId}
+    `;
+
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(owedBefore);
+    expect(
+      Number(await creditLotRepo.sumSpendableForStudio(fx.studioId)),
+    ).toBe(0);
+  });
+
+  it("欠账中 + 那笔退款被拒回到 active → 这个 studio 照样扣不到它", async () => {
+    // 转移表里「欠账中 + 全额扣到」写着不可能，凭据就是这一格：被拒的笔回到
+    // active，但它已经跟这个 studio 没关系了，欠着账的池子不会因此有钱。
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 30, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 350,
+      referenceId: `rejected-owe-${Date.now()}`,
+    });
+    const owedBefore = await creditLotService.getStudioDebt(fx.studioId);
+
+    await sql`
+      UPDATE credit_lots
+      SET lifecycle = 'refund_pending', designated_studio_id = NULL
+      WHERE id = ${lotId}
+    `;
+    // 审核拒绝：回到 active、记一次尝试，指定仍是空的。
+    await sql`
+      UPDATE credit_lots
+      SET lifecycle = 'active', refund_attempts = refund_attempts + 1
+      WHERE id = ${lotId}
+    `;
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 5,
+      referenceId: `rejected-charge-${Date.now()}`,
+    });
+    expect(outcome.charged).toBe(0);
+    expect(outcome.shortfall).toBe(5);
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(
+      owedBefore + 5,
     );
   });
 
@@ -1266,6 +1397,44 @@ describe("欠账：并发", () => {
     await open();
     await Promise.all([first, second]);
 
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(100);
+  });
+
+  it("首次欠账的两个并发都要成功，一条都不能丢", async () => {
+    // 上一条测的是债行已经在了、两边争 FOR UPDATE。这一条测的是它还不存在：
+    // 两边同时走 `INSERT ... ON CONFLICT DO NOTHING`，先到的那个建行，后到的
+    // 认输之后照样要拿到锁。闸门因此不能预先把行插好 —— 那样两边都走不到
+    // 唯一索引这一关，而这一关正是要测的。
+    const fx = await seedFixture();
+    const rows = await sql<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM studio_credit_debts WHERE studio_id = ${fx.studioId}
+      ) AS exists`;
+    expect(rows[0]!.exists).toBe(false);
+
+    const open = await holdDebtRowInsert(fx.studioId);
+
+    const first = creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 40,
+      referenceId: `first-a-${Date.now()}`,
+    });
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "on conflict"], 1);
+    const second = creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 60,
+      referenceId: `first-b-${Date.now()}`,
+    });
+    await waitUntilBlockedOn(sql, ["studio_credit_debts", "on conflict"], 2);
+
+    await open();
+    const outcomes = await Promise.all([first, second]);
+
+    expect(outcomes.map((o) => o.shortfall).sort((a, b) => a - b)).toEqual([
+      40, 60,
+    ]);
     expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(100);
   });
 
