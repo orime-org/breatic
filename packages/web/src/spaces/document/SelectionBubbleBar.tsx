@@ -5,10 +5,11 @@
  * The bar that floats above a selection.
  *
  * It carries the commands whose object is the current selection or the block
- * it sits in — the same object the top bar acts on, which is why the same six
- * commands legitimately appear in both (menu-system ruling §9.1: one object may
- * have several entry points; what is forbidden is mixing objects inside one
- * carrier). This slice adds no command of its own.
+ * it sits in. The ruling routes a command by that object (menu-system §9.1:
+ * one object may have several entry points; what is forbidden is mixing
+ * objects inside one carrier), so the block handle menu will legitimately
+ * carry some of these same commands when it arrives. This slice adds no
+ * command of its own.
  *
  * ## What the stock component does not do for us
  *
@@ -71,11 +72,11 @@
  * ## And one thing it does that we undo
  *
  * `:178` makes the bar itself focusable (`tabIndex = 0`). The ruling (§5.2)
- * keeps the whole bar out of the tab order: the top bar sits BESIDE the body
- * and is always there, while this one floats ON TOP of it, and anything
- * floating over the body that takes focus collides with the body's own focus
- * with no way to reconcile them. The six commands stay reachable from the
- * keyboard through the top bar and their own shortcuts.
+ * keeps the whole bar out of the tab order: it floats ON TOP of the body, and
+ * anything floating over the body that takes focus collides with the body's
+ * own focus with no way to reconcile them. The keyboard route to these six
+ * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` for the
+ * marks, `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-b` for the blocks.
  */
 
 import * as React from 'react';
@@ -280,10 +281,9 @@ interface SelectionBubbleBarProps {
   /**
    * True for a viewer, and then the bar is not rendered at all.
    *
-   * Not "rendered but disabled", which is what the top bar does: that one is
-   * always on screen, so a row of dark buttons still tells a reader what this
-   * document can do. This one only appears because someone selected text, and
-   * a bar whose every button is dead is nothing but noise (ruling §3.3.1).
+   * Not "rendered but disabled": this bar only appears because someone
+   * selected text, and a bar whose every button is dead is nothing but noise
+   * (ruling §3.3.1).
    */
   readOnly?: boolean;
 }

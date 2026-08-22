@@ -16,8 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { renderHook, screen, waitFor } from '@testing-library/react';
-import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
+import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 

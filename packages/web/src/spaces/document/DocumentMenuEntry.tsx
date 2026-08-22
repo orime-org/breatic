@@ -3,7 +3,7 @@
 
 /**
  * The entry at the body's top-right corner: commands whose object is the WHOLE
- * document.
+ * document, behind one `⋯` button.
  *
  * The routing rule behind it (design §3.0): a command goes to the carrier that
  * matches what it acts on. Selection and block commands have their own
@@ -98,8 +98,8 @@ function ComingCommand({
  * The whole-document command entry.
  * @returns The trigger and its menu.
  */
-export const DocumentCommandRail = React.memo(
-  function DocumentCommandRail(): React.JSX.Element {
+export const DocumentMenuEntry = React.memo(
+  function DocumentMenuEntry(): React.JSX.Element {
     const t = useTranslation();
     const note = t('spaces.document.docMenu.notOpenYet');
     return (

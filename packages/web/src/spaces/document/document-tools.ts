@@ -4,12 +4,12 @@
 /**
  * The formatting commands, and nothing about where they are shown.
  *
- * They live apart from any carrier because more than one shows them: the top
- * bar is always there, the selection bubble bar follows the selection, and the
- * ruling allows both (menu-system ruling §9.1 — one object may have several
- * entry points). Left in the top bar's module, every other carrier would have
- * to import the top bar to reach them, which reads as a dependency that does
- * not exist: the two carriers are peers, and neither owns the commands.
+ * They live apart from any carrier so that the block handle menu and the
+ * insert menu can reach them without importing the selection bubble bar. The
+ * ruling routes a command by the object it acts on (menu-system ruling §9.1 —
+ * one object may have several entry points), so more than one carrier will
+ * legitimately show some of these; kept inside one of them, the others would
+ * carry a dependency that does not exist. No carrier owns the commands.
  *
  * What these commands DO is untouched by the document slices — the editing
  * feature set is separate work — and three things about how they do it changed

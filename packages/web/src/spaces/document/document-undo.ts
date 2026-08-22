@@ -95,22 +95,6 @@ function protectedNodes(): Set<string> {
 }
 
 /**
- * An undo manager that reports every undo and redo, including the ones that
- * change nothing.
- *
- * yjs discards stack entries whose content a collaborator has since deleted,
- * and since undoing such an entry alters nothing it announces nothing either —
- * no event fires, and anything mirroring availability from events goes stale.
- * The manager therefore reports the ACTION rather than its effect, so a reader
- * always gets a chance to re-check.
- *
- * Every path — the toolbar, the keyboard shortcuts, a direct command — ends up
- * calling `undo()` / `redo()` on this object, so reporting here covers all of
- * them. The alternative was a "remember to re-read afterwards" contract on each
- * caller, which the keyboard path had already quietly broken.
- */
-
-/**
  * Build an undo manager for a document's body.
  *
  * Tracking only the sync plugin's origin is what keeps a peer's edits off our

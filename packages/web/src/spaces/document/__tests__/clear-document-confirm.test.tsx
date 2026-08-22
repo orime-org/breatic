@@ -12,8 +12,7 @@
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
-import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 

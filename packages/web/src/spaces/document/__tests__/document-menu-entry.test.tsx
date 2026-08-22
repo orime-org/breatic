@@ -16,9 +16,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { renderHook, screen, waitFor } from '@testing-library/react';
+import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
 import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
@@ -30,7 +29,7 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 const ITEM_IDS = ['doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
 
 describe('整篇文档命令的入口', () => {
-  const NAME = 'project-p/document-command-rail';
+  const NAME = 'project-p/document-menu-entry';
   let doc: Y.Doc;
   let awareness: Awareness;
   let editor: Editor;

@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { screen, waitFor, act } from '@testing-library/react';
-import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
@@ -235,7 +234,7 @@ describe('DocumentSpace', () => {
 
   it('把整篇文档命令的入口送到屏幕上', async () => {
     // 生产环境挂这个入口的就是这个 Space，在这里到不了屏幕就等于谁都看不到。
-    // `document-command-rail.test` 在下一层钉展开后装什么 —— 两层都要，因为
+    // `document-menu-entry.test` 在下一层钉展开后装什么 —— 两层都要，因为
     // 一个控件可以在组件里好好的，却穿不过这个容器。
     //
     // 这条原来数的是顶部横条那八个按钮。横条去掉后（#129），穿过容器到达的

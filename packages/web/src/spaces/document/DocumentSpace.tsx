@@ -37,7 +37,7 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
  * @param root0 - Space body props supplied by the project space outlet.
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
- * @param root0.readOnly - True for a viewer; the body and toolbar go read-only.
+ * @param root0.readOnly - True for a viewer; the body goes read-only.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({

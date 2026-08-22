@@ -7,7 +7,7 @@ import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
-import { DocumentCommandRail } from '@web/spaces/document/DocumentCommandRail';
+import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 
 interface DocumentEditorProps {
@@ -38,7 +38,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
 }: DocumentEditorProps): React.JSX.Element {
   return (
     <div className='relative flex min-h-0 flex-1 flex-col'>
-      <DocumentCommandRail />
+      <DocumentMenuEntry />
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The side gutters live on the viewport — they are the
           margin OUTSIDE the page, and a click there is outside the document.

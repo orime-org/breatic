@@ -18,8 +18,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { screen, act, waitFor } from '@testing-library/react';
-import { renderWithChrome as render } from '@web/test-utils/render-with-chrome';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import type { EditorView } from '@tiptap/pm/view';
 import type { EditorState } from '@tiptap/pm/state';
@@ -1315,7 +1314,7 @@ describe('选中浮出条', () => {
   //
   // 这一条原来写作「两个载体的同名按钮亮暗一致」，横条去掉后只剩一个载体，
   // 那个说法失去对象。**它独有的价值不在「两个一致」，在接线**：
-  // `document-toolbar-availability.test.ts` 钉的是 `canRun` 这个纯函数在各种
+  // `document-tools-availability.test.ts` 钉的是 `canRun` 这个纯函数在各种
   // 选区形状下的答案，钉不到「那个答案有没有被接到 DOM 的 disabled 上」。
   // 所以改成直接比这两样。
   it.each([

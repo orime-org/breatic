@@ -6,7 +6,7 @@
  *
  * 这里只放 jsdom 量不了的那些：入口在屏幕上的实际位置、常驻面积、点开之后
  * 菜单画在哪儿、以及顶部横条真的从渲染树上消失了。展开后装哪两项、每项的
- * 尚未开放态由 `document-command-rail.test.tsx` 逐条钉住（jsdom 答得了），
+ * 尚未开放态由 `document-menu-entry.test.tsx` 逐条钉住（jsdom 答得了），
  * 这里不重复。
  *
  * 需要 dev 起着 + smoke 账号：
