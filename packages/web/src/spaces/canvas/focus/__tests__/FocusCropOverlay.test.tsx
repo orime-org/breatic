@@ -1181,3 +1181,275 @@ describe('FocusCropOverlay：聚焦时的暂停（#1987）', () => {
     expect(cancelled.video.currentTime).toBe(4);
   });
 });
+
+/**
+ * Renders an IMAGE node whose intrinsic size is already known, then mounts the
+ * overlay — in that order, like {@link renderVideoOverlay}. `renderOverlay`
+ * mounts both at once, so the mount measure reads jsdom's default
+ * `naturalWidth` of 0 and the overlay's `naturalSize` stays null; that state is
+ * the G1 guard, not the ordinary one.
+ * @param natural - The material's intrinsic pixel size.
+ * @param onConfirm - Confirm spy.
+ * @returns The render result plus the img element.
+ */
+function renderImageOverlayReady(
+  natural: { width: number; height: number },
+  onConfirm = vi.fn(() => true),
+): ReturnType<typeof render> & { img: HTMLImageElement } {
+  /**
+   * @param withOverlay - Whether the crop overlay is mounted yet.
+   * @returns The tree to render.
+   */
+  const tree = (withOverlay: boolean): React.ReactElement => (
+    <ReactFlowProvider>
+      <div className='react-flow__node' data-id='n1'>
+        <img data-testid='image-node-img' src='https://cdn/original.png' alt='' />
+      </div>
+      <div data-testid='reference-pick-banner' tabIndex={-1} />
+      {withOverlay ? (
+        <FocusCropOverlay
+          nodeId='n1'
+          nodePosition={{ x: 0, y: 0 }}
+          onConfirm={onConfirm}
+          onBackToPick={vi.fn()}
+        />
+      ) : null}
+    </ReactFlowProvider>
+  );
+  const result = render(tree(false));
+  const img = screen.getByTestId('image-node-img') as HTMLImageElement;
+  Object.defineProperty(img, 'naturalWidth', { configurable: true, value: natural.width });
+  Object.defineProperty(img, 'naturalHeight', { configurable: true, value: natural.height });
+  result.rerender(tree(true));
+  return Object.assign(result, { img });
+}
+
+/**
+ * The marquee's current geometry, rounded to whole display px.
+ * @returns Width and height parsed off the rect's inline style.
+ * @throws {Error} When no marquee is on screen.
+ */
+function rectSize(): { width: number; height: number; left: number; top: number } {
+  const el = screen.getByTestId('focus-crop-rect');
+  return {
+    width: Math.round(parseFloat(el.style.width)),
+    height: Math.round(parseFloat(el.style.height)),
+    left: Math.round(parseFloat(el.style.left)),
+    top: Math.round(parseFloat(el.style.top)),
+  };
+}
+
+describe('FocusCropOverlay：Original 预设与无框时点比例出框（#1991）', () => {
+  it('比例行最左边多一项，label 是固定字面量 Original（A6）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    const original = screen.getByTestId('focus-ratio-original');
+    expect(original.textContent).toBe('Original');
+    // 它排在七个比例之前
+    const row = original.parentElement as HTMLElement;
+    expect(row.firstElementChild).toBe(original);
+  });
+
+  it('Original 的比例就是素材自身：5:2 的素材上拖出的框是 5:2（A1）', () => {
+    // 显示盒同步成 5:2，跟真实渲染一致（img 是 h-auto，盒比例 = 素材比例）
+    IMG_BOX.width = 400;
+    IMG_BOX.height = 160;
+    renderImageOverlayReady({ width: 500, height: 200 });
+    fireEvent.click(screen.getByTestId('focus-ratio-original'));
+    // 已经有框了（A2），再拖一个更小的，比例仍被锁在 2.5
+    draw({ x: 150, y: 80 }, { x: 250, y: 200 });
+    const r = rectSize();
+    expect(r.width / r.height).toBeCloseTo(2.5, 2);
+  });
+
+  it('Original 的值取自 naturalSize，不是显示盒（A1）', () => {
+    // 显示盒 4:3，素材 5:2 —— 两者刻意不等
+    IMG_BOX.width = 400;
+    IMG_BOX.height = 300;
+    renderImageOverlayReady({ width: 500, height: 200 });
+    fireEvent.click(screen.getByTestId('focus-ratio-original'));
+    const r = rectSize();
+    // 取 naturalSize → 2.5；取显示盒 → 1.333
+    expect(r.width / r.height).toBeCloseTo(2.5, 2);
+  });
+
+  it('没有框时点 1:1：直接出一个框，Y 轴铺满、水平居中（A2）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    expect(rectSize()).toEqual({ width: 300, height: 300, left: 50, top: 0 });
+  });
+
+  it('没有框时点 9:16：Y 轴铺满、另一轴按比例（A2）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
+    const r = rectSize();
+    expect(r.height).toBe(300);
+    expect(r.width).toBe(169); // 300 × 9/16 = 168.75
+  });
+
+  it('没有框时点 Original：两轴同时铺满，因为它的比例就是素材的（A2）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-original'));
+    expect(rectSize()).toEqual({ width: 400, height: 300, left: 0, top: 0 });
+  });
+
+  it('已经有框时点一项：保当前框的中心重塑，不是重新铺满（A3）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    draw({ x: 160, y: 90 }, { x: 280, y: 180 }); // 120×90，中心在素材坐标 (120, 85)
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    // applyRatioPreset 保住宽度和中心：120×120，中心仍是 (120, 85)
+    const r = rectSize();
+    expect(r.width).toBe(120);
+    expect(r.height).toBe(120);
+    expect(r.left + r.width / 2).toBe(120);
+    expect(r.top + r.height / 2).toBe(85);
+  });
+
+  it('素材尺寸还没到时点 Original：不出框，也不点亮（守卫 G1）', () => {
+    // renderOverlay 一次性挂载，mount 时 naturalWidth 还是 jsdom 的 0
+    renderOverlay();
+    fireEvent.click(screen.getByTestId('focus-ratio-original'));
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    expect(
+      screen.getByTestId('focus-ratio-original').getAttribute('aria-pressed'),
+    ).toBe('false');
+  });
+
+  it('算出来是退化框时：不出框，也不点亮（守卫 G2）', () => {
+    // 400×10 的素材，点 9:16 → Y 满 10px，宽 5.625px < 8 自然像素
+    IMG_BOX.width = 400;
+    IMG_BOX.height = 10;
+    renderImageOverlayReady({ width: 400, height: 10 });
+    fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    expect(
+      screen.getByTestId('focus-ratio-9:16').getAttribute('aria-pressed'),
+    ).toBe('false');
+  });
+
+  it('素材比例恰好等于某个预设值时，同一时刻仍只亮一个（A4.1）', () => {
+    // 素材 4:3，跟 focus-ratio-4:3 的值相等
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-original'));
+    expect(
+      screen.getByTestId('focus-ratio-original').getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(
+      screen.getByTestId('focus-ratio-4:3').getAttribute('aria-pressed'),
+    ).toBe('false');
+    // 反过来点 4:3，亮的换成它
+    fireEvent.click(screen.getByTestId('focus-ratio-4:3'));
+    expect(
+      screen.getByTestId('focus-ratio-4:3').getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(
+      screen.getByTestId('focus-ratio-original').getAttribute('aria-pressed'),
+    ).toBe('false');
+  });
+
+  it('锁着比例时手柄是圆点，自由时是方点（A9）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    draw({ x: 160, y: 90 }, { x: 280, y: 180 });
+    // 自己拖的框从来没锁过比例 —— 方点
+    expect(screen.getByTestId('focus-crop-handle-se').className).not.toContain(
+      'rounded-full',
+    );
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    expect(screen.getByTestId('focus-crop-handle-se').className).toContain(
+      'rounded-full',
+    );
+    // 点灭之后回到方点
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    expect(screen.getByTestId('focus-crop-handle-se').className).not.toContain(
+      'rounded-full',
+    );
+  });
+
+  it('点灭之后框留着，比例不再锁，可以拖成任意形状（A4.2）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+    draw({ x: 150, y: 100 }, { x: 350, y: 150 });
+    const r = rectSize();
+    expect(r.width).toBe(200);
+    expect(r.height).toBe(50);
+  });
+});
+
+/**
+ * 亮着的预设和框是两个状态，而清框有六条路径。收成单一写入点之后，唯一剩下的
+ * 失败模式就是「某一处没接进去」，所以每一处调用点各钉一条。
+ */
+describe('FocusCropOverlay：亮着就一定有框（#1991 不变量）', () => {
+  /**
+   * 断言框没了、而且那一项也熄灭了。
+   * @param testId - 该亮着的那个预设按钮。
+   */
+  function expectClearedAndUnlit(testId: string): void {
+    expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+    expect(screen.getByTestId(testId).getAttribute('aria-pressed')).toBe('false');
+  }
+
+  it('Esc 剥掉框时，亮着的那一项跟着熄灭（:620）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-16:9'));
+    expect(screen.getByTestId('focus-crop-rect')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expectClearedAndUnlit('focus-ratio-16:9');
+  });
+
+  it('退化手势被丢弃时，亮着的那一项跟着熄灭（:790）', () => {
+    renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-9:16'));
+    // 9:16 在 400×300 上得到 169×300 居中框，左右各余 116px 裸露的捕获层
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: 110, clientY: 100, button: 0 });
+    fireEvent.pointerUp(layer);
+    expectClearedAndUnlit('focus-ratio-9:16');
+  });
+
+  it('框底下的内容换了时，亮着的那一项跟着熄灭（:355）', () => {
+    const { img } = renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    act(() => {
+      img.setAttribute('src', 'https://cdn/other.png');
+      IMG_BOX.width = 400;
+      IMG_BOX.height = 300;
+      window.dispatchEvent(new Event('resize'));
+    });
+    expectClearedAndUnlit('focus-ratio-1:1');
+  });
+
+  it('手势在飞时被剔除、框判无效被丢掉：目标回来之后那一项已经熄灭（:290）', () => {
+    const { img } = renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    // 起一个还没拖开的新手势：此刻框是退化的，而 1:1 亮着
+    const layer = screen.getByTestId('focus-crop-layer');
+    fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(layer, { clientX: 151, clientY: 101, pointerId: 1 });
+    // 剔除：手势中途死掉，:290 补跑一次判定，无效就丢框
+    img.remove();
+    fireEvent(window, new Event('resize'));
+    expect(screen.queryByTestId('focus-crop-layer')).toBeNull();
+    // 回到视口：同一个 src 重新挂上，交互层恢复
+    const node = document.querySelector('.react-flow__node[data-id="n1"]')!;
+    const back = document.createElement('img');
+    back.setAttribute('data-testid', 'image-node-img');
+    back.setAttribute('src', 'https://cdn/original.png');
+    Object.defineProperty(back, 'naturalWidth', { configurable: true, value: 800 });
+    Object.defineProperty(back, 'naturalHeight', { configurable: true, value: 600 });
+    node.appendChild(back);
+    fireEvent(window, new Event('resize'));
+    expectClearedAndUnlit('focus-ratio-1:1');
+  });
+
+  it('确认时发现源变了：框清掉，亮着的那一项跟着熄灭（:850）', () => {
+    const { img } = renderImageOverlayReady({ width: 800, height: 600 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    // 直接改 src 而不触发重测，让确认那一步撞上基线不符
+    img.setAttribute('src', 'https://cdn/swapped.png');
+    fireEvent.click(screen.getByTestId('focus-crop-confirm'));
+    expectClearedAndUnlit('focus-ratio-1:1');
+  });
+});
