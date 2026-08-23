@@ -2,203 +2,383 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 
-import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Skeleton } from '@web/components/ui/skeleton';
+import {
+  fetchStudioCredits,
+  type StudioLedgerView,
+  type StudioLotView,
+} from '@web/data/api/credits';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { formatLocalDay } from '@web/lib/format-day';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { CreditWallet } from '@web/pages/studio/container/container-types';
-import { expiringDays } from '@web/pages/studio/container/credit-util';
-import { CreditLotBadge } from '@web/pages/studio/shared/badges';
-import type { StudioRole } from '@web/pages/studio/shared/studio-types';
+import { cn } from '@web/lib/utils';
+import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 
 interface CreditsTabProps {
-  wallet: CreditWallet;
-  /** The viewer's studio role — Members / guests (`null`) cannot top up or refund (DD §3.6). */
-  studioRole: StudioRole | null;
-  /** Epoch ms for gift-expiry math; injected so tests are deterministic. */
-  now?: number;
+  /** The studio being viewed. */
+  slug: string;
 }
 
 /**
- * The Credits tab (spec §3.6) — the studio wallet: the cached total balance
- * (read directly, never recomputed — spec §4 invariant 4), the spend-order
- * hint + 3-step visual, the paid + gift lot cards, and the recent-activity
- * ledger. Gift cards and refunds appear only when present / permitted: team
- * studios have no gift lots, and only Admins see top-up / refund actions
- * (DD §3.6). Gift lots within their expiry window show a warning badge.
- * @param props the wallet, the viewer's studio role and the current time.
- * @param props.wallet the studio credit wallet.
- * @param props.studioRole the viewer's studio role.
- * @param props.now the current time in epoch milliseconds.
- * @returns the Credits tab content.
+ * One lot this studio holds right now.
+ * @param props - The lot.
+ * @param props.lot - Who bought it, when, and what is left of it.
+ * @returns The row.
  */
-export function CreditsTab({
-  wallet,
-  studioRole,
-  now = Date.now(),
-}: CreditsTabProps): React.JSX.Element {
+const LotRow = React.memo(function LotRow({
+  lot,
+}: {
+  lot: StudioLotView;
+}): React.JSX.Element {
   const t = useTranslation();
-  const isAdmin = studioRole === 'admin';
-  const hasGift = wallet.giftLots.length > 0;
+  return (
+    <li
+      data-testid={`studio-lot-${lot.id}`}
+      className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0'
+    >
+      <span>
+        <span className='block text-sm'>{lot.buyerName ?? '—'}</span>
+        <span className='block text-xs text-muted-foreground'>
+          {formatLocalDay(lot.createdAt)}
+        </span>
+      </span>
+      <span className='ml-auto text-right tabular-nums'>
+        <span className='block text-sm font-semibold'>
+          {formatCreditAmount(lot.remainingCredits)}
+        </span>
+        <span className='block text-xs text-muted-foreground'>
+          {t('studio.container.credits.lotPurchased', {
+            amount: formatCreditAmount(lot.purchasedCredits),
+          })}
+        </span>
+      </span>
+    </li>
+  );
+});
+
+/**
+ * A line of the credits block that is not a lot: what is owed, and the
+ * total the block adds up to.
+ * @param props - The line.
+ * @param props.testId - What a test reaches it by.
+ * @param props.label - What this line is.
+ * @param props.amount - Its figure.
+ * @param props.strong - Whether it is the total, which is set apart by its weight.
+ * @returns The row.
+ */
+const SummaryRow = React.memo(function SummaryRow({
+  testId,
+  label,
+  amount,
+  strong = false,
+}: {
+  testId: string;
+  label: string;
+  amount: number;
+  strong?: boolean;
+}): React.JSX.Element {
+  return (
+    <li
+      data-testid={testId}
+      className={cn(
+        'flex items-baseline gap-3 border-t border-border py-2.5',
+        // The total is set apart by its weight. Every rule in this interface
+        // is one pixel.
+        strong && 'font-bold',
+      )}
+    >
+      <span className='text-sm'>{label}</span>
+      <span
+        className={cn(
+          'ml-auto text-right text-sm tabular-nums',
+          strong ? 'font-bold' : 'font-semibold',
+        )}
+      >
+        {formatCreditAmount(amount)}
+      </span>
+    </li>
+  );
+});
+
+/**
+ * One event in this studio's ledger.
+ *
+ * The amount column is what left the pool. A run that used more than the pool
+ * could cover says so underneath, in a line that appears only when the two
+ * figures differ — no line means the run cost exactly what it was charged.
+ *
+ * A repayment merges the project and model columns and names itself there: it
+ * happened in no project and used no model, so filling those cells would be
+ * inventing values.
+ * @param props - The entry.
+ * @param props.entry - What happened.
+ * @returns The table row.
+ */
+const LedgerRow = React.memo(function LedgerRow({
+  entry,
+}: {
+  entry: StudioLedgerView;
+}): React.JSX.Element {
+  const t = useTranslation();
+  // What separates the two sentences is whether the studio ended up owing,
+  // which `owed` answers on its own. A charge that reached no lot at all is
+  // still a shortfall — it is the whole bill turned into debt, and reading it
+  // off `charged` would call the moment the debt was created a free run.
+  const note =
+    entry.kind !== 'generation' || entry.charged === entry.consumed
+      ? null
+      : entry.owed !== 0
+        ? t('studio.container.credits.noteShortfall', {
+          consumed: formatCreditAmount(-entry.consumed),
+          owed: formatCreditAmount(-entry.owed),
+        })
+        : t('studio.container.credits.noteUnbilled', {
+          consumed: formatCreditAmount(-entry.consumed),
+        });
+  return (
+    <tr data-testid={`studio-ledger-${entry.id}`} className='border-t border-border'>
+      <td className='py-1.5 text-muted-foreground'>{formatLocalDay(entry.createdAt)}</td>
+      <td className='py-1.5'>{entry.actorName ?? '—'}</td>
+      {entry.kind === 'debt_repayment' ? (
+        <td
+          data-testid='studio-ledger-event'
+          colSpan={2}
+          className='py-1.5 text-muted-foreground'
+        >
+          {t('studio.container.credits.eventRepayment')}
+        </td>
+      ) : (
+        <>
+          <td className='py-1.5 text-muted-foreground'>{entry.projectName ?? '—'}</td>
+          <td className='py-1.5 text-muted-foreground'>{entry.model ?? '—'}</td>
+        </>
+      )}
+      <td className='py-1.5 text-right tabular-nums'>
+        {formatCreditAmount(entry.charged)}
+        {note === null ? null : (
+          <span
+            data-testid='studio-ledger-note'
+            className='block text-2xs font-normal text-muted-foreground'
+          >
+            {note}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
+/**
+ * The Credits tab — what this studio can spend, and where its credits went.
+ *
+ * The admin's page. The pool is the studio's and so is the ledger beside it:
+ * everyone generating here spends the same credits, whoever paid for them, and
+ * the person on each line is whoever ran the generation.
+ *
+ * Buying and refunding are account-level and live in the account's credit
+ * overlay; this tab reports.
+ * @param props - The studio being viewed.
+ * @param props.slug - The studio being viewed.
+ * @returns The Credits tab content.
+ */
+export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
+  const t = useTranslation();
+
+  const query = useInfiniteQuery({
+    queryKey: ['studio-credits', slug],
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      fetchStudioCredits(slug, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.ledger.nextCursor ?? undefined,
+  });
+
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } =
+    query;
+  // Stable so the scroll watcher's effect does not re-subscribe every render.
+  const loadMore = React.useCallback((): void => {
+    void fetchNextPage();
+  }, [fetchNextPage]);
+
+  const head = query.data?.pages[0];
+  const ledgerRows = React.useMemo(
+    () => query.data?.pages.flatMap((page) => page.ledger.items) ?? [],
+    [query.data],
+  );
+
+  const { scrollerRef, sentinelRef } = useScrolledToEnd({
+    enabled: hasNextPage && !isFetchingNextPage,
+    onReachEnd: loadMore,
+    itemCount: ledgerRows.length,
+    // A page that did not arrive stops the watcher until the reader scrolls
+    // again; without it an end already in view asks for the same page back to
+    // back for as long as the failure lasts.
+    //
+    // `isFetchNextPageError`, because a first page that arrived leaves the
+    // query successful: `isError` describes the query as a whole and stays
+    // false for exactly the failure this is here to notice.
+    failed: isFetchNextPageError,
+  });
+
+  if (query.isPending) {
+    return (
+      <div className='mx-auto flex max-w-3xl flex-col gap-6'>
+        <Skeleton className='h-12 w-40' />
+        <Skeleton className='h-32 w-full' />
+      </div>
+    );
+  }
+
+  // Only when there is nothing to show. A page that failed after the first one
+  // arrived leaves the balance, the lots and the rows already read in
+  // hand, and throwing them away loses more than the failure did.
+  if (!head) {
+    return (
+      <div className='mx-auto max-w-3xl'>
+        <p className='text-sm text-muted-foreground'>
+          {t('studio.container.credits.loadError')}
+        </p>
+      </div>
+    );
+  }
+
+  // Four situations, and each one gets its own sentence. Reading them off the
+  // balance alone cannot tell "nothing was ever assigned here" from "it was
+  // all spent" — both are zero, and only one of them is answered by assigning
+  // more.
+  const state =
+    (head.debt ?? 0) > 0
+      ? 'debt'
+      : (head.spendable ?? 0) > 0
+        ? 'spendable'
+        : (head.lots ?? []).length > 0
+          ? 'depleted'
+          : 'none';
+
   return (
     <div className='mx-auto flex max-w-3xl flex-col gap-6'>
-      {/* Wallet head (locked mock .creditshead): balance left, top-up right. */}
       <div className='flex items-start gap-4'>
         <div>
           <p className='text-xs text-muted-foreground'>
-            {t('studio.container.credits.balance')}
+            {t('studio.container.credits.spendableLabel')}
           </p>
           <p
-            data-testid='wallet-balance'
+            data-testid='studio-spendable'
             className='text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
           >
-            {wallet.balanceCached.toLocaleString()}
+            {formatCreditAmount(head.spendable ?? 0)}
             <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>
               {t('studio.container.credits.unit')}
             </small>
           </p>
           <p className='mt-[3px] text-xs text-muted-foreground'>
-            {t('studio.container.credits.hint')}
+            {t(`studio.container.credits.${state}Hint`)}
           </p>
         </div>
-        {isAdmin ? (
-          <Button type='button' size='form' className='ml-auto shrink-0'>
-            {t('studio.container.credits.topup')}
-          </Button>
-        ) : null}
       </div>
 
-      <div className='grid gap-4 sm:grid-cols-2'>
-        <section className='rounded-content-md border border-border p-4'>
-          <h3 className='mb-3 text-sm font-semibold'>
-            {t('studio.container.credits.paidTitle')}
-          </h3>
-          <ul className='flex flex-col gap-3'>
-            {wallet.paidLots.map((lot) => (
-              <li key={lot.id} className='flex flex-col items-start gap-1'>
-                <CreditLotBadge source='paid' />
-                <p className='text-sm text-muted-foreground'>
-                  {t('studio.container.credits.remaining', {
-                    amount: lot.amountRemaining.toLocaleString(),
-                  })}
-                </p>
-                {isAdmin && lot.isRefundable && lot.amountRemaining > 0 ? (
-                  <Button
-                    type='button'
-                    variant={null}
-                    size={null}
-                    className='text-xs text-status-error-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-                  >
-                    {t('studio.container.credits.refund')}
-                  </Button>
-                ) : null}
-              </li>
+      {state === 'spendable' ? null : (
+        <p
+          data-testid='studio-credits-unassigned-notice'
+          className='rounded-content-sm border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-sm'
+        >
+          {t(`studio.container.credits.${state}Prompt`)}
+        </p>
+      )}
+
+      <section className='rounded-content-md border border-border p-4'>
+        <h3 className='mb-3 text-sm font-semibold'>
+          {t('studio.container.credits.lotsTitle')}
+        </h3>
+        {/* This block explains the figure above it, so what decides between a
+            list and an empty state is whether there is anything to add up. A
+            studio that owes without ever having been assigned a lot is the one
+            reading most in need of the explanation: the balance is below zero
+            and the only line that accounts for it is the debt. */}
+        {(head.lots ?? []).length === 0 && (head.debt ?? 0) === 0 ? (
+          <p className='text-sm text-muted-foreground'>
+            {t('studio.container.credits.lotsEmpty')}
+          </p>
+        ) : (
+          <ul className='flex flex-col [&>li:first-child]:border-t-0 [&>li:first-child]:pt-0 [&>li:last-child]:pb-0'>
+            {(head.lots ?? []).map((lot) => (
+              <LotRow key={lot.id} lot={lot} />
             ))}
-          </ul>
-        </section>
-
-        {hasGift ? (
-          <section className='rounded-content-md border border-border p-4'>
-            <h3 className='mb-3 text-sm font-semibold'>
-              {t('studio.container.credits.giftTitle')}
-            </h3>
-            <ul className='flex flex-col gap-3'>
-              {wallet.giftLots.map((lot) => {
-                const days = expiringDays(lot.expiresAt, now);
-                return (
-                  <li key={lot.id} className='flex flex-col items-start gap-1'>
-                    <CreditLotBadge
-                      source={lot.source}
-                      expiringDays={days ?? undefined}
-                    />
-                    <p className='text-sm text-muted-foreground'>
-                      {t('studio.container.credits.remaining', {
-                        amount: lot.amountRemaining.toLocaleString(),
-                      })}
-                    </p>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ) : null}
-      </div>
-
-      {/* Spend order (locked mock .order): label + numbered circle steps. */}
-      <div className='flex flex-wrap items-center gap-x-3 gap-y-2 rounded-content-md border border-border bg-card px-3 py-2.5'>
-        <span className='whitespace-nowrap border-r border-border pr-3 text-xs font-bold text-muted-foreground'>
-          {t('studio.container.credits.orderTitle')}
-        </span>
-        {[
-          t('studio.container.credits.orderStep1'),
-          t('studio.container.credits.orderStep2'),
-          t('studio.container.credits.orderStep3'),
-        ].map((label, index) => (
-          <React.Fragment key={label}>
-            {index > 0 ? (
-              <span aria-hidden='true' className='text-neutral-400'>
-                →
-              </span>
+            {(head.debt ?? 0) > 0 ? (
+              <SummaryRow
+                testId='studio-lots-debt'
+                label={t('studio.container.credits.lotsDebt')}
+                amount={-(head.debt ?? 0)}
+              />
             ) : null}
-            <span className='flex items-center gap-1.5'>
-              <span className='flex h-[18px] w-[18px] items-center justify-center rounded-full bg-muted text-2xs font-bold text-foreground'>
-                {index + 1}
-              </span>
-              <span className='whitespace-nowrap text-xs font-semibold'>
-                {label}
-              </span>
-            </span>
-          </React.Fragment>
-        ))}
-      </div>
+            <SummaryRow
+              testId='studio-lots-total'
+              label={t('studio.container.credits.lotsTotal')}
+              amount={head.spendable ?? 0}
+              strong
+            />
+          </ul>
+        )}
+      </section>
 
-      <div>
-        <h3 className='mb-2 text-sm font-semibold'>
+      <section className='rounded-content-md border border-border p-4'>
+        <h3 className='mb-3 text-sm font-semibold'>
           {t('studio.container.credits.activityTitle')}
         </h3>
-        <table className='w-full text-left text-sm'>
-          <thead className='text-xs text-muted-foreground'>
-            <tr>
-              <th className='py-1 font-medium'>
-                {t('studio.container.credits.colType')}
-              </th>
-              <th className='py-1 font-medium'>
-                {t('studio.container.credits.colSource')}
-              </th>
-              <th className='py-1 text-right font-medium'>
-                {t('studio.container.credits.colAmount')}
-              </th>
-              <th className='py-1 text-right font-medium'>
-                {t('studio.container.credits.colTime')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {wallet.ledger.map((entry) => (
-              <tr key={entry.id} className='border-t border-border'>
-                <td className='py-1.5'>
-                  {t(`studio.container.credits.ledgerType.${entry.type}`)}
-                </td>
-                <td className='py-1.5 text-muted-foreground'>
-                  {entry.description}
-                </td>
-                <td
-                  className={`py-1.5 text-right tabular-nums ${
-                    entry.amount > 0
-                      ? 'text-status-success-foreground'
-                      : 'text-foreground'
-                  }`}
-                >
-                  {entry.amount > 0 ? '+' : ''}
-                  {entry.amount.toLocaleString()}
-                </td>
-                <td className='py-1.5 text-right text-muted-foreground'>
-                  {entry.createdAt.slice(0, 10)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {ledgerRows.length === 0 ? (
+          <p className='text-sm text-muted-foreground'>
+            {t('studio.container.credits.activityEmpty')}
+          </p>
+        ) : (
+          <div ref={scrollerRef}>
+            <ScrollArea scrollbars='vertical' viewportClassName='max-h-80'>
+              <table className='w-full text-left text-sm'>
+                <thead className='text-xs text-muted-foreground'>
+                  <tr>
+                    <th className='sticky top-0 bg-background py-1 font-medium'>
+                      {t('studio.container.credits.colTime')}
+                    </th>
+                    <th className='sticky top-0 bg-background py-1 font-medium'>
+                      {t('studio.container.credits.colWho')}
+                    </th>
+                    <th className='sticky top-0 bg-background py-1 font-medium'>
+                      {t('studio.container.credits.colProject')}
+                    </th>
+                    <th className='sticky top-0 bg-background py-1 font-medium'>
+                      {t('studio.container.credits.colModel')}
+                    </th>
+                    <th className='sticky top-0 bg-background py-1 text-right font-medium'>
+                      {t('studio.container.credits.colAmount')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledgerRows.map((entry) => (
+                    <LedgerRow key={entry.id} entry={entry} />
+                  ))}
+                </tbody>
+              </table>
+              <div ref={sentinelRef} aria-hidden='true' />
+              <div className='flex items-center justify-center py-2 text-2xs tracking-wider text-muted-foreground'>
+                {isFetchingNextPage ? (
+                  <Loader2 className='h-3.5 w-3.5 animate-spin' aria-hidden='true' />
+                ) : isFetchNextPageError ? (
+                  <span role='status' data-testid='studio-ledger-page-error'>
+                    {t('studio.container.credits.activityPageError')}
+                  </span>
+                ) : !hasNextPage ? (
+                  <span data-testid='studio-ledger-end'>
+                    · {t('studio.container.credits.activityEnd')} ·
+                  </span>
+                ) : null}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

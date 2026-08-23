@@ -9,7 +9,8 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
-import { httpRequest } from "@breatic/shared";
+import { FAILURE_LINES, httpRequest, toolFailureOf } from "@breatic/shared";
+import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
 
 /** What the model may ask this tool to search for. */
 const inputSchema = z.object({
@@ -22,6 +23,82 @@ const inputSchema = z.object({
     .optional()
     .describe("Number of results (1-10)"),
 });
+
+/**
+ * What to tell the model about a status the search service refused with.
+ *
+ * Three different next moves hide behind "not 2xx", and the model takes the
+ * one this sentence points at. A 5xx or a 429 is the service having a bad
+ * time and says nothing about the query. A 401 or a 403 is the key this side
+ * sent being turned down, which no rewording reaches. What is left is this
+ * request being one the service would not take, which the model wrote and can
+ * rewrite.
+ * @param query - What was searched for.
+ * @param status - The status the service answered with.
+ * @returns The reason, ending in what the model may do instead.
+ */
+function refusalReason(query: string, status: number): string {
+  const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
+  if (status >= 500 || status === 429) {
+    return (
+      `${opening} That is a fault on their side, not a problem with the query, so no ` +
+      "wording of it reaches past this. Do not repeat this search; continue without " +
+      "search results and tell the user search is unavailable."
+    );
+  }
+  if (status === 401 || status === 403) {
+    return (
+      `${opening} It turned down the credentials this side sent, which is a fault in our ` +
+      "configuration that no wording of the query reaches. Do not repeat this call; " +
+      "continue without search results and tell the user search is unavailable."
+    );
+  }
+  return (
+    `${opening} The service is reachable, so it is this request it would not take. Try a ` +
+    "different wording at most once, then continue without search results and tell the " +
+    "user search is unavailable."
+  );
+}
+
+/**
+ * What to tell the model when the whole answer arrived and is not results.
+ *
+ * For an answer that came back complete and parsed, and is still not the
+ * shape this tool reads. An answer that stopped arriving partway is a
+ * different fact and says so where it is caught: this side never saw what the
+ * service meant to send, and asking again may well get it.
+ * @param query - What was searched for.
+ * @returns The reason, ending in what the model may do instead.
+ */
+function notResultsReason(query: string): string {
+  return (
+    `Searching for "${query}" failed: the search service answered, but not with results. ` +
+    "That is a fault on their side. Continue without search results and tell the user search " +
+    "is unavailable."
+  );
+}
+
+/**
+ * What to tell the model when the search came back with no web results.
+ *
+ * Two things produce this and the response does not tell them apart. Brave
+ * documents the result types as included "where data is available and a plan
+ * with the corresponding option is subscribed", and a deployment whose plan
+ * omits web results gets a 200 with the section missing -- the same body a
+ * query nobody has written about gets. Both are stated, because the next move
+ * is the same for either and it is not the obvious one: rewording is what a
+ * model reaches for after an empty search, and it changes nothing here.
+ * @param query - What was searched for.
+ * @returns The answer, ending in what the model may do instead.
+ */
+function noResultsAnswer(query: string): string {
+  return (
+    `No web results for: ${query}. Either nothing is written about it, or this ` +
+    "deployment's search plan does not include web results. Rewording the query is " +
+    "unlikely to help; search for something else if there is another angle, otherwise " +
+    "answer from what you already know and tell the user the search came back empty."
+  );
+}
 
 /**
  * Search the web using the Brave Search API.
@@ -40,7 +117,17 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
     // read via the injected config Proxy, not process.env directly.
     const apiKey = env.BRAVE_SEARCH_API_KEY;
     if (!apiKey) {
-      return "Error: Brave Search API key not configured. Set BRAVE_SEARCH_API_KEY in your .env file.";
+      // Defensive: `buildToolSet` leaves this tool out of the set entirely
+      // when the key is missing, so a turn should never reach here. The
+      // reader's line is the one for a failure nothing described, because a
+      // line of its own would exist for this branch alone -- five translations
+      // of a sentence no reader is on a path to meet.
+      throw toolFailed(
+        "Web search is not available on this deployment: it has no search credentials. " +
+          "Do not repeat this call. Answer from what you already know, and tell the user " +
+          "you could not search.",
+        FAILURE_LINES.generic,
+      );
     }
 
     const n = Math.min(Math.max(count ?? 5, 1), 10);
@@ -88,14 +175,53 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       );
 
       if (!res.ok) {
-        return `Error: Brave Search returned HTTP ${res.status}`;
+        throw toolFailed(refusalReason(query, res.status), FAILURE_LINES.upstream);
       }
 
-      const data = (await res.json()) as {
-        web?: { results?: Array<{ title?: string; url?: string; description?: string }> };
-      };
-      const results = (data.web?.results ?? []).slice(0, n);
-      if (results.length === 0) return `No results found for: ${query}`;
+      // Read inside its own guard. It answered, so whatever goes wrong from
+      // here is about what it said, and the catch below describes a service
+      // that could not be reached at all.
+      let data: unknown;
+      try {
+        data = await res.json();
+      } catch (err: unknown) {
+        // Asked here rather than left to the guard below, which never sees
+        // this: what is thrown from inside this block already carries failure
+        // detail, and the outer guard passes anything carrying detail straight
+        // through -- past the question of whether the user stopped.
+        if (isStop(err, abortSignal)) throw stoppedByUser();
+        // The body stopped arriving partway. What it would have said is not
+        // something this side ever saw, so it is put as what is known: the
+        // service answered and the answer did not finish. Same reading the
+        // fetch tool gives the same failure.
+        throw toolFailed(
+          `Searching for "${query}" failed while reading the answer: ${reasonOf(err)}. The ` +
+            "service answered, so it is the body that did not arrive. Searching once more may " +
+            "work; if it fails again, continue without search results and tell the user search " +
+            "is unavailable.",
+          FAILURE_LINES.upstream,
+        );
+      }
+
+      if (data === null || typeof data !== "object") {
+        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+      }
+      // Brave declares the `web` section optional, and its reference says the
+      // result types are included "where data is available and a plan with the
+      // corresponding option is subscribed". Either way the section is simply
+      // absent from a 200, which is a search that ran and came back with
+      // nothing rather than one that failed. Present but not a list is a
+      // different thing: the schema moved, or something else answered in its
+      // place.
+      const found: unknown = (data as { web?: { results?: unknown } }).web?.results;
+      if (found === undefined || found === null) return noResultsAnswer(query);
+      if (!Array.isArray(found)) throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+
+      const results = (found as Array<{ title?: string; url?: string; description?: string }>).slice(
+        0,
+        n,
+      );
+      if (results.length === 0) return noResultsAnswer(query);
 
       const lines = [`Results for: ${query}\n`];
       results.forEach((item, i) => {
@@ -104,8 +230,20 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       });
       return lines.join("\n");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return `Error: ${msg}`;
+      // Every throw above passes straight through: each already says what
+      // happened, and rewriting one here would replace a specific reason with
+      // this general one.
+      if (toolFailureOf(err) !== undefined) throw err;
+      if (isStop(err, abortSignal)) throw stoppedByUser();
+
+      throw toolFailed(
+        `Searching for "${query}" failed: the search service could not be reached ` +
+          `(${reasonOf(err)}). ` +
+          "The service is unreachable from here, which is not something a different query " +
+          "would fix. Do not repeat this call; continue without search results and tell the " +
+          "user search is unavailable.",
+        FAILURE_LINES.unreachable,
+      );
     }
   },
 });

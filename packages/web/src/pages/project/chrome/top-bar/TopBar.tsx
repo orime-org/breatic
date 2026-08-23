@@ -1,11 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ArrowLeft, Plus, Star } from 'lucide-react';
+import { ArrowLeft, Star } from 'lucide-react';
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
-import { Button } from '@web/components/ui/button';
 import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
@@ -15,18 +14,49 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { Skeleton } from '@web/components/ui/skeleton';
 import type { ProjectRole } from '@web/stores';
 import type { Member } from '@web/data/api/members';
+
+/**
+ * What the credits pill has to show: the balance, or why there is none yet.
+ *
+ * Kept apart from a plain number because zero is a real balance and the two
+ * answers that are not a balance would otherwise be printed as one.
+ */
+export type CreditsReadout =
+  | { status: 'ready'; value: number }
+  | { status: 'pending' }
+  | { status: 'error' };
+
+/**
+ * Turn a credits query into what the pill reads out.
+ *
+ * Data first: react-query keeps the last answer while it refetches and while a
+ * refetch fails, and a balance that is one refetch old still beats replacing it
+ * with "unknown".
+ * @param query - The query's data and whether it has settled on an error.
+ * @param query.data - The balance, once an answer has arrived.
+ * @param query.isError - Whether the query gave up.
+ * @returns What to show.
+ */
+export function toCreditsReadout(query: {
+  data?: { spendable: number } | undefined;
+  isError: boolean;
+}): CreditsReadout {
+  if (query.data) return { status: 'ready', value: query.data.spendable };
+  return query.isError ? { status: 'error' } : { status: 'pending' };
+}
 
 interface TopBarProps {
   projectId: string;
   projectName: string;
   role: ProjectRole;
-  credits: number;
+  credits: CreditsReadout;
   onRename: (next: string) => void;
-  onAddCredits?: () => void;
   /**
    * The project's roster, forwarded to both member components. Required: the
    * stack and the modal have no fallback to invent, and leaving it optional
@@ -54,9 +84,8 @@ interface TopBarProps {
  * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
  * @param root0.projectName - Current project name shown in the editable title.
  * @param root0.role - Viewer's role in this project, surfaced via the role tag.
- * @param root0.credits - Current credit balance shown in the credits pill.
+ * @param root0.credits - What the credits pill reads out.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
- * @param root0.onAddCredits - Called when the user clicks the add-credits button on the credits pill.
  * @param root0.members - The project's roster, forwarded to both member components.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @returns the project chrome top bar with its left identity block and right action groups.
@@ -67,7 +96,6 @@ export function TopBar({
   role,
   credits,
   onRename,
-  onAddCredits,
   members,
   currentUserId,
 }: TopBarProps): React.JSX.Element {
@@ -104,7 +132,7 @@ export function TopBar({
           />
           <LangSwitcher />
           <ThemeToggle />
-          <CreditsPill credits={credits} onAdd={onAddCredits} />
+          <CreditsPill credits={credits} />
         </div>
         <div
           className='flex items-center'
@@ -148,18 +176,24 @@ function BackLink(): React.JSX.Element {
 }
 
 /**
- * Credits pill — shows the formatted credit balance with an add-credits button.
+ * Credits pill — what the studio owning this project has left to spend.
+ *
+ * A readout, shown to everyone working in the project: they spend this pool
+ * when they generate. It goes below zero when the studio owes. Topping up is
+ * an account-level act and lives on the account credits page.
+ *
+ * Three states rather than one number, because zero is a real balance here —
+ * it is what the pre-check turns a generation away on. Printing it while the
+ * answer is still on its way, or after it failed to arrive, tells everyone in
+ * the project that the pool is empty.
  * @param root0 - Credits pill props.
- * @param root0.credits - Current credit balance, rendered with locale grouping.
- * @param root0.onAdd - Called when the user clicks the add-credits button.
- * @returns the top-bar credits chip with its balance and add button.
+ * @param root0.credits - The balance, or why there is no number to show.
+ * @returns the top-bar credits chip.
  */
 function CreditsPill({
   credits,
-  onAdd,
 }: {
-  credits: number;
-  onAdd?: () => void;
+  credits: CreditsReadout;
 }): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -167,21 +201,19 @@ function CreditsPill({
       data-testid='credits-chip'
       aria-label={t('chrome.aria.creditsBalance')}
       className='inline-flex h-7 shrink-0 items-center rounded-full border border-border bg-popover text-xs tabular-nums'
-      style={{ padding: '0 2px 0 var(--space-4)', gap: 'var(--space-3)' }}
+      style={{ padding: '0 var(--space-4)', gap: 'var(--space-3)' }}
     >
       <Star className='h-3.5 w-3.5 text-muted-foreground' aria-hidden='true' />
-      <span>{credits.toLocaleString()}</span>
-      <Button
-        variant={null}
-        size={null}
-        type='button'
-        onClick={onAdd}
-        aria-label={t('chrome.aria.addCredits')}
-        className='inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-accent'
-        data-testid='credits-add'
-      >
-        <Plus className='h-3.5 w-3.5' />
-      </Button>
+      {credits.status === 'ready' ? (
+        <span>{formatCreditAmount(credits.value)}</span>
+      ) : credits.status === 'pending' ? (
+        <Skeleton
+          data-testid='credits-chip-placeholder'
+          className='h-3 w-8 rounded-content-sm'
+        />
+      ) : (
+        <span className='text-muted-foreground'>—</span>
+      )}
     </span>
   );
 }

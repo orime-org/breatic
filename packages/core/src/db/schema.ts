@@ -8,7 +8,7 @@
  * primary keys and timestamp with timezone columns.
  */
 
-import { sql } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -16,6 +16,7 @@ import {
   text,
   boolean,
   doublePrecision,
+  numeric,
   integer,
   bigint,
   timestamp,
@@ -81,7 +82,8 @@ export const users = pgTable(
     // billing is a separate leg — this column is a value that can be read and
     // enforced, and what makes it change is the Stripe work that comes later.
     //
-    // Credits are yet another leg and live in `credit_balances`, never on the
+    // Credits are yet another leg and live in `credit_lots`, one row per
+    // purchase, never on the
     // account row.
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
@@ -126,7 +128,7 @@ export const users = pgTable(
  * start" have to be answerable from stored fact rather than from a Stripe
  * dashboard that may have been reconciled since.
  *
- * Same shape as `credit_transactions` and for the same reason: the current
+ * Same shape as `credit_ledger` and for the same reason: the current
  * value is a scalar somewhere else, and every change to it is appended here.
  *
  * Append-only, so `created_at` alone rather than the `timestamps` pair — a row
@@ -141,7 +143,7 @@ export const users = pgTable(
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so the subscription
  * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `deductOnce` already do.
+ * and `chargeOnceForGeneration` already do.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -526,7 +528,13 @@ export const tasks = pgTable(
      * stalled-job redelivery, or duplicate Worker instances.
      */
     billedAt: timestamp("billed_at", { withTimezone: true }),
-    /** How many credits were charged (for audit / reconciliation). */
+    /**
+     * What the run consumed, for audit and reconciliation.
+     *
+     * The whole bill, whether or not the studio's lots covered it: the ledger
+     * rows sharing this task's reference id add up to exactly this, with the
+     * uncovered part written as debt.
+     */
     billedCredits: doublePrecision("billed_credits"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -768,43 +776,228 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
     .notNull(),
 });
 
-// ── 8. Credit Transactions ───────────────────────────────────────────
+// ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
-export const creditTransactions = pgTable(
-  "credit_transactions",
+/**
+ * One top-up (0061, task #11).
+ *
+ * A row is one payment that succeeded, and it tracks that purchase for the
+ * rest of its life: how much of it is left, which studio may spend it, and
+ * whether it is on its way back to the buyer. Credits are spent lot by lot,
+ * oldest first, which is why the remainder lives per purchase rather than as
+ * one number per account — a refund returns a purchase, so a purchase has to
+ * be a thing that can still be pointed at.
+ *
+ * `payment_id` is NOT NULL and unique, and that is the whole of "a payment
+ * grants credits exactly once". The `payments` table cannot carry that rule:
+ * `stripe_payment_intent_id` has no unique index, and the one on
+ * `stripe_session_id` sits on a nullable column, where Postgres admits any
+ * number of NULLs. A redelivered webhook reaches the same `payments` row and
+ * is refused here, at the insert.
+ *
+ * `payments` and this table hold different facts about the same event and
+ * both keep their own status: `payments.status` says whether the money
+ * arrived, `lifecycle` says whether the credits still exist. Putting them in
+ * one row would give one row two state machines written by two paths, and
+ * every state in the design has a single writer.
+ *
+ * `designated_studio_id` NULL means unassigned, which means unspendable — a
+ * lot has to be pointed at a studio before anything can be charged to it. A
+ * lot pointing at a soft-deleted studio reads as unassigned too, so both
+ * conditions travel together in one shared predicate rather than being
+ * spelled out per query.
+ *
+ * `user_id` is the buyer and never changes: it is where the money came from,
+ * not where it goes. It is copied from `payments.user_id` so that taking the
+ * next lot to spend, and paging the account overview, need no join.
+ *
+ * `refund_attempts` is the only trace of a refund that was refused — the
+ * lifecycle returns to `active` afterwards, so that column plus a
+ * `refund_rejected` ledger row is what keeps the history visible.
+ *
+ * The lifecycle CHECK is added by hand in the migration, as the tier ones
+ * are, because migrations here are hand-written and a drizzle `check()`
+ * beside the column would be a second copy nothing compares against the
+ * first.
+ */
+export const creditLots = pgTable(
+  "credit_lots",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id, { onDelete: "restrict" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    txType: varchar("tx_type", { length: 20 }).notNull(),
-    amount: doublePrecision("amount").notNull(),
-    balanceAfter: doublePrecision("balance_after").notNull(),
-    tokensUsed: integer("tokens_used").default(0),
-    model: varchar("model", { length: 100 }),
-    provider: varchar("provider", { length: 50 }),
-    description: text("description"),
-    referenceId: varchar("reference_id", { length: 255 }),
+    // A charge is a fraction of a cent and is summed across lots, so binary
+    // floating point would strand a residue that cannot be spent or refunded.
+    purchasedCredits: numeric("purchased_credits", {
+      precision: 20,
+      scale: 6,
+    }).notNull(),
+    // A materialised projection of the ledger, not a second source of truth:
+    // it must always equal sum(credit_ledger.amount) over this lot. It is
+    // stored because spending takes lots in order and locks them, which a
+    // sum-on-read cannot do.
+    remainingCredits: numeric("remaining_credits", {
+      precision: 20,
+      scale: 6,
+    }).notNull(),
+    designatedStudioId: uuid("designated_studio_id").references(
+      () => studios.id,
+      { onDelete: "restrict" },
+    ),
+    // One of `active` / `depleted` / `refund_pending` / `refunding` /
+    // `refunded`. CHECK in 0061.
+    lifecycle: varchar("lifecycle", { length: 16 }).notNull(),
+    refundAttempts: integer("refund_attempts").default(0).notNull(),
     ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (table) => [index("credit_tx_user_id_idx").on(table.userId)],
+  (table) => [
+    uniqueIndex("credit_lots_payment_id_idx").on(table.paymentId),
+    index("credit_lots_user_id_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("credit_lots_studio_lifecycle_idx").on(
+      table.designatedStudioId,
+      table.lifecycle,
+      table.createdAt,
+    ),
+  ],
 );
 
-// ── 8b. Credit Balances ──────────────────────────────────────────────
+/**
+ * Append-only credit ledger (0061, task #11) — what actually happened.
+ *
+ * Every top-up, charge and refund is one row, and a lot's remaining balance
+ * is this table summed over that lot. It replaces `credit_transactions`,
+ * which had no notion of which purchase a charge came out of.
+ *
+ * Two people, two columns. `payer_user_id` is whose credits moved;
+ * `actor_user_id` is who did the spending, and in a team they are routinely
+ * different — a studio's guest can be an editor on a project and spends the
+ * admin's credits there. One column could serve only one of the two views
+ * that have to work: the buyer seeing where their money went, and the
+ * spender seeing what they used.
+ *
+ * `lot_id` is nullable for the three situations where usage is recorded but
+ * no purchase is drawn down: payments disabled, a route that carries no
+ * project to pick a pool from, and a studio with nothing spendable left.
+ * `payer_user_id` stays NOT NULL in all three, because the account ledger
+ * reads by payer and those rows have to appear in it.
+ *
+ * `created_at` only. No `updated_at`, because nothing here is ever edited,
+ * and no `deleted_at`, which is the repository's soft-delete mandate being
+ * waived with its reason stated: a row says something already happened, and
+ * removing it would make that thing repeatable — which is the single reason
+ * this table exists.
+ *
+ * `balance_after` from the old table is deliberately not carried over: the
+ * balance is derived now, and freezing an account-wide total into a row would
+ * be storing the scalar this model just removed.
+ */
+export const creditLedger = pgTable(
+  "credit_ledger",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    payerUserId: uuid("payer_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    lotId: uuid("lot_id").references(() => creditLots.id, {
+      onDelete: "restrict",
+    }),
+    studioId: uuid("studio_id").references(() => studios.id, {
+      onDelete: "restrict",
+    }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    // One of `topup` / `spend` / `refund` / `refund_rejected` (0061) or
+    // `debt_incurred` / `debt_repayment` (0063). CHECK in 0063.
+    entryType: varchar("entry_type", { length: 24 }).notNull(),
+    // Positive in, negative out.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    model: varchar("model", { length: 100 }),
+    provider: varchar("provider", { length: 50 }),
+    tokensUsed: integer("tokens_used"),
+    description: text("description"),
+    referenceId: varchar("reference_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // Newest-first is the only order any of these are read in, and the two
+    // studio indexes are partial because a row with no studio belongs to no
+    // studio's page. Declared exactly as 0061 creates them: this file is what
+    // a reader consults to know what the table has.
+    index("credit_ledger_payer_created_idx").on(
+      table.payerUserId,
+      desc(table.createdAt),
+    ),
+    index("credit_ledger_studio_created_idx")
+      .on(table.studioId, desc(table.createdAt))
+      .where(sql`${table.studioId} IS NOT NULL`),
+    index("credit_ledger_lot_idx").on(table.lotId),
+    index("credit_ledger_payer_studio_created_idx")
+      .on(table.payerUserId, table.studioId, desc(table.createdAt))
+      .where(sql`${table.studioId} IS NOT NULL`),
+  ],
+);
 
 /**
- * Per-user credit balance - one row per user, the single source of
- * truth for "how many credits a user has left". Migrated out of the
- * `users.credits` column (PR3, migration 0020) so the credit domain is
- * self-contained and no longer coupled to the user identity table.
+ * What a studio owes (0063, task #11) — one row per studio, at most.
+ *
+ * The precheck reads what is spendable and freezes nothing, and what it asks
+ * for is a floor rather than the bill: every mini-tool asks for
+ * `MIN_TASK_CREDIT_COST`, and a model with no `cost_per_call` falls back to
+ * the same number. The worker then charges what the run actually used. So a
+ * studio near the bottom of its balance finishes a generation owing credits,
+ * with no concurrency involved at all. That shortfall is this row.
+ *
+ * A mutable current value, not a sum over the ledger. Two paths write it —
+ * a charge that could not be covered, and a designation paying it down — and
+ * they have to be serialised against each other, which a sum cannot be. It is
+ * the same trade `credit_lots.remaining_credits` makes, and it reconciles
+ * against the ledger the same way: `amount` equals
+ * `sum(debt_repayment) - sum(debt_incurred)`.
+ *
+ * Its own table rather than a column on `studios`, because both writers lock
+ * it and `studios` is read on the way into every project — locking there would
+ * queue a charge behind a rename.
+ *
+ * No `deleted_at`, which is the repository's soft-delete mandate waived with
+ * its reason stated: hiding a debt row is the debt vanishing, and preventing
+ * exactly that is why the table exists. What becomes of a debt when its studio
+ * is deleted is a business decision, not a hidden row.
+ *
+ * The CHECK is added by hand in the migration, as `credit_lots`' are, because
+ * a drizzle `check()` beside the column would be a second copy nothing
+ * compares against the first.
  */
-export const creditBalances = pgTable("credit_balances", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "restrict" }),
-  balance: doublePrecision("balance").default(0).notNull(),
-  ...timestamps,
-});
+export const studioCreditDebts = pgTable(
+  "studio_credit_debts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    // What is owed right now, never negative. CHECK in 0063.
+    amount: numeric("amount", { precision: 20, scale: 6 })
+      .default("0")
+      .notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("studio_credit_debts_studio_id_idx").on(table.studioId),
+  ],
+);
 
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
@@ -1571,7 +1764,7 @@ export const studioAssets = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     /**
      * The generation task that produced an AI asset - links to cost via
-     * tasks.billed_credits + credit_transactions.reference_id. Null for
+     * tasks.billed_credits + credit_ledger.reference_id. Null for
      * uploads (user-supplied, no generation cost).
      */
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {

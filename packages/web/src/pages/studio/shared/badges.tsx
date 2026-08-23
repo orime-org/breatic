@@ -6,7 +6,6 @@ import { Lock } from 'lucide-react';
 
 import { Badge } from '@web/components/ui/badge';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { CreditLotSource } from '@web/pages/studio/container/container-types';
 import type {
   ItemRole,
   ItemVisibility,
@@ -107,45 +106,6 @@ export function StudioTypePill({
   return (
     <Badge className={`rounded-full ${NEUTRAL_TINT}`}>
       {t(`studio.container.badge.${key}`)}
-    </Badge>
-  );
-}
-
-/**
- * Credit lot badge (spec §3.5 / §3.6): paid lots read success (green), gift
- * lots read warning (orange — the closest always-color to the old amber, since
- * the design system dropped the `locked` color), and gift lots within their
- * expiry window read destructive (red) with the remaining days.
- * @param props the lot source and, when expiring soon, the remaining days.
- * @param props.source the credit lot source.
- * @param props.expiringDays the remaining days when the lot is expiring soon.
- * @returns the lot badge.
- */
-export function CreditLotBadge({
-  source,
-  expiringDays,
-}: {
-  source: CreditLotSource;
-  expiringDays?: number;
-}): React.JSX.Element {
-  const t = useTranslation();
-  if (expiringDays !== undefined) {
-    return (
-      <Badge className='border-transparent bg-status-error-bg text-status-error-foreground'>
-        {t('studio.container.badge.lotExpiring', { days: expiringDays })}
-      </Badge>
-    );
-  }
-  if (source === 'paid') {
-    return (
-      <Badge className='border-transparent bg-status-success-bg text-status-success-foreground'>
-        {t('studio.container.badge.lotPaid')}
-      </Badge>
-    );
-  }
-  return (
-    <Badge className='border-transparent bg-status-warning-bg text-status-warning-foreground'>
-      {t('studio.container.badge.lotGift')}
     </Badge>
   );
 }

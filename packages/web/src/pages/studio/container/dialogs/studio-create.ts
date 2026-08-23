@@ -8,8 +8,7 @@ import type {
 
 /**
  * The studios the viewer may create projects in (spec §8.2 / §0.2): only an
- * `admin` or `maintainer` may create — a `guest` cannot (studio credits are
- * shared, so a plain guest must not be able to spend them by creating). Studios
+ * `admin` or `maintainer` may create — a `guest` cannot. Studios
  * the viewer is not a member of never reach here (`GET /studios` filters to
  * active memberships).
  * @param studios the viewer's studios, each with its current `myStudioRole`.

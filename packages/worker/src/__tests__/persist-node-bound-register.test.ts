@@ -52,7 +52,6 @@ vi.mock("@breatic/domain", () => ({
     recordProviderResult: vi.fn(),
     setResolvedSkills: vi.fn(),
   },
-  creditService: { deduct: vi.fn() },
   nodeHistoryService: { recordGenerationSuccess: vi.fn(), recordGenerationFailure: vi.fn() },
   getModel: vi.fn(),
   buildToolSet: vi.fn(),

@@ -45,19 +45,41 @@
  */
 
 import { lookup as dnsLookup } from "node:dns/promises";
+import type { LookupAddress } from "node:dns";
 import ipaddr from "ipaddr.js";
 import { getAgentConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
-/** Error thrown when a URL would reach a forbidden host or IP. */
+/**
+ * What this guard refuses a URL with, whatever the reason.
+ *
+ * Not only forbidden hosts: a name the resolver turns down ends here too, so
+ * that callers reading this type get every fact the guard established about
+ * the address. Which kind it was is `aboutTheAddress` below.
+ */
 export class SsrfError extends Error {
+  /**
+   * Whether this refusal is about which address the URL points at.
+   *
+   * Only those may not be described to the model: the message names a
+   * hostname on our block list or an address inside the network, and knowing
+   * it is a way to read the inside of the network from outside. Everything
+   * else this guard rejects -- a name with no DNS records, a scheme it does
+   * not speak, a redirect chain that never ends -- is a plain fact about the
+   * request, and one the model needs to correct its next move.
+   */
+  readonly aboutTheAddress: boolean;
+
   /**
    * Create an SsrfError.
    * @param message - Description of why the URL or host was rejected.
+   * @param aboutTheAddress - True when the message names a blocked host or a
+   *   resolved address, which is detail the model may not be shown.
    */
-  constructor(message: string) {
+  constructor(message: string, aboutTheAddress = false) {
     super(message);
     this.name = "SsrfError";
+    this.aboutTheAddress = aboutTheAddress;
   }
 }
 
@@ -128,7 +150,7 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
   }
 
   if (BLOCKED_HOSTNAMES.has(normalized)) {
-    throw new SsrfError(`Blocked hostname: ${hostname}`);
+    throw new SsrfError(`Blocked hostname: ${hostname}`, true);
   }
 
   // A bare IP literal in the URL — check it directly.
@@ -146,8 +168,21 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
     return;
   }
 
-  // Resolve and check every returned address.
-  const addresses = await dnsLookup(normalized, { all: true });
+  // Resolve and check every returned address. A name the resolver turns down
+  // ends here as this guard's own outcome rather than as whatever the system
+  // resolver raised: what reaches the caller from this function is an
+  // `SsrfError`, which is what its callers read to tell a fact about the
+  // address from a fact about the request. A bare ENOTFOUND is neither, and
+  // downstream it lands among the transport's pre-delivery refusals -- the
+  // one group whose whole point is that nothing about the address is known.
+  let addresses: LookupAddress[];
+  try {
+    addresses = await dnsLookup(normalized, { all: true });
+  } catch (err: unknown) {
+    throw new SsrfError(
+      `No DNS records for ${hostname}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   if (addresses.length === 0) {
     throw new SsrfError(`No DNS records for ${hostname}`);
   }
@@ -163,14 +198,12 @@ async function assertHostnameAllowed(hostname: string): Promise<void> {
  */
 function assertIpAllowed(ip: string): void {
   if (!ipaddr.isValid(ip)) {
-    throw new SsrfError(`Invalid IP address: ${ip}`);
+    throw new SsrfError(`Invalid IP address: ${ip}`, true);
   }
   const parsed = ipaddr.parse(ip);
   const range = parsed.range();
   if (!ALLOWED_RANGES.has(range)) {
-    throw new SsrfError(
-      `Blocked IP range '${range}' for ${ip}`,
-    );
+    throw new SsrfError(`Blocked IP range '${range}' for ${ip}`, true);
   }
 }
 

@@ -25,7 +25,6 @@ export interface AuthUser {
   id: string;
   email: string;
   personalStudio: PersonalStudioRef | null;
-  credits: number;
   /**
    * Which membership tier the account is on.
    *

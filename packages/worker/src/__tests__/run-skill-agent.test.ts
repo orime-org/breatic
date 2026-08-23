@@ -62,7 +62,6 @@ vi.mock("@breatic/domain", () => ({
   buildAgentConfig,
   generateTextRetry,
   getModel,
-  creditService: { deductOnce: vi.fn() },
   markCompletedAndBill: vi.fn(),
   taskService: {},
   nodeHistoryService: {},

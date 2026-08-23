@@ -79,12 +79,15 @@ export { TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
  * What each tool needs configured before it can do anything.
  *
  * A tool missing its configuration is left out rather than offered and
- * allowed to fail. That distinction is the whole point: a tool that returns
- * "Error: key not configured" hands the model a string, and the model cannot
- * tell a failed call from a call whose answer describes a failure — so it
- * retries. A smoke run on a deployment without a search key had the model
- * call web_search over and over until the step ceiling stopped it, and reply
- * nothing at all.
+ * allowed to fail. Not offering it is the better answer even now that a
+ * failed call says so plainly: a tool that cannot work on this deployment is
+ * not a thing that went wrong, it is a thing that is not here, and every turn
+ * that offers it spends part of the model's attention on an option it cannot
+ * take. A smoke run on a deployment without a search key — back when the tool
+ * answered with the string "Error: Brave Search API key not configured. Set
+ * BRAVE_SEARCH_API_KEY in your .env file.", which the model read as a result
+ * — had it call web_search over and over until the step ceiling stopped it,
+ * and reply nothing at all.
  *
  * Only genuinely required configuration goes here. Something a tool merely
  * prefers would silently remove the tool on a deployment that works fine.

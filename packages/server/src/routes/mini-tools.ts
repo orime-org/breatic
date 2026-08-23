@@ -114,9 +114,11 @@ async function enqueueMiniTool(
  */
 miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
   const user = c.get("user");
-  await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
-
   const body = c.req.valid("json");
+  // The pool belongs to the studio owning the project, so the body has to be
+  // read before the check can name one.
+  await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
+
   const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
 
   const result = await enqueueMiniTool(
@@ -142,9 +144,11 @@ miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
  */
 miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
   const user = c.get("user");
-  await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
-
   const body = c.req.valid("json");
+  // The pool belongs to the studio owning the project, so the body has to be
+  // read before the check can name one.
+  await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
+
   const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
 
   const result = await enqueueMiniTool(
@@ -171,9 +175,11 @@ miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
  */
 miniTools.post("/audio", validate("json", audioToolSchema), async (c) => {
   const user = c.get("user");
-  await precheckCredits(user.id, MIN_TASK_CREDIT_COST);
-
   const body = c.req.valid("json");
+  // The pool belongs to the studio owning the project, so the body has to be
+  // read before the check can name one.
+  await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
+
   const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
 
   const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";

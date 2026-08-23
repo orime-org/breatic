@@ -9,6 +9,7 @@
  * inside the server package.
  */
 
+import type { ToolFailure } from "@shared/agent/tool-failure.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
@@ -100,7 +101,14 @@ export type MessagePart =
       type: "tool";
       toolCallId: string;
       toolName: string;
-      input: Record<string, unknown>;
+      /**
+       * What the model sent, as it sent it.
+       *
+       * A string when the arguments would not parse as JSON: the model's own
+       * text is then the only record of what it tried, and it is what the
+       * model needs to see to correct itself.
+       */
+      input: Record<string, unknown> | string;
       /** How far this use of the tool got. */
       status: "pending" | "success" | "error";
       /**
@@ -116,8 +124,27 @@ export type MessagePart =
        * Absent while the status is still `pending`.
        */
       output?: unknown;
-      /** Why it failed. Only set when the status is `error`. */
-      errorMessage?: string;
+      /**
+       * Why it ended with nothing to show. Set only when the status is
+       * `error`, and written on every such part this code stores.
+       *
+       * Optional in the type for two reasons: a part is built up as the call
+       * runs and is `pending` until it is not, and rows written before this
+       * field existed have none. Readers fall back to a reason that says only
+       * that something went wrong -- a record that cannot say what happened,
+       * which is what this replaced.
+       */
+      failure?: ToolFailure;
+      /**
+       * The arguments never finished arriving.
+       *
+       * A turn cut off while the model was still emitting a call leaves the
+       * arguments half-parsed -- the SDK fills `input` from a partial JSON
+       * parse on every delta. The panel still shows the call, because the
+       * reader watched it start; the model is not shown it, because it would
+       * read as a call it made with arguments it never sent.
+       */
+      argumentsIncomplete?: boolean;
     }
   /**
    * The turn this message belongs to was stopped before it finished.
@@ -348,16 +375,86 @@ export interface PaymentEntity {
   updatedAt: Date;
 }
 
-/** Credit transaction entity. */
-export interface CreditTransactionEntity {
+/**
+ * Where a credit lot stands in its own life, independent of where it is
+ * designated. `refunding` is deliberately separate from `refunded`: Stripe
+ * refunds are asynchronous and can fail, and collapsing the two would leave a
+ * lot emptied while the money never arrived.
+ */
+export type CreditLotLifecycle =
+  | "active"
+  | "depleted"
+  | "refund_pending"
+  | "refunding"
+  | "refunded";
+
+/**
+ * The six things that can appear in the credit ledger.
+ *
+ * The last two are the debt a charge could not cover and a designation
+ * paying it down. Both carry a negative amount: `debt_incurred` says credits
+ * were consumed that no lot supplied, `debt_repayment` says a lot supplied
+ * them after the fact.
+ */
+export type CreditLedgerEntryType =
+  | "topup"
+  | "spend"
+  | "refund"
+  | "refund_rejected"
+  | "debt_incurred"
+  | "debt_repayment";
+
+/**
+ * One top-up, tracked for the rest of its life.
+ *
+ * Credit amounts are decimal strings, not numbers: the columns are
+ * `numeric(20, 6)` and a charge is split across lots, so passing them through
+ * binary floating point would strand a residue that can neither be spent nor
+ * refunded. `@domain/credit/credit-math` converts them for arithmetic.
+ */
+export interface CreditLotEntity {
   id: string;
+  /** The payment this came from. Unique, so a payment grants credits once. */
+  paymentId: string;
+  /** Who bought it. Never changes — it is where the money came from. */
   userId: string;
-  txType: string;
-  amount: number;
-  balanceAfter: number;
-  tokensUsed: number | null;
+  purchasedCredits: string;
+  remainingCredits: string;
+  /** Which studio may spend it. `null` means unassigned, so unspendable. */
+  designatedStudioId: string | null;
+  lifecycle: CreditLotLifecycle;
+  /** How many refund requests were refused — the lifecycle keeps no trace. */
+  refundAttempts: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * One movement of credits. Append-only: rows are never edited or deleted.
+ *
+ * `payerUserId` is whose credits moved, `actorUserId` is who spent them, and
+ * in a team they are routinely different people. `lotId` is absent in the
+ * three situations where usage is recorded but no purchase is drawn down:
+ * payments disabled, a route that carries no project to pick a pool from,
+ * and a studio with nothing spendable left.
+ */
+export interface CreditLedgerEntryEntity {
+  id: string;
+  payerUserId: string;
+  actorUserId: string | null;
+  /** Who spent it, by display name. Absent when nobody did, or they are gone. */
+  actorName: string | null;
+  /** Where it was spent, by name. Absent for anything but a charge. */
+  projectName: string | null;
+  lotId: string | null;
+  studioId: string | null;
+  projectId: string | null;
+  entryType: CreditLedgerEntryType;
+  /** Signed: positive in, negative out. Decimal string, see above. */
+  amount: string;
   model: string | null;
   provider: string | null;
+  tokensUsed: number | null;
   description: string | null;
   referenceId: string | null;
   createdAt: Date;

@@ -10,10 +10,11 @@
  * string "Error: ... not configured", the model read that as a result rather
  * than a refusal, and tried again. Every unit test was green throughout.
  *
- * Returning an error string is what makes it a loop. The model cannot tell a
- * failed call from a call whose answer happens to describe a failure, so it
- * does the reasonable thing and retries. The fix is not a better message --
- * it is that a tool which cannot work is not offered.
+ * The tools throw now, so that particular loop cannot form again. This still
+ * holds all the same, and for a reason of its own: a tool that cannot work on
+ * this deployment is not something that went wrong, it is something that is
+ * not here — and offering it spends part of every turn on an option the model
+ * cannot take.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { initCore } from "@breatic/core";

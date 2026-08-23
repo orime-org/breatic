@@ -178,7 +178,7 @@ describe("safeFetch refuses what it always refused", () => {
     // The option is load-bearing in production. Without it `lookup(host)`
     // resolves to a single `{ address, family }` object, `for (const {
     // address } of addresses)` throws on a non-iterable, and web_fetch's
-    // catch-all turns that into an error string for every hostname there is.
+    // catch-all reports every hostname there is as a failure.
     dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
 
     await safeFetch("https://public.example/");

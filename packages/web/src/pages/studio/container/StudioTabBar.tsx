@@ -12,7 +12,10 @@ import {
   visibleStudioTabs,
   type StudioTabKey,
 } from '@web/pages/studio/container/studio-tabs';
-import type { StudioType } from '@web/pages/studio/shared/studio-types';
+import type {
+  StudioRole,
+  StudioType,
+} from '@web/pages/studio/shared/studio-types';
 
 interface StudioTabBarProps {
   /**
@@ -23,6 +26,11 @@ interface StudioTabBarProps {
    * genuinely team-only.
    */
   studioType: StudioType;
+  /**
+   * The viewer's role here. Credits is the studio's money, so only its admin
+   * is offered that section; the other five are the same for everyone.
+   */
+  viewerRole: StudioRole;
   /**
    * Per-tab item counts shown as a muted chip after the label (locked mock:
    * projects / collections / members carry a count; credits / settings do
@@ -40,8 +48,9 @@ const LINK_BASE =
   'inline-flex items-center gap-1.5 -mb-px border-b border-transparent px-3 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /**
- * The studio container's section strip (spec §2.2) — six sections, the same
- * six for either kind of studio, each a link to its own address.
+ * The studio container's section strip (spec §2.2) — each section a link to
+ * its own address. Which ones are on offer depends on the reader: Credits is
+ * the studio admin's alone, so everyone else sees five.
  *
  * LINKS, NOT A TABLIST, and the difference is not cosmetic. The ARIA tabs
  * widget moves focus with the arrow keys and activates whatever focus lands
@@ -61,8 +70,9 @@ const LINK_BASE =
  * the single source for neutral selected/active borders — ruled 2026-07-11,
  * enforced by breatic/active-border); the others are muted and darken on hover.
  * Each label may carry a muted count chip.
- * @param props the studio type, counts, current section and studio slug.
+ * @param props the studio type, viewer role, counts, current section and slug.
  * @param props.studioType whether the studio is personal or team.
+ * @param props.viewerRole the viewer's role in this studio.
  * @param props.counts per-tab item counts (chip shown when present).
  * @param props.current the section currently shown.
  * @param props.slug the studio whose sections these are.
@@ -70,12 +80,13 @@ const LINK_BASE =
  */
 export function StudioTabBar({
   studioType,
+  viewerRole,
   counts,
   current,
   slug,
 }: StudioTabBarProps): React.JSX.Element {
   const t = useTranslation();
-  const tabs = visibleStudioTabs(studioType);
+  const tabs = visibleStudioTabs(studioType, viewerRole);
   return (
     <nav
       aria-label={t('studio.container.tabs.navLabel')}

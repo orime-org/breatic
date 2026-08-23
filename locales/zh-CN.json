@@ -10,6 +10,13 @@
       "rate_limited": "请求过于频繁，请稍后再试",
       "internal": "服务器内部错误"
     },
+    "credit": {
+      "not_studio_admin": "只能指定给你管理的 Studio。",
+      "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
+      "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
+      "none": "积分不足，请先充值。"
+    },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"
     },
@@ -157,7 +164,13 @@
       "waiting": "正在回复"
     },
     "tool": {
-      "unfinished": "未跑完就停止了"
+      "unfinished": "已停止",
+      "failure": {
+        "upstream": "执行错误",
+        "unreachable": "执行错误",
+        "blocked": "执行错误",
+        "generic": "执行错误"
+      }
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {
@@ -884,9 +897,6 @@
         "roleViewer": "Viewer",
         "typePersonal": "个人",
         "typeTeam": "团队",
-        "lotPaid": "永久 · 可退",
-        "lotGift": "赠送 · 会过期",
-        "lotExpiring": "{days} 天后过期 ⚠",
         "kindImage": "图片",
         "kindVideo": "视频",
         "kindAudio": "音频"
@@ -908,30 +918,33 @@
         "emptyHint": "Collection 是跨 Projects 复用的素材集合(图 / 视频 / 音频)。后端能力上线后,这里会列出你创建的 Collection。"
       },
       "credits": {
-        "balance": "钱包余额",
-        "hint": "扣费先扣快过期的赠送、付费的留到最后。",
-        "paidTitle": "充值积分",
-        "giftTitle": "赠送积分",
-        "remaining": "剩余 {amount}",
-        "refund": "申请退款",
-        "orderTitle": "扣费顺序",
-        "orderStep1": "最快过期赠送",
-        "orderStep2": "其它赠送",
-        "orderStep3": "永久充值",
-        "activityTitle": "最近流水",
-        "colType": "类型",
-        "colSource": "来源",
-        "colAmount": "金额",
-        "colTime": "时间",
-        "topup": "充值",
-        "ledgerType": {
-          "topup": "充值",
-          "grant": "赠送",
-          "spend": "消费",
-          "expiry": "过期",
-          "refund": "退款"
-        },
-        "unit": "积分"
+        "spendableLabel": "这个 Studio 可用",
+        "unit": "积分",
+        "spendableHint": "在这个 Studio 的 Project 里生成，花的都是这里的积分。",
+        "noneHint": "还没有积分指定给这个 Studio。",
+        "nonePrompt": "买来的积分需要先指定给一个 Studio 才能使用。到账号积分里指定。",
+        "lotsTitle": "积分明细",
+        "lotsDebt": "欠账",
+        "lotsTotal": "合计",
+        "depletedHint": "这个 Studio 的积分已经用完。",
+        "debtHint": "新指定进来的积分会先抵掉欠账。",
+        "depletedPrompt": "到账号积分里指定新的积分。",
+        "debtPrompt": "到账号积分里指定新的积分，会先抵掉欠账。",
+        "noteShortfall": "消耗 {consumed}，欠 {owed}",
+        "noteUnbilled": "消耗 {consumed}，未扣费",
+        "eventRepayment": "指定积分，抵扣欠账",
+        "lotsEmpty": "这里还没有积分。",
+        "lotPurchased": "共 {amount}",
+        "activityTitle": "消耗流水",
+        "activityEmpty": "还没有消耗记录。",
+        "activityEnd": "没有更多了",
+        "activityPageError": "这一页没能加载，继续滚动可重试。",
+        "colTime": "日期",
+        "colWho": "谁",
+        "colProject": "Project",
+        "colModel": "模型",
+        "colAmount": "积分",
+        "loadError": "无法加载积分信息，请刷新页面重试。"
       },
       "members": {
         "invite": "邀请成员",
@@ -1086,7 +1099,6 @@
     "aria": {
       "backToStudio": "返回 Studio",
       "creditsBalance": "积分余额",
-      "addCredits": "添加积分",
       "home": "首页",
       "scrollTabsLeft": "向左滚动标签",
       "scrollTabsRight": "向右滚动标签",

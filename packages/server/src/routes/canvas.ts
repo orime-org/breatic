@@ -166,7 +166,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // the billing source of truth; concurrent passes may drive the balance
   // negative, the accepted trade-off of a soft pre-check. Same shared
   // helper and 402 shape as the /mini-tools routes.
-  await precheckCredits(user.id, estimateTaskCredits(body.model));
+  await precheckCredits(projectId, user.id, estimateTaskCredits(body.model));
 
   // #89: storage gate, the other soft pre-check. AFTER credits, because
   // refusing for storage tells the studio's admin about it — and a request
@@ -351,7 +351,7 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
   // #1580 adversarial fix: understand tasks invoke real vision/ASR models
   // and are billed at completion like every other task — this route was the
   // only enqueue path without the shared credit pre-check.
-  await precheckCredits(user.id, estimateTaskCredits(body.model));
+  await precheckCredits(body.project_id, user.id, estimateTaskCredits(body.model));
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,

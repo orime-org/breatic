@@ -13,10 +13,10 @@
 import { stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { getModel } from "@breatic/domain";
+import { getModel, resolveProvider } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
-import { env } from "@breatic/core";
-import { creditService } from "@breatic/domain";
+import { env, logger } from "@breatic/core";
+import { creditLotService } from "@breatic/domain";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
@@ -137,9 +137,17 @@ export async function* executeTextTool(
   }
 
   let totalTokens = 0;
+  // Declared out here so both exits reach it. The token count is only read
+  // once the stream has finished, so a run that died before that charges
+  // nothing and the model goes unused; a run that died after it is charged
+  // and carries the same columns as the success path. The second case is
+  // reached when the consumer throws while taking an event: the throw comes
+  // back out of the suspended `yield`, by which point the model has already
+  // billed us.
+  let modelString: string | null = null;
 
   try {
-    const modelString = getModelForTool(tool);
+    modelString = getModelForTool(tool);
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
@@ -165,7 +173,13 @@ export async function* executeTextTool(
     totalTokens = usage?.totalTokens ?? 0;
 
     // Deduct credits based on token usage
-    const creditsUsed = await deductForTokens(userId, totalTokens, tool, idempotencyKey);
+    const creditsUsed = await recordTokenUsage(
+      userId,
+      totalTokens,
+      tool,
+      idempotencyKey,
+      modelString,
+    );
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -178,7 +192,13 @@ export async function* executeTextTool(
     // Deduct for consumed tokens even on error. Uses the same
     // idempotencyKey as the success path so the catch branch can't
     // double-charge if somehow both run for the same request.
-    const creditsUsed = await deductForTokens(userId, totalTokens, tool, idempotencyKey);
+    const creditsUsed = await recordTokenUsage(
+      userId,
+      totalTokens,
+      tool,
+      idempotencyKey,
+      modelString,
+    );
 
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
@@ -194,24 +214,30 @@ export async function* executeTextTool(
 }
 
 /**
- * Deduct credits based on token consumption.
+ * Record what a text-tool run used, and charge for it.
  *
  * Uses a simple rate: 1 credit per 1000 tokens (configurable via CREDIT_MULTIPLIER).
  *
- * Billed through `deductOnce` with the per-request idempotency key so a
- * retry of the same HTTP request (same `Idempotency-Key` header) charges
- * at most once.
- * @param userId - Authenticated user ID to charge.
+ * Which pool pays is decided by the project a generation runs in, and this
+ * route carries no project id (#122). Until it does, a run records its usage
+ * and charges nobody, so the number returned here is zero.
+ *
+ * The per-request idempotency key makes a retry of the same HTTP request
+ * record at most once.
+ * @param userId - Authenticated user ID the usage is recorded against.
  * @param tokens - Total tokens consumed by the run, used to compute the credit amount.
- * @param tool - Tool name recorded in the deduction description.
- * @param idempotencyKey - Per-request key combined into the `texttool:` deduction ref to guarantee idempotency.
- * @returns Credits actually deducted
+ * @param tool - Tool name recorded on the ledger row.
+ * @param idempotencyKey - Per-request key combined into the `texttool:` ref to guarantee idempotency.
+ * @param modelString - The model that produced the text, `null` when the run
+ *   failed before one was resolved.
+ * @returns Credits actually charged.
  */
-async function deductForTokens(
+async function recordTokenUsage(
   userId: string,
   tokens: number,
   tool: string,
   idempotencyKey: string,
+  modelString: string | null,
 ): Promise<number> {
   if (tokens === 0) return 0;
 
@@ -220,19 +246,32 @@ async function deductForTokens(
   if (credits <= 0) return 0;
 
   try {
-    await creditService.deductOnce(
-      userId,
+    // `projectId` is null because this route never took one (#122). That is a
+    // gap in the product, not a decision: the pool that pays is chosen by the
+    // project a generation runs in, so until the route carries one, a text
+    // tool records what it used and charges nobody.
+    const outcome = await creditLotService.chargeOnceForGeneration(
       `texttool:${idempotencyKey}`,
-      credits,
-      `Text tool: ${tool}`,
+      {
+        projectId: null,
+        actorUserId: userId,
+        amount: credits,
+        model: modelString ?? undefined,
+        provider: modelString === null ? undefined : resolveProvider(modelString),
+        description: `Text tool: ${tool}`,
+        tokensUsed: tokens,
+      },
     );
-    return credits;
-  } catch {
-    // Don't fail the response if credit deduction fails (e.g.
-    // insufficient credits). The text was already generated.
-    // Returning 0 signals "billed nothing" to the application
-    // caller, which can decide to emit a warn audit log if the
-    // observed `creditsUsed === 0 && tokens > 0` invariant holds.
+    return outcome?.charged ?? 0;
+  } catch (err) {
+    // The text is already generated and already streamed, so this failure
+    // has nowhere to go: the caller gets its `done` event either way and
+    // sees nothing. This line is the only trace the run leaves of money it
+    // used and did not collect.
+    logger.error(
+      { err, userId, tool, tokens },
+      "text_tool_credit_charge_failed",
+    );
     return 0;
   }
 }
