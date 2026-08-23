@@ -38,6 +38,7 @@ import {
   studioCreditDebts,
   studios,
   projects,
+  payments,
 } from "@breatic/core";
 import type {
   CreditLotEntity,
@@ -492,6 +493,15 @@ export async function setDesignation(
   return toLotEntity(rows[0]!);
 }
 
+/** What a lot's row carries beyond the lot itself. */
+export interface LotContext {
+  /** What was paid for it, in the smallest unit of `currency`. */
+  paidCents: number;
+  currency: string;
+  /** The studio it points at, named. Null when it points at none. */
+  designatedStudioName: string | null;
+}
+
 /**
  * One account's purchases, newest first, one keyset page at a time.
  *
@@ -507,20 +517,38 @@ export async function listLotsByUser(
   userId: string,
   limit: number,
   cursor: ActivityCursor | null,
-): Promise<(CreditLotEntity & { cursorAt: string })[]> {
+  lifecycle?: CreditLotLifecycle,
+): Promise<(CreditLotEntity & LotContext & { cursorAt: string })[]> {
   const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
   const rows = await db
     .select({
       lot: creditLots,
+      // What was really paid for it, which lives on the payment rather than the
+      // lot. Working it back from the credit count would not do: the price
+      // table gets replaced, and an old lot was bought at the price of its own
+      // day.
+      paidCents: payments.amountCents,
+      currency: payments.currency,
+      // No liveness condition on the studio: a lot pointing at one that is
+      // gone still has to read as pointing somewhere, or the reader cannot
+      // tell it from one that was never assigned.
+      designatedStudioName: studios.name,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
+    .innerJoin(payments, eq(payments.id, creditLots.paymentId))
+    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
         eq(creditLots.userId, userId),
         isNull(creditLots.deletedAt),
+        // Three sections read this list and each wants its own subset: assign
+        // takes the active ones, refunds sorts by refund state, purchases take
+        // everything. Narrowing after the page is cut would leave a page with
+        // nothing on it while the cursor says there is more.
+        lifecycle ? eq(creditLots.lifecycle, lifecycle) : undefined,
         at
           ? or(
               lt(creditLots.createdAt, at),
@@ -531,7 +559,13 @@ export async function listLotsByUser(
     )
     .orderBy(desc(creditLots.createdAt), desc(creditLots.id))
     .limit(limit);
-  return rows.map((row) => ({ ...toLotEntity(row.lot), cursorAt: row.cursorAt }));
+  return rows.map((row) => ({
+    ...toLotEntity(row.lot),
+    paidCents: row.paidCents,
+    currency: row.currency,
+    designatedStudioName: row.designatedStudioName,
+    cursorAt: row.cursorAt,
+  }));
 }
 
 /** One lot a studio holds, with the buyer's display name. */

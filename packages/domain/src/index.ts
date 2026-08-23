@@ -22,6 +22,7 @@
 // designation, and what is left on it.
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+export type { LotContext } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";

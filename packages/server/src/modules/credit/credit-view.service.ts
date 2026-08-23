@@ -13,9 +13,14 @@
  */
 
 import { assetService, creditLotRepo, creditLotService } from "@breatic/domain";
+import type { LotContext } from "@breatic/domain";
 import { encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
 import type { ActivityCursor } from "@breatic/core";
-import type { CreditLotEntity, CreditLedgerEntryEntity } from "@breatic/shared";
+import type {
+  CreditLotEntity,
+  CreditLotLifecycle,
+  CreditLedgerEntryEntity,
+} from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
 
 /** One purchase, as the overlay shows it. */
@@ -24,6 +29,11 @@ export interface CreditLotView {
   purchasedCredits: number;
   remainingCredits: number;
   designatedStudioId: string | null;
+  /** The studio it points at, named. Null when it points at none. */
+  designatedStudioName: string | null;
+  /** What was paid for it, in the smallest unit of `currency`. */
+  paidCents: number;
+  currency: string;
   lifecycle: string;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;
@@ -98,12 +108,15 @@ function toNumber(value: string): number {
  * @param lot - The stored lot.
  * @returns The view.
  */
-function toLotView(lot: CreditLotEntity): CreditLotView {
+function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
   return {
     id: lot.id,
     purchasedCredits: toNumber(lot.purchasedCredits),
     remainingCredits: toNumber(lot.remainingCredits),
     designatedStudioId: lot.designatedStudioId,
+    designatedStudioName: lot.designatedStudioName,
+    paidCents: lot.paidCents,
+    currency: lot.currency,
     lifecycle: lot.lifecycle,
     refundAttempts: lot.refundAttempts,
     createdAt: lot.createdAt.toISOString(),
@@ -195,10 +208,11 @@ export async function listLots(
   userId: string,
   rawLimit?: string,
   rawCursor?: string,
+  lifecycle?: CreditLotLifecycle,
 ): Promise<CreditPage<CreditLotView>> {
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
-  const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor);
+  const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor, lifecycle);
   return toPage(rows, size, toLotView, (row) => ({
     cursorAt: row.cursorAt,
     id: row.id,

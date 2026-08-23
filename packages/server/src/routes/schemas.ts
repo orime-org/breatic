@@ -317,6 +317,18 @@ export const creditPageQuerySchema = z.object({
   cursor: z.string().optional(),
 });
 
+/**
+ * Purchases, optionally narrowed to one lifecycle. Three sections read the
+ * same list and each wants its own subset, and narrowing after the page is
+ * cut would leave a page with nothing on it while the cursor says there is
+ * more.
+ */
+export const creditLotQuerySchema = creditPageQuerySchema.extend({
+  lifecycle: z
+    .enum(["active", "depleted", "refund_pending", "refunding", "refunded"])
+    .optional(),
+});
+
 /** The ledger takes the same paging, plus an optional studio filter. */
 export const creditLedgerQuerySchema = creditPageQuerySchema.extend({
   studioId: z.string().uuid().optional(),
