@@ -2,12 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, screen } from '@testing-library/react';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { useCanvasStore } from '@web/stores/canvas';
-import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
+import {
+  clickNode,
+  group,
+  image,
+  mockSpace,
+  renderSpace,
+  zOf,
+  type Nodes,
+} from '@web/spaces/canvas/__tests__/focus-harness';
 
 vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
   const actual =
@@ -15,83 +22,24 @@ vi.mock('@web/data/yjs/canvas-space', async (importOriginal) => {
   return { ...actual, useCanvasSpace: vi.fn() };
 });
 
+// The return type is stated so a change to SocketState's shape fails
+// typecheck here: `vi.mock` factory return values are otherwise
+// unconstrained, and a double that has drifted from the real contract fails
+// nothing at runtime either.
 vi.mock('@web/data/yjs/use-socket', () => ({
-  useSocket: vi.fn(() => ({
-    provider: null,
-    synced: true,
-    status: 'connecting' as const,
-  })),
+  useSocket: vi.fn(
+    (): ReturnType<typeof import('@web/data/yjs/use-socket').useSocket> => ({
+      provider: null,
+      synced: false,
+      hasEverSynced: false,
+      status: 'connecting',
+      writeAccess: 'unknown',
+      authFailedReason: null,
+    }),
+  ),
 }));
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
-
-/**
- * Builds the shape `useCanvasSpace` returns, with only nodes varying.
- * @param nodes - The canvas nodes to mirror.
- * @returns The mocked space value.
- */
-function mockSpace(nodes: Nodes): ReturnType<typeof canvasSpace.useCanvasSpace> {
-  return {
-    nodes,
-    edges: [],
-    undo: vi.fn(),
-    redo: vi.fn(),
-    canUndo: false,
-    canRedo: false,
-  };
-}
-
-/**
- * Mounts the canvas with a fresh query client (the space prefetches the model
- * catalog on mount).
- * @returns The render result.
- */
-function renderSpace(): ReturnType<typeof render> {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return render(
-    <QueryClientProvider client={client}>
-      <CanvasSpace projectId='p' spaceId='s' readOnly={false} />
-    </QueryClientProvider>,
-  );
-}
-
-/**
- * Reads the inline z-index xyflow wrote onto a node element.
- * @param id - The node id.
- * @returns The element's z-index string.
- */
-function zOf(id: string): string {
-  const el = document.querySelector<HTMLElement>(
-    `.react-flow__node[data-id="${id}"]`,
-  );
-  if (!el) throw new Error(`node ${id} is not rendered`);
-  return el.style.zIndex;
-}
-
-/**
- * Clicks a node element by id.
- * @param id - The node id.
- * @returns Nothing.
- */
-function clickNode(id: string): void {
-  act(() => {
-    fireEvent.click(
-      document.querySelector(`.react-flow__node[data-id="${id}"]`)!,
-    );
-  });
-}
-
-type Nodes = ReturnType<typeof canvasSpace.useCanvasSpace>['nodes'];
-
-const IMAGE = (id: string, x: number, over = {}): Nodes[number] =>
-  ({
-    id,
-    type: 'image',
-    position: { x, y: 0 },
-    data: { kind: 'image', content: `${id}.png`, status: 'idle', ...over },
-  }) as Nodes[number];
 
 describe('聚焦目标的抬升（#2000）', () => {
   beforeEach(() => {
@@ -101,7 +49,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A1：点中聚焦源之后，它带 zIndex 1002', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+      mockSpace([image('host', 0), image('src', 300)]),
     );
     renderSpace();
     expect(zOf('src')).toBe('0');
@@ -115,7 +63,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A2：1002 高于一个被选中的节点（选中加成是 1000）', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('other', 300), IMAGE('src', 600)]),
+      mockSpace([image('host', 0), image('other', 300), image('src', 600)]),
     );
     renderSpace();
     // Select `other` while selection is still live (before the pick starts):
@@ -132,17 +80,10 @@ describe('聚焦目标的抬升（#2000）', () => {
   it('A2：1002 高于一个组成员', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
-        IMAGE('host', 0),
-        {
-          id: 'g',
-          type: 'group',
-          position: { x: 300, y: 0 },
-          width: 400,
-          height: 400,
-          data: { kind: 'group' },
-        } as Nodes[number],
-        { ...IMAGE('member', 20), parentId: 'g' } as Nodes[number],
-        IMAGE('src', 900),
+        image('host', 0),
+        group('g', 300),
+        { ...image('member', 20), parentId: 'g' } as Nodes[number],
+        image('src', 900),
       ]),
     );
     renderSpace();
@@ -156,17 +97,10 @@ describe('聚焦目标的抬升（#2000）', () => {
   it('A2：1002 高于一个被选中的组的成员（父链把它推到 1001）', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
-        IMAGE('host', 0),
-        {
-          id: 'g',
-          type: 'group',
-          position: { x: 300, y: 0 },
-          width: 400,
-          height: 400,
-          data: { kind: 'group' },
-        } as Nodes[number],
-        { ...IMAGE('member', 20), parentId: 'g' } as Nodes[number],
-        IMAGE('src', 900),
+        image('host', 0),
+        group('g', 300),
+        { ...image('member', 20), parentId: 'g' } as Nodes[number],
+        image('src', 900),
       ]),
     );
     renderSpace();
@@ -185,7 +119,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A3：回到挑选态之后 zIndex 回到原值（确认 / 取消 / Esc 共用这条路）', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+      mockSpace([image('host', 0), image('src', 300)]),
     );
     renderSpace();
 
@@ -206,7 +140,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A3：会话换 purpose 之后 zIndex 回到原值', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+      mockSpace([image('host', 0), image('src', 300)]),
     );
     renderSpace();
 
@@ -220,7 +154,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A3：换聚焦目标时，旧的落回原层、新的抬起来', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('a', 300), IMAGE('b', 600)]),
+      mockSpace([image('host', 0), image('a', 300), image('b', 600)]),
     );
     renderSpace();
 
@@ -235,7 +169,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A3：退出聚焦后 zIndex 回到原值', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+      mockSpace([image('host', 0), image('src', 300)]),
     );
     renderSpace();
 
@@ -249,7 +183,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A4：本功能不写 selected —— 聚焦目标不带 selected class', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+      mockSpace([image('host', 0), image('src', 300)]),
     );
     renderSpace();
 
@@ -262,7 +196,7 @@ describe('聚焦目标的抬升（#2000）', () => {
 
   it('A5：聚焦目标是锁定节点时，抬起来了但仍不可拖', () => {
     mockUseCanvasSpace.mockReturnValue(
-      mockSpace([IMAGE('host', 0), IMAGE('src', 300, { locked: true })]),
+      mockSpace([image('host', 0), image('src', 300, { locked: true })]),
     );
     renderSpace();
 
