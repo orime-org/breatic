@@ -107,7 +107,7 @@ describe("web_fetch says a failure is a failure", () => {
     expect(forModel.toLowerCase()).toMatch(/do not|instead|tell the user|another/); // what next
   });
 
-  it("keeps the resolved address out of everything but the model's copy", async () => {
+  it("keeps the resolved address out of both halves of what it says", async () => {
     // A blocked fetch knows an internal address, because resolving it is how
     // it knew to refuse. Handing that back is a probe: ask for an internal
     // name, read its real address off the answer. It stays out of both the

@@ -97,10 +97,10 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // exists, and the model passes whatever it reads here on to the reader
         // in its own words.
         //
-        // How many deliveries this status cost is left out. The transport
-        // retries a replay-safe read, but gives up early on a Retry-After
-        // longer than it will wait, so a status can arrive having been asked
-        // for once. Neither number is visible from here.
+        // How many deliveries this status cost is left out, and for most of
+        // them the answer is one: the transport replays only 429, 408 and
+        // 5xx, so every other status here arrives from a single delivery.
+        // The number is not visible from here in any case.
         const theirSide = res.status >= 500 || res.status === 429;
         throw toolFailed(
           theirSide
@@ -163,9 +163,13 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
 
       if (err instanceof SsrfError && err.aboutTheAddress) {
         // Deliberately vague, and the one place where the model is told less
-        // than we know. Refusing this address meant resolving it, so the
-        // error names an internal address -- handing that back would make
-        // this tool a way to read the inside of the network from outside it.
+        // than we know. One of the refusals that lands here came from
+        // resolving the name, so the error can name an address inside the
+        // network -- handing that back would make this tool a way to read the
+        // inside of it from outside. The other two (a hostname on the block
+        // list, a literal address in the URL) name only what the model wrote,
+        // and they take the same vague sentence so that which one it was
+        // cannot be read off the wording.
         // Which address it was is dropped here rather than recorded: a tool
         // is library code and writes no logs, and nothing upstream is handed
         // the original error either.
@@ -200,15 +204,19 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         );
       }
 
-      // Left over: what the transport refuses before it delivers anything --
-      // a URL carrying credentials, a deadline no timer can hold. Its own
-      // boundary doc names them and says they are raised before any delivery,
-      // so nothing was reached and nothing about the address is known. They
-      // are facts about the request, which the model wrote and can rewrite.
+      // Left over, and it is two groups rather than one. What the transport
+      // refuses before delivering anything -- a URL carrying credentials, a
+      // deadline no timer can hold, named in its own boundary doc -- and
+      // whatever the reading of an answer throws, since stripping, truncating
+      // and re-encoding the body all sit inside this same `try`. Neither
+      // group says the address is not there, which is what the model is told;
+      // both are things the request or the answer did, and the model wrote
+      // the request.
       throw toolFailed(
-        `Fetching ${url} was not sent: ${reasonOf(err)}. Nothing was requested, so this says ` +
-          "nothing about the address. If the request can be corrected, correct it and fetch " +
-          "once more; otherwise tell the user this page could not be read.",
+        `Fetching ${url} produced no page: ${reasonOf(err)}. This is about the request or ` +
+          "about the shape of what came back, not about whether the address exists. If the " +
+          "request can be corrected, correct it and fetch once more; otherwise tell the user " +
+          "this page could not be read.",
         // Not `unreachable`: that line is for an address that was reached for
         // and did not answer. Nothing here was reached for at all, and a
         // reader told otherwise would have the wrong idea of what to retry.

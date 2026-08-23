@@ -8,8 +8,10 @@
  * the reason, one for the model and a key for the panel. Not every failed call
  * comes from one of them, though. Input the model shaped wrongly is rejected
  * before `execute` runs, and a tool name that no longer exists never reaches
- * one at all. Both arrive here with nothing of ours on them, and the second
- * of the two arrives as a rendered string rather than an error object.
+ * one at all. Both arrive here with nothing of ours on them, and both arrive
+ * as a rendered string rather than an error object: `parseToolCall` catches
+ * either one into the same `{ invalid: true, error }` shape, and the one site
+ * that puts it on the stream renders it with `getErrorMessage`.
  *
  * Those still have to be recorded as something, because a stored `error` part
  * with no detail is a record that cannot say what happened, and the model
@@ -19,14 +21,16 @@ import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type { ToolFailure } from "@breatic/shared";
 
 /**
- * What is left of a call the turn ended in the middle of asking for.
+ * What is left of a call the turn ended before running.
  *
- * Measured against `ai@7.0.68`: a call the SDK finished assembling is pushed
- * to a queue the end of the model call executes, and `executeToolCall` runs
- * it without asking whether the turn's signal has been raised. Executing is
- * what reports it, either way it ends. So a call with nothing recorded about
- * it is one the SDK never finished assembling -- the model was still sending
- * its arguments -- and nothing of it ran.
+ * Two windows put a call here, and neither of them ran it. Measured against
+ * `ai@7.0.68`: a call the SDK finishes assembling goes into a queue drained
+ * only by `model-call-end`, and that chunk is made from the provider's
+ * `finish`. A turn cut off before `finish` arrives takes the other exit --
+ * the read loop enqueues `abort` and closes -- so the queue is never drained.
+ * The transform has no `flush` to drain it either. So a call is left with
+ * nothing recorded about it whether its arguments were still arriving or had
+ * just finished; what the two share is that no tool ran.
  *
  * Alone among these reasons, this one is worth acting on again: nothing was
  * attempted, so nothing about it failed. Left without a next step it falls to
@@ -34,10 +38,9 @@ import type { ToolFailure } from "@breatic/shared";
  * tool the same way will fail the same way -- which is the opposite of what
  * happened here.
  *
- * Read by no one today, and written for the model regardless: a half-sent
- * call is stored as such and left out of the history on that ground
- * (`model-messages.ts`), so what is here is what the model would read if the
- * SDK ever stopped marking them.
+ * The model does read this. A call caught mid-arguments is marked half-sent
+ * and left out of the history on that ground (`model-messages.ts`), but one
+ * whose arguments had arrived carries no such mark and goes back in full.
  */
 const NOTHING_OF_IT_RAN =
   "This tool was never run: the turn ended while its arguments were still " +

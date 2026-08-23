@@ -82,19 +82,18 @@ export function finishedSpending(outputTotal: number): ModelStreamPart {
  * @param parts - Consulted at call time for this turn's output.
  * @param onCalled - Handed what the model was asked, for cases about what a
  *   turn puts in front of it rather than about what it says back.
- * @param afterDrained - Run once the SDK has taken every part and before the
- *   stream closes. The one moment a case can reach the gap between a tool call
- *   arriving complete and the tool running: the SDK queues calls as they
- *   stream and executes the queue when the model call ends, so a stop timed
- *   from outside lands on one side of that gap or the other by luck. Closing
- *   from `pull` is what makes the timing exact -- it is called once the queue
- *   the parts went into has been read out.
+ * @param afterDrained - Run once the SDK has taken every part, before the
+ *   stream closes, and handed the controller so it can put more on. This is
+ *   how a case reaches an exact moment inside a turn: the SDK queues tool
+ *   calls as they arrive and only runs the queue when the model call ends, so
+ *   a stop timed from outside lands wherever it lands. Holding the last part
+ *   back and enqueuing it from here puts the stop between two named chunks.
  * @returns A model the turn can be run against.
  */
 export function modelProducing(
   parts: () => ModelStreamPart[],
   onCalled?: (asked: { prompt: unknown }) => void,
-  afterDrained?: () => void,
+  afterDrained?: (controller: ReadableStreamDefaultController<ModelStreamPart>) => void,
 ): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doStream: async (asked) => {
@@ -106,7 +105,7 @@ export function modelProducing(
             if (afterDrained === undefined) controller.close();
           },
           pull(controller) {
-            afterDrained?.();
+            afterDrained?.(controller);
             controller.close();
           },
         }),

@@ -80,8 +80,8 @@ describe('一个工具调用走到哪了', () => {
     // 真机上逮到的：一轮正在跑的时候，前端的 part 是 SDK 客户端自己拼的，
     // errorText 是它写死的一句英文（"An error occurred."）。当时我照单收下，
     // 界面上就直接显示了那句英文——不过 i18n，而产品出五种语言。
-    // 判据是结构性的：failureKind 只有回放路才带，它不在就说明这个 errorText
-    // 不是我们给的。
+    // 判据是这句话本身：`isReaderLine` 拿它去对那张行文案表，对不上就不是
+    // 我们给的，跟这一格带不带 failureKind 无关。
     const streaming = {
       id: 'm1',
       role: 'assistant',

@@ -114,7 +114,7 @@ vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
-/** An address that resolves and then refuses, so the tool fails for real. */
+/** The address the stubbed tool in this file is asked for, and fails on. */
 const REFUSED = "https://public.example/page";
 
 /** The model asking for the one tool this file registers. */

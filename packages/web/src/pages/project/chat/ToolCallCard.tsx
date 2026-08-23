@@ -39,13 +39,15 @@ export function ToolCallCard({
   // is kept as `error` and says so alongside. Calling that a failure tells the
   // user something broke when they are the one who stopped it.
   //
-  // Two fields can say it and a call arrives with either. A replayed message
-  // carries which ending it was; a live one carries only the line, because the
-  // wire has one field for a failure and that is what it holds. Reading one
-  // field is how the icon came to draw a failure under the word "stopped".
+  // Two fields can say it and a call arrives with either, from either source.
+  // A replayed message carries the ending the turn recorded. A live one can
+  // carry the line the tool threw, and can carry a kind as well -- the panel
+  // works one out for a call the stop caught with no ending of its own.
+  // Reading one field is how the icon came to draw a failure under the word
+  // "stopped".
   //
-  // Narrowed to `error` on purpose: a call still running is also without an
-  // outcome, and that one is the spinner's job, not this line's.
+  // Asked of `error` alone on purpose: a call still running has no ending
+  // either, and that one is the spinner's job, not this line's.
   const unfinished =
     toolCall.status === 'error' &&
     (toolCall.failureKind === 'user_aborted' || toolCall.failureKey === FAILURE_LINES.stopped);

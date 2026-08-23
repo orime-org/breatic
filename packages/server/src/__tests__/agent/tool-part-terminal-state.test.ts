@@ -41,6 +41,8 @@ const thisCase = vi.hoisted(() => ({
   laterParts: undefined as unknown[] | undefined,
   /** Stop the turn once the model has produced its parts, before any tool runs. */
   stopAfterProducing: false,
+  /** Held back from the stream until after the stop above, when a case sets it. */
+  heldBack: undefined as unknown[] | undefined,
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -157,10 +159,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         return thisCase.parts as ModelStreamPart[];
       },
       undefined,
-      () => {
+      (controller) => {
         // Every part is in the SDK's hands and no tool has run: the calls are
         // sitting in the queue that the end of the model call executes.
         if (thisCase.stopAfterProducing) thisCase.stopper?.abort();
+        const held = thisCase.heldBack as ModelStreamPart[] | undefined;
+        if (held !== undefined) for (const part of held) controller.enqueue(part);
       }),
   };
 });
@@ -255,6 +259,7 @@ beforeEach(() => {
   thisCase.toolDoes = "answers";
   thisCase.parts = [];
   thisCase.stopAfterProducing = false;
+  thisCase.heldBack = undefined;
 });
 
 describe("一次问用户的调用,参数没过 schema 的时候", () => {
@@ -470,6 +475,52 @@ describe("how a tool use is recorded when it does not come back", () => {
     // no one -- a version of the SDK that stopped marking these would put it
     // in front of the model, and this case is where that would show.
     expect(part?.argumentsIncomplete).toBe(true);
+  });
+
+  it("does not say a fully-sent call the turn never ran was still running", async () => {
+    // The other window, and the one that reaches the model. A tool call the
+    // SDK finished assembling goes into a queue drained only when the model
+    // call ends, and that end is made from the provider's `finish` chunk
+    // (`ai@7.0.68` dist/index.js:8582). A stop that lands between the two
+    // takes the other exit -- the pull loop enqueues `abort` and closes
+    // (:9366) -- so the queue is never drained and the tool never runs.
+    //
+    // This record carries complete arguments, so nothing marks it as
+    // half-sent and the model reads it back next turn. What it reads has to
+    // be what happened: nothing was attempted, so calling again is right.
+    // Prose after the call so the SDK has finished turning it into a part by
+    // the time the stop lands, and no `finish` at all -- a provider stream cut
+    // off mid-turn does not get to send one, and it is that chunk the end of
+    // the model call is made from.
+    thisCase.parts = [
+      asksForTheTool,
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "让我查一下" },
+      { type: "text-end", id: "t1" },
+    ];
+    thisCase.heldBack = [];
+    thisCase.stopAfterProducing = true;
+    const stopper = new AbortController();
+    thisCase.stopper = stopper;
+    addMessage.mockClear();
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("do something", stopper.signal);
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+
+    const reply = addMessage.mock.calls.map(([, m]) => m).find((m) => m.role === "assistant");
+    const part = toolPart((reply?.parts as MessagePart[]) ?? []);
+
+    expect(part?.status).toBe("error");
+    expect(part?.failure?.forModel).toMatch(/never run|nothing was attempted/i);
+    expect(part?.failure?.forModel).not.toMatch(/still running/i);
+    expect(part?.failure?.kind).toBe("user_aborted");
+    // Complete arguments, so this one is not held back from the history.
+    expect(part?.argumentsIncomplete).toBeUndefined();
+    expect(part?.input).toMatchObject({ url: "https://example.com" });
   });
 
   it("still records a normal tool use as successful", async () => {

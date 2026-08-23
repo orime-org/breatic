@@ -480,8 +480,8 @@ export const domainMock = () => ({
   // matched -- and one written-out copy of them said `ask_user`, a tool that
   // does not exist, which is how a turn that should have stopped ran on.
   TOOLS_THAT_BLOCK: REAL_TOOLS_THAT_BLOCK,
-  // Real for the same reason: this is the exact detail a stored part is
-  // checked against, so a stub spelling it here would be checking itself.
+  // Real so that a turn built on this stub throws the same detail the real
+  // one does when a tool reports the stop itself.
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,
   getSkillRegistry: () => ({
     get: (name: string) =>

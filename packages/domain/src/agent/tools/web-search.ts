@@ -230,9 +230,9 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       });
       return lines.join("\n");
     } catch (err: unknown) {
-      // The two throws above pass straight through: they already say what
-      // happened, and rewriting them here would replace a specific reason
-      // with this general one.
+      // Every throw above passes straight through: each already says what
+      // happened, and rewriting one here would replace a specific reason with
+      // this general one.
       if (toolFailureOf(err) !== undefined) throw err;
       if (isStop(err, abortSignal)) throw stoppedByUser();
 

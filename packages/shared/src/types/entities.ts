@@ -125,12 +125,14 @@ export type MessagePart =
        */
       output?: unknown;
       /**
-       * Why it ended with nothing to show. Only set when the status is
-       * `error`, and set for every stored part that is.
+       * Why it ended with nothing to show. Set only when the status is
+       * `error`, and written on every such part this code stores.
        *
-       * Optional in the type because a part is built up as the call runs and
-       * is `pending` until it is not. A stored `error` part without one is a
-       * record that cannot say what happened, which is what this replaced.
+       * Optional in the type for two reasons: a part is built up as the call
+       * runs and is `pending` until it is not, and rows written before this
+       * field existed have none. Readers fall back to a reason that says only
+       * that something went wrong -- a record that cannot say what happened,
+       * which is what this replaced.
        */
       failure?: ToolFailure;
       /**

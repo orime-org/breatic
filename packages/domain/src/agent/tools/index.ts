@@ -84,9 +84,10 @@ export { TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
  * not a thing that went wrong, it is a thing that is not here, and every turn
  * that offers it spends part of the model's attention on an option it cannot
  * take. A smoke run on a deployment without a search key — back when the tool
- * answered with the string "Error: key not configured", which the model read
- * as a result — had it call web_search over and over until the step ceiling
- * stopped it, and reply nothing at all.
+ * answered with the string "Error: Brave Search API key not configured. Set
+ * BRAVE_SEARCH_API_KEY in your .env file.", which the model read as a result
+ * — had it call web_search over and over until the step ceiling stopped it,
+ * and reply nothing at all.
  *
  * Only genuinely required configuration goes here. Something a tool merely
  * prefers would silently remove the tool on a deployment that works fine.

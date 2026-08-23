@@ -8,8 +8,10 @@
  * each has two readers who need different things. The model needs the specific
  * reason -- which address, which status, what it might do instead -- because
  * that is what it acts on. The person watching needs to know the step did not
- * work, and nothing more: the specific reason names endpoints, internal
- * addresses and vendor hosts, none of which belong on a screen.
+ * work, and nothing more: the specific reason names endpoints, statuses and
+ * vendor hosts, none of which belong on a screen. (An address inside the
+ * network is not among them -- the one failure that resolves to one drops it
+ * before writing the reason, so it reaches neither audience.)
  *
  * So three fields rather than one message. What ended it is its own field
  * because it is a different question from what to say about it -- the same
@@ -43,7 +45,11 @@ export const FAILURE_LINES = {
    */
   generic: "chat.tool.failure.generic",
   /**
-   * The user stopped the turn while the tool was running.
+   * The turn was stopped, and this use of a tool did not finish because of it.
+   *
+   * Covers a tool that was running when the stop landed and one the turn never
+   * got to run at all: both are the same thing to whoever pressed stop, and
+   * what separates them is in the reason the model reads.
    *
    * Here rather than beside the failures because every reader key belongs in
    * one table -- the panel reads them all the same way, and a key living on

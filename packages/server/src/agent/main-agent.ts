@@ -427,9 +427,9 @@ export class MainAgent {
         // the second as the first tells the next turn the user did
         // something they never did.
         //
-        // Nothing of the call ran either way, which is what the reason says
-        // -- see `tool-ending.ts` for why the SDK leaves no other kind of
-        // call sitting here.
+        // What a call falls back to once both lookups below have missed --
+        // see `tool-ending.ts` for why a call nothing was reported about is
+        // one that never ran.
         const leftHanging: ToolFailure = endingWithNothingRun(exit === "aborted");
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "pending") continue;

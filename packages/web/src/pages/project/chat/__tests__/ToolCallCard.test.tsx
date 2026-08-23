@@ -11,9 +11,8 @@
  * comes over as its own field.
  *
  * What the card shows is a translated line, never the reason itself. The
- * reason names hosts, statuses and, for a refused fetch, addresses inside the
- * network, and it does not leave the backend — the user learns what happened
- * from the assistant's reply, in its own words.
+ * reason names hosts and statuses, and it does not leave the backend — the
+ * user learns what happened from the assistant's reply, in its own words.
  */
 
 import { describe, it, expect } from 'vitest';

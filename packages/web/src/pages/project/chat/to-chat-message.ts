@@ -92,8 +92,11 @@ export function toChatMessage(
         ...(status === 'error' && 'errorText' in part && isReaderLine(part.errorText)
           ? { failureKey: part.errorText }
           : {}),
-        // Which of the two endings it was comes off a replayed message only:
-        // the wire has one field for a failure and it is carrying the line.
+        // What the message itself says the ending was. A replayed one always
+        // carries it; a live one never does -- the wire has a single field for
+        // a failure and it is carrying the line. The live answer is the one
+        // worked out above, and it is left alone here: this spread only fires
+        // when the field is present, which on a live message it is not.
         ...(status === 'error' && 'failureKind' in part
           ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
