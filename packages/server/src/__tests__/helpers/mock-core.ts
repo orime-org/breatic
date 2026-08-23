@@ -20,6 +20,7 @@ import { vi } from "vitest";
 // because this stub must not pull the domain barrel (and the `ai` SDK behind
 // it); test code is exempt from the alias rule.
 import { TOOLS_THAT_BLOCK as REAL_TOOLS_THAT_BLOCK } from "../../../../domain/src/agent/tools/blocking-tools.js";
+import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -479,6 +480,9 @@ export const domainMock = () => ({
   // matched -- and one written-out copy of them said `ask_user`, a tool that
   // does not exist, which is how a turn that should have stopped ran on.
   TOOLS_THAT_BLOCK: REAL_TOOLS_THAT_BLOCK,
+  // Real so that a turn built on this stub throws the same detail the real
+  // one does when a tool reports the stop itself.
+  STOPPED_BY_USER: REAL_STOPPED_BY_USER,
   getSkillRegistry: () => ({
     get: (name: string) =>
       ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)

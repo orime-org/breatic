@@ -161,13 +161,18 @@ describe("a turn cut short by the client", () => {
     // watches is whether our own code reads that getter, and only something
     // standing in for the call can see it being read.
     streamTextRetry.mockImplementation(
-      (opts: { onStepFinish?: (e: { usage: { totalTokens: number } }) => void }) => ({
+      (opts: {
+        onStepFinish?: (e: { usage: { totalTokens: number }; content: unknown[] }) => void;
+      }) => ({
         toUIMessageStream: () =>
           new ReadableStream({
             start(controller) {
               controller.enqueue({ type: "text-start", id: "t1" });
               controller.enqueue({ type: "text-delta", id: "t1", delta: "hello " });
-              opts.onStepFinish?.({ usage: { totalTokens: 900 } });
+              // `content` alongside `usage` because a real step result always
+              // carries both, and the turn reads it to catch calls the SDK
+              // refused before running them.
+              opts.onStepFinish?.({ usage: { totalTokens: 900 }, content: [] });
               controller.enqueue({ type: "text-delta", id: "t1", delta: "world" });
               controller.enqueue({ type: "text-end", id: "t1" });
               // Left open on purpose: the consumer walking away is what ends

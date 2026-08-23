@@ -9,6 +9,7 @@
  * inside the server package.
  */
 
+import type { ToolFailure } from "@shared/agent/tool-failure.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
@@ -100,7 +101,14 @@ export type MessagePart =
       type: "tool";
       toolCallId: string;
       toolName: string;
-      input: Record<string, unknown>;
+      /**
+       * What the model sent, as it sent it.
+       *
+       * A string when the arguments would not parse as JSON: the model's own
+       * text is then the only record of what it tried, and it is what the
+       * model needs to see to correct itself.
+       */
+      input: Record<string, unknown> | string;
       /** How far this use of the tool got. */
       status: "pending" | "success" | "error";
       /**
@@ -116,8 +124,27 @@ export type MessagePart =
        * Absent while the status is still `pending`.
        */
       output?: unknown;
-      /** Why it failed. Only set when the status is `error`. */
-      errorMessage?: string;
+      /**
+       * Why it ended with nothing to show. Set only when the status is
+       * `error`, and written on every such part this code stores.
+       *
+       * Optional in the type for two reasons: a part is built up as the call
+       * runs and is `pending` until it is not, and rows written before this
+       * field existed have none. Readers fall back to a reason that says only
+       * that something went wrong -- a record that cannot say what happened,
+       * which is what this replaced.
+       */
+      failure?: ToolFailure;
+      /**
+       * The arguments never finished arriving.
+       *
+       * A turn cut off while the model was still emitting a call leaves the
+       * arguments half-parsed -- the SDK fills `input` from a partial JSON
+       * parse on every delta. The panel still shows the call, because the
+       * reader watched it start; the model is not shown it, because it would
+       * read as a call it made with arguments it never sent.
+       */
+      argumentsIncomplete?: boolean;
     }
   /**
    * The turn this message belongs to was stopped before it finished.

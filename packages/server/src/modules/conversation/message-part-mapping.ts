@@ -17,6 +17,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
+import { NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
@@ -43,6 +44,24 @@ function statusOf(state: string): "pending" | "success" | "error" {
 }
 
 /**
+ * The arguments a refused call arrived with, when there are any.
+ *
+ * The SDK declares `rawInput` on one arm of the part union -- the one for a
+ * call that ended in an error -- and this is handed the whole union, on which
+ * a field belonging to a single arm cannot be read. Hence off the object.
+ * @param part - The tool part, in whatever state it ended in.
+ * @returns What the model sent, or undefined when the SDK recorded nothing.
+ */
+function rawInputOf(part: object): Record<string, unknown> | string | undefined {
+  const raw = (part as { rawInput?: unknown }).rawInput;
+  // A string when the arguments would not parse as JSON, an object when they
+  // parsed but failed the tool's schema. Both are what the model sent.
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null) return raw as Record<string, unknown>;
+  return undefined;
+}
+
+/**
  * Turn one tool part into the single row we store for one use of one tool.
  * @param part - The tool part, in whatever state it ended in.
  * @returns Our stored shape.
@@ -53,13 +72,30 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
     type: "tool",
     toolCallId: part.toolCallId,
     toolName: getToolName(part),
-    input: (part.input ?? {}) as Record<string, unknown>,
+    // What the model sent. A call refused before it ran has no `input` --
+    // the SDK only fills that in once the arguments have passed the tool's
+    // schema -- and puts what arrived on `rawInput` instead. Recording an
+    // empty object there would hand the model back a record of itself
+    // calling the tool with nothing, next to an error about arguments it
+    // cannot see.
+    input: (part.input ?? rawInputOf(part) ?? {}) as Record<string, unknown> | string,
     status,
   };
   // Written only in the state that has one. A pending row carrying an empty
   // output would read as a tool that answered with nothing.
   if (status === "success") stored.output = part.output;
-  if (status === "error" && "errorText" in part) stored.errorMessage = part.errorText;
+  // The model was still emitting the arguments when this ended, so whatever
+  // is in `input` came from a partial parse of them.
+  if (part.state === "input-streaming") stored.argumentsIncomplete = true;
+  if (status === "error") {
+    // Written so that a part is never stored `error` with no account of
+    // itself, and written as not knowing: what this side of the boundary has
+    // is the wire, and the wire carries the line a reader is shown, not the
+    // reason. The turn replaces this from the callbacks handed the error
+    // itself -- one for a tool that ran and failed, one for a call refused
+    // before it ran -- and this stands for the case where neither saw it.
+    stored.failure = NOTHING_SAID_WHY;
+  }
   return stored;
 }
 
@@ -107,7 +143,19 @@ export function toUiParts(parts: MessagePart[]): UiParts {
       return { ...base, state: "output-available", output: part.output } as UiPart;
     }
     if (part.status === "error") {
-      return { ...base, state: "output-error", errorText: part.errorMessage } as UiPart;
+      // Two fields, and neither of them is the reason. `errorText` carries a
+      // key for the panel to translate -- a key rather than a sentence
+      // because the row outlives the language it was written in -- and
+      // `failureKind` says which of the two endings this was, which is a
+      // different question from what to say about it. The model's copy of
+      // the reason names hosts, statuses and, for a refused fetch, addresses
+      // inside the network, and it stops here.
+      return {
+        ...base,
+        state: "output-error",
+        errorText: part.failure?.readerKey,
+        failureKind: part.failure?.kind,
+      } as UiPart;
     }
     return { ...base, state: "input-available" } as UiPart;
   });

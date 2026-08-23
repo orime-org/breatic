@@ -20,6 +20,8 @@
  * to still see that a turn was cut off.
  */
 import { describe, it, expect } from "vitest";
+import type { UIMessage } from "ai";
+import { NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
@@ -87,25 +89,79 @@ describe("what a finished turn writes down", () => {
     });
   });
 
-  it("records why a tool failed", () => {
+  it("keeps what the model sent when its arguments were not valid JSON", () => {
+    // The SDK puts what arrived on `rawInput`, and when the arguments would
+    // not parse that is the raw string rather than an object. Recording an
+    // empty object instead hands the model back a record of itself calling
+    // the tool with nothing, next to an error about arguments it cannot see.
+    const stored = toStoredParts([
+      {
+        type: "tool-web_fetch",
+        toolCallId: "call-9",
+        state: "output-error",
+        rawInput: '{"url": broken',
+        errorText: "An error occurred.",
+      } as unknown as UIMessage["parts"][number],
+    ]);
+
+    expect(stored[0]).toMatchObject({ input: '{"url": broken' });
+  });
+
+  it("records a failed call as failed, without inventing why", () => {
     const stored = toStoredParts([
       {
         type: "tool-web_fetch",
         toolCallId: "call-3",
         state: "output-error",
         input: { url: "https://example.com" },
-        errorText: "读不到",
+        errorText: "chat.tool.failure.upstream",
       },
     ]);
 
+    // What the wire carries on that field is the line a reader is shown, not
+    // the reason the model needs -- two different things, and this side of
+    // the boundary only ever has the first. The turn fills in the reason
+    // afterwards from the callback handed the error itself; what is written
+    // here stands for the case where no callback saw it, and says so.
     expect(stored[0]).toEqual({
       type: "tool",
       toolCallId: "call-3",
       toolName: "web_fetch",
       input: { url: "https://example.com" },
       status: "error",
-      errorMessage: "读不到",
+      failure: NOTHING_SAID_WHY,
     });
+    expect((stored[0] as { failure: { forModel: string } }).failure.forModel).not.toBe(
+      "chat.tool.failure.upstream",
+    );
+  });
+
+  it("marks a call whose arguments never finished arriving", () => {
+    // `input-streaming` means the model was still emitting the arguments, so
+    // whatever is in `input` came from a partial JSON parse.
+    const stored = toStoredParts([
+      {
+        type: "tool-web_fetch",
+        toolCallId: "call-9",
+        state: "input-streaming",
+        input: { url: "https://en.wikipedia.org/wiki/Bau" },
+      },
+    ]);
+
+    expect(stored[0]).toMatchObject({ status: "pending", argumentsIncomplete: true });
+  });
+
+  it("does not mark one whose arguments arrived whole", () => {
+    const stored = toStoredParts([
+      {
+        type: "tool-web_fetch",
+        toolCallId: "call-10",
+        state: "input-available",
+        input: { url: "https://example.com" },
+      },
+    ]);
+
+    expect(stored[0]).not.toHaveProperty("argumentsIncomplete");
   });
 
   it("does not leave a tool that never came back looking finished", () => {
@@ -197,12 +253,80 @@ describe("a message that goes out and comes back", () => {
         toolName: "web_search",
         input: { query: "参考图" },
         status: "error",
-        errorMessage: "读不到",
+        failure: {
+          kind: "tool_failed",
+          forModel: "读不到",
+          readerKey: "chat.tool.failure.generic",
+        },
       },
       { type: "interrupted" },
     ];
 
-    expect(toStoredParts(toUiParts(original))).toEqual(original);
+    // One field does not survive, deliberately: the model's copy of the
+    // reason does not go out to the browser, so what comes back carries the
+    // reader's key in its place. Everything else is the same message.
+    const back = toStoredParts(toUiParts(original));
+    expect(back.map((p) => p.type)).toEqual(original.map((p) => p.type));
+    expect(back[0]).toEqual(original[0]);
+    expect(back[1]).toEqual(original[1]);
+    expect(back[2]).toEqual(original[2]);
+    expect(back[3]).toMatchObject({
+      toolCallId: "call-2",
+      status: "error",
+      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.generic" },
+    });
+    expect(back[4]).toEqual(original[4]);
+  });
+
+  it("does not carry the model's reason out to the browser", () => {
+    // The one field that deliberately does not survive the round trip. It
+    // names hosts, statuses and, for a refused fetch, addresses inside the
+    // network; the browser is given a key to translate and what kind of
+    // ending it was, and that is the whole of it.
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "call-5",
+        toolName: "web_fetch",
+        input: { url: "https://example.com" },
+        status: "error",
+        failure: {
+          kind: "tool_failed",
+          forModel: "Fetching https://example.com failed: the site answered HTTP 404.",
+          readerKey: "chat.tool.failure.upstream",
+        },
+      },
+    ]);
+
+    // The status and the sentence around it. The host is not checked here:
+    // `input` carries it out on purpose, because the card shows the address
+    // it was asked to fetch.
+    expect(JSON.stringify(part)).not.toContain("404");
+    expect(JSON.stringify(part)).not.toContain("answered HTTP");
+    expect(part).toMatchObject({
+      state: "output-error",
+      errorText: "chat.tool.failure.upstream",
+      failureKind: "tool_failed",
+    });
+  });
+
+  it("says which of the two endings a stopped call was", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "call-6",
+        toolName: "web_search",
+        input: { query: "x" },
+        status: "error",
+        failure: {
+          kind: "user_aborted",
+          forModel: "The user stopped this turn while the tool was still running.",
+          readerKey: "chat.tool.unfinished",
+        },
+      },
+    ]);
+
+    expect(part).toMatchObject({ failureKind: "user_aborted" });
   });
 });
 

@@ -164,7 +164,13 @@
       "waiting": "응답 중"
     },
     "tool": {
-      "unfinished": "완료되기 전에 중지됨"
+      "unfinished": "중지됨",
+      "failure": {
+        "upstream": "실행 오류",
+        "unreachable": "실행 오류",
+        "blocked": "실행 오류",
+        "generic": "실행 오류"
+      }
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {

@@ -164,7 +164,13 @@
       "waiting": "応答中"
     },
     "tool": {
-      "unfinished": "完了前に停止しました"
+      "unfinished": "停止しました",
+      "failure": {
+        "upstream": "実行エラー",
+        "unreachable": "実行エラー",
+        "blocked": "実行エラー",
+        "generic": "実行エラー"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {

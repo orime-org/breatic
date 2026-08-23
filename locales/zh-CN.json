@@ -164,7 +164,13 @@
       "waiting": "正在回复"
     },
     "tool": {
-      "unfinished": "未跑完就停止了"
+      "unfinished": "已停止",
+      "failure": {
+        "upstream": "执行错误",
+        "unreachable": "执行错误",
+        "blocked": "执行错误",
+        "generic": "执行错误"
+      }
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {

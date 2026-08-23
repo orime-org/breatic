@@ -3,7 +3,8 @@
 
 import { CircleAlert, CircleCheck, CircleSlash, Loader2 } from 'lucide-react';
 import type * as React from 'react';
-import { toolCallHasOutcome } from '@breatic/shared';
+
+import { FAILURE_LINES } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -35,11 +36,21 @@ export function ToolCallCard({
 }: ToolCallCardProps): React.JSX.Element {
   const t = useTranslation();
   // Storage has no third terminal state, so a call the user stopped mid-flight
-  // is kept as `error` with nothing to say about why. Calling that a failure
-  // tells the user something broke when they are the one who stopped it.
-  // Narrowed to `error` on purpose: a call still running is also without an
-  // outcome, and that one is the spinner's job, not this line's.
-  const unfinished = toolCall.status === 'error' && !toolCallHasOutcome(toolCall);
+  // is kept as `error` and says so alongside. Calling that a failure tells the
+  // user something broke when they are the one who stopped it.
+  //
+  // Two fields can say it and a call arrives with either, from either source.
+  // A replayed message carries the ending the turn recorded. A live one can
+  // carry the line the tool threw, and can carry a kind as well -- the panel
+  // works one out for a call the stop caught with no ending of its own.
+  // Reading one field is how the icon came to draw a failure under the word
+  // "stopped".
+  //
+  // Asked of `error` alone on purpose: a call still running has no ending
+  // either, and that one is the spinner's job, not this line's.
+  const unfinished =
+    toolCall.status === 'error' &&
+    (toolCall.failureKind === 'user_aborted' || toolCall.failureKey === FAILURE_LINES.stopped);
   // One judgement drives everything the card says about how the call ended —
   // the icon, the marker, and the caption. Deciding it separately in each is
   // how the words came to say one thing while the icon said another.
@@ -57,14 +68,14 @@ export function ToolCallCard({
       </div>
       {unfinished ? (
         <div className='mt-1 text-muted-foreground' data-testid='tool-call-unfinished'>
-          {t('chat.tool.unfinished')}
+          {t(toolCall.failureKey ?? FAILURE_LINES.stopped)}
         </div>
       ) : toolCall.status === 'error' ? (
         <div
           className='mt-1 text-status-error-foreground'
           data-testid='tool-call-error'
         >
-          {toolCall.errorMessage}
+          {t(toolCall.failureKey ?? FAILURE_LINES.generic)}
         </div>
       ) : null}
     </div>

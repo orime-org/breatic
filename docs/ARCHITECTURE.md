@@ -185,6 +185,12 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 工具返回什么,SDK 的 tool part 就原样带什么到前端。
 
+**工具失败时抛出,不返回**(MANDATORY)。返回值一律被 SDK 当成 `tool-result`,跟一份网页或一串搜索结果没有区别,模型据此认为这次调用成功了 —— 于是换个措辞再调一次。抛出的异常被 SDK 转成 `tool-error` 交给模型,这是让模型知道「失败了」的唯一途径,AI SDK · OpenAI Agents SDK · LangGraph 三家同此。**一次失败带三个字段**(`packages/shared/src/agent/tool-failure.ts` 的 `ToolFailure`):`kind` 说这是哪一种结局(`tool_failed` 或 `user_aborted`,类型把它跟 `readerKey` 绑死,「用户停止」配不上一句讲失败的话)· `forModel` 是具体原因,**不出后端** · `readerKey` 是给面板的翻译键,因为存下来的行会活得比写它时的那个语种长。判定题:**我正要在工具的 `execute` 里 `return` 一个描述失败的字符串吗?那就错了,`throw`。**
+
+**每条给模型的原因都要以「可以怎么办」收尾**。同一个「非 2xx」下面藏着三种不同的下一步:5xx 和 429 是对方的事、跟措辞无关;401 和 403 是我们这边的配置、换查询词到不了;其余是这个请求本身、模型写的模型能改。没有重试上限、没有熔断 —— 收手由模型读了原因自己决定,系统提示词里有引导它的那一段。
+
+**失败路径上前端拿到的不是原样的返回值**:线上那一格带的是 `readerKey`(经 `toUIMessageStream` 的 `onError`),`forModel` 只进库和进模型。
+
 **六个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。四个交互工具不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
 **两个联网工具的时长走 `config/agent.yaml`**:`web_fetch_timeout_ms`(30 秒)· `web_search_timeout_ms`(10 秒),上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字。它管一次投递不管整次抓取。
