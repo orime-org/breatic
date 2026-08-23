@@ -1056,3 +1056,249 @@ body {
 .collaboration-carets__label.collaboration-carets__label--below.collaboration-carets__label--flip-left {
   border-radius: 3px 0 3px 3px;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Chat: assistant prose
+
+   Its own scope. The document body has a settled spec for these same blocks
+   and the values below are taken from it, but the two are different settings:
+   a 13px read-only column against a full-screen 15px editor, one carrying
+   collaboration carets and empty-block placeholders and the other carrying
+   neither. Three of that spec's rules are built on facts that hold only there
+   — a custom property declared inside its scope, quote edges counted past
+   carets, and selection padding figured from its line height — so they are
+   written out here rather than shared.
+
+   Every length is relative to the container, so the column's width can change
+   without any of this moving.
+   ───────────────────────────────────────────────────────────────────────── */
+.chat-markdown {
+  line-height: 1.65;
+  /* The document body leans on a stylesheet @tiptap/core injects for this.
+     There is no editor here. */
+  overflow-wrap: break-word;
+}
+
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown p {
+  margin: 0.85em 0;
+}
+
+.chat-markdown h1 {
+  font-size: calc(1em * 8 / 5);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.9em 0 0.55em;
+}
+
+.chat-markdown h2 {
+  font-size: calc(1em * 4 / 3);
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.7em 0 0.5em;
+}
+
+.chat-markdown h3 {
+  font-size: calc(1em * 17 / 15);
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 1.5em 0 0.45em;
+}
+
+.chat-markdown strong {
+  font-weight: 700;
+}
+
+.chat-markdown del {
+  text-decoration: line-through;
+  color: var(--color-muted-foreground);
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.85em 0;
+  padding-inline-start: 1.5em;
+}
+
+/* Preflight clears these to none; without writing them back a list has its
+   indent and nothing else. */
+.chat-markdown ul {
+  list-style-type: disc;
+}
+
+.chat-markdown ol {
+  list-style-type: decimal;
+}
+
+.chat-markdown :is(ul, ol) > li > * {
+  margin: 0;
+}
+
+.chat-markdown :is(ul, ol) > li > * + * {
+  margin-top: 0.3em;
+}
+
+.chat-markdown li + li {
+  margin-top: 0.3em;
+}
+
+/* remark-gfm marks a task list on the ul and each of its items. The tick is
+   drawn in place of the checkbox the browser would render. */
+.chat-markdown ul.contains-task-list {
+  list-style-type: none;
+  padding-inline-start: 0.2em;
+}
+
+.chat-markdown-task-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-content-xs);
+  font-size: 0.8em;
+  line-height: 1;
+  vertical-align: -0.1em;
+  color: var(--color-muted-foreground);
+}
+
+.chat-markdown-task-mark[data-checked] {
+  background: var(--color-muted);
+}
+
+.chat-markdown blockquote {
+  margin: 1.1em 0;
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--color-border);
+  color: var(--color-muted-foreground);
+  /* The one block here that holds other blocks: without closing it vertically
+     their margins collapse through and replace its own. */
+  display: flow-root;
+}
+
+.chat-markdown blockquote > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* A fenced block renders pre > code; without excluding it the two 0.9em
+   multiply into 0.81em. */
+.chat-markdown :not(pre) > code {
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-xs);
+}
+
+.chat-markdown pre {
+  font-size: 0.9em;
+  line-height: 1.6;
+  margin: 1.1em 0;
+  padding: 0.75em 1em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-sm);
+  /* Same reason as overflow-wrap above: no editor injects this here. */
+  white-space: pre-wrap;
+}
+
+.chat-markdown hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.chat-markdown a {
+  color: var(--color-content-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-markdown img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1.1em 0;
+  border-radius: var(--radius-content-sm);
+}
+
+/* nowrap is what makes the scroller appear at all: allowed to fold, a wide
+   table fits any width and scrollWidth never exceeds the viewport. */
+.chat-markdown table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--color-border);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+
+.chat-markdown th {
+  font-weight: 600;
+  background: var(--color-muted);
+}
+
+/* Code colours. Class names are highlight.js's own, taken from running the ten
+   declared grammars; the colours are ours. A title carries a second class
+   saying which kind it is, so naming only .hljs-title would paint a type the
+   colour of a function. Containers — params, function, tag, punctuation —
+   inherit, and the tokens inside them carry the colour. */
+.chat-markdown .hljs-keyword,
+.chat-markdown .hljs-built_in,
+.chat-markdown .hljs-name,
+.chat-markdown .hljs-operator,
+.chat-markdown .hljs-bullet {
+  color: var(--color-palette-violet);
+}
+
+.chat-markdown .hljs-string,
+.chat-markdown .hljs-regexp,
+.chat-markdown .hljs-addition {
+  color: var(--color-palette-green);
+}
+
+.chat-markdown .hljs-number,
+.chat-markdown .hljs-literal {
+  color: var(--color-palette-orange);
+}
+
+.chat-markdown .hljs-comment {
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+
+.chat-markdown .hljs-title.function_ {
+  color: var(--color-palette-blue);
+}
+
+.chat-markdown .hljs-title.class_,
+.chat-markdown .hljs-selector-class {
+  color: var(--color-palette-teal);
+}
+
+.chat-markdown .hljs-attr,
+.chat-markdown .hljs-property,
+.chat-markdown .hljs-attribute,
+.chat-markdown .hljs-variable {
+  color: var(--color-palette-pink);
+}
+
+.chat-markdown .hljs-deletion {
+  color: var(--color-palette-red);
+}

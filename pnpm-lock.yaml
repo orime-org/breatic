@@ -774,9 +774,6 @@ importers:
       lottie-web:
         specifier: ^5.13.0
         version: 5.13.0
-      lowlight:
-        specifier: ^3.3.0
-        version: 3.3.0
       lucide-react:
         specifier: ^1.31.0
         version: 1.31.0(react@19.2.8)
@@ -958,6 +955,9 @@ importers:
       less:
         specifier: ^4.8.1
         version: 4.8.1
+      lowlight:
+        specifier: ^3.3.0
+        version: 3.3.0
       playwright:
         specifier: ^1.62.1
         version: 1.62.1
