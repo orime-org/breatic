@@ -56,7 +56,7 @@ import {
   sessionCookieName,
   loadLocales,
 } from "@breatic/core";
-import { creditService } from "@breatic/domain";
+import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 
 const PG_DRIVER_LOCAL = "turn-billing-once-test-driver";
@@ -103,11 +103,11 @@ interface Seeded {
 }
 
 /**
- * Seed one owner with a project, a conversation and a starting balance.
- * @param balance - Credits to open the account with.
+ * Seed one owner with a project, a conversation and a purchase to spend.
+ * @param credits - How many credits the purchase carries.
  * @returns The ids and cookie a request needs.
  */
-async function seed(balance = 100_000): Promise<Seeded> {
+async function seed(credits = 100_000): Promise<Seeded> {
   const tag = `bill-${seq++}-${crypto.randomBytes(3).toString("hex")}`;
   const [user] = await sql<{ id: string }[]>`
     INSERT INTO users (email, email_verified) VALUES (${`${tag}@example.com`}, true) RETURNING id
@@ -127,9 +127,20 @@ async function seed(balance = 100_000): Promise<Seeded> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${project!.id}, ${user!.id}, 'owner', null)
   `;
+
+  // One purchase, assigned to this studio — otherwise nothing here can be
+  // charged, since an unassigned lot is unspendable.
+  const [payment] = await sql<{ id: string }[]>`
+    INSERT INTO payments (user_id, amount_cents, status, credits_granted)
+    VALUES (${user!.id}, 1000, 'completed', ${credits}) RETURNING id
+  `;
+  const lot = await creditLotService.grantFromPayment({
+    paymentId: payment!.id,
+    userId: user!.id,
+    purchasedCredits: credits,
+  });
   await sql`
-    INSERT INTO credit_balances (user_id, balance) VALUES (${user!.id}, ${balance})
-    ON CONFLICT (user_id) DO UPDATE SET balance = ${balance}
+    UPDATE credit_lots SET designated_studio_id = ${studio!.id} WHERE id = ${lot.id}
   `;
 
   const token = crypto.randomBytes(24).toString("hex");
@@ -157,8 +168,8 @@ async function seed(balance = 100_000): Promise<Seeded> {
  */
 async function settlementsFor(userId: string): Promise<string[]> {
   const rows = await sql<{ reference_id: string }[]>`
-    SELECT reference_id FROM credit_transactions
-    WHERE user_id = ${userId} AND tx_type = 'deduct'
+    SELECT reference_id FROM credit_ledger
+    WHERE payer_user_id = ${userId} AND entry_type = 'spend'
     ORDER BY created_at
   `;
   return rows.map((r) => r.reference_id);
@@ -226,7 +237,7 @@ describe("two turns in one conversation are billed apart", () => {
 
 describe("one turn is settled once, however many times it is asked for", () => {
   it("moves the balance once and records one row, for any sequence of calls", async () => {
-    const { userId } = await seed(50_000);
+    const { userId, projectId } = await seed(50_000);
 
     await fc.assert(
       fc.asyncProperty(
@@ -236,32 +247,33 @@ describe("one turn is settled once, however many times it is asked for", () => {
         async (sequentialCalls, concurrentCalls, amount) => {
           // A key of its own per run, so runs cannot settle each other's turn.
           const refKey = `turn:${crypto.randomUUID()}:1`;
-          const [before] = await sql<{ balance: number }[]>`
-            SELECT balance FROM credit_balances WHERE user_id = ${userId}
+          const [before] = await sql<{ total: string }[]>`
+            SELECT COALESCE(SUM(remaining_credits), 0)::text AS total
+            FROM credit_lots WHERE user_id = ${userId}
           `;
 
-          for (let i = 0; i < sequentialCalls; i++) {
-            await creditService.deductOnce(userId, refKey, amount, "Agent chat", {
+          const charge = async (): Promise<unknown> =>
+            creditLotService.chargeOnceForGeneration(refKey, {
+              projectId,
+              actorUserId: userId,
+              amount,
+              description: "Agent chat",
               tokensUsed: 1000,
             });
-          }
-          await Promise.all(
-            Array.from({ length: concurrentCalls }, () =>
-              creditService.deductOnce(userId, refKey, amount, "Agent chat", {
-                tokensUsed: 1000,
-              }),
-            ),
-          );
+
+          for (let i = 0; i < sequentialCalls; i++) await charge();
+          await Promise.all(Array.from({ length: concurrentCalls }, charge));
 
           const rows = await sql<{ n: string }[]>`
-            SELECT count(*) AS n FROM credit_transactions WHERE reference_id = ${refKey}
+            SELECT count(*) AS n FROM credit_ledger WHERE reference_id = ${refKey}
           `;
-          const [after] = await sql<{ balance: number }[]>`
-            SELECT balance FROM credit_balances WHERE user_id = ${userId}
+          const [after] = await sql<{ total: string }[]>`
+            SELECT COALESCE(SUM(remaining_credits), 0)::text AS total
+            FROM credit_lots WHERE user_id = ${userId}
           `;
 
           expect(Number(rows[0]!.n)).toBe(1);
-          expect(after!.balance).toBe(before!.balance - amount);
+          expect(Number(after!.total)).toBe(Number(before!.total) - amount);
         },
       ),
       { numRuns: 15 },

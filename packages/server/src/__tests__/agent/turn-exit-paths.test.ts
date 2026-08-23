@@ -26,7 +26,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
 /**
@@ -69,7 +69,7 @@ vi.mock("@breatic/domain", async () => {
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig,
-    creditService: { deductOnce },
+    creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
     getModel: () => {
       const model = new MockLanguageModelV4({
@@ -215,7 +215,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, deductOnce, buildAgentConfig].forEach((m) => {
+  [addMessage, consolidateIfNeeded, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -370,7 +370,7 @@ describe("a turn the user stopped", () => {
       await runAndStop([{ type: "text-start", id: "t1" }]);
 
       // Nothing finished, so nothing is owed.
-      expect(deductOnce).not.toHaveBeenCalled();
+      expect(chargeOnceForGeneration).not.toHaveBeenCalled();
       // Still a record: the turn happened, and it was stopped.
       expect(wrapUpMessages()).toHaveLength(1);
       await new Promise((resolve) => setImmediate(resolve));

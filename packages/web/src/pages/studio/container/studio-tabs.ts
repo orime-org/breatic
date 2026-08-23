@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import type { StudioType } from '@web/pages/studio/shared/studio-types';
+import type {
+  StudioRole,
+  StudioType,
+} from '@web/pages/studio/shared/studio-types';
 
 /** The six studio container tabs (spec §6.1; Works added at the 3rd position). */
 export type StudioTabKey =
@@ -12,7 +15,7 @@ export type StudioTabKey =
   | 'credits'
   | 'settings';
 
-/** A studio container tab: routing key + i18n label + team-only flag. */
+/** A studio container tab: routing key + i18n label + who it is for. */
 export interface StudioTabDef {
   key: StudioTabKey;
   /** i18n key for the tab label. */
@@ -22,6 +25,8 @@ export interface StudioTabDef {
    * all tabs, including a read-only Members tab (decision A, 2026-06-08).
    */
   teamOnly: boolean;
+  /** Whether only the studio's admin gets this section. */
+  adminOnly: boolean;
 }
 
 /**
@@ -30,12 +35,12 @@ export interface StudioTabDef {
  * it is non-team-only, so personal studios keep it.
  */
 export const STUDIO_TABS: readonly StudioTabDef[] = [
-  { key: 'projects', labelKey: 'studio.container.tabs.projects', teamOnly: false },
-  { key: 'collections', labelKey: 'studio.container.tabs.collections', teamOnly: false },
-  { key: 'works', labelKey: 'studio.container.tabs.works', teamOnly: false },
-  { key: 'members', labelKey: 'studio.container.tabs.members', teamOnly: false },
-  { key: 'credits', labelKey: 'studio.container.tabs.credits', teamOnly: false },
-  { key: 'settings', labelKey: 'studio.container.tabs.settings', teamOnly: false },
+  { key: 'projects', labelKey: 'studio.container.tabs.projects', teamOnly: false, adminOnly: false },
+  { key: 'collections', labelKey: 'studio.container.tabs.collections', teamOnly: false, adminOnly: false },
+  { key: 'works', labelKey: 'studio.container.tabs.works', teamOnly: false, adminOnly: false },
+  { key: 'members', labelKey: 'studio.container.tabs.members', teamOnly: false, adminOnly: false },
+  { key: 'credits', labelKey: 'studio.container.tabs.credits', teamOnly: false, adminOnly: true },
+  { key: 'settings', labelKey: 'studio.container.tabs.settings', teamOnly: false, adminOnly: false },
 ];
 
 /**
@@ -139,16 +144,53 @@ export function studioTabFromParam(value: string | undefined): StudioTabKey {
 }
 
 /**
- * The tabs visible for a given studio type. Personal studios now show all 6
- * tabs too — their Members tab is read-only (decision A, 2026-06-08); no team-only
- * tab remains, but the `teamOnly` filter is kept for future team-only tabs.
+ * The tabs a given viewer sees on a given studio.
+ *
+ * Two filters, and they answer different questions. `teamOnly` asks what kind
+ * of studio this is: none is team-only today — a personal studio's Members
+ * section is read-only rather than absent (decision A, 2026-06-08) — and the
+ * filter is kept for a future section that is genuinely team-only.
+ * `adminOnly` asks who the viewer is: Credits is the studio's money, and the
+ * admin is who manages it.
+ *
+ * A non-member gets nothing. That is not a gate on top of the others: their
+ * page renders no strip at all (the public façade), so "which sections does
+ * it list" has one honest answer.
  * @param studioType whether the studio is personal or team.
+ * @param role the viewer's role in this studio, `null` for a non-member.
  * @returns the ordered list of visible tabs.
  */
 export function visibleStudioTabs(
   studioType: StudioType,
+  role: StudioRole | null,
 ): readonly StudioTabDef[] {
-  return studioType === 'team'
-    ? STUDIO_TABS
-    : STUDIO_TABS.filter((tab) => !tab.teamOnly);
+  if (role === null) return [];
+  return STUDIO_TABS.filter(
+    (tab) =>
+      (studioType === 'team' || !tab.teamOnly) &&
+      (role === 'admin' || !tab.adminOnly),
+  );
+}
+
+/**
+ * Whether a section is on this viewer's page — the question the container
+ * asks before rendering an address that names one.
+ *
+ * Asked of {@link visibleStudioTabs} rather than of a second rule written out
+ * at the router: a section that becomes role-gated is hidden from the strip
+ * and unreachable by URL in the same edit. Two rules would drift, and the
+ * drift is a page whose address promises a section its strip does not offer —
+ * or worse, one that hides the link and serves the panel to anyone who types
+ * the address.
+ * @param tab the section the address names.
+ * @param studioType whether the studio is personal or team.
+ * @param role the viewer's role in this studio, `null` for a non-member.
+ * @returns whether that section is on this page.
+ */
+export function isTabOnThisPage(
+  tab: StudioTabKey,
+  studioType: StudioType,
+  role: StudioRole | null,
+): boolean {
+  return visibleStudioTabs(studioType, role).some((def) => def.key === tab);
 }

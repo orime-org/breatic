@@ -70,16 +70,16 @@ export async function listProjectActivities(
   // Malformed cursors decode to null = first page (they arrive from
   // the network; a garbage cursor must not 500 the feed).
   const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
-  const items = await projectActivitiesRepo.listByProject(
+  const rows = await projectActivitiesRepo.listByProject(
     projectId,
     cursor,
     limit,
   );
-  const last = items[items.length - 1];
+  const last = rows[rows.length - 1];
   // A short page means the feed is exhausted; a full page may have more.
   const nextCursor =
-    items.length === limit && last
-      ? encodeActivityCursor(new Date(last.createdAt), last.id)
+    rows.length === limit && last
+      ? encodeActivityCursor(last.cursorAt, last.entry.id)
       : null;
-  return { items, nextCursor };
+  return { items: rows.map((row) => row.entry), nextCursor };
 }

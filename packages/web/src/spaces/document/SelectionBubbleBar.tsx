@@ -5,10 +5,11 @@
  * The bar that floats above a selection.
  *
  * It carries the commands whose object is the current selection or the block
- * it sits in — the same object the top bar acts on, which is why the same six
- * commands legitimately appear in both (menu-system ruling §9.1: one object may
- * have several entry points; what is forbidden is mixing objects inside one
- * carrier). This slice adds no command of its own.
+ * it sits in. The ruling routes a command by that object (menu-system §9.1:
+ * one object may have several entry points; what is forbidden is mixing
+ * objects inside one carrier), so the block handle menu will legitimately
+ * carry some of these same commands when it arrives. This slice adds no
+ * command of its own.
  *
  * ## What the stock component does not do for us
  *
@@ -35,9 +36,9 @@
  *   `updatePosition` returns immediately while the bar is down (`:300-302`).
  *   Our own listener wakes it.
  * - **Taking the bar away when its anchor leaves.** Clipping does not do it —
- *   the bar hangs outside the scroller, so the layer that clips it starts 40px
- *   higher and the bar would show in that strip, over the top bar. The `hide`
- *   middleware does, once given the right boundary.
+ *   the bar hangs outside the scroller, so nothing removes it once the anchor
+ *   scrolls out. The `hide` middleware does; it is OFF by default, and passing
+ *   it a boundary is what turns it on.
  * - **The alignment.** The default `placement` is `'top'` (`dist/index.js:48`),
  *   and floating-ui only shifts along the alignment axis when the placement
  *   carries `-start` or `-end` (`@floating-ui/core` `:49-51`); bare `top`
@@ -53,12 +54,13 @@
  *   neither selection nor document changed). Our scrolling happens inside the
  *   ScrollArea viewport, whose scroll events do not reach `window`. Left
  *   unset, the bar would sit still while the text moved under it.
- * - **Which box decides "it does not fit".** `flip`'s boundary defaults to the
- *   clipping ancestors (floating-ui `detectOverflow`), which here is the
- *   workspace's `overflow-hidden` layer — its top sits 40px ABOVE the text, so
- *   flip believes there is room where the reader sees none. The box to judge
- *   against is the body's own visible area, which is what Lexical compares to
- *   (`editorScrollerRect.top`). Hence `flip: { boundary }`.
+ * - **Which box decides "it does not fit".** The body's own visible area,
+ *   named explicitly. `flip`'s default is the clipping ancestors (floating-ui
+ *   `detectOverflow`) — measured 2026-08-22 those come out identical to the
+ *   viewport on all four edges, because the 40px that used to separate them
+ *   was the top bar and it is gone. Naming the box anyway keeps this
+ *   independent of which ancestor happens to carry `overflow-hidden`, which is
+ *   a detail of the workspace shell rather than of this bar.
  * - **The gap.** The plugin builds its middleware in the order flip, shift,
  *   offset (`:195-218`), and floating-ui runs them in array order — so flip
  *   decides before the 8px gap exists. floating-ui's own guidance is the
@@ -70,11 +72,11 @@
  * ## And one thing it does that we undo
  *
  * `:178` makes the bar itself focusable (`tabIndex = 0`). The ruling (§5.2)
- * keeps the whole bar out of the tab order: the top bar sits BESIDE the body
- * and is always there, while this one floats ON TOP of it, and anything
- * floating over the body that takes focus collides with the body's own focus
- * with no way to reconcile them. The six commands stay reachable from the
- * keyboard through the top bar and their own shortcuts.
+ * keeps the whole bar out of the tab order: it floats ON TOP of the body, and
+ * anything floating over the body that takes focus collides with the body's
+ * own focus with no way to reconcile them. The keyboard route to these six
+ * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` for the
+ * marks, `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-b` for the blocks.
  */
 
 import * as React from 'react';
@@ -279,10 +281,9 @@ interface SelectionBubbleBarProps {
   /**
    * True for a viewer, and then the bar is not rendered at all.
    *
-   * Not "rendered but disabled", which is what the top bar does: that one is
-   * always on screen, so a row of dark buttons still tells a reader what this
-   * document can do. This one only appears because someone selected text, and
-   * a bar whose every button is dead is nothing but noise (ruling §3.3.1).
+   * Not "rendered but disabled": this bar only appears because someone
+   * selected text, and a bar whose every button is dead is nothing but noise
+   * (ruling §3.3.1).
    */
   readOnly?: boolean;
 }
@@ -713,16 +714,16 @@ function BubbleBar({
       // `anchorRect`); letting the middleware add it too would double it.
       offset: false as const,
       flip: { boundary: viewport },
-      // Already on by default (`:51`), but against the wrong box: every one of
-      // these boundaries falls back to the clipping ancestors, and ours is the
-      // workspace's `overflow-hidden` layer whose top sits 40px above the text.
-      // This one keeps the whole bar inside the body's left and right edges.
+      // Already on by default (`:51`). The boundary is named for the same
+      // reason as flip's: judge against the body's visible area, not against
+      // whichever ancestor happens to clip. This one keeps the whole bar
+      // inside the body's left and right edges.
       shift: { boundary: viewport },
-      // Off by default (`:55`). This is what takes the bar away once its anchor
-      // has left the body area: the plugin reads the middleware's verdict and
-      // sets `visibility: hidden` (`:316-319`). Clipping alone would not do it
-      // — the bar hangs outside the scroller, so the layer that clips it starts
-      // 40px higher and the bar would show in that strip, over the top bar.
+      // Off by default (`:55`) — passing it at all is what turns it on. This is
+      // what takes the bar away once its anchor has left the body area: the
+      // plugin reads the middleware's verdict and sets `visibility: hidden`
+      // (`:316-319`). Clipping alone would not, since the bar hangs outside the
+      // scroller.
       hide: { boundary: viewport },
       scrollTarget: viewport,
     }),
@@ -803,16 +804,16 @@ function BubbleBar({
       resizeDelay={0}
       options={options}
       data-testid='doc-selection-bubble-bar'
-      className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
+      // Above the whole-document entry. The bar is the transient one, summoned
+      // by a selection the reader just made, and its horizontal position
+      // follows that selection far enough to reach the entry's corner. The
+      // editor shell is `isolate`, so this number is compared against the
+      // entry's and nothing else on the page.
+      className='z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >
       {hasSelection
         ? BUBBLE_TOOLS.map((tool) => (
-          <ToolButton
-            key={tool.id}
-            tool={tool}
-            editor={editor}
-            carrier='bubble'
-          />
+          <ToolButton key={tool.id} tool={tool} editor={editor} />
         ))
         : null}
     </BubbleMenu>

@@ -36,6 +36,16 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 判定题:**这条链接嵌在一段话里、要让人看出它能点吗?是 → `--color-content-link` 加下划线**。chrome 里的
 链接(导航、面包屑、按钮式链接)不在此列,那些靠位置和形状就说明了自己是什么,照旧走中性。
 
+## 每一条线都是一个像素(MANDATORY,CI 强制)
+
+**边框和焦点环一律 1px,`ring-offset` 一律不用**(user 2026-08-22 拍定)。理由是**整体观感**:粗一点的线会让界面显脏,而我们是一个给人创作的产品,chrome 要安静、要让位。
+
+**「我有理由用粗的」不构成理由。** 想用 2px 只有一条路:**拿这一处单独去问 user,他拍板说可以**。表格的总计线、强调分隔、突出某一块 —— 这些都是理由,而理由不是通行证。
+
+**这条是踩出来的**:2026-08-22 做积分页合计行时,已确认的 demo 写着 `border-top-width:2px`,我据此加了 `border-t-2`,被 `breatic/one-px-border` 拦下。当时我论证「守卫的注释自己写着 for no reason the user can name,而这里说得出理由」,把 demo 和守卫端成一道拍板题。user 的裁决是 **demo 改掉、守卫不动**:「没有什么必要不能用两个像素」。守卫那句措辞已经改掉,它读起来像一个说得出理由就能走的口子。
+
+判定题:**我正要写一个大于 1px 的边框或 ring 吗?那就是错的 —— 除非 user 为这一处单独拍过板。**
+
 ## 中性激活边框单一真相源(MANDATORY,CI 强制)
 **凡是边框色独立表达「选中 / 聚焦 / 激活」且用黑白灰(中性色)的,一律 `border-active-border`**(= `--color-active-border`,输入框聚焦色)—— 禁止 `border-primary` / `border-foreground` / 自写灰客串激活边框(user 2026-07-11 拍板,此前分辨率选中边框曾写成 `border-primary` 漂移)。**彩色另论**:彩色语义边框(`border-status-*`、palette 七彩,如画布节点选中蓝)是另一套体系,不受此约束。判定题:**这个边框是不是在用中性色告诉用户「这项被选中 / 激活了」?是 → `border-active-border`,没有第二个选项**。**tab 激活下划线也在此列**(user 2026-07-11 拍板收编,`data-[state=active]` 进守卫扫描,别当"文字同色 indicator"豁免)。豁免:shadcn vendor(`components/ui/`,ADR 14 primitive 不动;checkbox/radio 选中边框是填充体系的一部分,非独立边框指示)。`breatic/active-border` CI 强制(扫状态变体 + 中性 border 类组合;运行时拼接的条件写法扫不到,靠本条 mandate 兜底)。
 

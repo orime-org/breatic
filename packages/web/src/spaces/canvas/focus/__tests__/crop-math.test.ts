@@ -14,6 +14,8 @@ import {
   MIN_CROP_PX,
   captureResize,
   isNaturalCropValid,
+  MIN_NATURAL_CROP_PX,
+  shapeForPreset,
   resizeFromCapture,
   drawRect,
   moveRect,
@@ -335,5 +337,49 @@ describe('validity + presets', () => {
     ]);
     const oneToOne = CROP_RATIOS.find((r) => r.key === '1:1');
     expect(oneToOne?.value).toBe(1);
+  });
+});
+
+describe('shapeForPreset — what it shapes always clears the gauge that judges it', () => {
+  it('a ratio shaped on a small marquee is not failed by the float round trip', () => {
+    // A 64x64 source in a 201.6px box (a 288px node at 70% canvas zoom) with a
+    // 20x20 marquee in hand. The shape is grown to the floor the gauge demands,
+    // and that floor is solved from the gauge itself — so re-asking must agree.
+    const natural = { width: 64, height: 64 };
+    const box = { width: 201.6, height: 201.6 };
+    const seed = { x: 90, y: 90, width: 20, height: 20 };
+    const shaped = shapeForPreset({ kind: 'ratio', value: 4 / 3 }, seed, box, natural);
+    expect(shaped).not.toBeNull();
+    // It lands on the floor: the height, converted back to natural px, is 8
+    const naturalHeight = (shaped!.height * natural.height) / box.height;
+    expect(naturalHeight).toBeCloseTo(MIN_NATURAL_CROP_PX, 9);
+  });
+
+  it('with no marquee, the whole material is the seed', () => {
+    // 4:3 IS this material's aspect, so seeding from the whole of it fills
+    // both axes. Asserting the geometry rather than mere non-null: a seed
+    // that came from anywhere else would still clear the gauge, since
+    // applyRatioPreset grows whatever it is handed up to the minimum.
+    const natural = { width: 800, height: 600 };
+    const box = { width: 400, height: 300 };
+    const shaped = shapeForPreset({ kind: 'ratio', value: 4 / 3 }, null, box, natural);
+    expect(shaped).toEqual({ x: 0, y: 0, width: 400, height: 300 });
+  });
+
+  it('a material that genuinely cannot hold the ratio is still refused', () => {
+    const natural = { width: 400, height: 10 };
+    const box = { width: 400, height: 10 };
+    expect(shapeForPreset({ kind: 'ratio', value: 9 / 16 }, null, box, natural)).toBeNull();
+  });
+
+  it('the slack absorbs float noise only — a real shortfall is still refused', () => {
+    const natural = { width: 100, height: 100 };
+    const display = { width: 100, height: 100 };
+    // Exactly eight natural px: accepted
+    expect(isNaturalCropValid({ x: 0, y: 0, width: 8, height: 8 }, display, natural)).toBe(true);
+    // A thousandth of a pixel short: refused
+    expect(
+      isNaturalCropValid({ x: 0, y: 0, width: 7.999, height: 7.999 }, display, natural),
+    ).toBe(false);
   });
 });

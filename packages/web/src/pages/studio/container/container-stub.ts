@@ -43,11 +43,5 @@ export function getEmptyContainerView(): StudioContainerView {
     projects: [],
     collections: [],
     members: [],
-    wallet: {
-      balanceCached: 0,
-      paidLots: [],
-      giftLots: [],
-      ledger: [],
-    },
   };
 }

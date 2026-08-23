@@ -17,7 +17,6 @@
 import type { MiddlewareHandler } from "hono";
 import { authService } from "@server/modules";
 import { logger } from "@breatic/core";
-import { creditRepo } from "@breatic/domain";
 import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 
@@ -26,7 +25,6 @@ export interface AuthVariables {
   user: {
     id: string;
     email: string;
-    credits: number;
     /**
      * Which membership tier the account is on.
      *
@@ -42,7 +40,7 @@ export interface AuthVariables {
 /**
  * Require authentication — returns 401 if the session cookie is
  * missing or invalid.
- * @param c - The Hono request context; the resolved user (id, email, credits, membershipTier) is set on it.
+ * @param c - The Hono request context; the resolved user (id, email, membershipTier) is set on it.
  * @param next - The downstream handler, invoked only when authentication succeeds.
  * @returns A 401 JSON response when the session cookie is missing or expired; otherwise nothing (control passes to `next`).
  */
@@ -61,11 +59,9 @@ export const requireAuth: MiddlewareHandler<{
     return c.json({ error: { code: 401, message: t("server.auth.token_expired") } }, 401);
   }
 
-  const credits = await creditRepo.getBalance(user.id);
   c.set("user", {
     id: user.id,
     email: user.email,
-    credits,
     membershipTier: user.membershipTier,
   });
   await next();

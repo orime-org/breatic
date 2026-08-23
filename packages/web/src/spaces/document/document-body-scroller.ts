@@ -4,11 +4,13 @@
 /**
  * The class that names the body's scroll container.
  *
- * One definition because two different kinds of code depend on it: the
- * stylesheet paints the scrollbar through it, and `SelectionBubbleBar` walks up
- * from the scroller to it to find the box the bar must hang outside of. Left as
- * a literal in both places, renaming it while restyling the scrollbar would
- * silently move the bar to the end of the body. Where it appears would not
+ * One definition because three different kinds of code depend on it: the
+ * stylesheet paints the scrollbar through it and hangs the entry's layout
+ * variables on it (`--doc-entry-*`, `--doc-body-gutter`), and
+ * `SelectionBubbleBar` walks up from the scroller to it to find the box the bar
+ * must hang outside of. Left as a literal in those places, renaming it while
+ * restyling the scrollbar would silently move the bar to the end of the body
+ * and leave the entry with no sizes at all. Where it appears would not
  * change — the plugin positions it absolutely and floating-ui measures against
  * whatever offset parent it lands in — but it would leave the editor's own
  * subtree, and with it every stacking and clipping relationship that placement
