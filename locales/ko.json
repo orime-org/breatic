@@ -698,7 +698,12 @@
         "bulletList": "글머리 기호 목록",
         "orderedList": "번호 매기기 목록",
         "quote": "인용",
-        "strike": "취소선"
+        "strike": "취소선",
+        "underline": "밑줄",
+        "code": "인라인 코드",
+        "comment": "댓글",
+        "ai": "AI",
+        "comingLabel": "{name}(미제공)"
       },
       "schemaOutdated": {
         "headline": "문서 편집기가 업데이트되었습니다",

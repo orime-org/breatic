@@ -698,7 +698,12 @@
         "bulletList": "Bullet list",
         "orderedList": "Ordered list",
         "quote": "Quote",
-        "strike": "Strikethrough"
+        "strike": "Strikethrough",
+        "underline": "Underline",
+        "code": "Inline code",
+        "comment": "Comment",
+        "ai": "AI",
+        "comingLabel": "{name} (not open yet)"
       },
       "schemaOutdated": {
         "headline": "Document editor updated",

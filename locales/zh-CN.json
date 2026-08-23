@@ -698,7 +698,12 @@
         "bulletList": "无序列表",
         "orderedList": "有序列表",
         "quote": "引用",
-        "strike": "删除线"
+        "strike": "删除线",
+        "underline": "下划线",
+        "code": "行内代码",
+        "comment": "评论",
+        "ai": "AI",
+        "comingLabel": "{name}（未开放）"
       },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",

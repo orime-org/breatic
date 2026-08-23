@@ -8,8 +8,9 @@
  * it sits in. The ruling routes a command by that object (menu-system §9.1:
  * one object may have several entry points; what is forbidden is mixing
  * objects inside one carrier), so the block handle menu will legitimately
- * carry some of these same commands when it arrives. This slice adds no
- * command of its own.
+ * carry some of these same commands when it arrives. #112 built this carrier
+ * with no command of its own; #902 started filling it (underline, inline
+ * code), and the slices after it each bring their own.
  *
  * ## What the stock component does not do for us
  *
@@ -74,9 +75,10 @@
  * `:178` makes the bar itself focusable (`tabIndex = 0`). The ruling (§5.2)
  * keeps the whole bar out of the tab order: it floats ON TOP of the body, and
  * anything floating over the body that takes focus collides with the body's
- * own focus with no way to reconcile them. The keyboard route to these six
- * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` for the
- * marks, `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-b` for the blocks.
+ * own focus with no way to reconcile them. The keyboard route to these eight
+ * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` / `Mod-u`
+ * for the marks, `Mod-e` for inline code, `Mod-Shift-8` / `Mod-Shift-7` /
+ * `Mod-Shift-b` for the blocks.
  */
 
 import * as React from 'react';
@@ -87,15 +89,75 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection, PluginKey } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
+import { MessageSquareText, Sparkles } from 'lucide-react';
+
 import {
   ToolButton,
   type ToolDef,
 } from '@web/spaces/document/document-tool-button';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import {
+  ComingTool,
+  type ComingToolDef,
+} from '@web/spaces/document/document-coming-tool';
+import {
+  MARK_TOOLS,
+  BLOCK_TOOLS,
+  INLINE_TOOLS,
+} from '@web/spaces/document/document-tools';
+import { Separator } from '@web/components/ui/separator';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
-/** The commands this carrier shows, in the order the ruling lists them. */
-const BUBBLE_TOOLS: ToolDef[] = [...MARK_TOOLS, ...BLOCK_TOOLS];
+/** One run of controls, drawn between two separators. */
+interface BubbleGroup {
+  /** Names the separator drawn before this group. */
+  key: string;
+  tools: ToolDef[];
+  coming: ComingToolDef[];
+}
+
+/**
+ * The controls this carrier shows, grouped the way the demo draws them.
+ *
+ * The demo's full shape is five groups: block type, alignment, `B I S U`,
+ * the inline run, and AI. Alignment holds nothing yet (#905), so it is absent
+ * below; the first group holds the three block buttons a dropdown will replace
+ * (#904). A separator belongs between two runs of controls, so the empty group
+ * draws none — a line for it would stand beside another with nothing between
+ * them.
+ *
+ * Comment and AI stand here with no command behind them (design §3.3 calls
+ * both "placeholder only"): their functions are task #18 and a later one, so
+ * "not open yet" is the truth about them. The controls still to come — block
+ * type, alignment, colour, link — are none of them; each arrives with its
+ * command in its own slice.
+ */
+const BUBBLE_GROUPS: BubbleGroup[] = [
+  { key: 'blocks', tools: BLOCK_TOOLS, coming: [] },
+  { key: 'marks', tools: MARK_TOOLS, coming: [] },
+  {
+    key: 'inline',
+    tools: INLINE_TOOLS,
+    coming: [
+      {
+        id: 'comment',
+        labelKey: 'spaces.document.commands.comment',
+        Icon: MessageSquareText,
+      },
+    ],
+  },
+  {
+    key: 'ai',
+    tools: [],
+    coming: [
+      {
+        id: 'ai',
+        labelKey: 'spaces.document.commands.ai',
+        Icon: Sparkles,
+        drawsAsDropdown: true,
+      },
+    ],
+  },
+];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
 const GAP_FROM_SELECTION_PX = 8;
@@ -778,7 +840,7 @@ function BubbleBar({
   // render — a co-editor's change arrives with no React render behind it. The
   // buttons are built only while it is true: each of them runs its command's
   // dry run on every transaction, and the bar spends almost all of its life
-  // hidden, so leaving them mounted doubles that work (six extra dry runs per
+  // hidden, so leaving them mounted doubles that work (eight extra dry runs per
   // keystroke) for a carrier nobody can see.
   const hasSelection = useEditorState({
     editor,
@@ -812,8 +874,28 @@ function BubbleBar({
       className='z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >
       {hasSelection
-        ? BUBBLE_TOOLS.map((tool) => (
-          <ToolButton key={tool.id} tool={tool} editor={editor} />
+        ? BUBBLE_GROUPS.map((group, index) => (
+          <React.Fragment key={group.key}>
+            {index > 0 ? (
+              <Separator
+                orientation='vertical'
+                // Not decorative: the groups this divides are meant to be
+                // announced apart, which is the case the component's own
+                // docstring names for this flag.
+                decorative={false}
+                data-testid={`doc-bubble-sep-${group.key}`}
+                // The demo's `.bubble-sep` is 16 tall with 3px either side.
+                // Its 1px width and its colour come from the component.
+                className='mx-[3px] h-4 w-px'
+              />
+            ) : null}
+            {group.tools.map((tool) => (
+              <ToolButton key={tool.id} tool={tool} editor={editor} />
+            ))}
+            {group.coming.map((tool) => (
+              <ComingTool key={tool.id} tool={tool} />
+            ))}
+          </React.Fragment>
         ))
         : null}
     </BubbleMenu>

@@ -4,7 +4,7 @@
 /**
  * R7: no control that looks usable and does nothing when pressed.
  *
- * The table below RECORDS what the six buttons say for each shape of cursor
+ * The table below RECORDS what the eight buttons say for each shape of cursor
  * or selection in the untitled document; the rows are not a judgement on how
  * the body ought to behave, which belongs to the slice that owns editing.
  * Whole-document selection rows (the two-tier select-all's second stage) are
@@ -14,7 +14,7 @@
  * Two assertions:
  *
  * 1. Each shape of cursor or selection gets the exact answer the table names,
- *    for all six buttons.
+ *    for all eight buttons.
  * 2. Every live button does something when pressed. A collapsed cursor counts
  *    marks armed for the next keystroke as "something", because arming IS the
  *    effect there.
@@ -32,7 +32,11 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import {
+  MARK_TOOLS,
+  BLOCK_TOOLS,
+  INLINE_TOOLS,
+} from '@web/spaces/document/document-tools';
 
 const editors: Editor[] = [];
 
@@ -60,7 +64,7 @@ function open(bodyHtml: string): Editor {
   return editor;
 }
 
-/** Where the caret or selection sits, and what the six buttons must say. */
+/** Where the caret or selection sits, and what the eight buttons must say. */
 interface Case {
   readonly name: string;
   readonly body: string;
@@ -151,6 +155,10 @@ describe('what the buttons claim', () => {
         const expected = tool.id === 'quote' ? c.quote : c.lists;
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${expected}`);
       });
+      // 行内组装的也是 mark，答案跟 MARK_TOOLS 那一列同源。
+      INLINE_TOOLS.forEach((tool) => {
+        expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
+      });
     });
   });
 });
@@ -158,7 +166,7 @@ describe('what the buttons claim', () => {
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
     it(`with ${c.name}, every live button does something`, () => {
-      [...MARK_TOOLS, ...BLOCK_TOOLS].forEach((tool) => {
+      [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS].forEach((tool) => {
         const editor = open(c.body);
         c.place(editor);
         if (!tool.canRun(editor)) return;
