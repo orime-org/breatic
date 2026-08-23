@@ -152,7 +152,8 @@ describe('ScrollArea', () => {
     expect(rail.getAttribute('data-state')).toBe('hidden');
     expect(rail.className).toContain('opacity-0');
     expect(rail.className).toContain('hover:opacity-100');
-    expect(rail.className).toContain('group-data-[scrollable-y=false]/scroller:pointer-events-none');
+    expect(rail.className).toContain('data-[scrollable=false]:pointer-events-none');
+    expect(rail.getAttribute('data-scrollable')).toBe('false');
     expect(screen.getByTestId('root').getAttribute('data-scrollable-y')).toBe('false');
   });
 
@@ -225,5 +226,58 @@ describe('ScrollArea', () => {
       expect(fireEvent.mouseDown(bar as HTMLElement)).toBe(false);
       expect(spy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', () => {
+  /**
+   * Renders a horizontal scroller nested inside a vertical one — an assistant
+   * message's wide table inside the message list.
+   * @returns The rendered container.
+   */
+  function renderNested(): HTMLElement {
+    const { container } = render(
+      <ScrollArea data-testid='outer'>
+        <p>messages</p>
+        <ScrollArea data-testid='inner' scrollbars='horizontal'>
+          <table>
+            <tbody>
+              <tr>
+                <td>a wide row</td>
+              </tr>
+            </tbody>
+          </table>
+        </ScrollArea>
+      </ScrollArea>,
+    );
+    return container;
+  }
+
+  it('stamps each rail with its own axis verdict', () => {
+    renderNested();
+    const inner = screen.getByTestId('inner');
+    const rail = inner.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+
+    expect(rail).not.toBeNull();
+    // The verdict has to live on the rail itself. Read off an ancestor, it is
+    // the wrong scroller's answer the moment scrollers nest.
+    expect(rail.getAttribute('data-scrollable')).toBe(
+      inner.getAttribute('data-scrollable-x'),
+    );
+  });
+
+  it('does not gate a rail through a descendant selector on an ancestor scroller', () => {
+    // This is what broke a wide table inside the message list: the outer
+    // scroller scrolls vertically, so its data-scrollable-x is false, and a
+    // `group-data-[scrollable-x=false]/scroller:` variant is a plain
+    // descendant selector — it matched the INNER rail too and killed its
+    // pointer events, leaving a bar that is visible and cannot be grabbed.
+    const container = renderNested();
+    const rails = [...container.querySelectorAll('[data-orientation]')] as HTMLElement[];
+
+    expect(rails.length).toBeGreaterThan(0);
+    for (const rail of rails) {
+      expect(rail.className).not.toMatch(/group-data-\[scrollable/);
+    }
   });
 });
