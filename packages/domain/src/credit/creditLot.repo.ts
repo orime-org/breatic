@@ -511,6 +511,7 @@ export interface LotContext {
  * @param userId - Whose purchases to list.
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
+ * @param lifecycle - Narrow to one state; omit for every purchase.
  * @returns The page, newest first.
  */
 export async function listLotsByUser(
@@ -650,6 +651,7 @@ export interface PayerLedgerRow {
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
  * @param studioId - Narrow to one studio, when asked for.
+ * @param entryTypes - Which kinds of movement to report.
  * @returns The page, newest first.
  */
 export async function listLedgerByPayer(

@@ -867,8 +867,7 @@
       "signOut": "退出登录",
       "credits": "积分",
       "membership": "会员",
-      "accountSettings": "账号设置",
-      "notOpenYet": "未开放"
+      "accountSettings": "账号设置"
     },
     "container": {
       "shell": {
@@ -1252,5 +1251,104 @@
     },
     "payNow": "去付款",
     "actionFailed": "没有成功，请再试一次。"
+  },
+  "credits": {
+    "panelTitle": "积分",
+    "close": "关闭",
+    "indexLabel": "积分内容",
+    "unit": "积分",
+    "loadFailed": "无法加载，请关闭后重新打开。",
+    "listEnd": "没有更多了",
+    "group": {
+      "records": "基础记录",
+      "actions": "操作"
+    },
+    "section": {
+      "overview": "总览",
+      "lots": "充值记录",
+      "ledger": "消耗流水",
+      "studios": "各 Studio",
+      "buy": "购买积分",
+      "assign": "指定",
+      "refunds": "退款"
+    },
+    "lifecycle": {
+      "depleted": "已用完",
+      "refund_pending": "审核中",
+      "refunding": "退款中",
+      "refunded": "已退款",
+      "expired": "已过期"
+    },
+    "billingOff": {
+      "title": "这个部署不计积分",
+      "body": "生成不扣积分，也不需要充值。用量仍然会记录下来。"
+    },
+    "total": "账号总额",
+    "unassigned": "未指定",
+    "assigned": "已指定",
+    "available": "当前可用",
+    "pricingHint": "1 积分 = 1 美分，永不过期。",
+    "unassignedHint": "需要指定给某个 Studio 才能用。",
+    "distributionTitle": "分给了哪些 Studio",
+    "overviewEmpty": {
+      "title": "买了积分之后，还要指定给某个 Studio 才能用",
+      "body": "左侧「购买积分」可以充值；充完在「指定」里把每个积分包分给要用它的 Studio。"
+    },
+    "lotsEmpty": "还没有充值记录。",
+    "lotsEmptyNotice": {
+      "title": "充值之后每个积分包都会出现在这里",
+      "body": "每个积分包会显示买了多少、还剩多少、指给了哪个 Studio。"
+    },
+    "assignedTo": "指定给 {studio}",
+    "ofPurchased": "共 {amount}",
+    "unassignedNotice": {
+      "title": "有 {count} 个积分包还没指定，需要指定才能用",
+      "body": "去左侧「指定」把它们分给要用的 Studio。"
+    },
+    "allSpending": "全部消耗",
+    "allStudios": "全部 Studio",
+    "filterByStudio": "按 Studio 筛选",
+    "ledgerEmpty": "还没有消耗记录。",
+    "ledgerBillingOff": "这个部署不计积分，下面是用量记录。",
+    "colDay": "日期",
+    "colWho": "谁花的",
+    "colStudio": "Studio",
+    "colProject": "Project",
+    "colModel": "模型",
+    "colAmount": "积分",
+    "noteShortfall": "这次用掉 {consumed}，其中 {owed} 记成了欠账",
+    "noteUnbilled": "这次用掉 {consumed}，未扣费",
+    "studiosEmpty": "还没有 Studio 用过这个账号的积分。",
+    "studiosNote": "可用额不减欠账，两个数分开显示。已删除的 Studio 留在这里，因为那笔钱真的花过。",
+    "deletedStudio": "已删除的 Studio",
+    "deletedBadge": "已删除",
+    "deletedStudioHint": "这个 Studio 已经不在了，钱花不出去",
+    "assignedLots": "已指定 {count} 个积分包",
+    "noLotsHere": "还没有指定给它的积分",
+    "debtAndSpent": "欠账 {debt} · 已消耗 {spent}",
+    "spentOnly": "已消耗 {spent}",
+    "buySoon": {
+      "title": "充值即将开放",
+      "body": "开放后可以在这里直接购买，标价不含税，实付金额是标价加上你所在地的税额。买到的积分需要指定给某个 Studio 才能用。"
+    },
+    "assignEmpty": "没有可以指定的积分。",
+    "assignEmptyNotice": {
+      "title": "买了积分之后在这里分给 Studio",
+      "body": "每个积分包整个指定给一个 Studio，随时可以改。"
+    },
+    "assignNote": "下拉里只有你是 Admin 的 Studio。改了之后原来那个 Studio 立刻失去这个积分包。",
+    "remaining": "还剩 {amount} 积分",
+    "designationFor": "{amount} 这个积分包的指定去向",
+    "designateFailed": "指定没能保存，请重试。",
+    "refundsEmpty": "没有可以退的积分。",
+    "refundable": "可以退的积分包",
+    "refundableHint": "还剩 {credits} 积分，可退 {money}",
+    "askRefund": "申请退款",
+    "refundNotOpen": "退款还没开放",
+    "refundsAsked": "已提交的申请",
+    "refundRefused": "已驳回",
+    "refundRefusedHint": "这个积分包已回到可用状态，重新指定时会先抵欠账",
+    "refundPendingHint": "{credits} 积分 · 审核期间这个积分包不能指定给任何 Studio",
+    "refundsNote": "只退没用掉的部分，按原路退回，需要审核。"
   }
 }

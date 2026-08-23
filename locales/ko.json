@@ -867,8 +867,7 @@
       "signOut": "로그아웃",
       "credits": "크레딧",
       "membership": "멤버십",
-      "accountSettings": "계정 설정",
-      "notOpenYet": "미제공"
+      "accountSettings": "계정 설정"
     },
     "container": {
       "shell": {
@@ -1252,5 +1251,104 @@
     },
     "payNow": "결제하기",
     "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
+  },
+  "credits": {
+    "panelTitle": "크레딧",
+    "close": "닫기",
+    "indexLabel": "크레딧 항목",
+    "unit": "크레딧",
+    "loadFailed": "불러오지 못했습니다. 닫았다가 다시 열어 주세요.",
+    "listEnd": "더 없습니다",
+    "group": {
+      "records": "기록",
+      "actions": "작업"
+    },
+    "section": {
+      "overview": "개요",
+      "lots": "충전 내역",
+      "ledger": "사용 내역",
+      "studios": "Studio 별",
+      "buy": "크레딧 구매",
+      "assign": "지정",
+      "refunds": "환불"
+    },
+    "lifecycle": {
+      "depleted": "모두 사용",
+      "refund_pending": "심사 중",
+      "refunding": "환불 처리 중",
+      "refunded": "환불 완료",
+      "expired": "만료"
+    },
+    "billingOff": {
+      "title": "이 배포에서는 크레딧을 차감하지 않습니다",
+      "body": "생성해도 차감되지 않고 구매할 필요도 없습니다. 사용량은 그대로 기록됩니다."
+    },
+    "total": "계정 총액",
+    "unassigned": "미지정",
+    "assigned": "지정됨",
+    "available": "현재 사용 가능",
+    "pricingHint": "1 크레딧 = 1 미국 센트이며 만료되지 않습니다.",
+    "unassignedHint": "쓰려면 Studio에 지정해야 합니다.",
+    "distributionTitle": "어느 Studio에 있는지",
+    "overviewEmpty": {
+      "title": "구매한 크레딧은 Studio에 지정해야 쓸 수 있습니다",
+      "body": "왼쪽 「크레딧 구매」에서 충전하고, 「지정」에서 쓸 Studio에 나눠 주세요."
+    },
+    "lotsEmpty": "충전 내역이 아직 없습니다.",
+    "lotsEmptyNotice": {
+      "title": "충전하면 여기에 하나씩 쌓입니다",
+      "body": "얼마를 샀는지, 얼마가 남았는지, 어느 Studio에 지정했는지 보여 줍니다."
+    },
+    "assignedTo": "{studio}에 지정",
+    "ofPurchased": "총 {amount}",
+    "unassignedNotice": {
+      "title": "지정하지 않은 충전이 {count}건 있어 아직 쓸 수 없습니다",
+      "body": "왼쪽 「지정」에서 쓸 Studio에 나눠 주세요."
+    },
+    "allSpending": "전체 사용",
+    "allStudios": "전체 Studio",
+    "filterByStudio": "Studio로 좁히기",
+    "ledgerEmpty": "사용 기록이 아직 없습니다.",
+    "ledgerBillingOff": "이 배포에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
+    "colDay": "날짜",
+    "colWho": "사용자",
+    "colStudio": "Studio",
+    "colProject": "Project",
+    "colModel": "모델",
+    "colAmount": "크레딧",
+    "noteShortfall": "{consumed} 사용, 그중 {owed}는 미지급",
+    "noteUnbilled": "{consumed} 사용, 청구 없음",
+    "studiosEmpty": "이 계정의 크레딧을 쓴 Studio가 아직 없습니다.",
+    "studiosNote": "미지급액은 사용 가능액에서 빼지 않고 따로 보여 줍니다. 삭제된 Studio도 남겨 둡니다. 그곳에서 실제로 쓴 돈이기 때문입니다.",
+    "deletedStudio": "삭제된 Studio",
+    "deletedBadge": "삭제됨",
+    "deletedStudioHint": "이 Studio가 없어져 남은 크레딧을 쓸 수 없습니다",
+    "assignedLots": "충전 {count}건 지정됨",
+    "noLotsHere": "지정된 크레딧이 없습니다",
+    "debtAndSpent": "미지급 {debt} · 사용 {spent}",
+    "spentOnly": "사용 {spent}",
+    "buySoon": {
+      "title": "충전은 곧 열립니다",
+      "body": "열리면 여기에서 바로 구매할 수 있습니다. 표시 가격은 세금 별도이며, 실제 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액입니다. 구매한 크레딧은 Studio에 지정해야 쓸 수 있습니다."
+    },
+    "assignEmpty": "지정할 크레딧이 없습니다.",
+    "assignEmptyNotice": {
+      "title": "구매한 크레딧을 여기에서 Studio에 나눠 줍니다",
+      "body": "충전 한 건은 Studio 하나에 통째로 지정하며, 언제든 바꿀 수 있습니다."
+    },
+    "assignNote": "목록에는 본인이 Admin인 Studio만 나옵니다. 바꾸면 원래 Studio는 그 즉시 이 크레딧을 잃습니다.",
+    "remaining": "{amount} 크레딧 남음",
+    "designationFor": "{amount} 충전의 지정 대상",
+    "designateFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
+    "refundsEmpty": "환불할 크레딧이 없습니다.",
+    "refundable": "환불 가능한 충전",
+    "refundableHint": "{credits} 크레딧 남음, {money} 상당",
+    "askRefund": "환불 신청",
+    "refundNotOpen": "환불은 아직 열리지 않았습니다",
+    "refundsAsked": "신청한 건",
+    "refundRefused": "반려됨",
+    "refundRefusedHint": "이 충전은 다시 쓸 수 있는 상태이며, 지정하면 미지급액부터 갚습니다",
+    "refundPendingHint": "{credits} 크레딧 · 심사 중에는 어느 Studio에도 지정할 수 없습니다",
+    "refundsNote": "쓰지 않은 부분만 원래 결제 수단으로 환불하며, 심사를 거칩니다."
   }
 }

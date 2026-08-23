@@ -79,6 +79,9 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   // The panel's static price line and its placeholder upgrade button, both
   // replaced in #106: prices now come from the subscription config through
   // `TierOffer`, and each tier has its own button in the comparison table.
+  // The badge on the account menu's credits entry, which said the feature was
+  // not open yet. It opens the credits overlay now (#12).
+  'studio.topBar.notOpenYet',
   'membership.pricePerMonth',
   'membership.upgrade',
   'chat.conversation.startNew',

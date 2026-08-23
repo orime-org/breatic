@@ -98,7 +98,7 @@ function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
 
 /**
  * Map a ledger row to its display shape.
- * @param entry - The stored row.
+ * @param row - One generation's grouped row.
  * @returns The view.
  */
 function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
@@ -165,6 +165,7 @@ export async function getOverview(
  * @param userId - The signed-in account.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
+ * @param lifecycle - Narrow to one state; omit for every purchase.
  * @returns One page of purchases.
  */
 export async function listLots(
