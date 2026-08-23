@@ -234,17 +234,22 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  * The ceiling it has to clear is a group member whose group is selected:
  * xyflow adds SELECTED_NODE_Z (1000) to the group, and `calculateChildXYZ`
  * gives the member `parentZ + 1`. That makes 1001 the highest a node
- * reaches, and 1002 clears it — but only while groups stay one level deep,
- * which three separate places enforce: `group-toolbar.ts`'s `allLoose`
- * (a group cannot be put inside a new group), `group-drag.ts`'s
- * `draggedMembers` filter (a group dragged over another never reparents),
- * and the resize-absorb filter at :3232 (a grown group swallows loose
- * nodes only). Nesting two levels would put a member at 1002 and three at
- * 1003.
+ * reaches, and 1002 clears it — on two conditions.
  *
- * It does not clear the generate panel, and cannot: NodeToolbar portals to
- * `.react-flow__renderer`, a sibling of the pane holding every node, and the
- * viewport inside that pane is its own stacking context.
+ * Groups stay one level deep, which three separate places enforce:
+ * `group-toolbar.ts`'s `allLoose` (a group cannot be put inside a new
+ * group), `group-drag.ts`'s `draggedMembers` filter (a group dragged over
+ * another never reparents), and the loose-node filter inside
+ * `commitGroupResize` below (a grown group swallows loose nodes only).
+ * Nesting two levels would put a member at 1002 and three at 1003.
+ *
+ * And `zIndexMode` stays `'basic'`, its default, which we never override:
+ * under `'auto'` xyflow adds `rootParentIndex * 10` to every root that has
+ * children, so the hundredth such group alone would reach 1010.
+ *
+ * It does not clear the generate panel, and cannot: NodeToolbar portals into
+ * `.react-flow__renderer`, landing as a sibling of the pane that holds every
+ * node, and the viewport inside that pane is its own stacking context.
  */
 const FOCUS_TARGET_Z = 1002;
 
@@ -1824,7 +1829,16 @@ function CanvasSpaceInner({
         const fresh = useCanvasGraphStore
           .getState()
           .flowNodes.find((n) => n.id === node.id);
-        if (!fresh || !isFocusCandidate(fresh, target)) return;
+        if (!fresh || !isFocusCandidate(fresh, target)) {
+          // The node looked pickable — the dimming reads the render copy, and
+          // the store can lead it by a commit — so a bare return would be the
+          // "looks selectable, click does nothing" shape the pick predicate's
+          // own docstring says round-4 already fixed once. Before this
+          // re-judgement existed the crop opened for a frame and the verdict
+          // ejected the user WITH an explanation; this keeps the explanation.
+          toast.warning(t('canvas.generatePanel.focusSourceUnavailable'));
+          return;
+        }
         // The predicate already established this is a non-empty string.
         const { content } = fresh.data as { content: string };
         setFocusTarget({ id: node.id, content });

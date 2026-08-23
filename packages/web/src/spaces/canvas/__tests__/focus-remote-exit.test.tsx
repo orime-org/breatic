@@ -48,15 +48,15 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 /**
  * Puts the canvas into the focused state on `src`.
  * @param nodes - The starting nodes.
- * @returns A remount callback.
+ * @returns A re-render callback.
  */
 function enterFocus(nodes: Nodes): () => void {
   mockUseCanvasSpace.mockReturnValue(mockSpace(nodes));
-  const remount = renderSpace();
+  const rerender = renderSpace();
   act(() => useCanvasStore.getState().startFocusPick('host'));
   clickNode('src');
   expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
-  return remount;
+  return rerender;
 }
 
 const START: Nodes = [image('host', 0), image('src', 300)];
@@ -70,10 +70,10 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('A6：目标被删除 → toast 说被删了，退回挑选横幅', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
-    remount();
+    rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator deleted the source.');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
@@ -82,12 +82,12 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('A7：内容被换 → toast 说换了，退回挑选横幅', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 300, { content: 'other.png' })]),
     );
-    remount();
+    rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator replaced the source.');
     expect(zOf('src')).toBe('0');
@@ -97,12 +97,12 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('A8：进 handling → toast 说在生成，退回挑选横幅', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 300, { status: 'handling' })]),
     );
-    remount();
+    rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('A collaborator is processing the source.');
     expect(zOf('src')).toBe('0');
@@ -117,12 +117,12 @@ describe('聚焦目标被改动之后（#2000）', () => {
     // 'handling'. Sharing the 'busy' copy would tell that user a generation
     // is running while the node draws an error frame.
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 300, { status: 'error' })]),
     );
-    remount();
+    rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('Source processing failed.');
     expect(zOf('src')).toBe('0');
@@ -132,7 +132,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('焦点在浮层内时，退出把它交回挑选横幅', () => {
     vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     // The overlay's own controls (ratio presets, confirm, cancel) render off
     // a measured source box and jsdom gives images no size, so focus goes
@@ -145,7 +145,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(overlay.contains(document.activeElement)).toBe(true);
 
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
-    remount();
+    rerender();
 
     expect(document.activeElement).toBe(
       screen.getByTestId('reference-pick-banner'),
@@ -154,7 +154,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('焦点在浮层外时，退出不去搬它', () => {
     vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     // Drawing a marquee never puts focus in the overlay (the capture layer
     // is a div with no tabIndex), so this is the ordinary path, and a write
@@ -164,7 +164,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     elsewhere.focus();
 
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
-    remount();
+    rerender();
 
     expect(document.activeElement).toBe(elsewhere);
     elsewhere.remove();
@@ -179,11 +179,11 @@ describe('聚焦目标被改动之后（#2000）', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 300), image('other', 600)]),
     );
-    const remount = renderSpace();
+    const rerender = renderSpace();
     act(() => useCanvasStore.getState().startFocusPick('host'));
     clickNode('src');
     clickNode('other');
-    remount();
+    rerender();
 
     expect(warn).not.toHaveBeenCalled();
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
@@ -220,12 +220,12 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('A9：拖动它 → 聚焦照常，一条 toast 都没有', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 900)]),
     );
-    remount();
+    rerender();
 
     expect(warn).not.toHaveBeenCalled();
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
@@ -236,10 +236,10 @@ describe('聚焦目标被改动之后（#2000）', () => {
     // outside the undo manager's trackedOrigins, so an undo can remove the
     // node but never change its content or status.
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)], true));
-    remount();
+    rerender();
 
     expect(warn.mock.calls[0]?.[0]).toBe('Undo removed the source.');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
@@ -248,11 +248,11 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('一次变更只弹一条 toast', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
-    remount();
-    remount();
+    rerender();
+    rerender();
 
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -261,7 +261,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const src = image('src', 300);
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0), src]));
-    const remount = renderSpace();
+    const rerender = renderSpace();
     act(() => useCanvasStore.getState().startFocusPick('host'));
     clickNode('src');
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
@@ -270,7 +270,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     // which is what mirror-selection hands back for an untouched node. The
     // crop has to survive a write that never touched its target.
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 40), src]));
-    remount();
+    rerender();
 
     expect(warn).not.toHaveBeenCalled();
     expect(zOf('src')).toBe('1002');
@@ -279,7 +279,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
   it('A9：把它加进组 → 聚焦照常，一条 toast 都没有', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
-    const remount = enterFocus(START);
+    const rerender = enterFocus(START);
 
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
@@ -288,7 +288,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
         { ...image('src', 20), parentId: 'g' } as Nodes[number],
       ]),
     );
-    remount();
+    rerender();
 
     expect(warn).not.toHaveBeenCalled();
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();

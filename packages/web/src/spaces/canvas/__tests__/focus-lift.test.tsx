@@ -181,6 +181,25 @@ describe('聚焦目标的抬升（#2000）', () => {
     expect(zOf('src')).toBe('0');
   });
 
+  it('A5：锁定的聚焦目标退出后，z 回原值而锁还在', () => {
+    // The other direction of A5: leaving the crop must drop the lift without
+    // taking the lock with it.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([image('host', 0), image('src', 300, { locked: true })]),
+    );
+    renderSpace();
+
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('src');
+    expect(zOf('src')).toBe('1002');
+
+    act(() => useCanvasStore.getState().endPick());
+
+    expect(zOf('src')).toBe('0');
+    const el = document.querySelector('.react-flow__node[data-id="src"]')!;
+    expect(el.className).not.toContain('draggable');
+  });
+
   it('A4：本功能不写 selected —— 聚焦目标不带 selected class', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([image('host', 0), image('src', 300)]),

@@ -37,9 +37,13 @@ export function mockSpace(
 }
 
 /**
- * Mounts the canvas and hands back a remount that re-reads the mocked space,
- * which is how a write to the document reaches this component.
- * @returns A remount callback.
+ * Mounts the canvas and hands back a re-render that makes it re-read the
+ * mocked space, which is how a write to the document reaches this component.
+ *
+ * A re-render, not a remount: `focusTarget` is local state inside
+ * `CanvasSpaceInner`, so unmounting would take the open crop with it and
+ * every exit spec would lose its premise before it asserted anything.
+ * @returns A re-render callback.
  */
 export function renderSpace(): () => void {
   const client = new QueryClient({
