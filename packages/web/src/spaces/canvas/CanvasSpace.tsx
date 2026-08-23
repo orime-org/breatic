@@ -224,6 +224,23 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
 
 /**
+ * Render-layer z for the node a focus crop is open on (#2000), set instead of
+ * touching `selected` — that field is the selection set six commands read to
+ * pick their range, and this is a purely visual need.
+ *
+ * The ceiling it has to clear is a group member whose group is selected:
+ * xyflow adds SELECTED_NODE_Z (1000) to the group, and `calculateChildXYZ`
+ * gives the member `parentZ + 1`. Groups cannot nest (group-toolbar's
+ * `allLoose` rejects any node that is a group or already has a parent), so
+ * 1001 is the highest a node reaches and 1002 clears it.
+ *
+ * It does not clear the generate panel, and cannot: NodeToolbar portals to
+ * `.react-flow__renderer`, a sibling of the pane holding every node, and the
+ * viewport inside that pane is its own stacking context.
+ */
+const FOCUS_TARGET_Z = 1002;
+
+/**
  * Whether a node can be picked as a focus crop source.
  *
  * ONE predicate for both halves of the decision — whether the node looks
@@ -3264,11 +3281,22 @@ function CanvasSpaceInner({
     prevGroupsRef.current = reconciledGroups;
     return [
       ...reconciledGroups,
-      ...rest.map((node) =>
-        frozen.has(node.id) ? { ...node, draggable: false } : node,
-      ),
+      ...rest.map((node) => {
+        // The two flags are independent: a locked node can be the focus
+        // target (isFocusCandidate never reads data.locked), and it must come
+        // out lifted AND undraggable. This map is the only place the lock is
+        // enforced, so an either/or branch would drop it for that node.
+        const lifted = node.id === focusCropTargetId;
+        const locked = frozen.has(node.id);
+        if (!lifted && !locked) return node;
+        return {
+          ...node,
+          ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
+          ...(locked ? { draggable: false } : {}),
+        };
+      }),
     ];
-  }, [flowNodes, readOnly]);
+  }, [flowNodes, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
   // + any node ineligible for the active purpose are dimmed + non-pickable;
