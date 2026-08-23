@@ -99,7 +99,10 @@ export function AssignSection({
         />
       ) : paging.isPending ? (
         <SectionSkeleton />
-      ) : paging.isError ? (
+      ) : paging.isError || studios.isError ? (
+        // Either read failing leaves this section unable to do its one job:
+        // without the purchases there is nothing to point, and without the
+        // studios there is nowhere to point it.
         <SectionError />
       ) : paging.rows.length === 0 ? (
         <>

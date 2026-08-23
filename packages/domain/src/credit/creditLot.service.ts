@@ -290,6 +290,10 @@ export async function chargeForGeneration(
       await creditLotRepo.appendLedgerEntry(
         {
           ...usageEntry,
+          // The studio owes this, and nobody has paid it. Whoever assigns a
+          // purchase to the studio pays it off, and that is the row that
+          // names them.
+          payerUserId: null,
           entryType: "debt_incurred",
           amount: fromMicroCredits(-plan.shortfall),
           lotId: null,
@@ -459,9 +463,10 @@ export async function designateLot(input: {
  * @returns The overview.
  */
 export async function getOverview(userId: string): Promise<CreditOverview> {
-  const [spendableRows, spentRows, unassigned] = await Promise.all([
+  const [spendableRows, spentRows, owingRows, unassigned] = await Promise.all([
     creditLotRepo.sumSpendableByStudio(userId),
     creditLotRepo.sumSpentByStudio(userId),
+    creditLotRepo.studiosWithDebtFrom(userId),
     getUnassignedCredits(userId),
   ]);
 
@@ -497,6 +502,23 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
         spent,
         lotCount: 0,
       });
+  }
+
+  // A studio this account only ever owed in reaches neither read above: a
+  // debt names no payer. Without it the debt is invisible, and the next
+  // purchase assigned there is spent paying it off before anything else.
+  for (const row of owingRows) {
+    if (byStudio.has(row.studioId)) continue;
+    byStudio.set(row.studioId, {
+      studioId: row.studioId,
+      studioName: row.studioName,
+      studioSlug: row.studioSlug,
+      deleted: row.deleted,
+      spendable: 0,
+      debt: 0,
+      spent: 0,
+      lotCount: 0,
+    });
   }
 
   const studios = [...byStudio.values()];

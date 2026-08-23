@@ -238,13 +238,15 @@ describe("旧模型退场（0062）", () => {
 });
 
 describe("credit_ledger", () => {
-  it("requires a payer but not a lot", async () => {
+  it("names a payer on every type but a debt", async () => {
     const cols = await columnsOf("credit_ledger");
     expect(cols.size, "credit_ledger does not exist").toBeGreaterThan(0);
 
-    // Who the credits belong to. Written even with payments disabled, where
-    // the row records usage against a person but against no purchase.
-    expect(cols.get("payer_user_id")?.is_nullable).toBe("NO");
+    // Whose money moved. Absent on `debt_incurred` (0064): a debt is what a
+    // studio owes, recorded before anyone has paid it — the payment comes
+    // later, as the repayment row of whoever assigns a purchase. The CHECK
+    // below is what keeps the column from meaning two things.
+    expect(cols.get("payer_user_id")?.is_nullable).toBe("YES");
     // Which purchase was drawn down — absent exactly in that case.
     expect(cols.get("lot_id")?.is_nullable).toBe("YES");
     // Who did the spending. A studio's guest may spend the admin's credits,
@@ -253,6 +255,18 @@ describe("credit_ledger", () => {
     expect(cols.get("studio_id")?.is_nullable).toBe("YES");
     expect(cols.get("project_id")?.is_nullable).toBe("YES");
     expect(cols.get("entry_type")?.is_nullable).toBe("NO");
+    // Nullable in the column, required by the constraint on everything else.
+    const checks = await sql<{ definition: string }[]>`
+      SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
+      WHERE conrelid = 'credit_ledger'::regclass AND contype = 'c'`;
+    expect(
+      checks.some(
+        (c) =>
+          c.definition.includes("payer_user_id IS NOT NULL") &&
+          c.definition.includes("debt_incurred"),
+      ),
+      "no CHECK requires a payer outside debt_incurred",
+    ).toBe(true);
     expect(cols.get("amount")?.is_nullable).toBe("NO");
     expect(cols.get("amount")?.data_type).toBe("numeric");
     expect(cols.get("amount")?.numeric_precision).toBe(20);

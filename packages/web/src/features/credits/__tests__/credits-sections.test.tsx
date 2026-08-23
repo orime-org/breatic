@@ -35,6 +35,15 @@ vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => listUserStudios() },
 }));
 
+// jsdom 里没有真滚动，捕获 hook 收到的回调，测试里直接调它。
+let reachEnd: (() => void) | null = null;
+vi.mock('@web/lib/use-scrolled-to-end', () => ({
+  useScrolledToEnd: (opts: { enabled: boolean; onReachEnd: () => void }) => {
+    reachEnd = opts.enabled ? opts.onReachEnd : null;
+    return { scrollerRef: () => {}, sentinelRef: () => {} };
+  },
+}));
+
 const toastWarning = vi.fn();
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: (...a: unknown[]) => toastWarning(...a), error: vi.fn() },
@@ -119,9 +128,8 @@ function entry(over: Partial<CreditLedgerView> = {}): CreditLedgerView {
     projectName: 'Autumn keyvisual',
     model: 'seedream-4.0',
     provider: 'volcengine',
-    charged: -120,
-    consumed: -120,
-    owed: 0,
+    kind: 'generation' as const,
+    amount: -120,
     createdAt: '2026-08-22T10:00:00.000Z',
     ...over,
   };
@@ -180,6 +188,7 @@ describe('积分覆盖层的七项', () => {
       { id: 's2', name: 'Design squad', myStudioRole: 'guest' },
     ]);
     toastWarning.mockReset();
+    reachEnd = null;
   });
 
   describe('总览', () => {
@@ -311,27 +320,25 @@ describe('积分覆盖层的七项', () => {
       expect(row).toHaveTextContent('-120');
     });
 
-    it('欠了账的那次，把用掉多少和欠了多少分开说', async () => {
+    it('指定积分抵欠账那一行，说清它是什么、不冒充一次生成', async () => {
+      // 它没有 project 也没有模型，那两格摆破折号的话，读起来像一次凭空的
+      // 生成。欠账本身是 studio 的，不在任何人的账本里。
       fetchCreditLedger.mockResolvedValue({
-        items: [entry({ charged: -120, consumed: -240, owed: -120 })],
+        items: [
+          entry({
+            kind: 'debt_repayment',
+            amount: -70,
+            projectName: null,
+            model: null,
+          }),
+        ],
         nextCursor: null,
       });
       await openOn('ledger');
       const body = await panel();
 
-      // 花出去的和用掉的在欠账时不是一个数，两个都得报。
-      expect(body).toHaveTextContent('used 240, of which 120 went on the tab');
-    });
-
-    it('没扣费的那次说清是没扣费，不是零消耗', async () => {
-      fetchCreditLedger.mockResolvedValue({
-        items: [entry({ charged: 0, consumed: -42, owed: 0 })],
-        nextCursor: null,
-      });
-      await openOn('ledger');
-      const body = await panel();
-
-      expect(body).toHaveTextContent('used 42, not charged');
+      expect(body).toHaveTextContent('paying off debt');
+      expect(body).toHaveTextContent('-70');
     });
 
     it('切语言之后表头跟着换', async () => {
@@ -436,6 +443,70 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
+  describe('三态与分页', () => {
+    it.each([
+      ['lots' as const, () => fetchCreditLots],
+      ['ledger' as const, () => fetchCreditLedger],
+      ['assign' as const, () => fetchCreditLots],
+      ['refunds' as const, () => fetchCreditLots],
+    ])('%s 读取失败时给一句话', async (section, mock) => {
+      mock().mockRejectedValue(new Error('nope'));
+      await openOn(section);
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['lots' as const, /No purchases yet/i],
+      ['ledger' as const, /Nothing spent yet/i],
+      ['assign' as const, /Nothing to assign/i],
+      ['refunds' as const, /Nothing can be refunded/i],
+    ])('%s 空着时说清没有什么', async (section, message) => {
+      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
+      fetchCreditLedger.mockResolvedValue({ items: [], nextCursor: null });
+      await openOn(section);
+      const body = await panel();
+
+      expect(body).toHaveTextContent(message);
+    });
+
+    it('读还没回来时先摆骨架，不是空白', async () => {
+      // 挂住不 resolve：这一刻正是读者会看到的那一刻。
+      fetchCreditLots.mockReturnValue(new Promise(() => {}));
+      await openOn('lots');
+
+      expect(
+        await screen.findByTestId('credits-skeleton'),
+      ).toBeInTheDocument();
+    });
+
+    it('还有下一页时，到底了会带着游标再问一次', async () => {
+      fetchCreditLots
+        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'cursor-2' })
+        .mockResolvedValueOnce({
+          items: [lot({ id: 'l2', paidCents: 777 })],
+          nextCursor: null,
+        });
+      await openOn('lots');
+      await panel();
+
+      // jsdom 不真滚，所以直接调 hook 收到的那个回调。问的是「拿到游标之后
+      // 会不会带着它再问一次」，不是 IntersectionObserver 本身。
+      expect(reachEnd).not.toBeNull();
+      reachEnd!();
+
+      await waitFor(() => {
+        expect(fetchCreditLots).toHaveBeenLastCalledWith(
+          expect.objectContaining({ cursor: 'cursor-2' }),
+        );
+      });
+      // 第二页的行真的接在第一页后面，不是把第一页换掉。
+      const body = await screen.findByRole('tabpanel');
+      expect(body).toHaveTextContent('$50.00');
+      expect(body).toHaveTextContent('$7.77');
+    });
+  });
+
   describe('购买积分', () => {
     it('给可用额和计价说明，不出五档也不出去支付', async () => {
       await openOn('buy');
@@ -465,6 +536,15 @@ describe('积分覆盖层的七项', () => {
       expect(fetchCreditLots).toHaveBeenLastCalledWith(
         expect.objectContaining({ lifecycle: 'active' }),
       );
+    });
+
+    it('studio 列表读不出来时也给失败态，不是静默只剩「未指定」', async () => {
+      // 两个读缺哪个这一项都做不成：没有包就没什么可指，没有 studio 就没处
+      // 可指。只报其中一个的失败，另一个失败时下拉会静默变成一个选项。
+      listUserStudios.mockRejectedValue(new Error('nope'));
+      await openOn('assign');
+
+      expect(await screen.findByRole('alert')).toBeInTheDocument();
     });
 
     it('下拉里只有自己是 admin 的 studio', async () => {

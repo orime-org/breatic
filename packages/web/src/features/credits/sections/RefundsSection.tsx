@@ -27,6 +27,18 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
 
+/**
+ * Whether a purchase has had a refund turned down.
+ *
+ * The count of attempts is what says so — the lifecycle went back to
+ * spendable and keeps no trace of the request.
+ * @param lot - The purchase.
+ * @returns Whether a request on it was refused.
+ */
+function refused(lot: CreditLotView): boolean {
+  return lot.refundAttempts > 0 && lot.lifecycle === 'active';
+}
+
 /** Whose purchases, and whether billing is on at all. */
 interface RefundsSectionProps {
   /** The signed-in account, for the query key. */
@@ -147,22 +159,21 @@ export function RefundsSection({
                       <>
                         {formatMoney(lot.paidCents, lot.currency)} ·{' '}
                         {formatLocalDay(lot.createdAt)}
+                        {/* What says a request was refused is the count of
+                            attempts, which is also what put this row in the
+                            list. The lifecycle says whether it is spendable. */}
                         <Badge
-                          variant={
-                            lot.lifecycle === 'active'
-                              ? 'destructive'
-                              : 'secondary'
-                          }
+                          variant={refused(lot) ? 'destructive' : 'secondary'}
                           className='ml-2 align-middle'
                         >
-                          {lot.lifecycle === 'active'
+                          {refused(lot)
                             ? t('credits.refundRefused')
                             : t(`credits.lifecycle.${lot.lifecycle}`)}
                         </Badge>
                       </>
                     }
                     sub={
-                      lot.lifecycle === 'active'
+                      refused(lot)
                         ? t('credits.refundRefusedHint')
                         : t('credits.refundPendingHint', {
                           credits: formatCreditAmount(lot.remainingCredits),

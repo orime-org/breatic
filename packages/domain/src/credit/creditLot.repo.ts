@@ -299,7 +299,8 @@ export async function applyCharge(
  */
 export async function appendLedgerEntry(
   entry: {
-    payerUserId: string;
+    /** Whose money moved. Null on a debt, which nobody has paid yet. */
+    payerUserId: string | null;
     entryType: CreditLedgerEntryType;
     amount: string;
     actorUserId?: string | null;
@@ -351,6 +352,45 @@ export async function sumSpendableForStudio(
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(spendableByStudio(studioId));
   return rows[0]?.total ?? "0";
+}
+
+/**
+ * Studios where this account ran a generation that outran the credits.
+ *
+ * A debt row names no payer — the studio owes it and nobody has paid yet — so
+ * the payer-keyed reads cannot reach it. Somebody who ran a generation that
+ * did not go through needs to see that the studio owes, because the next
+ * purchase they assign there is spent paying it off before anything else.
+ * @param actorUserId - Who ran the generations.
+ * @returns The studios, with their names.
+ */
+export async function studiosWithDebtFrom(
+  actorUserId: string,
+): Promise<{ studioId: string; studioName: string; studioSlug: string; deleted: boolean }[]> {
+  const rows = await db
+    .selectDistinct({
+      studioId: creditLedger.studioId,
+      studioName: studios.name,
+      studioSlug: studios.slug,
+      deleted: sql<boolean>`${studios.deletedAt} IS NOT NULL`,
+    })
+    .from(creditLedger)
+    .leftJoin(studios, eq(studios.id, creditLedger.studioId))
+    .where(
+      and(
+        eq(creditLedger.actorUserId, actorUserId),
+        eq(creditLedger.entryType, "debt_incurred"),
+        isNotNull(creditLedger.studioId),
+      ),
+    );
+  return rows
+    .filter((row): row is typeof row & { studioId: string } => row.studioId !== null)
+    .map((row) => ({
+      studioId: row.studioId,
+      studioName: row.studioName ?? "",
+      studioSlug: row.studioSlug ?? "",
+      deleted: row.deleted,
+    }));
 }
 
 /**
@@ -614,43 +654,17 @@ export async function listLotsByStudio(
   }));
 }
 
-/**
- * What one grouped generation cost, as three sums over its rows.
- *
- * Both ledgers report the same three figures and had a copy each; they had
- * already started to drift.
- * @returns The three aggregate columns.
- */
-function generationAmounts(): {
-  charged: SQL<string>;
-  consumed: SQL<string>;
-  owed: SQL<string>;
-} {
-  return {
-    /** What left a purchase. */
-    charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-      WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
-        AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
-    /** What the run used, debt included. */
-    consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-      WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
-    /** The part of that no lot covered. */
-    owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-      WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
-  };
-}
 
 /**
- * What one generation cost, in the two ways it can be recorded.
+ * The two ways an account's own money leaves a purchase.
  *
- * A repayment is left out. It moves money out of a purchase, but the run it
- * pays for was already reported when the debt was incurred, and a repayment
- * carries no project and no model — listing it puts a generation on the page
- * that never happened.
+ * A debt is not one of them: it names no payer, because at the moment it is
+ * recorded nobody has paid it. It is paid later, and that payment is the
+ * repayment row below.
  */
 export const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
   "spend",
-  "debt_incurred",
+  "debt_repayment",
 ];
 
 /** One event on an account's ledger, with every row of it added up. */
@@ -666,12 +680,10 @@ export interface PayerLedgerRow {
   projectName: string | null;
   model: string | null;
   provider: string | null;
-  /** What left a purchase. */
-  charged: string;
-  /** What the run used, debt included. */
-  consumed: string;
-  /** How much of it went on the tab. */
-  owed: string;
+  /** A generation, or a designation paying off what a studio owed. */
+  kind: "generation" | "debt_repayment";
+  /** What left this account's purchases. Negative. */
+  amount: string;
 }
 
 /**
@@ -717,10 +729,16 @@ export async function listLedgerByPayer(
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
-      // What left a purchase, and what the run used. They differ when a studio
-      // outran its credits: the shortfall is recorded as debt, which is used
-      // but not yet charged.
-      ...generationAmounts(),
+      // Which of the two this line is. A repayment carries no project and no
+      // model, so without saying so it reads as a generation that never
+      // happened.
+      kind: sql<"generation" | "debt_repayment">`CASE
+        WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
+        THEN 'debt_repayment' ELSE 'generation' END`,
+      // One figure. What a run cost beyond what the purchases covered is the
+      // studio's debt, not this account's, so there is nothing here for it to
+      // be measured against.
+      amount: sql<string>`SUM(${creditLedger.amount})::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -846,7 +864,13 @@ export async function listLedgerByStudio(
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
-      ...generationAmounts(),
+      charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
+          AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
+      consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
+      owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -973,6 +997,8 @@ export async function sumSpendableByStudio(userId: string): Promise<
       // How many lots point here, which is what the overlay reports. A count
       // rather than the lots themselves: the reader is asking whether any are
       // assigned, and one aggregate answers that without a second query.
+      // Every lot pointed here, spendable or not. The figure answers "how
+      // many purchases did I put here", and a spent one was still put here.
       lotCount: sql<number>`COUNT(*)::int`,
     })
     .from(creditLots)

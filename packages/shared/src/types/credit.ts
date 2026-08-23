@@ -64,14 +64,19 @@ export interface StudioLotView {
 }
 
 /**
- * One line of this account's ledger: one generation, whatever it cost.
+ * One line of this account's ledger: one time its money left a purchase.
  *
  * A generation draws on as many purchases as it needs and writes a row for
- * each, all at the same instant, so the three figures below are that
- * generation's totals rather than one purchase's share of it.
+ * each, all at the same instant, so the figure below is that generation's
+ * total rather than one purchase's share of it.
+ *
+ * What a run cost beyond what the purchases covered is the studio's debt,
+ * which names no payer and belongs on the studio's own page.
  */
 export interface CreditLedgerView {
   id: string;
+  /** A generation, or a designation paying off what a studio owed. */
+  kind: "generation" | "debt_repayment";
   actorUserId: string | null;
   /** Who spent it, by display name. */
   actorName: string | null;
@@ -83,12 +88,8 @@ export interface CreditLedgerView {
   projectName: string | null;
   model: string | null;
   provider: string | null;
-  /** What left a purchase. */
-  charged: number;
-  /** What the run used, debt included. */
-  consumed: number;
-  /** How much of it went on the tab. */
-  owed: number;
+  /** What left this account's purchases. Negative. */
+  amount: number;
   createdAt: string;
 }
 

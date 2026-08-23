@@ -36,7 +36,7 @@ import {
   setSession,
   sessionCookieName,
 } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, creditLotRepo } from "@breatic/domain";
 
 const PG_DRIVER_LOCAL = "credit-overlay-test-driver";
 
@@ -277,8 +277,8 @@ describe("「已删除」要读得出来，不是从别处猜的（实现对抗�
   });
 });
 
-describe("消耗流水只列消耗（实现对抗第一轮）", () => {
-  it("指定积分抵掉欠账，不出现在消耗流水里", async () => {
+describe("消耗流水按付款人取（实现对抗第一、二轮）", () => {
+  it("指定积分抵掉欠账，作为一次还债出现、不冒充生成", async () => {
     const fx = await seedFixture();
     // 先欠上：没有包可扣，整笔记成欠账。
     await creditLotService.chargeForGeneration({
@@ -304,10 +304,14 @@ describe("消耗流水只列消耗（实现对抗第一轮）", () => {
       data: { items: Record<string, unknown>[] };
     };
 
-    // 它没有 model、没有 project，六列里三列是空的；混进来读起来是一次
-    // 凭空的生成。验收项 7：只列消耗，不混欠账记账。
-    expect(body.data.items).toHaveLength(1);
-    expect(body.data.items[0]!['model']).toBe("seedream-4.0");
+    // 两行：那次生成扣掉的部分（0，一个包都没有），和这次指定抵掉的 40。
+    // 后者是这个账号真金白银付出去的，得在他的账本里；它没有 model 也没有
+    // project，所以要说清自己是什么。
+    const rows = body.data.items;
+    const repayment = rows.find((r) => r['kind'] === "debt_repayment");
+    expect(repayment).toBeDefined();
+    expect(Number(repayment!['amount'])).toBe(-40);
+    expect(repayment!['model']).toBeNull();
   });
 });
 
@@ -441,7 +445,7 @@ describe("一次生成在流水里是一行（计划 §4.8）", () => {
     // 分页边界会落在一次生成中间，把它显示成两次、每次只带总数的一片。
     // listLedgerByStudio 已经把这件事定性为 bug 并按 reference_id 分组解决过。
     expect(rows).toHaveLength(1);
-    expect(Number(rows[0]!['consumed'])).toBe(-250);
+    expect(Number(rows[0]!['amount'])).toBe(-250);
   });
 
   it("充值那一行不出现在消耗流水里", async () => {
@@ -458,5 +462,79 @@ describe("一次生成在流水里是一行（计划 §4.8）", () => {
     // topup 的 payer_user_id 也是登录者本人，而它没有 actor / project / model，
     // 六列里四列是空的。
     expect(body.data.items).toHaveLength(0);
+  });
+});
+
+describe("欠账是 studio 的，不挂在任何人名下（实现对抗第二轮）", () => {
+  it("别人在我的 studio 里超支，那笔欠账不出现在他的消耗流水里", async () => {
+    const fx = await seedFixture();
+    const [guest] = await sql<{ id: string }[]>`
+      INSERT INTO users (email)
+      VALUES (${`overlay-guest-${Date.now()}@example.test`}) RETURNING id`;
+    await sql`INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${fx.studioId}, ${guest!.id}, 'maintainer')`;
+    await seedLot(fx.userId, 30, 1000, fx.studioId);
+
+    // 他跑一次比余额贵的生成：30 从包里扣，70 记成 studio 的欠账。
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: guest!.id,
+      amount: 100,
+      referenceId: `cross-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    // 他一分钱没出，账号级消耗流水说的是「我的钱花在哪」。
+    const his = await creditLotRepo.listLedgerByPayer(guest!.id, 50, null);
+    expect(his).toHaveLength(0);
+  });
+
+  it("出资人看到自己付掉的那部分，欠账不算在他头上", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 30, 1000, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 100,
+      referenceId: `own-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+      headers: { cookie: fx.cookie },
+    });
+    const body = (await res.json()) as {
+      data: { items: Record<string, unknown>[] };
+    };
+
+    // 一行，写着他付掉的 30。那次生成用了 100，多出来的 70 是 studio 欠的
+    // ——它没有付款人，落在 studio 自己那本账上。
+    expect(body.data.items).toHaveLength(1);
+    expect(Number(body.data.items[0]!['amount'])).toBe(-30);
+    expect(body.data.items[0]!['kind']).toBe("generation");
+  });
+
+  it("一个包都没扣到、纯欠账的 studio 仍然出现在各 Studio 里", async () => {
+    const fx = await seedFixture();
+    // 一个包都没有：整笔记欠账，一行 spend 都不写。
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 40,
+      referenceId: `debt-only-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    const data = await readOverview(fx.cookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+    const mine = studios.find((s) => s['studioId'] === fx.studioId);
+
+    // 验收项 8 要报欠账多少。这一行整个消失的话，欠账一个字都看不见。
+    expect(mine).toBeDefined();
+    expect(Number(mine!['debt'])).toBe(40);
+    expect(mine!['deleted']).toBe(false);
   });
 });

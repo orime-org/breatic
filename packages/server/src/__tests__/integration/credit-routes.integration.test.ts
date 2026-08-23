@@ -347,9 +347,8 @@ describe("GET /credits/ledger", () => {
     const body = (await res.json()) as {
       data: {
         items: {
-          charged: number;
-          consumed: number;
-          owed: number;
+          kind: string;
+          amount: number;
           actorUserId: string | null;
           actorName: string | null;
           projectId: string | null;
@@ -367,9 +366,8 @@ describe("GET /credits/ledger", () => {
     // 名字随行带出来：界面上要显示「谁」和「哪个 project」，而它手里只有
     // 这一行；让它拿 id 再去问一次，一页三十行就是三十次请求。
     expect(body.data.items[0]).toMatchObject({
-      charged: -10,
-      consumed: -10,
-      owed: 0,
+      kind: 'generation',
+      amount: -10,
       actorUserId: guest.userId,
       actorName: guest.personalStudioName,
       projectId: owner.projectId,

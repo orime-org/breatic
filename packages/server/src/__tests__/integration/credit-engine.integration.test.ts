@@ -1190,7 +1190,7 @@ describe("欠账：不变量", () => {
         model: string | null;
         provider: string | null;
         actor_user_id: string | null;
-        payer_user_id: string;
+        payer_user_id: string | null;
         lot_id: string | null;
         amount: string;
       }[]
@@ -1206,7 +1206,9 @@ describe("欠账：不变量", () => {
     expect(row!.model).toBe("seedance-1.5-pro");
     expect(row!.provider).toBe("volcengine");
     expect(row!.actor_user_id).toBe(fx.userId);
-    expect(row!.payer_user_id).toBe(fx.userId);
+    // Nobody has paid this. The studio owes it, and whoever assigns a
+    // purchase there pays it off — that repayment is the row naming them.
+    expect(row!.payer_user_id).toBeNull();
     expect(row!.lot_id).toBeNull();
     expect(row!.amount).toBe("-42.000000");
   });

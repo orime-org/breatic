@@ -903,9 +903,13 @@ export const creditLedger = pgTable(
   "credit_ledger",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    payerUserId: uuid("payer_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    // Whose money this row moved. Null on `debt_incurred`: a debt is what a
+    // studio owes, recorded before anyone has paid for it — the payment comes
+    // later, as the `debt_repayment` row of whoever assigns a purchase. A
+    // CHECK in 0064 requires it on every other type.
+    payerUserId: uuid("payer_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     actorUserId: uuid("actor_user_id").references(() => users.id, {
       onDelete: "restrict",
     }),

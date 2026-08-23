@@ -96,7 +96,10 @@ export function LotsSection({
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
           />
-          {unassigned === 0 ? null : (
+          {/* Counted only once the list is read through. While there is
+              another page this figure is of the pages fetched so far, and a
+              number that climbs as you scroll says less than none. */}
+          {unassigned === 0 || paging.hasNextPage ? null : (
             <Notice
               title={t('credits.unassignedNotice.title', { count: unassigned })}
               body={t('credits.unassignedNotice.body')}

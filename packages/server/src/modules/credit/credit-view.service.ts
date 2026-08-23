@@ -104,6 +104,7 @@ function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
 function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
   return {
     id: row.id,
+    kind: row.kind,
     actorUserId: row.actorUserId,
     actorName: row.actorName,
     studioId: row.studioId,
@@ -112,9 +113,7 @@ function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
     projectName: row.projectName,
     model: row.model,
     provider: row.provider,
-    charged: toNumber(row.charged),
-    consumed: toNumber(row.consumed),
-    owed: toNumber(row.owed),
+    amount: toNumber(row.amount),
     createdAt: row.createdAt.toISOString(),
   };
 }

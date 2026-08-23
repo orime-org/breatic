@@ -175,6 +175,16 @@ describe('CreditsOverlay', () => {
     );
   });
 
+  it('购买积分那一项用购物车图标，跟菜单那颗星分开', async () => {
+    // 菜单入口和顶栏余额 pill 是同一颗星。覆盖层里这一项要是也用星，两个
+    // 说的就成了同一件事。
+    setup();
+
+    const buy = await screen.findByRole('tab', { name: /Buy credits/ });
+    expect(buy.querySelector('.lucide-shopping-cart')).not.toBeNull();
+    expect(buy.querySelector('.lucide-star')).toBeNull();
+  });
+
   it('总览读不出来时给一句话，不是空白', async () => {
     fetchCreditOverview.mockRejectedValue(new Error('nope'));
     setup();
@@ -182,12 +192,21 @@ describe('CreditsOverlay', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 
-  it('内容区在一个 Scroller 里，没有裸 overflow', async () => {
+  it('内容区在一个 Scroller 里，面板内没有裸 overflow', async () => {
     setup();
 
     const body = await screen.findByRole('tabpanel');
-    // Radix 的 viewport 是真正滚的那个元素；面板自己不许再开一个滚动条。
-    const viewport = body.closest('[data-radix-scroll-area-viewport]');
-    expect(viewport).not.toBeNull();
+    // Radix 的 viewport 是真正滚的那个元素。
+    expect(body.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
+
+    // 面板里不许有第二种滚动容器：裸 overflow 的滚动条由浏览器画，各引擎
+    // 长得不一样。
+    const dialog = screen.getByRole('dialog');
+    const bare = [...dialog.querySelectorAll('*')].filter((el) => {
+      if (el.hasAttribute('data-radix-scroll-area-viewport')) return false;
+      const cls = el.className;
+      return typeof cls === 'string' && /overflow-(y-|x-)?(auto|scroll)/.test(cls);
+    });
+    expect(bare).toEqual([]);
   });
 });

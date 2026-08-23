@@ -102,9 +102,10 @@ export function LedgerSection({
       {overview.billing ? null : (
         <Footnote>{t('credits.ledgerBillingOff')}</Footnote>
       )}
-      {paging.isPending ? (
-        <SectionSkeleton />
-      ) : paging.isError ? (
+      {/* The card stays put while a narrowed read is in flight: the control
+          that started it lives inside, and replacing the whole block with a
+          skeleton takes the focus with it. */}
+      {paging.isError ? (
         <SectionError />
       ) : (
         <Card>
@@ -129,13 +130,16 @@ export function LedgerSection({
                       {studio.studioName === ''
                         ? t('credits.deletedStudio')
                         : studio.studioName}
+                      {studio.deleted ? ` · ${t('credits.deletedBadge')}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
-          {paging.rows.length === 0 ? (
+          {paging.isPending ? (
+            <SectionSkeleton />
+          ) : paging.rows.length === 0 ? (
             <SectionEmpty message={t('credits.ledgerEmpty')} />
           ) : (
             <>
@@ -179,8 +183,7 @@ interface LedgerRowProps {
  */
 const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.JSX.Element {
   const t = useTranslation();
-  const shortfall = row.owed !== 0;
-  const unbilled = row.charged === 0 && row.owed === 0 && row.consumed !== 0;
+  const repayment = row.kind === 'debt_repayment';
 
   return (
     <tr className='border-t border-border'>
@@ -191,26 +194,22 @@ const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.
       <td className='py-1.5 text-muted-foreground'>
         {row.studioName ?? '—'}
       </td>
-      <td className='py-1.5 text-muted-foreground'>
-        {row.projectName ?? '—'}
-      </td>
-      <td className='py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
+      {/* A repayment has no project and no model. Naming what it is fills
+          those two columns with the answer rather than with a dash. */}
+      {repayment ? (
+        <td className='py-1.5 text-muted-foreground' colSpan={2}>
+          {t('credits.eventRepayment')}
+        </td>
+      ) : (
+        <>
+          <td className='py-1.5 text-muted-foreground'>
+            {row.projectName ?? '—'}
+          </td>
+          <td className='py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
+        </>
+      )}
       <td className='py-1.5 text-right tabular-nums'>
-        {formatCreditAmount(row.charged)}
-        {shortfall ? (
-          <span className='block text-2xs font-normal text-muted-foreground'>
-            {t('credits.noteShortfall', {
-              consumed: formatCreditAmount(Math.abs(row.consumed)),
-              owed: formatCreditAmount(Math.abs(row.owed)),
-            })}
-          </span>
-        ) : unbilled ? (
-          <span className='block text-2xs font-normal text-muted-foreground'>
-            {t('credits.noteUnbilled', {
-              consumed: formatCreditAmount(Math.abs(row.consumed)),
-            })}
-          </span>
-        ) : null}
+        {formatCreditAmount(row.amount)}
       </td>
     </tr>
   );
