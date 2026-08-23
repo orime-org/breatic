@@ -245,7 +245,7 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  *
  * And `zIndexMode` stays `'basic'`, its default, which we never override:
  * under `'auto'` xyflow adds `rootParentIndex * 10` to every root that has
- * children, so the hundredth such group alone would reach 1010.
+ * children, so the hundred-and-first such group reaches 1010 and its member 1011.
  *
  * It does not clear the generate panel, and cannot: NodeToolbar portals into
  * `.react-flow__renderer`, landing as a sibling of the pane that holds every
@@ -273,9 +273,11 @@ const STATUS_VERDICT: Record<
  *
  * Separate from the confirm-time `focusSourceChanged`, which says the crop
  * did not happen and leaves the user inside the crop — these say the crop is
- * over. The two columns exist because a user who is told "a collaborator
- * deleted it" learns something; a user who just pressed Cmd+Z learns that
- * his own undo is what did it (user 2026-08-23).
+ * over. The two columns exist because a user told "a collaborator deleted
+ * it" learns something the local column cannot claim: this side only knows
+ * the write came from this client, never which gesture produced it — an
+ * undo, a redo and a plain delete all land here — so it states what happened
+ * and stops (user 2026-08-23).
  *
  * `busy` / `failed` say "processing" rather than "generating": `handling` is
  * also what an upload sets (`canvas-upload.ts` calls `setHandling` before it
@@ -289,7 +291,7 @@ const FOCUS_EXIT_TOAST_KEY: Record<
   Record<Exclude<FocusTargetVerdict, 'ok'>, string>
 > = {
   local: {
-    gone: 'canvas.generatePanel.focusSourceUndone',
+    gone: 'canvas.generatePanel.focusSourceDeleted',
     replaced: 'canvas.generatePanel.focusSourceReplaced',
     busy: 'canvas.generatePanel.focusSourceBusy',
     failed: 'canvas.generatePanel.focusSourceFailed',
@@ -738,8 +740,8 @@ function CanvasSpaceInner({
     // true), a node's type never changes, and an emptied `content` is caught
     // by `replaced` above (the snapshot is non-empty).
     const status = (node.data as { status?: DisplayStatus }).status;
-    if (status === 'handling' || status === 'error') return STATUS_VERDICT[status];
-    return 'ok';
+    if (status === undefined || status === 'idle') return 'ok';
+    return STATUS_VERDICT[status];
   });
   React.useEffect(() => {
     if (focusTargetVerdict === 'ok') return;
@@ -1835,7 +1837,10 @@ function CanvasSpaceInner({
           // "looks selectable, click does nothing" shape the pick predicate's
           // own docstring says round-4 already fixed once. Before this
           // re-judgement existed the crop opened for a frame and the verdict
-          // ejected the user WITH an explanation; this keeps the explanation.
+          // ejected the user with the reason. This says the crop cannot start
+          // rather than why: the reasons the verdict tells apart need a
+          // snapshot to compare against, and none exists until a target is
+          // set.
           toast.warning(t('canvas.generatePanel.focusSourceUnavailable'));
           return;
         }

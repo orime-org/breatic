@@ -295,7 +295,7 @@
       "focusUploadFailed": "聚焦圖上傳失敗——請重試。",
       "focusSourceChanged": "來源素材已變更——選區已清除。",
       "focusSourceUnavailable": "素材目前無法使用。",
-      "focusSourceUndone": "復原移除了素材。",
+      "focusSourceDeleted": "素材已被刪除。",
       "focusSourceReplaced": "素材已更換。",
       "focusSourceBusy": "素材正在處理。",
       "focusSourceFailed": "素材處理失敗。",

@@ -304,7 +304,7 @@
       "focusUploadFailed": "Could not upload the focus crop — please try again.",
       "focusSourceChanged": "Source changed — the region was cleared.",
       "focusSourceUnavailable": "Source is unavailable.",
-      "focusSourceUndone": "Undo removed the source.",
+      "focusSourceDeleted": "Source deleted.",
       "focusSourceReplaced": "Source replaced.",
       "focusSourceBusy": "Source is processing.",
       "focusSourceFailed": "Source processing failed.",

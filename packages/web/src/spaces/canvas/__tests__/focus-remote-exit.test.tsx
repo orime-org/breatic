@@ -189,10 +189,11 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
   });
 
-  it('A10：七条文案在五份 catalog 里都有', async () => {
+  it('A10：八条文案在五份 catalog 里都有', async () => {
     const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
     const keys = [
-      'focusSourceUndone',
+      'focusSourceDeleted',
+      'focusSourceUnavailable',
       'focusSourceReplaced',
       'focusSourceBusy',
       'focusSourceFailed',
@@ -231,7 +232,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
   });
 
-  it('本地撤销掉聚焦目标 → toast 说是撤销，不说协作者', () => {
+  it('本地写入删掉聚焦目标 → toast 不指原因，也不说协作者', () => {
     // Undo is the only local path that reaches a verdict: CONTENT_WRITE is
     // outside the undo manager's trackedOrigins, so an undo can remove the
     // node but never change its content or status.
@@ -241,7 +242,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)], true));
     rerender();
 
-    expect(warn.mock.calls[0]?.[0]).toBe('Undo removed the source.');
+    expect(warn.mock.calls[0]?.[0]).toBe('Source deleted.');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });

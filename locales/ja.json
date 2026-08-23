@@ -295,7 +295,7 @@
       "focusUploadFailed": "フォーカス画像をアップロードできませんでした——もう一度お試しください。",
       "focusSourceChanged": "元の素材が変更されました——範囲は解除されました。",
       "focusSourceUnavailable": "素材は現在利用できません。",
-      "focusSourceUndone": "元に戻す操作で素材が削除されました。",
+      "focusSourceDeleted": "素材が削除されました。",
       "focusSourceReplaced": "素材が差し替えられました。",
       "focusSourceBusy": "素材を処理中です。",
       "focusSourceFailed": "素材の処理に失敗しました。",
