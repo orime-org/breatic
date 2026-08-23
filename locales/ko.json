@@ -679,9 +679,7 @@
       "unsupported": {
         "label": "지원되지 않는 콘텐츠"
       },
-      "toolbar": {
-        "undo": "실행 취소",
-        "redo": "다시 실행",
+      "commands": {
         "bold": "굵게",
         "italic": "기울임꼴",
         "bulletList": "글머리 기호 목록",
@@ -696,6 +694,12 @@
         "risksLead": "새로고침하기 전에 확인하세요:",
         "riskUploads": "진행 중인 업로드가 중단됩니다. 해당 Space로 이동해 먼저 확인할 수 있습니다.",
         "action": "페이지 새로고침"
+      },
+      "docMenu": {
+        "label": "문서 전체 명령",
+        "saveSnapshot": "스냅샷 저장",
+        "restoreSnapshot": "스냅샷 복원",
+        "notOpenYet": "미제공"
       }
     },
     "readOnlyReconnect": "다시 연결"

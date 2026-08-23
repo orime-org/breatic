@@ -23,7 +23,6 @@ import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutda
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
-import { useDocumentHistory } from '@web/spaces/document/use-document-history';
 
 /**
  * Document space body — a collaborative rich-text document.
@@ -38,7 +37,7 @@ import { useDocumentHistory } from '@web/spaces/document/use-document-history';
  * @param root0 - Space body props supplied by the project space outlet.
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
- * @param root0.readOnly - True for a viewer; the body and toolbar go read-only.
+ * @param root0.readOnly - True for a viewer; the body goes read-only.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
@@ -138,7 +137,6 @@ export function DocumentSpace({
   // saved — and `ConnectionBanner` at the project level says why (user
   // 2026-07-29 weighed this against the alternative and chose it).
   const editor = hasEverSynced ? (handle?.editor ?? null) : null;
-  const history = useDocumentHistory(handle?.undoManager ?? null);
 
   // The guarded whole-document delete: the extension asks instead of deleting
   // (see document-select-all.ts), and this mount answers with the dialog.
@@ -202,11 +200,7 @@ export function DocumentSpace({
           </Button>
         </div>
       ) : editor ? (
-        <DocumentEditor
-          editor={editor}
-          history={history}
-          readOnly={readOnly}
-        />
+        <DocumentEditor editor={editor} readOnly={readOnly} />
       ) : (
         <div
           data-testid='document-space-loading'

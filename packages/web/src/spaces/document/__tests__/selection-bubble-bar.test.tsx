@@ -29,9 +29,6 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
 
-/** 空的撤销重做状态——本文件不测历史，给它一个静止值就够。 */
-const NO_HISTORY = { canUndo: false, canRedo: false } as const;
-
 const editors: Editor[] = [];
 let doc: Y.Doc;
 
@@ -104,9 +101,7 @@ async function selectWithFocus(
  * @param readOnly - 是否只读。
  */
 function mount(editor: Editor, readOnly = false): void {
-  render(
-    <DocumentEditor editor={editor} history={NO_HISTORY} readOnly={readOnly} />,
-  );
+  render(<DocumentEditor editor={editor} readOnly={readOnly} />);
 }
 
 /** 插件视图上我们真正配进去的那几样，取出来直接问。 */
@@ -232,8 +227,11 @@ describe('选中浮出条', () => {
     expect(markupOf()).toContain(marker);
   });
 
-  // A13：两个载体的同名命令必须能分别指认。
-  it('浮出条的 testid 带自己的载体前缀，不跟顶部横条撞', async () => {
+  // A13: the command buttons carry a carrier prefix in their test id. With the
+  // toolbar gone the bar is the only carrier rendering these `ToolDef`s, and
+  // the prefix stays: the block handle menu (#113) will render the same
+  // definitions, and an unprefixed id would then name two buttons.
+  it('prefixes the command test ids with the carrier', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -241,7 +239,6 @@ describe('选中浮出条', () => {
     expect(
       document.querySelectorAll('[data-testid="doc-bubble-tool-bold"]'),
     ).toHaveLength(1);
-    // 旧的无前缀 testid 一个都不许再出现，否则两个载体一起渲染时会撞。
     expect(document.querySelectorAll('[data-testid="doc-tool-bold"]')).toHaveLength(
       0,
     );
@@ -1312,50 +1309,36 @@ describe('选中浮出条', () => {
     }
   });
 
-  // A9 的另一半：顶部横条**不受影响**，它照常在 tab 序里——键盘用户的路就是它。
-  it('顶部横条的按钮照常可聚焦', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const toolbarButtons = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid^="doc-toolbar-tool-"]'),
-    );
-
-    expect(toolbarButtons.length).toBeGreaterThan(0);
-    for (const button of toolbarButtons) {
-      expect(button.tabIndex).toBe(0);
-    }
-  });
-
-  // A8：两个载体的同名命令共用同一个 `canRun`，所以同一选区下亮暗必须一致。
-  // 设计 §9 写了这一条，第一轮却一条测试都没有。
+  // A8: whether a button is lit has to be exactly its command's `canRun`.
+  //
+  // This used to read "the same button is lit the same way in both carriers",
+  // which lost its subject when the toolbar went. What it uniquely covers is
+  // the wiring rather than the agreement: `document-tools-availability.test.ts`
+  // pins what the pure `canRun` answers across selection shapes, and cannot
+  // reach whether that answer arrives at the DOM's `disabled`. So it compares
+  // those two directly.
   it.each([
     ['整段普通文字都能用', '<p>hello world</p>', 1, 6, false],
     ['代码块里标记类命令用不了', '<pre><code>hello</code></pre>', 1, 6, true],
-  ])('%s：两个载体的同名按钮亮暗一致', async (_name, body, from, to, hasDark) => {
+  ])('%s: the buttons agree with canRun', async (_name, body, from, to, hasDark) => {
     const editor = open(body);
     mount(editor);
     await selectWithFocus(editor, from, to);
 
     // 先确认这个选区真的造出了要测的那种局面。少了这一句，将来某天六个按钮
-    // 全亮或全暗，两个载体照样「一致」，这条测试就变成了空话。
-    const bubbleDisabled = Array.from(
+    // All lit or all dark would still "agree", and this would say nothing.
+    const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
     ).filter((b) => b.disabled).length;
-    expect(bubbleDisabled > 0).toBe(hasDark);
+    expect(dark > 0).toBe(hasDark);
 
     for (const tool of [...MARK_TOOLS, ...BLOCK_TOOLS]) {
-      const inBubble = document.querySelector<HTMLButtonElement>(
+      const button = document.querySelector<HTMLButtonElement>(
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );
-      const inToolbar = document.querySelector<HTMLButtonElement>(
-        `[data-testid="doc-toolbar-tool-${tool.id}"]`,
-      );
-      expect(inBubble).not.toBeNull();
-      expect(inToolbar).not.toBeNull();
-      expect(`${tool.id}:${String(inBubble?.disabled)}`).toBe(
-        `${tool.id}:${String(inToolbar?.disabled)}`,
+      expect(button).not.toBeNull();
+      expect(`${tool.id}:${String(button?.disabled)}`).toBe(
+        `${tool.id}:${String(!tool.canRun(editor))}`,
       );
     }
   });

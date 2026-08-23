@@ -679,9 +679,7 @@
       "unsupported": {
         "label": "不支援的內容"
       },
-      "toolbar": {
-        "undo": "復原",
-        "redo": "重做",
+      "commands": {
         "bold": "粗體",
         "italic": "斜體",
         "bulletList": "無序列表",
@@ -696,6 +694,12 @@
         "risksLead": "重新整理前請留意：",
         "riskUploads": "正在進行的上傳會被中斷，可以先切到對應的 Space 看一眼。",
         "action": "重新整理頁面"
+      },
+      "docMenu": {
+        "label": "整篇文件的命令",
+        "saveSnapshot": "儲存快照",
+        "restoreSnapshot": "還原快照",
+        "notOpenYet": "未開放"
       }
     },
     "readOnlyReconnect": "重新連線"
