@@ -47,10 +47,10 @@ import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetc
 import {
   FocusCropOverlay,
   handOffFocusToPickBanner,
+  type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
-import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
 import {
   addEdge,
   addNodeFocusImage,
@@ -219,6 +219,36 @@ import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+
+/** Node types a focus pick can crop (#1782 images, #1987 video frames). */
+const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
+
+/**
+ * Whether a node can be picked as a focus crop source.
+ *
+ * ONE predicate for both halves of the decision — whether the node looks
+ * pickable (the dimming) and whether clicking it does anything. They were two
+ * copies of the same conditions, and round-4 already fixed one drifting from
+ * the other into "looks selectable, click does nothing".
+ *
+ * `idle` is load-bearing rather than tidiness: the crop overlay anchors its
+ * marquee to a RENDERED element, and a handling / error node renders a
+ * skeleton or an error box instead.
+ * @param node - The node being judged.
+ * @param targetId - The node whose panel started the pick (never a source).
+ * @returns Whether a focus pick accepts this node.
+ */
+function isFocusCandidate(node: Node, targetId: string): boolean {
+  const data = node.data as { content?: unknown; status?: unknown };
+  return (
+    node.id !== targetId &&
+    typeof node.type === 'string' &&
+    FOCUS_SOURCE_TYPES.has(node.type) &&
+    typeof data.content === 'string' &&
+    data.content.length > 0 &&
+    data.status === 'idle'
+  );
+}
 
 /**
  * File-picker `accept` per modality for the empty-node double-click /
@@ -578,13 +608,14 @@ function CanvasSpaceInner({
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target so the overlay unmounts, but keep the session — the
-   * banner stays and another image can be picked. Cancel and the overlay's
+   * banner stays and another node can be picked. Cancel and the overlay's
    * bare Esc land here; a further Esc then exits via the pick Esc handler.
    */
   const onFocusBackToPick = React.useCallback((): void => {
     setFocusCropTargetId(null);
   }, []);
-  // The image node a focus crop marquee is open on (#1782), or null. Local
+  // The image or video node a focus crop marquee is open on (#1782, video
+  // #1987), or null. Local
   // React state — it only exists while THIS user's focus pick runs; the
   // effect clears it whenever the session ends or changes purpose (Exit,
   // zombie guards, a style/reference pick replacing it).
@@ -682,7 +713,10 @@ function CanvasSpaceInner({
   // pending rail entry, then run crop-export → upload → focusImages append.
   // Everything reads FRESH store state — the upload outlives this closure.
   const onFocusCropConfirm = React.useCallback(
-    (result: { crop: CropRect; sourceSrc: string }): boolean => {
+    // The overlay's own type rather than a narrower inline one (#1987): a
+    // hand-written shape here is a place fields go missing without anything
+    // noticing, and `natural` already had.
+    (result: FocusCropConfirm): boolean => {
       const session = useCanvasStore.getState().pickSession;
       if (session?.purpose !== 'focus') return false;
       const panelNodeId = session.nodeId;
@@ -745,7 +779,13 @@ function CanvasSpaceInner({
         name: sourceName,
       });
       void runFocusCrop(
-        { sourceUrl, sourceName, crop: result.crop, projectId },
+        {
+          sourceUrl,
+          sourceName,
+          sourceTimeSeconds: result.sourceTimeSeconds,
+          crop: result.crop,
+          projectId,
+        },
         {
           exportCrop: exportCropBlob,
           uploadFile: (file, pid) =>
@@ -1668,20 +1708,12 @@ function CanvasSpaceInner({
       if (node.id === target) return;
 
       if (session.purpose === 'focus') {
-        // Focus (#1782): clicking a DISPLAYABLE non-empty image opens the
-        // crop marquee on it (the overlay does the rest); clicking another
-        // image later just switches the crop target — the session runs
-        // until Exit. A handling / error node renders no <img> to anchor
-        // the marquee (round-4), matching the dimming rule.
-        const data = node.data as { content?: unknown; status?: unknown };
-        if (
-          node.type !== 'image' ||
-          typeof data.content !== 'string' ||
-          data.content.length === 0 ||
-          data.status !== 'idle'
-        ) {
-          return;
-        }
+        // Focus (#1782, videos #1987): clicking a displayable non-empty image
+        // or video opens the crop marquee on it (the overlay does the rest);
+        // clicking another one later just switches the crop target — the
+        // session runs until Exit. Same predicate the dimming uses, so the two
+        // cannot say different things.
+        if (!isFocusCandidate(node, target)) return;
         setFocusCropTargetId(node.id);
         return;
       }
@@ -3266,20 +3298,21 @@ function CanvasSpaceInner({
         };
       });
 
+    if (pickSession.purpose === 'focus') {
+      // Focus takes images AND videos (#1987), so it judges on its own rather
+      // than through the shared 'image' fallback below — widening that
+      // fallback would let a video look pickable during a STYLE pick, whose
+      // click side takes images only.
+      return paint((node) => !isFocusCandidate(node, target));
+    }
+
     const paintingSlot = slotForPurpose(pickSession.purpose);
-    if (
-      pickSession.purpose === 'style' ||
-      pickSession.purpose === 'focus' ||
-      paintingSlot
-    ) {
-      // Style, Focus and every video slot share the candidate rule: any
-      // non-empty node of the type the slot accepts, except the pick target
-      // itself (#1664 / #1782 / #1896 / #1904). A video slot states the type
-      // it takes, so a slot for another kind of asset dims the right nodes
-      // without another branch here. Focus additionally needs a RENDERED
-      // <img> to anchor the marquee, so a handling / error node (skeleton /
-      // error box, no img) is not a candidate (round-4: clicking one was a
-      // silent no-op).
+    if (pickSession.purpose === 'style' || paintingSlot) {
+      // Style and every video slot share the candidate rule: any non-empty
+      // node of the type the slot accepts, except the pick target itself
+      // (#1664 / #1896 / #1904). A video slot states the type it takes, so a
+      // slot for another kind of asset dims the right nodes without another
+      // branch here.
       const accepts = paintingSlot ? VIDEO_SLOTS[paintingSlot].accepts : 'image';
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
@@ -3287,8 +3320,7 @@ function CanvasSpaceInner({
           node.id === target ||
           node.type !== accepts ||
           typeof data.content !== 'string' ||
-          data.content.length === 0 ||
-          (pickSession.purpose === 'focus' && data.status !== 'idle')
+          data.content.length === 0
         );
       });
     }

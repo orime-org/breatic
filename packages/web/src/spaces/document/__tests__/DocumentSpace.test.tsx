@@ -242,8 +242,8 @@ describe('DocumentSpace', () => {
     render(<DocumentSpace projectId='p' spaceId='s' />);
     await screen.findByTestId('document-toolbar');
     const ids = Array.from(
-      document.querySelectorAll('[data-testid^="doc-tool-"]'),
-    ).map((el) => el.getAttribute('data-testid')?.replace('doc-tool-', ''));
+      document.querySelectorAll('[data-testid^="doc-toolbar-tool-"]'),
+    ).map((el) => el.getAttribute('data-testid')?.replace('doc-toolbar-tool-', ''));
     expect(ids.sort()).toEqual([
       'bold',
       'bullet-list',

@@ -82,8 +82,8 @@ describe('DocumentEditor', () => {
 
   it('disables undo and redo while there is nothing on the stack', () => {
     render(<DocumentEditor editor={editor} history={history} />);
-    expect(screen.getByTestId('doc-tool-undo')).toBeDisabled();
-    expect(screen.getByTestId('doc-tool-redo')).toBeDisabled();
+    expect(screen.getByTestId('doc-toolbar-tool-undo')).toBeDisabled();
+    expect(screen.getByTestId('doc-toolbar-tool-redo')).toBeDisabled();
   });
 
   it('adds undo and redo to the toolbar, and changes nothing else about it', () => {
@@ -99,8 +99,8 @@ describe('DocumentEditor', () => {
     // gap between two positive assertions.
     render(<DocumentEditor editor={editor} history={history} />);
     const ids = Array.from(
-      document.querySelectorAll('[data-testid^="doc-tool-"]'),
-    ).map((el) => el.getAttribute('data-testid')?.replace('doc-tool-', ''));
+      document.querySelectorAll('[data-testid^="doc-toolbar-tool-"]'),
+    ).map((el) => el.getAttribute('data-testid')?.replace('doc-toolbar-tool-', ''));
 
     expect(ids.sort()).toEqual([
       'bold',
@@ -121,7 +121,7 @@ describe('DocumentEditor', () => {
       // next, and a viewer is exactly who must not reach a new control first.
       render(<DocumentEditor editor={editor} history={history} readOnly />);
       const controls = Array.from(
-        document.querySelectorAll('[data-testid^="doc-tool-"]'),
+        document.querySelectorAll('[data-testid^="doc-toolbar-tool-"]'),
       );
       expect(controls.length).toBeGreaterThan(0);
       for (const control of controls) {
@@ -139,7 +139,7 @@ describe('DocumentEditor', () => {
       render(<DocumentEditor editor={editor} history={history} readOnly />);
       act(() => {
         editor.commands.setTextSelection({ from: 1, to: 7 });
-        screen.getByTestId('doc-tool-bold').click();
+        screen.getByTestId('doc-toolbar-tool-bold').click();
       });
 
       // Making the body non-editable only stops typing; a toolbar command is a

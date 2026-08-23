@@ -59,8 +59,7 @@ function patternMatches(pattern: string, channel: string): boolean {
  * not reach collab and a removed member keeps their open session.
  *
  * Pinned here so the cost of the NEXT rename is visible before it ships: any
- * change to these strings is a coordinated deploy, not a refactor. The
- * operator-facing version lives in docs/DEPLOY.md "Upgrading".
+ * change to these strings is a coordinated deploy, not a refactor.
  */
 describe("control-plane channels — renaming these breaks cross-version pub/sub", () => {
   it("no longer matches the pre-#1831 unprefixed shape", () => {

@@ -16,11 +16,12 @@
 import type { FocusImage } from '@breatic/shared';
 
 import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
+import type { CropSource } from '@web/spaces/canvas/focus/crop-export';
 
 /** Everything `runFocusCrop` needs injected (all unit-mockable). */
 export interface FocusCropDeps {
-  /** Export the natural-pixel crop of the source image as a PNG blob. */
-  exportCrop: (sourceUrl: string, crop: CropRect) => Promise<Blob>;
+  /** Export the natural-pixel crop of the source as a PNG blob. */
+  exportCrop: (source: CropSource, crop: CropRect) => Promise<Blob>;
   /**
    * Upload the file and resolve the public URL (throws on failure) —
    * production binds the standard `runMediaUpload` pipeline.
@@ -43,10 +44,19 @@ export interface FocusCropDeps {
 
 /** What one confirmed marquee carries into the pipeline. */
 export interface FocusCropParams {
-  /** The source node's image URL (the content being cropped). */
+  /** The source node's asset URL (the content being cropped). */
   sourceUrl: string;
   /** The source node's display name, snapshotted at crop time. */
   sourceName: string;
+  /**
+   * For a video source, the frame the user parked on, in seconds; `null` for
+   * a still image. Required rather than optional so the object literals that
+   * build these params cannot omit it. The `exportCrop` assignment is outside
+   * that reach: parameter contravariance accepts an implementation that never
+   * reads this field, which is what the end-to-end test in
+   * `focus/__tests__/crop-export.test.ts` holds down.
+   */
+  sourceTimeSeconds: number | null;
   /** The confirmed crop in natural (source-resolution) pixels. */
   crop: CropRect;
   /** Owning project (authorizes the presign). */
@@ -79,7 +89,10 @@ export async function runFocusCrop(
 ): Promise<void> {
   let blob: Blob;
   try {
-    blob = await deps.exportCrop(params.sourceUrl, params.crop);
+    blob = await deps.exportCrop(
+      { url: params.sourceUrl, timeSeconds: params.sourceTimeSeconds },
+      params.crop,
+    );
   } catch {
     deps.onFailure('export');
     return;
