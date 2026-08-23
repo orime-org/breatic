@@ -690,7 +690,7 @@
         "code": "インラインコード",
         "comment": "コメント",
         "ai": "AI",
-        "comingLabel": "{name}（未公開）"
+        "comingLabel": "{name}（未提供）"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",

@@ -690,7 +690,7 @@
         "code": "인라인 코드",
         "comment": "댓글",
         "ai": "AI",
-        "comingLabel": "{name}(미공개)"
+        "comingLabel": "{name}(미제공)"
       },
       "schemaOutdated": {
         "headline": "문서 편집기가 업데이트되었습니다",

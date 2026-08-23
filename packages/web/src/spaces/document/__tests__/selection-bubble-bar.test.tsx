@@ -251,7 +251,7 @@ describe('选中浮出条', () => {
   // A5 / A6: what jsdom can answer about the separators is that they are
   // there, that they carry the semantics of one, and how many there are. The
   // geometry the demo pins (1px by 16px, 3px either side) needs a browser and
-  // is measured in `document-bubble-bar.spec.ts`.
+  // is measured in `selection-bubble-bar.spec.ts`.
   it('separates the groups with a real separator element', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
@@ -318,19 +318,98 @@ describe('选中浮出条', () => {
     expect(entry.hasAttribute('disabled')).toBe(false);
   });
 
+  // A3: the buttons report what the document is, not what was last clicked.
+  // Driven through the editor's own command so the path under test is the one
+  // a keyboard shortcut takes — `Mod-u` and `Mod-e` reach exactly these.
+  it('lights underline when the mark is on, whoever turned it on', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const button = screen.getByTestId('doc-bubble-tool-underline');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    act(() => {
+      editor.commands.toggleUnderline();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
+
+    act(() => {
+      editor.commands.toggleUnderline();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  it('lights inline code when the mark is on, whoever turned it on', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const button = screen.getByTestId('doc-bubble-tool-code');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    act(() => {
+      editor.commands.toggleCode();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
+
+    act(() => {
+      editor.commands.toggleCode();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
+  });
+
   // A8: an icon-only button with no visible text is a square without a name.
+  // Asserted as "not the key itself" rather than "not empty": `t()` hands back
+  // the key when it resolves nothing (`shared/src/i18n/index.ts:131`), so a
+  // label pointing at a key no catalog has would pass the weaker check.
   it.each([
-    ['tool-underline'],
-    ['tool-code'],
-    ['coming-comment'],
-    ['coming-ai'],
-  ])('gives %s a name that can be read out', async (id) => {
+    ['tool-underline', 'spaces.document.commands.underline'],
+    ['tool-code', 'spaces.document.commands.code'],
+    ['coming-comment', 'spaces.document.commands.comment'],
+    ['coming-ai', 'spaces.document.commands.ai'],
+  ])('gives %s a name that can be read out', async (id, key) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
     const label = screen.getByTestId(`doc-bubble-${id}`).getAttribute('aria-label');
     expect(label).toBeTruthy();
+    expect(label).not.toContain(key);
+  });
+
+  // A11: the whole bar stays out of the tab order (ruling R4), so these two
+  // follow the command buttons beside them. What they do carry is
+  // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
+  // accessibility tree to be read, the second drops them out of it.
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('keeps %s out of the tab order, the way the bar does', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    expect(entry.getAttribute('tabindex')).toBe('-1');
+    expect(entry.hasAttribute('disabled')).toBe(false);
+  });
+
+  // A8: an icon-only button with no visible text is a square without a name.
+  // Asserted as "not the key itself" rather than "not empty": `t()` hands back
+  // the key when it resolves nothing (`shared/src/i18n/index.ts:131`), so a
+  // label pointing at a key no catalog has would pass the weaker check.
+  it.each([
+    ['tool-underline', 'spaces.document.commands.underline'],
+    ['tool-code', 'spaces.document.commands.code'],
+    ['coming-comment', 'spaces.document.commands.comment'],
+    ['coming-ai', 'spaces.document.commands.ai'],
+  ])('gives %s a name that can be read out', async (id, key) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const label = screen.getByTestId(`doc-bubble-${id}`).getAttribute('aria-label');
+    expect(label).toBeTruthy();
+    expect(label).not.toContain(key);
   });
 
   // A11：这一步存在的唯一理由。六个逐一验，不抽验。

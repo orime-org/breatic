@@ -12,17 +12,21 @@
  *
  * The treatment follows the two snapshot commands in the whole-document menu
  * (`ComingEntry`, `StudioAccountMenu.tsx:99-119`): dimmed, `aria-disabled`,
- * a cursor that says so, and nothing happens on click. Two things differ,
- * both because this is an icon button on a floating bar rather than a row in
+ * a cursor that says so, and nothing happens on click. Three things differ,
+ * all three because this is a button on a floating bar rather than a row in
  * a menu — there is no room beside the icon for the badge that carries the
  * reason, so the reason rides on the tooltip and the accessible name; and the
- * bar stays out of the tab order entirely (ruling R4), so this does too.
+ * bar stays out of the tab order entirely (ruling R4), so this does too; and
+ * the hover highlight is switched off here in CSS, where the menu row does it
+ * by cancelling `onPointerMove` (that cancel has no effect on a `:hover`
+ * rule). Hovering is the gesture that makes the promise, and it is the one
+ * that has to be withdrawn.
  *
  * `aria-disabled` rather than HTML `disabled`: the first leaves the entry in
  * the accessibility tree to be read, the second drops it out.
  */
 
-import type { LucideIcon } from 'lucide-react';
+import { ChevronDown, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -41,6 +45,13 @@ export interface ComingToolDef {
   labelKey: string;
   /** The icon the demo draws for it. */
   Icon: LucideIcon;
+  /**
+   * Draws the shape the demo gives a menu opener: icon, label, chevron
+   * (`.bubble-drop`), rather than a bare icon button (`.bubble-btn`). The AI
+   * entry is drawn this way — it opens onto a list of commands, and the demo
+   * says so on its face.
+   */
+  opensAMenu?: boolean;
 }
 
 interface ComingToolProps {
@@ -68,15 +79,29 @@ export const ComingTool = React.memo(function ComingTool({
       <TooltipTrigger asChild>
         <Button
           variant='ghost'
-          size='icon'
+          size={tool.opensAMenu ? null : 'icon'}
           aria-disabled='true'
           aria-label={label}
           data-testid={`doc-bubble-coming-${tool.id}`}
           onClick={(event) => event.preventDefault()}
           tabIndex={-1}
-          className='h-[26px] w-7 cursor-not-allowed opacity-50'
+          className={
+            tool.opensAMenu
+              // `.bubble-drop`: 26 tall, 6px either side, 3px between the
+              // three things in it. The demo draws 13px text; the size comes
+              // from the button's own `text-sm` instead, which is the token
+              // every other label on the bar reads.
+              ? 'flex h-[26px] items-center gap-[3px] px-1.5 hover:bg-transparent hover:text-current cursor-not-allowed opacity-50'
+              : 'h-[26px] w-7 hover:bg-transparent hover:text-current cursor-not-allowed opacity-50'
+          }
         >
           <Icon className='h-4 w-4' />
+          {tool.opensAMenu ? (
+            <>
+              {t(tool.labelKey)}
+              <ChevronDown className='h-[13px] w-[13px]' />
+            </>
+          ) : null}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>

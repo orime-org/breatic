@@ -32,7 +32,11 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import {
+  MARK_TOOLS,
+  BLOCK_TOOLS,
+  INLINE_TOOLS,
+} from '@web/spaces/document/document-tools';
 
 const editors: Editor[] = [];
 
@@ -151,6 +155,10 @@ describe('what the buttons claim', () => {
         const expected = tool.id === 'quote' ? c.quote : c.lists;
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${expected}`);
       });
+      // 行内组装的也是 mark，答案跟 MARK_TOOLS 那一列同源。
+      INLINE_TOOLS.forEach((tool) => {
+        expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
+      });
     });
   });
 });
@@ -158,7 +166,7 @@ describe('what the buttons claim', () => {
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
     it(`with ${c.name}, every live button does something`, () => {
-      [...MARK_TOOLS, ...BLOCK_TOOLS].forEach((tool) => {
+      [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS].forEach((tool) => {
         const editor = open(c.body);
         c.place(editor);
         if (!tool.canRun(editor)) return;

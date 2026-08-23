@@ -116,11 +116,11 @@ interface BubbleGroup {
  * The controls this carrier shows, grouped the way the demo draws them.
  *
  * The demo's full shape is five groups: block type, alignment, `B I S U`,
- * the inline run, and AI. Two of those hold nothing yet — the block type
- * dropdown that will replace the three block buttons (#904) and alignment
- * (#905) — so the groups below are what there is to draw today. A separator
- * belongs between two runs of controls; drawing one for an empty group would
- * put two lines side by side with nothing in between.
+ * the inline run, and AI. Alignment holds nothing yet (#905), so it is absent
+ * below; the first group holds the three block buttons a dropdown will replace
+ * (#904). A separator belongs between two runs of controls, so the empty group
+ * draws none — a line for it would stand beside another with nothing between
+ * them.
  *
  * Comment and AI stand here with no command behind them (design §3.3 calls
  * both "placeholder only"): their functions are task #18 and a later one, so
@@ -146,7 +146,12 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
     key: 'ai',
     tools: [],
     coming: [
-      { id: 'ai', labelKey: 'spaces.document.commands.ai', Icon: Sparkles },
+      {
+        id: 'ai',
+        labelKey: 'spaces.document.commands.ai',
+        Icon: Sparkles,
+        opensAMenu: true,
+      },
     ],
   },
 ];
