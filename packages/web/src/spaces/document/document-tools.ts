@@ -75,11 +75,13 @@ export const MARK_TOOLS: ToolDef[] = [
 ];
 
 /**
- * Marks that stand on a run of text as an object of their own.
+ * The group the demo draws between `B I S U` and the AI entry.
  *
- * Inline code is here rather than beside the other marks because the demo
- * groups it with the link and the colour picker (`§3.3`): those act on a span
- * the reader points at, while `B I S U` restyle whatever is selected.
+ * Inline code sits here rather than beside the other marks because that is
+ * where the demo puts it (`§3.3` reads `B I S U │ link code A∨ comment`).
+ * Neither the demo nor the design says why, so this comment does not invent a
+ * reason: the grouping is the decision, and the slices that follow fill the
+ * group out with the link control and the colour picker.
  */
 export const INLINE_TOOLS: ToolDef[] = [
   {

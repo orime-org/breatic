@@ -34,6 +34,23 @@ import type { Bold } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 
+/**
+ * The height every control on the bar shares.
+ *
+ * Sitting over the text, they are a notch shorter than a free-standing
+ * button — but only shorter. The demo's `.pop .tb-btn` (`:209`) overrides
+ * height alone.
+ */
+export const BUBBLE_CONTROL_HEIGHT = 'h-[26px]';
+
+/**
+ * The height above plus the width an icon button keeps.
+ *
+ * `.tb-btn`'s own `min-width: 28px` (`:138-139`) stays in force under that
+ * height override, so an icon button on the bar is 28 wide.
+ */
+export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
+
 /** A toggle whose pressed state mirrors what is under the cursor. */
 export interface ToolDef {
   id: string;
@@ -103,11 +120,7 @@ export const ToolButton = React.memo(function ToolButton({
       // collides with the body's own focus. The keyboard route to these
       // commands is their shortcuts.
       tabIndex={-1}
-      // Sitting over the text, the buttons are a notch shorter than a
-      // free-standing one — but only shorter. The demo's `.pop .tb-btn`
-      // (`:209`) overrides height alone, leaving `.tb-btn`'s own
-      // `min-width: 28px` (`:138-139`) in force, so the button stays 28 wide.
-      className='h-[26px] w-7'
+      className={BUBBLE_ICON_BUTTON_SIZE}
     >
       <Icon className='h-4 w-4' />
     </Button>

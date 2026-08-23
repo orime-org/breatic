@@ -22,6 +22,12 @@
  * rule). Hovering is the gesture that makes the promise, and it is the one
  * that has to be withdrawn.
  *
+ * "Nothing happens on click" is structural here and needs no handler: this
+ * button carries none, and a `<button>` outside a form has no default action
+ * to cancel. The menu row does cancel one, because selecting a row closes the
+ * menu; a first copy of this file cancelled along with it, and a smoke run
+ * that took the cancel away and stayed green is what showed it did nothing.
+ *
  * `aria-disabled` rather than HTML `disabled`: the first leaves the entry in
  * the accessibility tree to be read, the second drops it out.
  */
@@ -31,11 +37,26 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import {
+  BUBBLE_CONTROL_HEIGHT,
+  BUBBLE_ICON_BUTTON_SIZE,
+} from '@web/spaces/document/document-tool-button';
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+
+/**
+ * What an entry with nothing behind it looks like, and how it behaves.
+ *
+ * The two `hover:` classes cancel what `variant='ghost'` would otherwise
+ * give: `cn()` runs twMerge, and a class named here beats the variant's own
+ * in the same group. Without them the entry lights up under the pointer the
+ * way a working button does, and says it can be pressed.
+ */
+const UNAVAILABLE =
+  'hover:bg-transparent hover:text-current cursor-not-allowed opacity-50';
 
 /** An entry whose command has no implementation behind it yet. */
 export interface ComingToolDef {
@@ -83,7 +104,6 @@ export const ComingTool = React.memo(function ComingTool({
           aria-disabled='true'
           aria-label={label}
           data-testid={`doc-bubble-coming-${tool.id}`}
-          onClick={(event) => event.preventDefault()}
           tabIndex={-1}
           className={
             tool.drawsAsDropdown
@@ -91,8 +111,8 @@ export const ComingTool = React.memo(function ComingTool({
               // three things in it. The demo draws 13px text; the size comes
               // from the button's own `text-sm` instead, which is the token
               // every other label on the bar reads.
-              ? 'flex h-[26px] items-center gap-[3px] px-1.5 hover:bg-transparent hover:text-current cursor-not-allowed opacity-50'
-              : 'h-[26px] w-7 hover:bg-transparent hover:text-current cursor-not-allowed opacity-50'
+              ? `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5 ${UNAVAILABLE}`
+              : `${BUBBLE_ICON_BUTTON_SIZE} ${UNAVAILABLE}`
           }
         >
           <Icon className='h-4 w-4' />
@@ -108,3 +128,4 @@ export const ComingTool = React.memo(function ComingTool({
     </Tooltip>
   );
 });
+

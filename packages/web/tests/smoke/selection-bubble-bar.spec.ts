@@ -457,6 +457,44 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
   const tip = page.getByRole('tooltip');
   await expect(tip).toBeVisible({ timeout: 5_000 });
   expect(await tip.textContent()).toBe(await entry.getAttribute('aria-label'));
+
+  // 指针就停在入口上，顺带验它没有亮起来。ghost 变体自带的悬停高亮被两个
+  // `hover:` 类关掉了，而那两个类只有真引擎跑得出效果——jsdom 不套 CSS。
+  expect(
+    await entry.evaluate((n) => getComputedStyle(n).backgroundColor),
+  ).toBe('rgba(0, 0, 0, 0)');
+  const lit = page.getByTestId('doc-bubble-tool-bold');
+  const litBox = (await lit.boundingBox())!;
+  await page.mouse.move(litBox.x + litBox.width / 2, litBox.y + litBox.height / 2, {
+    steps: 12,
+  });
+  // 对照：同一条上能按的按钮，同样的指针动作下底色确实变了。没有这一半，上面
+  // 那条断言对一个根本没收到悬停的元素也成立。
+  expect(await lit.evaluate((n) => getComputedStyle(n).backgroundColor)).not.toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+
+  // 按下去什么都不该发生。`aria-disabled` 不拦点击——那正是它跟 HTML
+  // `disabled` 的区别：入口留在可访问性树里，读得出来，也点得到。它什么都不做
+  // 是因为身上没挂任何处理器；这条断言守的就是这一点，等后面的切片给它接上真
+  // 功能时它会红，那时候正该红。
+  const html = (): Promise<string> =>
+    page.evaluate(
+      () =>
+        document.querySelector('[data-testid="document-space"] .ProseMirror')
+          ?.innerHTML ?? '',
+    );
+  //
+  // `force` 是必须的：playwright 把 `aria-disabled` 读成「未启用」，它自己的
+  // 可操作性检查会一直等下去。真人的鼠标不走那道检查。
+  const before = await html();
+  await entry.click({ force: true });
+  await page.getByTestId('doc-bubble-coming-ai').click({ force: true });
+  expect(await html()).toBe(before);
+
+  // 这套用例共享同一个 page，而后面几条的前提是「鼠标不在正文里」。上面的悬停
+  // 会把指针留在条上，所以离开时把它放回正文外，跟这条开始时一样。
+  await page.mouse.move(8, 8);
 });
 
 test('按过浮出条之后再点到编辑器外面，条要消失', async () => {

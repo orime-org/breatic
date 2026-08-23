@@ -227,9 +227,7 @@ describe('选中浮出条', () => {
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const rendered = Array.from(
       bar.querySelectorAll('[data-testid^="doc-bubble-"]'),
-    )
-      .map((el) => el.getAttribute('data-testid'))
-      .filter((id) => id !== 'doc-selection-bubble-bar');
+    ).map((el) => el.getAttribute('data-testid'));
 
     expect(rendered).toEqual([
       'doc-bubble-tool-bullet-list',
