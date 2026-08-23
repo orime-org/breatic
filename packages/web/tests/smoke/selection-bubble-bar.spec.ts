@@ -203,6 +203,38 @@ for (const scheme of ['light', 'dark'] as const) {
         const r = n.getBoundingClientRect();
         return { width: Math.round(r.width), height: Math.round(r.height) };
       });
+      // #902 A5 / A6：分组之间那条线。jsdom 答得出它在不在，答不出它多宽多高
+      // ——那几个值是 Tailwind 类算出来的，只有真引擎知道。
+      const separators = Array.from(
+        el.querySelectorAll('[data-testid^="doc-bubble-sep-"]'),
+      ).map((n) => {
+        const r = n.getBoundingClientRect();
+        const scs = getComputedStyle(n);
+        return {
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          marginLeft: scs.marginLeft,
+          marginRight: scs.marginRight,
+          background: scs.backgroundColor,
+          tokenBorder: getComputedStyle(document.documentElement)
+            .getPropertyValue('--color-border')
+            .trim(),
+        };
+      });
+      // #902 A10：两个未开放的入口，变暗且光标说得出自己不能用。
+      const coming = Array.from(
+        el.querySelectorAll('[data-testid^="doc-bubble-coming-"]'),
+      ).map((n) => {
+        const ccs = getComputedStyle(n);
+        const r = n.getBoundingClientRect();
+        return {
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          opacity: ccs.opacity,
+          cursor: ccs.cursor,
+          ariaDisabled: n.getAttribute('aria-disabled'),
+        };
+      });
       // A5：最上层命中的真的是浮出条自己——比「它在 DOM 里」强，能同时排除
       // 被裁掉一半和被别的东西盖住。
       const hit = document.elementFromPoint(
@@ -226,6 +258,8 @@ for (const scheme of ['light', 'dark'] as const) {
         tokenBackground,
         hasShadow: cs.boxShadow !== 'none',
         buttons,
+        separators,
+        coming,
         hitInsideBar: !!hit?.closest('[data-testid="doc-selection-bubble-bar"]'),
         insideScroller: !!el.closest('.doc-body-scroller'),
         aboveWindowTop: b.top < 0,
@@ -242,9 +276,31 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.hasShadow).toBe(true);
     // demo 的 `.pop .tb-btn`（:209）只覆盖高度，`.tb-btn` 自己的
     // `min-width: 28px`（:138-139）仍然生效，所以是 26 高、28 宽。
-    expect(geo.buttons).toHaveLength(6);
+    expect(geo.buttons).toHaveLength(8);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 26 });
+    }
+    // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface
+    // .html:221`）是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
+    // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
+    expect(geo.separators).toHaveLength(3);
+    for (const sep of geo.separators) {
+      expect(sep.width).toBe(1);
+      expect(sep.height).toBe(16);
+      expect(sep.marginLeft).toBe('3px');
+      expect(sep.marginRight).toBe('3px');
+      expect(sep.background).toBe(sep.tokenBorder);
+    }
+    // #902 A9 / A10：评论和 AI 占位，尺寸跟命令按钮一样，看得出不能用。
+    expect(geo.coming).toHaveLength(2);
+    for (const entry of geo.coming) {
+      expect(entry).toEqual({
+        width: 28,
+        height: 26,
+        opacity: '0.5',
+        cursor: 'not-allowed',
+        ariaDisabled: 'true',
+      });
     }
     // A5：挂在滚动容器外面、最上层可见、没跑出窗口。
     expect(geo.insideScroller).toBe(false);
@@ -402,7 +458,28 @@ test('按过浮出条之后再点到编辑器外面，条要消失', async () =>
   // blur、Tab 派发两次，而那个闩（按条时置真、只在 blurHandler 里复位）按理
   // 会吃掉单独的那一次。实测两条路条都从 DOM 里消失——点击那条走的不是
   // blurHandler，是这一下产生的编辑器事务让插件重问了 `shouldShow`。
-  await page.locator('[data-testid="space-tab-bar"], header').first().click();
+  // 先看再点，不赌坐标。原先这里点的是 Space tab 条的中心，前提是那儿一片
+  // 空白；tab 攒到几百个之后那个位置上是一个 tab，点下去切换的是 Space，
+  // 编辑器根本没失焦（2026-08-23 实测 451 个 tab，命中 `space-tab-name-…`）。
+  // 现在由测试自己扫出一个落点：编辑器外面、且那一点最上层的东西不接受点击。
+  const spot = await page.evaluate(() => {
+    const isInert = (el: Element | null): boolean =>
+      !!el &&
+      !el.closest(
+        'a, button, input, textarea, select, [role="button"], [role="tab"], [data-testid="document-space"]',
+      );
+    for (let y = 8; y < 40; y += 8) {
+      for (let x = 400; x < 1600; x += 40) {
+        if (isInert(document.elementFromPoint(x, y))) return { x, y };
+      }
+    }
+    return null;
+  });
+  expect(
+    spot,
+    'no inert spot outside the editor to click — the page layout changed',
+  ).not.toBeNull();
+  await page.mouse.click(spot!.x, spot!.y);
   await page.waitForTimeout(500);
 
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden();
