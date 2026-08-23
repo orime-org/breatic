@@ -239,8 +239,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
     // A new array and a new host object, with the very same `src` reference —
     // which is what mirror-selection hands back for an untouched node. The
-    // render pass reuses its derived copy in this case (verified with a probe
-    // on the reuse branch), so the node the user is cropping keeps its memo.
+    // crop has to survive a write that never touched its target.
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 40), src]));
     remount();
 

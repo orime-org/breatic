@@ -245,22 +245,6 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  */
 const FOCUS_TARGET_Z = 1002;
 
-/**
- * A render copy of a node that carries a lifted z or a lock, kept with the
- * source it was built from so an unchanged pass can hand back the same
- * object reference (#2000).
- */
-interface DerivedRenderNode {
-  /** The `flowNodes` entry the copy was built from. */
-  source: Node;
-  /** Whether the copy carries {@link FOCUS_TARGET_Z}. */
-  lifted: boolean;
-  /** Whether the copy carries `draggable: false`. */
-  locked: boolean;
-  /** The copy handed to ReactFlow. */
-  derived: Node;
-}
-
 /** What became of the node a focus crop is open on (#2000). */
 type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
 
@@ -3303,14 +3287,6 @@ function CanvasSpaceInner({
   // topo-sorts (parent before child) and applies the lock-freeze. Groups paint
   // at zIndex 0 so their members render above them.
   const prevGroupsRef = React.useRef<Node[]>([]);
-  // Previously derived copies of the lifted / locked non-group nodes, keyed by
-  // id. `flowNodes` hands back an unchanged node's PREVIOUS object reference
-  // (mirror-selection's reconcile), so an identical source object plus
-  // identical flags means the copy built last pass is still correct. Without
-  // this, any canvas mutation — a collaborator dragging some other node —
-  // hands the focus target a fresh object every frame and its memo never
-  // bails, for exactly the node the user is working on.
-  const prevLiftedRef = React.useRef<Map<string, DerivedRenderNode>>(new Map());
   const renderNodes = React.useMemo<Node[]>(() => {
     // ReactFlow requires a Group (parent) to precede its members in the array;
     // topo-sort enforces that. A Group carries its own authoritative width/height
@@ -3369,37 +3345,24 @@ function CanvasSpaceInner({
       freshGroups,
     );
     prevGroupsRef.current = reconciledGroups;
-    const prevLifted = prevLiftedRef.current;
-    const nextLifted = new Map<string, DerivedRenderNode>();
-    const derivedRest = rest.map((node) => {
-      // The two flags are independent: a locked node can be the focus
-      // target (isFocusCandidate never reads data.locked), and it must come
-      // out lifted AND undraggable. A non-group node's `draggable` is
-      // derived here and nowhere else (groups get theirs in the branch
-      // above), so an either/or branch would drop the lock for that node.
-      const lifted = node.id === focusCropTargetId;
-      const locked = frozen.has(node.id);
-      if (!lifted && !locked) return node;
-      const prev = prevLifted.get(node.id);
-      if (
-        prev &&
-        prev.source === node &&
-        prev.lifted === lifted &&
-        prev.locked === locked
-      ) {
-        nextLifted.set(node.id, prev);
-        return prev.derived;
-      }
-      const derived = {
-        ...node,
-        ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
-        ...(locked ? { draggable: false } : {}),
-      };
-      nextLifted.set(node.id, { source: node, lifted, locked, derived });
-      return derived;
-    });
-    prevLiftedRef.current = nextLifted;
-    return [...reconciledGroups, ...derivedRest];
+    return [
+      ...reconciledGroups,
+      ...rest.map((node) => {
+        // The two flags are independent: a locked node can be the focus
+        // target (isFocusCandidate never reads data.locked), and it must come
+        // out lifted AND undraggable. A non-group node's `draggable` is
+        // derived here and nowhere else (groups get theirs in the branch
+        // above), so an either/or branch would drop the lock for that node.
+        const lifted = node.id === focusCropTargetId;
+        const locked = frozen.has(node.id);
+        if (!lifted && !locked) return node;
+        return {
+          ...node,
+          ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
+          ...(locked ? { draggable: false } : {}),
+        };
+      }),
+    ];
   }, [flowNodes, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
