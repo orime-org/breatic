@@ -30,9 +30,7 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
  * @param nodes - The canvas nodes to mirror.
  * @returns The mocked space value.
  */
-function mockSpace(
-  nodes: ReturnType<typeof canvasSpace.useCanvasSpace>['nodes'],
-): ReturnType<typeof canvasSpace.useCanvasSpace> {
+function mockSpace(nodes: Nodes): ReturnType<typeof canvasSpace.useCanvasSpace> {
   return {
     nodes,
     edges: [],
@@ -85,12 +83,15 @@ function clickNode(id: string): void {
   });
 }
 
-const IMAGE = (id: string, x: number, over = {}) => ({
-  id,
-  type: 'image',
-  position: { x, y: 0 },
-  data: { kind: 'image', content: `${id}.png`, status: 'idle', ...over },
-});
+type Nodes = ReturnType<typeof canvasSpace.useCanvasSpace>['nodes'];
+
+const IMAGE = (id: string, x: number, over = {}): Nodes[number] =>
+  ({
+    id,
+    type: 'image',
+    position: { x, y: 0 },
+    data: { kind: 'image', content: `${id}.png`, status: 'idle', ...over },
+  }) as Nodes[number];
 
 describe('聚焦目标的抬升（#2000）', () => {
   beforeEach(() => {
@@ -139,8 +140,8 @@ describe('聚焦目标的抬升（#2000）', () => {
           width: 400,
           height: 400,
           data: { kind: 'group' },
-        },
-        { ...IMAGE('member', 20), parentId: 'g' },
+        } as Nodes[number],
+        { ...IMAGE('member', 20), parentId: 'g' } as Nodes[number],
         IMAGE('src', 900),
       ]),
     );
@@ -150,6 +151,86 @@ describe('聚焦目标的抬升（#2000）', () => {
     clickNode('src');
 
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('member')));
+  });
+
+  it('A2：1002 高于一个被选中的组的成员（父链把它推到 1001）', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([
+        IMAGE('host', 0),
+        {
+          id: 'g',
+          type: 'group',
+          position: { x: 300, y: 0 },
+          width: 400,
+          height: 400,
+          data: { kind: 'group' },
+        } as Nodes[number],
+        { ...IMAGE('member', 20), parentId: 'g' } as Nodes[number],
+        IMAGE('src', 900),
+      ]),
+    );
+    renderSpace();
+    // A selected group is 1000; calculateChildXYZ then gives its member
+    // parentZ + 1. That 1001 is the tallest a node reaches, since groups
+    // cannot nest — it is the number 1002 was chosen against.
+    clickNode('g');
+    expect(zOf('g')).toBe('1000');
+    expect(zOf('member')).toBe('1001');
+
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('src');
+
+    expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('member')));
+  });
+
+  it('A3：回到挑选态之后 zIndex 回到原值（确认 / 取消 / Esc 共用这条路）', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+    );
+    renderSpace();
+
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('src');
+    expect(zOf('src')).toBe('1002');
+
+    // Confirm, Cancel and the overlay's bare Esc share backToPick, which
+    // drops the crop target and leaves the session running — the banner
+    // stays. Esc is the one reachable here: the controls bar renders off a
+    // measured source box, and jsdom gives images no size.
+    act(() => {
+      fireEvent.keyDown(window, { key: 'Escape' });
+    });
+    expect(zOf('src')).toBe('0');
+    expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
+  });
+
+  it('A3：会话换 purpose 之后 zIndex 回到原值', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([IMAGE('host', 0), IMAGE('src', 300)]),
+    );
+    renderSpace();
+
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('src');
+    expect(zOf('src')).toBe('1002');
+
+    act(() => useCanvasStore.getState().startStylePick('host'));
+    expect(zOf('src')).toBe('0');
+  });
+
+  it('A3：换聚焦目标时，旧的落回原层、新的抬起来', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([IMAGE('host', 0), IMAGE('a', 300), IMAGE('b', 600)]),
+    );
+    renderSpace();
+
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('a');
+    expect(zOf('a')).toBe('1002');
+
+    clickNode('b');
+    expect(zOf('a')).toBe('0');
+    expect(zOf('b')).toBe('1002');
   });
 
   it('A3：退出聚焦后 zIndex 回到原值', () => {

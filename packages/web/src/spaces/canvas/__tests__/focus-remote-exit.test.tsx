@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -150,6 +153,50 @@ describe('远程改动聚焦目标（#2000）', () => {
     expect(warn.mock.calls[0]?.[0]).toBe('Source is generating.');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
+  });
+
+  it('换聚焦目标：快照跟着换，这一帧不误报「素材已更换」', () => {
+    // I4's only check. The id and the snapshot live in one state object, so a
+    // switch cannot leave the previous node's content behind — if it could,
+    // the verdict would read the new node against the old content and eject
+    // the user the moment they pick a second source.
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([IMAGE('host', 0), IMAGE('src', 300), IMAGE('other', 600)]),
+    );
+    const remount = renderSpace();
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('src');
+    clickNode('other');
+    remount();
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+  });
+
+  it('A10：三条文案在五份 catalog 里都有', async () => {
+    const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
+    const keys = [
+      'focusSourceDeleted',
+      'focusSourceReplaced',
+      'focusSourceBusy',
+    ];
+    // The repo guard only reads locales/en.json, so a missing translation in
+    // any of the other four would ship silently.
+    for (const loc of locales) {
+      const raw = await readFile(
+        resolve(process.cwd(), `../../locales/${loc}.json`),
+        'utf8',
+      );
+      const panel = (
+        JSON.parse(raw) as {
+          canvas: { generatePanel: Record<string, unknown> };
+        }
+      ).canvas.generatePanel;
+      for (const k of keys) {
+        expect(typeof panel[k], `${loc}.json is missing ${k}`).toBe('string');
+      }
+    }
   });
 
   it('A9：远程拖动它 → 聚焦照常，一条 toast 都没有', () => {
