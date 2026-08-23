@@ -336,6 +336,11 @@ describe("一次生成在流水里是一行（计划 §4.8）", () => {
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 250,
+      // Every real charge carries one: the canvas path passes the task id
+      // (`dispatch.ts:807`) and the agent and text tools go through
+      // `chargeOnceForGeneration`, which passes its idempotency key. It is
+      // what ties the rows of one generation together.
+      referenceId: `overlay-charge-${Date.now()}`,
       model: "kling-v2.1",
       provider: "kuaishou",
     });

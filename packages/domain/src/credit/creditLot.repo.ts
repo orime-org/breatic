@@ -613,6 +613,34 @@ export async function listLotsByStudio(
   }));
 }
 
+/** The movements that take money out of a purchase, which is what usage is. */
+export const SPENDING_ENTRY_TYPES: CreditLedgerEntryType[] = [
+  "spend",
+  "debt_repayment",
+  "debt_incurred",
+];
+
+/** One event on an account's ledger, with every row of it added up. */
+export interface PayerLedgerRow {
+  id: string;
+  createdAt: Date;
+  cursorAt: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  studioId: string | null;
+  studioName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  model: string | null;
+  provider: string | null;
+  /** What left a purchase. */
+  charged: string;
+  /** What the run used, debt included. */
+  consumed: string;
+  /** How much of it went on the tab. */
+  owed: string;
+}
+
 /**
  * One account's ledger, newest first, one keyset page at a time.
  *
@@ -629,16 +657,42 @@ export async function listLedgerByPayer(
   limit: number,
   cursor: ActivityCursor | null,
   studioId?: string,
-): Promise<(CreditLedgerEntryEntity & { cursorAt: string })[]> {
+  entryTypes: CreditLedgerEntryType[] = SPENDING_ENTRY_TYPES,
+): Promise<PayerLedgerRow[]> {
   // Display names live on the personal studio (`users` is the pure auth
   // table), the same place the activity feed reads an actor's name from.
   const actorStudio = alias(studios, "actor_studio");
+  const spendingStudio = alias(studios, "spending_studio");
+  // Same three expressions `listLedgerByStudio` groups on, and for the same
+  // reason: uuid has no min/max aggregate before PostgreSQL 18 and this
+  // repository runs 16, and a keyset comparison against a differently-computed
+  // id skips or repeats rows.
+  const groupId = sql<string>`(ARRAY_AGG(${creditLedger.id} ORDER BY ${creditLedger.id}))[1]`;
+  const groupAt = sql<Date>`MAX(${creditLedger.createdAt})`;
+  const groupCursorAt = sql<string>`MAX(${creditLedger.createdAt})::text`;
   const rows = await db
     .select({
-      entry: creditLedger,
-      actorName: actorStudio.name,
-      projectName: projects.name,
-      cursorAt: sql<string>`${creditLedger.createdAt}::text`,
+      id: groupId,
+      createdAt: groupAt,
+      cursorAt: groupCursorAt,
+      actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
+      actorName: sql<string | null>`MAX(${actorStudio.name})`,
+      studioId: sql<string | null>`MAX(${creditLedger.studioId}::text)`,
+      studioName: sql<string | null>`MAX(${spendingStudio.name})`,
+      projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
+      projectName: sql<string | null>`MAX(${projects.name})`,
+      model: sql<string | null>`MAX(${creditLedger.model})`,
+      provider: sql<string | null>`MAX(${creditLedger.provider})`,
+      // What left a purchase, and what the run used. They differ when a studio
+      // outran its credits: the shortfall is recorded as debt, which is used
+      // but not yet charged.
+      charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
+          AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
+      consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
+      owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -649,33 +703,35 @@ export async function listLedgerByPayer(
         isNull(actorStudio.deletedAt),
       ),
     )
+    // No liveness condition: a run that happened in a studio since deleted
+    // still has to say which studio it was.
+    .leftJoin(spendingStudio, eq(spendingStudio.id, creditLedger.studioId))
     .leftJoin(projects, eq(projects.id, creditLedger.projectId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
+        // Which kinds of movement this read is about. The caller picks:
+        // spending for the usage list, the refund types for a refund history.
+        // Written into the query rather than filtered afterwards, because this
+        // is a keyset page — filtering a page that the server already cut can
+        // empty it while the cursor still says there is more.
+        inArray(creditLedger.entryType, entryTypes),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
-        cursor
-          ? or(
-              lt(creditLedger.createdAt, sql`${cursor.createdAt}::timestamptz`),
-              and(
-                eq(creditLedger.createdAt, sql`${cursor.createdAt}::timestamptz`),
-                lt(creditLedger.id, cursor.id),
-              ),
-            )
-          : undefined,
       ),
     )
-    .orderBy(desc(creditLedger.createdAt), desc(creditLedger.id))
+    // One generation writes a row per lot it drew on, all in the same instant.
+    // Grouping in SQL rather than after paging is what keeps a page boundary
+    // from landing inside a generation and showing it twice, each time with a
+    // fragment of its total.
+    .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
+    .having(
+      cursor
+        ? sql`(${groupAt}, ${groupId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
+        : sql`TRUE`,
+    )
+    .orderBy(sql`${groupAt} DESC`, sql`${groupId} DESC`)
     .limit(limit);
-  return rows.map((row) =>
-    ({
-      ...toLedgerEntity(row.entry, {
-        actorName: row.actorName,
-        projectName: row.projectName,
-      }),
-      cursorAt: row.cursorAt,
-    }),
-  );
+  return rows.map((row) => ({ ...row, createdAt: new Date(row.createdAt) }));
 }
 
 /** One line of a studio's ledger: everything one event moved. */

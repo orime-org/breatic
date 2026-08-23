@@ -13,7 +13,7 @@
  */
 
 import { assetService, creditLotRepo, creditLotService } from "@breatic/domain";
-import type { LotContext } from "@breatic/domain";
+import type { LotContext, PayerLedgerRow } from "@breatic/domain";
 import { encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
 import type { ActivityCursor } from "@breatic/core";
 import type {
@@ -49,20 +49,23 @@ export interface StudioLotView extends CreditLotView {
 /** One ledger row, as the overlay shows it. */
 export interface CreditLedgerView {
   id: string;
-  entryType: string;
-  amount: number;
   actorUserId: string | null;
   /** Who spent it, by display name. */
   actorName: string | null;
+  studioId: string | null;
+  /** Which studio it was spent in, by name. Survives that studio's deletion. */
+  studioName: string | null;
+  projectId: string | null;
   /** Where it was spent, by name. */
   projectName: string | null;
-  studioId: string | null;
-  projectId: string | null;
-  lotId: string | null;
   model: string | null;
   provider: string | null;
-  tokensUsed: number | null;
-  description: string | null;
+  /** What left a purchase. */
+  charged: number;
+  /** What the run used, debt included. */
+  consumed: number;
+  /** How much of it went on the tab. */
+  owed: number;
   createdAt: string;
 }
 
@@ -137,22 +140,21 @@ function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
  * @param entry - The stored row.
  * @returns The view.
  */
-function toLedgerView(entry: CreditLedgerEntryEntity): CreditLedgerView {
+function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
   return {
-    id: entry.id,
-    entryType: entry.entryType,
-    amount: toNumber(entry.amount),
-    actorUserId: entry.actorUserId,
-    actorName: entry.actorName,
-    projectName: entry.projectName,
-    studioId: entry.studioId,
-    projectId: entry.projectId,
-    lotId: entry.lotId,
-    model: entry.model,
-    provider: entry.provider,
-    tokensUsed: entry.tokensUsed,
-    description: entry.description,
-    createdAt: entry.createdAt.toISOString(),
+    id: row.id,
+    actorUserId: row.actorUserId,
+    actorName: row.actorName,
+    studioId: row.studioId,
+    studioName: row.studioName,
+    projectId: row.projectId,
+    projectName: row.projectName,
+    model: row.model,
+    provider: row.provider,
+    charged: toNumber(row.charged),
+    consumed: toNumber(row.consumed),
+    owed: toNumber(row.owed),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 

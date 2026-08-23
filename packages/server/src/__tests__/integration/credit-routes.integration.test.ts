@@ -336,6 +336,7 @@ describe("GET /credits/ledger", () => {
       projectId: owner.projectId,
       actorUserId: guest.userId,
       amount: 10,
+      referenceId: `routes-charge-${Date.now()}`,
       model: "seedance-1.5-pro",
     });
 
@@ -346,22 +347,29 @@ describe("GET /credits/ledger", () => {
     const body = (await res.json()) as {
       data: {
         items: {
-          entryType: string;
-          amount: number;
+          charged: number;
+          consumed: number;
+          owed: number;
           actorUserId: string | null;
           actorName: string | null;
           projectId: string | null;
           projectName: string | null;
           studioId: string | null;
+          studioName: string | null;
           model: string | null;
         }[];
       };
     };
-    const spend = body.data.items.find((i) => i.entryType === "spend");
+    // 一次生成一行（#12）：跨几个积分包扣的就写几行，逐行返回会让分页边界
+    // 落在一次生成中间。三个金额分开报，是因为「花出去的」和「用掉的」在
+    // 欠账时不是一个数。
+    expect(body.data.items).toHaveLength(1);
     // 名字随行带出来：界面上要显示「谁」和「哪个 project」，而它手里只有
     // 这一行；让它拿 id 再去问一次，一页三十行就是三十次请求。
-    expect(spend).toMatchObject({
-      amount: -10,
+    expect(body.data.items[0]).toMatchObject({
+      charged: -10,
+      consumed: -10,
+      owed: 0,
       actorUserId: guest.userId,
       actorName: guest.personalStudioName,
       projectId: owner.projectId,
