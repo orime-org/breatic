@@ -1779,18 +1779,19 @@ function CanvasSpaceInner({
         // session runs until Exit. Same predicate the dimming uses, so the two
         // cannot say different things.
         if (!isFocusCandidate(node, target)) return;
-        // Snapshot the content from the SAME place the verdict reads it. The
-        // `node` this handler receives comes from ReactFlow's render array,
-        // and the graph store can lead the DOM by a commit (see the note on
-        // onFocusCropConfirm), so taking it from there would let the verdict
-        // compare a stale snapshot against fresh content and eject the user
-        // the instant they click.
+        // Re-judge the node the VERDICT will read, with the SAME predicate.
+        // The `node` this handler receives comes from ReactFlow's render
+        // array, and the graph store can lead the DOM by a commit (see the
+        // note on onFocusCropConfirm), so a target admitted on the render
+        // copy alone could open a crop the verdict ends on its first pass —
+        // and the snapshot taken off the render copy would be compared
+        // against fresher content, ejecting the user the instant they click.
         const fresh = useCanvasGraphStore
           .getState()
           .flowNodes.find((n) => n.id === node.id);
-        const content = (fresh?.data as { content?: unknown } | undefined)
-          ?.content;
-        if (typeof content !== 'string') return;
+        if (!fresh || !isFocusCandidate(fresh, target)) return;
+        // The predicate already established this is a non-empty string.
+        const { content } = fresh.data as { content: string };
         setFocusTarget({ id: node.id, content });
         return;
       }
@@ -3344,8 +3345,9 @@ function CanvasSpaceInner({
       ...rest.map((node) => {
         // The two flags are independent: a locked node can be the focus
         // target (isFocusCandidate never reads data.locked), and it must come
-        // out lifted AND undraggable. This map is the only place the lock is
-        // enforced, so an either/or branch would drop it for that node.
+        // out lifted AND undraggable. A non-group node's `draggable` is
+        // derived here and nowhere else (groups get theirs in the branch
+        // above), so an either/or branch would drop the lock for that node.
         const lifted = node.id === focusCropTargetId;
         const locked = frozen.has(node.id);
         if (!lifted && !locked) return node;
