@@ -54,11 +54,13 @@ const NOTHING_OF_IT_RAN =
  * @returns The ending to record against the call.
  */
 export function endingWithNothingRun(stopped: boolean): ToolFailure {
-  return {
-    kind: stopped ? "user_aborted" : "tool_failed",
-    forModel: NOTHING_OF_IT_RAN,
-    readerKey: stopped ? FAILURE_LINES.stopped : FAILURE_LINES.generic,
-  };
+  // Each arm written whole. Picking the two fields separately produces a pair
+  // the type will not take, which is the point of that type: it exists so
+  // that "stopped by the user" cannot be paired with a line about something
+  // going wrong.
+  return stopped
+    ? { kind: "user_aborted", forModel: NOTHING_OF_IT_RAN, readerKey: FAILURE_LINES.stopped }
+    : { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, readerKey: FAILURE_LINES.generic };
 }
 
 /**
@@ -73,9 +75,14 @@ export function endingOf(err: unknown): ToolFailure {
   // The message goes to the model and nowhere else. It is the SDK's own
   // wording for a call it would not make -- "invalid input", the schema it
   // failed against -- which is exactly what the model needs to fix the call,
-  // and exactly what a reader has no use for. The next step is ours to add:
-  // the SDK states the complaint and stops there, and a call refused over its
-  // arguments is one the model wrote and can rewrite.
+  // and exactly what a reader has no use for.
+  //
+  // The next step is ours to add: the SDK states the complaint and stops
+  // there, and a call refused over its arguments is one the model wrote and
+  // can rewrite. It is added for the record rather than for the turn in
+  // hand -- what the model reads while this turn runs is the SDK's own error,
+  // which this does not replace. Where the sentence below is read is the next
+  // turn, off the stored row.
   const said = err instanceof Error ? err.message : String(err);
   return {
     kind: "tool_failed",
