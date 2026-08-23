@@ -105,8 +105,8 @@ export const webFetch: Tool<z.infer<typeof inputSchema>, string> = tool({
         throw toolFailed(
           theirSide
             ? `Fetching ${url} failed: the site answered HTTP ${res.status}, which is a fault ` +
-                "on their side and says nothing about this page. Do not fetch it again on " +
-                "this turn; tell the user the site is not answering, and that it may work later."
+                "on their side and says nothing about this page. Do not repeat this fetch; " +
+                "tell the user the site is not answering, and that it may work later."
             : `Fetching ${url} failed: the site answered HTTP ${res.status}. The address is ` +
                 "reachable, so it is this page that is not there or not open to us. Do not " +
                 "fetch the same address again; try another source, or tell the user this " +

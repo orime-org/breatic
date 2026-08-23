@@ -238,7 +238,9 @@ describe("web_search says a failure is a failure", () => {
     const { forModel } = await failureFrom(() => run({ query: "breatic" }));
 
     expect(forModel).not.toMatch(/different wording/i);
-    expect(forModel.toLowerCase()).toMatch(/do not call this tool again|do not search again/);
+    expect(forModel.toLowerCase()).toMatch(
+      /do not call this tool again|do not search again|do not repeat/,
+    );
   });
 
   it.each([
@@ -311,7 +313,13 @@ describe("web_search says a failure is a failure", () => {
 
     const answer = await run({ query: "breatic" });
 
-    expect(answer).toMatch(/no results/i);
+    expect(answer).toMatch(/no web results/i);
+    // 而且说了别再换措辞重搜。这个响应有两个成因 —— 真的没人写过这个词，或者
+    // 这个部署的搜索套餐不含网页结果 —— 从响应上分不开，但两者对「换个说法再
+    // 搜一次」的回答一样:没用。不说这一句，套餐那种情形下每次搜索都稳定回
+    // 「搜不到」，而模型会一直换词重试，正是这次要消灭的那个循环。
+    expect(answer.toLowerCase()).toContain("rewording");
+    expect(answer.toLowerCase()).toContain("plan");
   });
 
   it("says a body that stopped arriving may be worth asking for again", async () => {
@@ -389,7 +397,10 @@ describe("web_search says a failure is a failure", () => {
     // Anthropic's guidance is specific AND actionable, and the second half is
     // the one that keeps a failing tool from being called again the same way.
     // Each site named here, so stripping the closing clause from any of them
-    // is a red test rather than a silent loss.
+    // is a red test rather than a silent loss. The list is written by hand
+    // while the name of this case says "every one", which is a claim only as
+    // true as the last person to add a failure and come back here -- twice
+    // now it has not been. A throw added to the tool gets a site added here.
     // Each site starts from the same known state. Left to inherit what the one
     // before it set, a site never reaches the branch it is named after: with
     // the key still cleared from the site above, every case after the first
@@ -425,6 +436,28 @@ describe("web_search says a failure is a failure", () => {
         httpRequestMock.mockImplementation(async () => new Response(null, { status: 422 }));
         return failureFrom(() => run({ query: "breatic" }));
       },
+      // 「答了，但答的不是结果」的两个判据各来一次。它们说的是同一句话，而
+      // 判据是两个:整个响应体不是对象、以及 `web.results` 在那儿但不是列表。
+      async (): Promise<ToolFailure> => {
+        httpRequestMock.mockImplementation(
+          async () =>
+            new Response("null", {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+        );
+        return failureFrom(() => run({ query: "breatic" }));
+      },
+      async (): Promise<ToolFailure> => {
+        httpRequestMock.mockImplementation(
+          async () =>
+            new Response(JSON.stringify({ web: { results: "一段文字" } }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+        );
+        return failureFrom(() => run({ query: "breatic" }));
+      },
     ];
 
     for (const site of sites) {
@@ -436,6 +469,10 @@ describe("web_search says a failure is a failure", () => {
       expect(forModel.toLowerCase()).toMatch(
         /do not call this tool again|try a different wording|continue without search|do not repeat/,
       );
+      // 而且不把下一步限定在「这一轮」。这句话模型读两次:失败当场读一次，之后
+      // 它跟着记录进历史，以后每一轮再读一次 —— 而那时「这一轮」指的已经是另
+      // 一轮了。绑到这一次调用上的说法（「这次搜索」）两处读都对。
+      expect(forModel.toLowerCase()).not.toContain("this turn");
     }
   });
 

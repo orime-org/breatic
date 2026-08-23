@@ -225,8 +225,12 @@ describe("web_fetch says a failure is a failure", () => {
       expect(forModel.toLowerCase()).toMatch(
         // 这条正则跟上面那张站点表一样是手写的:补齐站点之后它当场漏掉了「再取
         // 一次可能就好」那一支。下一步分两类,值得再试的和不值得的,两类都要认。
-        /do not fetch|do not retry|try another source|tell (them|the user)|correct it|once more/,
+        /do not fetch|do not retry|do not repeat|try another source|tell (them|the user)|correct it|once more/,
       );
+      // 而且不把下一步限定在「这一轮」。这句话模型读两次:失败当场读一次，之后
+      // 它跟着记录进历史，以后每一轮再读一次 —— 而那时「这一轮」指的已经是另
+      // 一轮了。绑到这一次调用上的说法（「这次抓取」）两处读都对。
+      expect(forModel.toLowerCase()).not.toContain("this turn");
     }
   });
 

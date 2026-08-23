@@ -42,15 +42,15 @@ function refusalReason(query: string, status: number): string {
   if (status >= 500 || status === 429) {
     return (
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
-      "wording of it reaches past this. Do not search again on this turn; continue " +
-      "without search results and tell the user search is unavailable."
+      "wording of it reaches past this. Do not repeat this search; continue without " +
+      "search results and tell the user search is unavailable."
     );
   }
   if (status === 401 || status === 403) {
     return (
       `${opening} It turned down the credentials this side sent, which is a fault in our ` +
-      "configuration that no wording of the query reaches. Do not call this tool again on " +
-      "this turn; continue without search results and tell the user search is unavailable."
+      "configuration that no wording of the query reaches. Do not repeat this call; " +
+      "continue without search results and tell the user search is unavailable."
     );
   }
   return (
@@ -79,6 +79,28 @@ function notResultsReason(query: string): string {
 }
 
 /**
+ * What to tell the model when the search came back with no web results.
+ *
+ * Two things produce this and the response does not tell them apart. Brave
+ * documents the result types as included "where data is available and a plan
+ * with the corresponding option is subscribed", and a deployment whose plan
+ * omits web results gets a 200 with the section missing -- the same body a
+ * query nobody has written about gets. Both are stated, because the next move
+ * is the same for either and it is not the obvious one: rewording is what a
+ * model reaches for after an empty search, and it changes nothing here.
+ * @param query - What was searched for.
+ * @returns The answer, ending in what the model may do instead.
+ */
+function noResultsAnswer(query: string): string {
+  return (
+    `No web results for: ${query}. Either nothing is written about it, or this ` +
+    "deployment's search plan does not include web results. Rewording the query is " +
+    "unlikely to help; search for something else if there is another angle, otherwise " +
+    "answer from what you already know and tell the user the search came back empty."
+  );
+}
+
+/**
  * Search the web using the Brave Search API.
  *
  * Returns formatted results containing titles, URLs, and descriptions.
@@ -102,8 +124,8 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // of a sentence no reader is on a path to meet.
       throw toolFailed(
         "Web search is not available on this deployment: it has no search credentials. " +
-          "Do not call this tool again on this turn. Answer from what you already know, " +
-          "and tell the user you could not search.",
+          "Do not repeat this call. Answer from what you already know, and tell the user " +
+          "you could not search.",
         FAILURE_LINES.generic,
       );
     }
@@ -185,20 +207,21 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
       }
       // Brave declares the `web` section optional, and its reference says the
-      // result types are "conditionally included based on data availability".
-      // A query with no web results therefore comes back without the section
-      // at all -- a search that succeeded and found nothing, which is what the
-      // model is told. Present but not a list is a different thing: the schema
-      // moved, or something else answered in its place.
+      // result types are included "where data is available and a plan with the
+      // corresponding option is subscribed". Either way the section is simply
+      // absent from a 200, which is a search that ran and came back with
+      // nothing rather than one that failed. Present but not a list is a
+      // different thing: the schema moved, or something else answered in its
+      // place.
       const found: unknown = (data as { web?: { results?: unknown } }).web?.results;
-      if (found === undefined || found === null) return `No results found for: ${query}`;
+      if (found === undefined || found === null) return noResultsAnswer(query);
       if (!Array.isArray(found)) throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
 
       const results = (found as Array<{ title?: string; url?: string; description?: string }>).slice(
         0,
         n,
       );
-      if (results.length === 0) return `No results found for: ${query}`;
+      if (results.length === 0) return noResultsAnswer(query);
 
       const lines = [`Results for: ${query}\n`];
       results.forEach((item, i) => {
