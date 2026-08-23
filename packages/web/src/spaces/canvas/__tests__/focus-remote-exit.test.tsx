@@ -228,6 +228,27 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
   });
 
+  it('A9：拖动别的节点 → 聚焦照常，目标还在 1002', () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const src = image('src', 300);
+    mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0), src]));
+    const remount = renderSpace();
+    act(() => useCanvasStore.getState().startFocusPick('host'));
+    clickNode('src');
+    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+
+    // A new array and a new host object, with the very same `src` reference —
+    // which is what mirror-selection hands back for an untouched node. The
+    // render pass reuses its derived copy in this case (verified with a probe
+    // on the reuse branch), so the node the user is cropping keeps its memo.
+    mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 40), src]));
+    remount();
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(zOf('src')).toBe('1002');
+    expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+  });
+
   it('A9：把它加进组 → 聚焦照常，一条 toast 都没有', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const remount = enterFocus(START);
