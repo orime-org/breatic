@@ -241,12 +241,19 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
 const FOCUS_TARGET_Z = 1002;
 
 /** What became of the node a focus crop is open on (#2000). */
-type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy';
+type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
 
 /**
  * The toast each ending verdict shows. Separate from the confirm-time
  * `focusSourceChanged`, which says the crop did not happen and leaves the
  * user inside the crop — these say the crop is over.
+ *
+ * `busy` and `failed` are split because `deriveStatus` reaches `error`
+ * without passing through `handling`: a failure writes `errorMessage` and
+ * puts `state` back to `idle`, so a client that receives both writes in one
+ * delivery lands on `error` having never seen `handling`. One shared line
+ * would tell that user a generation is running while the node draws an
+ * error frame.
  */
 const FOCUS_EXIT_TOAST_KEY: Record<
   Exclude<FocusTargetVerdict, 'ok'>,
@@ -255,6 +262,7 @@ const FOCUS_EXIT_TOAST_KEY: Record<
   gone: 'canvas.generatePanel.focusSourceDeleted',
   replaced: 'canvas.generatePanel.focusSourceReplaced',
   busy: 'canvas.generatePanel.focusSourceBusy',
+  failed: 'canvas.generatePanel.focusSourceFailed',
 };
 
 /**
@@ -686,7 +694,15 @@ function CanvasSpaceInner({
     // condition a croppable source must hold (type, non-empty content, idle),
     // so a target that stops satisfying it has stopped being croppable. The
     // host id it wants can be anything but this node's own id.
-    return isFocusCandidate(node, '') ? 'ok' : 'busy';
+    if (isFocusCandidate(node, '')) return 'ok';
+    // Reaching here means `status` left 'idle' — the predicate's other three
+    // conditions cannot fail at this point. The host check gets '' (always
+    // true), a node's type never changes, and an emptied `content` is caught
+    // by `replaced` above (the snapshot is non-empty). 'idle' has two exits
+    // and they say different things to the user.
+    return (node.data as { status?: unknown }).status === 'handling'
+      ? 'busy'
+      : 'failed';
   });
   React.useEffect(() => {
     if (focusTargetVerdict === 'ok') return;

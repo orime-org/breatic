@@ -297,6 +297,7 @@
       "focusSourceDeleted": "소재가 삭제되었습니다.",
       "focusSourceReplaced": "소재가 교체되었습니다.",
       "focusSourceBusy": "소재를 생성 중입니다.",
+      "focusSourceFailed": "소재 생성에 실패했습니다.",
       "focusCropDiscarded": "노드가 삭제되어 포커스 이미지가 삭제되었습니다.",
       "duration": "길이",
       "durationSeconds": "{n}초",

@@ -306,6 +306,7 @@
       "focusSourceDeleted": "Source deleted.",
       "focusSourceReplaced": "Source replaced.",
       "focusSourceBusy": "Source is generating.",
+      "focusSourceFailed": "Source generation failed.",
       "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
       "duration": "Duration",
       "durationSeconds": "{n}s",

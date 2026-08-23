@@ -297,6 +297,7 @@
       "focusSourceDeleted": "素材已被刪除。",
       "focusSourceReplaced": "素材已更換。",
       "focusSourceBusy": "素材正在生成。",
+      "focusSourceFailed": "素材生成失敗。",
       "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。",
       "duration": "生成時長",
       "durationSeconds": "{n} 秒",
