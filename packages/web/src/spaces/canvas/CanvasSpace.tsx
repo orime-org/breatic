@@ -230,9 +230,14 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  *
  * The ceiling it has to clear is a group member whose group is selected:
  * xyflow adds SELECTED_NODE_Z (1000) to the group, and `calculateChildXYZ`
- * gives the member `parentZ + 1`. Groups cannot nest (group-toolbar's
- * `allLoose` rejects any node that is a group or already has a parent), so
- * 1001 is the highest a node reaches and 1002 clears it.
+ * gives the member `parentZ + 1`. That makes 1001 the highest a node
+ * reaches, and 1002 clears it — but only while groups stay one level deep,
+ * which three separate places enforce: `group-toolbar.ts`'s `allLoose`
+ * (a group cannot be put inside a new group), `group-drag.ts`'s
+ * `draggedMembers` filter (a group dragged over another never reparents),
+ * and the resize-absorb filter at :3232 (a grown group swallows loose
+ * nodes only). Nesting two levels would put a member at 1002 and three at
+ * 1003.
  *
  * It does not clear the generate panel, and cannot: NodeToolbar portals to
  * `.react-flow__renderer`, a sibling of the pane holding every node, and the
