@@ -13,12 +13,17 @@ import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 export type Nodes = ReturnType<typeof canvasSpace.useCanvasSpace>['nodes'];
 
 /**
- * Builds the shape `useCanvasSpace` returns, with only nodes varying.
+ * Builds the shape `useCanvasSpace` returns.
+ *
+ * The default is a remote write, which is what the exit specs are about; a
+ * spec that means "this client did it" passes true.
  * @param nodes - The canvas nodes to mirror.
+ * @param lastWriteWasLocal - Whether this client made the latest write.
  * @returns The mocked space value.
  */
 export function mockSpace(
   nodes: Nodes,
+  lastWriteWasLocal = false,
 ): ReturnType<typeof canvasSpace.useCanvasSpace> {
   return {
     nodes,
@@ -27,6 +32,7 @@ export function mockSpace(
     redo: vi.fn(),
     canUndo: false,
     canRedo: false,
+    lastWriteWasLocal,
   };
 }
 

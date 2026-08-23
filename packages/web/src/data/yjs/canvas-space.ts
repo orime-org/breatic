@@ -90,6 +90,19 @@ interface CanvasSpaceState {
   canUndo: boolean;
   /** Whether a redo is currently available (drives the toolbar button). */
   canRedo: boolean;
+  /**
+   * Whether THIS client made the write that produced the current `nodes`.
+   *
+   * Yjs marks a transaction it applied from a peer as non-local
+   * (`applyUpdateV2` opens it with `local: false`), while every write this
+   * client makes — an undo included, since the undo manager transacts on the
+   * local doc — is local. A consumer that has to tell the user who changed
+   * something reads this.
+   *
+   * The first read has no transaction behind it and counts as local: nothing
+   * a peer did can be attributed to a document that just loaded.
+   */
+  lastWriteWasLocal: boolean;
 }
 
 const NODES_KEY = 'nodesMap';
@@ -290,15 +303,25 @@ export function useCanvasSpace(
   const [edges, setEdges] = React.useState<ReadonlyArray<CanvasEdge>>(() =>
     readEdges(doc),
   );
+  const [lastWriteWasLocal, setLastWriteWasLocal] = React.useState(true);
 
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
     const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
     /**
-     * Re-read all nodes from the doc into React state.
-     * @returns Nothing.
+     * Re-read all nodes from the doc into React state, recording whether this
+     * client is the one that wrote them.
+     *
+     * Both setters run in one event-loop turn, so React batches them and the
+     * flag can never be read against a different set of nodes than the one it
+     * describes.
+     * @param _events - The Yjs events (unused; the whole map is re-read).
+     * @param tx - The transaction behind them; absent on the first read.
      */
-    const updateNodes = (): void => setNodes(readNodes(doc));
+    const updateNodes = (_events?: unknown, tx?: Y.Transaction): void => {
+      if (tx) setLastWriteWasLocal(tx.local);
+      setNodes(readNodes(doc));
+    };
     /**
      * Re-read all edges from the doc into React state.
      * @returns Nothing.
@@ -371,7 +394,7 @@ export function useCanvasSpace(
     syncAvailability();
   }, [syncAvailability]);
 
-  return { nodes, edges, undo, redo, canUndo, canRedo };
+  return { nodes, edges, undo, redo, canUndo, canRedo, lastWriteWasLocal };
 }
 
 /**

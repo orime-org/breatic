@@ -75,7 +75,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
     remount();
 
-    expect(warn.mock.calls[0]?.[0]).toBe('Source deleted.');
+    expect(warn.mock.calls[0]?.[0]).toBe('A collaborator deleted the source.');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
@@ -89,7 +89,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     );
     remount();
 
-    expect(warn.mock.calls[0]?.[0]).toBe('Source replaced.');
+    expect(warn.mock.calls[0]?.[0]).toBe('A collaborator replaced the source.');
     expect(zOf('src')).toBe('0');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     );
     remount();
 
-    expect(warn.mock.calls[0]?.[0]).toBe('Source is generating.');
+    expect(warn.mock.calls[0]?.[0]).toBe('A collaborator is processing the source.');
     expect(zOf('src')).toBe('0');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     );
     remount();
 
-    expect(warn.mock.calls[0]?.[0]).toBe('Source generation failed.');
+    expect(warn.mock.calls[0]?.[0]).toBe('Source processing failed.');
     expect(zOf('src')).toBe('0');
     expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
@@ -189,13 +189,16 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
   });
 
-  it('A10：四条文案在五份 catalog 里都有', async () => {
+  it('A10：七条文案在五份 catalog 里都有', async () => {
     const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
     const keys = [
-      'focusSourceDeleted',
+      'focusSourceUndone',
       'focusSourceReplaced',
       'focusSourceBusy',
       'focusSourceFailed',
+      'focusSourceDeletedByPeer',
+      'focusSourceReplacedByPeer',
+      'focusSourceBusyByPeer',
     ];
     // The repo guard only reads locales/en.json, so a missing translation in
     // any of the other four would ship silently.
@@ -226,6 +229,32 @@ describe('聚焦目标被改动之后（#2000）', () => {
 
     expect(warn).not.toHaveBeenCalled();
     expect(screen.getByTestId('focus-crop-overlay')).toBeInTheDocument();
+  });
+
+  it('本地撤销掉聚焦目标 → toast 说是撤销，不说协作者', () => {
+    // Undo is the only local path that reaches a verdict: CONTENT_WRITE is
+    // outside the undo manager's trackedOrigins, so an undo can remove the
+    // node but never change its content or status.
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const remount = enterFocus(START);
+
+    mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)], true));
+    remount();
+
+    expect(warn.mock.calls[0]?.[0]).toBe('Undo removed the source.');
+    expect(screen.queryByTestId('focus-crop-overlay')).toBeNull();
+    expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
+  });
+
+  it('一次变更只弹一条 toast', () => {
+    const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
+    const remount = enterFocus(START);
+
+    mockUseCanvasSpace.mockReturnValue(mockSpace([image('host', 0)]));
+    remount();
+    remount();
+
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('A9：拖动别的节点 → 聚焦照常，目标还在 1002', () => {

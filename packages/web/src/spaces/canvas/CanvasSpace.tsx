@@ -129,7 +129,10 @@ import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type {
+  DisplayStatus,
+  Modality,
+} from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
@@ -249,25 +252,49 @@ const FOCUS_TARGET_Z = 1002;
 type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
 
 /**
- * The toast each ending verdict shows. Separate from the confirm-time
- * `focusSourceChanged`, which says the crop did not happen and leaves the
- * user inside the crop — these say the crop is over.
+ * Which verdict a node that stopped being croppable lands on.
  *
- * `busy` and `failed` are split because `deriveStatus` reaches `error`
- * without passing through `handling`: a failure writes `errorMessage` and
- * puts `state` back to `idle`, so a client that receives both writes in one
- * delivery lands on `error` having never seen `handling`. One shared line
- * would tell that user a generation is running while the node draws an
- * error frame.
+ * Stated as a total map over the non-idle statuses so that a new member of
+ * `DisplayStatus` fails typecheck here instead of falling into whichever
+ * branch happened to be last (#2000, second adversarial round).
+ */
+const STATUS_VERDICT: Record<
+  Exclude<DisplayStatus, 'idle'>,
+  Extract<FocusTargetVerdict, 'busy' | 'failed'>
+> = { handling: 'busy', error: 'failed' };
+
+/**
+ * The toast each ending verdict shows, by who made the write.
+ *
+ * Separate from the confirm-time `focusSourceChanged`, which says the crop
+ * did not happen and leaves the user inside the crop — these say the crop is
+ * over. The two columns exist because a user who is told "a collaborator
+ * deleted it" learns something; a user who just pressed Cmd+Z learns that
+ * his own undo is what did it (user 2026-08-23).
+ *
+ * `busy` / `failed` say "processing" rather than "generating": `handling` is
+ * also what an upload sets (`canvas-upload.ts` calls `setHandling` before it
+ * starts), so naming the cause would be wrong half the time.
+ *
+ * A failure has no author to name — the upload or the generation failed on
+ * its own — so both columns share one line for it.
  */
 const FOCUS_EXIT_TOAST_KEY: Record<
-  Exclude<FocusTargetVerdict, 'ok'>,
-  string
+  'local' | 'peer',
+  Record<Exclude<FocusTargetVerdict, 'ok'>, string>
 > = {
-  gone: 'canvas.generatePanel.focusSourceDeleted',
-  replaced: 'canvas.generatePanel.focusSourceReplaced',
-  busy: 'canvas.generatePanel.focusSourceBusy',
-  failed: 'canvas.generatePanel.focusSourceFailed',
+  local: {
+    gone: 'canvas.generatePanel.focusSourceUndone',
+    replaced: 'canvas.generatePanel.focusSourceReplaced',
+    busy: 'canvas.generatePanel.focusSourceBusy',
+    failed: 'canvas.generatePanel.focusSourceFailed',
+  },
+  peer: {
+    gone: 'canvas.generatePanel.focusSourceDeletedByPeer',
+    replaced: 'canvas.generatePanel.focusSourceReplacedByPeer',
+    busy: 'canvas.generatePanel.focusSourceBusyByPeer',
+    failed: 'canvas.generatePanel.focusSourceFailed',
+  },
 };
 
 /**
@@ -569,10 +596,11 @@ function CanvasSpaceInner({
   readOnly = false,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
-  const { nodes, edges, undo, redo, canUndo, canRedo } = useCanvasSpace(
-    projectId,
-    spaceId,
-  );
+  const { nodes, edges, undo, redo, canUndo, canRedo, lastWriteWasLocal } =
+    useCanvasSpace(
+      projectId,
+      spaceId,
+    );
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
@@ -703,11 +731,10 @@ function CanvasSpaceInner({
     // Reaching here means `status` left 'idle' — the predicate's other three
     // conditions cannot fail at this point. The host check gets '' (always
     // true), a node's type never changes, and an emptied `content` is caught
-    // by `replaced` above (the snapshot is non-empty). 'idle' has two exits
-    // and they say different things to the user.
-    return (node.data as { status?: unknown }).status === 'handling'
-      ? 'busy'
-      : 'failed';
+    // by `replaced` above (the snapshot is non-empty).
+    const status = (node.data as { status?: DisplayStatus }).status;
+    if (status === 'handling' || status === 'error') return STATUS_VERDICT[status];
+    return 'ok';
   });
   React.useEffect(() => {
     if (focusTargetVerdict === 'ok') return;
@@ -721,9 +748,12 @@ function CanvasSpaceInner({
     if (overlay?.contains(document.activeElement)) {
       handOffFocusToPickBanner(overlay);
     }
-    toast.warning(t(FOCUS_EXIT_TOAST_KEY[focusTargetVerdict]));
+    // Who wrote it decides which column speaks: a peer's delete is news, a
+    // local undo is the user's own keystroke coming back to him.
+    const author = lastWriteWasLocal ? 'local' : 'peer';
+    toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, t]);
+  }, [focusTargetVerdict, lastWriteWasLocal, t]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same

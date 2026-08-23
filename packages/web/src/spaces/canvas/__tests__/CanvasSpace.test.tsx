@@ -112,6 +112,7 @@ function mockSpace(
     redo: redoSpy,
     canUndo: false,
     canRedo: false,
+    lastWriteWasLocal: true,
     ...over,
   };
 }
