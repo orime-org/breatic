@@ -240,6 +240,23 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  */
 const FOCUS_TARGET_Z = 1002;
 
+/** What became of the node a focus crop is open on (#2000). */
+type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy';
+
+/**
+ * The toast each ending verdict shows. Separate from the confirm-time
+ * `focusSourceChanged`, which says the crop did not happen and leaves the
+ * user inside the crop — these say the crop is over.
+ */
+const FOCUS_EXIT_TOAST_KEY: Record<
+  Exclude<FocusTargetVerdict, 'ok'>,
+  string
+> = {
+  gone: 'canvas.generatePanel.focusSourceDeleted',
+  replaced: 'canvas.generatePanel.focusSourceReplaced',
+  busy: 'canvas.generatePanel.focusSourceBusy',
+};
+
 /**
  * Whether a node can be picked as a focus crop source.
  *
@@ -629,48 +646,63 @@ function CanvasSpaceInner({
    * bare Esc land here; a further Esc then exits via the pick Esc handler.
    */
   const onFocusBackToPick = React.useCallback((): void => {
-    setFocusCropTargetId(null);
+    setFocusTarget(null);
   }, []);
   // The image or video node a focus crop marquee is open on (#1782, video
-  // #1987), or null. Local
-  // React state — it only exists while THIS user's focus pick runs; the
-  // effect clears it whenever the session ends or changes purpose (Exit,
-  // zombie guards, a style/reference pick replacing it).
-  const [focusCropTargetId, setFocusCropTargetId] = React.useState<
-    string | null
-  >(null);
+  // #1987), or null, together with the content it carried when the crop
+  // opened. Local React state — it only exists while THIS user's focus pick
+  // runs; the effect clears it whenever the session ends or changes purpose
+  // (Exit, zombie guards, a style/reference pick replacing it).
+  //
+  // The id and the snapshot live in ONE object so they cannot describe
+  // different nodes: the verdict below compares the snapshot against the
+  // node the id names, and a split pair would let a switch of target leave
+  // the previous node's content behind.
+  const [focusTarget, setFocusTarget] = React.useState<{
+    id: string;
+    content: string;
+  } | null>(null);
+  const focusCropTargetId = focusTarget?.id ?? null;
   React.useEffect(() => {
-    if (pickSession?.purpose !== 'focus') setFocusCropTargetId(null);
+    if (pickSession?.purpose !== 'focus') setFocusTarget(null);
   }, [pickSession]);
-  // A DELETED crop target unmounts the overlay (all its state dies with
-  // it); mere viewport CULLING (onlyRenderVisibleElements unmounts the
-  // node's DOM but the node still exists) keeps it mounted so the marquee
-  // survives a pan-away-and-back (adversarial round-8 — the img-absent
-  // discard was eating careful selections on every pan). Existence is
-  // judged on the graph mirror, which culling never removes from.
-  const focusTargetExists = useCanvasGraphStore(
-    (st) =>
-      focusCropTargetId === null ||
-      st.flowNodes.some((n) => n.id === focusCropTargetId),
-  );
-  React.useEffect(() => {
-    if (!focusTargetExists) {
-      // Third overlay-unmount path (adversarial round-2): a collaborator
-      // deleting the crop source mid-crop must not orphan keyboard focus to
-      // <body>. Unlike Esc stage-two (a deliberate keypress), this rescue
-      // only fires when focus actually sits INSIDE the dying overlay — a
-      // remote deletion must never grab focus from elsewhere. The effect
-      // runs while the overlay DOM is still mounted (unmount lands next
-      // render), so the containment check still sees it.
-      const overlay = document.querySelector(
-        '[data-testid="focus-crop-overlay"]',
-      );
-      if (overlay?.contains(document.activeElement)) {
-        handOffFocusToPickBanner(overlay);
-      }
-      setFocusCropTargetId(null);
+  // What became of the crop target (#2000). A collaborator can delete it,
+  // swap its content, or start a generation on it; each ends the crop and
+  // says which one happened. `ok` also covers "no crop open".
+  //
+  // Existence is judged on the graph mirror, which viewport CULLING never
+  // removes from (onlyRenderVisibleElements unmounts the node's DOM but the
+  // node still exists) — that keeps a marquee alive across a pan-away-and-
+  // back (adversarial round-8 of #1782, where an img-absent discard was
+  // eating careful selections on every pan).
+  const focusTargetVerdict = useCanvasGraphStore((st): FocusTargetVerdict => {
+    if (focusTarget === null) return 'ok';
+    const node = st.flowNodes.find((n) => n.id === focusTarget.id);
+    if (!node) return 'gone';
+    if ((node.data as { content?: unknown }).content !== focusTarget.content) {
+      return 'replaced';
     }
-  }, [focusTargetExists]);
+    // The pick's own admission test, reapplied: it already states every
+    // condition a croppable source must hold (type, non-empty content, idle),
+    // so a target that stops satisfying it has stopped being croppable. The
+    // host id it wants can be anything but this node's own id.
+    return isFocusCandidate(node, '') ? 'ok' : 'busy';
+  });
+  React.useEffect(() => {
+    if (focusTargetVerdict === 'ok') return;
+    // Keyboard-focus rescue (adversarial round-2 of #1782): a collaborator
+    // ending the crop must not orphan focus to <body>. It only fires when
+    // focus actually sits INSIDE the dying overlay — a remote write must
+    // never grab focus from elsewhere. The effect runs while the overlay DOM
+    // is still mounted (unmount lands next render), so the containment check
+    // still sees it.
+    const overlay = document.querySelector('[data-testid="focus-crop-overlay"]');
+    if (overlay?.contains(document.activeElement)) {
+      handOffFocusToPickBanner(overlay);
+    }
+    toast.warning(t(FOCUS_EXIT_TOAST_KEY[focusTargetVerdict]));
+    setFocusTarget(null);
+  }, [focusTargetVerdict, t]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -1731,7 +1763,19 @@ function CanvasSpaceInner({
         // session runs until Exit. Same predicate the dimming uses, so the two
         // cannot say different things.
         if (!isFocusCandidate(node, target)) return;
-        setFocusCropTargetId(node.id);
+        // Snapshot the content from the SAME place the verdict reads it. The
+        // `node` this handler receives comes from ReactFlow's render array,
+        // and the graph store can lead the DOM by a commit (see the note on
+        // onFocusCropConfirm), so taking it from there would let the verdict
+        // compare a stale snapshot against fresh content and eject the user
+        // the instant they click.
+        const fresh = useCanvasGraphStore
+          .getState()
+          .flowNodes.find((n) => n.id === node.id);
+        const content = (fresh?.data as { content?: unknown } | undefined)
+          ?.content;
+        if (typeof content !== 'string') return;
+        setFocusTarget({ id: node.id, content });
         return;
       }
 
