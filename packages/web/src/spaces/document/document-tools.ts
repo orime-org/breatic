@@ -25,11 +25,20 @@
  * 3. Their labels go through i18n, where they were hard-coded English.
  */
 
-import { Bold, Italic, List, ListOrdered, Quote, Strikethrough } from 'lucide-react';
+import {
+  Bold,
+  Code,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Strikethrough,
+  Underline,
+} from 'lucide-react';
 
 import type { ToolDef } from '@web/spaces/document/document-tool-button';
 
-/** The three marks. */
+/** The four marks the demo groups together as `B I S U`. */
 export const MARK_TOOLS: ToolDef[] = [
   {
     id: 'bold',
@@ -54,6 +63,32 @@ export const MARK_TOOLS: ToolDef[] = [
     isActive: (e) => e.isActive('strike'),
     canRun: (e) => e.can().chain().toggleStrike().run(),
     run: (e) => e.chain().focus().toggleStrike().run(),
+  },
+  {
+    id: 'underline',
+    labelKey: 'spaces.document.commands.underline',
+    Icon: Underline,
+    isActive: (e) => e.isActive('underline'),
+    canRun: (e) => e.can().chain().toggleUnderline().run(),
+    run: (e) => e.chain().focus().toggleUnderline().run(),
+  },
+];
+
+/**
+ * Marks that stand on a run of text as an object of their own.
+ *
+ * Inline code is here rather than beside the other marks because the demo
+ * groups it with the link and the colour picker (`§3.3`): those act on a span
+ * the reader points at, while `B I S U` restyle whatever is selected.
+ */
+export const INLINE_TOOLS: ToolDef[] = [
+  {
+    id: 'code',
+    labelKey: 'spaces.document.commands.code',
+    Icon: Code,
+    isActive: (e) => e.isActive('code'),
+    canRun: (e) => e.can().chain().toggleCode().run(),
+    run: (e) => e.chain().focus().toggleCode().run(),
   },
 ];
 

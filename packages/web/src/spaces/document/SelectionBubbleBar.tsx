@@ -87,15 +87,69 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection, PluginKey } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
+import { MessageSquare, Sparkles } from 'lucide-react';
+
 import {
   ToolButton,
   type ToolDef,
 } from '@web/spaces/document/document-tool-button';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import {
+  ComingTool,
+  type ComingToolDef,
+} from '@web/spaces/document/document-coming-tool';
+import {
+  MARK_TOOLS,
+  BLOCK_TOOLS,
+  INLINE_TOOLS,
+} from '@web/spaces/document/document-tools';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
-/** The commands this carrier shows, in the order the ruling lists them. */
-const BUBBLE_TOOLS: ToolDef[] = [...MARK_TOOLS, ...BLOCK_TOOLS];
+/** One run of controls, drawn between two separators. */
+interface BubbleGroup {
+  /** Names the separator drawn before this group. */
+  key: string;
+  tools: ToolDef[];
+  coming: ComingToolDef[];
+}
+
+/**
+ * The controls this carrier shows, grouped the way the demo draws them.
+ *
+ * The demo's full shape is five groups: block type, alignment, `B I S U`,
+ * the inline run, and AI. Two of those hold nothing yet — the block type
+ * dropdown that will replace the three block buttons (#904) and alignment
+ * (#905) — so the groups below are what there is to draw today. A separator
+ * belongs between two runs of controls; drawing one for an empty group would
+ * put two lines side by side with nothing in between.
+ *
+ * Comment and AI stand here with no command behind them (design §3.3 calls
+ * both "placeholder only"): their functions are task #18 and a later one, so
+ * "not open yet" is the truth about them. The controls still to come — block
+ * type, alignment, colour, link — are none of them; each arrives with its
+ * command in its own slice.
+ */
+const BUBBLE_GROUPS: BubbleGroup[] = [
+  { key: 'blocks', tools: BLOCK_TOOLS, coming: [] },
+  { key: 'marks', tools: MARK_TOOLS, coming: [] },
+  {
+    key: 'inline',
+    tools: INLINE_TOOLS,
+    coming: [
+      {
+        id: 'comment',
+        labelKey: 'spaces.document.commands.comment',
+        Icon: MessageSquare,
+      },
+    ],
+  },
+  {
+    key: 'ai',
+    tools: [],
+    coming: [
+      { id: 'ai', labelKey: 'spaces.document.commands.ai', Icon: Sparkles },
+    ],
+  },
+];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
 const GAP_FROM_SELECTION_PX = 8;
@@ -812,8 +866,24 @@ function BubbleBar({
       className='z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
     >
       {hasSelection
-        ? BUBBLE_TOOLS.map((tool) => (
-          <ToolButton key={tool.id} tool={tool} editor={editor} />
+        ? BUBBLE_GROUPS.map((group, index) => (
+          <React.Fragment key={group.key}>
+            {index > 0 ? (
+              <span
+                role='separator'
+                aria-orientation='vertical'
+                data-testid={`doc-bubble-sep-${group.key}`}
+                // The demo's `.bubble-sep`: 1px by 16px, 3px either side.
+                className='mx-[3px] h-4 w-px shrink-0 bg-border'
+              />
+            ) : null}
+            {group.tools.map((tool) => (
+              <ToolButton key={tool.id} tool={tool} editor={editor} />
+            ))}
+            {group.coming.map((tool) => (
+              <ComingTool key={tool.id} tool={tool} />
+            ))}
+          </React.Fragment>
         ))
         : null}
     </BubbleMenu>

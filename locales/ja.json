@@ -685,7 +685,12 @@
         "bulletList": "箇条書き",
         "orderedList": "番号付きリスト",
         "quote": "引用",
-        "strike": "取り消し線"
+        "strike": "取り消し線",
+        "underline": "下線",
+        "code": "インラインコード",
+        "comment": "コメント",
+        "ai": "AI",
+        "comingLabel": "{name}（未公開）"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",

@@ -26,6 +26,7 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
   MARK_TOOLS,
@@ -105,7 +106,13 @@ async function selectWithFocus(
  * @param readOnly - 是否只读。
  */
 function mount(editor: Editor, readOnly = false): void {
-  render(<DocumentEditor editor={editor} readOnly={readOnly} />);
+  // 包一层 provider 模拟 App：全站只有一个 `TooltipProvider`、挂在 `App.tsx`，
+  // 而条上那两个未开放的入口用 tooltip 说明自己为什么不能用。
+  render(
+    <TooltipProvider>
+      <DocumentEditor editor={editor} readOnly={readOnly} />
+    </TooltipProvider>,
+  );
 }
 
 /** 插件视图上我们真正配进去的那几样，取出来直接问。 */
@@ -294,18 +301,20 @@ describe('选中浮出条', () => {
     expect(markupOf()).toBe(before);
   });
 
-  // A11: HTML `disabled` drops a control out of the focus order, and an entry
-  // meant to be discovered has to stay in it. Same reason as the snapshot
-  // commands in `document-menu-entry.test.tsx`.
+  // A11: the whole bar stays out of the tab order (ruling R4), so these two
+  // follow the command buttons beside them. What they do carry is
+  // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
+  // accessibility tree to be read, the second drops them out of it.
   it.each([
     ['comment'],
     ['ai'],
-  ])('keeps %s reachable by keyboard', async (id) => {
+  ])('keeps %s out of the tab order, the way the bar does', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
     const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    expect(entry.getAttribute('tabindex')).toBe('-1');
     expect(entry.hasAttribute('disabled')).toBe(false);
   });
 
@@ -1341,12 +1350,12 @@ describe('选中浮出条', () => {
     expect((shift as { boundary?: unknown }).boundary).toBe(viewport);
   });
 
-  // 没有选区时六个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
+  // 没有选区时八个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
   // 时它被 `element.remove()` 摘出文档（`dist/index.js:377-379`），从 document
   // 里查什么都查不到，那样的断言分辨不出「没建」和「建了但不在文档里」。
   //
   // 为什么要不建：每个按钮都在每一笔事务上跑一次自己命令的干跑（`canRun`），
-  // 而浮出条绝大多数时间是隐藏的——留着它们等于给每次击键多付六次干跑，换来
+  // 而浮出条绝大多数时间是隐藏的——留着它们等于给每次击键多付八次干跑，换来
   // 一个没人看得见的载体。
   it('没有选区时，浮出条里一个按钮都不建', async () => {
     const editor = open('<p>hello world</p>');
@@ -1355,7 +1364,7 @@ describe('选中浮出条', () => {
     const view = bubblePluginView(editor);
     expect(
       view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
-    ).toHaveLength(6);
+    ).toHaveLength(8);
 
     act(() => {
       editor.commands.setTextSelection(3);
@@ -1416,7 +1425,7 @@ describe('选中浮出条', () => {
   // 序，鼠标点得进去）。钉它的是上面「整条不可聚焦」那条的
   // `hasAttribute('tabindex')`。这里读 `bar.tabIndex` 读不出区别——没有属性的
   // div 本来就答 -1。
-  it('浮出条的六个按钮都不进 Tab 序', async () => {
+  it('浮出条的八个命令按钮都不进 Tab 序', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1425,7 +1434,7 @@ describe('选中浮出条', () => {
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    expect(buttons).toHaveLength(6);
+    expect(buttons).toHaveLength(8);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);
     }
