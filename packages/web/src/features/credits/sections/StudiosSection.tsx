@@ -24,7 +24,8 @@ interface StudiosSectionProps {
 }
 
 /**
- * A line per studio this account has money in or has spent money in.
+ * A line per studio this account has money in, has spent money in, or still
+ * owes for.
  *
  * Deleted studios stay listed. The money was really spent there, and dropping
  * the row would make the spending column stop adding up — which is how the

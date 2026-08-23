@@ -455,10 +455,13 @@ export async function designateLot(input: {
 /**
  * What an account holds and where it went.
  *
- * A studio appears here if it holds credits of this account's or has spent
- * some, which are different sets: a studio that spent its last credit still
- * belongs on the panel, and one that was just assigned its first has nothing
- * spent yet.
+ * A studio appears here on any of three counts: it holds credits of this
+ * account's, it has spent some, or it still owes for a generation this
+ * account ran there. The first two are different sets — a studio that spent
+ * its last credit still belongs on the panel, and one just assigned its
+ * first has nothing spent yet. The third reaches neither read, because a
+ * debt names no payer, and without it the debt is invisible to the person
+ * whose next purchase there pays it off.
  * @param userId - The account to summarise.
  * @returns The overview.
  */
@@ -507,8 +510,16 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   // A studio this account only ever owed in reaches neither read above: a
   // debt names no payer. Without it the debt is invisible, and the next
   // purchase assigned there is spent paying it off before anything else.
+  //
+  // Only while it still owes. Once the debt is paid — by anyone — this
+  // account has no money there, has spent none there, and owes nothing:
+  // four zeroes on a row that answers no question.
+  const owed = await creditLotRepo.readDebtsFor(
+    owingRows.map((row) => row.studioId),
+  );
   for (const row of owingRows) {
     if (byStudio.has(row.studioId)) continue;
+    if (toMicroCredits(owed.get(row.studioId) ?? "0") <= 0) continue;
     byStudio.set(row.studioId, {
       studioId: row.studioId,
       studioName: row.studioName,

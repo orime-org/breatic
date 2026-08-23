@@ -171,12 +171,12 @@ interface LedgerRowProps {
 }
 
 /**
- * One generation: when, who, where, with what, and what it cost.
+ * One time this account's money left a purchase: when, who, where, with what,
+ * and how much.
  *
- * The amount column reports what actually left a purchase. When a studio ran
- * out mid-generation the run still used more than that, and the difference is
- * named underneath rather than folded into the figure — the two are different
- * amounts and the reader is owed both.
+ * A run that outran the purchases used more than this. That part is the
+ * studio's debt, which names no payer, and the studio's own page reports
+ * it.
  * @param props - The generation.
  * @param props.row - One generation's line.
  * @returns The row.

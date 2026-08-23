@@ -735,10 +735,13 @@ export async function listLedgerByPayer(
       kind: sql<"generation" | "debt_repayment">`CASE
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
         THEN 'debt_repayment' ELSE 'generation' END`,
-      // One figure. What a run cost beyond what the purchases covered is the
-      // studio's debt, not this account's, so there is nothing here for it to
-      // be measured against.
-      amount: sql<string>`SUM(${creditLedger.amount})::text`,
+      // One figure, over the rows that drew on a purchase. A run nothing
+      // could cover writes a negative `spend` row too — with no lot behind
+      // it — and adding that in would report money that never left. What a
+      // run cost beyond its purchases is the studio's debt, and belongs on
+      // the studio's page.
+      amount: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+        WHERE ${creditLedger.lotId} IS NOT NULL), 0)::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -762,6 +765,10 @@ export async function listLedgerByPayer(
         // is a keyset page — filtering a page that the server already cut can
         // empty it while the cursor still says there is more.
         inArray(creditLedger.entryType, entryTypes),
+        // Only what actually drew on a purchase. A charge with no pool to
+        // draw from records the usage and touches no lot; it is not this
+        // account's money leaving.
+        isNotNull(creditLedger.lotId),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
     )
@@ -828,9 +835,9 @@ export interface StudioLedgerRow {
  * used; what is owed is the difference, written as its own row.
  *
  * Taken by studio, not by who paid. A generation that ran short writes its
- * `spend` rows against the lot owner and its shortfall against the person
- * running it, so filtering by payer splits one line between two people and
- * leaves neither of them a whole one.
+ * `spend` rows against the lot owner and its shortfall against nobody at
+ * all — the studio owes that part — so filtering by payer would leave out
+ * the shortfall entirely and report the run as costing less than it did.
  * @param studioId - The studio whose ledger to read.
  * @param limit - How many lines to return.
  * @param cursor - The `(created_at, id)` of the previous page's last line.
@@ -993,12 +1000,14 @@ export async function sumSpendableByStudio(userId: string): Promise<
       studioId: creditLots.designatedStudioId,
       studioName: studios.name,
       studioSlug: studios.slug,
-      spendable: sql<string>`SUM(${creditLots.remainingCredits})::text`,
-      // How many lots point here, which is what the overlay reports. A count
-      // rather than the lots themselves: the reader is asking whether any are
-      // assigned, and one aggregate answers that without a second query.
-      // Every lot pointed here, spendable or not. The figure answers "how
-      // many purchases did I put here", and a spent one was still put here.
+      // Only what is still spendable. A spent purchase is still pointed
+      // here, and still counted below, but there is nothing left of it.
+      spendable: sql<string>`COALESCE(SUM(${creditLots.remainingCredits})
+        FILTER (WHERE ${creditLots.lifecycle} = 'active'), 0)::text`,
+      // Every purchase pointed here, spent or not. The figure answers "how
+      // many did I put here", and spending one does not take it back —
+      // saying "nothing assigned yet" while the purchases page shows it
+      // pointing here is two answers to one question.
       lotCount: sql<number>`COUNT(*)::int`,
     })
     .from(creditLots)
@@ -1006,7 +1015,6 @@ export async function sumSpendableByStudio(userId: string): Promise<
     .where(
       and(
         eq(creditLots.userId, userId),
-        eq(creditLots.lifecycle, "active"),
         isNull(creditLots.deletedAt),
         isNull(studios.deletedAt),
       ),
@@ -1015,9 +1023,6 @@ export async function sumSpendableByStudio(userId: string): Promise<
     // select list that is neither grouped nor aggregated makes Postgres refuse
     // the query outright.
     .groupBy(creditLots.designatedStudioId, studios.name, studios.slug);
-  // Same three conditions as `spendableByStudio`, grouped instead of pinned to
-  // one studio — the shared helper takes a studio id, which this one does not
-  // have.
   return rows
     .filter(
       (

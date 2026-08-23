@@ -150,6 +150,17 @@ async function seedLot(
 }
 
 /**
+ * 造一个登录 cookie。
+ * @param userId - 谁登录。
+ * @returns 那个 cookie。
+ */
+async function loginAs(userId: string): Promise<string> {
+  const token = crypto.randomBytes(24).toString("hex");
+  await setSession(getRedis(), token, userId);
+  return `${sessionCookieName()}=${token}`;
+}
+
+/**
  * 读一次总览。
  * @param cookie - 登录 cookie。
  * @returns 端点返回的 data。
@@ -304,14 +315,61 @@ describe("消耗流水按付款人取（实现对抗第一、二轮）", () => {
       data: { items: Record<string, unknown>[] };
     };
 
-    // 两行：那次生成扣掉的部分（0，一个包都没有），和这次指定抵掉的 40。
-    // 后者是这个账号真金白银付出去的，得在他的账本里；它没有 model 也没有
-    // project，所以要说清自己是什么。
+    // 一行：这次指定抵掉的 40。那次生成一个包都没扣到，它的记录里 lot_id
+    // 是空的，不是这个账号的钱离开积分包。抵欠账这一笔是真金白银付出去的，
+    // 得在他的账本里；它没有 model 也没有 project，所以要说清自己是什么。
     const rows = body.data.items;
     const repayment = rows.find((r) => r['kind'] === "debt_repayment");
     expect(repayment).toBeDefined();
     expect(Number(repayment!['amount'])).toBe(-40);
     expect(repayment!['model']).toBeNull();
+  });
+});
+
+describe("已删的 studio 那一行标得出来（实现对抗第三轮）", () => {
+  it("deleted 是 true，名字还取得到", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 500, 1000, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 120,
+      referenceId: `gone-flag-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+    await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+
+    const data = await readOverview(fx.cookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+    const gone = studios.find((s) => s['studioId'] === fx.studioId);
+
+    // 前端拿这个字段画徽章、把可用额换成破折号。之前只钉了 false 那一侧。
+    expect(gone!['deleted']).toBe(true);
+    expect(gone!['studioName']).toBe(fx.studioName);
+  });
+
+  it("流水里每一行都带着它花在哪个 studio 的名字", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 500, 1000, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 10,
+      referenceId: `studio-name-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+      headers: { cookie: fx.cookie },
+    });
+    const body = (await res.json()) as {
+      data: { items: Record<string, unknown>[] };
+    };
+
+    // 界面上要显示这一列。让它拿 id 再问一次，一页三十行就是三十次请求。
+    expect(body.data.items[0]!['studioName']).toBe(fx.studioName);
   });
 });
 
@@ -536,5 +594,123 @@ describe("欠账是 studio 的，不挂在任何人名下（实现对抗第二�
     expect(mine).toBeDefined();
     expect(Number(mine!['debt'])).toBe(40);
     expect(mine!['deleted']).toBe(false);
+  });
+});
+
+describe("账号流水只报真的动了我积分包的行（实现对抗第三轮）", () => {
+  it("一个包都没扣到的用量，不报成从我的积分包里花掉的钱", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 500, 1000, fx.studioId);
+    // 没有 studio 就没有池子可扣：文本工具那条路的 projectId 恒为 null。
+    await creditLotService.chargeForGeneration({
+      projectId: null,
+      actorUserId: fx.userId,
+      amount: 42,
+      referenceId: `nopool-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+      headers: { cookie: fx.cookie },
+    });
+    const body = (await res.json()) as {
+      data: { items: Record<string, unknown>[] };
+    };
+
+    // 这一行 lot_id 是空的，一分钱都没离开任何积分包。把它的数报进「积分」
+    // 那一列，等于告诉读者他被扣了 42，而账号总额一分没动。
+    expect(body.data.items).toHaveLength(0);
+  });
+});
+
+describe("各 Studio 的每一行都说得出自己为什么在（实现对抗第三轮）", () => {
+  it("欠账被平掉之后，那个 studio 不再挂在名单上", async () => {
+    const fx = await seedFixture();
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 40,
+      referenceId: `owe-then-pay-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+    const lotId = await seedLot(fx.userId, 500, 1000, null);
+    // 指过去先抵欠账，欠账归零。
+    await creditLotService.designateLot({
+      lotId,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const data = await readOverview(fx.cookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+    const mine = studios.find((s) => s['studioId'] === fx.studioId);
+
+    // 它还在名单上，但这次是因为有钱在里面、也花过钱 —— 不是因为欠账。
+    expect(mine).toBeDefined();
+    expect(Number(mine!['debt'])).toBe(0);
+    expect(Number(mine!['spendable'])).toBeGreaterThan(0);
+  });
+
+  it("欠账平掉、钱也没剩的 studio 不留一行四个零", async () => {
+    // 这个 studio 的 admin 是 fx.userId，我是被拉进来的 maintainer。
+    const fx = await seedFixture();
+    const [guest] = await sql<{ id: string }[]>`
+      INSERT INTO users (email)
+      VALUES (${`runner-${Date.now()}@example.test`}) RETURNING id`;
+    const [guestStudio] = await sql<{ id: string }[]>`
+      INSERT INTO studios (name, slug, type, created_by_user_id)
+      VALUES ('跑腿的', ${`runner-s-${Date.now()}`}, 'personal', ${guest!.id})
+      RETURNING id`;
+    await sql`INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${guestStudio!.id}, ${guest!.id}, 'admin')`;
+    await sql`INSERT INTO studio_members (studio_id, user_id, role)
+      VALUES (${fx.studioId}, ${guest!.id}, 'maintainer')`;
+    const guestCookie = await loginAs(guest!.id);
+
+    // 他在这儿跑生成、欠下 40，一个包都没有。
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: guest!.id,
+      amount: 40,
+      referenceId: `others-pay-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+    // studio 的 admin 拿自己的包平掉了它。
+    const lotId = await seedLot(fx.userId, 500, 1000, null);
+    await creditLotService.designateLot({
+      lotId,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const data = await readOverview(guestCookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+
+    // 他在这儿没有钱、没花过钱、也不再欠了。留着这一行只会是四个零。
+    expect(studios.find((s) => s['studioId'] === fx.studioId)).toBeUndefined();
+  });
+
+  it("包花光了，「已指定几个积分包」还是数得出它", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 100, 1000, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 100,
+      referenceId: `deplete-count-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    const data = await readOverview(fx.cookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+    const mine = studios.find((s) => s['studioId'] === fx.studioId);
+
+    // 充值记录那一项同时列着这个包、写着它指向这个 studio。这儿说「还没有
+    // 指定给它的积分」，两项对同一件事说反。
+    expect(Number(mine!['lotCount'])).toBe(1);
   });
 });

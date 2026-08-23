@@ -1383,13 +1383,17 @@ describe("studio 流水：一次生成一行", () => {
       "2026-08-23 10:00:00.223400+00",
       "2026-08-23 10:00:00.223000+00",
     ];
+    // Rows that drew on a purchase: the account ledger reports what left
+    // this account's purchases, so a row with no lot behind it is not one of
+    // its rows and would not exercise its paging.
+    const lotId = await seedLot(fx, 100, fx.studioId);
     for (let i = 0; i < stamps.length; i++) {
       await sql.unsafe(`
         INSERT INTO credit_ledger
           (payer_user_id, actor_user_id, entry_type, studio_id, project_id,
            amount, lot_id, reference_id, created_at)
         VALUES ('${fx.userId}', '${fx.userId}', 'spend', '${fx.studioId}',
-                '${fx.projectId}', -10, NULL, 'payer-ms-${i}',
+                '${fx.projectId}', -10, '${lotId}', 'payer-ms-${i}',
                 TIMESTAMPTZ '${stamps[i]!}')`);
     }
 

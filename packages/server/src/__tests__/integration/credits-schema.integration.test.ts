@@ -20,12 +20,14 @@
  *      Postgres admits any number of NULLs. Without the constraint here, a
  *      redelivered webhook grants the credits a second time.
  *
- *   2. `credit_ledger.lot_id` is NULLABLE while `payer_user_id` is NOT NULL.
+ *   2. `credit_ledger.lot_id` is NULLABLE, and `payer_user_id` is NULL on
+ *      `debt_incurred` alone, held there by a CHECK.
  *      With payments disabled — every local install and every self-hosted
  *      one — a generation still records what it used, but there is no lot to
  *      attribute it to. Making `lot_id` NOT NULL would either lose that usage
- *      record or force a fake lot; making `payer_user_id` nullable would drop
- *      the row out of the account ledger, which reads by payer.
+ *      record or force a fake lot. A debt names no payer because at the
+ *      moment it is written nobody has paid it; the CHECK is what stops the
+ *      column from meaning two things.
  *
  *   3. `credit_ledger` has `created_at` and NEITHER `updated_at` NOR
  *      `deleted_at`. It is append-only: a row records that something already
@@ -256,17 +258,24 @@ describe("credit_ledger", () => {
     expect(cols.get("project_id")?.is_nullable).toBe("YES");
     expect(cols.get("entry_type")?.is_nullable).toBe("NO");
     // Nullable in the column, required by the constraint on everything else.
-    const checks = await sql<{ definition: string }[]>`
-      SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
-      WHERE conrelid = 'credit_ledger'::regclass AND contype = 'c'`;
-    expect(
-      checks.some(
-        (c) =>
-          c.definition.includes("payer_user_id IS NOT NULL") &&
-          c.definition.includes("debt_incurred"),
-      ),
-      "no CHECK requires a payer outside debt_incurred",
-    ).toBe(true);
+    // Asked of the database rather than of the constraint's text: a text
+    // that mentions the right words can still permit the row.
+    const [payer] = await sql<{ id: string }[]>`
+      INSERT INTO users (email)
+      VALUES (${`check-probe-${Date.now()}@example.test`}) RETURNING id`;
+    await expect(
+      sql`INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (NULL, 'spend', -1)`,
+      "a spend with no payer was accepted",
+    ).rejects.toThrow();
+    await expect(
+      sql`INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (NULL, 'debt_incurred', -1)`,
+    ).resolves.toBeDefined();
+    await expect(
+      sql`INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (${payer!.id}, 'topup', 1)`,
+    ).resolves.toBeDefined();
     expect(cols.get("amount")?.is_nullable).toBe("NO");
     expect(cols.get("amount")?.data_type).toBe("numeric");
     expect(cols.get("amount")?.numeric_precision).toBe(20);

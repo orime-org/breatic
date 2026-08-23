@@ -92,7 +92,10 @@ export function useCreditsPaging<T>({
   return {
     rows,
     isPending: query.isPending,
-    isError: query.isError,
+    // Only when there is nothing to show. A page that failed after earlier
+    // ones arrived leaves those rows in the reader's hands, and replacing
+    // them with a message loses more than the failure did.
+    isError: query.isError && rows.length === 0,
     isFetchingNextPage,
     hasNextPage,
     sentinelRef,

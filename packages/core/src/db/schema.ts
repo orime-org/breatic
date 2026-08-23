@@ -886,8 +886,11 @@ export const creditLots = pgTable(
  * `lot_id` is nullable for the three situations where usage is recorded but
  * no purchase is drawn down: payments disabled, a route that carries no
  * project to pick a pool from, and a studio with nothing spendable left.
- * `payer_user_id` stays NOT NULL in all three, because the account ledger
- * reads by payer and those rows have to appear in it.
+ * `payer_user_id` is absent on `debt_incurred` alone (0064, with a CHECK
+ * requiring it everywhere else): a debt is what a studio owes, recorded
+ * before anyone has paid it. The account ledger reads by payer and reports
+ * what left this account's purchases, so a debt is not one of its rows —
+ * the studio's own page reports it.
  *
  * `created_at` only. No `updated_at`, because nothing here is ever edited,
  * and no `deleted_at`, which is the repository's soft-delete mandate being

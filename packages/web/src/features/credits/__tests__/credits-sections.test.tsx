@@ -380,6 +380,97 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
+  describe('第三轮补的那几处', () => {
+    it('还债那行合并两格之后，一行仍然是六列宽', async () => {
+      fetchCreditLedger.mockResolvedValue({
+        items: [
+          entry({ kind: 'debt_repayment', projectName: null, model: null }),
+          entry({ id: 'e2' }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('ledger');
+      const body = await panel();
+
+      const head = body.querySelectorAll('thead th').length;
+      for (const row of body.querySelectorAll('tbody tr')) {
+        const span = [...row.querySelectorAll('td')].reduce(
+          (n, td) => n + (Number(td.getAttribute('colspan')) || 1),
+          0,
+        );
+        expect(span).toBe(head);
+      }
+    });
+
+    it('长列表的表头钉在滚动容器顶上', async () => {
+      await openOn('ledger');
+      const body = await panel();
+
+      const th = body.querySelector('thead');
+      expect(th).not.toBeNull();
+      expect(th!.className).toContain('sticky');
+      expect(th!.className).toContain('top-0');
+    });
+
+    it('还有下一页时不说「有 N 笔未指定」', async () => {
+      // 这个数只是已经翻到的那几页，说出来它会随着滚动往上跳。
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+        nextCursor: 'more',
+      });
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).not.toHaveTextContent(/are unassigned/);
+    });
+
+    it('退款空着的时候也留着那个哨兵', async () => {
+      // 这一项在服务端切完页之后自己再滤一次，整页都被滤掉时没有哨兵就永远
+      // 停在这儿。
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
+        nextCursor: 'more',
+      });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      // 哨兵得真的在这一支里渲染出来。观察它的那个 hook 在测试里被打了桩，
+      // 所以只问 hook 拿没拿到回调是问不出「元素在不在」的。
+      expect(body.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    });
+
+    it('可退金额按 1 积分 1 美分换算', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ remainingCredits: 880, currency: 'usd' })],
+        nextCursor: null,
+      });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('$8.80');
+    });
+
+    it('上一页失败之后，观察者停下等读者再滚一次', async () => {
+      fetchCreditLots
+        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
+        .mockRejectedValueOnce(new Error('nope'));
+      await openOn('lots');
+      await panel();
+
+      reachEnd!();
+      await waitFor(() => {
+        expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+      });
+      // 失败之后不再自动重来，而且第一页还在手上：把读者已经看到的东西换成
+      // 一句「加载失败」，丢掉的比这次失败本身还多。
+      await new Promise((r) => setTimeout(r, 60));
+      expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+      expect(await screen.findByRole('tabpanel')).toHaveTextContent('$50.00');
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+  });
+
   describe('各 Studio', () => {
     it('一行报四样：可用、欠账、已消耗、已指定几个包', async () => {
       fetchCreditOverview.mockResolvedValue(
