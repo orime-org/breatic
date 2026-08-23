@@ -447,10 +447,27 @@ export async function designateLot(input: {
 /** One studio's line on the account overview. */
 export interface StudioCreditSummary {
   studioId: string;
+  /**
+   * What to call it. Empty when the studio was deleted and the row survives
+   * only because money was spent on it.
+   */
+  studioName: string;
+  studioSlug: string;
+  /** Whether it is gone, which is why its balance reads as nothing. */
+  deleted: boolean;
   /** What this studio can spend of this account's money. */
   spendable: number;
+  /**
+   * What it owes. Reported beside `spendable` rather than subtracted from it:
+   * a debt belongs to the studio and is caused by everyone generating in it,
+   * so taking it off a per-account figure makes two funders each lose all of
+   * it.
+   */
+  debt: number;
   /** What it has already spent of it. */
   spent: number;
+  /** How many of this account's lots point at it. */
+  lotCount: number;
 }
 
 /** What an account holds, and where. */
@@ -459,6 +476,12 @@ export interface CreditOverview {
   assignedCredits: number;
   /** Bought but pointed at no live studio, so unspendable until assigned. */
   unassignedCredits: number;
+  /**
+   * Whether this deployment charges for generation at all. Without it a fresh
+   * account and a self-hosted install look identical on the wire: three zeros
+   * and no studios.
+   */
+  billing: boolean;
   /** Every studio this account has money in or has spent money in. */
   studios: StudioCreditSummary[];
 }
@@ -484,21 +507,44 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   for (const row of spendableRows) {
     byStudio.set(row.studioId, {
       studioId: row.studioId,
+      studioName: row.studioName,
+      studioSlug: row.studioSlug,
+      deleted: false,
       spendable: toMicroCredits(row.spendable) / 1_000_000,
+      debt: 0,
       spent: 0,
+      lotCount: row.lotCount,
     });
   }
   for (const row of spentRows) {
     const existing = byStudio.get(row.studioId);
     const spent = toMicroCredits(row.spent) / 1_000_000;
     if (existing) existing.spent = spent;
-    else byStudio.set(row.studioId, { studioId: row.studioId, spendable: 0, spent });
+    // Only the spending side reaches a deleted studio: the spendable side
+    // excludes them, so a studio that appears here alone is one that is gone.
+    else
+      byStudio.set(row.studioId, {
+        studioId: row.studioId,
+        studioName: row.studioName,
+        studioSlug: row.studioSlug,
+        deleted: true,
+        spendable: 0,
+        debt: 0,
+        spent,
+        lotCount: 0,
+      });
   }
 
   const studios = [...byStudio.values()];
+  const debts = await creditLotRepo.readDebtsFor(studios.map((s) => s.studioId));
+  for (const studio of studios) {
+    studio.debt = toMicroCredits(debts.get(studio.studioId) ?? "0") / 1_000_000;
+  }
+
   return {
     assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
     unassignedCredits: unassigned,
+    billing: env.PAYMENT_ENABLED,
     studios,
   };
 }

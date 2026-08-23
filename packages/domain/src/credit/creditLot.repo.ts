@@ -353,6 +353,26 @@ export async function sumSpendableForStudio(
 }
 
 /**
+ * What several studios owe, in one read.
+ *
+ * The overview lists a studio per line and each line reports its debt; asking
+ * per studio would put a query on every line.
+ * @param studioIds - The studios to look up. An empty list reads nothing.
+ * @returns Debt by studio id, in credits as a decimal string. A studio that
+ *   owes nothing is absent rather than zero — the caller defaults it.
+ */
+export async function readDebtsFor(
+  studioIds: string[],
+): Promise<Map<string, string>> {
+  if (studioIds.length === 0) return new Map();
+  const rows = await db
+    .select({ studioId: studioCreditDebts.studioId, amount: studioCreditDebts.amount })
+    .from(studioCreditDebts)
+    .where(inArray(studioCreditDebts.studioId, studioIds));
+  return new Map(rows.map((row) => [row.studioId, row.amount]));
+}
+
+/**
  * What a studio owes, read without locking.
  *
  * For display and for the precheck, both of which want the number as it
@@ -755,13 +775,20 @@ export async function listLedgerByStudio(
  */
 export async function sumSpentByStudio(
   payerUserId: string,
-): Promise<{ studioId: string; spent: string }[]> {
+): Promise<{ studioId: string; studioName: string; studioSlug: string; spent: string }[]> {
   const rows = await db
     .select({
       studioId: creditLedger.studioId,
+      studioName: studios.name,
+      studioSlug: studios.slug,
       spent: sql<string>`(-SUM(${creditLedger.amount}))::text`,
     })
     .from(creditLedger)
+    // No liveness condition. A studio that was deleted or handed over keeps
+    // the spending that happened on it: `payer_user_id` says whose money it
+    // was and no later event rewrites it. AWS and Google Cloud both keep the
+    // cost of resources that are gone for the same reason — the money left.
+    .leftJoin(studios, eq(studios.id, creditLedger.studioId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
@@ -771,16 +798,20 @@ export async function sumSpentByStudio(
         // The studio ledger totals the same two types for the same reason.
         inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
-        // Only rows that actually drew down a purchase. Usage recorded without
-        // a charge carries no lot, and counting it reports money that never
-        // left the account.
-        isNotNull(creditLedger.lotId),
       ),
     )
-    .groupBy(creditLedger.studioId);
+    .groupBy(creditLedger.studioId, studios.name, studios.slug);
   return rows
-    .filter((row): row is { studioId: string; spent: string } => row.studioId !== null)
-    .map((row) => ({ studioId: row.studioId, spent: row.spent }));
+    .filter(
+      (row): row is { studioId: string; studioName: string | null; studioSlug: string | null; spent: string } =>
+        row.studioId !== null,
+    )
+    .map((row) => ({
+      studioId: row.studioId,
+      studioName: row.studioName ?? "",
+      studioSlug: row.studioSlug ?? "",
+      spent: row.spent,
+    }));
 }
 
 /**
@@ -788,13 +819,25 @@ export async function sumSpentByStudio(
  * @param userId - Whose lots to group.
  * @returns One entry per studio holding a live lot of this account's.
  */
-export async function sumSpendableByStudio(
-  userId: string,
-): Promise<{ studioId: string; spendable: string }[]> {
+export async function sumSpendableByStudio(userId: string): Promise<
+  {
+    studioId: string;
+    studioName: string;
+    studioSlug: string;
+    spendable: string;
+    lotCount: number;
+  }[]
+> {
   const rows = await db
     .select({
       studioId: creditLots.designatedStudioId,
+      studioName: studios.name,
+      studioSlug: studios.slug,
       spendable: sql<string>`SUM(${creditLots.remainingCredits})::text`,
+      // How many lots point here, which is what the overlay reports. A count
+      // rather than the lots themselves: the reader is asking whether any are
+      // assigned, and one aggregate answers that without a second query.
+      lotCount: sql<number>`COUNT(*)::int`,
     })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
@@ -806,13 +849,32 @@ export async function sumSpendableByStudio(
         isNull(studios.deletedAt),
       ),
     )
-    .groupBy(creditLots.designatedStudioId);
+    // The name and slug join the key rather than riding along: a column in the
+    // select list that is neither grouped nor aggregated makes Postgres refuse
+    // the query outright.
+    .groupBy(creditLots.designatedStudioId, studios.name, studios.slug);
   // Same three conditions as `spendableByStudio`, grouped instead of pinned to
   // one studio — the shared helper takes a studio id, which this one does not
   // have.
   return rows
-    .filter((row): row is { studioId: string; spendable: string } => row.studioId !== null)
-    .map((row) => ({ studioId: row.studioId, spendable: row.spendable }));
+    .filter(
+      (
+        row,
+      ): row is {
+        studioId: string;
+        studioName: string;
+        studioSlug: string;
+        spendable: string;
+        lotCount: number;
+      } => row.studioId !== null,
+    )
+    .map((row) => ({
+      studioId: row.studioId,
+      studioName: row.studioName,
+      studioSlug: row.studioSlug,
+      spendable: row.spendable,
+      lotCount: row.lotCount,
+    }));
 }
 
 /**
