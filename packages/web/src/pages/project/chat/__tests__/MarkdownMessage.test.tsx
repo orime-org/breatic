@@ -122,12 +122,28 @@ describe('MarkdownMessage — completion mid-stream (R2)', () => {
     expect(body()).toHaveTextContent('see the official docs');
   });
 
-  it('leaves a lone backtick alone and closes the live marker instead', () => {
-    // With every handler on, the closing tick goes to that lone backtick and
-    // the ** actually being streamed stays open.
+  it('leaves a lone backtick alone, and stops completing after it', () => {
+    // Two halves, and the second is a limitation worth pinning.
+    //
+    // With inlineCode on, that lone backtick takes a closing tick and a long
+    // run of prose turns into inline code on screen. Off, it stays a
+    // character — but remend still reads everything after it as sitting
+    // inside an unterminated code span, so the ** further down is left alone
+    // too. Completion downstream of a lone backtick does not happen.
+    //
+    // It lasts until the model sends the closing marker, and a settled
+    // message never runs completion at all, so both states end up showing
+    // exactly what was sent.
     draw('press ` to continue\n\nand then **the bold being written', true);
 
     expect(body().querySelector('code')).toBeNull();
+    expect(body().querySelector('strong')).toBeNull();
+    expect(body()).toHaveTextContent('**the bold being written');
+  });
+
+  it('completes normally when no lone backtick precedes the marker', () => {
+    draw('a clean opening line\n\nand then **the bold being written', true);
+
     expect(body().querySelector('strong')).toHaveTextContent('the bold being written');
   });
 
@@ -154,7 +170,11 @@ describe('MarkdownMessage — a settled message (R3)', () => {
   });
 
   it('keeps a lone backtick and star while real inline code still renders', () => {
-    draw('press ` to continue, see int *p = &x; there, and `real code` here', false);
+    // Separate blocks on purpose: a code span does not cross a blank line, so
+    // the lone backtick cannot pair with the one opening `real code`. Put them
+    // in one paragraph and CommonMark pairs the first two ticks it meets —
+    // which is the language's rule, not something this component decides.
+    draw('press ` to continue, see int *p = &x; there\n\nand `real code` here', false);
 
     expect(body().querySelectorAll('code')).toHaveLength(1);
     expect(body().querySelector('code')).toHaveTextContent('real code');
