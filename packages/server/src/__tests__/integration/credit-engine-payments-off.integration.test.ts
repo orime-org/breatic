@@ -135,3 +135,28 @@ describe("支付关闭", () => {
     ).resolves.toMatchObject({ billed: false });
   });
 });
+
+describe("支付关闭时的已消耗（任务 #12，计划 §4.6）", () => {
+  it("无包可扣的用量算进这个 studio 的已消耗", async () => {
+    const fx = await seedFixture();
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 42,
+      model: "seedream-4.0",
+    });
+
+    const overview = await creditLotService.getOverview(fx.userId);
+    const mine = overview.studios.find((s) => s.studioId === fx.studioId);
+
+    // 消耗和扣费是两个行为（user 2026-08-23）。支付关闭只是没有积分可扣，
+    // 消耗照样发生——`creditLot.service.ts` 那个分支的注释自己写着「a
+    // deployment that charges nobody still wants to know what it produced」。
+    //
+    // 而 sumSpentByStudio 有 isNotNull(lotId)，把这类行滤掉了。去掉那个条件
+    // 不影响支付开启：那时被统计的两类行（spend 与 debt_repayment）都挂着
+    // lot，扣不满写的是 debt_incurred、本来就不在 inArray 里。
+    expect(mine).toBeDefined();
+    expect(Number(mine!.spent)).toBe(42);
+  });
+});
