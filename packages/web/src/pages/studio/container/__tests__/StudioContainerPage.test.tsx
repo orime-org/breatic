@@ -19,6 +19,14 @@ vi.mock('@web/data/api/studios', () => ({
     listProjects: vi.fn(),
   },
 }));
+vi.mock('@web/data/api/credits', () => ({
+  fetchStudioCredits: vi.fn().mockResolvedValue({
+    spendable: 4910,
+    lots: [],
+    ledger: { items: [], nextCursor: null },
+  }),
+}));
+
 vi.mock('@web/data/api/projects', () => ({
   projectsApi: { create: vi.fn() },
 }));
@@ -56,6 +64,18 @@ const STRANGER: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: null,
+};
+// A team studio the viewer is in, but not as its admin. The money sections
+// are the admin's, so this viewer's strip is one shorter than the admin's.
+const MAINTAINED: StudioDetail = {
+  id: 's-maintained',
+  slug: 'maintained-studio',
+  name: 'Maintained Studio',
+  type: 'team',
+  memberCount: 3,
+  avatarUrl: null,
+  bio: null,
+  myStudioRole: 'maintainer',
 };
 const STUDIOS: readonly StudioSummary[] = [
   {
@@ -100,6 +120,7 @@ beforeEach(() => {
   vi.mocked(studiosApi.get).mockImplementation(async (slug: string) => {
     if (slug === 'alex') return PERSONAL;
     if (slug === 'stranger-studio') return STRANGER;
+    if (slug === 'maintained-studio') return MAINTAINED;
     return TEAM;
   });
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([...STUDIOS]);
@@ -354,6 +375,32 @@ describe('StudioContainerPage', () => {
     expect(screen.queryByRole('navigation', { name: 'Studio sections' })).toBeNull();
   });
 
+  it('sends a member who is not the admin away from Credits', async () => {
+    // The strip a maintainer sees has no Credits link, so the address names a
+    // section that is not on their page — the same situation as the
+    // non-member's `settings` above, and it gets the same answer. They arrive
+    // here by typing it or by following the admin's link.
+    setup('maintained-studio', false, 'credits');
+    await waitFor(() =>
+      expect(screen.getByTestId('location').textContent).toBe(
+        '/studio/maintained-studio',
+      ),
+    );
+    expect(
+      await screen.findByRole('link', { name: /Projects/ }),
+    ).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByTestId('studio-spendable')).toBeNull();
+  });
+
+  it('leaves Credits out of a maintainer’s strip', async () => {
+    setup('maintained-studio');
+    const strip = await screen.findByRole('navigation', {
+      name: 'Studio sections',
+    });
+    expect(within(strip).queryByRole('link', { name: /Credits/ })).toBeNull();
+    expect(within(strip).getAllByRole('link')).toHaveLength(5);
+  });
+
   it('puts the section the address names ON the page, not just in the strip', async () => {
     // The strip and the panel are two halves and only the second one is what
     // the reader came for. Asserting the strip alone let the whole Settings
@@ -370,7 +417,7 @@ describe('StudioContainerPage', () => {
     // A second section, so the assertion above reads as "the address decides
     // what is rendered" rather than as one special case for Settings.
     setup('acme-studio', false, 'credits');
-    expect(await screen.findByTestId('wallet-balance')).toBeInTheDocument();
+    expect(await screen.findByTestId('studio-spendable')).toBeInTheDocument();
   });
 
   it('keeps the address in step when the user switches tab by clicking', async () => {

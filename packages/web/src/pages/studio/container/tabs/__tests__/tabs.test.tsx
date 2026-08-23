@@ -8,12 +8,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ProjectsTab } from '@web/pages/studio/container/tabs/ProjectsTab';
-import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import { MembersTab } from '@web/pages/studio/container/tabs/MembersTab';
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
 import type {
   ContainerProject,
-  CreditWallet,
   StudioDetail,
   StudioMember,
 } from '@web/pages/studio/container/container-types';
@@ -82,8 +80,8 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     ).toBeInTheDocument();
     maintainer.unmount();
 
-    // A plain guest cannot create — studio credits are shared, so creating is
-    // limited to admin/maintainer (spec §0.2 / §8.2).
+    // A plain guest cannot create — creating is limited to admin/maintainer
+    // (spec §0.2 / §8.2).
     const guest = withRouter(
       <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' />,
     );
@@ -93,76 +91,6 @@ describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
     // A non-member viewing the public shell never sees the create entry.
     withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
-  });
-});
-
-// ── CreditsTab — invariant 4 (read cached total, team has no gift) ──────────
-const TEAM_WALLET: CreditWallet = {
-  balanceCached: 999, // deliberately != sum of lots, to prove it is read, not summed
-  paidLots: [
-    {
-      id: 'l1',
-      source: 'paid',
-      amountInitial: 10000,
-      amountRemaining: 8000,
-      isRefundable: true,
-      expiresAt: null,
-    },
-  ],
-  giftLots: [],
-  ledger: [],
-};
-const PERSONAL_WALLET: CreditWallet = {
-  balanceCached: 5200,
-  paidLots: [
-    {
-      id: 'l2',
-      source: 'paid',
-      amountInitial: 3000,
-      amountRemaining: 2000,
-      isRefundable: true,
-      expiresAt: null,
-    },
-  ],
-  giftLots: [
-    {
-      id: 'g1',
-      source: 'promo',
-      amountInitial: 2000,
-      amountRemaining: 1200,
-      isRefundable: false,
-      expiresAt: '2026-06-11T00:00:00.000Z',
-    },
-  ],
-  ledger: [],
-};
-const NOW = Date.UTC(2026, 5, 5);
-
-describe('CreditsTab (spec §4 invariant 4: read-only cached balance)', () => {
-  it('renders the cached balance verbatim, never recomputed from lots', () => {
-    render(<CreditsTab wallet={TEAM_WALLET} studioRole='admin' now={NOW} />);
-    expect(screen.getByTestId('wallet-balance').textContent).toContain('999');
-  });
-
-  it('hides the gift section for a team studio (no gift lots)', () => {
-    render(<CreditsTab wallet={TEAM_WALLET} studioRole='admin' now={NOW} />);
-    expect(screen.queryByText('Gift credits')).toBeNull();
-  });
-
-  it('shows the gift section for a personal studio', () => {
-    render(<CreditsTab wallet={PERSONAL_WALLET} studioRole='admin' now={NOW} />);
-    expect(screen.getByText('Gift credits')).toBeInTheDocument();
-  });
-
-  it('shows refund only to an Admin', () => {
-    const { rerender } = render(
-      <CreditsTab wallet={TEAM_WALLET} studioRole='admin' now={NOW} />,
-    );
-    expect(
-      screen.getByRole('button', { name: 'Request refund' }),
-    ).toBeInTheDocument();
-    rerender(<CreditsTab wallet={TEAM_WALLET} studioRole='guest' now={NOW} />);
-    expect(screen.queryByRole('button', { name: 'Request refund' })).toBeNull();
   });
 });
 

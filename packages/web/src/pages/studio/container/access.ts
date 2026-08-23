@@ -64,8 +64,7 @@ export function canManageItem(
 /**
  * Whether the viewer may create projects in a studio (spec §0.2 / §8.2): only
  * an `admin` or `maintainer` may — a plain `guest` role and a non-member
- * (`null` studio role) may not, because studio credits are shared and creating a project can
- * spend them. Gates the create entry in the rail (§4.1) and the Projects tab
+ * (`null` studio role) may not. Gates the create entry in the rail (§4.1) and the Projects tab
  * (§7.1); the server re-checks the same rule on create (`requireStudioCreate
  * Access`), so this is a UX gate, not the security boundary.
  * @param studioRole the viewer's studio-level role, or `null` for a non-member.

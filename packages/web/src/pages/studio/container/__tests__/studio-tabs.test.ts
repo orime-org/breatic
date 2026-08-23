@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_STUDIO_TAB,
   isAddressableTabSegment,
+  isTabOnThisPage,
   STUDIO_TABS,
   studioTabFromParam,
   studioTabPath,
@@ -34,17 +35,59 @@ describe('studio-tabs (spec §6.1 — Works tab at the 3rd position)', () => {
   });
 
   it('shows Works for a team studio (6 tabs, Members included)', () => {
-    const keys = visibleStudioTabs('team').map((tab) => tab.key);
+    const keys = visibleStudioTabs('team', 'admin').map((tab) => tab.key);
     expect(keys).toContain('works');
     expect(keys).toContain('members');
     expect(keys).toHaveLength(6);
   });
 
   it('shows all 6 tabs for a personal studio (Members now read-only, A 方案)', () => {
-    const keys = visibleStudioTabs('personal').map((tab) => tab.key);
+    const keys = visibleStudioTabs('personal', 'admin').map((tab) => tab.key);
     expect(keys).toContain('works');
     expect(keys).toContain('members');
     expect(keys).toHaveLength(6);
+  });
+});
+
+describe('visibleStudioTabs — Credits belongs to the studio admin alone', () => {
+  it('keeps Credits for the admin', () => {
+    for (const type of ['team', 'personal'] as const) {
+      expect(
+        visibleStudioTabs(type, 'admin').map((tab) => tab.key),
+      ).toContain('credits');
+    }
+  });
+
+  it('drops Credits for every other role, leaving the other five', () => {
+    for (const role of ['maintainer', 'guest'] as const) {
+      const keys = visibleStudioTabs('team', role).map((tab) => tab.key);
+      expect(keys).not.toContain('credits');
+      expect(keys).toHaveLength(5);
+    }
+  });
+
+  it('offers a non-member nothing — that page renders no strip at all', () => {
+    expect(visibleStudioTabs('team', null)).toEqual([]);
+  });
+});
+
+describe('isTabOnThisPage — the strip is what decides an address is real', () => {
+  it('answers for a role exactly what the strip shows it', () => {
+    // Asked of the strip rather than restated, so a section that becomes
+    // role-gated later stops being addressable in the same edit.
+    for (const role of ['admin', 'maintainer', 'guest'] as const) {
+      const shown = visibleStudioTabs('team', role).map((tab) => tab.key);
+      for (const tab of STUDIO_TABS) {
+        expect(isTabOnThisPage(tab.key, 'team', role)).toBe(
+          shown.includes(tab.key),
+        );
+      }
+    }
+  });
+
+  it('refuses Credits to a maintainer and grants it to the admin', () => {
+    expect(isTabOnThisPage('credits', 'team', 'maintainer')).toBe(false);
+    expect(isTabOnThisPage('credits', 'team', 'admin')).toBe(true);
   });
 });
 

@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import {
-  CreditLotBadge,
   RoleBadge,
   StudioTypePill,
   VisibilityBadge,
@@ -33,14 +32,5 @@ describe('studio badges (spec §3.5)', () => {
     expect(screen.getByText('Team')).toBeInTheDocument();
     rerender(<StudioTypePill type='personal' />);
     expect(screen.getByText('Personal')).toBeInTheDocument();
-  });
-
-  it('credit lot badge distinguishes paid, gift and expiring', () => {
-    const { rerender } = render(<CreditLotBadge source='paid' />);
-    expect(screen.getByText(/Permanent/)).toBeInTheDocument();
-    rerender(<CreditLotBadge source='promo' />);
-    expect(screen.getByText(/Gift/)).toBeInTheDocument();
-    rerender(<CreditLotBadge source='promo' expiringDays={7} />);
-    expect(screen.getByText(/7 days/)).toBeInTheDocument();
   });
 });

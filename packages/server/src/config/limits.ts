@@ -6,7 +6,8 @@
  *
  * Loads the operator-tunable numbers from `config/limits.yaml`:
  *
- *   - page sizes for the activity feed and the node-history panel.
+ *   - page sizes for the activity feed, the node-history panel and the
+ *     credit overlay.
  *   - the canvas reference-pool cap.
  *   - the decision window — how long someone has to answer an invitation, a
  *     transfer, or a role-upgrade request.
@@ -29,6 +30,8 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
+  credit_page_default: z.number().int().positive().default(30),
+  credit_page_max: z.number().int().positive().default(100),
   decision_window_days: z.number().int().positive().default(7),
   storage_notice_window_seconds: z.number().int().positive().default(86400),
 });
@@ -59,6 +62,16 @@ function loadConfig(): z.infer<typeof limitsConfigSchema> {
 export function getActivityFeedPageLimits(): { default: number; max: number } {
   const c = loadConfig();
   return { default: c.activity_feed_page_default, max: c.activity_feed_page_max };
+}
+
+/**
+ * Credit paging bounds for the overlay's purchase list and ledger (default
+ * when no `?limit`, and the ceiling a client `?limit` is clamped to).
+ * @returns `{ default: number, max: number }` page-size bounds.
+ */
+export function getCreditPageLimits(): { default: number; max: number } {
+  const c = loadConfig();
+  return { default: c.credit_page_default, max: c.credit_page_max };
 }
 
 /**

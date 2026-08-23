@@ -25,12 +25,18 @@ import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { t } from "@breatic/shared";
 import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
+import { creditPageQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { studioService, projectService, recentService } from "@server/modules";
-import { getStorageConfig, ValidationError } from "@breatic/core";
+import {
+  studioService,
+  projectService,
+  recentService,
+  creditViewService,
+} from "@server/modules";
+import { getStorageConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { readBoundedBody } from "@server/utils/read-bounded-body.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
@@ -465,6 +471,39 @@ studio.delete(
     const invitationId = c.req.param("invitationId");
     await studioInviteService.revokeInvite(slug, invitationId);
     return c.json({ data: { ok: true } });
+  },
+);
+
+/**
+ * `GET /api/v1/studio/:slug/credits` — this studio's credits, for its admin.
+ *
+ * The pool is the studio's money and the admin is who manages it, so this
+ * page is theirs alone. The web app leaves the section out of everyone else's
+ * strip, but a URL is typed as easily as it is clicked, so the door is here.
+ *
+ * The ledger beside it is the studio's own, one line per generation: taking
+ * it by payer would hide what everyone else's top-ups paid for, and would
+ * split a generation that ran short between two people, since its spend rows
+ * are against the lot owner and its shortfall against whoever ran it.
+ * @returns `200` with `{ data: StudioCreditsView }`; `403` for anyone who is
+ *   not this studio's admin (which also hides whether the studio exists),
+ *   `401` when signed out
+ */
+studio.get(
+  "/:slug/credits",
+  requireStudioRole("admin"),
+  validate("query", creditPageQuerySchema),
+  async (c) => {
+    const slug = c.req.param("slug");
+    const target = await studioService.getStudioBySlug(slug);
+    if (!target) throw new NotFoundError(t("server.error.not_found"));
+    const { limit, cursor } = c.req.valid("query");
+    const data = await creditViewService.getStudioCredits(
+      target.id,
+      limit,
+      cursor,
+    );
+    return c.json({ data });
   },
 );
 

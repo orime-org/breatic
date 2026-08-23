@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   render as rtlRender,
   screen,
+  within,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,7 +13,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
 
-import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
+import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import type { Member } from '@web/data/api/members';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
@@ -56,7 +57,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a TopBar component prop (owner | editor | viewer), not a DOM ARIA role
         role='owner'
-        credits={42}
+        credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
         members={MEMBERS}
         {...overrides}
@@ -81,7 +82,7 @@ describe('TopBar', () => {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
-        credits={42}
+        credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
       />
     );
@@ -104,8 +105,50 @@ describe('TopBar', () => {
   });
 
   it('shows the credits chip with the credit count', () => {
-    setup({ credits: 7 });
+    setup({ credits: { status: 'ready', value: 7 } });
     expect(screen.getByTestId('credits-chip')).toHaveTextContent('7');
+  });
+
+  it('reads out a negative balance when the studio owes', () => {
+    setup({ credits: { status: 'ready', value: -320 } });
+    expect(screen.getByTestId('credits-chip')).toHaveTextContent('-320');
+  });
+
+  it('rounds a fractional balance the way the credits tab does', () => {
+    // Model costs are not whole credits, so a balance with decimals is the
+    // normal case. This is the same figure the Studio's credits tab shows,
+    // and one place reading 10.368 while the other reads 10.37 makes a
+    // person check which of the two is their money.
+    setup({ credits: { status: 'ready', value: 10.368 } });
+    expect(screen.getByTestId('credits-chip')).toHaveTextContent('10.37');
+  });
+
+  it('shows a placeholder while the balance is still being fetched', () => {
+    // Zero is a real balance here — the pre-check turns generation away on it.
+    // Showing it before the answer arrives states something that is not known.
+    setup({ credits: { status: 'pending' } });
+    const chip = screen.getByTestId('credits-chip');
+    expect(chip).not.toHaveTextContent('0');
+    expect(
+      within(chip).getByTestId('credits-chip-placeholder'),
+    ).toBeInTheDocument();
+  });
+
+  it('says the balance is unknown when it could not be fetched', () => {
+    // React Query stops after its retries, so this is where the chip stays
+    // until the page is reopened.
+    setup({ credits: { status: 'error' } });
+    const chip = screen.getByTestId('credits-chip');
+    expect(chip).not.toHaveTextContent('0');
+    expect(chip).toHaveTextContent('—');
+  });
+
+  it('carries nothing to press — it is a readout', () => {
+    // Everyone working in the project sees how much its pool has left.
+    // Topping up is an account-level act and lives on the account page.
+    setup({ credits: { status: 'ready', value: 7 } });
+    const chip = screen.getByTestId('credits-chip');
+    expect(within(chip).queryByRole('button')).toBeNull();
   });
 
   it('title double-click swaps to <input>; typing + Enter commits the new name', async () => {
@@ -190,6 +233,43 @@ describe('TopBar', () => {
       setup({ role: 'viewer' });
       await user.click(screen.getByTestId('members-trigger'));
       expect(screen.queryByTestId('members-manage-trigger')).toBeNull();
+    });
+  });
+});
+
+describe('toCreditsReadout', () => {
+  it('reads out the balance once an answer has arrived', () => {
+    expect(toCreditsReadout({ data: { spendable: -320 }, isError: false })).toEqual({
+      status: 'ready',
+      value: -320,
+    });
+  });
+
+  it('reads out zero as a balance, because that is what it is', () => {
+    expect(toCreditsReadout({ data: { spendable: 0 }, isError: false })).toEqual({
+      status: 'ready',
+      value: 0,
+    });
+  });
+
+  it('has no figure while the first answer is still on its way', () => {
+    expect(toCreditsReadout({ data: undefined, isError: false })).toEqual({
+      status: 'pending',
+    });
+  });
+
+  it('says it does not know once the query has given up', () => {
+    expect(toCreditsReadout({ data: undefined, isError: true })).toEqual({
+      status: 'error',
+    });
+  });
+
+  it('keeps the last balance when a refetch fails', () => {
+    // React Query holds the previous answer through a failed refetch, and one
+    // refetch old beats replacing a real figure with "unknown".
+    expect(toCreditsReadout({ data: { spendable: 4910 }, isError: true })).toEqual({
+      status: 'ready',
+      value: 4910,
     });
   });
 });

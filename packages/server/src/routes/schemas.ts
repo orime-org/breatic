@@ -30,6 +30,7 @@ export {
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
+import { creditLotService } from "@breatic/domain";
 
 /**
  * Shared fields every canvas-bound mini-tool / AIGC task carries:
@@ -254,6 +255,26 @@ export const textToolSchema = z.discriminatedUnion("tool", [
   textToolBase.extend({ tool: z.literal("script"), scene_description: z.string(), characters: z.array(z.string()).optional() }),
 ]);
 
+/**
+ * The `Idempotency-Key` header, as the charge will read it.
+ *
+ * The header travels into the charge as its reference key, where
+ * `REFKEY_PATTERN` refuses anything outside it. Refusing there is refusing
+ * too late: the model has already run and the tokens are already spent, so
+ * the caller pays for a run whose charge cannot be recorded. The same pattern
+ * is asked here, at the door, and the answer is a `422` before any of that.
+ *
+ * Absent is fine — the route then mints a key of its own and each retry is
+ * its own charge, which is what a text tool means when it regenerates.
+ * Hono lowercases header names, so the key below is the name as it arrives.
+ */
+export const idempotencyKeyHeaderSchema = z.object({
+  "idempotency-key": z
+    .string()
+    .regex(creditLotService.REFKEY_PATTERN)
+    .optional(),
+});
+
 // Skill Market
 export const skillMarketQuerySchema = z.object({
   tags: z.string().transform((s) => s.split(",").filter(Boolean)).optional(),
@@ -283,3 +304,32 @@ export const attachmentParamSchema = z.object({
   cid: z.string().uuid(),
   aid: z.string().uuid(),
 });
+
+/**
+ * Keyset paging for the credit overlay. Both fields are optional: the first
+ * page asks for neither, and the page size falls back to the configured
+ * default when the client omits it. Kept as strings because the service
+ * clamps `limit` against `config/limits.yaml` and treats a malformed cursor
+ * as "first page" — a garbage value from the network must not fail the panel.
+ */
+export const creditPageQuerySchema = z.object({
+  limit: z.string().optional(),
+  cursor: z.string().optional(),
+});
+
+/** The ledger takes the same paging, plus an optional studio filter. */
+export const creditLedgerQuerySchema = creditPageQuerySchema.extend({
+  studioId: z.string().uuid().optional(),
+});
+
+/**
+ * Which studio may spend a purchase. `null` means unassigned, so the field is
+ * required rather than optional: omitting it is a malformed request, while
+ * sending null is an instruction to take the purchase back.
+ */
+export const designationSchema = z.object({
+  studioId: z.string().uuid().nullable(),
+});
+
+/** A lot named in a path. Checked so a malformed id answers 422 rather than reaching the uuid column. */
+export const lotParamSchema = z.object({ id: z.string().uuid() });

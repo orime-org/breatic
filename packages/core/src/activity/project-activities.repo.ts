@@ -38,28 +38,80 @@ export interface NewProjectActivity {
   payload: Record<string, unknown>;
 }
 
-/** Decoded keyset cursor - the (created_at, id) of the previous page's last row. */
+/**
+ * Decoded keyset cursor - the (created_at, id) of the previous page's last row.
+ *
+ * The timestamp travels as the text Postgres produced, never as a `Date`. The
+ * columns these cursors page over are `timestamp with time zone`, which keeps
+ * microseconds, and a `Date` holds milliseconds: rounding the boundary down
+ * puts the "continue from here" line before rows that belong on the next page,
+ * and every query that pages by time drops them without a trace.
+ */
 export interface ActivityCursor {
-  createdAt: Date;
+  /** `created_at` as `::text`, at the precision the column stores. */
+  createdAt: string;
   id: string;
+}
+
+/** Matches what Postgres renders a `timestamptz` as, to the microsecond. */
+const PG_TIMESTAMPTZ =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?[+-](\d{2})(?::(\d{2}))?$/;
+
+/** Matches a canonical UUID, which is what the id columns hold. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether a timestamp of the right shape also holds a real instant.
+ *
+ * The shape alone admits `2026-02-30` and `+99`. Postgres refuses both at
+ * the `::timestamptz` cast — the first as `date/time field value out of
+ * range`, the second as `time zone displacement out of range` — and either
+ * one ends the request as a 500 on a value that arrived over the network.
+ * The day round-trips through a UTC date, which brings the leap-year rule
+ * with it; `Date.parse` would roll February 30th forward to March instead
+ * of refusing it.
+ * @param match - The result of matching {@link PG_TIMESTAMPTZ}.
+ * @returns Whether every field is in range.
+ */
+function isRealTimestamp(match: RegExpExecArray): boolean {
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const tzHour = Number(match[7]);
+  const tzMinute = match[8] === undefined ? 0 : Number(match[8]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  // Postgres accepts offsets out to 15:59:59 either side of UTC.
+  if (tzHour > 15 || tzMinute > 59) return false;
+  const at = new Date(0);
+  at.setUTCFullYear(year, month - 1, day);
+  return at.getUTCMonth() === month - 1 && at.getUTCDate() === day;
 }
 
 /**
  * Encode a keyset cursor as an opaque base64url token.
- * @param createdAt - `created_at` of the previous page's last row.
+ * @param createdAt - `created_at::text` of the previous page's last row.
  * @param id - `id` of the previous page's last row (tie-breaker).
  * @returns Opaque cursor string for the next page request.
  */
-export function encodeActivityCursor(createdAt: Date, id: string): string {
-  return Buffer.from(
-    JSON.stringify({ c: createdAt.getTime(), i: id }),
-  ).toString("base64url");
+export function encodeActivityCursor(createdAt: string, id: string): string {
+  return Buffer.from(JSON.stringify({ c: createdAt, i: id })).toString(
+    "base64url",
+  );
 }
 
 /**
  * Decode an opaque activity cursor. Malformed input returns `null`
  * (callers fall back to the first page) instead of throwing - cursors
  * arrive from the network and must never 500 the feed route.
+ *
+ * Both halves are checked here because both reach the database: the
+ * timestamp is cast to `timestamptz` and the id is compared against a uuid
+ * column, and a value either one cannot read ends the request as a 500.
+ * Every page these cursors walk gets the same check by decoding here.
  * @param cursor - Opaque cursor string from the client.
  * @returns The decoded (createdAt, id) pair, or `null` when malformed.
  */
@@ -71,9 +123,11 @@ export function decodeActivityCursor(cursor: string): ActivityCursor | null {
     if (typeof parsed !== "object" || parsed === null) return null;
     const c = (parsed as Record<string, unknown>)["c"];
     const i = (parsed as Record<string, unknown>)["i"];
-    if (typeof c !== "number" || !Number.isFinite(c)) return null;
-    if (typeof i !== "string" || i.length === 0) return null;
-    return { createdAt: new Date(c), id: i };
+    if (typeof c !== "string") return null;
+    const shape = PG_TIMESTAMPTZ.exec(c);
+    if (!shape || !isRealTimestamp(shape)) return null;
+    if (typeof i !== "string" || !UUID.test(i)) return null;
+    return { createdAt: c, id: i };
   } catch {
     // Malformed base64 / JSON - treated as "no cursor" by callers.
     return null;
@@ -218,27 +272,37 @@ export const projectActivitiesRepo = {
    * @param projectId - Project whose feed to read.
    * @param cursor - Decoded cursor from the previous page, or null for the first page.
    * @param limit - Page size (caller-clamped).
-   * @returns Entries newest-first; `length === limit` implies more pages may exist.
+   * @returns Entries newest-first, each beside the `created_at` text its
+   *   cursor is built from. The two are separate values because the entry is
+   *   what the route serves and the text is not part of that shape.
+   *   `length === limit` implies more pages may exist.
    */
   async listByProject(
     projectId: string,
     cursor: ActivityCursor | null,
     limit: number,
-  ): Promise<ProjectActivityEntry[]> {
-    const keysetFilter = cursor
-      ? or(
-          lt(projectActivities.createdAt, cursor.createdAt),
-          and(
-            eq(projectActivities.createdAt, cursor.createdAt),
-            lt(projectActivities.id, cursor.id),
-          ),
-        )
-      : undefined;
+  ): Promise<{ entry: ProjectActivityEntry; cursorAt: string }[]> {
+    const cursorAt = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
+    const keysetFilter =
+      cursor && cursorAt
+        ? or(
+            lt(projectActivities.createdAt, cursorAt),
+            and(
+              eq(projectActivities.createdAt, cursorAt),
+              lt(projectActivities.id, cursor.id),
+            ),
+          )
+        : undefined;
     // Display names live on the personal studio (`users` is the pure
     // auth table - email-registration rewrite 2026-06-06), so the
     // actor join targets studios(type='personal').
     const rows = await db
-      .select({ row: projectActivities, actorName: studios.name })
+      .select({
+        row: projectActivities,
+        actorName: studios.name,
+        // The cursor is built from this, not from the mapped `Date`.
+        cursorAt: sql<string>`${projectActivities.createdAt}::text`,
+      })
       .from(projectActivities)
       .leftJoin(
         studios,
@@ -257,7 +321,10 @@ export const projectActivitiesRepo = {
       )
       .orderBy(desc(projectActivities.createdAt), desc(projectActivities.id))
       .limit(limit);
-    return rows.map((r) => toEntity(r.row, r.actorName));
+    return rows.map((r) => ({
+      entry: toEntity(r.row, r.actorName),
+      cursorAt: r.cursorAt,
+    }));
   },
 
   /**

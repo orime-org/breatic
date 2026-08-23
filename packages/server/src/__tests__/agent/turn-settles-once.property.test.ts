@@ -39,7 +39,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 
 /** What the model produces this run. */
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
@@ -75,7 +75,7 @@ vi.mock("@breatic/domain", async () => {
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "m", instructions: "s", tools: {} }),
-    creditService: { deductOnce },
+    creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
     getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };
@@ -191,11 +191,11 @@ async function settle(
   const storedReplies = addMessage.mock.calls
     .map(([, msg]) => msg)
     .filter((msg) => msg.role === "assistant").length;
-  return { storedReplies, charges: deductOnce.mock.calls.length };
+  return { storedReplies, charges: chargeOnceForGeneration.mock.calls.length };
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, deductOnce].forEach((m) => {
+  [addMessage, consolidateIfNeeded, chargeOnceForGeneration].forEach((m) => {
     m.mockClear();
   });
 });
@@ -204,7 +204,7 @@ describe("whatever the model says, the turn settles up once", () => {
   it("stores what it owes and charges at most once, read to the end", async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(unitArbitrary, { maxLength: 8 }), async (units) => {
-        [addMessage, deductOnce].forEach((m) => {
+        [addMessage, chargeOnceForGeneration].forEach((m) => {
           m.mockClear();
         });
         const { storedReplies, charges } = await settle(units);
@@ -223,7 +223,7 @@ describe("whatever the model says, the turn settles up once", () => {
         fc.array(unitArbitrary, { maxLength: 8 }),
         fc.nat({ max: 10 }),
         async (units, letGoAfter) => {
-          [addMessage, deductOnce].forEach((m) => {
+          [addMessage, chargeOnceForGeneration].forEach((m) => {
             m.mockClear();
           });
           const { storedReplies, charges } = await settle(units, letGoAfter);

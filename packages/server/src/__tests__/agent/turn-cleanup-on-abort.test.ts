@@ -29,12 +29,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
+import { mocks } from "@server/__tests__/helpers/mock-core.js";
 
 const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
 const consolidateIfNeeded = vi.fn(async () => undefined);
-const deductOnce = vi.fn(async (..._args: unknown[]) => undefined);
+const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
+  billed: true,
+  charged: 5,
+  shortfall: 0,
+  studioId: 's1',
+  lotIds: ['l1'],
+}));
 /** Set when the code under test reads `usage`, which is what consumes a stream. */
 const usageRead = vi.fn();
 
@@ -88,7 +95,7 @@ vi.mock("@breatic/domain", async () => {
       instructions: "sys",
       tools: {},
     }),
-    creditService: { deductOnce },
+    creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
     getModel: () => "model",
   };
@@ -123,7 +130,7 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, deductOnce, usageRead].forEach((m) => m.mockClear());
+  [addMessage, consolidateIfNeeded, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the
@@ -210,10 +217,47 @@ describe("a turn cut short by the client", () => {
       ),
     ).toBe(true);
     expect(consolidateIfNeeded).toHaveBeenCalled();
-    expect(deductOnce).toHaveBeenCalled();
+    expect(chargeOnceForGeneration).toHaveBeenCalled();
     // What it billed for is the step the stream actually reported, not the
     // figure the consuming getter would have produced.
-    expect(deductOnce.mock.calls[0]?.[4]).toMatchObject({ tokensUsed: 900 });
+    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ tokensUsed: 900 });
     expect(usageRead).not.toHaveBeenCalled();
+  });
+});
+
+describe("一个回合扣不满时", () => {
+  it("把差额记进对账日志", async () => {
+    // domain 不写日志，短扣以返回值表达，由知道任务和用户的这一层记。worker
+    // 那条路照做了；少了这一处，池子见底那一刻花掉的部分没有任何东西能让人
+    // 事后发现。
+    chargeOnceForGeneration.mockResolvedValueOnce({
+      billed: true,
+      charged: 30,
+      shortfall: 70,
+      studioId: "s1",
+      lotIds: ["l1"],
+    });
+    mocks.logger.error.mockClear();
+
+    const { MainAgent } = await import("@server/agent/main-agent.js");
+    const { runWithContext } = await import("@breatic/core");
+    await runWithContext(
+      { userId: "u1", conversationId: "c1", projectId: "p1" },
+      async () => {
+        const agent = new MainAgent();
+        const reader = (await agent.chat("hi")).getReader();
+        await reader.read();
+        await reader.read();
+        await reader.read();
+        await reader.cancel();
+      },
+    );
+
+    const line = mocks.logger.error.mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[1] === "string" && call[1].includes("CREDIT_SHORTFALL"),
+    );
+    expect(line, "短扣没有留下任何对账记录").toBeDefined();
+    expect(line?.[0]).toMatchObject({ shortfall: 70, charged: 30 });
   });
 });

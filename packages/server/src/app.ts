@@ -26,6 +26,7 @@ import { projectsRoute } from "@server/routes/projects.js";
 import { skillsRoute } from "@server/routes/skills.js";
 import { tasksRoute } from "@server/routes/tasks.js";
 import { paymentRoute } from "@server/routes/payment.js";
+import creditsRoute from "@server/routes/credits.js";
 import { textToolsRoute } from "@server/routes/text-tools.js";
 import { modelsRoute } from "@server/routes/models.js";
 import { assetsRoute } from "@server/routes/assets.js";
@@ -93,6 +94,7 @@ export function createApp(): Hono {
   app.route("/api/v1/skills", skillsRoute);
   app.route("/api/v1/tasks", tasksRoute);
   app.route("/api/v1/payment", paymentRoute);
+  app.route("/api/v1/credits", creditsRoute);
   app.route("/api/v1/models", modelsRoute);
   app.route("/api/v1/assets", assetsRoute);
   app.route("/api/v1/account/subscription", subscriptionRoute);

@@ -22,7 +22,11 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
-import { projectService, recentService } from "@server/modules";
+import {
+  creditViewService,
+  projectService,
+  recentService,
+} from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
@@ -175,6 +179,29 @@ projects.get("/:id", async (c) => {
     deletedAt: project.deletedAt,
   };
   return c.json({ data: detail });
+});
+
+/**
+ * `GET /projects/:id/credits` — what the studio owning this project can
+ * spend, for the top bar.
+ *
+ * Its own endpoint, and its own gate. The studio's credits page is the
+ * admin's alone, while this figure is shown to everyone working in the
+ * project: they spend this pool when they generate, so they get to see how
+ * much of it is left. Below zero when the studio owes.
+ *
+ * Separate from `GET /:id` because the two change at different rates — this
+ * moves with every generation, the project's name and role do not — so the
+ * client refreshes it without refetching the project.
+ * @returns `200` with `{ data: { spendable: number } }`; `404` when the
+ *   caller cannot reach this project, which never leaks its existence
+ */
+projects.get("/:id/credits", async (c) => {
+  const user = c.get("user");
+  const projectId = c.req.param("id");
+  await projectService.assertAccess(projectId, user.id);
+  const spendable = await creditViewService.getProjectCredits(projectId);
+  return c.json({ data: { spendable } });
 });
 
 /**

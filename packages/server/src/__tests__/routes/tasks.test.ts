@@ -36,7 +36,7 @@ describe("Tasks routes", () => {
     vi.clearAllMocks();
     mocks.projectService.assertAccess.mockResolvedValue(undefined);
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
-    mocks.creditService.getBalance.mockResolvedValue(100);
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
   });
 
   describe("GET /tasks — list", () => {
@@ -170,7 +170,7 @@ describe("Tasks routes", () => {
     });
 
     it("rejects with 402 when the balance is below the estimate — no task row created (#1580 #7 pre-check)", async () => {
-      mocks.creditService.getBalance.mockResolvedValue(0);
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -369,7 +369,7 @@ describe("Tasks routes", () => {
 
   describe("POST /canvas/understand — credit pre-check (#1580 adversarial)", () => {
     it("rejects with 402 when the balance is below the estimate — no task row created", async () => {
-      mocks.creditService.getBalance.mockResolvedValue(0);
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",

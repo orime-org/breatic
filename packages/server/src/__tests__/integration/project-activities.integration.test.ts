@@ -40,7 +40,12 @@ import {
   loadLocales,
   projectActivitiesRepo,
 } from "@breatic/core";
-import type { ProjectActivityPage } from "@breatic/shared";
+import { z } from "zod";
+import {
+  ProjectActivityEntrySchema,
+  type ProjectActivityPage,
+} from "@breatic/shared";
+import type { ActivityCursor } from "@breatic/core";
 import type { Hono } from "hono";
 
 try {
@@ -293,6 +298,111 @@ describe("GET /projects/:id/activities — keyset feed", () => {
       { headers: { Cookie: await loginCookie(userId) } },
     );
     expect(garbage.status).toBe(200);
+  });
+
+  it("walks every row when a page boundary falls inside one millisecond", async () => {
+    // `created_at` is written by `now()` and Postgres keeps it to the
+    // microsecond. Three things happening in one project a few hundred
+    // microseconds apart share a millisecond, and a cursor rounded to
+    // milliseconds draws the "continue from here" line in the wrong place:
+    // the rows inside that gap are never served again.
+    const { userId } = await insertUserWithStudio("Micro Author");
+    const projectId = await insertProject(userId);
+    const stamps = [
+      "2026-08-22 12:00:00.789900+00",
+      "2026-08-22 12:00:00.789400+00",
+      "2026-08-22 12:00:00.789000+00",
+    ];
+    for (const stamp of stamps) {
+      const id = await projectActivitiesRepo.insert({
+        projectId,
+        actorUserId: userId,
+        type: "space:created",
+        payload: { spaceName: stamp },
+      });
+      // A literal, because a parameterised timestamp goes through the driver
+      // and loses the microseconds on the way in.
+      await sql.unsafe(
+        `UPDATE project_activities SET created_at = TIMESTAMPTZ '${stamp}' WHERE id = '${id}'`,
+      );
+    }
+
+    const seen: string[] = [];
+    let cursor: ActivityCursor | null = null;
+    for (let page = 0; page < 5; page++) {
+      const rows = await projectActivitiesRepo.listByProject(
+        projectId,
+        cursor,
+        1,
+      );
+      if (rows.length === 0) break;
+      seen.push(rows[0]!.entry.id);
+      cursor = { createdAt: rows[0]!.cursorAt, id: rows[0]!.entry.id };
+    }
+
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it("sends nothing beyond the fields the page schema declares", async () => {
+    // The keyset needs `created_at` at full precision, which the row carries
+    // alongside the entry. It is the cursor's raw material and its format is
+    // whatever the server's Postgres session renders — the wire says
+    // `createdAt` in epoch milliseconds and nothing else about this row.
+    const { userId } = await insertUserWithStudio("Shape Author");
+    const projectId = await insertProject(userId);
+    await projectActivitiesRepo.insert({
+      projectId,
+      actorUserId: userId,
+      type: "space:created",
+      payload: { spaceName: "shape" },
+    });
+
+    const res = await app.request(
+      `/api/v1/projects/${projectId}/activities?limit=5`,
+      { headers: { Cookie: await loginCookie(userId) } },
+    );
+    const body = (await res.json()) as { data: unknown };
+
+    expect(() =>
+      z
+        .object({
+          items: z.array(ProjectActivityEntrySchema.strict()),
+          nextCursor: z.string().nullable(),
+        })
+        .strict()
+        .parse(body.data),
+    ).not.toThrow();
+  });
+
+  it("answers a cursor the database cannot read with the first page", async () => {
+    // Cursors arrive from the network. These two decode cleanly and are the
+    // right shape; Postgres refuses both — `2026-02-30` as a date out of
+    // range, `not-a-uuid` as a uuid it cannot parse — and the request would
+    // end as a 500 on someone else's input.
+    const { userId } = await insertUserWithStudio("Cursor Author");
+    const projectId = await insertProject(userId);
+    await projectActivitiesRepo.insert({
+      projectId,
+      actorUserId: userId,
+      type: "space:created",
+      payload: { spaceName: "only" },
+    });
+    const cookie = await loginCookie(userId);
+
+    for (const cursor of [
+      { c: "2026-02-30 00:00:00+00", i: crypto.randomUUID() },
+      { c: "2026-07-04 03:00:00+00", i: "not-a-uuid" },
+    ]) {
+      const encoded = Buffer.from(JSON.stringify(cursor)).toString("base64url");
+      const res = await app.request(
+        `/api/v1/projects/${projectId}/activities?cursor=${encoded}`,
+        { headers: { Cookie: cookie } },
+      );
+      expect(res.status).toBe(200);
+      const page = ((await res.json()) as { data: ProjectActivityPage }).data;
+      expect(page.items).toHaveLength(1);
+    }
   });
 });
 
