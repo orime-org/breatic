@@ -74,9 +74,10 @@
  * `:178` makes the bar itself focusable (`tabIndex = 0`). The ruling (§5.2)
  * keeps the whole bar out of the tab order: it floats ON TOP of the body, and
  * anything floating over the body that takes focus collides with the body's
- * own focus with no way to reconcile them. The keyboard route to these six
- * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` for the
- * marks, `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-b` for the blocks.
+ * own focus with no way to reconcile them. The keyboard route to these eight
+ * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` / `Mod-u`
+ * for the marks, `Mod-e` for inline code, `Mod-Shift-8` / `Mod-Shift-7` /
+ * `Mod-Shift-b` for the blocks.
  */
 
 import * as React from 'react';
@@ -150,7 +151,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
         id: 'ai',
         labelKey: 'spaces.document.commands.ai',
         Icon: Sparkles,
-        opensAMenu: true,
+        drawsAsDropdown: true,
       },
     ],
   },
@@ -837,7 +838,7 @@ function BubbleBar({
   // render — a co-editor's change arrives with no React render behind it. The
   // buttons are built only while it is true: each of them runs its command's
   // dry run on every transaction, and the bar spends almost all of its life
-  // hidden, so leaving them mounted doubles that work (six extra dry runs per
+  // hidden, so leaving them mounted doubles that work (eight extra dry runs per
   // keystroke) for a carrier nobody can see.
   const hasSelection = useEditorState({
     editor,

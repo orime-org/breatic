@@ -84,7 +84,7 @@ export const ToolButton = React.memo(function ToolButton({
     }),
     // Compared field by field: the selector builds a fresh object on every
     // transaction, so identity would report a change on every keystroke and
-    // re-render all six buttons for nothing.
+    // re-render all eight buttons for nothing.
     equalityFn: (a, b) =>
       b !== null && a.active === b.active && a.available === b.available,
   });

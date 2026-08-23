@@ -51,7 +51,7 @@ export interface ComingToolDef {
    * entry is drawn this way — it opens onto a list of commands, and the demo
    * says so on its face.
    */
-  opensAMenu?: boolean;
+  drawsAsDropdown?: boolean;
 }
 
 interface ComingToolProps {
@@ -79,14 +79,14 @@ export const ComingTool = React.memo(function ComingTool({
       <TooltipTrigger asChild>
         <Button
           variant='ghost'
-          size={tool.opensAMenu ? null : 'icon'}
+          size={tool.drawsAsDropdown ? null : 'icon'}
           aria-disabled='true'
           aria-label={label}
           data-testid={`doc-bubble-coming-${tool.id}`}
           onClick={(event) => event.preventDefault()}
           tabIndex={-1}
           className={
-            tool.opensAMenu
+            tool.drawsAsDropdown
               // `.bubble-drop`: 26 tall, 6px either side, 3px between the
               // three things in it. The demo draws 13px text; the size comes
               // from the button's own `text-sm` instead, which is the token
@@ -96,7 +96,7 @@ export const ComingTool = React.memo(function ComingTool({
           }
         >
           <Icon className='h-4 w-4' />
-          {tool.opensAMenu ? (
+          {tool.drawsAsDropdown ? (
             <>
               {t(tool.labelKey)}
               <ChevronDown className='h-[13px] w-[13px]' />

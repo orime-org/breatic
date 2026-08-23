@@ -357,6 +357,23 @@ describe('选中浮出条', () => {
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
   });
 
+  // A9：AI 那一个按 demo 是带文字和箭头的下拉样子，评论是图标按钮。没有这一条
+  // 时把 `drawsAsDropdown` 摘掉，两层测试都是绿的（第二轮对抗变异证过）。
+  it('draws the AI entry the way the demo draws a menu opener', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const ai = screen.getByTestId('doc-bubble-coming-ai');
+    const comment = screen.getByTestId('doc-bubble-coming-comment');
+
+    expect(ai).toHaveTextContent('AI');
+    // 图标加箭头两个 svg；评论只有图标一个。
+    expect(ai.querySelectorAll('svg')).toHaveLength(2);
+    expect(comment.querySelectorAll('svg')).toHaveLength(1);
+    expect(comment.textContent).toBe('');
+  });
+
   // A8: an icon-only button with no visible text is a square without a name.
   // Asserted as "not the key itself" rather than "not empty": `t()` hands back
   // the key when it resolves nothing (`shared/src/i18n/index.ts:131`), so a
@@ -379,39 +396,9 @@ describe('选中浮出条', () => {
   // A11: the whole bar stays out of the tab order (ruling R4), so these two
   // follow the command buttons beside them. What they do carry is
   // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
-  // accessibility tree to be read, the second drops them out of it.
-  it.each([
-    ['comment'],
-    ['ai'],
-  ])('keeps %s out of the tab order, the way the bar does', async (id) => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
-    expect(entry.getAttribute('tabindex')).toBe('-1');
-    expect(entry.hasAttribute('disabled')).toBe(false);
-  });
-
   // A8: an icon-only button with no visible text is a square without a name.
   // Asserted as "not the key itself" rather than "not empty": `t()` hands back
   // the key when it resolves nothing (`shared/src/i18n/index.ts:131`), so a
-  // label pointing at a key no catalog has would pass the weaker check.
-  it.each([
-    ['tool-underline', 'spaces.document.commands.underline'],
-    ['tool-code', 'spaces.document.commands.code'],
-    ['coming-comment', 'spaces.document.commands.comment'],
-    ['coming-ai', 'spaces.document.commands.ai'],
-  ])('gives %s a name that can be read out', async (id, key) => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const label = screen.getByTestId(`doc-bubble-${id}`).getAttribute('aria-label');
-    expect(label).toBeTruthy();
-    expect(label).not.toContain(key);
-  });
-
   // A11：这一步存在的唯一理由。六个逐一验，不抽验。
   // 标记是 Yjs 片段里的 schema 节点名，不是 HTML 标签名——`toString()` 打出来
   // 的是 `<bold>` / `<bulletlist>` 这一套。
