@@ -48,8 +48,9 @@ const LINK_BASE =
   'inline-flex items-center gap-1.5 -mb-px border-b border-transparent px-3 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
 /**
- * The studio container's section strip (spec §2.2) — six sections, the same
- * six for either kind of studio, each a link to its own address.
+ * The studio container's section strip (spec §2.2) — each section a link to
+ * its own address. Which ones are on offer depends on the reader: Credits is
+ * the studio admin's alone, so everyone else sees five.
  *
  * LINKS, NOT A TABLIST, and the difference is not cosmetic. The ARIA tabs
  * widget moves focus with the arrow keys and activates whatever focus lands

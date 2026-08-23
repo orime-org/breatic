@@ -129,9 +129,12 @@ describe('CreditsTab', () => {
     expect(await screen.findByTestId('studio-credits-unassigned-notice')).toBeInTheDocument();
   });
 
-  it('names the four situations apart, since all three zeroes read alike', async () => {
-    // "Nothing was ever assigned here", "it was all spent" and "it owes" are
-    // three different answers, and only one of them is fixed by assigning more.
+  it('names the four situations apart, since a bare figure does not', async () => {
+    // 4910, 0, 0 and -320 on their own do not say which situation this studio
+    // is in — the two zeroes read identically, and a negative figure needs
+    // saying out loud. "Nothing was ever assigned here", "it was all spent"
+    // and "it owes" each get their own sentence, and each sentence points at
+    // what to do next.
     const cases = [
       {
         head: { spendable: 4910, debt: 0 },

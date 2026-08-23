@@ -67,7 +67,7 @@ const LotRow = React.memo(function LotRow({
  * @param props.testId - What a test reaches it by.
  * @param props.label - What this line is.
  * @param props.amount - Its figure.
- * @param props.strong - Whether it is the total, which is set apart by a rule.
+ * @param props.strong - Whether it is the total, which is set apart by its weight.
  * @returns The row.
  */
 const SummaryRow = React.memo(function SummaryRow({

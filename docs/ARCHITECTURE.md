@@ -166,7 +166,7 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 | 执行 | BullMQ Worker(异步) | API 直接 streamText(同步 SSE) |
 | 结果交付 | Redis → Hocuspocus → Yjs(协作者可见) | SSE 流给请求者(私有,接受后才写 Yjs) |
 | 用户交互 | 等待 → 结果出现 | 打字机效果,可随时 abort |
-| 积分 | 按 API cost | 按 token 消耗 |
+| 积分 | 按 API cost | 按 token 消耗算,但这条路今天扣不到任何 studio —— 它的路由还没带 project(#122),而付钱的 studio 由 project 决定 |
 | 并发 | Worker concurrency 控制 | 每用户 1 个(Redis 锁) |
 
 Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue / generate / character / storyboard / script。操作类发完整 `document` + `selection` 保证上下文。自动匹配输入语言回复。

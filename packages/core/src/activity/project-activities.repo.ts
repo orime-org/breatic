@@ -63,11 +63,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Whether a timestamp of the right shape also holds a real instant.
  *
- * The shape alone admits `2026-02-30` and `+99`, and Postgres answers both
- * with `date/time field value out of range` at the `::timestamptz` cast —
- * a 500 on a value that arrived over the network. The day round-trips
- * through a UTC date, which brings the leap-year rule with it; `Date.parse`
- * would roll February 30th forward to March instead of refusing it.
+ * The shape alone admits `2026-02-30` and `+99`. Postgres refuses both at
+ * the `::timestamptz` cast — the first as `date/time field value out of
+ * range`, the second as `time zone displacement out of range` — and either
+ * one ends the request as a 500 on a value that arrived over the network.
+ * The day round-trips through a UTC date, which brings the leap-year rule
+ * with it; `Date.parse` would roll February 30th forward to March instead
+ * of refusing it.
  * @param match - The result of matching {@link PG_TIMESTAMPTZ}.
  * @returns Whether every field is in range.
  */

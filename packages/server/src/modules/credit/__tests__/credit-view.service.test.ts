@@ -41,6 +41,33 @@ const CURSOR = Buffer.from(
   }),
 ).toString("base64url");
 
+/**
+ * 一行流水，够 `toStudioLedgerView` 和游标各取所需。
+ * @param id - 行 id，也是游标的 tie-breaker。
+ * @param time - 当天的时刻，微秒级。
+ * @returns 一行 repo 形状的流水。
+ */
+function ledgerRow(
+  id: string,
+  time: string,
+): Record<string, unknown> {
+  return {
+    id,
+    cursorAt: `2026-08-22 ${time}+00`,
+    kind: "generation",
+    actorUserId: null,
+    actorName: null,
+    projectId: null,
+    projectName: null,
+    model: null,
+    provider: null,
+    charged: "-10.000000",
+    consumed: "-10.000000",
+    owed: "0.000000",
+    createdAt: new Date(`2026-08-22T${time.slice(0, 8)}Z`),
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   readStudioCredits.mockResolvedValue({
@@ -78,28 +105,24 @@ describe("GET a studio's credits", () => {
   });
 
   it("carries the ledger page and its next cursor back out", async () => {
+    // Two rows for a page of one: the extra says there is more. The cursor is
+    // built from the last row the client actually receives, so the next page
+    // continues from there rather than skipping the one held back.
     listLedgerByStudio.mockResolvedValue([
-      {
-        id: "0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b",
-        cursorAt: "2026-08-22 10:00:00.123456+00",
-        kind: "generation",
-        actorUserId: null,
-        actorName: null,
-        projectId: null,
-        projectName: null,
-        model: null,
-        provider: null,
-        charged: "-10.000000",
-        consumed: "-10.000000",
-        owed: "0.000000",
-        createdAt: new Date("2026-08-22T10:00:00.123Z"),
-      },
+      ledgerRow("0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b", "10:00:00.123456"),
+      ledgerRow("1c9f9b63-af2d-5f7f-ab63-2d3e4f5a6b7c", "09:00:00.654321"),
     ]);
 
     const view = await getStudioCredits("s-1", "1", CURSOR);
 
     expect(view.ledger?.items).toHaveLength(1);
     expect(view.ledger?.items[0]).toMatchObject({ charged: -10 });
+    expect(view.ledger?.nextCursor).not.toBeNull();
+    const decoded = JSON.parse(
+      Buffer.from(view.ledger.nextCursor as string, "base64url").toString("utf8"),
+    ) as { c: string; i: string };
+    expect(decoded.c).toBe("2026-08-22 10:00:00.123456+00");
+    expect(decoded.i).toBe("0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b");
   });
 
   it("keeps the fields the tab opens with off a continuation", async () => {

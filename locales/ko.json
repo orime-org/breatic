@@ -917,7 +917,7 @@
         "noteShortfall": "소비 {consumed}, 미납 {owed}",
         "noteUnbilled": "소비 {consumed}, 청구 없음",
         "eventRepayment": "크레딧 지정, 미납 충당",
-        "lotsEmpty": "아직 크레딧이 없습니다.",
+        "lotsEmpty": "여기에는 아직 크레딧이 없습니다.",
         "lotPurchased": "총 {amount}",
         "activityTitle": "사용 내역",
         "activityEmpty": "아직 사용 내역이 없습니다.",

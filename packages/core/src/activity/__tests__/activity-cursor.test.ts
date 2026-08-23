@@ -49,8 +49,10 @@ describe("activity keyset cursor", () => {
   });
 
   it("rejects a timestamp that is not one Postgres would have produced", () => {
-    // These reach a `::timestamptz` cast, so a shape the column never emits is
-    // a value that arrived over the network and would fail the query.
+    // The column never emits any of these, so a cursor carrying one did not
+    // come from us. Postgres reads three of the four quite happily —
+    // `yesterday` is a date it resolves against the clock — which is worse
+    // than a failed query: the page would silently start somewhere else.
     for (const c of [
       "2026-07-04T03:00:00.000Z",
       "1780900000000",
@@ -66,10 +68,11 @@ describe("activity keyset cursor", () => {
   });
 
   it("rejects a timestamp whose shape is right and whose value is not", () => {
-    // Postgres answers every one of these with `date/time field value out of
-    // range` and the request ends as a 500, so the shape alone cannot be the
-    // whole check. February 30th is the one to watch: `Date.parse` rolls it
-    // forward to March instead of refusing it.
+    // Postgres refuses every one of these at the cast — the dates and times
+    // as `date/time field value out of range`, the two offsets as `time zone
+    // displacement out of range` — and the request ends as a 500, so the
+    // shape alone cannot be the whole check. February 30th is the one to
+    // watch: `Date.parse` rolls it forward to March instead of refusing it.
     for (const c of [
       "2026-13-04 03:00:00+00",
       "2026-07-45 03:00:00+00",
