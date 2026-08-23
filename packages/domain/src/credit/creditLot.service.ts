@@ -38,7 +38,11 @@ import {
   ForbiddenError,
 } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { CreditLotEntity } from "@breatic/shared";
+import type {
+  CreditLotEntity,
+  CreditOverview,
+  StudioCreditSummary,
+} from "@breatic/shared";
 
 /**
  * The shape a caller-supplied idempotency key must take: ASCII alphanumerics
@@ -442,48 +446,6 @@ export async function designateLot(input: {
       lifecycle: charged.lifecycle,
     };
   });
-}
-
-/** One studio's line on the account overview. */
-export interface StudioCreditSummary {
-  studioId: string;
-  /**
-   * What to call it. Empty when the studio was deleted and the row survives
-   * only because money was spent on it.
-   */
-  studioName: string;
-  studioSlug: string;
-  /** Whether it is gone, which is why its balance reads as nothing. */
-  deleted: boolean;
-  /** What this studio can spend of this account's money. */
-  spendable: number;
-  /**
-   * What it owes. Reported beside `spendable` rather than subtracted from it:
-   * a debt belongs to the studio and is caused by everyone generating in it,
-   * so taking it off a per-account figure makes two funders each lose all of
-   * it.
-   */
-  debt: number;
-  /** What it has already spent of it. */
-  spent: number;
-  /** How many of this account's lots point at it. */
-  lotCount: number;
-}
-
-/** What an account holds, and where. */
-export interface CreditOverview {
-  /** Sitting in studios, ready to spend. */
-  assignedCredits: number;
-  /** Bought but pointed at no live studio, so unspendable until assigned. */
-  unassignedCredits: number;
-  /**
-   * Whether this deployment charges for generation at all. Without it a fresh
-   * account and a self-hosted install look identical on the wire: three zeros
-   * and no studios.
-   */
-  billing: boolean;
-  /** Every studio this account has money in or has spent money in. */
-  studios: StudioCreditSummary[];
 }
 
 /**

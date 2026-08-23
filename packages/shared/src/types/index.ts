@@ -30,6 +30,17 @@ export type {
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 
+export type {
+  CreditPage,
+  CreditLotView,
+  StudioLotView,
+  CreditLedgerView,
+  StudioLedgerView,
+  StudioCreditsView,
+  StudioCreditSummary,
+  CreditOverview,
+} from "@shared/types/credit.js";
+
 export {
   HANDLING_TIMEOUT_MS,
   canGenerate,

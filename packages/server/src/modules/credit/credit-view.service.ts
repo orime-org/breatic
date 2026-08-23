@@ -19,62 +19,14 @@ import type { ActivityCursor } from "@breatic/core";
 import type {
   CreditLotEntity,
   CreditLotLifecycle,
-  CreditLedgerEntryEntity,
+  CreditLedgerView,
+  CreditLotView,
+  CreditPage,
+  StudioCreditsView,
+  StudioLedgerView,
+  StudioLotView,
 } from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
-
-/** One purchase, as the overlay shows it. */
-export interface CreditLotView {
-  id: string;
-  purchasedCredits: number;
-  remainingCredits: number;
-  designatedStudioId: string | null;
-  /** The studio it points at, named. Null when it points at none. */
-  designatedStudioName: string | null;
-  /** What was paid for it, in the smallest unit of `currency`. */
-  paidCents: number;
-  currency: string;
-  lifecycle: string;
-  /** How many refund requests were refused; the lifecycle keeps no trace. */
-  refundAttempts: number;
-  createdAt: string;
-}
-
-/** One lot a studio holds, where the buyer is a column. */
-export interface StudioLotView extends CreditLotView {
-  /** Who bought it. Absent when their personal studio is gone. */
-  buyerName: string | null;
-}
-
-/** One ledger row, as the overlay shows it. */
-export interface CreditLedgerView {
-  id: string;
-  actorUserId: string | null;
-  /** Who spent it, by display name. */
-  actorName: string | null;
-  studioId: string | null;
-  /** Which studio it was spent in, by name. Survives that studio's deletion. */
-  studioName: string | null;
-  projectId: string | null;
-  /** Where it was spent, by name. */
-  projectName: string | null;
-  model: string | null;
-  provider: string | null;
-  /** What left a purchase. */
-  charged: number;
-  /** What the run used, debt included. */
-  consumed: number;
-  /** How much of it went on the tab. */
-  owed: number;
-  createdAt: string;
-}
-
-/** One keyset page. */
-export interface CreditPage<T> {
-  items: T[];
-  /** Feed back as `?cursor` for the next page; null at the end. */
-  nextCursor: string | null;
-}
 
 /**
  * Decode a cursor, treating anything unusable as "start from the beginning".
@@ -132,7 +84,16 @@ function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
  * @returns The view model.
  */
 function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
-  return { ...toLotView(lot), buyerName: lot.buyerName };
+  return {
+    id: lot.id,
+    purchasedCredits: toNumber(lot.purchasedCredits),
+    remainingCredits: toNumber(lot.remainingCredits),
+    designatedStudioId: lot.designatedStudioId,
+    lifecycle: lot.lifecycle,
+    refundAttempts: lot.refundAttempts,
+    createdAt: lot.createdAt.toISOString(),
+    buyerName: lot.buyerName,
+  };
 }
 
 /**
@@ -261,39 +222,6 @@ export async function listLedger(
 export async function getProjectCredits(projectId: string): Promise<number> {
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   return creditLotService.getSpendableCredits(studioId);
-}
-
-/** One line of a studio's ledger: everything one event moved. */
-export interface StudioLedgerView {
-  id: string;
-  /** A generation, or a designation paying off what the studio owed. */
-  kind: "generation" | "debt_repayment";
-  actorUserId: string | null;
-  /** Who ran it, by display name. */
-  actorName: string | null;
-  projectId: string | null;
-  /** Where it ran, by name. */
-  projectName: string | null;
-  model: string | null;
-  provider: string | null;
-  /** What left the pool. This is the figure the amount column shows. */
-  charged: number;
-  /** What the run used. Equal to `charged` unless a lot could not cover it. */
-  consumed: number;
-  /** The part of that no lot covered. */
-  owed: number;
-  createdAt: string;
-}
-
-/** What one studio holds and has spent, for its credits tab. */
-export interface StudioCreditsView {
-  /** Present on the first page only — it does not change between pages. */
-  spendable?: number;
-  /** What the studio owes, as a positive number. First page only. */
-  debt?: number;
-  /** Present on the first page only, for the same reason. */
-  lots?: StudioLotView[];
-  ledger: CreditPage<StudioLedgerView>;
 }
 
 /**

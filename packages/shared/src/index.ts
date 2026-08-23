@@ -171,6 +171,17 @@ export {
 } from "@shared/types/index.js";
 
 export type {
+  CreditPage,
+  CreditLotView,
+  StudioLotView,
+  CreditLedgerView,
+  StudioLedgerView,
+  StudioCreditsView,
+  StudioCreditSummary,
+  CreditOverview,
+} from "@shared/types/index.js";
+
+export type {
   ApiResponse,
   PaginatedResponse,
   ApiError,
