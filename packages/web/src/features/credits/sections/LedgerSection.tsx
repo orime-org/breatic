@@ -14,13 +14,14 @@ import {
 import { fetchCreditLedger } from '@web/data/api/credits';
 import {
   Card,
+  ListEnd,
   Section,
+  Footnote,
   SectionEmpty,
   SectionError,
   SectionSkeleton,
   TableHead,
 } from '@web/features/credits/section-chrome';
-import { ListEnd } from '@web/features/credits/sections/LotsSection';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -73,23 +74,33 @@ export function LedgerSection({
     enabled: userId !== null,
   });
 
+  // The labels are read outside the memo and the memo depends on their
+  // values. `useTranslation` hands back a function whose identity never
+  // changes — switching language re-renders without changing it — so a memo
+  // keyed on the function itself keeps serving the previous language.
+  const colDay = t('credits.colDay');
+  const colWho = t('credits.colWho');
+  const colStudio = t('credits.colStudio');
+  const colProject = t('credits.colProject');
+  const colModel = t('credits.colModel');
+  const colAmount = t('credits.colAmount');
   const columns = React.useMemo(
     () =>
       [
-        { key: 'day', label: t('credits.colDay') },
-        { key: 'who', label: t('credits.colWho') },
-        { key: 'studio', label: t('credits.colStudio') },
-        { key: 'project', label: t('credits.colProject') },
-        { key: 'model', label: t('credits.colModel') },
-        { key: 'amount', label: t('credits.colAmount'), align: 'right' as const },
+        { key: 'day', label: colDay },
+        { key: 'who', label: colWho },
+        { key: 'studio', label: colStudio },
+        { key: 'project', label: colProject },
+        { key: 'model', label: colModel },
+        { key: 'amount', label: colAmount, align: 'right' as const },
       ] as const,
-    [t],
+    [colDay, colWho, colStudio, colProject, colModel, colAmount],
   );
 
   return (
     <Section title={t('credits.section.ledger')}>
       {overview.billing ? null : (
-        <SectionEmpty message={t('credits.ledgerBillingOff')} />
+        <Footnote>{t('credits.ledgerBillingOff')}</Footnote>
       )}
       {paging.isPending ? (
         <SectionSkeleton />
@@ -115,7 +126,7 @@ export function LedgerSection({
                   </SelectItem>
                   {overview.studios.map((studio) => (
                     <SelectItem key={studio.studioId} value={studio.studioId}>
-                      {studio.deleted
+                      {studio.studioName === ''
                         ? t('credits.deletedStudio')
                         : studio.studioName}
                     </SelectItem>
@@ -166,7 +177,7 @@ interface LedgerRowProps {
  * @param props.row - One generation's line.
  * @returns The row.
  */
-function LedgerRow({ row }: LedgerRowProps): React.JSX.Element {
+const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.JSX.Element {
   const t = useTranslation();
   const shortfall = row.owed !== 0;
   const unbilled = row.charged === 0 && row.owed === 0 && row.consumed !== 0;
@@ -178,7 +189,7 @@ function LedgerRow({ row }: LedgerRowProps): React.JSX.Element {
       </td>
       <td className='py-1.5'>{row.actorName ?? '—'}</td>
       <td className='py-1.5 text-muted-foreground'>
-        {row.studioName ?? t('credits.deletedStudio')}
+        {row.studioName ?? '—'}
       </td>
       <td className='py-1.5 text-muted-foreground'>
         {row.projectName ?? '—'}
@@ -203,4 +214,4 @@ function LedgerRow({ row }: LedgerRowProps): React.JSX.Element {
       </td>
     </tr>
   );
-}
+});

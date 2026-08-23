@@ -1276,8 +1276,7 @@
       "depleted": "已用完",
       "refund_pending": "審核中",
       "refunding": "退款中",
-      "refunded": "已退款",
-      "expired": "已過期"
+      "refunded": "已退款"
     },
     "billingOff": {
       "title": "這個部署不計點數",

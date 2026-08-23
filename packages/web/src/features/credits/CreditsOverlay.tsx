@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { X } from 'lucide-react';
 
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogTitle,
 } from '@web/components/ui/dialog';
@@ -17,7 +15,9 @@ import {
   CREDITS_SECTION_GROUPS,
 } from '@web/features/credits/credits-sections';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
+import { CreditsScrollerContext } from '@web/features/credits/credits-scroller';
 import { CreditsSectionPanel } from '@web/features/credits/CreditsSectionPanel';
+import { OverlayClose } from '@web/features/credits/OverlayClose';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
@@ -28,16 +28,6 @@ interface CreditsOverlayProps {
   /** Called when it closes itself (the X, the backdrop, Escape). */
   onOpenChange: (open: boolean) => void;
 }
-
-/**
- * The panel's scroll container, for the sections that page.
- *
- * Null until the overlay has mounted, and outside the overlay entirely, which
- * is what stops a section from watching an element that is not there.
- */
-export const CreditsScrollerContext = React.createContext<HTMLElement | null>(
-  null,
-);
 
 /**
  * The account's credits, over whatever page the reader was on.
@@ -74,16 +64,7 @@ export function CreditsOverlay({
           of the panel instead of beside it. */}
       <DialogContent className='flex h-[min(620px,calc(100vh-48px))] w-[min(880px,calc(100vw-48px))] max-w-none flex-row gap-0 overflow-hidden bg-card p-0'>
         <DialogTitle className='sr-only'>{t('credits.panelTitle')}</DialogTitle>
-        {/* `z-10` for the reason the membership panel's close button carries
-            it: the scroll area is a later sibling filling the panel, and
-            between two positioned elements with no level of their own the
-            later one takes the clicks. */}
-        <DialogClose
-          aria-label={t('credits.close')}
-          className='absolute right-3 top-3 z-10 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <X className='h-[18px] w-[18px]' />
-        </DialogClose>
+        <OverlayClose label={t('credits.close')} />
         <CreditsIndex active={active} onSelect={setActive} />
         {/* One scroll area for the whole right-hand column rather than one per
             list: only the ledger is a heading over a single long list. The

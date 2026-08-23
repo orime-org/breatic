@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 import type { CreditLotView } from '@breatic/shared';
 
-import { Badge } from '@web/components/ui/badge';
 import { fetchCreditLots } from '@web/data/api/credits';
 import {
   Card,
+  ListEnd,
+  LotBadge,
   Notice,
   Row,
   Rows,
@@ -120,7 +120,7 @@ interface LotRowProps {
  * @param props.lot - The purchase.
  * @returns The row.
  */
-function LotRow({ lot }: LotRowProps): React.JSX.Element {
+const LotRow = React.memo(function LotRow({ lot }: LotRowProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <Row
@@ -149,69 +149,4 @@ function LotRow({ lot }: LotRowProps): React.JSX.Element {
       }
     />
   );
-}
-
-/** The lifecycle to name. */
-interface LotBadgeProps {
-  /** The purchase's lifecycle. */
-  lifecycle: string;
-}
-
-/**
- * What state a purchase is in, when that is worth saying.
- *
- * An active purchase with credits left carries no badge: that is the ordinary
- * case, and a badge on every row says nothing.
- * @param props - The lifecycle.
- * @param props.lifecycle - The purchase's lifecycle.
- * @returns The badge, or nothing.
- */
-export function LotBadge({ lifecycle }: LotBadgeProps): React.JSX.Element | null {
-  const t = useTranslation();
-  if (lifecycle === 'active') return null;
-  return (
-    <Badge
-      variant={lifecycle === 'refunded' ? 'destructive' : 'secondary'}
-      className='ml-2 align-middle'
-    >
-      {t(`credits.lifecycle.${lifecycle}`)}
-    </Badge>
-  );
-}
-
-/** Where a list ends, and whether more is coming. */
-interface ListEndProps {
-  /** Goes on the empty element after the last row. */
-  sentinelRef: (node: HTMLElement | null) => void;
-  /** A further page is on its way. */
-  loading: boolean;
-  /** There are more pages to read. */
-  more: boolean;
-}
-
-/**
- * The foot of a paging list: the sentinel that asks for the next page, and
- * what the list is doing.
- * @param props - The sentinel and the two states.
- * @param props.sentinelRef - Goes on the empty element after the last row.
- * @param props.loading - A further page is on its way.
- * @param props.more - There are more pages to read.
- * @returns The foot.
- */
-export function ListEnd({
-  sentinelRef,
-  loading,
-  more,
-}: ListEndProps): React.JSX.Element {
-  const t = useTranslation();
-  return (
-    <div className='flex items-center justify-center py-2 text-2xs tracking-widest text-muted-foreground'>
-      <span ref={sentinelRef} aria-hidden='true' />
-      {loading ? (
-        <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
-      ) : more ? null : (
-        t('credits.listEnd')
-      )}
-    </div>
-  );
-}
+});

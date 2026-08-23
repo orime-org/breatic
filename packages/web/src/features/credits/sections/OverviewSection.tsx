@@ -124,7 +124,7 @@ export function OverviewSection({
           <ul className='mt-3 flex list-none flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground'>
             {parts.map((part) => (
               <li key={part.key} className='flex items-center gap-1.5'>
-                <i
+                <span
                   className='h-2 w-2 shrink-0 rounded-full'
                   style={{ background: part.color }}
                 />

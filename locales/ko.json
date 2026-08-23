@@ -1276,8 +1276,7 @@
       "depleted": "모두 사용",
       "refund_pending": "심사 중",
       "refunding": "환불 처리 중",
-      "refunded": "환불 완료",
-      "expired": "만료"
+      "refunded": "환불 완료"
     },
     "billingOff": {
       "title": "이 배포에서는 크레딧을 차감하지 않습니다",

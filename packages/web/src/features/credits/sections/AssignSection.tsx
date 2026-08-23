@@ -16,16 +16,17 @@ import { designateCreditLot, fetchCreditLots } from '@web/data/api/credits';
 import { studiosApi } from '@web/data/api/studios';
 import {
   Card,
+  ListEnd,
   Notice,
   Row,
   Rows,
   Section,
+  Footnote,
   SectionEmpty,
   SectionError,
   SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
-import { ListEnd } from '@web/features/credits/sections/LotsSection';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -127,7 +128,7 @@ export function AssignSection({
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
           />
-          <SectionEmpty message={t('credits.assignNote')} />
+          <Footnote>{t('credits.assignNote')}</Footnote>
         </>
       )}
     </Section>
@@ -159,6 +160,12 @@ function AssignRow({
 }: AssignRowProps): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
+  const current =
+    lot.designatedStudioId !== null &&
+    lot.designatedStudioName !== null &&
+    !studios.some((studio) => studio.id === lot.designatedStudioId)
+      ? { id: lot.designatedStudioId, name: lot.designatedStudioName }
+      : null;
 
   const designate = useMutation({
     mutationFn: (studioId: string | null) =>
@@ -207,6 +214,17 @@ function AssignRow({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NONE}>{t('credits.unassigned')}</SelectItem>
+            {/* Where it points now, when that is somewhere this account can no
+                longer choose — after being demoted in that studio, say. The
+                options answer "where may this go"; the trigger reports where
+                it is, and with no item to match, Radix shows nothing at all.
+                It is offered unselectable: leaving is allowed, returning is
+                not. */}
+            {current === null ? null : (
+              <SelectItem value={current.id} disabled>
+                {current.name}
+              </SelectItem>
+            )}
             {studios.map((studio) => (
               <SelectItem key={studio.id} value={studio.id}>
                 {studio.name}

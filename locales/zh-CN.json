@@ -1276,8 +1276,7 @@
       "depleted": "已用完",
       "refund_pending": "审核中",
       "refunding": "退款中",
-      "refunded": "已退款",
-      "expired": "已过期"
+      "refunded": "已退款"
     },
     "billingOff": {
       "title": "这个部署不计积分",

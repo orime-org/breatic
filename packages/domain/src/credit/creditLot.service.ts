@@ -482,14 +482,16 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
     const existing = byStudio.get(row.studioId);
     const spent = toMicroCredits(row.spent) / 1_000_000;
     if (existing) existing.spent = spent;
-    // Only the spending side reaches a deleted studio: the spendable side
-    // excludes them, so a studio that appears here alone is one that is gone.
+    // A studio reaches this side and not the other one whenever it holds no
+    // spendable lot, which happens to every studio whose lots are spent or
+    // reassigned, and to every studio at all where credits are not charged.
+    // Whether it is gone is the column the row carries.
     else
       byStudio.set(row.studioId, {
         studioId: row.studioId,
         studioName: row.studioName,
         studioSlug: row.studioSlug,
-        deleted: true,
+        deleted: row.deleted,
         spendable: 0,
         debt: 0,
         spent,

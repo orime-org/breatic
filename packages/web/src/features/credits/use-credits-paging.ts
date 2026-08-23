@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { CreditPage } from '@breatic/shared';
 
-import { CreditsScrollerContext } from '@web/features/credits/CreditsOverlay';
+import { CreditsScrollerContext } from '@web/features/credits/credits-scroller';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 
 /** What a paging section needs to ask for its pages. */

@@ -614,10 +614,42 @@ export async function listLotsByStudio(
   }));
 }
 
-/** The movements that take money out of a purchase, which is what usage is. */
-export const SPENDING_ENTRY_TYPES: CreditLedgerEntryType[] = [
+/**
+ * What one grouped generation cost, as three sums over its rows.
+ *
+ * Both ledgers report the same three figures and had a copy each; they had
+ * already started to drift.
+ * @returns The three aggregate columns.
+ */
+function generationAmounts(): {
+  charged: SQL<string>;
+  consumed: SQL<string>;
+  owed: SQL<string>;
+} {
+  return {
+    /** What left a purchase. */
+    charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+      WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
+        AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
+    /** What the run used, debt included. */
+    consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+      WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
+    /** The part of that no lot covered. */
+    owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
+      WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
+  };
+}
+
+/**
+ * What one generation cost, in the two ways it can be recorded.
+ *
+ * A repayment is left out. It moves money out of a purchase, but the run it
+ * pays for was already reported when the debt was incurred, and a repayment
+ * carries no project and no model — listing it puts a generation on the page
+ * that never happened.
+ */
+export const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
   "spend",
-  "debt_repayment",
   "debt_incurred",
 ];
 
@@ -659,7 +691,7 @@ export async function listLedgerByPayer(
   limit: number,
   cursor: ActivityCursor | null,
   studioId?: string,
-  entryTypes: CreditLedgerEntryType[] = SPENDING_ENTRY_TYPES,
+  entryTypes: readonly CreditLedgerEntryType[] = SPENDING_ENTRY_TYPES,
 ): Promise<PayerLedgerRow[]> {
   // Display names live on the personal studio (`users` is the pure auth
   // table), the same place the activity feed reads an actor's name from.
@@ -688,13 +720,7 @@ export async function listLedgerByPayer(
       // What left a purchase, and what the run used. They differ when a studio
       // outran its credits: the shortfall is recorded as debt, which is used
       // but not yet charged.
-      charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
-          AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
-      consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
-      owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
+      ...generationAmounts(),
     })
     .from(creditLedger)
     .leftJoin(
@@ -820,13 +846,7 @@ export async function listLedgerByStudio(
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
-      charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.entryType} IN ('spend', 'debt_repayment')
-          AND ${creditLedger.lotId} IS NOT NULL), 0)::text`,
-      consumed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.entryType} IN ('spend', 'debt_incurred')), 0)::text`,
-      owed: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.entryType} = 'debt_incurred'), 0)::text`,
+      ...generationAmounts(),
     })
     .from(creditLedger)
     .leftJoin(
@@ -867,12 +887,25 @@ export async function listLedgerByStudio(
  */
 export async function sumSpentByStudio(
   payerUserId: string,
-): Promise<{ studioId: string; studioName: string; studioSlug: string; spent: string }[]> {
+): Promise<
+  {
+    studioId: string;
+    studioName: string;
+    studioSlug: string;
+    deleted: boolean;
+    spent: string;
+  }[]
+> {
   const rows = await db
     .select({
       studioId: creditLedger.studioId,
       studioName: studios.name,
       studioSlug: studios.slug,
+      // Read rather than inferred. Whether a studio is gone is a column on the
+      // table this already joins, and every other way of telling answers a
+      // different question: a studio with no spendable lots left looks exactly
+      // like a deleted one from the outside.
+      deleted: sql<boolean>`${studios.deletedAt} IS NOT NULL`,
       spent: sql<string>`(-SUM(${creditLedger.amount}))::text`,
     })
     .from(creditLedger)
@@ -892,16 +925,27 @@ export async function sumSpentByStudio(
         isNotNull(creditLedger.studioId),
       ),
     )
-    .groupBy(creditLedger.studioId, studios.name, studios.slug);
+    .groupBy(
+      creditLedger.studioId,
+      studios.name,
+      studios.slug,
+      studios.deletedAt,
+    );
   return rows
     .filter(
-      (row): row is { studioId: string; studioName: string | null; studioSlug: string | null; spent: string } =>
-        row.studioId !== null,
+      (row): row is {
+        studioId: string;
+        studioName: string | null;
+        studioSlug: string | null;
+        deleted: boolean;
+        spent: string;
+      } => row.studioId !== null,
     )
     .map((row) => ({
       studioId: row.studioId,
       studioName: row.studioName ?? "",
       studioSlug: row.studioSlug ?? "",
+      deleted: row.deleted,
       spent: row.spent,
     }));
 }

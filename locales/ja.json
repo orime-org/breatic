@@ -1276,8 +1276,7 @@
       "depleted": "使い切り",
       "refund_pending": "審査中",
       "refunding": "返金処理中",
-      "refunded": "返金済み",
-      "expired": "期限切れ"
+      "refunded": "返金済み"
     },
     "billingOff": {
       "title": "この環境ではクレジットを消費しません",

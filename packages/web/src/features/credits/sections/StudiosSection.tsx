@@ -11,6 +11,7 @@ import {
   Row,
   Rows,
   Section,
+  Footnote,
   SectionEmpty,
 } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -67,7 +68,7 @@ export function StudiosSection({
               ))}
             </Rows>
           </Card>
-          <SectionEmpty message={t('credits.studiosNote')} />
+          <Footnote>{t('credits.studiosNote')}</Footnote>
         </>
       )}
     </Section>
@@ -89,7 +90,7 @@ interface StudioRowProps {
  * @param props.billing - Whether this deployment charges at all.
  * @returns The row.
  */
-function StudioRow({ studio, billing }: StudioRowProps): React.JSX.Element {
+const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowProps): React.JSX.Element {
   const t = useTranslation();
   const spent = formatCreditAmount(studio.spent);
 
@@ -139,4 +140,4 @@ function StudioRow({ studio, billing }: StudioRowProps): React.JSX.Element {
       }
     />
   );
-}
+});

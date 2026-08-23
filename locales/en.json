@@ -1276,8 +1276,7 @@
       "depleted": "Spent",
       "refund_pending": "Under review",
       "refunding": "Refunding",
-      "refunded": "Refunded",
-      "expired": "Expired"
+      "refunded": "Refunded"
     },
     "billingOff": {
       "title": "This deployment does not charge credits",

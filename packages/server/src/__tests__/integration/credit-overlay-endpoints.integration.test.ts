@@ -227,6 +227,90 @@ describe("已删的 studio 花掉的钱留在账上（计划 §4.2）", () => {
   });
 });
 
+describe("「已删除」要读得出来，不是从别处猜的（实现对抗第一轮）", () => {
+  it("包用完了的 studio 还活着，不许标成已删除", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 100, 1000, fx.studioId);
+    // 把这个包扣到恰好零：planCharge 取 min(remaining, owed)，所以
+    // applyCharge 的 CASE 会把它置成 depleted。这是每个包的终局。
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 100,
+      referenceId: `deplete-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+
+    const data = await readOverview(fx.cookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+    const mine = studios.find((s) => s['studioId'] === fx.studioId);
+
+    expect(mine).toBeDefined();
+    // 它一个 active 包都没有了，但它还在。前端拿这个字段画「已删除」徽章、
+    // 把可用额换成破折号、把筛选下拉里的名字换掉。
+    expect(mine!['deleted']).toBe(false);
+    expect(mine!['studioName']).toBe(fx.studioName);
+    expect(Number(mine!['spent'])).toBe(100);
+  });
+
+  it("包改指给别的 studio 之后，原来那个还活着", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 300, 1000, fx.studioId);
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 50,
+      referenceId: `before-move-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+    // 验收项 10 要求的那一步：改指定，原 studio 立即失去这个包。
+    await sql`UPDATE credit_lots SET designated_studio_id = NULL WHERE id = ${lotId}`;
+
+    const data = await readOverview(fx.cookie);
+    const studios = data['studios'] as Record<string, unknown>[];
+    const mine = studios.find((s) => s['studioId'] === fx.studioId);
+
+    expect(mine!['deleted']).toBe(false);
+    expect(Number(mine!['spent'])).toBe(50);
+  });
+});
+
+describe("消耗流水只列消耗（实现对抗第一轮）", () => {
+  it("指定积分抵掉欠账，不出现在消耗流水里", async () => {
+    const fx = await seedFixture();
+    // 先欠上：没有包可扣，整笔记成欠账。
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 40,
+      referenceId: `owe-${Date.now()}`,
+      model: "seedream-4.0",
+      provider: "volcengine",
+    });
+    const lotId = await seedLot(fx.userId, 500, 1000, null);
+    // 指过去，它会先抵欠账，写一行 debt_repayment。
+    await creditLotService.designateLot({
+      lotId,
+      requestingUserId: fx.userId,
+      studioId: fx.studioId,
+    });
+
+    const res = await app.request("/api/v1/credits/ledger?limit=50", {
+      headers: { cookie: fx.cookie },
+    });
+    const body = (await res.json()) as {
+      data: { items: Record<string, unknown>[] };
+    };
+
+    // 它没有 model、没有 project，六列里三列是空的；混进来读起来是一次
+    // 凭空的生成。验收项 7：只列消耗，不混欠账记账。
+    expect(body.data.items).toHaveLength(1);
+    expect(body.data.items[0]!['model']).toBe("seedream-4.0");
+  });
+});
+
 describe("总览要能说出欠了多少、指了几个包（计划 §4.3）", () => {
   it("每个 studio 带欠账和已指定积分包数", async () => {
     const fx = await seedFixture();

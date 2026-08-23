@@ -13,6 +13,8 @@ import type {
   StudioCreditSummary,
 } from '@breatic/shared';
 
+import { setLocale } from '@breatic/shared';
+
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -332,6 +334,20 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('used 42, not charged');
     });
 
+    it('切语言之后表头跟着换', async () => {
+      // useTranslation 返回的是模块级恒定的那个 t，locale 变了它的引用不变，
+      // 所以任何只依赖 t 的 memo 都会把上一门语言的字留在屏幕上。
+      await openOn('ledger');
+      const body = await panel();
+      expect(body).toHaveTextContent('Model');
+
+      setLocale('zh-CN');
+      await waitFor(() => {
+        expect(screen.getByRole('tabpanel')).toHaveTextContent('模型');
+      });
+      setLocale('en');
+    });
+
     it('按 studio 筛时把那个 id 带给端点', async () => {
       const user = await openOn('ledger');
       await panel();
@@ -460,6 +476,22 @@ describe('积分覆盖层的七项', () => {
       expect(await screen.findByRole('option', { name: 'Orime Studio' })).toBeInTheDocument();
       // 访客身份那个 studio 指不了，摆上去只是把一次拒绝摆出来。
       expect(screen.queryByRole('option', { name: 'Design squad' })).toBeNull();
+    });
+
+    it('包指给了一个我现在管不了的 studio，选择器仍然说得出它指给谁', async () => {
+      // 我买了包指给团队，后来在那个团队里被降级了。选项集合回答的是「能
+      // 改成谁」，而选择器显示的是「现在是谁」—— 后者不在前者里时，Radix
+      // 找不到匹配项，那一格就是空的，用户看不出这个包在哪儿。
+      fetchCreditLots.mockResolvedValue({
+        items: [
+          lot({ designatedStudioId: 's9', designatedStudioName: 'Ex team' }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByRole('combobox')).toHaveTextContent('Ex team');
     });
 
     it('改了就把这一笔发给端点', async () => {

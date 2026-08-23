@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import type { CreditLotLifecycle } from "@shared/types/entities.js";
+
 /**
  * What the credit endpoints put on the wire.
  *
@@ -34,7 +36,7 @@ export interface CreditLotView {
   /** What was paid for it, in the smallest unit of `currency`. */
   paidCents: number;
   currency: string;
-  lifecycle: string;
+  lifecycle: CreditLotLifecycle;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;
   createdAt: string;
@@ -53,7 +55,7 @@ export interface StudioLotView {
   remainingCredits: number;
   /** The studio allowed to spend it, which on this page is the studio itself. */
   designatedStudioId: string | null;
-  lifecycle: string;
+  lifecycle: CreditLotLifecycle;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;
   createdAt: string;
@@ -131,8 +133,9 @@ export interface StudioCreditsView {
 export interface StudioCreditSummary {
   studioId: string;
   /**
-   * What to call it. Empty when the studio was deleted and the row survives
-   * only because money was spent on it.
+   * What to call it. A deleted studio keeps its name — the row is read with
+   * no liveness condition — so this is empty only for a row whose studio the
+   * join did not reach at all.
    */
   studioName: string;
   studioSlug: string;

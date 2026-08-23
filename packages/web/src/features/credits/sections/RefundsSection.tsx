@@ -9,16 +9,18 @@ import { Button } from '@web/components/ui/button';
 import { fetchCreditLots } from '@web/data/api/credits';
 import {
   Card,
+  ListEnd,
   Notice,
   Row,
   Rows,
   Section,
+  Footnote,
   SectionEmpty,
   SectionError,
   SectionSkeleton,
   formatMoney,
+  formatRefundable,
 } from '@web/features/credits/section-chrome';
-import { ListEnd } from '@web/features/credits/sections/LotsSection';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -93,7 +95,18 @@ export function RefundsSection({
       ) : paging.isError ? (
         <SectionError />
       ) : refundable.length === 0 && asked.length === 0 ? (
-        <SectionEmpty message={t('credits.refundsEmpty')} />
+        <>
+          <SectionEmpty message={t('credits.refundsEmpty')} />
+          {/* The sentinel goes here too. This section narrows the page after
+              the server cut it, so a page whose purchases are all spent shows
+              nothing while the cursor says there is more — and with nothing
+              to observe, the next page is never asked for. */}
+          <ListEnd
+            sentinelRef={paging.sentinelRef}
+            loading={paging.isFetchingNextPage}
+            more={paging.hasNextPage}
+          />
+        </>
       ) : (
         <>
           {refundable.length === 0 ? null : (
@@ -105,7 +118,7 @@ export function RefundsSection({
                     main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
                     sub={t('credits.refundableHint', {
                       credits: formatCreditAmount(lot.remainingCredits),
-                      money: formatMoney(lot.remainingCredits, lot.currency),
+                      money: formatRefundable(lot.remainingCredits, lot.currency),
                     })}
                     right={
                       <Button
@@ -165,7 +178,7 @@ export function RefundsSection({
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
           />
-          <SectionEmpty message={t('credits.refundsNote')} />
+          <Footnote>{t('credits.refundsNote')}</Footnote>
         </>
       )}
     </Section>

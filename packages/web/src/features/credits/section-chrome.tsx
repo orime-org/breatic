@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
+import { Badge } from '@web/components/ui/badge';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -83,6 +85,26 @@ export function SectionEmpty({
   message,
 }: SectionEmptyProps): React.JSX.Element {
   return <p className='text-sm text-muted-foreground'>{message}</p>;
+}
+
+/** A line explaining what is above it. */
+interface FootnoteProps {
+  /** The explanation. */
+  children: React.ReactNode;
+}
+
+/**
+ * A quiet line under a list, explaining how to read it.
+ *
+ * Drawn the same as {@link SectionEmpty} and named apart from it: one says
+ * there is nothing to show, the other explains what is being shown, and a
+ * reader of this code should not have to work out which is meant.
+ * @param props - The explanation.
+ * @param props.children - The explanation.
+ * @returns The line.
+ */
+export function Footnote({ children }: FootnoteProps): React.JSX.Element {
+  return <p className='text-sm text-muted-foreground'>{children}</p>;
 }
 
 /** A bordered block, and what is in it. */
@@ -302,4 +324,84 @@ export function formatMoney(cents: number, currency: string): string {
     style: 'currency',
     currency: currency.toUpperCase(),
   });
+}
+
+/**
+ * What unspent credits are worth, in the currency they were bought with.
+ *
+ * A credit is one US cent, so the two happen to share a scale — naming the
+ * conversion keeps the next currency from turning that coincidence into a
+ * wrong figure.
+ * @param credits - The credits left on the purchase.
+ * @param currency - The purchase's ISO 4217 code.
+ * @returns What they are worth, formatted.
+ */
+export function formatRefundable(credits: number, currency: string): string {
+  const CENTS_PER_CREDIT = 1;
+  return formatMoney(credits * CENTS_PER_CREDIT, currency);
+}
+
+/** The lifecycle to name. */
+interface LotBadgeProps {
+  /** The purchase's lifecycle. */
+  lifecycle: string;
+}
+
+/**
+ * What state a purchase is in, when that is worth saying.
+ *
+ * An active purchase with credits left carries no badge: that is the ordinary
+ * case, and a badge on every row says nothing.
+ * @param props - The lifecycle.
+ * @param props.lifecycle - The purchase's lifecycle.
+ * @returns The badge, or nothing.
+ */
+export function LotBadge({ lifecycle }: LotBadgeProps): React.JSX.Element | null {
+  const t = useTranslation();
+  if (lifecycle === 'active') return null;
+  return (
+    <Badge
+      variant={lifecycle === 'refunded' ? 'destructive' : 'secondary'}
+      className='ml-2 align-middle'
+    >
+      {t(`credits.lifecycle.${lifecycle}`)}
+    </Badge>
+  );
+}
+
+/** Where a list ends, and whether more is coming. */
+interface ListEndProps {
+  /** Goes on the empty element after the last row. */
+  sentinelRef: (node: HTMLElement | null) => void;
+  /** A further page is on its way. */
+  loading: boolean;
+  /** There are more pages to read. */
+  more: boolean;
+}
+
+/**
+ * The foot of a paging list: the sentinel that asks for the next page, and
+ * what the list is doing.
+ * @param props - The sentinel and the two states.
+ * @param props.sentinelRef - Goes on the empty element after the last row.
+ * @param props.loading - A further page is on its way.
+ * @param props.more - There are more pages to read.
+ * @returns The foot.
+ */
+export function ListEnd({
+  sentinelRef,
+  loading,
+  more,
+}: ListEndProps): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div className='flex items-center justify-center py-2 text-2xs tracking-widest text-muted-foreground'>
+      <span ref={sentinelRef} aria-hidden='true' />
+      {loading ? (
+        <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
+      ) : more ? null : (
+        t('credits.listEnd')
+      )}
+    </div>
+  );
 }
