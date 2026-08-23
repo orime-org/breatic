@@ -13,7 +13,7 @@ import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig, finalizeTurn, STOPPED_BY_USER, TOOLS_THAT_BLOCK } from "@breatic/domain";
+import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
@@ -29,7 +29,7 @@ import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
-import { endingOf, TURN_ENDED_AROUND_IT } from "@server/agent/tool-ending.js";
+import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 
 /**
  * What a client is told when the turn's own code fails.
@@ -426,19 +426,10 @@ export class MainAgent {
         // the second as the first tells the next turn the user did
         // something they never did.
         //
-        // Both arms are reached the same way: the model was still streaming
-        // the arguments when the turn ended, so the tool was never called and
-        // neither callback above ever heard of it. Which arm depends on how
-        // the turn ended around it. The `failed` side has a case of its own
-        // ("does not call a provider failure the user's doing"); the stopped
-        // side has none.
-        //
-        // A call that had started running reaches neither: the SDK waits for
-        // a running tool to settle before the stream ends -- measured, a tool
-        // that never returns holds the turn open -- and settling is what the
-        // callbacks above record.
-        const leftHanging: ToolFailure =
-          exit === "aborted" ? STOPPED_BY_USER : TURN_ENDED_AROUND_IT;
+        // Nothing of the call ran either way, which is what the reason says
+        // -- see `tool-ending.ts` for why the SDK leaves no other kind of
+        // call sitting here.
+        const leftHanging: ToolFailure = endingWithNothingRun(exit === "aborted");
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "pending") continue;
           // A call the SDK already reported on can still be left pending

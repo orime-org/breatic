@@ -39,6 +39,8 @@ const thisCase = vi.hoisted(() => ({
   modelCalls: 0,
   /** What the model produces from the second ask on, when a case sets it. */
   laterParts: undefined as unknown[] | undefined,
+  /** Stop the turn once the model has produced its parts, before any tool runs. */
+  stopAfterProducing: false,
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -103,6 +105,15 @@ vi.mock("@breatic/domain", async (importOriginal) => {
                 readerKey: "chat.tool.failure.upstream",
               });
             }
+            if (thisCase.toolDoes === "throws after the stop") {
+              // Starts, then the turn is stopped under it, then it gives up.
+              // Whether the SDK still hears this ending is what decides
+              // whether a call that had started can reach the settle-up below
+              // with nothing recorded about it.
+              thisCase.stopper?.abort();
+              await new Promise<void>((resolve) => setTimeout(resolve, 5));
+              throw new Error("gave up after the stop");
+            }
             if (thisCase.toolDoes === "stops the turn") {
               thisCase.stopper?.abort();
               // Waits out the stop and then answers anyway. The already-raised
@@ -144,6 +155,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         const later = thisCase.laterParts as ModelStreamPart[] | undefined;
         if (thisCase.modelCalls > 1 && later !== undefined) return later;
         return thisCase.parts as ModelStreamPart[];
+      },
+      undefined,
+      () => {
+        // Every part is in the SDK's hands and no tool has run: the calls are
+        // sitting in the queue that the end of the model call executes.
+        if (thisCase.stopAfterProducing) thisCase.stopper?.abort();
       }),
   };
 });
@@ -195,6 +212,7 @@ async function storedPartsWhenTool(
     | "throws with detail"
     | "throws a stop"
     | "stops the turn"
+    | "throws after the stop"
     | "fails, then the turn stops",
   input?: Record<string, unknown>,
 ): Promise<MessagePart[]> {
@@ -236,6 +254,7 @@ beforeEach(() => {
   thisCase.stopper = undefined;
   thisCase.toolDoes = "answers";
   thisCase.parts = [];
+  thisCase.stopAfterProducing = false;
 });
 
 describe("一次问用户的调用,参数没过 schema 的时候", () => {
@@ -397,6 +416,60 @@ describe("how a tool use is recorded when it does not come back", () => {
     const onWire = JSON.stringify(chunks);
     expect(onWire).toContain("chat.tool.failure.upstream");
     expect(onWire).not.toContain("An error occurred.");
+  });
+
+  it("hears a call that started and then gave up under the stop", async () => {
+    // The premise the settle-up rests on: a call that got as far as running
+    // is always reported, so anything still pending at the end never ran.
+    // Were the SDK to walk away from a tool mid-flight, that reasoning would
+    // be wrong and a started call would be recorded as one that never began.
+    const parts = await storedPartsWhenTool("throws after the stop");
+
+    const part = toolPart(parts);
+    expect(part?.status).toBe("error");
+    expect(part?.failure?.forModel).toContain("gave up after the stop");
+  });
+
+  it("does not say a call the turn never got to was still running", async () => {
+    // The stop lands while the model is still sending this call's arguments,
+    // which is the only way a call reaches the settle-up with nothing
+    // recorded about it: a call the SDK finished assembling goes into a queue
+    // it executes unconditionally -- `executeToolCall` does not ask whether
+    // the signal has been raised -- and executing is what gets it reported.
+    //
+    // So nothing here ran, and "still running, do not call it again" is wrong
+    // twice over: it was not running, and calling it again is exactly right.
+    thisCase.parts = [
+      { type: "tool-input-start", id: "tc-2", toolName: "web_fetch" },
+      { type: "tool-input-delta", id: "tc-2", delta: '{"url":"https://exa' },
+      FINISHED_ASKING_FOR_A_TOOL,
+    ];
+    thisCase.stopAfterProducing = true;
+    const stopper = new AbortController();
+    thisCase.stopper = stopper;
+    addMessage.mockClear();
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("do something", stopper.signal);
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+
+    const reply = addMessage.mock.calls.map(([, m]) => m).find((m) => m.role === "assistant");
+    const part = toolPart((reply?.parts as MessagePart[]) ?? []);
+
+    expect(part?.status).toBe("error");
+    expect(part?.failure?.forModel).toMatch(/never run|nothing was attempted/i);
+    expect(part?.failure?.forModel).not.toMatch(/still running/i);
+    // The reader stopped it, so the panel says stopped rather than failed.
+    expect(part?.failure?.kind).toBe("user_aborted");
+    // And what keeps that sentence away from the model: a call caught with
+    // half its arguments sent is marked as such and left out of the history.
+    // Pinned here because it is the whole reason the wording above is read by
+    // no one -- a version of the SDK that stopped marking these would put it
+    // in front of the model, and this case is where that would show.
+    expect(part?.argumentsIncomplete).toBe(true);
   });
 
   it("still records a normal tool use as successful", async () => {

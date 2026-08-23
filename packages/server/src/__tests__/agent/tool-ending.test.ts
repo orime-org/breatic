@@ -20,7 +20,7 @@ import { NOTHING_SAID_WHY, carrying } from "@breatic/shared";
 import type { ToolFailure } from "@breatic/shared";
 import { STOPPED_BY_USER } from "@breatic/domain";
 
-import { endingOf, TURN_ENDED_AROUND_IT } from "@server/agent/tool-ending.js";
+import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 
 /**
  * 一句话有没有告诉模型接下来能做什么。
@@ -30,10 +30,19 @@ import { endingOf, TURN_ENDED_AROUND_IT } from "@server/agent/tool-ending.js";
  */
 const EACH_SAYS = [
   {
-    name: "TURN_ENDED_AROUND_IT",
-    failure: TURN_ENDED_AROUND_IT,
+    name: "endingWithNothingRun,轮次失败",
+    failure: endingWithNothingRun(false),
     says: /call it again/i,
-    notSays: /do not call it again/i,
+    notSays: /do not call it again|still running/i,
+  },
+  {
+    name: "endingWithNothingRun,用户停止",
+    failure: endingWithNothingRun(true),
+    says: /call it again/i,
+    // 这次调用连启动都没有 —— 参数还没发完轮次就结束了。说它「还在跑」是把
+    // 一件没发生的事写进记录,而配套的「别再自己调」正好指向反面:什么都没
+    // 试过,再调一次才是对的。
+    notSays: /do not call it again|still running/i,
   },
   {
     name: "STOPPED_BY_USER",
@@ -61,6 +70,19 @@ describe("轮次替一次调用说的每句话,都说了它自己那个下一步
     expect(failure.forModel.trim()).not.toBe("");
     expect(failure.forModel).toMatch(says);
     expect(failure.forModel).not.toMatch(notSays);
+  });
+
+  it("同一件事,对读的人和对模型分开说", () => {
+    // 两个字段答的是两个问题。模型那半两边一样 —— 事实就是这一次什么都没跑;
+    // 读的人那半两边必须不一样,按了停止的人不该看到一个失败图标。把这两支
+    // 对调,原先五百多条测试一条都不红。
+    const stopped = endingWithNothingRun(true);
+    const failed = endingWithNothingRun(false);
+
+    expect(stopped.forModel).toBe(failed.forModel);
+    expect(stopped.kind).toBe("user_aborted");
+    expect(failed.kind).toBe("tool_failed");
+    expect(stopped.readerKey).not.toBe(failed.readerKey);
   });
 
   it("SDK 拒掉的调用,在它自己那句话后面接上下一步", () => {

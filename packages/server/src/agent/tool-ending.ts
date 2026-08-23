@@ -19,34 +19,47 @@ import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type { ToolFailure } from "@breatic/shared";
 
 /**
- * A call the turn ended around, without the turn being stopped by anyone.
+ * What is left of a call the turn ended in the middle of asking for.
  *
- * What is left when a step ends between the model asking for a tool and the
- * tool running: the provider dropped the connection, or the turn's own code
- * failed. Nothing ran, so nothing has anything to say about why -- but the
- * next turn still reads this record, and it must not read as the user having
- * pressed stop.
+ * Measured against `ai@7.0.68`: a call the SDK finished assembling is pushed
+ * to a queue the end of the model call executes, and `executeToolCall` runs
+ * it without asking whether the turn's signal has been raised. Executing is
+ * what reports it, either way it ends. So a call with nothing recorded about
+ * it is one the SDK never finished assembling -- the model was still sending
+ * its arguments -- and nothing of it ran.
+ *
+ * Alone among these reasons, this one is worth acting on again: nothing was
+ * attempted, so nothing about it failed. Left without a next step it falls to
+ * the prompt's own answer for reasons that name none -- that calling the same
+ * tool the same way will fail the same way -- which is the opposite of what
+ * happened here.
+ *
+ * Read by no one today, and written for the model regardless: a half-sent
+ * call is stored as such and left out of the history on that ground
+ * (`model-messages.ts`), so what is here is what the model would read if the
+ * SDK ever stopped marking them.
  */
-export const TURN_ENDED_AROUND_IT: ToolFailure = {
-  kind: "tool_failed",
-  // Alone among these reasons, this one is worth acting on again: nothing was
-  // attempted, so nothing about it failed. Left without a next step it falls
-  // to the prompt's own answer for reasons that name none -- that calling the
-  // same tool the same way will fail the same way -- which is the opposite of
-  // what happened here.
-  //
-  // Whether a model ever reads it depends on how far the arguments got. The
-  // way this is reached today, they were still streaming, and a call whose
-  // arguments never finished arriving is left out of the history on purpose
-  // (`model-messages.ts`): replaying a half-parsed input puts words in the
-  // model's mouth it never sent. So on that path this sentence is written
-  // down and read by no one, and it is here for a call that reaches this with
-  // its arguments complete.
-  forModel:
-    "This tool was never run: the turn ended before it could start. " +
-    "Nothing was attempted, so call it again if you still need it.",
-  readerKey: FAILURE_LINES.generic,
-};
+const NOTHING_OF_IT_RAN =
+  "This tool was never run: the turn ended while its arguments were still " +
+  "being sent. Nothing was attempted, so call it again if you still need it.";
+
+/**
+ * How a call the turn ended around is recorded.
+ *
+ * The two halves answer different questions and are settled separately. What
+ * the model is told is the same either way, because the fact is the same: this
+ * never ran. What a reader is shown is not -- someone who pressed stop is told
+ * their turn stopped, and a failure nobody asked for is told as a failure.
+ * @param stopped - Whether the turn ended because it was stopped.
+ * @returns The ending to record against the call.
+ */
+export function endingWithNothingRun(stopped: boolean): ToolFailure {
+  return {
+    kind: stopped ? "user_aborted" : "tool_failed",
+    forModel: NOTHING_OF_IT_RAN,
+    readerKey: stopped ? FAILURE_LINES.stopped : FAILURE_LINES.generic,
+  };
+}
 
 /**
  * How a failed tool call ended, in the form the record keeps.
