@@ -4,17 +4,18 @@
 /**
  * 选中浮出条（任务 #112，菜单体系第 4 步）。
  *
- * 这一步只建载体、零新命令，所以这里问的核心问题只有一个：**把现有六个命令
- * 搬进新载体之后，在那儿按下去，文档真的变了吗**。设计对抗（2026-08-19）
+ * 载体是 #112 建的，当时零新命令，核心问题只有一个：**把命令搬进新载体之后，
+ * 在那儿按下去，文档真的变了吗**。#902 给条加了下划线和行内代码，条上现在是
+ * 八个命令加两个还没开放的入口。设计对抗（2026-08-19）
  * 咬出初版验收清单十条里没有一条验证这件事——`canRun` 只决定按钮亮不亮，
  * `run` 是 `ToolDef` 上另一个字段，复用 `canRun` 一个字都没覆盖它；而且点击
  * 发生在编辑器 DOM 之外（浮出条走 `appendTo` 挂出滚动容器），要靠 bubble-menu
  * 自己的焦点豁免兜住，那恰恰是本次新引入的一层。
  *
- * 两个载体渲染同一批 `ToolDef`，所以 testid 必须带载体前缀，否则六个
- * `doc-tool-*` 各出现两份：既有的 `DocumentEditor.test.tsx` 用全文档
- * `querySelectorAll` 数按钮、用 `getByTestId` 取单个（多个匹配即抛错），
- * 会当场变红。
+ * testid 带载体前缀（`doc-bubble-tool-*`）：#112 那时横条和条同时渲染同一批
+ * `ToolDef`，不带前缀每个 id 会各出现两份，让 `DocumentEditor.test.tsx` 的
+ * `getByTestId`（多个匹配即抛错）当场变红。横条 2026-08-22 删了，前缀留着是
+ * 为 #113 的块手柄菜单，理由在 `SelectionBubbleBar.tsx` 的同名注释里。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -282,7 +283,7 @@ describe('选中浮出条', () => {
     expect(entry.className).toContain('opacity-50');
   });
 
-  // A10: clicking one changes neither the document nor the selection.
+  // A10: clicking one leaves the document exactly as it was.
   it.each([
     ['comment'],
     ['ai'],
@@ -370,6 +371,11 @@ describe('选中浮出条', () => {
     expect(ai.querySelectorAll('svg')).toHaveLength(2);
     expect(comment.querySelectorAll('svg')).toHaveLength(1);
     expect(comment.textContent).toBe('');
+
+    // demo 给评论画的是带文字线的那版气泡（`message-square-text`：气泡一条、
+    // 文字线三条）。数 path 分得出它和光气泡的 `message-square`——文案对抗
+    // 逮到实现取的是后者，而上面那些断言对两个都成立。
+    expect(comment.querySelectorAll('svg path')).toHaveLength(4);
   });
 
   // A8: an icon-only button with no visible text is a square without a name.
@@ -391,13 +397,7 @@ describe('选中浮出条', () => {
     expect(label).not.toContain(key);
   });
 
-  // A11: the whole bar stays out of the tab order (ruling R4), so these two
-  // follow the command buttons beside them. What they do carry is
-  // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
-  // A8: an icon-only button with no visible text is a square without a name.
-  // Asserted as "not the key itself" rather than "not empty": `t()` hands back
-  // the key when it resolves nothing (`shared/src/i18n/index.ts:131`), so a
-  // A11：这一步存在的唯一理由。六个逐一验，不抽验。
+  // A11：这一步存在的唯一理由。八个逐一验，不抽验。
   // 标记是 Yjs 片段里的 schema 节点名，不是 HTML 标签名——`toString()` 打出来
   // 的是 `<bold>` / `<bulletlist>` 这一套。
   it.each([
@@ -885,7 +885,7 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      // 六个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
+      // 八个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
       // viewer 不渲染整条的正是这个理由）。
       expect(shouldShowNow(editor)).toBe(false);
     });
@@ -1481,7 +1481,7 @@ describe('选中浮出条', () => {
   // A9：浮出条整条不进 tab 序（定稿 §5.2，user 2026-08-19 拍定）。
   //
   // 理由是层次：顶部横条跟正文并排、常驻，这一条浮在正文**上面**，而浮在上面
-  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。六个按钮是原生 `<button>`、天生
+  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。八个按钮是原生 `<button>`、天生
   // 可聚焦，所以每个都显式设成 -1。
   //
   // 容器那一半不在这里：插件默认给它 `tabIndex = 0`（`dist/index.js:178`），
@@ -1520,14 +1520,14 @@ describe('选中浮出条', () => {
     mount(editor);
     await selectWithFocus(editor, from, to);
 
-    // 先确认这个选区真的造出了要测的那种局面。少了这一句，将来某天六个按钮
-    // All lit or all dark would still "agree", and this would say nothing.
+    // 先确认这个选区真的造出了要测的那种局面：八个按钮全亮或全暗，下面那个
+    // 循环照样「一致」，而它什么都没说。
     const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
     ).filter((b) => b.disabled).length;
     expect(dark > 0).toBe(hasDark);
 
-    for (const tool of [...MARK_TOOLS, ...BLOCK_TOOLS]) {
+    for (const tool of [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS]) {
       const button = document.querySelector<HTMLButtonElement>(
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );

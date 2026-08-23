@@ -4,7 +4,7 @@
 /**
  * R7: no control that looks usable and does nothing when pressed.
  *
- * The table below RECORDS what the six buttons say for each shape of cursor
+ * The table below RECORDS what the eight buttons say for each shape of cursor
  * or selection in the untitled document; the rows are not a judgement on how
  * the body ought to behave, which belongs to the slice that owns editing.
  * Whole-document selection rows (the two-tier select-all's second stage) are
@@ -14,7 +14,7 @@
  * Two assertions:
  *
  * 1. Each shape of cursor or selection gets the exact answer the table names,
- *    for all six buttons.
+ *    for all eight buttons.
  * 2. Every live button does something when pressed. A collapsed cursor counts
  *    marks armed for the next keystroke as "something", because arming IS the
  *    effect there.
@@ -64,7 +64,7 @@ function open(bodyHtml: string): Editor {
   return editor;
 }
 
-/** Where the caret or selection sits, and what the six buttons must say. */
+/** Where the caret or selection sits, and what the eight buttons must say. */
 interface Case {
   readonly name: string;
   readonly body: string;

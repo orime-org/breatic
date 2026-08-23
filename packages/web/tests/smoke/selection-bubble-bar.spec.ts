@@ -280,8 +280,8 @@ for (const scheme of ['light', 'dark'] as const) {
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 26 });
     }
-    // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface
-    // .html:221`）是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
+    // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
+    // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
     // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
     expect(geo.separators).toHaveLength(3);
     for (const sep of geo.separators) {

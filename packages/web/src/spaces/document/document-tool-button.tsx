@@ -38,17 +38,12 @@ import { useTranslation } from '@web/i18n/use-translation';
  * The height every control on the bar shares.
  *
  * Sitting over the text, they are a notch shorter than a free-standing
- * button — but only shorter. The demo's `.pop .tb-btn` (`:209`) overrides
- * height alone.
+ * button: the demo's `.bubble-btn` (`2026-08-21-editor-command-surface.html`)
+ * is 26 tall.
  */
 export const BUBBLE_CONTROL_HEIGHT = 'h-[26px]';
 
-/**
- * The height above plus the width an icon button keeps.
- *
- * `.tb-btn`'s own `min-width: 28px` (`:138-139`) stays in force under that
- * height override, so an icon button on the bar is 28 wide.
- */
+/** The height above plus the 28 the same demo rule gives an icon button. */
 export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
 
 /** A toggle whose pressed state mirrors what is under the cursor. */

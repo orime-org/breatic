@@ -88,7 +88,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection, PluginKey } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
-import { MessageSquare, Sparkles } from 'lucide-react';
+import { MessageSquareText, Sparkles } from 'lucide-react';
 
 import {
   ToolButton,
@@ -139,7 +139,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
       {
         id: 'comment',
         labelKey: 'spaces.document.commands.comment',
-        Icon: MessageSquare,
+        Icon: MessageSquareText,
       },
     ],
   },
