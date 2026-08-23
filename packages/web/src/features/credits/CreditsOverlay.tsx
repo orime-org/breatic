@@ -68,7 +68,11 @@ export function CreditsOverlay({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='flex h-[min(620px,calc(100vh-48px))] w-[min(880px,calc(100vw-48px))] max-w-none gap-0 overflow-hidden bg-card p-0'>
+      {/* `flex-row` explicitly: the primitive's own class list says `flex-col`,
+          and `flex` alone does not replace it — the two are different utility
+          groups, so the merge keeps both and the index ends up stacked on top
+          of the panel instead of beside it. */}
+      <DialogContent className='flex h-[min(620px,calc(100vh-48px))] w-[min(880px,calc(100vw-48px))] max-w-none flex-row gap-0 overflow-hidden bg-card p-0'>
         <DialogTitle className='sr-only'>{t('credits.panelTitle')}</DialogTitle>
         {/* `z-10` for the reason the membership panel's close button carries
             it: the scroll area is a later sibling filling the panel, and
@@ -90,7 +94,11 @@ export function CreditsOverlay({
             AROUND the scroll area and finds Radix's viewport inside it; the
             sections that page do their own reading, so they are handed this
             node rather than the hook being lifted up here. */}
-        <div ref={setScroller} className='min-w-0 flex-1'>
+        {/* `min-h-0` is what makes it scroll at all: a flex child's default
+            minimum height is its content, so without it this column grows past
+            the panel and the panel's `overflow-hidden` clips the overflow —
+            leaving the rows below the fold unreachable rather than scrollable. */}
+        <div ref={setScroller} className='min-h-0 min-w-0 flex-1'>
           <ScrollArea className='h-full' viewportClassName='px-7 py-7'>
             <div id='credits-body' role='tabpanel' aria-labelledby={`credits-tab-${active}`}>
               <CreditsScrollerContext.Provider value={scroller}>

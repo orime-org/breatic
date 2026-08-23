@@ -173,18 +173,18 @@ function LedgerRow({ row }: LedgerRowProps): React.JSX.Element {
 
   return (
     <tr className='border-t border-border'>
-      <td className='px-2 py-1.5 text-muted-foreground'>
+      <td className='py-1.5 text-muted-foreground'>
         {formatLocalDay(row.createdAt)}
       </td>
-      <td className='px-2 py-1.5'>{row.actorName ?? '—'}</td>
-      <td className='px-2 py-1.5 text-muted-foreground'>
+      <td className='py-1.5'>{row.actorName ?? '—'}</td>
+      <td className='py-1.5 text-muted-foreground'>
         {row.studioName ?? t('credits.deletedStudio')}
       </td>
-      <td className='px-2 py-1.5 text-muted-foreground'>
+      <td className='py-1.5 text-muted-foreground'>
         {row.projectName ?? '—'}
       </td>
-      <td className='px-2 py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
-      <td className='px-2 py-1.5 text-right tabular-nums'>
+      <td className='py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
+      <td className='py-1.5 text-right tabular-nums'>
         {formatCreditAmount(row.charged)}
         {shortfall ? (
           <span className='block text-2xs font-normal text-muted-foreground'>

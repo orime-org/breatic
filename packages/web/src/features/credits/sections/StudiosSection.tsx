@@ -97,7 +97,13 @@ function StudioRow({ studio, billing }: StudioRowProps): React.JSX.Element {
     <Row
       main={
         <>
-          {studio.deleted ? t('credits.deletedStudio') : studio.studioName}
+          {/* The name, even once it is deleted. The row survives precisely so
+              that the money can say where it went, and replacing the name
+              with "a deleted Studio" takes that away a second time. The
+              fallback is for a row whose name really did not come back. */}
+          {studio.studioName === ''
+            ? t('credits.deletedStudio')
+            : studio.studioName}
           {studio.deleted ? (
             <Badge variant='secondary' className='ml-2 align-middle'>
               {t('credits.deletedBadge')}

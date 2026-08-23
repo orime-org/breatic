@@ -275,7 +275,7 @@ export function TableHead({ columns }: TableHeadProps): React.JSX.Element {
             key={column.key}
             scope='col'
             className={cn(
-              'whitespace-nowrap px-2 py-2 text-left text-xs font-medium text-muted-foreground',
+              'whitespace-nowrap py-1 text-left text-xs font-medium text-muted-foreground',
               column.align === 'right' && 'text-right',
             )}
           >

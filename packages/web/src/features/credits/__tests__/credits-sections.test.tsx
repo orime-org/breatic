@@ -371,6 +371,30 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('1 purchases assigned to it');
     });
 
+    it('已删的 studio 名字还在就照显示，只加一枚徽章', async () => {
+      // 这一行留着是为了那笔钱说得出花在哪儿。把名字换成「已删除的 Studio」
+      // 等于把它再抹掉一次 —— 用户看不出是哪一个了。
+      fetchCreditOverview.mockResolvedValue(
+        overview({
+          studios: [
+            studio({
+              studioId: 's3',
+              studioName: 'Design squad',
+              deleted: true,
+              spendable: 0,
+              spent: 880,
+              lotCount: 0,
+            }),
+          ],
+        }),
+      );
+      await openOn('studios');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('Design squad');
+      expect(body).toHaveTextContent('Deleted');
+    });
+
     it('已删的 studio 留着，消耗照报，可用额给破折号', async () => {
       fetchCreditOverview.mockResolvedValue(
         overview({
