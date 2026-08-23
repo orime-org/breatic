@@ -27,7 +27,11 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import {
+  MARK_TOOLS,
+  BLOCK_TOOLS,
+  INLINE_TOOLS,
+} from '@web/spaces/document/document-tools';
 
 const editors: Editor[] = [];
 let doc: Y.Doc;
@@ -190,7 +194,7 @@ function markupOf(): string {
 }
 
 describe('选中浮出条', () => {
-  it('选中文字时出现，装的正好是那六个命令', async () => {
+  it('选中文字时出现，装的正好是那八个命令', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -200,8 +204,124 @@ describe('选中浮出条', () => {
     ).map((el) => el.getAttribute('data-testid')?.replace('doc-bubble-tool-', ''));
 
     expect(ids.sort()).toEqual(
-      [...MARK_TOOLS, ...BLOCK_TOOLS].map((t) => t.id).sort(),
+      [...BLOCK_TOOLS, ...MARK_TOOLS, ...INLINE_TOOLS].map((t) => t.id).sort(),
     );
+  });
+
+  // A4: the order the demo draws, read straight off the DOM. Asserted as the
+  // whole sequence rather than a few neighbours — a control landing in the
+  // wrong group is exactly what this has to catch, and pairwise checks let it
+  // through.
+  it('lays the controls out in the order the demo draws', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
+    const rendered = Array.from(
+      bar.querySelectorAll('[data-testid^="doc-bubble-"]'),
+    )
+      .map((el) => el.getAttribute('data-testid'))
+      .filter((id) => id !== 'doc-selection-bubble-bar');
+
+    expect(rendered).toEqual([
+      'doc-bubble-tool-bullet-list',
+      'doc-bubble-tool-ordered-list',
+      'doc-bubble-tool-quote',
+      'doc-bubble-sep-marks',
+      'doc-bubble-tool-bold',
+      'doc-bubble-tool-italic',
+      'doc-bubble-tool-strike',
+      'doc-bubble-tool-underline',
+      'doc-bubble-sep-inline',
+      'doc-bubble-tool-code',
+      'doc-bubble-coming-comment',
+      'doc-bubble-sep-ai',
+      'doc-bubble-coming-ai',
+    ]);
+  });
+
+  // A5 / A6: what jsdom can answer about the separators is that they are
+  // there, that they carry the semantics of one, and how many there are. The
+  // geometry the demo pins (1px by 16px, 3px either side) needs a browser and
+  // is measured in `document-bubble-bar.spec.ts`.
+  it('separates the groups with a real separator element', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
+    const seps = bar.querySelectorAll('[role="separator"]');
+
+    expect(seps).toHaveLength(3);
+    for (const sep of seps) {
+      expect(sep.getAttribute('aria-orientation')).toBe('vertical');
+    }
+  });
+
+  // A9 / A10: the two entries whose commands are not open yet. They stand in
+  // the bar so the shape is whole, and say for themselves that they cannot be
+  // used — the same treatment the two snapshot commands got in the
+  // whole-document menu (task #129).
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('shows %s as an entry that is not open yet', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    expect(entry).toHaveAttribute('aria-disabled', 'true');
+    expect(entry.className).toContain('cursor-not-allowed');
+    expect(entry.className).toContain('opacity-50');
+  });
+
+  // A10: clicking one changes neither the document nor the selection.
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('does nothing when %s is clicked', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const before = markupOf();
+
+    act(() => {
+      screen.getByTestId(`doc-bubble-coming-${id}`).click();
+    });
+
+    expect(markupOf()).toBe(before);
+  });
+
+  // A11: HTML `disabled` drops a control out of the focus order, and an entry
+  // meant to be discovered has to stay in it. Same reason as the snapshot
+  // commands in `document-menu-entry.test.tsx`.
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('keeps %s reachable by keyboard', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    expect(entry.hasAttribute('disabled')).toBe(false);
+  });
+
+  // A8: an icon-only button with no visible text is a square without a name.
+  it.each([
+    ['tool-underline'],
+    ['tool-code'],
+    ['coming-comment'],
+    ['coming-ai'],
+  ])('gives %s a name that can be read out', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const label = screen.getByTestId(`doc-bubble-${id}`).getAttribute('aria-label');
+    expect(label).toBeTruthy();
   });
 
   // A11：这一步存在的唯一理由。六个逐一验，不抽验。
@@ -211,6 +331,8 @@ describe('选中浮出条', () => {
     ['bold', '<bold>', '<p>hello world</p>', 1, 6],
     ['italic', '<italic>', '<p>hello world</p>', 1, 6],
     ['strike', '<strike>', '<p>hello world</p>', 1, 6],
+    ['underline', '<underline>', '<p>hello world</p>', 1, 6],
+    ['code', '<code>', '<p>hello world</p>', 1, 6],
     ['bullet-list', '<bulletlist>', '<p>hello world</p>', 1, 6],
     ['ordered-list', '<orderedlist', '<p>hello world</p>', 1, 6],
     ['quote', '<blockquote>', '<p>hello world</p>', 1, 6],
