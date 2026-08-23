@@ -21,6 +21,11 @@ import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { HIGHLIGHT_LANGUAGES } from '@web/pages/project/chat/highlight-languages';
+import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
+import {
+  WAITING_DOT_TAG,
+  waitingDotPlugin,
+} from '@web/pages/project/chat/waiting-dot-plugin';
 
 interface MarkdownMessageProps {
   /** The assistant's prose, as markdown. */
@@ -58,7 +63,13 @@ const COMPLETION = {
 
 const REMARK_PLUGINS = [remarkGfm];
 
-const REHYPE_PLUGINS = [[rehypeHighlight, { languages: HIGHLIGHT_LANGUAGES }]] as const;
+const HIGHLIGHT = [rehypeHighlight, { languages: HIGHLIGHT_LANGUAGES }];
+
+const REHYPE_SETTLED = [HIGHLIGHT];
+
+// The mark goes in after the colouring: rehype-highlight rebuilds a code
+// element's children, dropping anything already placed among them.
+const REHYPE_STREAMING = [HIGHLIGHT, waitingDotPlugin];
 
 /**
  * A wide table scrolls sideways through the app's own scroller.
@@ -99,10 +110,14 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
  * comparing component identity, so a table rebuilt from a fresh function every
  * update loses its scroll position, and an image is torn down and re-fetched.
  */
-const COMPONENTS: Components = {
+const COMPONENTS = {
   table: ScrollableTable,
   input: TaskMark,
-};
+  // Present in both states. The element only exists while streaming, so a
+  // mapping with nothing to match produces nothing; keeping it here means the
+  // map itself never changes identity between renders.
+  [WAITING_DOT_TAG]: WaitingDot,
+} as Components;
 
 /**
  * Draw one assistant message.
@@ -127,7 +142,7 @@ export function MarkdownMessage({
     >
       <Markdown
         components={COMPONENTS}
-        rehypePlugins={REHYPE_PLUGINS as never}
+        rehypePlugins={(streaming ? REHYPE_STREAMING : REHYPE_SETTLED) as never}
         remarkPlugins={REMARK_PLUGINS}
       >
         {source}

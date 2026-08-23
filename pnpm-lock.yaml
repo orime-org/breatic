@@ -895,6 +895,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@5.4.21(@types/node@22.20.1)(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
+      '@types/hast':
+        specifier: ^3.0.5
+        version: 3.0.5
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1

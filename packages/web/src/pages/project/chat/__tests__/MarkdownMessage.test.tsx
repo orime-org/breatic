@@ -211,6 +211,77 @@ describe('MarkdownMessage — inline HTML (R4)', () => {
   });
 });
 
+describe('MarkdownMessage — the waiting dot (R7)', () => {
+  /** The dot, or null when this render carries none. */
+  function dot(): HTMLElement | null {
+    return document.querySelector('[data-testid="chat-waiting-dot"]');
+  }
+
+  it('rides the last character of a paragraph', () => {
+    draw('still gathering the last two', true);
+    expect(dot()?.parentElement?.tagName).toBe('P');
+  });
+
+  it('rides the last character of a list item', () => {
+    // Taking the last text node in the tree lands on the newline between
+    // blocks here, whose parent is the ul itself.
+    draw('three ways:\n\n- copy the settled spec\n- write our own', true);
+
+    const items = [...body().querySelectorAll('li')];
+    expect(dot()?.parentElement).toBe(items[items.length - 1]);
+  });
+
+  it('rides the cell being typed in a half-written table row', () => {
+    // GFM pads the row out to the header's column count, so the last cell is
+    // an empty one the model has not reached.
+    draw('| Item | A | B |\n|---|---|---|\n| Size | 33 KB', true);
+
+    const cells = [...body().querySelectorAll('td')];
+    expect(cells.length).toBeGreaterThan(1);
+    expect(dot()?.parentElement).toBe(cells[1]);
+  });
+
+  it('rides inside a code block while the colouring survives', () => {
+    // Insert before the highlighter and rehype-highlight rebuilds the code
+    // element's children, taking the dot with them.
+    draw('```typescript\nconst x = 1;', true);
+
+    expect(dot()?.closest('code')).toBeInTheDocument();
+    expect(body().querySelector('.hljs-keyword')).toBeInTheDocument();
+  });
+
+  it('lands after a block that holds no text at all', () => {
+    // Three shapes with no text node of their own. Prose precedes each one,
+    // so a fallback keyed on the whole tree never fires and the dot would sit
+    // in that earlier paragraph instead.
+    for (const tail of ['---', '![a](https://example.com/a.png)', '```typescript']) {
+      const { unmount } = draw(`a line of prose\n\n${tail}`, true);
+
+      const mark = dot();
+      expect(mark).not.toBeNull();
+      // Sits at the top level, after that block. Were the search keyed on the
+      // whole tree it would be inside the paragraph above instead.
+      expect(mark?.parentElement).toBe(body());
+      expect(mark?.previousElementSibling).toBe(body().lastElementChild?.previousElementSibling);
+      unmount();
+    }
+  });
+
+  it('stays out of the footnote section', () => {
+    // remark-gfm moves every footnote definition to the end of the document,
+    // so document order stops matching arrival order.
+    draw('A claim[^1].\n\n[^1]: the note.\n\nprose still being written', true);
+
+    expect(dot()?.closest('section[data-footnotes]')).toBeNull();
+    expect(dot()?.parentElement).toHaveTextContent('prose still being written');
+  });
+
+  it('is absent once the turn has settled', () => {
+    draw('the finished reply', false);
+    expect(dot()).toBeNull();
+  });
+});
+
 describe('MarkdownMessage — typography hooks', () => {
   it('sits on the text-sm step (R6)', () => {
     draw('a line');
