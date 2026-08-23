@@ -8,8 +8,9 @@
  * it sits in. The ruling routes a command by that object (menu-system §9.1:
  * one object may have several entry points; what is forbidden is mixing
  * objects inside one carrier), so the block handle menu will legitimately
- * carry some of these same commands when it arrives. This slice adds no
- * command of its own.
+ * carry some of these same commands when it arrives. #112 built this carrier
+ * with no command of its own; #902 started filling it (underline, inline
+ * code), and the slices after it each bring their own.
  *
  * ## What the stock component does not do for us
  *
@@ -103,6 +104,7 @@ import {
   BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
+import { Separator } from '@web/components/ui/separator';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
 /** One run of controls, drawn between two separators. */
@@ -875,12 +877,16 @@ function BubbleBar({
         ? BUBBLE_GROUPS.map((group, index) => (
           <React.Fragment key={group.key}>
             {index > 0 ? (
-              <span
-                role='separator'
-                aria-orientation='vertical'
+              <Separator
+                orientation='vertical'
+                // Not decorative: the groups this divides are meant to be
+                // announced apart, which is the case the component's own
+                // docstring names for this flag.
+                decorative={false}
                 data-testid={`doc-bubble-sep-${group.key}`}
-                // The demo's `.bubble-sep`: 1px by 16px, 3px either side.
-                className='mx-[3px] h-4 w-px shrink-0 bg-border'
+                // The demo's `.bubble-sep` is 16 tall with 3px either side.
+                // Its 1px width and its colour come from the component.
+                className='mx-[3px] h-4 w-px'
               />
             ) : null}
             {group.tools.map((tool) => (

@@ -108,9 +108,9 @@ export const ComingTool = React.memo(function ComingTool({
           className={
             tool.drawsAsDropdown
               // `.bubble-drop`: 26 tall, 6px either side, 3px between the
-              // three things in it. The demo draws 13px text; the size comes
-              // from the button's own `text-sm` instead, which is the token
-              // every other label on the bar reads.
+              // three things in it. The demo draws 13px text and this takes
+              // the button's own `text-sm`: the demo fixes the shape, not
+              // every value in it.
               ? `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5 ${UNAVAILABLE}`
               : `${BUBBLE_ICON_BUTTON_SIZE} ${UNAVAILABLE}`
           }

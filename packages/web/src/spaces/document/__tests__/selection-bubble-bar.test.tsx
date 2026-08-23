@@ -15,7 +15,8 @@
  * testid 带载体前缀（`doc-bubble-tool-*`）：#112 那时横条和条同时渲染同一批
  * `ToolDef`，不带前缀每个 id 会各出现两份，让 `DocumentEditor.test.tsx` 的
  * `getByTestId`（多个匹配即抛错）当场变红。横条 2026-08-22 删了，前缀留着是
- * 为 #113 的块手柄菜单，理由在 `SelectionBubbleBar.tsx` 的同名注释里。
+ * 为 #113 的块手柄菜单，理由写在 `document-tool-button.tsx` 的模块注释里
+ * （前缀是在那儿拼出来的）。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

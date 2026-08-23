@@ -274,8 +274,8 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.borderWidth).toBe('1px');
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
-    // demo 的 `.pop .tb-btn`（:209）只覆盖高度，`.tb-btn` 自己的
-    // `min-width: 28px`（:138-139）仍然生效，所以是 26 高、28 宽。
+    // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 26 高、
+    // 28 宽。
     expect(geo.buttons).toHaveLength(8);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 26 });
