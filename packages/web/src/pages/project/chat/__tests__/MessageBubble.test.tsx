@@ -57,9 +57,12 @@ describe('MessageBubble', () => {
 
     const dot = screen.getByTestId('chat-waiting-dot');
     expect(dot).toBeInTheDocument();
-    // 在最后一个字后面,不是气泡里别的什么位置。
+    // 紧跟在最后一个字后面,不是气泡里别的什么位置。原来这一条断言的是
+    // 「点是正文容器的最后一个元素子节点」—— 那时正文是一个字符串,两种说法
+    // 指同一处。正文现在是一棵元素树,最后一个字在某个块里面,所以断言改成
+    // 直接量它:点的前一个节点就是那个字。
+    expect(dot.previousSibling?.textContent).toContain('好');
     const said = container.querySelector('[data-testid="message-bubble-content"]');
-    expect(said?.lastElementChild).toBe(dot);
     expect(said?.textContent).toContain('好');
   });
 
@@ -155,5 +158,37 @@ describe('MessageBubble', () => {
       />,
     );
     expect(screen.getByTestId('message-bubble-error').getAttribute('role')).toBe('alert');
+  });
+});
+
+describe('MessageBubble — markdown rendering', () => {
+  it('renders assistant prose through the markdown renderer', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'a line with **bold** in it' });
+
+    const md = screen.getByTestId('markdown-body');
+    expect(md.querySelector('strong')).toHaveTextContent('bold');
+  });
+
+  it('leaves what the reader typed as plain text (R13)', () => {
+    // Someone typing **text** into the composer means those characters.
+    setup({ id: 'm1', role: 'user', content: 'a line with **bold** in it' });
+
+    expect(screen.queryByTestId('markdown-body')).toBeNull();
+    expect(screen.getByTestId('message-bubble')).toHaveTextContent('**bold**');
+    expect(screen.getByTestId('message-bubble').querySelector('strong')).toBeNull();
+  });
+
+  it('hands the dot to the renderer once prose has arrived', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'still writing', streaming: true });
+
+    const dot = screen.getByTestId('chat-waiting-dot');
+    expect(dot.closest('[data-testid="markdown-body"]')).toBeInTheDocument();
+  });
+
+  it('shows the dot alone before the first character', () => {
+    setup({ id: 'm1', role: 'assistant', content: '', streaming: true });
+
+    expect(screen.getByTestId('chat-waiting-dot')).toBeInTheDocument();
+    expect(screen.queryByTestId('markdown-body')).toBeNull();
   });
 });
