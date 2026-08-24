@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
@@ -412,5 +413,28 @@ describe('MarkdownMessage — the status word stays out of copied text (R11)', (
   it('has no a11y violations', async () => {
     draw('- [x] shipped\n- [ ] pending');
     await expectNoA11yViolations(document.body);
+  });
+});
+
+describe('MarkdownMessage — the footnote section speaks the reader\'s language (R1)', () => {
+  afterEach(() => {
+    // Unmount first: changing the locale notifies every mounted subscriber,
+    // and a live component would take that update outside act().
+    cleanup();
+    changeLocale('en');
+  });
+
+  it('labels the section and the back link from the catalogue', () => {
+    // remark-rehype writes both of these itself, in English, and they are the
+    // only words a screen reader gets for the footnote machinery. Asserted in
+    // a non-English locale: the English strings the library ships are the same
+    // words our own catalogue holds, so an English assertion passes either way.
+    changeLocale('zh-CN');
+    draw('A claim[^1].\n\n[^1]: the note');
+
+    expect(body().querySelector('#footnote-label')?.textContent).toBe('脚注');
+    expect(
+      body().querySelector('a[data-footnote-backref]')?.getAttribute('aria-label'),
+    ).toBe('回到引用 1');
   });
 });

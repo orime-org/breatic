@@ -193,7 +193,9 @@
     },
     "markdown": {
       "taskDone": "완료",
-      "taskTodo": "미완료"
+      "taskTodo": "미완료",
+      "footnotes": "각주",
+      "backToReference": "참조 {index}(으)로 돌아가기"
     }
   },
   "canvas": {

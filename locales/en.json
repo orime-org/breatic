@@ -193,7 +193,9 @@
     },
     "markdown": {
       "taskDone": "Done",
-      "taskTodo": "Not done"
+      "taskTodo": "Not done",
+      "footnotes": "Footnotes",
+      "backToReference": "Back to reference {index}"
     }
   },
   "canvas": {

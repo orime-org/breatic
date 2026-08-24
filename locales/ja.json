@@ -193,7 +193,9 @@
     },
     "markdown": {
       "taskDone": "完了",
-      "taskTodo": "未完了"
+      "taskTodo": "未完了",
+      "footnotes": "脚注",
+      "backToReference": "参照 {index} に戻る"
     }
   },
   "canvas": {

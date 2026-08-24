@@ -12,7 +12,7 @@
  * Inline HTML stays escaped: the pipeline carries no `rehype-raw`, which is
  * what react-markdown means by secure by default.
  */
-import type { ReactElement, ReactNode } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -55,9 +55,10 @@ interface MarkdownMessageProps {
  *
  * `linkMode` is `text-only`; the other two modes close a half-typed link into
  * a `streamdown:incomplete-link` anchor, which in a single-page app is a full
- * reload. `links`, `images`, `singleTilde` and `comparisonOperators` return
- * the same string on or off in this configuration — measured across half-typed
- * and innocent spellings of each.
+ * reload. It is `linkMode` that decides what a half-typed link becomes:
+ * `links` and `images` return the same string on or off beside it, and they
+ * share one handler, so the pair off together leaves a `[` where the mode
+ * would have taken it.
  */
 const COMPLETION = {
   bold: true,
@@ -154,9 +155,24 @@ export function MarkdownMessage({
   content,
   streaming = false,
 }: MarkdownMessageProps): ReactElement {
+  const t = useTranslation();
   // A settled message goes through untouched. An interrupted reply carries
   // unclosed markers, and those are what the model actually sent.
   const source = streaming ? remend(content, COMPLETION) : content;
+
+  // remark-rehype writes the footnote section's heading and each back link's
+  // label itself, and those are the only words on screen the footnote
+  // machinery produces. Keyed on the strings so a language change rebuilds it.
+  const footnotes = t('chat.markdown.footnotes');
+  const backTo = t('chat.markdown.backToReference', { index: '{index}' });
+  const remarkRehypeOptions = useMemo(
+    () => ({
+      footnoteLabel: footnotes,
+      footnoteBackLabel: (referenceIndex: number): string =>
+        backTo.replace('{index}', String(referenceIndex + 1)),
+    }),
+    [footnotes, backTo],
+  );
 
   return (
     <div
@@ -168,6 +184,7 @@ export function MarkdownMessage({
         components={COMPONENTS}
         rehypePlugins={(streaming ? REHYPE_STREAMING : REHYPE_SETTLED) as never}
         remarkPlugins={REMARK_PLUGINS}
+        remarkRehypeOptions={remarkRehypeOptions}
       >
         {source}
       </Markdown>

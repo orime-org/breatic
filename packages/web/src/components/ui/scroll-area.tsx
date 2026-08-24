@@ -89,8 +89,6 @@ const ScrollArea = React.forwardRef<
         ref={ref}
         type={type}
         data-scrollbars={scrollbars}
-        data-scrollable-y={scrollable.y}
-        data-scrollable-x={scrollable.x}
         className={cn('relative overflow-hidden', className)}
         {...props}
       >

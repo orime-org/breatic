@@ -193,7 +193,9 @@
     },
     "markdown": {
       "taskDone": "已完成",
-      "taskTodo": "未完成"
+      "taskTodo": "未完成",
+      "footnotes": "脚注",
+      "backToReference": "回到引用 {index}"
     }
   },
   "canvas": {
