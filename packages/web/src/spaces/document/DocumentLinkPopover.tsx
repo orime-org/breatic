@@ -236,18 +236,18 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
         }}
       >
         {mode === 'view' ? (
-          <div className='flex items-center gap-1'>
+          <div className='flex items-center gap-1.5'>
             <a
               data-testid='doc-link-url'
               href={target.href ?? undefined}
               target='_blank'
               rel='noopener noreferrer'
-              className='max-w-56 truncate px-1 text-sm text-content-link underline'
+              className='max-w-[250px] truncate px-1 text-sm text-content-link underline underline-offset-2'
             >
               {target.href}
             </a>
             <Button
-              variant='ghost'
+              variant='outline'
               size={null}
               onClick={() => {
                 setDraft(target.href ?? '');
@@ -255,23 +255,23 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
                 setMode('edit');
               }}
               data-testid='doc-link-edit'
-              className={`${BUBBLE_CONTROL_HEIGHT} px-2 text-sm`}
+              className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
             >
               {t('spaces.document.link.edit')}
             </Button>
             <Button
-              variant='ghost'
+              variant='outline'
               size={null}
               onClick={unlink}
               data-testid='doc-link-remove'
-              className={`${BUBBLE_CONTROL_HEIGHT} px-2 text-sm`}
+              className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
             >
               {t('spaces.document.link.remove')}
             </Button>
           </div>
         ) : (
-          <div className='flex flex-col gap-1'>
-            <div className='flex items-center gap-1'>
+          <div className='flex flex-col gap-1.5'>
+            <div className='flex items-center gap-1.5'>
               <Input
                 data-testid='doc-link-input'
                 ref={inputRef}
@@ -288,15 +288,21 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
                     submit();
                   }
                 }}
-                className={`${BUBBLE_CONTROL_HEIGHT} w-56 text-sm`}
+                className={`${BUBBLE_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
               />
+              {/* `aria-disabled`, so the press still arrives: the reason an
+                  address is refused is a thing this panel has to say, and a
+                  button carrying the HTML attribute is handed no click to say
+                  it on — nor any focus, which is what would have let the
+                  input's blur say it instead. Pressing it runs `submit`, which
+                  turns the field red and puts the reason underneath. */}
               <Button
-                variant='ghost'
+                variant='outline'
                 size={null}
-                disabled={!canSubmit}
+                aria-disabled={!canSubmit}
                 onClick={submit}
                 data-testid='doc-link-confirm'
-                className={`${BUBBLE_CONTROL_HEIGHT} px-2 text-sm`}
+                className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
               >
                 {t('spaces.document.link.confirm')}
               </Button>
@@ -304,7 +310,7 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
             {showInvalid ? (
               <p
                 data-testid='doc-link-invalid'
-                className='px-1 text-xs text-status-error-foreground'
+                className='px-0.5 text-xs text-status-error-foreground'
               >
                 {t('spaces.document.link.invalid')}
               </p>

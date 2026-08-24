@@ -154,7 +154,12 @@ describe('按下去开的是哪个状态', () => {
     await openPopoverOver(editor, 1, 6);
 
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
-    expect(screen.getByTestId('doc-link-confirm')).toBeDisabled();
+    // `aria-disabled`，不是 HTML 那个属性：带 HTML disabled 的按钮收不到点击，
+    // 而「为什么按不了」这句话正要靠这次点击说出来。
+    expect(screen.getByTestId('doc-link-confirm')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     expect(screen.queryByTestId('doc-link-remove')).not.toBeInTheDocument();
   });
 });
@@ -168,7 +173,12 @@ describe('新建一条链接', () => {
       target: { value: 'example.com' },
     });
 
-    expect(screen.getByTestId('doc-link-confirm')).not.toBeDisabled();
+    // 不用 `not.toBeDisabled()`：这个按钮从来没有 HTML 那个属性，那句断言
+    // 恒绿、什么都验不到。
+    expect(screen.getByTestId('doc-link-confirm')).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
   });
 
   it('输入不成形的网址时确定按不了', async () => {
@@ -179,7 +189,40 @@ describe('新建一条链接', () => {
       target: { value: 'hello world' },
     });
 
-    expect(screen.getByTestId('doc-link-confirm')).toBeDisabled();
+    expect(screen.getByTestId('doc-link-confirm')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('按不了的确定按下去，说出网址为什么不收', async () => {
+    const editor = mount('<p>plain text</p>');
+    await openPopoverOver(editor, 1, 6);
+
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'hello world' },
+    });
+    expect(screen.queryByTestId('doc-link-invalid')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    // 红边和那行字一起出来，而文档一个字没动 —— 按下去只是把理由说出来。
+    expect(screen.getByTestId('doc-link-invalid')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-input')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(editor.getHTML()).not.toContain('<a');
+  });
+
+  it('空着的时候按确定，同样说得出来', async () => {
+    const editor = mount('<p>plain text</p>');
+    await openPopoverOver(editor, 1, 6);
+
+    fireEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    expect(screen.getByTestId('doc-link-invalid')).toBeInTheDocument();
+    expect(editor.getHTML()).not.toContain('<a');
   });
 
   it('按确定把链接写进文档并关掉浮层', async () => {

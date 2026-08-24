@@ -275,8 +275,9 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
     // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 26 高、
-    // 28 宽。
-    expect(geo.buttons).toHaveLength(8);
+    // 28 宽。九个：#902 的八个命令，加上 #903 的链接。最后那个交给 Radix 当浮层
+    // 触发器、不是按下就跑命令的那种，尺寸仍旧跟其余八个一样。
+    expect(geo.buttons).toHaveLength(9);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 26 });
     }
@@ -1111,4 +1112,12 @@ test('链接：主机里带空格的地址，确定按钮不亮', async () => {
 
   await input.fill('hello world');
   await expect(confirm).toBeDisabled();
+
+  // 按下去要说得出理由，这是它带 `aria-disabled` 而不带 HTML 那个属性的全部
+  // 原因。用坐标点，不用 `confirm.click()`：后者会先等元素变成 enabled，而它
+  // 正是永远不会 —— 从窗口坐标点下去才是浏览器真正走一遍 hit-test 的那条路。
+  const box = await confirm.boundingBox();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await expect(page.getByTestId('doc-link-invalid')).toBeVisible({ timeout: 5_000 });
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
 });
