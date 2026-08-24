@@ -95,7 +95,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
 
-  it('A8：进 handling → toast 说在生成，退回挑选横幅', () => {
+  it('A8：进 handling → toast 说在处理，退回挑选横幅', () => {
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const rerender = enterFocus(START);
 
@@ -110,7 +110,7 @@ describe('聚焦目标被改动之后（#2000）', () => {
     expect(screen.getByTestId('reference-pick-banner')).toBeInTheDocument();
   });
 
-  it('A8b：让它进 error → toast 说生成失败，退回挑选横幅', () => {
+  it('A8b：让它进 error → toast 说处理失败，退回挑选横幅', () => {
     // deriveStatus reaches 'error' without passing through 'handling' (a
     // failure writes errorMessage and puts state back to idle), so a client
     // that receives both writes in one delivery lands here having never seen
@@ -233,9 +233,10 @@ describe('聚焦目标被改动之后（#2000）', () => {
   });
 
   it('本地写入删掉聚焦目标 → toast 不指原因，也不说协作者', () => {
-    // Undo is the only local path that reaches a verdict: CONTENT_WRITE is
-    // outside the undo manager's trackedOrigins, so an undo can remove the
-    // node but never change its content or status.
+    // An undo, a redo and a Delete on a co-selected target all arrive here
+    // the same way, which is why the line states what happened and stops.
+    // None of them can reach `replaced` / `busy` / `failed`: those writes go
+    // out under CONTENT_WRITE, outside the undo manager's trackedOrigins.
     const warn = vi.spyOn(toast, 'warning').mockReturnValue('t');
     const rerender = enterFocus(START);
 

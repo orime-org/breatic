@@ -236,16 +236,21 @@ const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
  * gives the member `parentZ + 1`. That makes 1001 the highest a node
  * reaches, and 1002 clears it — on two conditions.
  *
- * Groups stay one level deep, which three separate places enforce:
+ * Groups stay one level deep, which four separate places enforce:
  * `group-toolbar.ts`'s `allLoose` (a group cannot be put inside a new
  * group), `group-drag.ts`'s `draggedMembers` filter (a group dragged over
- * another never reparents), and the loose-node filter inside
- * `commitGroupResize` below (a grown group swallows loose nodes only).
+ * another never reparents), the loose-node filter inside
+ * `commitGroupResize` below (a grown group swallows loose nodes only), and
+ * `node-clipboard.ts`'s group branch, which drops the parentId it just
+ * resolved (a pasted group is always a root — and that payload is parsed
+ * out of the clipboard, so it is the one path an outside shape can enter).
  * Nesting two levels would put a member at 1002 and three at 1003.
  *
- * And `zIndexMode` stays `'basic'`, its default, which we never override:
- * under `'auto'` xyflow adds `rootParentIndex * 10` to every root that has
- * children, so the hundred-and-first such group reaches 1010 and its member 1011.
+ * And `zIndexMode` stays `'basic'`, its default, which we never override.
+ * Under `'auto'` xyflow adds `rootParentIndex * 10` to a root that has
+ * children, counting from 1, on top of whatever `calculateZ` already gave
+ * it — so the FIRST selected group with children lands on 1010 and its
+ * member on 1011.
  *
  * It does not clear the generate panel, and cannot: NodeToolbar portals into
  * `.react-flow__renderer`, landing as a sibling of the pane that holds every
@@ -714,9 +719,11 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     if (pickSession?.purpose !== 'focus') setFocusTarget(null);
   }, [pickSession]);
-  // What became of the crop target (#2000). A collaborator can delete it,
-  // swap its content, or start a generation on it; each ends the crop and
-  // says which one happened. `ok` also covers "no crop open".
+  // What became of the crop target (#2000). Four things end a crop: the node
+  // is gone, its content was swapped, it entered handling, or it failed. Any
+  // of them can come from this client or from a peer — this selector reads
+  // the node and nothing else, and the effect below picks the wording from
+  // who wrote it. `ok` also covers "no crop open".
   //
   // Existence is judged on the graph mirror, which viewport CULLING never
   // removes from (onlyRenderVisibleElements unmounts the node's DOM but the
