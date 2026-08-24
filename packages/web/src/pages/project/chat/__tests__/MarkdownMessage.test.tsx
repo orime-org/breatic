@@ -521,4 +521,22 @@ describe('WaitingDot — a streaming code block (R7)', () => {
     // The line terminator is still in the block, just behind the mark.
     expect(container.querySelector('code')?.textContent).toBe('const a = 1;\n');
   });
+
+  it('rides them when the line ends inside a coloured token', () => {
+    // A string or a comment running over several lines is one token, so the
+    // newline that ends the line just received sits inside that span rather
+    // than beside it.
+    for (const source of ['```python\nx = """line one\nline two', '```js\n/* first\n second']) {
+      const { container, unmount } = render(<MarkdownMessage content={source} streaming />);
+
+      const mark = container.querySelector('[data-testid="chat-waiting-dot"]');
+      expect(mark).not.toBeNull();
+      expect(mark?.previousSibling?.textContent?.endsWith('\n')).toBe(false);
+      // Every character the model sent is still there, in order.
+      expect(container.querySelector('code')?.textContent).toBe(
+        `${source.split('\n').slice(1).join('\n')}\n`,
+      );
+      unmount();
+    }
+  });
 });

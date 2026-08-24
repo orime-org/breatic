@@ -131,11 +131,15 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     const declared = new Set<string>();
     for (const name of names) {
       const grammar = readFileSync(require_.resolve(`highlight.js/lib/languages/${name}`), 'utf8');
-      for (const [, scope] of grammar.matchAll(/(?:scope|className):\s*'([a-zA-Z_][\w.-]*)'/g)) {
+      // Both quote styles: six names across the set — `property` and the
+      // `title.*` family among them — are written with double quotes only.
+      for (const [, scope] of grammar.matchAll(
+        /(?:scope|className):\s*['"]([a-zA-Z_][\w.-]*)['"]/g,
+      )) {
         declared.add(scope!);
       }
     }
-    expect(declared.size).toBeGreaterThan(40);
+    expect(declared.size).toBeGreaterThan(45);
     expect(lowlight.registered('ruby')).toBe(true);
 
     // Each painted selector as the SET of classes it requires. Splitting these
@@ -155,17 +159,34 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
         return new Set([...last.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map((m) => m[1]!));
       });
 
-    // Containers hold other tokens and take the surrounding colour.
+    // Containers hold other tokens and take the surrounding colour. Matched
+    // whole: `function` wraps a declaration, while `function.dispatch` is the
+    // called name inside one, and the two want opposite treatment.
     const containers = new Set(['params', 'function', 'tag', 'punctuation']);
 
+    /**
+     * The classes highlight.js puts on an element for one scope name.
+     *
+     * A tiered scope becomes the prefixed head plus one class per tier, each
+     * carrying as many underscores as its depth — `char.escape` is
+     * `hljs-char escape_`. Copied from `highlight.js/lib/core.js:122`, which
+     * does not export it.
+     * @param scope - A scope name a grammar declares.
+     * @returns Every class an element carrying that scope has.
+     */
+    const classesFor = (scope: string): string[] => {
+      const [head, ...tiers] = scope.split('.');
+      return [`hljs-${head}`, ...tiers.map((tier, depth) => `${tier}${'_'.repeat(depth + 1)}`)];
+    };
+
     const unpainted = [...declared]
-      .filter((scope) => !containers.has(scope.split('.')[0]!))
-      .filter((scope) => {
-        // highlight.js writes `a.b` as class `hljs-a` plus class `b`.
-        const [head, tail] = scope.split('.');
-        const classes = tail === undefined ? [`hljs-${head}`] : [`hljs-${head}`, tail];
-        return !paintedCombos.some((needed) => [...needed].every((c) => classes.includes(c)));
-      });
+      .filter((scope) => !containers.has(scope))
+      .filter(
+        (scope) =>
+          !paintedCombos.some((needed) =>
+            [...needed].every((one) => classesFor(scope).includes(one)),
+          ),
+      );
 
     expect(unpainted, 'scopes no rule paints').toEqual([]);
   });

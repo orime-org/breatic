@@ -1318,7 +1318,7 @@ body {
 .chat-markdown .hljs-literal,
 .chat-markdown .hljs-symbol,
 .chat-markdown .hljs-label,
-.chat-markdown .hljs-char.escape {
+.chat-markdown .hljs-char.escape_ {
   color: var(--color-palette-orange);
 }
 
@@ -1340,9 +1340,12 @@ body {
   font-style: italic;
 }
 
-/* A section heading names the region under it, which is what a title does. */
+/* A section heading names the region under it, which is what a title does, and
+   so does the name at a call site — `function` on its own wraps a whole
+   declaration and inherits, but `function.dispatch` is the called name. */
 .chat-markdown .hljs-title,
-.chat-markdown .hljs-section {
+.chat-markdown .hljs-section,
+.chat-markdown .hljs-function.dispatch_ {
   color: var(--color-palette-blue);
 }
 

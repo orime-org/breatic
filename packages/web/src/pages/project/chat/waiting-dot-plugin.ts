@@ -150,6 +150,27 @@ function lastVisibleSlot(
 }
 
 /**
+ * The last node carrying characters in this subtree, in document order.
+ *
+ * A fence's last line often ends inside a coloured span rather than beside
+ * one: a string or a comment that runs over several lines is one token, and
+ * the newline terminating the line that just arrived sits within it.
+ * @param node - The node to look through.
+ * @returns That node, or undefined when the subtree carries no characters.
+ */
+function lastLiteralIn(node: RootContent): { value: string } | undefined {
+  if (isVisibleLiteral(node)) return node as unknown as { value: string };
+  if (!isElement(node)) return undefined;
+  for (let i = node.children.length - 1; i >= 0; i -= 1) {
+    const child = node.children[i];
+    if (child === undefined) continue;
+    const found = lastLiteralIn(child);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/**
  * Insert the waiting mark at the end of what has arrived.
  * @returns A rehype transformer.
  */
@@ -188,12 +209,16 @@ export function waitingDotPlugin(): (tree: Root) => void {
       // received so far ends in the newline that terminates it. Sitting after
       // that newline puts the mark on the line below the characters it is
       // meant to ride, for as long as the block is streaming.
-      const target = slot.parent.children[slot.index];
-      if (target?.type === 'text') {
-        const printed = target.value.replace(/\s+$/, '');
-        if (printed !== target.value) {
-          const trailing = target.value.slice(printed.length);
-          target.value = printed;
+      const preceding = slot.parent.children[slot.index];
+      const ending = preceding === undefined ? undefined : lastLiteralIn(preceding);
+      if (ending !== undefined) {
+        const printed = ending.value.replace(/\s+$/, '');
+        if (printed !== ending.value) {
+          // The whitespace moves out to the far side of the mark, which leaves
+          // the mark itself outside the coloured span it follows -- a mark
+          // placed inside one takes that token's colour.
+          const trailing = ending.value.slice(printed.length);
+          ending.value = printed;
           slot.parent.children.splice(slot.index + 1, 0, mark, { type: 'text', value: trailing });
           return;
         }
