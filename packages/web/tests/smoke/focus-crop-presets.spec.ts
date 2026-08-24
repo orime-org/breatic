@@ -20,7 +20,9 @@
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  *
  * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ * still passes the suite. Beyond one Project to put a Space in, it reads
+ * nothing from the account: the Space and both image nodes are built by the
+ * run itself.
  */
 import { test, expect, type Page } from 'playwright/test';
 
@@ -33,9 +35,101 @@ test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 // sidebar collapses to icons whose buttons lose their accessible names.
 test.use({ viewport: { width: 1680, height: 950 } });
 
+// Each case builds its own Space and two filled image nodes before it can
+// assert anything, and each fill rasterises a PNG and sends it up the upload
+// path. That setup alone outlasts the suite-wide 30s budget.
+test.setTimeout(120_000);
+
+/** A 4:3 solid PNG. Decodes with no network, so a node holding it is ready. */
+const SOLID_4_3_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAAFElEQVR4nGP8z8Dwn4GKgImaho0cAwCcxwHZ8AkusAAAAABJRU5ErkJggg==';
+
 /**
- * Signs in and opens a Project that already holds an image node, then starts
- * a focus pick on it and enters the crop state.
+ * Writes two image nodes straight into the Space's Yjs document, side by side,
+ * each already holding a decodable picture.
+ *
+ * Every UI route to the same end state has to stay still long enough for
+ * Playwright to call an element actionable, and the canvas ones do not: the
+ * node menu, the node's context menu and the blank-image panel all live in
+ * overlays that track the viewport transform. The document is the layer under
+ * all of that, and what this spec measures — the crop marquee against the
+ * capture layer — is unaffected by how the material got there.
+ * @param page - The Playwright page.
+ * @param projectId - The Project the Space belongs to.
+ * @param spaceName - Name of the Canvas Space created for this run.
+ * @returns The two node ids, left one first.
+ */
+async function seedTwoImageNodes(
+  page: Page,
+  projectId: string,
+  spaceName: string,
+): Promise<string[]> {
+  const ids = await page.evaluate(
+    async ([pid, name, png]: string[]) => {
+      // Vite serves each module under a versioned URL; importing the bare path
+      // would evaluate a SECOND copy whose caches are empty.
+      const live = (re: RegExp): string =>
+        performance
+          .getEntriesByType('resource')
+          .map((e) => e.name)
+          .find((n) => re.test(n)) ?? '';
+      const mgr = await import(/* @vite-ignore */ live(/data\/yjs\/manager\.ts/));
+      const canvas = await import(
+        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
+      );
+      const meta = mgr.getDoc(mgr.docName.projectMeta(pid));
+      const entry = [...meta.getMap('spaces').entries()].find(
+        ([, v]: [string, { get: (k: string) => unknown }]) =>
+          v.get('name') === name,
+      );
+      const spaceId = entry?.[0] as string;
+      const made: string[] = [];
+      for (const [i, x] of [80, 520].entries()) {
+        const id = `e2e-${Date.now()}-${i}`;
+        canvas.addNode(pid, spaceId, {
+          id,
+          type: 'image',
+          position: { x, y: 120 },
+          data: {
+            name: `e2e-source-${i}`,
+            createdAt: Date.now(),
+            createdBy: 'focus-crop-e2e',
+            locked: false,
+            state: 'idle',
+            attachments: [],
+            content: png,
+          },
+        });
+        made.push(id);
+      }
+      return made;
+    },
+    [projectId, spaceName, SOLID_4_3_PNG],
+  );
+
+  await page.waitForFunction(
+    (wanted: string[]) =>
+      wanted.every((id) => {
+        const img = document
+          .querySelector(`[data-id="${id}"]`)
+          ?.querySelector('[data-testid=image-node-img]');
+        return img instanceof HTMLImageElement && img.naturalWidth > 0;
+      }),
+    ids,
+    { timeout: 20_000 },
+  );
+  return ids;
+}
+
+/**
+ * Signs in, builds a Canvas Space holding two image nodes, then starts a focus
+ * pick on one of them and enters the crop state.
+ *
+ * The Space and both nodes are made here because every other starting point is
+ * someone else's leftovers: which Space a Project opens on is the first entry
+ * of that account's persisted `openTabIds`, and the other smoke specs add
+ * Spaces of their own to the same Project. A run that assumed a canvas with
+ * pictures in it was reading whatever the previous run happened to leave.
  * @param page - The Playwright page.
  * @returns Nothing; the page is left in the crop state.
  */
@@ -47,12 +141,27 @@ async function openCropOverlay(page: Page): Promise<void> {
   await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
 
   // Reuse an existing Project: this spec is about the crop overlay, and
-  // minting one per run burns the tier's projects-per-studio allowance.
+  // minting one per run burns the tier's projects-per-studio allowance. The
+  // Space inside it is ours, so nothing about the Project's contents matters.
   await page.goto('/studio');
   const firstProject = page.locator('a[href^="/project/"]').first();
   await expect(firstProject).toBeVisible({ timeout: 15_000 });
   await firstProject.click();
   await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  const projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] as string;
+
+  // A fresh Canvas Space, which opens active — so the run lands on a canvas
+  // regardless of what the account's tab order says.
+  const spaceName = `focus-crop-e2e-${Date.now()}`;
+  await page.getByTestId('new-space-button').click();
+  await page.getByTestId('new-space-type-canvas').click();
+  await page.getByTestId('new-space-name').fill(spaceName);
+  await page.getByTestId('new-space-submit').click();
+  await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+
+  // Two image nodes: the pick has to START from one node's generate panel, and
+  // a node is never a crop source for its own panel.
+  await seedTwoImageNodes(page, projectId, spaceName);
 
   // The pick has to START from some node's generate panel.
   const imageNode = page.locator('.react-flow__node:has([data-testid=image-node-img])');
