@@ -48,6 +48,16 @@ import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
 import { DocumentSplitBlock } from '@web/spaces/document/document-split-block';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
+/**
+ * What an address typed without one is stored as.
+ *
+ * The href reaches every peer and the markdown export, so a bare `breatic.ai`
+ * is qualified before it is written. Both paths that write one read this: the
+ * extension recognising a URL as it is typed, and the popover normalising what
+ * was pasted into it.
+ */
+export const DEFAULT_LINK_PROTOCOL = 'https';
+
 /** The body fragment, plus the optional collaborative layers. */
 export interface DocumentExtensionOptions {
   /**
@@ -166,6 +176,18 @@ export function buildDocumentExtensions(
       // needs inside a drag selection, and that pairing is task #124 — not a
       // one-line re-enable here.
       horizontalRule: false,
+      link: {
+        // A click on a link places the caret and selects the whole link, which
+        // is how an editor reaches one with the mouse. The default opens a new
+        // window instead, taking the click the caret needs.
+        openOnClick: false,
+        enableClickSelection: true,
+        // The extension's own default is http. It writes hrefs the same way
+        // the link popover does — a URL typed into the body becomes a link on
+        // the next space — so the two read one constant and cannot disagree
+        // about what an address without a protocol means.
+        defaultProtocol: DEFAULT_LINK_PROTOCOL,
+      },
     }),
     BodyHeading,
     // Somewhere to put content this build has no vocabulary for. Registered
