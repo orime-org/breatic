@@ -38,7 +38,11 @@ import {
   ForbiddenError,
 } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { CreditLotEntity } from "@breatic/shared";
+import type {
+  CreditLotEntity,
+  CreditOverview,
+  StudioCreditSummary,
+} from "@breatic/shared";
 
 /**
  * The shape a caller-supplied idempotency key must take: ASCII alphanumerics
@@ -286,6 +290,10 @@ export async function chargeForGeneration(
       await creditLotRepo.appendLedgerEntry(
         {
           ...usageEntry,
+          // The studio owes this, and nobody has paid it. Whoever assigns a
+          // purchase to the studio pays it off, and that is the row that
+          // names them.
+          payerUserId: null,
           entryType: "debt_incurred",
           amount: fromMicroCredits(-plan.shortfall),
           lotId: null,
@@ -444,39 +452,24 @@ export async function designateLot(input: {
   });
 }
 
-/** One studio's line on the account overview. */
-export interface StudioCreditSummary {
-  studioId: string;
-  /** What this studio can spend of this account's money. */
-  spendable: number;
-  /** What it has already spent of it. */
-  spent: number;
-}
-
-/** What an account holds, and where. */
-export interface CreditOverview {
-  /** Sitting in studios, ready to spend. */
-  assignedCredits: number;
-  /** Bought but pointed at no live studio, so unspendable until assigned. */
-  unassignedCredits: number;
-  /** Every studio this account has money in or has spent money in. */
-  studios: StudioCreditSummary[];
-}
-
 /**
  * What an account holds and where it went.
  *
- * A studio appears here if it holds credits of this account's or has spent
- * some, which are different sets: a studio that spent its last credit still
- * belongs on the panel, and one that was just assigned its first has nothing
- * spent yet.
+ * A studio appears here on any of three counts: it holds credits of this
+ * account's, it has spent some, or it still owes for a generation this
+ * account ran there. The first two are different sets — a studio that spent
+ * its last credit still belongs on the panel, and one just assigned its
+ * first has nothing spent yet. The third reaches neither read, because a
+ * debt names no payer, and without it the debt is invisible to the person
+ * whose next purchase there pays it off.
  * @param userId - The account to summarise.
  * @returns The overview.
  */
 export async function getOverview(userId: string): Promise<CreditOverview> {
-  const [spendableRows, spentRows, unassigned] = await Promise.all([
+  const [spendableRows, spentRows, owingRows, unassigned] = await Promise.all([
     creditLotRepo.sumSpendableByStudio(userId),
     creditLotRepo.sumSpentByStudio(userId),
+    creditLotRepo.studiosWithDebtFrom(userId),
     getUnassignedCredits(userId),
   ]);
 
@@ -484,21 +477,84 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   for (const row of spendableRows) {
     byStudio.set(row.studioId, {
       studioId: row.studioId,
+      studioName: row.studioName,
+      studioSlug: row.studioSlug,
+      deleted: false,
       spendable: toMicroCredits(row.spendable) / 1_000_000,
+      debt: 0,
       spent: 0,
+      lotCount: row.lotCount,
     });
   }
   for (const row of spentRows) {
     const existing = byStudio.get(row.studioId);
     const spent = toMicroCredits(row.spent) / 1_000_000;
     if (existing) existing.spent = spent;
-    else byStudio.set(row.studioId, { studioId: row.studioId, spendable: 0, spent });
+    // A studio reaches this side and not the other one whenever no purchase
+    // of this account points at it: they were pointed elsewhere, or the
+    // studio is gone and the other read joins only live ones, or nothing is
+    // charged here so there are no purchases at all. A spent purchase still
+    // points, so its studio comes through the other side.
+    // Whether it is gone is the column the row carries.
+    else
+      byStudio.set(row.studioId, {
+        studioId: row.studioId,
+        studioName: row.studioName,
+        studioSlug: row.studioSlug,
+        deleted: row.deleted,
+        spendable: 0,
+        debt: 0,
+        spent,
+        lotCount: 0,
+      });
+  }
+
+  // A studio this account only ever owed in reaches neither read above: a
+  // debt names no payer. Without it the debt is invisible, and the next
+  // purchase assigned there is spent paying it off before anything else.
+  //
+  // Only while it still owes. Once the debt is paid — by anyone — this
+  // account has no money there, has spent none there, and owes nothing:
+  // four zeroes on a row that answers no question.
+  // A debt belongs to the studio. Everyone who ever spent there keeps their
+  // row — that spending is their own history — but the debt is not theirs: it
+  // keeps moving as the people still inside generate, and the one thing that
+  // can be done about it, pointing a purchase at the studio, is an admin's to
+  // do. So it is answered for the studios this account administers now, and
+  // withheld from the rest.
+  const administered = await creditLotRepo.studiosAdministeredBy(userId, [
+    ...byStudio.keys(),
+    ...owingRows.map((row) => row.studioId),
+  ]);
+  const debts = await creditLotRepo.readDebtsFor([...administered]);
+
+  for (const row of owingRows) {
+    if (byStudio.has(row.studioId)) continue;
+    if (!administered.has(row.studioId)) continue;
+    if (toMicroCredits(debts.get(row.studioId) ?? "0") <= 0) continue;
+    byStudio.set(row.studioId, {
+      studioId: row.studioId,
+      studioName: row.studioName,
+      studioSlug: row.studioSlug,
+      deleted: row.deleted,
+      spendable: 0,
+      debt: 0,
+      spent: 0,
+      lotCount: 0,
+    });
   }
 
   const studios = [...byStudio.values()];
+  for (const studio of studios) {
+    studio.debt = administered.has(studio.studioId)
+      ? toMicroCredits(debts.get(studio.studioId) ?? "0") / 1_000_000
+      : null;
+  }
+
   return {
     assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
     unassignedCredits: unassigned,
+    billing: env.PAYMENT_ENABLED,
     studios,
   };
 }

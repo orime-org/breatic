@@ -20,12 +20,14 @@
  *      Postgres admits any number of NULLs. Without the constraint here, a
  *      redelivered webhook grants the credits a second time.
  *
- *   2. `credit_ledger.lot_id` is NULLABLE while `payer_user_id` is NOT NULL.
+ *   2. `credit_ledger.lot_id` is NULLABLE, and `payer_user_id` is NULL on
+ *      `debt_incurred` alone, held there by a CHECK.
  *      With payments disabled — every local install and every self-hosted
  *      one — a generation still records what it used, but there is no lot to
  *      attribute it to. Making `lot_id` NOT NULL would either lose that usage
- *      record or force a fake lot; making `payer_user_id` nullable would drop
- *      the row out of the account ledger, which reads by payer.
+ *      record or force a fake lot. A debt names no payer because at the
+ *      moment it is written nobody has paid it; the CHECK is what stops the
+ *      column from meaning two things.
  *
  *   3. `credit_ledger` has `created_at` and NEITHER `updated_at` NOR
  *      `deleted_at`. It is append-only: a row records that something already
@@ -238,13 +240,15 @@ describe("旧模型退场（0062）", () => {
 });
 
 describe("credit_ledger", () => {
-  it("requires a payer but not a lot", async () => {
+  it("names a payer on every type but a debt", async () => {
     const cols = await columnsOf("credit_ledger");
     expect(cols.size, "credit_ledger does not exist").toBeGreaterThan(0);
 
-    // Who the credits belong to. Written even with payments disabled, where
-    // the row records usage against a person but against no purchase.
-    expect(cols.get("payer_user_id")?.is_nullable).toBe("NO");
+    // Whose money moved. Absent on `debt_incurred` (0064): a debt is what a
+    // studio owes, recorded before anyone has paid it — the payment comes
+    // later, as the repayment row of whoever assigns a purchase. The CHECK
+    // below is what keeps the column from meaning two things.
+    expect(cols.get("payer_user_id")?.is_nullable).toBe("YES");
     // Which purchase was drawn down — absent exactly in that case.
     expect(cols.get("lot_id")?.is_nullable).toBe("YES");
     // Who did the spending. A studio's guest may spend the admin's credits,
@@ -253,6 +257,25 @@ describe("credit_ledger", () => {
     expect(cols.get("studio_id")?.is_nullable).toBe("YES");
     expect(cols.get("project_id")?.is_nullable).toBe("YES");
     expect(cols.get("entry_type")?.is_nullable).toBe("NO");
+    // Nullable in the column, required by the constraint on everything else.
+    // Asked of the database rather than of the constraint's text: a text
+    // that mentions the right words can still permit the row.
+    const [payer] = await sql<{ id: string }[]>`
+      INSERT INTO users (email)
+      VALUES (${`check-probe-${Date.now()}@example.test`}) RETURNING id`;
+    await expect(
+      sql`INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (NULL, 'spend', -1)`,
+      "a spend with no payer was accepted",
+    ).rejects.toThrow();
+    await expect(
+      sql`INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (NULL, 'debt_incurred', -1)`,
+    ).resolves.toBeDefined();
+    await expect(
+      sql`INSERT INTO credit_ledger (payer_user_id, entry_type, amount)
+          VALUES (${payer!.id}, 'topup', 1)`,
+    ).resolves.toBeDefined();
     expect(cols.get("amount")?.is_nullable).toBe("NO");
     expect(cols.get("amount")?.data_type).toBe("numeric");
     expect(cols.get("amount")?.numeric_precision).toBe(20);

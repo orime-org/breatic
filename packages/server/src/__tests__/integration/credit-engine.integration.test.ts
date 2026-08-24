@@ -400,9 +400,9 @@ describe("扣不到笔时的记账", () => {
 });
 
 describe("总览的两个数", () => {
-  it("「花了多少」只算真扣到笔的那些，不算记了用量但一分没扣的", async () => {
-    // 三条不扣费的路径写的都是 entry_type='spend'，区别只在 lot_id 为空。
-    // 少了这个条件，面板会报出从未离开账户的钱。
+  it("「花了多少」把扣不满的那部分算作 studio 的欠账，不算进已消耗", async () => {
+    // 池子花光之后那次生成写的是 debt_incurred，它不在已消耗统计的两种
+    // entry_type 里，所以已消耗停在真扣到的 30。
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
     await creditLotService.chargeForGeneration({
@@ -1190,7 +1190,7 @@ describe("欠账：不变量", () => {
         model: string | null;
         provider: string | null;
         actor_user_id: string | null;
-        payer_user_id: string;
+        payer_user_id: string | null;
         lot_id: string | null;
         amount: string;
       }[]
@@ -1206,7 +1206,9 @@ describe("欠账：不变量", () => {
     expect(row!.model).toBe("seedance-1.5-pro");
     expect(row!.provider).toBe("volcengine");
     expect(row!.actor_user_id).toBe(fx.userId);
-    expect(row!.payer_user_id).toBe(fx.userId);
+    // Nobody has paid this. The studio owes it, and whoever assigns a
+    // purchase there pays it off — that repayment is the row naming them.
+    expect(row!.payer_user_id).toBeNull();
     expect(row!.lot_id).toBeNull();
     expect(row!.amount).toBe("-42.000000");
   });
@@ -1381,13 +1383,17 @@ describe("studio 流水：一次生成一行", () => {
       "2026-08-23 10:00:00.223400+00",
       "2026-08-23 10:00:00.223000+00",
     ];
+    // Rows that drew on a purchase: the account ledger reports what left
+    // this account's purchases, so a row with no lot behind it is not one of
+    // its rows and would not exercise its paging.
+    const lotId = await seedLot(fx, 100, fx.studioId);
     for (let i = 0; i < stamps.length; i++) {
       await sql.unsafe(`
         INSERT INTO credit_ledger
           (payer_user_id, actor_user_id, entry_type, studio_id, project_id,
            amount, lot_id, reference_id, created_at)
         VALUES ('${fx.userId}', '${fx.userId}', 'spend', '${fx.studioId}',
-                '${fx.projectId}', -10, NULL, 'payer-ms-${i}',
+                '${fx.projectId}', -10, '${lotId}', 'payer-ms-${i}',
                 TIMESTAMPTZ '${stamps[i]!}')`);
     }
 

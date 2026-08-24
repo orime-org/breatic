@@ -483,8 +483,8 @@ studio.delete(
  *
  * The ledger beside it is the studio's own, one line per generation: taking
  * it by payer would hide what everyone else's top-ups paid for, and would
- * split a generation that ran short between two people, since its spend rows
- * are against the lot owner and its shortfall against whoever ran it.
+ * drop the shortfall of a generation that ran short, since a debt names no
+ * payer — the studio owes it.
  * @returns `200` with `{ data: StudioCreditsView }`; `403` for anyone who is
  *   not this studio's admin (which also hides whether the studio exists),
  *   `401` when signed out

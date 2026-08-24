@@ -5,13 +5,11 @@ import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 
+import type { StudioLedgerView, StudioLotView } from '@breatic/shared';
+
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
-import {
-  fetchStudioCredits,
-  type StudioLedgerView,
-  type StudioLotView,
-} from '@web/data/api/credits';
+import { fetchStudioCredits } from '@web/data/api/credits';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { useTranslation } from '@web/i18n/use-translation';
