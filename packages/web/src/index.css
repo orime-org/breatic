@@ -1255,15 +1255,24 @@ body {
 }
 
 /* Code colours. Class names are highlight.js's own, taken from running the ten
-   declared grammars; the colours are ours. A title carries a second class
-   saying which kind it is, so naming only .hljs-title would paint a type the
-   colour of a function. Containers — params, function, tag, punctuation —
-   inherit, and the tokens inside them carry the colour. */
+   declared grammars; the colours are ours. Which names share a colour follows
+   the scope groups highlight.js documents: the four selector-* names are one
+   group, and title / title.function / title.class are another — a title
+   carries a second class only where the grammar knows which kind it is, so
+   bash's `function go()` arrives as a bare .hljs-title. Containers — params,
+   function, tag, punctuation — inherit, and the tokens inside them carry the
+   colour.
+
+   meta is its own group upstream ("flags, modifiers, annotations, processing
+   instructions, preprocessor directives"): a shebang, a diff hunk header, a
+   Python decorator, an XML prolog, a YAML document marker. They read as
+   instructions, so they take the keyword colour. */
 .chat-markdown .hljs-keyword,
 .chat-markdown .hljs-built_in,
 .chat-markdown .hljs-name,
 .chat-markdown .hljs-operator,
-.chat-markdown .hljs-bullet {
+.chat-markdown .hljs-bullet,
+.chat-markdown .hljs-meta {
   color: var(--color-palette-violet);
 }
 
@@ -1283,12 +1292,16 @@ body {
   font-style: italic;
 }
 
-.chat-markdown .hljs-title.function_ {
+.chat-markdown .hljs-title {
   color: var(--color-palette-blue);
 }
 
 .chat-markdown .hljs-title.class_,
-.chat-markdown .hljs-selector-class {
+.chat-markdown .hljs-type,
+.chat-markdown .hljs-selector-tag,
+.chat-markdown .hljs-selector-id,
+.chat-markdown .hljs-selector-class,
+.chat-markdown .hljs-selector-pseudo {
   color: var(--color-palette-teal);
 }
 

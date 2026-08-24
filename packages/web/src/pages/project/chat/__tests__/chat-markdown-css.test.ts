@@ -50,61 +50,105 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     }
   });
 
-  it('names both classes wherever a title is coloured', () => {
-    // Functions and types share hljs-title; the second class is what tells
-    // them apart, so naming only the first paints one the other's colour.
-    const titleRules = chatRules().filter((r) => r.selector.includes('.hljs-title'));
-    expect(titleRules.length).toBeGreaterThan(0);
-
-    for (const rule of titleRules) {
-      for (const part of rule.selector.split(',')) {
-        if (!part.includes('.hljs-title')) continue;
-        expect(part).toMatch(/\.hljs-title\.(function_|class_)/);
+  it('separates a type name from a function name', () => {
+    // Functions and types share hljs-title. A grammar that knows which kind it
+    // has adds a second class; bash does not, and its `function go()` arrives
+    // as a bare hljs-title — so the bare name has to be painted, and the type
+    // has to win over it.
+    /**
+     * The colour the last rule mentioning this selector declares.
+     * @param selector - The selector to look for, matched exactly.
+     * @returns That colour, or undefined when no rule declares one.
+     */
+    const colourOf = (selector: string): string | undefined => {
+      let found: string | undefined;
+      for (const rule of chatRules()) {
+        if (!rule.selector.split(',').some((p) => p.trim() === selector)) continue;
+        const colour = /color:\s*([^;]+);/.exec(rule.body)?.[1]?.trim();
+        if (colour !== undefined) found = colour;
       }
-    }
+      return found;
+    };
+
+    const bare = colourOf('.chat-markdown .hljs-title');
+    const type = colourOf('.chat-markdown .hljs-title.class_');
+    expect(bare).toBeDefined();
+    expect(type).toBeDefined();
+    expect(bare).not.toBe(type);
   });
 
   it('covers every class the ten declared grammars emit', () => {
     const lowlight = createLowlight(HIGHLIGHT_LANGUAGES);
+    // One sample per grammar, each carrying the constructs that grammar has
+    // and the others do not: a shebang and a function, every kind of CSS
+    // selector, a hunk header, a decorator, a prolog and a doctype, a document
+    // marker and tags.
     const samples: Record<string, string> = {
-      bash: 'export NAME="x"\nif [ -f "$FILE" ]; then echo "$NAME"; fi',
-      css: '.foo { color: #fff; margin: 0 auto; }',
-      diff: '--- a/x.ts\n+++ b/x.ts\n-const a = 1;\n+const a = 2;',
-      xml: '<div class="box" id="a">words</div>',
+      bash: '#!/bin/bash\nfunction go() { export NAME="x"; if [ -f "$F" ]; then echo "$NAME"; fi; }',
+      css: 'a:hover, div > p::first-line, #id, .cls { color: #fff; margin: 0 auto; }',
+      diff: '@@ -1,3 +1,3 @@\n--- a/x.ts\n+++ b/x.ts\n-const a = 1;\n+const a = 2;',
+      xml: '<?xml version="1.0"?>\n<!DOCTYPE r>\n<div class="box" id="a">words</div>',
       javascript: 'export function f(a) { return a.map((n) => n * 2); }',
       json: '{ "name": "x", "n": 1, "ok": true }',
-      python: 'def f(a: int) -> int:\n    return a * 2  # note',
+      python: '@decorator\ndef f(a: int) -> int:\n    return a * 2  # note',
       sql: 'SELECT id, name FROM users WHERE age > 18 ORDER BY id;',
       typescript: 'export function f(a: Foo): Bar { return a as Bar; }',
-      yaml: 'name: x\nitems:\n  - a\n  - b',
+      yaml: '---\nname: !x\nitems:\n  - a\nz: !!str v',
     };
     // Every grammar in the set gets a sample: a language nobody exercises here
     // could quietly emit a class no rule paints.
     expect(Object.keys(samples).sort()).toEqual(Object.keys(HIGHLIGHT_LANGUAGES).sort());
 
-    const styled = chatRules()
+    // Each painted selector as the SET of classes it requires. Splitting these
+    // into loose names would put a bare `hljs-title` — which no rule matches,
+    // and which bash emits for a function name — into the painted set.
+    const paintedCombos = chatRules()
       .filter((r) => r.selector.includes('.hljs-'))
-      .flatMap((r) => [...r.selector.matchAll(/\.(hljs-[a-z_-]+|function_|class_)/g)])
-      .map((m) => m[1]);
+      .flatMap((r) => r.selector.split(','))
+      .filter((part) => part.includes('.hljs-'))
+      .map((part) => {
+        const last = part.trim().split(/\s+/).pop() ?? '';
+        return new Set([...last.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map((m) => m[1]!));
+      });
+
+    /**
+     * Whether some rule reaches an element carrying exactly these classes.
+     * @param classes - The class names on one element.
+     * @returns True when a selector's required classes are all present.
+     */
+    const isPainted = (classes: string[]): boolean =>
+      paintedCombos.some((needed) => [...needed].every((c) => classes.includes(c)));
 
     // Containers hold other tokens and take the surrounding colour.
     const containers = new Set(['hljs-params', 'hljs-function', 'hljs-tag', 'hljs-punctuation']);
 
     for (const [language, code] of Object.entries(samples)) {
-      const emitted = new Set<string>();
-      const walk = (node: { properties?: { className?: string[] }; children?: unknown[] }): void => {
-        (node.properties?.className ?? []).forEach((c) => emitted.add(c));
+      const unpainted: string[] = [];
+      const walk = (node: {
+        properties?: { className?: string[] };
+        children?: { type?: string; value?: string }[];
+      }): void => {
+        const classes = node.properties?.className ?? [];
+        // Only spans holding their own text need a colour; a container's text
+        // lives in the coloured spans inside it.
+        const ownText = (node.children ?? [])
+          .filter((c) => c.type === 'text')
+          .map((c) => c.value ?? '')
+          .join('');
+        if (
+          classes.length > 0 &&
+          ownText.trim() !== '' &&
+          !classes.includes('hljs') &&
+          !classes.some((c) => containers.has(c)) &&
+          !isPainted(classes)
+        ) {
+          unpainted.push(`${classes.join('.')} (${JSON.stringify(ownText.slice(0, 20))})`);
+        }
         (node.children ?? []).forEach((c) => walk(c as never));
       };
       walk(lowlight.highlight(language, code) as never);
 
-      for (const className of emitted) {
-        if (className === 'hljs' || containers.has(className)) continue;
-        expect(
-          styled.includes(className),
-          `${language} emits ${className}, which no rule paints`,
-        ).toBe(true);
-      }
+      expect(unpainted, `${language} emits classes no rule paints`).toEqual([]);
     }
   });
 });
