@@ -325,3 +325,25 @@ describe('MarkdownMessage — completion adds nothing the model did not send (R2
     expect(container.querySelector('strong')).toHaveTextContent('word');
   });
 });
+
+describe('MarkdownMessage — the dot follows literal HTML too (R7)', () => {
+  it('trails a tag the model wrote inside a paragraph', () => {
+    // Nothing renders this as markup, so the tag is four characters of the
+    // reply like any other. The mark belongs after them.
+    draw('a line<br>', true);
+
+    const mark = screen.getByTestId('chat-waiting-dot');
+    expect(mark.parentElement?.lastChild).toBe(mark);
+  });
+
+  it('trails a tag that arrived as its own block', () => {
+    // A tag on a line of its own prints at the top level, beside the
+    // paragraphs rather than inside one.
+    draw('some prose\n\n<details><summary>more</summary>', true);
+
+    const mark = screen.getByTestId('chat-waiting-dot');
+    expect(body().textContent).toContain('<summary>more</summary>');
+    expect(mark.previousSibling?.textContent).toContain('<summary>more</summary>');
+    expect(body().lastChild).toBe(mark);
+  });
+});
