@@ -14,7 +14,10 @@ import {
 
 import { StudioTabBar } from '@web/pages/studio/container/StudioTabBar';
 import type { StudioTabKey } from '@web/pages/studio/container/studio-tabs';
-import type { StudioType } from '@web/pages/studio/shared/studio-types';
+import type {
+  StudioRole,
+  StudioType,
+} from '@web/pages/studio/shared/studio-types';
 
 function setup(
   studioType: StudioType,
@@ -22,16 +25,19 @@ function setup(
     counts,
     current = 'projects',
     slug = 'acme-studio',
+    viewerRole = 'admin',
   }: {
     counts?: Partial<Record<StudioTabKey, number>>;
     current?: StudioTabKey;
     slug?: string;
+    viewerRole?: StudioRole;
   } = {},
 ) {
   return render(
     <MemoryRouter>
       <StudioTabBar
         studioType={studioType}
+        viewerRole={viewerRole}
         counts={counts}
         current={current}
         slug={slug}
@@ -77,6 +83,7 @@ function setupWithLocation(studioType: StudioType): {
     <MemoryRouter initialEntries={['/studio/acme-studio']}>
       <StudioTabBar
         studioType={studioType}
+        viewerRole='admin'
         current='projects'
         slug='acme-studio'
       />

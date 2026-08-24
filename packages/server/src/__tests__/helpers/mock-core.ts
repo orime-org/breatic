@@ -20,6 +20,7 @@ import { vi } from "vitest";
 // because this stub must not pull the domain barrel (and the `ai` SDK behind
 // it); test code is exempt from the alias rule.
 import { TOOLS_THAT_BLOCK as REAL_TOOLS_THAT_BLOCK } from "../../../../domain/src/agent/tools/blocking-tools.js";
+import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -179,23 +180,40 @@ export const mocks = {
   textToolService: {
     execute: vi.fn(),
   },
-  creditService: {
-    deduct: vi.fn().mockResolvedValue(100),
-    deductOnce: vi.fn().mockResolvedValue({ deducted: true, creditsAfter: 95 }),
-    getBalance: vi.fn().mockResolvedValue(100),
-    add: vi.fn().mockResolvedValue(200),
-  },
-  // Balance repo (credit_balances table, PR3). The auth middleware now
-  // resolves AuthUser.credits via creditRepo.getBalance, so EVERY authed
-  // route touches this — without the mock, the real repo hits the empty
-  // mock `db` and 500s the whole route suite.
-  creditRepo: {
-    getBalance: vi.fn().mockResolvedValue(100),
-    deductBalance: vi.fn().mockResolvedValue(70),
-    addBalance: vi.fn().mockResolvedValue(200),
-    createBalanceRow: vi.fn().mockResolvedValue(undefined),
-    recordTransaction: vi.fn().mockResolvedValue({ id: "tx-1" }),
-    listTransactionsByUser: vi.fn().mockResolvedValue([]),
+  // The lot engine (#11). Its shape follows the real module: the two reads
+  // answer in credits, and a charge reports what it took and what it could
+  // not. A route suite that leaves these unmocked reaches the real queries
+  // against the empty mock `db` and 500s.
+  creditLotService: {
+    // Read at module evaluation by `routes/schemas.ts`, so a double without it
+    // hands zod an undefined pattern: the schema still builds, and the first
+    // request carrying the header dies inside the check rather than being
+    // refused at the door.
+    REFKEY_PATTERN: /^[A-Za-z0-9_:.-]{1,255}$/,
+    getSpendableCredits: vi.fn().mockResolvedValue(100),
+    getStudioDebt: vi.fn().mockResolvedValue(0),
+    getOverview: vi.fn().mockResolvedValue({
+      assignedCredits: 0,
+      unassignedCredits: 0,
+      studios: [],
+    }),
+    getUnassignedCredits: vi.fn().mockResolvedValue(0),
+    chargeForGeneration: vi.fn().mockResolvedValue({
+      billed: true,
+      charged: 5,
+      shortfall: 0,
+      studioId: "s0000000-0000-4000-8000-000000000001",
+      lotIds: ["l0000000-0000-4000-8000-000000000001"],
+    }),
+    chargeOnceForGeneration: vi.fn().mockResolvedValue({
+      billed: true,
+      charged: 5,
+      shortfall: 0,
+      studioId: "s0000000-0000-4000-8000-000000000001",
+      lotIds: ["l0000000-0000-4000-8000-000000000001"],
+    }),
+    grantFromPayment: vi.fn(),
+    designateLot: vi.fn(),
   },
   taskRepo: {
     getById: vi.fn(),
@@ -436,14 +454,13 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  *
  * Explicit (no importOriginal) so loading it never pulls the real agent
  * llm and the `ai` SDK behind it. Per-test overrides go through the
- * shared `mocks` refs (creditService / taskService / canvasLock / ...).
+ * shared `mocks` refs (creditLotService / taskService / canvasLock / ...).
  */
 export const domainMock = () => ({
   assetService: mocks.assetService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
-  creditService: mocks.creditService,
-  creditRepo: mocks.creditRepo,
+  creditLotService: mocks.creditLotService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
@@ -463,6 +480,9 @@ export const domainMock = () => ({
   // matched -- and one written-out copy of them said `ask_user`, a tool that
   // does not exist, which is how a turn that should have stopped ran on.
   TOOLS_THAT_BLOCK: REAL_TOOLS_THAT_BLOCK,
+  // Real so that a turn built on this stub throws the same detail the real
+  // one does when a tool reports the stop itself.
+  STOPPED_BY_USER: REAL_STOPPED_BY_USER,
   getSkillRegistry: () => ({
     get: (name: string) =>
       ["gated_fixture", "creative_research", "canvas_fixture", "canvas_gated"].includes(name)

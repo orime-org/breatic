@@ -262,11 +262,17 @@ export function entryMedia(entry: ProjectActivityEntry): ActivityMedia | null {
 }
 
 /**
- * The credit cost to show on a feed entry, or undefined to hide it. Only a
- * successful generation records an ACTUAL deducted cost (`payload.credits` —
- * the billed value, not the run-time estimate); uploads, failures, space /
- * member events and frontend mini-tools carry none. Gates through the shared
- * {@link formatCredits} so it matches the node-history row (spec §6.4 / INV-8).
+ * The credit cost to show on a feed entry, or undefined to hide it.
+ *
+ * What a successful generation consumed (`payload.credits`), which is what
+ * the run cost rather than what the pool could cover: a studio near the
+ * bottom of its balance finishes a generation owing credits, and the two
+ * figures part company there. This feed answers "what did this cost"; where
+ * the credits went is the studio's credits page. Uploads, failures, space and
+ * member events and frontend mini-tools carry none.
+ *
+ * Gates through the shared {@link formatCredits} so it matches the
+ * node-history row (spec §6.4 / INV-8).
  * @param entry - The feed entry.
  * @returns The credit cost, or undefined.
  */
@@ -524,7 +530,7 @@ export function ProjectActivityButton({
                         <span className='text-2xs tabular-nums text-muted-foreground'>
                           {t(rel.key, rel.params)}
                         </span>
-                        {/* Actual credits deducted (spec §6.4 / INV-8): raw
+                        {/* What the run consumed (spec §6.4 / INV-8): raw
                             value, 0 shown, hidden when there is no cost. */}
                         {credits != null ? (
                           <span

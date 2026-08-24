@@ -8,7 +8,7 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
-import { createUIMessageStream, hasToolCall, stepCountIs } from "ai";
+import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
 
@@ -19,9 +19,9 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
 import { env } from "@breatic/core";
-import { creditService } from "@breatic/domain";
+import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import type { MessagePart } from "@breatic/shared";
+import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -29,6 +29,7 @@ import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
+import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 
 /**
  * What a client is told when the turn's own code fails.
@@ -118,7 +119,8 @@ export class MainAgent {
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
     // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
-    // retries — see domain/src/credit/credit.service.ts `deductOnce`.
+    // retries — see domain/src/credit/creditLot.service.ts
+    // `chargeOnceForGeneration`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
       parts: [{ type: "text", text: said }],
@@ -209,7 +211,17 @@ export class MainAgent {
     const stopIfItAsked = async (options: {
       steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
     }): Promise<boolean> => {
-      const asked = await hasToolCall(...TOOLS_THAT_BLOCK)(options);
+      // A question counts once it exists, which is what a `tool-result` on
+      // one of these tools says. The SDK's own `hasToolCall` answers a
+      // different question -- whether the step holds a call by that name --
+      // and a call refused over its arguments is still one of those: it is
+      // enqueued first and the error follows. Stopping on it ends the turn
+      // over a question that was never put, so the model never reads the
+      // complaint telling it which field to fix, and the reader is left with
+      // nothing to answer.
+      const asked = (options.steps[options.steps.length - 1]?.content ?? []).some(
+        (part) => part.type === "tool-result" && TOOLS_THAT_BLOCK.includes(part.toolName),
+      );
       if (asked) askedTheUser = true;
       return asked;
     };
@@ -233,7 +245,7 @@ export class MainAgent {
     // both a provider that failed and our own code throwing.
     let failure: unknown;
 
-    // Why each failed tool call failed, by call id.
+    // How each tool call that came back with nothing ended, by call id.
     //
     // Kept because the protocol does not carry it: the SDK replaces every
     // error text on the wire with one generic line, deliberately, since the
@@ -243,7 +255,9 @@ export class MainAgent {
     // back next turn, so it cannot tell a refused connection from a bad
     // argument and cannot do anything differently. This callback is handed
     // the error itself, before any of that.
-    const whyToolFailed = new Map<string, string>();
+    const howToolEnded = new Map<string, ToolFailure>();
+    /** What a tool answered, for calls whose result chunk never got read. */
+    const whatToolAnswered = new Map<string, unknown>();
 
     /**
      * Ask the model, once everything it needs has been read.
@@ -290,15 +304,40 @@ export class MainAgent {
         // stream within milliseconds, makes no further model call, and is
         // passed on to every tool the turn invokes.
         abortSignal: signal,
-        onStepFinish: ({ usage }) => {
+        onStepFinish: ({ usage, content }) => {
           tokensUsed += usage?.totalTokens ?? 0;
+          // The other way a call can fail, and the only place its reason is
+          // readable. A call whose arguments the model shaped wrongly is
+          // refused at the door -- the SDK never runs it, so the callback
+          // below never fires. What arrives here for that one is a string:
+          // the SDK renders the error with `toString()` before putting it on
+          // the part, so it reads as `AI_InvalidToolInputError: ...` with the
+          // schema complaint after it. Which field failed which rule is in
+          // there, and that is what the model needs to send the call again.
+          //
+          // Both writers keep the first account of a call and neither
+          // overwrites, so which of them ran first stops mattering. For a call
+          // that did run, it is the one below: a tool ending is reported as it
+          // happens, and a step ends after everything in it has.
+          for (const part of content) {
+            if (part.type !== "tool-error") continue;
+            if (howToolEnded.has(part.toolCallId)) continue;
+            howToolEnded.set(part.toolCallId, endingOf(part.error));
+          }
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {
-          if (toolOutput.type !== "tool-error") return;
-          whyToolFailed.set(
-            toolCall.toolCallId,
-            toolOutput.error instanceof Error ? toolOutput.error.message : String(toolOutput.error),
-          );
+          // Both endings are kept, because the chunk carrying either one can
+          // be thrown away before anything reads it: the SDK reports a tool
+          // ending first and enqueues it after, and a turn that ends in
+          // between loses what was enqueued. The part is then left saying the
+          // call is still running, and the only account of it left anywhere
+          // is this one.
+          if (toolOutput.type === "tool-error") {
+            if (howToolEnded.has(toolCall.toolCallId)) return;
+            howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
+            return;
+          }
+          whatToolAnswered.set(toolCall.toolCallId, toolOutput.output);
         },
         // Deliberately does nothing. The same failure reaches the end of the
         // stream as an error chunk and is recorded there, alongside the ones
@@ -310,7 +349,14 @@ export class MainAgent {
         ...reasoningOptionsFor(resolveProvider(agentConfig.modelId), agentCfg.thinking_enabled),
       });
 
-      return result.toUIMessageStream();
+      // The one field the wire has for a failure, filled with the line a
+      // reader is shown. Left to its default the SDK writes one fixed English
+      // sentence here -- a default that exists so a server does not leak its
+      // own error text, which a translation key does not do either. Without
+      // this the panel has nothing to go on until the turn is stored and read
+      // back, so the same failure reads one way while it happens and another
+      // after a reload.
+      return result.toUIMessageStream({ onError: (err) => endingOf(err).readerKey });
     };
 
     return createUIMessageStream({
@@ -363,23 +409,45 @@ export class MainAgent {
 
         // Put the reasons back. What came off the wire says only that
         // something went wrong, and that sentence is what the model would
-        // read back next turn -- see `whyToolFailed`.
+        // read back next turn -- see `howToolEnded`.
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "error") continue;
-          const why = whyToolFailed.get(part.toolCallId);
-          if (why !== undefined) replyParts[i] = { ...part, errorMessage: why };
+          const ending = howToolEnded.get(part.toolCallId);
+          if (ending !== undefined) replyParts[i] = { ...part, failure: ending };
         }
 
         // A stored message is a record of something that already happened,
         // so nothing in it may still say "running". A call in flight when
-        // the turn was stopped never gets a result, and there is no later
-        // moment that would close it out. No message is set: nothing went
-        // wrong with the tool, the turn simply ended around it, and what to
-        // say about that is the panel's to decide in the reader's language.
+        // the turn ended never gets a result, and there is no later moment
+        // that would close it out.
+        //
+        // Why it ended is what `exit` says, and it has to be asked: a call
+        // left hanging by a provider that dropped mid-step looks exactly
+        // like one left hanging by the user pressing stop, and recording
+        // the second as the first tells the next turn the user did
+        // something they never did.
+        //
+        // What a call falls back to once both lookups below have missed --
+        // see `tool-ending.ts` for why a call nothing was reported about is
+        // one that never ran.
+        const leftHanging: ToolFailure = endingWithNothingRun(exit === "aborted");
         for (const [i, part] of replyParts.entries()) {
-          if (part.type === "tool" && part.status === "pending") {
-            replyParts[i] = { ...part, status: "error" };
+          if (part.type !== "tool" || part.status !== "pending") continue;
+          // A call the SDK already reported on can still be left pending
+          // here: the ending is reported before the chunk carrying it is
+          // pulled from the stream, and a stream that ends in between
+          // discards that chunk. What it ended with is in hand either way,
+          // and asked for before the account above -- that one describes a
+          // call nothing was ever reported about, and a call that answered
+          // recorded as one that never ran invites the next turn to spend
+          // whatever this one already spent all over again.
+          if (whatToolAnswered.has(part.toolCallId)) {
+            const output = whatToolAnswered.get(part.toolCallId);
+            replyParts[i] = { ...part, status: "success", output };
+            continue;
           }
+          const ending = howToolEnded.get(part.toolCallId) ?? leftHanging;
+          replyParts[i] = { ...part, status: "error", failure: ending };
         }
 
         let creditsUsed = 0;
@@ -407,17 +475,34 @@ export class MainAgent {
               creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
-              await creditService.deductOnce(
-                userId,
+              const outcome = await creditLotService.chargeOnceForGeneration(
                 `turn:${conversationId}:${turnIndex}`,
-                creditsUsed,
-                "Agent chat",
                 {
+                  projectId,
+                  actorUserId: userId,
+                  amount: creditsUsed,
+                  description: "Agent chat",
                   tokensUsed,
                   model: modelId,
                   provider: resolveProvider(modelId),
                 },
               );
+              if (outcome && outcome.shortfall > 0) {
+                // The pool ran out mid-turn, or its credits were reassigned
+                // while the model was answering. The reply is already with the
+                // reader, so what could not be charged goes to reconciliation.
+                logger.error(
+                  {
+                    userId,
+                    conversationId,
+                    turnIndex,
+                    studioId: outcome.studioId,
+                    charged: outcome.charged,
+                    shortfall: outcome.shortfall,
+                  },
+                  "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+                );
+              }
             },
           },
         });

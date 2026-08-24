@@ -203,6 +203,38 @@ for (const scheme of ['light', 'dark'] as const) {
         const r = n.getBoundingClientRect();
         return { width: Math.round(r.width), height: Math.round(r.height) };
       });
+      // #902 A5 / A6：分组之间那条线。jsdom 答得出它在不在，答不出它多宽多高
+      // ——那几个值是 Tailwind 类算出来的，只有真引擎知道。
+      const separators = Array.from(
+        el.querySelectorAll('[data-testid^="doc-bubble-sep-"]'),
+      ).map((n) => {
+        const r = n.getBoundingClientRect();
+        const scs = getComputedStyle(n);
+        return {
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          marginLeft: scs.marginLeft,
+          marginRight: scs.marginRight,
+          background: scs.backgroundColor,
+          tokenBorder: getComputedStyle(document.documentElement)
+            .getPropertyValue('--color-border')
+            .trim(),
+        };
+      });
+      // #902 A10：两个未开放的入口，变暗且光标说得出自己不能用。
+      const coming = Array.from(
+        el.querySelectorAll('[data-testid^="doc-bubble-coming-"]'),
+      ).map((n) => {
+        const ccs = getComputedStyle(n);
+        const r = n.getBoundingClientRect();
+        return {
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          opacity: ccs.opacity,
+          cursor: ccs.cursor,
+          ariaDisabled: n.getAttribute('aria-disabled'),
+        };
+      });
       // A5：最上层命中的真的是浮出条自己——比「它在 DOM 里」强，能同时排除
       // 被裁掉一半和被别的东西盖住。
       const hit = document.elementFromPoint(
@@ -226,6 +258,8 @@ for (const scheme of ['light', 'dark'] as const) {
         tokenBackground,
         hasShadow: cs.boxShadow !== 'none',
         buttons,
+        separators,
+        coming,
         hitInsideBar: !!hit?.closest('[data-testid="doc-selection-bubble-bar"]'),
         insideScroller: !!el.closest('.doc-body-scroller'),
         aboveWindowTop: b.top < 0,
@@ -240,12 +274,34 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.borderWidth).toBe('1px');
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
-    // demo 的 `.pop .tb-btn`（:209）只覆盖高度，`.tb-btn` 自己的
-    // `min-width: 28px`（:138-139）仍然生效，所以是 26 高、28 宽。
-    expect(geo.buttons).toHaveLength(6);
+    // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 26 高、
+    // 28 宽。
+    expect(geo.buttons).toHaveLength(8);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 26 });
     }
+    // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
+    // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
+    // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
+    expect(geo.separators).toHaveLength(3);
+    for (const sep of geo.separators) {
+      expect(sep.width).toBe(1);
+      expect(sep.height).toBe(16);
+      expect(sep.marginLeft).toBe('3px');
+      expect(sep.marginRight).toBe('3px');
+      expect(sep.background).toBe(sep.tokenBorder);
+    }
+    // #902 A9 / A10：评论和 AI 占位，尺寸跟命令按钮一样，看得出不能用。
+    // 尺寸只核评论那个：AI 按 demo 是带文字和箭头的下拉样子（`.bubble-drop`，
+    // 宽度跟着文字走），评论是图标按钮（`.bubble-btn`，28 宽）。
+    expect(geo.coming).toHaveLength(2);
+    for (const entry of geo.coming) {
+      expect(entry.height).toBe(26);
+      expect(entry.opacity).toBe('0.5');
+      expect(entry.cursor).toBe('not-allowed');
+      expect(entry.ariaDisabled).toBe('true');
+    }
+    expect(geo.coming[0]!.width).toBe(28);
     // A5：挂在滚动容器外面、最上层可见、没跑出窗口。
     expect(geo.insideScroller).toBe(false);
     expect(geo.hitInsideBar).toBe(true);
@@ -377,6 +433,70 @@ test('在真浏览器里按浮出条上的按钮，文档真的变了', async ()
   await expect.poll(html).toContain('<em>');
 });
 
+// #902 A10：图标按钮上没有地方摆「未开放」那个徽章，所以理由挂在 tooltip 和
+// 可访问名上。jsdom 打不开 Radix 的 tooltip（它走 pointer 事件），只有真引擎
+// 答得了这一条。
+//
+// 只悬停一个入口：两个走的是同一个 `ComingTool`，差别只在传进去的 props，而
+// 连着悬停两个会撞上换 trigger 那一刻的中间态——新的已经开了、旧的还在关闭动
+// 画里，两个 `[role=tooltip]` 同时挂在 DOM 上。那个中间态跟这条要验的事无关。
+test('未开放的入口悬停时说得出自己为什么不能用', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the quick brown fox');
+  await selectFirstParagraph(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  const entry = page.getByTestId('doc-bubble-coming-comment');
+  const box = (await entry.boundingBox())!;
+  // 分步移动，不用 `.hover()`：后者是瞬移，Radix 靠 pointer 事件判断指针到了
+  // 哪儿，一个 pointermove 都收不到时它不开。真人的鼠标是连着走的。
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
+    steps: 12,
+  });
+
+  const tip = page.getByRole('tooltip');
+  await expect(tip).toBeVisible({ timeout: 5_000 });
+  expect(await tip.textContent()).toBe(await entry.getAttribute('aria-label'));
+
+  // 指针就停在入口上，顺带验它没有亮起来。ghost 变体自带的悬停高亮被两个
+  // `hover:` 类关掉了，而那两个类只有真引擎跑得出效果——jsdom 不套 CSS。
+  expect(
+    await entry.evaluate((n) => getComputedStyle(n).backgroundColor),
+  ).toBe('rgba(0, 0, 0, 0)');
+  const lit = page.getByTestId('doc-bubble-tool-bold');
+  const litBox = (await lit.boundingBox())!;
+  await page.mouse.move(litBox.x + litBox.width / 2, litBox.y + litBox.height / 2, {
+    steps: 12,
+  });
+  // 对照：同一条上能按的按钮，同样的指针动作下底色确实变了。没有这一半，上面
+  // 那条断言对一个根本没收到悬停的元素也成立。
+  expect(await lit.evaluate((n) => getComputedStyle(n).backgroundColor)).not.toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+
+  // 按下去什么都不该发生。`aria-disabled` 不拦点击——那正是它跟 HTML
+  // `disabled` 的区别：入口留在可访问性树里，读得出来，也点得到。它什么都不做
+  // 是因为身上没挂任何处理器；这条断言守的就是这一点，等后面的切片给它接上真
+  // 功能时它会红，那时候正该红。
+  const html = (): Promise<string> =>
+    page.evaluate(
+      () =>
+        document.querySelector('[data-testid="document-space"] .ProseMirror')
+          ?.innerHTML ?? '',
+    );
+  //
+  // `force` 是必须的：playwright 把 `aria-disabled` 读成「未启用」，它自己的
+  // 可操作性检查会一直等下去。真人的鼠标不走那道检查。
+  const before = await html();
+  await entry.click({ force: true });
+  await page.getByTestId('doc-bubble-coming-ai').click({ force: true });
+  expect(await html()).toBe(before);
+
+  // 这套用例共享同一个 page，而后面几条的前提是「鼠标不在正文里」。上面的悬停
+  // 会把指针留在条上，所以离开时把它放回正文外，跟这条开始时一样。
+  await page.mouse.move(8, 8);
+});
+
 test('按过浮出条之后再点到编辑器外面，条要消失', async () => {
   test.setTimeout(120_000);
   await openFreshDocument(page);
@@ -402,7 +522,28 @@ test('按过浮出条之后再点到编辑器外面，条要消失', async () =>
   // blur、Tab 派发两次，而那个闩（按条时置真、只在 blurHandler 里复位）按理
   // 会吃掉单独的那一次。实测两条路条都从 DOM 里消失——点击那条走的不是
   // blurHandler，是这一下产生的编辑器事务让插件重问了 `shouldShow`。
-  await page.locator('[data-testid="space-tab-bar"], header').first().click();
+  // 先看再点，不赌坐标。原先这里点的是 Space tab 条的中心，前提是那儿一片
+  // 空白；tab 攒到几百个之后那个位置上是一个 tab，点下去切换的是 Space，
+  // 编辑器根本没失焦（2026-08-23 实测 451 个 tab，命中 `space-tab-name-…`）。
+  // 现在由测试自己扫出一个落点：编辑器外面、且那一点最上层的东西不接受点击。
+  const spot = await page.evaluate(() => {
+    const isInert = (el: Element | null): boolean =>
+      !!el &&
+      !el.closest(
+        'a, button, input, textarea, select, [role="button"], [role="tab"], [data-testid="document-space"]',
+      );
+    for (let y = 8; y < 40; y += 8) {
+      for (let x = 400; x < 1600; x += 40) {
+        if (isInert(document.elementFromPoint(x, y))) return { x, y };
+      }
+    }
+    return null;
+  });
+  expect(
+    spot,
+    'no inert spot outside the editor to click — the page layout changed',
+  ).not.toBeNull();
+  await page.mouse.click(spot!.x, spot!.y);
   await page.waitForTimeout(500);
 
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden();
@@ -474,7 +615,9 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
   expect(m.roomToTheRight).toBeLessThan(m.barWidth);
   // 放不下时它不再左对齐，而是把右边缘落在选区左边缘上。
   expect(m.leftDelta).toBe(-m.barWidth);
-  expect(m.rightDelta).toBe(0);
+  // 取绝对值：这个差值由两次 `Math.round` 相减得来，落在零上时可能是 `-0`，
+  // 而 `toBe` 走 `Object.is`，`-0` 跟 `0` 在那儿不相等。
+  expect(Math.abs(m.rightDelta ?? NaN)).toBe(0);
   expect(m.insideWindow).toBe(true);
 });
 

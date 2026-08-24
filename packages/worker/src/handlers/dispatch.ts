@@ -27,7 +27,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
-import { creditService } from "@breatic/domain";
+import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
 import { releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
@@ -507,8 +507,8 @@ async function runTaskBody(
         source,
         toolName,
         model,
-        // #1622 crash-redelivery: thread the same preview + ACTUAL billed
-        // credits so a recovered success row is not preview-less. Sources
+        // #1622 crash-redelivery: thread the same preview + what the run
+        // consumed, so a recovered success row is not preview-less. Sources
         // differ from Stage-4 (no markCompletedAndBill here): outputs from
         // the stored result, credits from the persisted billedCredits.
         outputCount: storedOutputs?.length,
@@ -799,13 +799,30 @@ async function runTaskBody(
 
   if (wasFirst && creditsUsed > 0) {
     try {
-      await creditService.deduct(
-        userId,
-        creditsUsed,
-        `Task: ${taskType}`,
-        taskId,
-        { model: (result.model as string | undefined) ?? model },
-      );
+      const outcome = await creditLotService.chargeForGeneration({
+        projectId: projectId ?? null,
+        actorUserId: userId,
+        amount: creditsUsed,
+        description: `Task: ${taskType}`,
+        referenceId: taskId,
+        model: (result.model as string | undefined) ?? model,
+        provider: resolveProvider((result.model as string | undefined) ?? model),
+      });
+      if (outcome.shortfall > 0) {
+        // The studio's pool ran out mid-flight, or its credits were reassigned
+        // while the task ran. The result is already delivered, so what is left
+        // uncharged goes to reconciliation.
+        logger.error(
+          {
+            taskId,
+            userId,
+            studioId: outcome.studioId,
+            charged: outcome.charged,
+            shortfall: outcome.shortfall,
+          },
+          "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+        );
+      }
     } catch (err) {
       // Deduct failed AFTER the CAS marked billed_at. The file is
       // already persisted and the task is completed. Log loudly for
@@ -865,9 +882,12 @@ async function runTaskBody(
       toolName,
       model: (unified.extras.model as string | undefined) ?? model,
       outputCount: persistedOutputs.length,
-      // #1622 preview + ACTUAL billed credits (not the metadata cost
-      // estimate). kind omitted for non-media (understand / 3d) so the
-      // payload stays valid; thumbnailUrl only present for video covers.
+      // #1622 preview + what the run consumed, taken from the usage the
+      // provider reported. A studio near the bottom of its balance finishes
+      // owing credits, so this parts company with what the pool covered;
+      // this feed answers what the run cost. kind omitted for non-media
+      // (understand / 3d) so the payload stays valid; thumbnailUrl only
+      // present for video covers.
       kind: mediaKindForActivity(taskType),
       fileUrl: persistedOutputs[0]?.url,
       thumbnailUrl: persistedOutputs[0]?.cover_url,

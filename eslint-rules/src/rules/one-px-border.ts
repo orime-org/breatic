@@ -5,11 +5,18 @@ import { createClassPatternRule } from "#rules/class-pattern-rule";
 /**
  * Borders and focus rings are one pixel, with no offset glow.
  *
- * A heavier border reads as a different weight of emphasis than the rest of
- * the interface, and a ring offset draws a gap that looks like a glow. Both
- * make one control louder than its neighbours for no reason the user can
- * name. The vendor primitives are scanned too: ours are token-customised
- * rather than pristine shadcn, so the rule applies to them as much.
+ * Absolute (ruled 2026-08-22): a heavier rule makes the whole interface read
+ * as dirty, and this is a product people create in, where the chrome stays
+ * quiet and out of the way. A ring offset draws a gap that looks like a glow,
+ * for the same reason.
+ *
+ * Having a reason for a thicker rule is not grounds for one. The only way to
+ * two pixels is a decision made for that one case, and the same wording used
+ * to say "for no reason the user can name" — which read as though a stated
+ * reason would do, and was taken that way once.
+ *
+ * The vendor primitives are scanned too: ours are token-customised rather
+ * than pristine shadcn, so the rule applies to them as much.
  */
 export const onePxBorder = createClassPatternRule({
   name: "one-px-border",
@@ -21,5 +28,5 @@ export const onePxBorder = createClassPatternRule({
   forbidden:
     /ring-offset|(^|[^a-zA-Z0-9-])ring-[2-9]([^0-9]|$)|(^|[^a-zA-Z0-9-])border(-[trblxy])?-[2-9]([^0-9]|$)|ring-\[[2-9]|border-\[[2-9]/,
   message:
-    "{{match}} is heavier than the one-pixel border the rest of the interface uses (a ring offset draws a glow gap). Use border / border-1 and ring-1.",
+    "{{match}} is heavier than the one pixel every rule in this interface uses (a ring offset draws a glow gap). Use border / border-1 and ring-1. A reason for going heavier is not grounds for it — that takes a decision made for the one case.",
 });

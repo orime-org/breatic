@@ -32,7 +32,6 @@ vi.mock("@breatic/core", () => ({
 }));
 vi.mock("@breatic/domain", () => ({
   taskService: {},
-  creditService: {},
   nodeHistoryService: {},
   getModel: vi.fn(),
   buildToolSet: vi.fn(),

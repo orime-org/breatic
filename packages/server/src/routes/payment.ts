@@ -126,7 +126,7 @@ payment.post("/webhook", async (c) => {
           {
             userId: outcome.userId,
             credits: outcome.creditsGranted,
-            newBalance: outcome.newBalance,
+            lotId: outcome.lotId,
             stripeSessionId: session.id,
           },
           "payment_credits_granted",

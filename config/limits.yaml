@@ -19,6 +19,13 @@ node_history_page_size: 20
 activity_feed_page_default: 50
 activity_feed_page_max: 100
 
+# ── Credit paging ──────────────────────────────────────
+# Keyset page size for the credit overlay's purchase list and ledger.
+#   credit_page_default: page size when the client omits ?limit
+#   credit_page_max:     hard ceiling a client ?limit is clamped to
+credit_page_default: 30
+credit_page_max: 100
+
 # ── Decision window ────────────────────────────────────
 # How long a person has to answer something that is waiting on them, in
 # days. One number covers all five such flows: being invited to a studio

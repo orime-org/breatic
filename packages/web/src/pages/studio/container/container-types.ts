@@ -70,55 +70,10 @@ export interface StudioMember {
   joinedAt: string;
 }
 
-/** The funding source of a credit lot (DD §5.4 batch model). */
-export type CreditLotSource = 'paid' | 'subscription' | 'promo';
-
-/** One credit batch — the wallet is the sum of its lots' remaining amounts (DD §5.4). */
-export interface CreditLot {
-  id: string;
-  source: CreditLotSource;
-  amountInitial: number;
-  amountRemaining: number;
-  /** Refundable only when `source === 'paid'`. */
-  isRefundable: boolean;
-  /** ISO-8601 expiry; `null` = never (paid lots). */
-  expiresAt: string | null;
-}
-
-/** A credit ledger entry type (DD §5.4, append-only). */
-export type LedgerType = 'topup' | 'grant' | 'spend' | 'expiry' | 'refund';
-
-/** One credit ledger row shown in the Credits tab recent-activity table (spec §3.6). */
-export interface LedgerEntry {
-  id: string;
-  type: LedgerType;
-  /** Signed credit delta (positive = added, negative = spent). */
-  amount: number;
-  /** Human-facing source label (project name / "topup" / etc.). */
-  description: string;
-  /** ISO-8601 timestamp. */
-  createdAt: string;
-}
-
-/** The studio credit wallet (DD §5.4) — one per studio. */
-export interface CreditWallet {
-  /**
-   * Cached total = Σ lot.amountRemaining. The frontend renders this value
-   * directly and never recomputes the balance (invariant: read-only, spec §4).
-   */
-  balanceCached: number;
-  /** Paid (permanent, refundable) lots. */
-  paidLots: readonly CreditLot[];
-  /** Gift (subscription / promo, expiring) lots — personal studios only; empty for team. */
-  giftLots: readonly CreditLot[];
-  ledger: readonly LedgerEntry[];
-}
-
 /** The full container view of one studio (stubbed in slice 3, real API in Phase 2). */
 export interface StudioContainerView {
   studio: StudioDetail;
   projects: readonly ContainerProject[];
   collections: readonly ContainerCollection[];
   members: readonly StudioMember[];
-  wallet: CreditWallet;
 }

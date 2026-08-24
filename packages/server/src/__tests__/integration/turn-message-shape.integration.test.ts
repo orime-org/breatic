@@ -120,10 +120,6 @@ async function seedProject(): Promise<{ projectId: string; cookie: string }> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${project!.id}, ${user!.id}, 'owner', null)
   `;
-  await sql`
-    INSERT INTO credit_balances (user_id, balance) VALUES (${user!.id}, 100000)
-    ON CONFLICT (user_id) DO UPDATE SET balance = 100000
-  `;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, user!.id);
   return {

@@ -10,6 +10,13 @@
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
       "internal": "内部サーバーエラー"
     },
+    "credit": {
+      "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",
+      "designation_locked": "この購入は返金手続き中のため、割り当てを変更できません。",
+      "in_debt": "この Studio は {owed} クレジットの未払いがあります。次に割り当てるクレジットが先に充当されます。",
+      "unassigned": "未割り当てのクレジットが {available} あります。使用するには Studio に割り当ててください。",
+      "none": "クレジットが不足しています。チャージしてください。"
+    },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
       "email_taken": "このメールアドレスは既に登録されています",
@@ -157,7 +164,13 @@
       "waiting": "応答中"
     },
     "tool": {
-      "unfinished": "完了前に停止しました"
+      "unfinished": "停止しました",
+      "failure": {
+        "upstream": "実行エラー",
+        "unreachable": "実行エラー",
+        "blocked": "実行エラー",
+        "generic": "実行エラー"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -687,15 +700,18 @@
       "unsupported": {
         "label": "未対応のコンテンツ"
       },
-      "toolbar": {
-        "undo": "元に戻す",
-        "redo": "やり直す",
+      "commands": {
         "bold": "太字",
         "italic": "斜体",
         "bulletList": "箇条書き",
         "orderedList": "番号付きリスト",
         "quote": "引用",
-        "strike": "取り消し線"
+        "strike": "取り消し線",
+        "underline": "下線",
+        "code": "インラインコード",
+        "comment": "コメント",
+        "ai": "AI",
+        "comingLabel": "{name}（未提供）"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
@@ -704,6 +720,12 @@
         "risksLead": "再読み込みの前にご注意ください：",
         "riskUploads": "進行中のアップロードは中断されます。該当する Space に切り替えて先に確認できます。",
         "action": "ページを再読み込み"
+      },
+      "docMenu": {
+        "label": "ドキュメント全体の操作",
+        "saveSnapshot": "スナップショットを保存",
+        "restoreSnapshot": "スナップショットを復元",
+        "notOpenYet": "未提供"
       }
     },
     "readOnlyReconnect": "再接続"
@@ -883,9 +905,6 @@
         "roleViewer": "Viewer",
         "typePersonal": "個人",
         "typeTeam": "チーム",
-        "lotPaid": "無期限 · 返金可",
-        "lotGift": "ギフト · 期限あり",
-        "lotExpiring": "{days} 日後に期限切れ ⚠",
         "kindImage": "画像",
         "kindVideo": "動画",
         "kindAudio": "音声"
@@ -907,30 +926,33 @@
         "emptyHint": "Collection は Projects 間で再利用する素材のまとまり(画像 / 動画 / 音声)です。バックエンド機能が公開されると、作成した Collection がここに表示されます。"
       },
       "credits": {
-        "balance": "ウォレット残高",
-        "hint": "消費は期限切れ間近のギフトから、有料分は最後に使います。",
-        "paidTitle": "有料クレジット",
-        "giftTitle": "ギフトクレジット",
-        "remaining": "残り {amount}",
-        "refund": "返金を申請",
-        "orderTitle": "消費順序",
-        "orderStep1": "期限が最も近いギフト",
-        "orderStep2": "その他のギフト",
-        "orderStep3": "有料(無期限)",
-        "activityTitle": "最近の履歴",
-        "colType": "種別",
-        "colSource": "ソース",
-        "colAmount": "金額",
-        "colTime": "日時",
-        "topup": "チャージ",
-        "ledgerType": {
-          "topup": "チャージ",
-          "grant": "付与",
-          "spend": "消費",
-          "expiry": "失効",
-          "refund": "返金"
-        },
-        "unit": "クレジット"
+        "spendableLabel": "この Studio で使えるクレジット",
+        "unit": "クレジット",
+        "spendableHint": "この Studio の Project で生成すると、ここのクレジットを使います。",
+        "noneHint": "この Studio に割り当てられたクレジットはまだありません。",
+        "nonePrompt": "クレジットは Studio に割り当ててから使えます。アカウントのクレジットで割り当ててください。",
+        "lotsTitle": "クレジット内訳",
+        "lotsDebt": "未払い",
+        "lotsTotal": "合計",
+        "depletedHint": "この Studio のクレジットは使い切りました。",
+        "debtHint": "次に割り当てるクレジットは、まず未払い分に充当されます。",
+        "depletedPrompt": "アカウントのクレジットから新しく割り当ててください。",
+        "debtPrompt": "アカウントのクレジットから新しく割り当ててください。まず未払い分に充当されます。",
+        "noteShortfall": "消費 {consumed}、未払い {owed}",
+        "noteUnbilled": "消費 {consumed}、請求なし",
+        "eventRepayment": "クレジット割り当て、未払い充当",
+        "lotsEmpty": "ここにはまだクレジットがありません。",
+        "lotPurchased": "合計 {amount}",
+        "activityTitle": "使用履歴",
+        "activityEmpty": "まだ使用履歴はありません。",
+        "activityEnd": "これ以上ありません",
+        "activityPageError": "このページを読み込めませんでした。スクロールを続けると再試行します。",
+        "colTime": "日付",
+        "colWho": "だれ",
+        "colProject": "Project",
+        "colModel": "モデル",
+        "colAmount": "クレジット",
+        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。"
       },
       "members": {
         "invite": "メンバーを招待",
@@ -1085,7 +1107,6 @@
     "aria": {
       "backToStudio": "Studio に戻る",
       "creditsBalance": "クレジット残高",
-      "addCredits": "クレジットを追加",
       "home": "ホーム",
       "scrollTabsLeft": "タブを左へスクロール",
       "scrollTabsRight": "タブを右へスクロール",

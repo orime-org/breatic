@@ -82,11 +82,18 @@ export function finishedSpending(outputTotal: number): ModelStreamPart {
  * @param parts - Consulted at call time for this turn's output.
  * @param onCalled - Handed what the model was asked, for cases about what a
  *   turn puts in front of it rather than about what it says back.
+ * @param afterDrained - Run once the SDK has taken every part, before the
+ *   stream closes, and handed the controller so it can put more on. This is
+ *   how a case reaches an exact moment inside a turn: the SDK queues tool
+ *   calls as they arrive and only runs the queue when the model call ends, so
+ *   a stop timed from outside lands wherever it lands. Holding the last part
+ *   back and enqueuing it from here puts the stop between two named chunks.
  * @returns A model the turn can be run against.
  */
 export function modelProducing(
   parts: () => ModelStreamPart[],
   onCalled?: (asked: { prompt: unknown }) => void,
+  afterDrained?: (controller: ReadableStreamDefaultController<ModelStreamPart>) => void,
 ): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doStream: async (asked) => {
@@ -95,6 +102,10 @@ export function modelProducing(
         stream: new ReadableStream<ModelStreamPart>({
           start(controller) {
             for (const part of parts()) controller.enqueue(part);
+            if (afterDrained === undefined) controller.close();
+          },
+          pull(controller) {
+            afterDrained?.(controller);
             controller.close();
           },
         }),

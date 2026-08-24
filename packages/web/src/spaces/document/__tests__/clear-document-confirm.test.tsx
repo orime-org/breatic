@@ -18,6 +18,7 @@ import * as Y from 'yjs';
 
 import { t } from '@breatic/shared';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { documentBodyFragment } from '@breatic/shared';
@@ -77,7 +78,13 @@ describe('the whole-document delete asks first', () => {
         fragment.push([p]);
       });
     });
-    render(<DocumentSpace projectId='p1' spaceId={spaceId} />);
+    // 包一层 provider 模拟 App：全站只有一个 `TooltipProvider`、挂在 `App.tsx`，
+    // 而浮出条上那两个未开放的入口用 tooltip 说明自己为什么不能用。
+    render(
+      <TooltipProvider>
+        <DocumentSpace projectId='p1' spaceId={spaceId} />
+      </TooltipProvider>,
+    );
     await waitFor(() =>
       expect(document.querySelector('.ProseMirror')).not.toBeNull(),
     );

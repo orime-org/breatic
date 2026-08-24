@@ -95,30 +95,6 @@ function protectedNodes(): Set<string> {
 }
 
 /**
- * An undo manager that reports every undo and redo, including the ones that
- * change nothing.
- *
- * yjs discards stack entries whose content a collaborator has since deleted,
- * and since undoing such an entry alters nothing it announces nothing either —
- * no event fires, and anything mirroring availability from events goes stale.
- * The manager therefore reports the ACTION rather than its effect, so a reader
- * always gets a chance to re-check.
- *
- * Every path — the toolbar, the keyboard shortcuts, a direct command — ends up
- * calling `undo()` / `redo()` on this object, so reporting here covers all of
- * them. The alternative was a "remember to re-read afterwards" contract on each
- * caller, which the keyboard path had already quietly broken.
- */
-export interface DocumentUndoManager extends Y.UndoManager {
-  /**
-   * Subscribe to undo / redo having run.
-   * @param listener - Called after each undo or redo, effect or not.
-   * @returns Unsubscribe.
-   */
-  onAfterHistoryAction: (listener: () => void) => () => void;
-}
-
-/**
  * Build an undo manager for a document's body.
  *
  * Tracking only the sync plugin's origin is what keeps a peer's edits off our
@@ -173,7 +149,7 @@ export interface DocumentUndoManager extends Y.UndoManager {
  * @param doc - The document Space's Y.Doc.
  * @returns A manager bound to that document's body.
  */
-export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
+export function createDocumentUndoManager(doc: Y.Doc): Y.UndoManager {
   const body = documentBodyFragment(doc);
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and
@@ -185,32 +161,8 @@ export function createDocumentUndoManager(doc: Y.Doc): DocumentUndoManager {
         trackedOrigins: new Set([ySyncPluginKey]),
         deleteFilter: isDeletableByUndo,
         captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
-      }) as DocumentUndoManager,
+      }),
   );
-
-  const listeners = new Set<() => void>();
-  const undo = manager.undo.bind(manager);
-  const redo = manager.redo.bind(manager);
-  /** Tells subscribers an action ran, whatever it did or did not change. */
-  const announce = (): void => {
-    listeners.forEach((listener) => listener());
-  };
-  manager.undo = (): ReturnType<Y.UndoManager['undo']> => {
-    const item = undo();
-    announce();
-    return item;
-  };
-  manager.redo = (): ReturnType<Y.UndoManager['redo']> => {
-    const item = redo();
-    announce();
-    return item;
-  };
-  manager.onAfterHistoryAction = (listener: () => void): (() => void) => {
-    listeners.add(listener);
-    return (): void => {
-      listeners.delete(listener);
-    };
-  };
 
   return manager;
 }

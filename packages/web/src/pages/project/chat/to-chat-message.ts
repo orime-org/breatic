@@ -16,6 +16,7 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
+import { isReaderLine } from '@breatic/shared';
 import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
@@ -62,17 +63,42 @@ export function toChatMessage(
   let interrupted = false;
   let failed = false;
 
+  // Read before the loop because a tool part can come before the mark. A call
+  // this turn cut short has nothing on it saying so — the SDK client leaves it
+  // exactly where it was — and this mark is the only answer to who stopped it.
+  const wasStopped = message.parts.some((p) => p.type === INTERRUPTED);
+
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
       const status = statusOf(part.state, options.streaming === true);
+      // Cut short rather than failed: it never reached an end state of its
+      // own, and the turn it belonged to was stopped.
+      const cutShort =
+        status === 'error' && wasStopped && part.state !== 'output-error'
+          ? ({ failureKind: 'user_aborted' } as const)
+          : {};
       toolCalls.push({
         id: part.toolCallId,
         name: getToolName(part),
-        args: (part.input ?? {}) as Record<string, unknown>,
+        args: (part.input ?? {}) as ToolCall['args'],
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
-        ...(status === 'error' && 'errorText' in part && part.errorText !== undefined
-          ? { errorMessage: part.errorText }
+        ...cutShort,
+        // The key vouches for itself: it is either one of ours or it is not,
+        // and the table is what answers that. The same field carries the SDK's
+        // own fixed English sentence when it has nothing else to put there,
+        // and taking that as our own put it on the screen untranslated, in a
+        // product that ships five languages.
+        ...(status === 'error' && 'errorText' in part && isReaderLine(part.errorText)
+          ? { failureKey: part.errorText }
+          : {}),
+        // What the message itself says the ending was. A replayed one always
+        // carries it; a live one never does -- the wire has a single field for
+        // a failure and it is carrying the line. The live answer is the one
+        // worked out above, and it is left alone here: this spread only fires
+        // when the field is present, which on a live message it is not.
+        ...(status === 'error' && 'failureKind' in part
+          ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
       continue;

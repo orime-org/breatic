@@ -54,7 +54,7 @@ const BINDING = {
 
 describe("Mini-tools credit pre-check (BUG-015)", () => {
   beforeEach(() => {
-    mocks.creditService.getBalance.mockReset();
+    mocks.creditLotService.getSpendableCredits.mockReset();
     mocks.taskService.create.mockReset();
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mockQueueAdd.mockReset();
@@ -62,7 +62,7 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
   });
 
   it("rejects image tool with 402 when insufficient credits", async () => {
-    mocks.creditService.getBalance.mockResolvedValue(0);
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
 
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
@@ -78,8 +78,30 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
     expect(res.status).toBe(402);
   });
 
+  it("rejects image tool with 402 when the studio owes", async () => {
+    // 可用额为负是第四种情形，它多问一次「欠多少」。这条用例存在的另一半理由
+    // 是替身：它是这个套件里唯一会去调 getStudioDebt 的路径，缺了那个导出这里
+    // 拿到的是 500 而不是 402。
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(-320);
+    mocks.creditLotService.getStudioDebt.mockResolvedValue(320);
+
+    const app = createApp();
+    const res = await app.request("/api/v1/mini-tools/image", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        tool: "remove-bg",
+        image: "http://example.com/image.png",
+        ...BINDING,
+      }),
+    });
+
+    expect(res.status).toBe(402);
+    expect(mocks.creditLotService.getStudioDebt).toHaveBeenCalled();
+  });
+
   it("allows image tool when credits sufficient", async () => {
-    mocks.creditService.getBalance.mockResolvedValue(100);
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
 
     const app = createApp();
     const res = await app.request("/api/v1/mini-tools/image", {
@@ -98,8 +120,8 @@ describe("Mini-tools credit pre-check (BUG-015)", () => {
 
 describe("Mini-tools target_node_id forwarding (Phase 2 forward-fix A.4)", () => {
   beforeEach(() => {
-    mocks.creditService.getBalance.mockReset();
-    mocks.creditService.getBalance.mockResolvedValue(100);
+    mocks.creditLotService.getSpendableCredits.mockReset();
+    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
     mocks.taskService.create.mockReset();
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mocks.taskService.setJobId.mockReset();

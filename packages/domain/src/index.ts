@@ -18,8 +18,10 @@
  */
 
 // ── Credit (the "spend" side: deduction + balance + ledger) ──────
-export * as creditService from "@domain/credit/credit.service.js";
-export * as creditRepo from "@domain/credit/credit.repo.js";
+// The lot-based engine (#11): the only writer of a lot's lifecycle, its
+// designation, and what is left on it.
+export * as creditLotService from "@domain/credit/creditLot.service.js";
+export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";
@@ -41,6 +43,7 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export { buildToolSet, BASELINE_TOOLS, TOOLS_THAT_BLOCK } from "@domain/agent/tools/index.js";
+export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";
 export {

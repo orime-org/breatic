@@ -197,6 +197,22 @@ describe("a turn that asked the user something", () => {
     expect(modelCalls).toBe(1);
   });
 
+  it("stops on a question asked partway in, not only on the first thing it did", async () => {
+    // 问题很少出现在第一步:模型往往先查点什么,拿到结果才知道该问什么。判断
+    // 「问过没有」要是读错了步 —— 比如一直读第一步 —— 这一轮就不会停,而这个
+    // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
+    const { modelCalls, exit } = await runTurn([
+      asksFor("show_search_results"),
+      asksFor("ask_user_question"),
+      carriesOn,
+    ]);
+
+    // 两次:第一次画了张卡片继续写,第二次问了问题就停在那儿。第三段是模型
+    // 拿到第三次机会才会说的话,而它不该拿到。
+    expect(modelCalls).toBe(2);
+    expect(exit).toBe("blocked");
+  });
+
   it("says in the log that this is why it stopped", async () => {
     const { exit } = await runTurn([asksFor("ask_user_question"), carriesOn]);
 

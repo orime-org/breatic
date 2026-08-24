@@ -10,8 +10,8 @@
  * `trackedOrigins: new Set([ySyncPluginKey])`, and Yjs decides membership with
  * `Set.has`. Two copies in the bundle means the key we imported is not the
  * object the active sync plugin dispatches with, `has` is always false, and the
- * undo stack captures nothing — Cmd+Z and both toolbar buttons do nothing at
- * all, with no error thrown and no test failing.
+ * undo stack captures nothing — `Mod-z` and `Mod-Shift-z` do nothing at all,
+ * with no error thrown and no test failing.
  *
  * The name-based lookups in `collab-plugin-keys` do not save us here, and say
  * so themselves: a duplicate copy makes pnpm mint the second key as `y-sync$1`,

@@ -21,7 +21,6 @@ const BY_TAG = new Map(LOCALE_CATALOGS);
 const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
   ['chrome.aria.backToStudio', 'Back to Studio'],
   ['chrome.aria.creditsBalance', 'Credits balance'],
-  ['chrome.aria.addCredits', 'Add credits'],
   ['chrome.aria.home', 'Home'],
   ['chrome.aria.scrollTabsLeft', 'Scroll tabs left'],
   ['chrome.aria.scrollTabsRight', 'Scroll tabs right'],
@@ -36,7 +35,6 @@ const NEW_KEYS_EN: ReadonlyArray<readonly [string, string]> = [
 
 /** Action keys that MUST be translated (zh-CN value differs from English). */
 const TRANSLATED_ZH_CN: ReadonlyArray<readonly [string, string]> = [
-  ['chrome.aria.addCredits', '添加积分'],
   ['chrome.aria.home', '首页'],
   ['spaces.lockedAria', '已锁定'],
 ];

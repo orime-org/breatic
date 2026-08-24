@@ -52,6 +52,34 @@ describe("the system prompt", () => {
     expect(wording()).toMatch(/end your turn/i);
   });
 
+  it("says to read a tool error before doing anything with it", () => {
+    // The load-bearing half of this task. With no ceiling on how often a
+    // failing tool may be called, what stops a loop is the model deciding to
+    // stop -- and it can only decide that from what the error said.
+    expect(wording()).toMatch(/when a tool comes back with an error, read what it says/i);
+  });
+
+  it("tells the model to do what the error says to do", () => {
+    // The errors themselves each end in what to do next, and what that is
+    // differs: a page body that did not arrive may well arrive on a second
+    // try, while a refused address will refuse every variation of itself. A
+    // prompt that sorted failures into its own two buckets contradicted the
+    // tools on the one they do not share, and one of the two instructions was
+    // then always being disobeyed.
+    expect(wording()).toMatch(/do what it says/i);
+  });
+
+  it("says not to repeat a call whose error said nothing about what to do", () => {
+    // The floor under the line above, for the reasons that end without one.
+    expect(wording()).toMatch(/will fail the same way/i);
+  });
+
+  it("says to tell the user what it could not get", () => {
+    // The other half: a reply that quietly leaves out what failed is the
+    // failure mode where the user never learns anything went wrong.
+    expect(wording()).toMatch(/say so in your reply/i);
+  });
+
   it("names no tools", () => {
     // The drift this prevents: a roster in the prompt outliving the tool set.
     // Checked against the real baseline rather than a copy of it, so adding a
