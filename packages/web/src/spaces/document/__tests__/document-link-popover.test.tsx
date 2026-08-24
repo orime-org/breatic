@@ -156,6 +156,25 @@ describe('which state a press opens', () => {
     expect(url).toHaveAttribute('rel', expect.stringContaining('noopener'));
   });
 
+  it('opens the view state for a selection that merely overlaps the link', async () => {
+    // 2 to 14 covers part of the link and text either side of it. This is the
+    // one shape where the two readers can disagree: `editor.isActive('link')`
+    // answers false here, because it asks the mark to cover the whole
+    // selection, while the probe this control uses answers true. Without a
+    // case on it, either reader could be swapped for a different criterion and
+    // nothing would go red — the button would light while the panel opened
+    // with no way to remove the link the button says is there.
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 2, 14);
+
+    expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    expect(screen.getByTestId('doc-link-remove')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
   it('opens the create state with an empty field and a dimmed confirm', async () => {
     const editor = mount('<p>plain text</p>');
     await openPopoverOver(editor, 1, 6);
@@ -464,6 +483,47 @@ describe('a co-editor changes the body', () => {
       .map((m) => m[1])
       .join('');
     expect(linked).toBe('abcdefghij');
+  });
+
+  it('writes no link when the peer deletes the text this panel had selected', async () => {
+    // The selection collapses to a point, and an empty selection is one the
+    // bubble bar does not show itself for — so the bar goes, and the panel
+    // rendered inside it goes with it. Measured: neither is in the document
+    // afterwards. The user never reaches confirm, and nothing hangs a link on
+    // an empty range.
+    const editor = mount('<p>abcdefghij</p>');
+    await openPopoverOver(editor, 1, 11);
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).delete(0, 10);
+    });
+    await waitFor(() => {
+      expect(editor.state.doc.textContent).toBe('');
+    });
+
+    expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('doc-bubble-tool-link')).not.toBeInTheDocument();
+    expect(editor.getHTML()).not.toContain('<a');
+  });
+
+  it('leaves the panel closed when the peer edits and nothing opened it', async () => {
+    // One of the four writers of `mode`: the transaction effect. It may write
+    // `closed` and nothing else, and it returns immediately while the panel is
+    // already closed. Opening is the link button's alone.
+    const editor = mount(ONE_LINK);
+    await selectWithFocus(editor, 4, 12);
+    expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).insert(0, 'XX');
+    });
+    await waitFor(() => {
+      expect(editor.getHTML()).toContain('XXsee');
+    });
+
+    expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
   });
 
   it('still unlinks the same link after the peer types ahead of it', async () => {

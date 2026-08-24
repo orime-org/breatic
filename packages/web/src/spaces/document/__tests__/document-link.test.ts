@@ -233,12 +233,15 @@ describe('what a write leaves in the document', () => {
     // and the mark runs to the space after it. Autolink re-links a change
     // whose range ends in whitespace when the text scans as one, and a bare
     // transaction carries nothing to tell it not to — measured, the mark comes
-    // straight back. `example.com ` is [4,15).
+    // straight back. `example.com ` is twelve characters, so the mark is
+    // [4,16) — a range one short of that leaves the trailing space marked, and
+    // a bare transaction then produces output identical to the command's,
+    // which is what let this case pass against either.
     const editor = open('<p>see<a href="https://example.com">example.com </a>ok</p>');
 
-    removeLink(editor, { from: 4, to: 15 });
+    removeLink(editor, { from: 4, to: 16 });
 
-    expect(hasLinkMark(editor, 4, 15)).toBe(false);
+    expect(hasLinkMark(editor, 4, 16)).toBe(false);
     expect(editor.getHTML()).not.toContain('example.com</a>');
   });
 
