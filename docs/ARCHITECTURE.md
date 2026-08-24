@@ -563,7 +563,7 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 ```
 
-`LicenseRef-BSAL-1.0` = Breatic Source-Available License 1.0(改良版 Apache 2.0,见仓库根 `LICENSE`);`LicenseRef-` 前缀是 SPDX 对自定义许可的标准写法。2026-08-24 前的提交里写的是 `LicenseRef-BOSL-1.0`,指的是同一份文件 —— 条款没变,改的是名字。
+`LicenseRef-BSAL-1.0` = Breatic Source-Available License 1.0(改良版 Apache 2.0,见仓库根 `LICENSE`);`LicenseRef-` 前缀是 SPDX 对自定义许可的标准写法。
 
 - **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
 - **CI 强制**:`breatic/no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx` + `eslint-rules/src` 与 `repo-lint/src` 的 `.ts`,排除 vendor;新文件缺头即 fail)。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。
