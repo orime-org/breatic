@@ -40,6 +40,16 @@ async function bodyViewportTop(p: Page): Promise<number> {
 /** 条跟它锚定那一行之间的间距，跟实现里的 `GAP_FROM_SELECTION_PX` 同一个数。 */
 const GAP_FROM_SELECTION_PX = 8;
 
+/**
+ * How long a `Button` takes to change colour under the pointer.
+ *
+ * Its base class carries `transition-colors` (`components/ui/button.tsx:19`),
+ * which Tailwind gives 150ms. Any assertion about the background a pointer
+ * produced has to outlast that, or it reads the value from before the
+ * transition started.
+ */
+const HOVER_TRANSITION_MS = 150;
+
 // 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 17 个 test
 // 声明、跑出来 18 条（视觉规格那条在明暗两套上各跑一遍）——每条各登一次必然
 // 从第六条起全部超时在登录页上（实测）。串行加共用页面既避开限流，也避开
@@ -461,6 +471,18 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
 
   // 指针就停在入口上，顺带验它没有亮起来。ghost 变体自带的悬停高亮被两个
   // `hover:` 类关掉了，而那两个类只有真引擎跑得出效果——jsdom 不套 CSS。
+  //
+  // Both assertions here have to outlast {@link HOVER_TRANSITION_MS}: a
+  // computed background only leaves its starting value once a frame has
+  // rendered, and `DEBUG=pw:api` measured 4 to 6 milliseconds between a
+  // pointer move returning and the style being read — inside one frame, which
+  // reads the colour from before the hover. This case went red four times in
+  // five before the wait (measured 2026-08-24; it does the same on main).
+  //
+  // The positive assertion below polls for the settled colour. This one can
+  // only wait: it expects the background NOT to change, and a transition that
+  // never happens fires no `transitionend` and offers nothing to poll for.
+  await page.waitForTimeout(HOVER_TRANSITION_MS * 2);
   expect(
     await entry.evaluate((n) => getComputedStyle(n).backgroundColor),
   ).toBe('rgba(0, 0, 0, 0)');
@@ -471,9 +493,11 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
   });
   // 对照：同一条上能按的按钮，同样的指针动作下底色确实变了。没有这一半，上面
   // 那条断言对一个根本没收到悬停的元素也成立。
-  expect(await lit.evaluate((n) => getComputedStyle(n).backgroundColor)).not.toBe(
-    'rgba(0, 0, 0, 0)',
-  );
+  await expect
+    .poll(() => lit.evaluate((n) => getComputedStyle(n).backgroundColor), {
+      timeout: 5_000,
+    })
+    .not.toBe('rgba(0, 0, 0, 0)');
 
   // 按下去什么都不该发生。`aria-disabled` 不拦点击——那正是它跟 HTML
   // `disabled` 的区别：入口留在可访问性树里，读得出来，也点得到。它什么都不做

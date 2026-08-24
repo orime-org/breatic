@@ -606,6 +606,76 @@ describe('a co-editor changes the body', () => {
     expect(editor.getHTML()).toContain('XXsee');
   });
 
+  it('writes to the link it opened on when the peer makes another one first', async () => {
+    // Two links inside one selection, and the panel acts on the one the user
+    // opened it over. Answering "which link does this selection hold" a second
+    // time cannot tell them apart: it takes the earliest in document order,
+    // which is now the peer's.
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 2, 14);
+    fireEvent.click(screen.getByTestId('doc-link-edit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'https://mine.example' },
+    });
+
+    // The peer links one character of `see`, inside the selection and earlier
+    // in the document than the link this panel opened on.
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).format(1, 1, {
+        link: { href: 'https://peer.example' },
+      });
+    });
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 30);
+      });
+    });
+
+    fireEvent.click(screen.getByTestId('doc-link-confirm'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+
+    const html = editor.getHTML();
+    expect(html).toContain('href="https://mine.example">our docs<');
+    expect(html).toContain('href="https://peer.example"');
+    expect(html).not.toContain(HREF);
+  });
+
+  it('closes when the peer deletes the link it opened on, second link or not', async () => {
+    // The close test has to be about the link the panel holds. "Does the
+    // selection hold any link" answers yes here — the peer's is still there —
+    // and the panel would silently point at a link the user never opened.
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 2, 14);
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).format(1, 1, {
+        link: { href: 'https://peer.example' },
+      });
+    });
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 30);
+      });
+    });
+    expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
+
+    // Now the link the panel opened on goes; the peer's remains.
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).delete(3, 8);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+  });
+
   it('keeps the panel open when the peer types ahead of the link', async () => {
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 4, 12);

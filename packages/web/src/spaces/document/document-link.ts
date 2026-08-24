@@ -75,10 +75,29 @@ const HOSTED_SCHEMES = new Set(['http:', 'https:', 'ftp:', 'ftps:']);
  * @returns The link the selection acts on, or nulls when it holds none.
  */
 export function resolveLinkSelection(state: EditorState): LinkSelection {
+  const { from, to } = state.selection;
+  return resolveLinkInSpan(state, from, to);
+}
+
+/**
+ * Which link a span of the document holds.
+ *
+ * The body of {@link resolveLinkSelection}, reachable with a span that is not
+ * the selection: the panel asks the same question about the span its tracked
+ * link has moved to, and the two answers have to be arrived at the same way or
+ * it could show one link and write to another.
+ * @param state - The editor state to read.
+ * @param from - Where the span starts.
+ * @param to - Where it ends.
+ * @returns The link the span acts on, or nulls when it holds none.
+ */
+export function resolveLinkInSpan(
+  state: EditorState,
+  from: number,
+  to: number,
+): LinkSelection {
   const linkType = state.schema.marks.link;
   if (!linkType) return NOTHING;
-
-  const { from, to } = state.selection;
 
   let href: string | null = null;
   let range: LinkRange | null = null;
@@ -154,11 +173,16 @@ export function removeLink(editor: Editor, range: LinkRange): void {
  * Resolving a bare `breatic.ai` against the page it was typed on would give
  * the document's own address with that text appended, so it is qualified
  * instead. The stored href reaches every peer and the markdown export.
+ *
+ * Surrounding whitespace goes first, and it is the same trim both callers get:
+ * {@link isLinkUrlShaped} runs this before judging, so a pasted ` breatic.ai`
+ * is judged on the address rather than on the space a drag put in front of it.
  * @param raw - What the user typed.
- * @returns The same URL carrying a protocol.
+ * @returns The same URL carrying a protocol, with no whitespace around it.
  */
 export function normalizeLinkUrl(raw: string): string {
-  return raw.includes(':') ? raw : `${DEFAULT_LINK_PROTOCOL}://${raw}`;
+  const trimmed = raw.trim();
+  return trimmed.includes(':') ? trimmed : `${DEFAULT_LINK_PROTOCOL}://${trimmed}`;
 }
 
 /**

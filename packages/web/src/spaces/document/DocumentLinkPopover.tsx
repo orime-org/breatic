@@ -33,13 +33,20 @@ import {
 import { BUBBLE_CONTROL_HEIGHT, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import {
   resolveLinkSelection,
+  resolveLinkInSpan,
   anchorRange,
   applyLink,
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
   type LinkRange,
+  type LinkSelection,
 } from '@web/spaces/document/document-link';
+import {
+  trackLink,
+  resolveTrackedSpan,
+  type TrackedLink,
+} from '@web/spaces/document/document-link-tracking';
 
 /** Which of the panel's three faces is showing, or none. */
 type LinkMode = 'closed' | 'create' | 'view' | 'edit';
@@ -56,11 +63,22 @@ interface AnchorBox {
 interface LinkTarget {
   range: LinkRange | null;
   href: string | null;
+  /**
+   * A hold on that same link that co-editors cannot invalidate. Null in
+   * `create`, which opened on a selection holding no link, and in an editor
+   * built without collaboration.
+   */
+  tracked: TrackedLink | null;
   /** Where to put the panel, from {@link anchorRange}. */
   anchorBox: AnchorBox | null;
 }
 
-const NO_TARGET: LinkTarget = { range: null, href: null, anchorBox: null };
+const NO_TARGET: LinkTarget = {
+  range: null,
+  href: null,
+  tracked: null,
+  anchorBox: null,
+};
 
 /**
  * The body's scroll container, which the anchor is measured against and lives
@@ -98,6 +116,25 @@ function measureAnchor(editor: Editor, range: LinkRange): AnchorBox | null {
 }
 
 /**
+ * Where the link a panel opened over is now, after the document changed.
+ *
+ * With a handle, the answer comes from where it points; a handle that no
+ * longer resolves means the text it covered has gone. Without one — an editor
+ * built with no shared document, which other suites do — the selection is the
+ * only thing left to ask.
+ * @param editor - The editor to read.
+ * @param tracked - The handle taken when the panel opened, if there is one.
+ * @returns The link and its span, or nulls when it is gone.
+ * @throws {never}
+ */
+function followedLink(editor: Editor, tracked: TrackedLink | null): LinkSelection {
+  if (!tracked) return resolveLinkSelection(editor.state);
+  const span = resolveTrackedSpan(editor, tracked);
+  if (!span) return { range: null, href: null };
+  return resolveLinkInSpan(editor.state, span.from, span.to);
+}
+
+/**
  * The link button and its panel.
  * @param root0 - Props.
  * @param root0.editor - The editor the control reads and writes.
@@ -132,6 +169,7 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
     setTarget({
       range: resolved.range,
       href: resolved.href,
+      tracked: resolved.range ? trackLink(editor, resolved.range) : null,
       anchorBox: measureAnchor(editor, anchorRange(editor.state, resolved.range)),
     });
     setDraft('');
@@ -160,12 +198,13 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
     close();
   }, [close, editor, target.range]);
 
-  // A co-editor typing ahead of the link moves it. The panel follows by asking
-  // the same question again — a transaction's own mapping cannot answer here,
-  // because a remote update arrives as one step replacing the whole document
-  // and maps every position to its end. The selection is mapped for us: the
-  // sync plugin restores it from a relative position, so re-reading it gives
-  // the link where it now is, or nothing when the link has gone.
+  // A co-editor typing ahead of the link moves it, and the panel follows the
+  // link it was opened over. Which link that is comes from the handle taken at
+  // open time: re-reading the selection answers "which link does this
+  // selection hold", and a peer linking a word earlier in the same selection
+  // takes over that answer, so a confirm would write this user's address onto
+  // the peer's word. See `document-link-tracking.ts` for why neither the
+  // transaction's mapping nor the selection can stand in for the handle.
   React.useEffect(() => {
     if (mode === 'closed') return undefined;
     /**
@@ -175,28 +214,34 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
      */
     const follow = ({ transaction }: { transaction: Transaction }): void => {
       if (!transaction.docChanged) return;
-      const resolved = resolveLinkSelection(editor.state);
-      if (target.range && !resolved.range) {
-        close();
-        return;
-      }
       // `create` opened on a selection holding no link, and that selection is
       // what it writes to. A link a co-editor makes inside it belongs to them:
       // adopting it would narrow the write to their span and put this user's
       // address over their href, on text this user never selected.
-      const claimed = mode === 'create' ? null : resolved.range;
+      if (mode === 'create') {
+        setTarget((prev) => ({
+          ...prev,
+          anchorBox: measureAnchor(editor, anchorRange(editor.state, null)),
+        }));
+        return;
+      }
+      const resolved = followedLink(editor, target.tracked);
+      if (!resolved.range) {
+        close();
+        return;
+      }
       setTarget((prev) => ({
         ...prev,
-        range: claimed,
-        href: (claimed && resolved.href) ?? prev.href,
-        anchorBox: measureAnchor(editor, anchorRange(editor.state, claimed)),
+        range: resolved.range,
+        href: resolved.href ?? prev.href,
+        anchorBox: measureAnchor(editor, anchorRange(editor.state, resolved.range)),
       }));
     };
     editor.on('transaction', follow);
     return () => {
       editor.off('transaction', follow);
     };
-  }, [close, editor, mode, target.range]);
+  }, [close, editor, mode, target.tracked]);
 
   // Entering `edit` swaps the panel's contents without remounting it, so
   // Radix's open-time focus does not fire a second time. `create` gets its

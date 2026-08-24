@@ -293,6 +293,22 @@ describe('what an unqualified string becomes', () => {
 
     expect(editor.getHTML()).toContain('https://example.com');
   });
+
+  it('drops the whitespace a paste carries in', () => {
+    // Dragging across an address in another app puts a space on one end of the
+    // clipboard often enough to be the normal case rather than the odd one.
+    expect(normalizeLinkUrl(' example.com')).toBe('https://example.com');
+    expect(normalizeLinkUrl('example.com ')).toBe('https://example.com');
+    expect(normalizeLinkUrl(` ${HREF} `)).toBe(HREF);
+  });
+
+  it('keeps whitespace out of what reaches the document', () => {
+    const editor = open('<p>plain</p>');
+
+    applyLink(editor, { from: 1, to: 6 }, normalizeLinkUrl('example.com '));
+
+    expect(editor.getHTML()).toContain('href="https://example.com"');
+  });
 });
 
 describe('which span the panel anchors to', () => {
@@ -335,6 +351,12 @@ describe('which strings are shaped like a URL', () => {
     'a.example/a b',
     'mailto:someone@a.example',
     'tel:+15551234567',
+    // Whitespace on either end is what a paste carries, not a defect in the
+    // address. Refusing these shows `link.invalid` — a message about the
+    // address's shape — for a shape that is fine.
+    ' example.com',
+    'example.com ',
+    ` ${HREF}`,
   ];
   const UNSHAPED = ['hello world', 'a b.com', 'hello<world', 'htp:/breatic', ''];
 
