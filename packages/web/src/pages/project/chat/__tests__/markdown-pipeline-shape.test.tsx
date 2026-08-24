@@ -106,9 +106,12 @@ describe('markdown pipeline — nodes survive an update (R9, R12)', () => {
 
 describe('markdown pipeline — languages outside the set (R10)', () => {
   it('leaves an undeclared language and an unlabelled block uncoloured', () => {
+    // Haskell is outside lowlight's `common`, and an unlabelled block reaches
+    // no grammar at all — rehype-highlight's `detect` is off, so a block is
+    // coloured only by naming a language the set holds.
     const { container } = render(
       <MarkdownMessage
-        content={'```rust\nfn main() {}\n```\n\n```\nplain text\n```'}
+        content={'```haskell\nmain = putStrLn "x"\n```\n\n```\nplain text\n```'}
         streaming={false}
       />,
     );

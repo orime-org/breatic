@@ -22,7 +22,6 @@ import remend from 'remend';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
-import { HIGHLIGHT_LANGUAGES } from '@web/pages/project/chat/highlight-languages';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import {
   WAITING_DOT_TAG,
@@ -80,7 +79,11 @@ const COMPLETION = {
 
 const REMARK_PLUGINS = [remarkGfm];
 
-const HIGHLIGHT = [rehypeHighlight, { languages: HIGHLIGHT_LANGUAGES }];
+// Handed no language set, `rehype-highlight` colours with lowlight's `common`
+// — thirty-seven grammars, all of which it imports at the top of its own
+// module whatever it is given. Its `detect` stays off, so a block reaches a
+// grammar only by naming one.
+const HIGHLIGHT = [rehypeHighlight];
 
 const REHYPE_SETTLED = [HIGHLIGHT];
 

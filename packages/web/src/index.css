@@ -1274,53 +1274,80 @@ body {
   background: var(--color-muted);
 }
 
-/* Code colours. Class names are highlight.js's own, taken from running the ten
-   declared grammars; the colours are ours. Which names share a colour follows
-   the scope groups highlight.js documents: the four selector-* names are one
-   group, and title / title.function / title.class are another — a title
-   carries a second class only where the grammar knows which kind it is, so
-   bash's `function go()` arrives as a bare .hljs-title. Containers — params,
-   function, tag, punctuation — inherit, and the tokens inside them carry the
-   colour.
+/* Code colours. Class names are highlight.js's own, read from the scope names
+   each of lowlight's `common` grammars declares; the colours are ours. Which
+   names share a colour follows the scope groups highlight.js documents: the
+   four selector-* names are one group, and title / title.function /
+   title.class are another — a title carries a second class only where the
+   grammar knows which kind it is, so bash's `function go()` arrives as a bare
+   .hljs-title. Containers — params, function, tag, punctuation — inherit, and
+   the tokens inside them carry the colour.
 
    meta is its own group upstream ("flags, modifiers, annotations, processing
    instructions, preprocessor directives"): a shebang, a diff hunk header, a
    Python decorator, an XML prolog, a YAML document marker. They read as
-   instructions, so they take the keyword colour. */
+   instructions, so they take the keyword colour. A doctag — the `@param` of a
+   JSDoc block — is an annotation of the same kind, sitting inside a comment
+   and inheriting its slant. */
 .chat-markdown .hljs-keyword,
 .chat-markdown .hljs-built_in,
 .chat-markdown .hljs-name,
 .chat-markdown .hljs-operator,
 .chat-markdown .hljs-bullet,
-.chat-markdown .hljs-meta {
+.chat-markdown .hljs-meta,
+.chat-markdown .hljs-doctag {
   color: var(--color-palette-violet);
 }
 
+/* A markdown link's target and a markdown span of code are both literal text
+   the surrounding language quotes rather than evaluates, which is what the
+   string colour says. */
 .chat-markdown .hljs-string,
 .chat-markdown .hljs-regexp,
-.chat-markdown .hljs-addition {
+.chat-markdown .hljs-addition,
+.chat-markdown .hljs-code,
+.chat-markdown .hljs-link {
   color: var(--color-palette-green);
 }
 
 /* A symbol upstream is a "symbolic constant, interned string, goto label" —
    an XML entity among them, which is what the declared grammars emit it for.
-   It stands for one fixed value, same as a literal. */
+   It stands for one fixed value, same as a literal, and so do a goto label and
+   the `\n` of an escape. */
 .chat-markdown .hljs-number,
 .chat-markdown .hljs-literal,
-.chat-markdown .hljs-symbol {
+.chat-markdown .hljs-symbol,
+.chat-markdown .hljs-label,
+.chat-markdown .hljs-char.escape {
   color: var(--color-palette-orange);
 }
 
-.chat-markdown .hljs-comment {
+/* A quoted passage in markdown is someone else's words carried along, which
+   is the same standing a comment has next to the code around it. */
+.chat-markdown .hljs-comment,
+.chat-markdown .hljs-quote {
   color: var(--color-muted-foreground);
   font-style: italic;
 }
 
-.chat-markdown .hljs-title {
+/* Markdown's bold and italic are a shape rather than a kind of token, so they
+   keep the body colour and take the shape they name. */
+.chat-markdown .hljs-strong {
+  font-weight: 600;
+}
+
+.chat-markdown .hljs-emphasis {
+  font-style: italic;
+}
+
+/* A section heading names the region under it, which is what a title does. */
+.chat-markdown .hljs-title,
+.chat-markdown .hljs-section {
   color: var(--color-palette-blue);
 }
 
 .chat-markdown .hljs-title.class_,
+.chat-markdown .hljs-class,
 .chat-markdown .hljs-type,
 .chat-markdown .hljs-selector-tag,
 .chat-markdown .hljs-selector-id,
@@ -1340,7 +1367,8 @@ body {
 .chat-markdown .hljs-attr,
 .chat-markdown .hljs-property,
 .chat-markdown .hljs-attribute,
-.chat-markdown .hljs-variable {
+.chat-markdown .hljs-variable,
+.chat-markdown .hljs-template-variable {
   color: var(--color-palette-pink);
 }
 

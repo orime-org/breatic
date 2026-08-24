@@ -8,8 +8,18 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 
-import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
+
+/**
+ * The panel and everything it draws with — markdown, the grammars that colour
+ * code — weigh about a third of the app's entry chunk, and a static import
+ * puts them there: in the one file every route pulls, ahead of the login
+ * screen. The panel itself exists only inside a project, so it is fetched
+ * where it is first shown.
+ */
+const ChatPanel = React.lazy(async () => ({
+  default: (await import('@web/pages/project/chat/ChatPanel')).ChatPanel,
+}));
 
 interface AgentColumnProps {
   /** Project whose chat this column shows. */
@@ -120,11 +130,16 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
           onNewConversation={startNew}
           onRenameConversation={renameCurrent}
         />
-        <ChatPanel
-          projectId={projectId}
-          historyOpen={historyOpen}
-          onHistoryOpenChange={setHistoryOpen}
-        />
+        {/* Nothing while it arrives. The panel already holds a skeleton back
+            behind a delay, because one that comes and goes reads as a
+            flicker, and a fallback here would be exactly that. */}
+        <React.Suspense fallback={null}>
+          <ChatPanel
+            projectId={projectId}
+            historyOpen={historyOpen}
+            onHistoryOpenChange={setHistoryOpen}
+          />
+        </React.Suspense>
       </div>
       {unreachable ? <ChatUnreachable onReload={reload} reason={why} /> : null}
     </aside>
