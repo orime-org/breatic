@@ -52,6 +52,11 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
   // The one entry here that removes a node rather than replacing one. See
   // `REMOVED_NODES` for why the divider goes.
   horizontalRule: 'the divider is not a feature this document offers',
+  // Three switches, one purpose: a click on a link has to reach the link
+  // rather than leave the page, and an address typed without a protocol has to
+  // mean the same thing wherever it was typed. The node itself is untouched —
+  // this entry changes how the extension behaves, not what the schema holds.
+  link: 'an editor reaches a link by clicking it, and stores https',
 };
 
 /**
