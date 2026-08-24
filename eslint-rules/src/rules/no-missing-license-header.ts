@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
@@ -7,7 +7,7 @@ import { createRule } from "#rules/create-rule";
 const COPYRIGHT_LINE = "// Copyright (c) 2026 Orime, Inc.";
 
 /** The licence line, which must directly follow the copyright line. */
-const SPDX_LINE = "// SPDX-License-Identifier: LicenseRef-BOSL-1.0";
+const SPDX_LINE = "// SPDX-License-Identifier: LicenseRef-BSAL-1.0";
 
 /** What a file missing the header gets prepended, blank line included. */
 const HEADER = `${COPYRIGHT_LINE}\n${SPDX_LINE}\n\n`;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * #123 验收 B1 / B2 / B3 / B4 / B5：两档 Ctrl+A 与全文档选区的按键行为。

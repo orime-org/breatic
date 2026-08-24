@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { noMissingLicenseHeader } from "../no-missing-license-header";
 
 const ruleTester = new RuleTester();
 
 const HEADER = `// Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0`;
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0`;
 
 ruleTester.run("no-missing-license-header", noMissingLicenseHeader, {
   valid: [
@@ -31,7 +31,7 @@ ruleTester.run("no-missing-license-header", noMissingLicenseHeader, {
     {
       // Reversed: both lines are header material, so both are rewritten
       // rather than pushed down under a second copy of themselves.
-      code: `// SPDX-License-Identifier: LicenseRef-BOSL-1.0\n// Copyright (c) 2026 Orime, Inc.\n`,
+      code: `// SPDX-License-Identifier: LicenseRef-BSAL-1.0\n// Copyright (c) 2026 Orime, Inc.\n`,
       errors: [{ messageId: "missingHeader" }],
       output: `${HEADER}\n`,
     },
