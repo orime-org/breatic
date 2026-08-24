@@ -163,7 +163,6 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
   }, [mode]);
 
   const canSubmit = draft.length > 0 && isLinkUrlShaped(draft);
-  const container = editor.view.dom.parentElement;
 
   return (
     <Popover
@@ -175,31 +174,36 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
         if (!open) close();
       }}
     >
-      {container
-        ? createPortal(
-          <PopoverAnchor asChild>
-            {/* Inside the editor, because the bubble bar the button lives in is
-                removed from the document the moment a transaction arrives while
-                the panel holds focus, and a detached element measures as zero. */}
-            <span
-              data-testid='doc-link-anchor'
-              aria-hidden='true'
-              className='pointer-events-none absolute'
-              style={
-                target.anchorRect
-                  ? {
-                    left: target.anchorRect.left,
-                    top: target.anchorRect.top,
-                    width: target.anchorRect.width,
-                    height: target.anchorRect.height,
-                  }
-                  : undefined
-              }
-            />
-          </PopoverAnchor>,
-          container,
-        )
-        : null}
+      {createPortal(
+        <PopoverAnchor asChild>
+          {/* On the body, and fixed to the viewport coordinates the selection
+              measures at.
+
+              It cannot live in the bubble bar, which the plugin takes out of
+              the document the moment a transaction arrives while the panel
+              holds focus. It cannot live in the editor either: that DOM
+              belongs to ProseMirror, which tears it down before React unmounts
+              this tree — React then tries to remove this element from a node
+              that is no longer its parent, and the whole route throws. The
+              body outlives both. */}
+          <span
+            data-testid='doc-link-anchor'
+            aria-hidden='true'
+            className='pointer-events-none fixed'
+            style={
+              target.anchorRect
+                ? {
+                  left: target.anchorRect.left,
+                  top: target.anchorRect.top,
+                  width: target.anchorRect.width,
+                  height: target.anchorRect.height,
+                }
+                : undefined
+            }
+          />
+        </PopoverAnchor>,
+        document.body,
+      )}
       <PopoverTrigger asChild>
         <Button
           variant={holdsLink ? 'secondary' : 'ghost'}

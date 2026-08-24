@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, act, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
@@ -302,15 +302,17 @@ describe('关掉浮层', () => {
 });
 
 describe('浮层的锚点', () => {
-  it('住在编辑器里，不在浮出条里', async () => {
+  it('挂在 body 上，浮出条和编辑器都不含它', async () => {
+    // 两个容器都会在浮层还开着的时候消失：浮出条被插件摘掉，编辑器的 DOM 在
+    // 切 Space tab 时被 ProseMirror 拆掉。锚点两个都不进。
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 4, 12);
 
     const anchor = screen.getByTestId('doc-link-anchor');
-    const bar = screen.getByTestId('doc-bubble-tool-link').closest('[data-testid^="doc-bubble"]')
-      ?.parentElement;
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
 
-    expect(editor.view.dom.parentElement?.contains(anchor)).toBe(true);
+    expect(anchor.parentElement).toBe(document.body);
+    expect(editor.view.dom.parentElement?.contains(anchor)).toBe(false);
     expect(bar?.contains(anchor)).toBe(false);
   });
 });
@@ -387,6 +389,28 @@ describe('协作对端动了正文', () => {
   });
 });
 
+describe('编辑器被拆掉时', () => {
+  it('正文的容器先没了，卸载这棵树不抛错', async () => {
+    const editor = mount(ONE_LINK);
+    await selectWithFocus(editor, 4, 12);
+    expect(screen.getByTestId('doc-link-anchor')).toBeInTheDocument();
+
+    // 切到别的 Space tab 时就是这个顺序：编辑器那块 DOM 先被拆掉，React 之后
+    // 才卸载这棵树。锚点如果挂在编辑器的 DOM 里，React 这时会去一个已经不是
+    // 它父节点的地方删自己，jsdom 和浏览器都会抛
+    // `NotFoundError: Failed to execute 'removeChild' on 'Node'`。
+    act(() => {
+      editor.view.dom.parentElement?.remove();
+    });
+
+    expect(() => {
+      act(() => {
+        cleanup();
+      });
+    }).not.toThrow();
+  });
+});
+
 describe('浮出条被收走之后', () => {
   it('浮层和它的锚点都还在', async () => {
     const editor = mount(ONE_LINK);
@@ -402,6 +426,5 @@ describe('浮出条被收走之后', () => {
 
     expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
     expect(screen.getByTestId('doc-link-anchor')).toBeInTheDocument();
-    expect(editor.view.dom.parentElement?.contains(screen.getByTestId('doc-link-anchor'))).toBe(true);
   });
 });
