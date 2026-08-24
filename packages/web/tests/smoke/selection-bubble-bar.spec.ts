@@ -1090,3 +1090,25 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   expect(all.barRight).toBeLessThanOrEqual(all.viewRight);
   expect(all.barLeft).toBeGreaterThanOrEqual(all.viewLeft);
 });
+
+test('链接：主机里带空格的地址，确定按钮不亮', async () => {
+  // 这一条只有真浏览器答得出。判据落在 URL 解析器上，而两个运行时对
+  // `https://hello world` 的处理正相反：Node 的直接抛（jsdom 里跑的就是它），
+  // 浏览器的收下并把空格编码成 `hello%20world` 塞进主机——实测 Chromium 如此。
+  // 所以单测里那条同名断言绿的理由跟用户面前发生的事不是一回事。
+  await openFreshDocument(page);
+  await page.keyboard.type('link me');
+  await selectFirstParagraph(page);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  const input = page.getByTestId('doc-link-input');
+  const confirm = page.getByTestId('doc-link-confirm');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+
+  // 先让它亮一次。少了这句，下面那句在按钮永远不亮的实现下也照样绿。
+  await input.fill('a.example');
+  await expect(confirm).toBeEnabled();
+
+  await input.fill('hello world');
+  await expect(confirm).toBeDisabled();
+});

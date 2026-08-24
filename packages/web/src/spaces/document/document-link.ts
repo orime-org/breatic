@@ -33,6 +33,18 @@ export interface LinkSelection {
 const NOTHING: LinkSelection = { range: null, href: null };
 
 /**
+ * The characters a host may hold: letters, digits, dots and hyphens.
+ *
+ * Everything else is a forbidden host code point under the URL standard, and
+ * asking whether the parsed host stayed inside this set is what makes the check
+ * below answer the same in every runtime. Measured: given `https://hello world`
+ * Node's parser refuses the address outright, while the browsers' accept it and
+ * percent-encode the space into the host, handing back `hello%20world` — which
+ * carries a `%` and fails here.
+ */
+const HOST_CHARS = /^[a-z\d.-]+$/i;
+
+/**
  * Which link the given selection holds.
  *
  * Reads what the selection COVERS. A probe that reads its two endpoints
@@ -126,13 +138,22 @@ export function normalizeLinkUrl(raw: string): string {
  *
  * Answers what the confirm button shows, so it asks both questions the write
  * itself will ask: the protocol check the extension's command applies, and
- * whether the string parses at all. Either alone lets something through that
- * the write then drops in silence — `htp:/breatic` parses, and a URL carrying
- * a space does not.
+ * whether the string is shaped like an address at all.
  *
- * A single-label host (`breatic`) is accepted, as it is by both editors this
- * control was modelled on. Whether an address resolves is not a question this
- * can answer.
+ * Parsing alone cannot answer the second one. The WHATWG parser is built to
+ * accept what the real web contains, so where it meets a character a host may
+ * not hold it is free to encode it and carry on, and the implementations differ
+ * on which ones they refuse outright. The parsed host is asked about instead:
+ * whatever route the string took through the parser, the host it produced
+ * either stayed inside {@link HOST_CHARS} or did not.
+ *
+ * The address is qualified before either question, so a path may hold what a
+ * host may not — `a.example/a b` is accepted, `a b.com` is not.
+ *
+ * A single-label host (`breatic`) is accepted. So is a bare address carrying a
+ * port, provided it names its protocol: `example.com:8080` reads as a protocol
+ * called `example.com`, which is the same thing {@link normalizeLinkUrl} reads
+ * it as. Whether an address resolves is not a question this can answer.
  * @param raw - What the user typed.
  * @returns True when it is.
  */
@@ -140,9 +161,10 @@ export function isLinkUrlShaped(raw: string): boolean {
   const candidate = normalizeLinkUrl(raw);
   if (!isAllowedUri(candidate)) return false;
   try {
-    new URL(candidate);
-    return true;
+    return HOST_CHARS.test(new URL(candidate).hostname);
   } catch {
+    // A string the parser refuses outright is not shaped like an address —
+    // the answer this returns, not an error the caller has to handle.
     return false;
   }
 }

@@ -20,7 +20,7 @@
  *    markdown export, so it is stored with its protocol.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
@@ -292,8 +292,10 @@ describe('what an unqualified string becomes', () => {
 });
 
 describe('which strings are shaped like a URL', () => {
-  const SHAPED = ['example.com', HREF, 'breatic', '192.168.1.1'];
-  const UNSHAPED = ['hello world', 'htp:/breatic', ''];
+  // The last one qualifies before the check runs, so the space lands in a path,
+  // where it is legal. Its twin sits in UNSHAPED with the space in the host.
+  const SHAPED = ['example.com', HREF, 'breatic', '192.168.1.1', 'a.example/a b'];
+  const UNSHAPED = ['hello world', 'a b.com', 'hello<world', 'htp:/breatic', ''];
 
   SHAPED.forEach((raw) => {
     it(`accepts ${JSON.stringify(raw)}`, () => {
@@ -305,5 +307,33 @@ describe('which strings are shaped like a URL', () => {
     it(`refuses ${JSON.stringify(raw)}`, () => {
       expect(isLinkUrlShaped(raw)).toBe(false);
     });
+  });
+
+  it('refuses a host a parser handed back with the space encoded into it', () => {
+    // The case above runs here against Node's parser, which refuses
+    // `https://hello world` outright — so in this runtime the answer never
+    // comes from the host at all. In front of the user it does: the browsers
+    // accept the same string and percent-encode the space into the host,
+    // measured as `hello%20world` in Chromium. Standing a parser that behaves
+    // that way in front of the check is what pins the answer users get.
+    class EncodingURL {
+      hostname: string;
+
+      /**
+       * @param input - The address to parse.
+       */
+      constructor(input: string) {
+        const afterScheme = input.slice(input.indexOf('://') + 3);
+        this.hostname = encodeURIComponent(afterScheme.split('/')[0] ?? '');
+      }
+    }
+    vi.stubGlobal('URL', EncodingURL);
+
+    try {
+      expect(new URL('https://hello world').hostname).toBe('hello%20world');
+      expect(isLinkUrlShaped('hello world')).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
