@@ -45,6 +45,16 @@ const NOTHING: LinkSelection = { range: null, href: null };
 const HOST_CHARS = /^[a-z\d.-]+$/i;
 
 /**
+ * The schemes that address a host, out of the ten the extension allows.
+ *
+ * The other six — `mailto` `tel` `callto` `sms` `cid` `xmpp` — address a person
+ * or a thing, and parse to an empty host. One of them arrives on its own:
+ * autolink turns a typed email address into a `mailto:` link, so the check
+ * below has to accept what this editor itself writes.
+ */
+const HOSTED_SCHEMES = new Set(['http:', 'https:', 'ftp:', 'ftps:']);
+
+/**
  * Which link the given selection holds.
  *
  * Reads what the selection COVERS. A probe that reads its two endpoints
@@ -88,6 +98,24 @@ export function resolveLinkSelection(state: EditorState): LinkSelection {
   });
 
   return range ? { range, href } : NOTHING;
+}
+
+/**
+ * Which span the panel anchors to.
+ *
+ * The link when there is one, so the panel sits against the thing it acts on.
+ * With no link the selection is what the panel acts on, and its box is no use
+ * as an anchor: over a select-all that box is the whole document, which would
+ * put the panel against the first line however far the reader has scrolled
+ * away from it. The start of the selection is a point on screen.
+ * @param state - The editor state to read the selection from.
+ * @param link - The link the selection holds, from {@link resolveLinkSelection}.
+ * @returns The span to measure for the anchor.
+ */
+export function anchorRange(state: EditorState, link: LinkRange | null): LinkRange {
+  if (link) return link;
+  const { from } = state.selection;
+  return { from, to: from };
 }
 
 /**
@@ -147,13 +175,19 @@ export function normalizeLinkUrl(raw: string): string {
  * whatever route the string took through the parser, the host it produced
  * either stayed inside {@link HOST_CHARS} or did not.
  *
+ * That question only applies to the schemes that address a host. For the rest
+ * the scheme itself is the whole answer, and the check the extension's command
+ * applies has already given it.
+ *
  * The address is qualified before either question, so a path may hold what a
  * host may not — `a.example/a b` is accepted, `a b.com` is not.
  *
  * A single-label host (`breatic`) is accepted. So is a bare address carrying a
  * port, provided it names its protocol: `example.com:8080` reads as a protocol
  * called `example.com`, which is the same thing {@link normalizeLinkUrl} reads
- * it as. Whether an address resolves is not a question this can answer.
+ * it as. An IPv6 literal and a host holding an underscore are both refused,
+ * as they are by Lexical's pattern. Whether an address resolves is not a
+ * question this can answer.
  * @param raw - What the user typed.
  * @returns True when it is.
  */
@@ -161,7 +195,8 @@ export function isLinkUrlShaped(raw: string): boolean {
   const candidate = normalizeLinkUrl(raw);
   if (!isAllowedUri(candidate)) return false;
   try {
-    return HOST_CHARS.test(new URL(candidate).hostname);
+    const { protocol, hostname } = new URL(candidate);
+    return HOSTED_SCHEMES.has(protocol) ? HOST_CHARS.test(hostname) : true;
   } catch {
     // A string the parser refuses outright is not shaped like an address —
     // the answer this returns, not an error the caller has to handle.

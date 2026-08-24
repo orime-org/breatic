@@ -32,6 +32,7 @@ import {
 } from '@web/spaces/document/document-extensions';
 import {
   resolveLinkSelection,
+  anchorRange,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -291,10 +292,47 @@ describe('what an unqualified string becomes', () => {
   });
 });
 
+describe('which span the panel anchors to', () => {
+  it('takes the link when the selection holds one', () => {
+    const editor = openOneLink();
+    editor.commands.setTextSelection({ from: 4, to: 12 });
+    const { range } = resolveLinkSelection(editor.state);
+
+    expect(anchorRange(editor.state, range)).toEqual({ from: 4, to: 12 });
+  });
+
+  it('collapses to the selection start when it holds none', () => {
+    // Over a select-all the selection's own box is the whole document, and a
+    // panel anchored to that box sits against the first line however far the
+    // reader has scrolled from it. The start is a point on screen.
+    const editor = open('<p>first line</p><p>second line</p><p>third line</p>');
+    editor.commands.selectAll();
+    const { range } = resolveLinkSelection(editor.state);
+    const { from, to } = editor.state.selection;
+
+    expect(to - from).toBeGreaterThan(1);
+    expect(anchorRange(editor.state, range)).toEqual({ from, to: from });
+  });
+});
+
 describe('which strings are shaped like a URL', () => {
-  // The last one qualifies before the check runs, so the space lands in a path,
-  // where it is legal. Its twin sits in UNSHAPED with the space in the host.
-  const SHAPED = ['example.com', HREF, 'breatic', '192.168.1.1', 'a.example/a b'];
+  // The last two carry no host at all, which is what their schemes are for —
+  // and `mailto:` is a shape this editor's own autolink produces from a typed
+  // email address, so refusing it would leave a link the product made that the
+  // panel can show but never change.
+  //
+  // `a.example/a b` qualifies before the check runs, so its space lands in a
+  // path, where it is legal. Its twin sits in UNSHAPED with the space in the
+  // host.
+  const SHAPED = [
+    'example.com',
+    HREF,
+    'breatic',
+    '192.168.1.1',
+    'a.example/a b',
+    'mailto:someone@a.example',
+    'tel:+15551234567',
+  ];
   const UNSHAPED = ['hello world', 'a b.com', 'hello<world', 'htp:/breatic', ''];
 
   SHAPED.forEach((raw) => {
@@ -316,13 +354,19 @@ describe('which strings are shaped like a URL', () => {
     // accept the same string and percent-encode the space into the host,
     // measured as `hello%20world` in Chromium. Standing a parser that behaves
     // that way in front of the check is what pins the answer users get.
+    // Both fields the check reads. A stand-in carrying only the one the case
+    // is about would leave the other `undefined`, and the scheme test would
+    // then wave every address through without ever looking at a host.
     class EncodingURL {
+      protocol: string;
+
       hostname: string;
 
       /**
        * @param input - The address to parse.
        */
       constructor(input: string) {
+        this.protocol = `${input.slice(0, input.indexOf(':'))}:`;
         const afterScheme = input.slice(input.indexOf('://') + 3);
         this.hostname = encodeURIComponent(afterScheme.split('/')[0] ?? '');
       }
