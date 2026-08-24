@@ -18,6 +18,8 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { createSpace, deleteSpace } from './helpers/space';
+
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
@@ -42,6 +44,17 @@ test.afterAll(async () => {
   await page?.close();
 });
 
+// Each case makes its own Space so it starts on a clean document, and drops it
+// again when it is done — ten cases leaving ten behind in the same project runs
+// at a tier's Space ceiling (`config/membership.yaml`).
+const createdSpaceIds: string[] = [];
+
+test.afterEach(async () => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+});
+
 /** Opens a freshly created Document Space. */
 async function openFreshDocument(p: Page): Promise<void> {
   await p.goto('/studio');
@@ -50,10 +63,7 @@ async function openFreshDocument(p: Page): Promise<void> {
   await firstProject.click();
   await p.waitForURL(/\/project\//, { timeout: 15_000 });
 
-  await p.getByTestId('new-space-button').click();
-  await p.getByTestId('new-space-type-document').click();
-  await p.getByTestId('new-space-name').fill(`doc-menu-${Date.now()}`);
-  await p.getByTestId('new-space-submit').click();
+  createdSpaceIds.push(await createSpace(p, 'document', `doc-menu-${Date.now()}`));
 
   const editor = p.locator('[data-testid="document-space"] .ProseMirror');
   await expect(editor).toBeVisible({ timeout: 15_000 });
