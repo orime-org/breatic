@@ -4,10 +4,13 @@
 /**
  * The grammars a chat code block can be coloured with.
  *
- * `rehype-highlight` loads lowlight's `common` set when it is handed nothing —
- * thirty-seven grammars, all of them in the main chunk. These ten are what an
- * agent reply actually carries; a block in any other language, and a block with
- * no language at all, renders as plain monospace.
+ * These ten are what an agent reply actually carries; a block in any other
+ * language, and a block with no language at all, renders as plain monospace.
+ *
+ * `rehype-highlight` imports lowlight's `common` set at the top of its own
+ * module (lib/index.js:3), so all thirty-seven of those grammars reach the
+ * bundle whatever is handed to it — the entry chunk of a production build
+ * carries ruby, kotlin and objective-c among them.
  *
  * Names are highlight.js's own. Each grammar registers its own aliases, so
  * ```html reaches `xml` and ```ts reaches `typescript` without another entry.
