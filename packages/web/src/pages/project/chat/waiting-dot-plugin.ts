@@ -73,11 +73,54 @@ function tailNode(tree: Root): RootContent | undefined {
   return undefined;
 }
 
+/** Tags laid out as blocks, so the mark may sit directly inside one. */
+const BLOCK_TAGS = new Set([
+  'blockquote',
+  'dd',
+  'div',
+  'dt',
+  'figcaption',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+  'p',
+  'pre',
+  'section',
+  'td',
+  'th',
+]);
+
 /**
- * The parent holding the last visible characters inside this block, with the
- * index they sit at.
+ * Whether the mark may sit directly inside this element.
+ *
+ * A `code` whose parent is a `pre` is the code block's own body and is laid
+ * out as a block, so the mark rides the last characters in there. Anywhere
+ * else `code` is an inline chip, and a mark inside one joins the chip.
+ * @param node - The element to judge.
+ * @param parent - The element holding it.
+ * @returns True when the mark may sit among this element's children.
+ */
+function holdsTheMark(node: Element, parent: Element): boolean {
+  if (node.tagName === 'code') return parent.tagName === 'pre';
+  return BLOCK_TAGS.has(node.tagName);
+}
+
+/**
+ * The slot the mark takes inside this block, as a block-level parent and the
+ * index to insert after.
+ *
+ * The last characters on screen are often inside an inline element, and a mark
+ * placed in there takes that element on: the line-through of a `del`, the chip
+ * of an inline `code`, the hit area and accessible name of an `a`. The slot is
+ * therefore recorded against the nearest block-level ancestor, which puts the
+ * mark beside that inline element.
  * @param block - The block to search.
- * @returns The parent and index, or undefined when the block holds none.
+ * @returns The parent and index, or undefined when the block holds no
+ * visible characters.
  */
 function lastVisibleSlot(
   block: Element,
@@ -87,15 +130,22 @@ function lastVisibleSlot(
   /**
    * Descend, keeping the last visible slot seen in document order.
    * @param parent - The element whose children to look through.
+   * @param host - The nearest block-level element enclosing `parent`.
+   * @param hostIndex - Where the subtree holding `parent` sits inside `host`.
    */
-  const walk = (parent: Element): void => {
+  const walk = (parent: Element, host: Element, hostIndex: number): void => {
     parent.children.forEach((child, index) => {
-      if (isVisibleLiteral(child)) found = { parent, index };
-      else if (isElement(child)) walk(child);
+      const slot = parent === host ? index : hostIndex;
+      if (isVisibleLiteral(child)) {
+        found = { parent: host, index: slot };
+      } else if (isElement(child)) {
+        const nextHost = holdsTheMark(child, parent) ? child : host;
+        walk(child, nextHost, nextHost === child ? -1 : slot);
+      }
     });
   };
 
-  walk(block);
+  walk(block, block, -1);
   return found;
 }
 

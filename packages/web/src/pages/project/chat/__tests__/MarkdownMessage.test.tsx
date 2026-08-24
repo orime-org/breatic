@@ -377,3 +377,40 @@ describe('MarkdownMessage — a checklist reads as a checklist (R11)', () => {
     await expectNoA11yViolations(document.body);
   });
 });
+
+describe('MarkdownMessage — the dot stays out of inline elements (R7)', () => {
+  it('follows struck-through text without being struck through itself', () => {
+    // Inside the del the mark takes the line-through the browser draws over
+    // that element's whole box.
+    draw('this is ~~gone~~', true);
+
+    const mark = screen.getByTestId('chat-waiting-dot');
+    expect(mark.closest('del')).toBeNull();
+    expect(body().querySelector('del')).toHaveTextContent('gone');
+  });
+
+  it('follows inline code without joining the code chip', () => {
+    draw('run `npm test`', true);
+
+    const mark = screen.getByTestId('chat-waiting-dot');
+    expect(mark.closest('code')).toBeNull();
+    expect(body().querySelector('code')).toHaveTextContent('npm test');
+  });
+
+  it('follows a link without joining its hit area', () => {
+    draw('see [the docs](https://example.com)', true);
+
+    const mark = screen.getByTestId('chat-waiting-dot');
+    expect(mark.closest('a')).toBeNull();
+    expect(body().querySelector('a')).toHaveTextContent('the docs');
+  });
+
+  it('still rides the text inside a code block', () => {
+    // The block-level pre > code is where the mark belongs, and the mark has
+    // to keep landing there.
+    draw('```ts\nconst a = 1;', true);
+
+    const mark = screen.getByTestId('chat-waiting-dot');
+    expect(mark.closest('pre')).not.toBeNull();
+  });
+});
