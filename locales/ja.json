@@ -190,6 +190,10 @@
       "failedBody": "この Project の会話を読み込めませんでした。",
       "retry": "再読み込み",
       "refusedTitle": "このチャットを開けません"
+    },
+    "markdown": {
+      "taskDone": "完了",
+      "taskTodo": "未完了"
     }
   },
   "canvas": {

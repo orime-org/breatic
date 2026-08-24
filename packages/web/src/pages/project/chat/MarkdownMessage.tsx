@@ -20,6 +20,7 @@ import remarkGfm from 'remark-gfm';
 import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useTranslation } from '@web/i18n/use-translation';
 import { HIGHLIGHT_LANGUAGES } from '@web/pages/project/chat/highlight-languages';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import {
@@ -101,19 +102,33 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
 
 /**
  * The tick a task list item carries, drawn rather than left to the browser.
+ *
+ * The difference between a done item and an open one is the whole point of a
+ * checklist, and the drawn tick carries it visually. The word beside it
+ * carries the same thing for a screen reader, following the rail's pattern
+ * (ReferenceRail): a `role='checkbox'` here would need an accessible name, and
+ * the item's own words sit outside this element.
  * @param root0 - The props react-markdown hands an `input`.
  * @param root0.checked - Whether the item is ticked.
  * @returns The mark.
  */
 function TaskMark({ checked }: { checked?: boolean }): ReactElement {
+  const t = useTranslation();
+  const done = checked === true;
+
   return (
-    <span
-      aria-hidden
-      className='chat-markdown-task-mark'
-      data-checked={checked === true ? 'true' : undefined}
-    >
-      {checked === true ? '✓' : ''}
-    </span>
+    <>
+      <span className='sr-only'>
+        {done ? t('chat.markdown.taskDone') : t('chat.markdown.taskTodo')}
+      </span>
+      <span
+        aria-hidden
+        className='chat-markdown-task-mark'
+        data-checked={done ? 'true' : undefined}
+      >
+        {done ? '✓' : ''}
+      </span>
+    </>
   );
 }
 

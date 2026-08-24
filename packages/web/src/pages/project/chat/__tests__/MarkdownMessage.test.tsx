@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
+import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function draw(content: string, streaming = false) {
   return render(<MarkdownMessage content={content} streaming={streaming} />);
@@ -345,5 +346,34 @@ describe('MarkdownMessage — the dot follows literal HTML too (R7)', () => {
     expect(body().textContent).toContain('<summary>more</summary>');
     expect(mark.previousSibling?.textContent).toContain('<summary>more</summary>');
     expect(body().lastChild).toBe(mark);
+  });
+});
+
+describe('MarkdownMessage — a checklist reads as a checklist (R11)', () => {
+  it('tells a done item from an open one', () => {
+    // Reading an assistant reply is viewing existing content, which
+    // docs/ACCESSIBILITY.md keeps inside the promised set. With the state left
+    // to the drawn tick alone, both items announce as the same plain bullet.
+    draw('- [x] shipped\n- [ ] pending');
+
+    const items = [...body().querySelectorAll('li')];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.textContent).not.toBe(items[1]?.textContent);
+    expect(items[0]?.querySelector('.sr-only')?.textContent).toBe('Done');
+    expect(items[1]?.querySelector('.sr-only')?.textContent).toBe('Not done');
+    // R11 holds: the state is stated, the browser still draws nothing.
+    expect(body().querySelector('input[type="checkbox"]')).toBeNull();
+  });
+
+  it('keeps the drawn tick out of the reading', () => {
+    // The tick and the word say the same thing; hearing it twice is noise.
+    draw('- [x] shipped');
+
+    expect(body().querySelector('.chat-markdown-task-mark')).toHaveAttribute('aria-hidden');
+  });
+
+  it('has no a11y violations', async () => {
+    draw('- [x] shipped\n- [ ] pending');
+    await expectNoA11yViolations(document.body);
   });
 });

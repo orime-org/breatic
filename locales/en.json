@@ -190,6 +190,10 @@
       "failedBody": "Could not read this project's conversations.",
       "retry": "Reload",
       "refusedTitle": "Cannot open this chat"
+    },
+    "markdown": {
+      "taskDone": "Done",
+      "taskTodo": "Not done"
     }
   },
   "canvas": {
