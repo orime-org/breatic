@@ -26,6 +26,8 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { createSpace, deleteSpace } from './helpers/space';
+
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
@@ -57,8 +59,20 @@ test.afterAll(async () => {
   await page?.close();
 });
 
+// Each case builds its own Space and drops it again when it is done. Three
+// cases leaving three behind, every run, in the same Project, is what a tier's
+// Space ceiling is there to stop (`config/membership.yaml`).
+const createdSpaceIds: string[] = [];
+
+test.afterEach(async () => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+});
+
 // Each case creates a Space and seeds two nodes before it can assert anything,
-// which outlasts the suite-wide 30s budget on its own.
+// which outlasts the suite-wide 30s budget on its own. The teardown adds a
+// drawer round-trip on top of that.
 test.setTimeout(90_000);
 
 /**
@@ -173,10 +187,7 @@ async function openCropOverlay(): Promise<void> {
   // A fresh Canvas Space, which opens active — so the run lands on a canvas
   // regardless of what the account's tab order says.
   const spaceName = `focus-crop-e2e-${Date.now()}`;
-  await page.getByTestId('new-space-button').click();
-  await page.getByTestId('new-space-type-canvas').click();
-  await page.getByTestId('new-space-name').fill(spaceName);
-  await page.getByTestId('new-space-submit').click();
+  createdSpaceIds.push(await createSpace(page, 'canvas', spaceName));
   await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
 
   // Two image nodes: the pick has to START from one node's generate panel, and

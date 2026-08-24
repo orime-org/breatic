@@ -13,6 +13,8 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { createSpace, deleteSpace } from './helpers/space';
+
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
@@ -64,6 +66,16 @@ test.afterAll(async () => {
   await page?.close();
 });
 
+// 每条用例各建一个 Space（各自要一份干净正文），跑完就把它删掉——18 条留 18 个
+// 在同一个 project 里，而档位对 Space 数量有上限（`config/membership.yaml`）。
+const createdSpaceIds: string[] = [];
+
+test.afterEach(async () => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+});
+
 /** 进到一个新建的 Document Space，光标已在正文里。 */
 async function openFreshDocument(page: Page): Promise<void> {
   await page.goto('/studio');
@@ -72,10 +84,9 @@ async function openFreshDocument(page: Page): Promise<void> {
   await firstProject.click();
   await page.waitForURL(/\/project\//, { timeout: 15_000 });
 
-  await page.getByTestId('new-space-button').click();
-  await page.getByTestId('new-space-type-document').click();
-  await page.getByTestId('new-space-name').fill(`bubble-${Date.now()}`);
-  await page.getByTestId('new-space-submit').click();
+  createdSpaceIds.push(
+    await createSpace(page, 'document', `bubble-${Date.now()}`),
+  );
 
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await expect(editor).toBeVisible({ timeout: 15_000 });
