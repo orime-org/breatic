@@ -490,9 +490,11 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
     const existing = byStudio.get(row.studioId);
     const spent = toMicroCredits(row.spent) / 1_000_000;
     if (existing) existing.spent = spent;
-    // A studio reaches this side and not the other one whenever it holds no
-    // spendable lot, which happens to every studio whose lots are spent or
-    // reassigned, and to every studio at all where credits are not charged.
+    // A studio reaches this side and not the other one whenever no purchase
+    // of this account points at it: they were pointed elsewhere, or the
+    // studio is gone and the other read joins only live ones, or nothing is
+    // charged here so there are no purchases at all. A spent purchase still
+    // points, so its studio comes through the other side.
     // Whether it is gone is the column the row carries.
     else
       byStudio.set(row.studioId, {

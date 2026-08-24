@@ -81,9 +81,10 @@ export function useCreditsPaging<T>({
     onReachEnd: loadMore,
     itemCount: rows.length,
     // A page that did not arrive stops the watcher until the reader scrolls
-    // again. `isFetchNextPageError` and not `isError`: a first page that did
-    // arrive leaves the query successful, which is exactly the failure this
-    // is here to notice.
+    // again. `isFetchNextPageError` is `isError` narrowed to a forward fetch,
+    // which is the failure this watches for: rows are in hand and the page
+    // after them did not come. A first page that failed leaves nothing to
+    // scroll past.
     failed: isFetchNextPageError,
   });
 

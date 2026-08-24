@@ -40,7 +40,7 @@ interface LedgerSectionProps {
 const ALL_STUDIOS = 'all';
 
 /**
- * Every generation this account has paid for, one line each.
+ * Every generation run on this account, one line each.
  *
  * One line per generation and not per ledger row: a generation draws on as
  * many purchases as it needs and writes a row for each, so listing the rows
@@ -173,8 +173,7 @@ interface LedgerRowProps {
 }
 
 /**
- * One time this account's money left a purchase: when, who, where, with what,
- * and how much.
+ * One run on this account: when, who, where, with what, and what it came to.
  *
  * A run that outran the purchases used more than this. That part is the
  * studio's debt, which names no payer, and the studio's own page reports
