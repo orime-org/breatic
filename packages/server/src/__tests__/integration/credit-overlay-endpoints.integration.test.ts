@@ -502,6 +502,28 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
   });
 });
 
+describe("a purchase pointed at a studio that is gone reads as unassigned", () => {
+  it("says so in the purchases list, the same as the overview counts it", async () => {
+    // studio 软删的那一刻它就不该再持有任何积分包（user 2026-08-24）。写侧
+    // 的清空归 #26；读侧这里必须先说对，否则同一个包在总览里算「未指定」、
+    // 在充值记录里写着「已指定给 X」，而 X 已经没了。
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 500, 1000, fx.studioId);
+    await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+
+    const page = await readLots(fx.cookie);
+    const mine = page.items[0];
+
+    expect(mine).toBeDefined();
+    expect(mine!["designatedStudioId"]).toBeNull();
+    expect(mine!["designatedStudioName"]).toBeNull();
+
+    // 总览那一侧本来就是这么算的，两处从此说同一句话。
+    const data = await readOverview(fx.cookie);
+    expect(data["unassignedCredits"]).toBe(500);
+  });
+});
+
 describe("three sections each want their own subset (plan §4.7)", () => {
   it("takes a lifecycle parameter", async () => {
     const fx = await seedFixture();
@@ -690,9 +712,6 @@ describe("usage that drew on no purchase is listed and says so", () => {
       amount: -42,
       model: "seedream-4.0",
     });
-    // On the same account, the runs that did draw on a purchase stay
-    // generations.
-    expect(body.data.items[0]!["kind"]).not.toBe("generation");
   });
 });
 

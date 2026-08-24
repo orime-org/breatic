@@ -38,9 +38,15 @@ vi.mock('@web/data/api/studios', () => ({
 // jsdom does not scroll, so the callback the hook is given is captured here
 // and called directly.
 let reachEnd: (() => void) | null = null;
+let watcherStopped: boolean | null = null;
 vi.mock('@web/lib/use-scrolled-to-end', () => ({
-  useScrolledToEnd: (opts: { enabled: boolean; onReachEnd: () => void }) => {
+  useScrolledToEnd: (opts: {
+    enabled: boolean;
+    onReachEnd: () => void;
+    failed: boolean;
+  }) => {
     reachEnd = opts.enabled ? opts.onReachEnd : null;
+    watcherStopped = opts.failed;
     return { scrollerRef: () => {}, sentinelRef: () => {} };
   },
 }));
@@ -190,6 +196,7 @@ describe('the credits overlay, section by section', () => {
     ]);
     toastWarning.mockReset();
     reachEnd = null;
+    watcherStopped = null;
   });
 
   describe('overview', () => {
@@ -449,6 +456,55 @@ describe('the credits overlay, section by section', () => {
       expect(body.querySelector('[aria-hidden="true"]')).not.toBeNull();
     });
 
+    it('returns the shared scroll area to the top when the section changes', async () => {
+      // 七项共用一个滚动区。留着上一项的偏移，换过去就落在列表中间，而且
+      // 哨兵可能已经在视野里，会去要一页读者从没滚到的内容。
+      await openOn('ledger');
+      await panel();
+      // 对话框里有两个滚动区：左边索引一个，右边内容一个。要的是含
+      // tabpanel 的那个。
+      const viewport = [
+        ...document
+          .querySelector('[role="dialog"]')!
+          .querySelectorAll('[data-radix-scroll-area-viewport]'),
+      ].find((v) => v.querySelector('[role="tabpanel"]')) as HTMLElement;
+      expect(viewport).toBeDefined();
+      viewport.scrollTop = 400;
+
+      document.getElementById('credits-tab-studios')!.click();
+      await waitFor(() => {
+        expect(document.getElementById('credits-tab-studios')).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+
+      await waitFor(() => {
+        expect(viewport.scrollTop).toBe(0);
+      });
+    });
+
+    it('marks a run that drew on no purchase, and leaves the rest unmarked', async () => {
+      fetchCreditLedger.mockResolvedValue({
+        items: [
+          entry({ id: 'u1', kind: 'unbilled', amount: -42 }),
+          entry({ id: 'g1', kind: 'generation', amount: -12 }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('ledger');
+      const body = await panel();
+
+      const rows = [...body.querySelectorAll('tbody tr')];
+      expect(rows[0]!.querySelector('td:last-child')).toHaveTextContent(
+        /Not charged/i,
+      );
+      // 真扣到包的那一行不带这个词，否则这个词什么也没说。
+      expect(rows[1]!.querySelector('td:last-child')).not.toHaveTextContent(
+        /Not charged/i,
+      );
+    });
+
     it('values refundable credits at one US cent each', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ remainingCredits: 880, currency: 'usd' })],
@@ -525,6 +581,9 @@ describe('the credits overlay, section by section', () => {
       // failure did.
       await new Promise((r) => setTimeout(r, 60));
       expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+      // 观察器收到的就是这个信号。断言它，而不是断言「没有再请求」——
+      // 后者靠 react-query 的 retry:false 就成立，把接线删掉照样绿。
+      expect(watcherStopped).toBe(true);
       expect(await screen.findByRole('tabpanel')).toHaveTextContent('$50.00');
       expect(screen.queryByRole('alert')).toBeNull();
     });
@@ -542,6 +601,19 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('owes 120');
       expect(body).toHaveTextContent('spent 1,280');
       expect(body).toHaveTextContent('1 purchase assigned to it');
+    });
+
+    it('withholds the debt from a reader who no longer administers it', async () => {
+      // 欠账是 studio 自己的数，只有 admin 能拿它做决定。服务端在这种情形
+      // 下发的是 null，这一行要说得出「不是零、是没有」。
+      fetchCreditOverview.mockResolvedValue(
+        overview({ studios: [studio({ debt: null, spent: 640 })] }),
+      );
+      await openOn('studios');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('640');
+      expect(body).not.toHaveTextContent(/owes/i);
     });
 
     it('keeps a deleted studio\'s name and adds a badge', async () => {

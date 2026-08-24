@@ -952,6 +952,13 @@ export const creditLedger = pgTable(
       .on(table.studioId, desc(table.createdAt))
       .where(sql`${table.studioId} IS NOT NULL`),
     index("credit_ledger_lot_idx").on(table.lotId),
+    // The one read that asks by actor: which studios this account has run up
+    // debt in. Partial, because only `debt_incurred` rows can answer it, and
+    // 0064 cleared the payer on exactly those rows so the payer index cannot
+    // serve it. Declared as 0065 creates it.
+    index("credit_ledger_actor_debt_idx")
+      .on(table.actorUserId, table.studioId)
+      .where(sql`${table.entryType} = 'debt_incurred'`),
     index("credit_ledger_payer_studio_created_idx")
       .on(table.payerUserId, table.studioId, desc(table.createdAt))
       .where(sql`${table.studioId} IS NOT NULL`),

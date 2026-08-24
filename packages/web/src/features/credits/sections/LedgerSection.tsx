@@ -210,9 +210,10 @@ const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.
           <td className='py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
         </>
       )}
-      {/* The figure is what the run used. On a line that drew on no purchase
-          it is also what the run did NOT cost, and the number alone cannot
-          say which — so that line carries the word. */}
+      {/* On most lines the figure is what left this account's purchases. On
+          a line that drew on none it is what the run would have cost and
+          nothing moved, which the number alone cannot say — so that line
+          carries the word. */}
       <td className='py-1.5 text-right tabular-nums'>
         {row.kind === 'unbilled' ? (
           <Badge variant='secondary' className='mr-2 align-middle'>

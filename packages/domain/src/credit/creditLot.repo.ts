@@ -601,10 +601,18 @@ export async function listLotsByUser(
       // day.
       paidCents: payments.amountCents,
       currency: payments.currency,
-      // No liveness condition on the studio: a lot pointing at one that is
-      // gone still has to read as pointing somewhere, or the reader cannot
-      // tell it from one that was never assigned.
-      designatedStudioName: studios.name,
+      // A studio that is gone holds nothing: the moment it is deleted its
+      // projects stop working, so a purchase pointed at it is pointed
+      // nowhere. Both columns answer that way, which is the same answer
+      // `sumUnassignedForUser` gives — one predicate, read the same in every
+      // section, so a purchase is never unassigned on one screen and assigned
+      // to a name that no longer exists on another.
+      designatedStudioId: sql<
+        string | null
+      >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${creditLots.designatedStudioId} END`,
+      designatedStudioName: sql<
+        string | null
+      >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -633,6 +641,7 @@ export async function listLotsByUser(
     .limit(limit);
   return rows.map((row) => ({
     ...toLotEntity(row.lot),
+    designatedStudioId: row.designatedStudioId,
     paidCents: row.paidCents,
     currency: row.currency,
     designatedStudioName: row.designatedStudioName,
@@ -972,7 +981,9 @@ export async function sumSpentByStudio(
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
-        // Both ways money leaves a purchase. A repayment is a charge the studio
+        // The two entry types a studio's spending is made of. Usage that
+        // drew on no purchase is a `spend` row too, with no lot behind it:
+        // this studio consumed it, which is what this figure answers. A repayment is a charge the studio
         // ran up before it had the credits: the debt was recorded first and
         // drawn from a lot later, and the lot is smaller by exactly that much.
         // The studio ledger totals the same two types for the same reason.

@@ -62,15 +62,18 @@ export async function fetchCreditLedger(options?: {
  *
  * `null` is an instruction rather than an omission — it takes the purchase
  * back from whichever studio held it, which is how credits are moved.
+ *
+ * Nothing is read from the reply. Pointing a purchase changes what several of
+ * these reads answer, so the caller refetches them; the one lot the reply
+ * carries would be a second, narrower answer to a question already asked.
  * @param lotId - The purchase being pointed.
  * @param studioId - The studio to point it at, or null to take it back.
- * @returns The purchase as it now stands.
  */
 export async function designateCreditLot(
   lotId: string,
   studioId: string | null,
-): Promise<CreditLotView> {
-  return apiPatch<CreditLotView>(
+): Promise<void> {
+  await apiPatch<unknown>(
     `/credits/lots/${encodeURIComponent(lotId)}/designation`,
     { studioId },
   );

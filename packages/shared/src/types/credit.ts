@@ -29,9 +29,15 @@ export interface CreditLotView {
   id: string;
   purchasedCredits: number;
   remainingCredits: number;
-  /** The studio allowed to spend it; null means unassigned, so unspendable. */
+  /**
+   * The studio allowed to spend it; null means unassigned, so unspendable.
+   *
+   * A purchase pointed at a studio that has since been deleted reads as null
+   * here too: that studio holds nothing any more, so the purchase is pointed
+   * nowhere and can be pointed somewhere else.
+   */
   designatedStudioId: string | null;
-  /** That studio, named. Null when it points at none. */
+  /** That studio, named. Null whenever `designatedStudioId` is. */
   designatedStudioName: string | null;
   /** What was paid for it, in the smallest unit of `currency`. */
   paidCents: number;
@@ -64,16 +70,6 @@ export interface StudioLotView {
 }
 
 /**
- * One line of this account's ledger: one time its money left a purchase.
- *
- * A generation draws on as many purchases as it needs and writes a row for
- * each, all at the same instant, so the figure below is that generation's
- * total rather than one purchase's share of it.
- *
- * What a run cost beyond what the purchases covered is the studio's debt,
- * which names no payer and belongs on the studio's own page.
- */
-/**
  * What one line of an account's ledger is.
  *
  * `unbilled` is a run that drew on no purchase: every run on a deployment
@@ -83,6 +79,16 @@ export interface StudioLotView {
  */
 export type CreditLedgerKind = "generation" | "debt_repayment" | "unbilled";
 
+/**
+ * One line of this account's ledger: one run, and what it came to here.
+ *
+ * A generation draws on as many purchases as it needs and writes a row for
+ * each, all at the same instant, so `amount` is that run's total rather than
+ * one purchase's share of it.
+ *
+ * What a run cost beyond what the purchases covered is the studio's debt,
+ * which names no payer and belongs on the studio's own page.
+ */
 export interface CreditLedgerView {
   id: string;
   /** Which of the three kinds of line this is. */
@@ -98,7 +104,13 @@ export interface CreditLedgerView {
   projectName: string | null;
   model: string | null;
   provider: string | null;
-  /** What left this account's purchases. Negative. */
+  /**
+   * What this run came to, as a negative number.
+   *
+   * On a `generation` or a `debt_repayment` it is what left this account's
+   * purchases. On an `unbilled` line nothing left them: the figure is what
+   * the run would have cost, which is why that line carries a word saying so.
+   */
   amount: number;
   createdAt: string;
 }
