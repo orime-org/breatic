@@ -3,7 +3,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { deriveActiveNodeIds } from '@web/spaces/canvas/active-node-ids';
+import {
+  deriveActiveNodeIds,
+  sameActiveNodeIds,
+} from '@web/spaces/canvas/active-node-ids';
 
 describe('deriveActiveNodeIds', () => {
   describe('with no pick session', () => {
@@ -124,5 +127,42 @@ describe('deriveActiveNodeIds', () => {
         }),
       ).toEqual(['host', 'target']);
     });
+  });
+});
+
+describe('sameActiveNodeIds', () => {
+  it('treats two empty holdings as unchanged', () => {
+    expect(sameActiveNodeIds(null, null)).toBe(true);
+  });
+
+  it('treats the same single id as unchanged', () => {
+    expect(sameActiveNodeIds(['a'], ['a'])).toBe(true);
+  });
+
+  it('sees a different id', () => {
+    expect(sameActiveNodeIds(['a'], ['b'])).toBe(false);
+  });
+
+  it('sees a grown set', () => {
+    expect(sameActiveNodeIds(['a'], ['a', 'b'])).toBe(false);
+  });
+
+  it('sees a shrunk set', () => {
+    expect(sameActiveNodeIds(['a', 'b'], ['a'])).toBe(false);
+  });
+
+  it('sees the field being cleared', () => {
+    expect(sameActiveNodeIds(['a'], null)).toBe(false);
+  });
+
+  it('sees the field being filled', () => {
+    expect(sameActiveNodeIds(null, ['a'])).toBe(false);
+  });
+
+  it('sees a reorder', () => {
+    // Order-sensitive, matching `useStableList` upstream: the ids arrive in
+    // node order, so a reorder means the previous value is stale even though
+    // the set is the same. Republishing costs one awareness frame.
+    expect(sameActiveNodeIds(['a', 'b'], ['b', 'a'])).toBe(false);
   });
 });

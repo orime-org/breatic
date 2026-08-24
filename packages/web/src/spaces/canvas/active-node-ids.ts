@@ -40,3 +40,23 @@ export function deriveActiveNodeIds(sources: ActiveNodeSources): string[] | null
       : null;
   return target === null ? [pickSession.nodeId] : [pickSession.nodeId, target];
 }
+
+/**
+ * Compare a freshly derived set against the one that actually reached the
+ * awareness state, so an unchanged holding is not republished every render.
+ *
+ * The comparison is by VALUE because the value it is checked against is read
+ * back out of awareness rather than kept in a local variable: anything that
+ * wipes the state from the outside (the bfcache teardown, a provider reset)
+ * then shows up as a difference instead of being judged unchanged.
+ * @param a - The previously published value.
+ * @param b - The freshly derived value.
+ * @returns True when the two describe the same holding.
+ */
+export function sameActiveNodeIds(
+  a: readonly string[] | null,
+  b: readonly string[] | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
