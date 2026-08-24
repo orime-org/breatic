@@ -34,7 +34,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
       {overview.billing ? (
         <>
           <Figure
-            label={t('credits.available')}
+            label={t('credits.total')}
             value={formatCreditAmount(total)}
             unit={t('credits.unit')}
             hint={t('credits.pricingHint')}

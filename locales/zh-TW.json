@@ -1286,7 +1286,6 @@
     "total": "帳號總額",
     "unassigned": "未指定",
     "assigned": "已指定",
-    "available": "目前可用",
     "pricingHint": "1 點數 = 1 美分，永不過期。",
     "unassignedHint": "需要指定給某個 Studio 才能使用。",
     "distributionTitle": "分給了哪些 Studio",
@@ -1348,7 +1347,9 @@
     "refundsAsked": "已送出的申請",
     "refundRefused": "已駁回",
     "refundRefusedHint": "這個點數包已回到可用狀態，重新指定時會先抵欠帳",
-    "refundPendingHint": "{credits} 點數 · 審核期間這個點數包不能指定給任何 Studio",
+    "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
+    "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
+    "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
     "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。"
   }
 }

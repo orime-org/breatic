@@ -39,6 +39,30 @@ function refused(lot: CreditLotView): boolean {
   return lot.refundAttempts > 0 && lot.lifecycle === 'active';
 }
 
+/** What each lifecycle in the submitted list says about itself. */
+const SUBMITTED_HINT = {
+  refund_pending: 'credits.refundPendingHint',
+  refunding: 'credits.refundingHint',
+  refunded: 'credits.refundedHint',
+} as const;
+
+/**
+ * Which sentence a submitted row carries.
+ *
+ * The list holds three lifecycles and the badge names each one, so the
+ * sentence beside it has to be about that same one. All three end at the same
+ * place — the purchase cannot be pointed at a studio — and `designateLot`
+ * refuses all three, so what differs is only which of them the row is in.
+ * @param lifecycle - The purchase's lifecycle.
+ * @returns The translation key for that lifecycle.
+ */
+function submittedHintKey(lifecycle: string): string {
+  return (
+    SUBMITTED_HINT[lifecycle as keyof typeof SUBMITTED_HINT] ??
+    SUBMITTED_HINT.refund_pending
+  );
+}
+
 /** Whose purchases, and whether billing is on at all. */
 interface RefundsSectionProps {
   /** The signed-in account, for the query key. */
@@ -176,7 +200,7 @@ export function RefundsSection({
                     sub={
                       refused(lot)
                         ? t('credits.refundRefusedHint')
-                        : t('credits.refundPendingHint', {
+                        : t(submittedHintKey(lot.lifecycle), {
                           credits: formatCreditAmount(lot.remainingCredits),
                         })
                     }

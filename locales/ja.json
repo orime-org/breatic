@@ -1286,7 +1286,6 @@
     "total": "アカウント合計",
     "unassigned": "未割り当て",
     "assigned": "割り当て済み",
-    "available": "現在の残高",
     "pricingHint": "1 クレジット = 1 米セント、有効期限はありません。",
     "unassignedHint": "使うには Studio に割り当てる必要があります。",
     "distributionTitle": "どの Studio にあるか",
@@ -1348,7 +1347,9 @@
     "refundsAsked": "申請済み",
     "refundRefused": "却下",
     "refundRefusedHint": "この購入は再び使える状態に戻り、割り当て時にまず未払い分に充てられます",
-    "refundPendingHint": "{credits} クレジット · 審査中はどの Studio にも割り当てられません",
+    "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
+    "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
+    "refundedHint": "{credits} クレジット · 返金済みのため Studio に割り当てられません",
     "refundsNote": "未使用分のみを元の支払い方法へ返金します。審査があります。"
   }
 }

@@ -743,6 +743,17 @@ describe('the credits overlay, section by section', () => {
       expect(body.querySelectorAll('button')).toHaveLength(0);
     });
 
+    it('names the figure what the overview names it', async () => {
+      // The figure is assigned plus unassigned, and the overview calls that
+      // the account total. Calling the same sum available here contradicts
+      // the line beside it there, which says the unassigned part is not.
+      await openOn('buy');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/Account total/i);
+      expect(body).not.toHaveTextContent(/Available now/i);
+    });
+
     it('offers no top-up where the deployment charges nobody', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
       await openOn('buy');
@@ -861,6 +872,26 @@ describe('the credits overlay, section by section', () => {
       // A refused purchase is `active` again; only the attempt count
       // remembers.
       expect(body).toHaveTextContent(/Refused/);
+    });
+
+    it('tells each state in the submitted list what its own state is', async () => {
+      // The list holds three lifecycles. One sentence about a review still
+      // running is false on the two that are past it, and the badge beside it
+      // says so, leaving the row disagreeing with itself.
+      fetchCreditLots.mockResolvedValue({
+        items: [
+          lot({ id: 'l6', lifecycle: 'refund_pending' }),
+          lot({ id: 'l7', lifecycle: 'refunding' }),
+          lot({ id: 'l8', lifecycle: 'refunded' }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/while it is under review/i);
+      expect(body).toHaveTextContent(/while the money goes back/i);
+      expect(body).toHaveTextContent(/the money went back/i);
     });
 
     it('says so once when there is nothing to refund and nothing pending', async () => {

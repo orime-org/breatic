@@ -1286,7 +1286,6 @@
     "total": "账号总额",
     "unassigned": "未指定",
     "assigned": "已指定",
-    "available": "当前可用",
     "pricingHint": "1 积分 = 1 美分，永不过期。",
     "unassignedHint": "需要指定给某个 Studio 才能用。",
     "distributionTitle": "分给了哪些 Studio",
@@ -1348,7 +1347,9 @@
     "refundsAsked": "已提交的申请",
     "refundRefused": "已驳回",
     "refundRefusedHint": "这个积分包已回到可用状态，重新指定时会先抵欠账",
-    "refundPendingHint": "{credits} 积分 · 审核期间这个积分包不能指定给任何 Studio",
+    "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
+    "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
+    "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
     "refundsNote": "只退没用掉的部分，按原路退回，需要审核。"
   }
 }

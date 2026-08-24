@@ -1286,7 +1286,6 @@
     "total": "Account total",
     "unassigned": "Unassigned",
     "assigned": "Assigned",
-    "available": "Available now",
     "pricingHint": "1 credit = 1 US cent, and credits never expire.",
     "unassignedHint": "Assign these to a Studio before they can be spent.",
     "distributionTitle": "Which Studios hold it",
@@ -1348,7 +1347,9 @@
     "refundsAsked": "Requests made",
     "refundRefused": "Refused",
     "refundRefusedHint": "This purchase is spendable again, and will pay off any debt first",
-    "refundPendingHint": "{credits} credits · it cannot be assigned to any Studio while under review",
+    "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
+    "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
+    "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
     "refundsNote": "Only what is unspent is refunded, to the original payment method, after review."
   }
 }

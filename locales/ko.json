@@ -1286,7 +1286,6 @@
     "total": "계정 총액",
     "unassigned": "미지정",
     "assigned": "지정됨",
-    "available": "현재 사용 가능",
     "pricingHint": "1 크레딧 = 1 미국 센트이며 만료되지 않습니다.",
     "unassignedHint": "쓰려면 Studio에 지정해야 합니다.",
     "distributionTitle": "어느 Studio에 있는지",
@@ -1348,7 +1347,9 @@
     "refundsAsked": "신청한 건",
     "refundRefused": "반려됨",
     "refundRefusedHint": "이 충전은 다시 쓸 수 있는 상태이며, 지정하면 미지급액부터 갚습니다",
-    "refundPendingHint": "{credits} 크레딧 · 심사 중에는 어느 Studio에도 지정할 수 없습니다",
+    "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
+    "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
+    "refundedHint": "{credits} 크레딧 · 환불되어 Studio에 지정할 수 없습니다",
     "refundsNote": "쓰지 않은 부분만 원래 결제 수단으로 환불하며, 심사를 거칩니다."
   }
 }
