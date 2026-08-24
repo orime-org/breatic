@@ -35,7 +35,8 @@ vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => listUserStudios() },
 }));
 
-// jsdom 里没有真滚动，捕获 hook 收到的回调，测试里直接调它。
+// jsdom does not scroll, so the callback the hook is given is captured here
+// and called directly.
 let reachEnd: (() => void) | null = null;
 vi.mock('@web/lib/use-scrolled-to-end', () => ({
   useScrolledToEnd: (opts: { enabled: boolean; onReachEnd: () => void }) => {
@@ -171,7 +172,7 @@ async function panel(): Promise<HTMLElement> {
   return element;
 }
 
-describe('积分覆盖层的七项', () => {
+describe('the credits overlay, section by section', () => {
   beforeEach(() => {
     useCurrentUserStore.getState().clear();
     useCurrentUserStore.getState().setUser(ALEX);
@@ -191,18 +192,19 @@ describe('积分覆盖层的七项', () => {
     reachEnd = null;
   });
 
-  describe('总览', () => {
-    it('三个数各自报，账号总额是另外两个之和', async () => {
+  describe('overview', () => {
+    it('reports three figures, the total being the other two added up', async () => {
       await openOn('overview');
       const body = await panel();
 
-      // 三个数不是一回事：未指定的花不出去，加总掩盖了这件事。
+      // The three are not one figure: unassigned credits cannot be spent,
+      // and a single total hides that.
       expect(body).toHaveTextContent('5,430');
       expect(body).toHaveTextContent('1,790');
       expect(body).toHaveTextContent('3,640');
     });
 
-    it('分布把每个 studio 和未指定各列一条', async () => {
+    it('gives the split a line per studio and one for the unassigned', async () => {
       await openOn('overview');
       const body = await panel();
 
@@ -210,7 +212,7 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent(/Unassigned 1,790/);
     });
 
-    it('一分钱没有时不画分布，改成说该怎么办', async () => {
+    it('drops the split when there is nothing, and says what to do instead', async () => {
       fetchCreditOverview.mockResolvedValue(
         overview({ assignedCredits: 0, unassignedCredits: 0, studios: [] }),
       );
@@ -221,7 +223,7 @@ describe('积分覆盖层的七项', () => {
       expect(body.querySelector('ul')).toBeNull();
     });
 
-    it('这个部署不计积分时三个数都给破折号', async () => {
+    it('dashes all three where the deployment charges nobody', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
       await openOn('overview');
       const body = await panel();
@@ -231,12 +233,13 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
-  describe('充值记录', () => {
-    it('每笔报实付、日期、剩余、共买了多少、指给了谁', async () => {
+  describe('purchases', () => {
+    it('reports what was paid, when, what is left, of how much, and where it points', async () => {
       await openOn('lots');
       const body = await panel();
 
-      // 实付领头：这是拿去跟账单对的那个数。
+      // What was paid leads: it is the figure a reader checks against a
+      // statement.
       expect(body).toHaveTextContent('$50.00');
       expect(body).toHaveTextContent('2026-08-21');
       expect(body).toHaveTextContent('2,400');
@@ -244,7 +247,7 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('Assigned to Orime Studio');
     });
 
-    it('有没指定的就提示，指定数报得准', async () => {
+    it('prompts when some point nowhere, and counts them right', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [
           lot(),
@@ -259,9 +262,10 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('2 purchases are unassigned');
     });
 
-    it('退款流程里那笔虽然也没指定，但不算进这个提示', async () => {
-      // 申请退款那一刻它就脱离了所有 studio，而且不许再被指定 —— 提示要用户
-      // 去指定它，是让人去做一件做不到的事。
+    it('leaves a purchase under refund out of that count', async () => {
+      // Asking for a refund detaches it from every studio and bars it from
+      // being pointed anywhere. Counting it asks the reader to do something
+      // the server refuses.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot(),
@@ -280,14 +284,14 @@ describe('积分覆盖层的七项', () => {
       expect(body).not.toHaveTextContent(/are unassigned/);
     });
 
-    it('全都指定了就不提示', async () => {
+    it('says nothing when every purchase points somewhere', async () => {
       await openOn('lots');
       const body = await panel();
 
       expect(body).not.toHaveTextContent(/are unassigned/);
     });
 
-    it('不计积分的部署根本不去读这个端点', async () => {
+    it('does not reach the endpoint at all where nothing is charged', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
       await openOn('lots');
       const body = await panel();
@@ -296,7 +300,7 @@ describe('积分覆盖层的七项', () => {
       expect(fetchCreditLots).not.toHaveBeenCalled();
     });
 
-    it('读失败给一句话，不是空白', async () => {
+    it('says so when the read fails, rather than showing nothing', async () => {
       fetchCreditLots.mockRejectedValue(new Error('nope'));
       await openOn('lots');
 
@@ -304,8 +308,8 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
-  describe('消耗流水', () => {
-    it('一次生成一行，六列都在', async () => {
+  describe('spending', () => {
+    it('gives one generation one row, with all six columns', async () => {
       await openOn('ledger');
       const body = await panel();
 
@@ -320,9 +324,10 @@ describe('积分覆盖层的七项', () => {
       expect(row).toHaveTextContent('-120');
     });
 
-    it('指定积分抵欠账那一行，说清它是什么、不冒充一次生成', async () => {
-      // 它没有 project 也没有模型，那两格摆破折号的话，读起来像一次凭空的
-      // 生成。欠账本身是 studio 的，不在任何人的账本里。
+    it('names a repayment for what it is instead of passing it off as a run', async () => {
+      // It carries no project and no model. Two dashes there read as a run
+      // that came from nowhere; the debt itself is the studio's and sits in
+      // nobody's ledger.
       fetchCreditLedger.mockResolvedValue({
         items: [
           entry({
@@ -341,9 +346,10 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('-70');
     });
 
-    it('切语言之后表头跟着换', async () => {
-      // useTranslation 返回的是模块级恒定的那个 t，locale 变了它的引用不变，
-      // 所以任何只依赖 t 的 memo 都会把上一门语言的字留在屏幕上。
+    it('changes the column headings with the language', async () => {
+      // `useTranslation` hands back a module-level constant. Its identity
+      // survives a locale change, so a memo keyed on it alone keeps the
+      // previous language on screen.
       await openOn('ledger');
       const body = await panel();
       expect(body).toHaveTextContent('Model');
@@ -355,7 +361,7 @@ describe('积分覆盖层的七项', () => {
       setLocale('en');
     });
 
-    it('按 studio 筛时把那个 id 带给端点', async () => {
+    it('passes the studio id to the endpoint when narrowing', async () => {
       const user = await openOn('ledger');
       await panel();
 
@@ -369,19 +375,20 @@ describe('积分覆盖层的七项', () => {
       });
     });
 
-    it('不计积分的部署照常列用量', async () => {
+    it('lists usage even where nothing is charged', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
       await openOn('ledger');
       const body = await panel();
 
-      // 花不花钱和用没用过是两件事，后者照记。
+      // Being charged and having used something are two different facts, and
+      // the second is recorded either way.
       expect(fetchCreditLedger).toHaveBeenCalled();
       expect(body).toHaveTextContent('seedream-4.0');
     });
   });
 
-  describe('第三轮补的那几处', () => {
-    it('还债那行合并两格之后，一行仍然是六列宽', async () => {
+  describe('list mechanics', () => {
+    it('keeps a repayment row six columns wide after merging two of them', async () => {
       fetchCreditLedger.mockResolvedValue({
         items: [
           entry({ kind: 'debt_repayment', projectName: null, model: null }),
@@ -402,7 +409,7 @@ describe('积分覆盖层的七项', () => {
       }
     });
 
-    it('长列表的表头钉在滚动容器顶上', async () => {
+    it('pins a long list\'s heading to the top of the scroll container', async () => {
       await openOn('ledger');
       const body = await panel();
 
@@ -412,8 +419,9 @@ describe('积分覆盖层的七项', () => {
       expect(th!.className).toContain('top-0');
     });
 
-    it('还有下一页时不说「有 N 笔未指定」', async () => {
-      // 这个数只是已经翻到的那几页，说出来它会随着滚动往上跳。
+    it('withholds the unassigned count while a further page is coming', async () => {
+      // The count covers only the pages read so far, so stating it makes it
+      // climb as the reader scrolls.
       fetchCreditLots.mockResolvedValue({
         items: [lot({ designatedStudioId: null, designatedStudioName: null })],
         nextCursor: 'more',
@@ -424,9 +432,9 @@ describe('积分覆盖层的七项', () => {
       expect(body).not.toHaveTextContent(/are unassigned/);
     });
 
-    it('退款空着的时候也留着那个哨兵', async () => {
-      // 这一项在服务端切完页之后自己再滤一次，整页都被滤掉时没有哨兵就永远
-      // 停在这儿。
+    it('keeps the sentinel when the refunds list filters a page away', async () => {
+      // This section filters again after the server has cut the page. With a
+      // whole page filtered away and no sentinel, it stops here for good.
       fetchCreditLots.mockResolvedValue({
         items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
         nextCursor: 'more',
@@ -435,12 +443,13 @@ describe('积分覆盖层的七项', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/Nothing can be refunded/i);
-      // 哨兵得真的在这一支里渲染出来。观察它的那个 hook 在测试里被打了桩，
-      // 所以只问 hook 拿没拿到回调是问不出「元素在不在」的。
+      // The sentinel has to be rendered on this branch. The hook watching it
+      // is stubbed here, so asking whether the hook received a callback
+      // cannot answer whether the element exists.
       expect(body.querySelector('[aria-hidden="true"]')).not.toBeNull();
     });
 
-    it('可退金额按 1 积分 1 美分换算', async () => {
+    it('values refundable credits at one US cent each', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ remainingCredits: 880, currency: 'usd' })],
         nextCursor: null,
@@ -451,7 +460,38 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('$8.80');
     });
 
-    it('上一页失败之后，观察者停下等读者再滚一次', async () => {
+    it('waits for both reads before drawing a picker', async () => {
+      // Waiting only for the purchases draws every row from an empty list of
+      // studios: the assigned ones read as "you no longer administer this",
+      // and the rest are left with nowhere to point.
+      const held: { release: (v: unknown) => void } = { release: () => {} };
+      listUserStudios.mockReturnValue(
+        new Promise((resolve) => {
+          held.release = resolve;
+        }),
+      );
+      await openOn('assign');
+
+      // The purchases have arrived and the studios have not. This moment is
+      // a skeleton, not a picker.
+      const body = await screen.findByRole('tabpanel');
+      await waitFor(() => {
+        expect(fetchCreditLots).toHaveBeenCalled();
+      });
+      expect(body.querySelector('[data-testid="credits-skeleton"]')).not.toBeNull();
+      expect(body.querySelector('[role="combobox"]')).toBeNull();
+
+      held.release([{ id: 's1', name: 'Alpha', myStudioRole: 'admin' }]);
+      await waitFor(() => {
+        expect(
+          screen
+            .getByRole('tabpanel')
+            .querySelector('[data-testid="credits-skeleton"]'),
+        ).toBeNull();
+      });
+    });
+
+    it('says a page failed, and leaves the rows already in hand', async () => {
       fetchCreditLots
         .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
@@ -462,8 +502,27 @@ describe('积分覆盖层的七项', () => {
       await waitFor(() => {
         expect(fetchCreditLots).toHaveBeenCalledTimes(2);
       });
-      // 失败之后不再自动重来，而且第一页还在手上：把读者已经看到的东西换成
-      // 一句「加载失败」，丢掉的比这次失败本身还多。
+
+      // The first page is still there, and the foot is no longer blank.
+      const body = await screen.findByRole('tabpanel');
+      expect(body).toHaveTextContent('$50.00');
+      expect(body).toHaveTextContent(/Could not load this page/i);
+    });
+
+    it('stops the watcher after a failed page until the reader scrolls again', async () => {
+      fetchCreditLots
+        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
+        .mockRejectedValueOnce(new Error('nope'));
+      await openOn('lots');
+      await panel();
+
+      reachEnd!();
+      await waitFor(() => {
+        expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+      });
+      // No retry of its own accord, and the first page stays: replacing what
+      // the reader has already seen with a failure loses more than the
+      // failure did.
       await new Promise((r) => setTimeout(r, 60));
       expect(fetchCreditLots).toHaveBeenCalledTimes(2);
       expect(await screen.findByRole('tabpanel')).toHaveTextContent('$50.00');
@@ -471,8 +530,8 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
-  describe('各 Studio', () => {
-    it('一行报四样：可用、欠账、已消耗、已指定几个包', async () => {
+  describe('per studio', () => {
+    it('reports four things a row: spendable, debt, spent, purchases pointed there', async () => {
       fetchCreditOverview.mockResolvedValue(
         overview({ studios: [studio({ debt: 120 })] }),
       );
@@ -482,12 +541,13 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('2,400');
       expect(body).toHaveTextContent('owes 120');
       expect(body).toHaveTextContent('spent 1,280');
-      expect(body).toHaveTextContent('1 purchases assigned to it');
+      expect(body).toHaveTextContent('1 purchase assigned to it');
     });
 
-    it('已删的 studio 名字还在就照显示，只加一枚徽章', async () => {
-      // 这一行留着是为了那笔钱说得出花在哪儿。把名字换成「已删除的 Studio」
-      // 等于把它再抹掉一次 —— 用户看不出是哪一个了。
+    it('keeps a deleted studio\'s name and adds a badge', async () => {
+      // The row is kept so the spending can say where it went. Replacing the
+      // name with "deleted studio" erases it a second time — the reader can
+      // no longer tell which one it was.
       fetchCreditOverview.mockResolvedValue(
         overview({
           studios: [
@@ -509,7 +569,7 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent('Deleted');
     });
 
-    it('已删的 studio 留着，消耗照报，可用额给破折号', async () => {
+    it('keeps a deleted studio, reports its spending, and dashes the balance', async () => {
       fetchCreditOverview.mockResolvedValue(
         overview({
           studios: [
@@ -527,20 +587,21 @@ describe('积分覆盖层的七项', () => {
       await openOn('studios');
       const body = await panel();
 
-      // 那笔钱真的花过，删掉这一行会让消耗那一列对不上。
+      // The money really was spent; dropping the row leaves the spending
+      // column not adding up.
       expect(body).toHaveTextContent('spent 880');
       expect(body).toHaveTextContent('Deleted');
       expect(body).toHaveTextContent('—');
     });
   });
 
-  describe('三态与分页', () => {
+  describe('loading, empty, failed, and paging', () => {
     it.each([
       ['lots' as const, () => fetchCreditLots],
       ['ledger' as const, () => fetchCreditLedger],
       ['assign' as const, () => fetchCreditLots],
       ['refunds' as const, () => fetchCreditLots],
-    ])('%s 读取失败时给一句话', async (section, mock) => {
+    ])('%s says so when its read fails', async (section, mock) => {
       mock().mockRejectedValue(new Error('nope'));
       await openOn(section);
 
@@ -552,7 +613,7 @@ describe('积分覆盖层的七项', () => {
       ['ledger' as const, /Nothing spent yet/i],
       ['assign' as const, /Nothing to assign/i],
       ['refunds' as const, /Nothing can be refunded/i],
-    ])('%s 空着时说清没有什么', async (section, message) => {
+    ])('%s says what is missing when it is empty', async (section, message) => {
       fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       fetchCreditLedger.mockResolvedValue({ items: [], nextCursor: null });
       await openOn(section);
@@ -561,8 +622,8 @@ describe('积分覆盖层的七项', () => {
       expect(body).toHaveTextContent(message);
     });
 
-    it('读还没回来时先摆骨架，不是空白', async () => {
-      // 挂住不 resolve：这一刻正是读者会看到的那一刻。
+    it('shows a skeleton while the first read is in flight', async () => {
+      // Held unresolved: this is the moment the reader sees.
       fetchCreditLots.mockReturnValue(new Promise(() => {}));
       await openOn('lots');
 
@@ -571,7 +632,7 @@ describe('积分覆盖层的七项', () => {
       ).toBeInTheDocument();
     });
 
-    it('还有下一页时，到底了会带着游标再问一次', async () => {
+    it('asks again with the cursor once the reader reaches the end', async () => {
       fetchCreditLots
         .mockResolvedValueOnce({ items: [lot()], nextCursor: 'cursor-2' })
         .mockResolvedValueOnce({
@@ -581,8 +642,9 @@ describe('积分覆盖层的七项', () => {
       await openOn('lots');
       await panel();
 
-      // jsdom 不真滚，所以直接调 hook 收到的那个回调。问的是「拿到游标之后
-      // 会不会带着它再问一次」，不是 IntersectionObserver 本身。
+      // jsdom does not scroll, so the callback the hook was given is called
+      // directly. What is under test is whether the cursor comes back on the
+      // next request, not the IntersectionObserver.
       expect(reachEnd).not.toBeNull();
       reachEnd!();
 
@@ -591,15 +653,15 @@ describe('积分覆盖层的七项', () => {
           expect.objectContaining({ cursor: 'cursor-2' }),
         );
       });
-      // 第二页的行真的接在第一页后面，不是把第一页换掉。
+      // The second page's rows follow the first rather than replacing it.
       const body = await screen.findByRole('tabpanel');
       expect(body).toHaveTextContent('$50.00');
       expect(body).toHaveTextContent('$7.77');
     });
   });
 
-  describe('购买积分', () => {
-    it('给可用额和计价说明，不出五档也不出去支付', async () => {
+  describe('buying credits', () => {
+    it('gives the balance and how credits are priced, and no packs or button', async () => {
       await openOn('buy');
       const body = await panel();
 
@@ -609,7 +671,7 @@ describe('积分覆盖层的七项', () => {
       expect(body.querySelectorAll('button')).toHaveLength(0);
     });
 
-    it('不计积分的部署不出充值引导', async () => {
+    it('offers no top-up where the deployment charges nobody', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
       await openOn('buy');
       const body = await panel();
@@ -619,8 +681,8 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
-  describe('指定', () => {
-    it('只问 active 的那些', async () => {
+  describe('assigning', () => {
+    it('asks only for the active purchases', async () => {
       await openOn('assign');
       await panel();
 
@@ -629,30 +691,33 @@ describe('积分覆盖层的七项', () => {
       );
     });
 
-    it('studio 列表读不出来时也给失败态，不是静默只剩「未指定」', async () => {
-      // 两个读缺哪个这一项都做不成：没有包就没什么可指，没有 studio 就没处
-      // 可指。只报其中一个的失败，另一个失败时下拉会静默变成一个选项。
+    it('fails visibly when the studios cannot be read', async () => {
+      // Either read failing leaves this section unable to do its one job.
+      // Reporting only one of them leaves the picker silently down to a
+      // single option when the other fails.
       listUserStudios.mockRejectedValue(new Error('nope'));
       await openOn('assign');
 
       expect(await screen.findByRole('alert')).toBeInTheDocument();
     });
 
-    it('下拉里只有自己是 admin 的 studio', async () => {
+    it('offers only the studios this account administers', async () => {
       const user = await openOn('assign');
       await panel();
 
       await user.click(screen.getByRole('combobox'));
 
       expect(await screen.findByRole('option', { name: 'Orime Studio' })).toBeInTheDocument();
-      // 访客身份那个 studio 指不了，摆上去只是把一次拒绝摆出来。
+      // A studio held as a guest cannot be pointed at, so offering it offers
+      // a rejection.
       expect(screen.queryByRole('option', { name: 'Design squad' })).toBeNull();
     });
 
-    it('包指给了一个我现在管不了的 studio，选择器仍然说得出它指给谁', async () => {
-      // 我买了包指给团队，后来在那个团队里被降级了。选项集合回答的是「能
-      // 改成谁」，而选择器显示的是「现在是谁」—— 后者不在前者里时，Radix
-      // 找不到匹配项，那一格就是空的，用户看不出这个包在哪儿。
+    it('still names where a purchase points when that studio is beyond reach', async () => {
+      // A purchase pointed at a team, and the account demoted there since.
+      // The options answer "where may it go"; the picker shows "where is it
+      // now". With the second outside the first, Radix matches nothing and
+      // the cell reads empty, leaving the reader unable to find the money.
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ designatedStudioId: 's9', designatedStudioName: 'Ex team' }),
@@ -665,7 +730,7 @@ describe('积分覆盖层的七项', () => {
       expect(within(body).getByRole('combobox')).toHaveTextContent('Ex team');
     });
 
-    it('改了就把这一笔发给端点', async () => {
+    it('sends the purchase to the endpoint when it is repointed', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ designatedStudioId: null, designatedStudioName: null })],
         nextCursor: null,
@@ -681,7 +746,7 @@ describe('积分覆盖层的七项', () => {
       });
     });
 
-    it('取消指定发的是 null，不是空串', async () => {
+    it('takes a purchase back with null rather than an empty string', async () => {
       const user = await openOn('assign');
       await panel();
 
@@ -694,13 +759,14 @@ describe('积分覆盖层的七项', () => {
     });
   });
 
-  describe('退款', () => {
-    it('可退的列出来，按钮变暗但仍可按，按了说为什么', async () => {
+  describe('refunds', () => {
+    it('lists what can be refunded and says why the button does nothing yet', async () => {
       const user = await openOn('refunds');
       const body = await panel();
 
       const button = within(body).getByRole('button', { name: /refund/i });
-      // 变暗不是 disabled：按不动的控件也是问不出所以然的控件。
+      // Dimmed rather than disabled: a control that cannot be pressed is a
+      // control that cannot be asked why.
       expect(button).toHaveAttribute('aria-disabled', 'true');
       expect(button).not.toHaveAttribute('disabled');
 
@@ -708,7 +774,7 @@ describe('积分覆盖层的七项', () => {
       expect(toastWarning).toHaveBeenCalled();
     });
 
-    it('审核中的和被驳回过的各自列出来', async () => {
+    it('lists those under review and those turned down before', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [
           lot({ id: 'l4', lifecycle: 'refund_pending', designatedStudioId: null }),
@@ -720,11 +786,12 @@ describe('积分覆盖层的七项', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/Under review/);
-      // 被驳回过的生命周期回到了 active，只有尝试次数记得这件事。
+      // A refused purchase is `active` again; only the attempt count
+      // remembers.
       expect(body).toHaveTextContent(/Refused/);
     });
 
-    it('没有可退的也没申请过时说一句就完', async () => {
+    it('says so once when there is nothing to refund and nothing pending', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
         nextCursor: null,

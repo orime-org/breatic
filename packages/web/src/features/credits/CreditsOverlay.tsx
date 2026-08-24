@@ -56,6 +56,15 @@ export function CreditsOverlay({
   // that a section mounting after it is attached still re-renders with it.
   const [scroller, setScroller] = React.useState<HTMLDivElement | null>(null);
 
+  // One scroll area serves all seven, so an offset left by one section is
+  // still there when the next one draws. Landing mid-list is the visible half;
+  // the other half is that the sentinel may already be in view, which asks for
+  // a page the reader never scrolled to.
+  React.useEffect(() => {
+    const viewport = scroller?.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport instanceof HTMLElement) viewport.scrollTop = 0;
+  }, [active, scroller]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* `flex-row` explicitly: the primitive's own class list says `flex-col`,

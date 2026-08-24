@@ -26,6 +26,8 @@ interface CreditsPagingResult<T> {
   isPending: boolean;
   /** Nothing arrived at all. */
   isError: boolean;
+  /** Rows are in hand and a further page did not arrive. */
+  pageFailed: boolean;
   /** A further page is on its way. */
   isFetchingNextPage: boolean;
   /** There are more pages to read. */
@@ -96,6 +98,10 @@ export function useCreditsPaging<T>({
     // ones arrived leaves those rows in the reader's hands, and replacing
     // them with a message loses more than the failure did.
     isError: query.isError && rows.length === 0,
+    // The other half of that failure: rows are in hand and a further page did
+    // not arrive. The list has to say so, because the watcher has stopped and
+    // silence reads as "more is coming".
+    pageFailed: isFetchNextPageError,
     isFetchingNextPage,
     hasNextPage,
     sentinelRef,

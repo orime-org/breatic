@@ -34,6 +34,7 @@ export type {
   CreditPage,
   CreditLotView,
   StudioLotView,
+  CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
   StudioCreditsView,

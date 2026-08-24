@@ -117,6 +117,7 @@ export function RefundsSection({
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
+            failed={paging.pageFailed}
           />
         </>
       ) : (
@@ -188,6 +189,7 @@ export function RefundsSection({
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
+            failed={paging.pageFailed}
           />
           <Footnote>{t('credits.refundsNote')}</Footnote>
         </>

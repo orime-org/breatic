@@ -1259,6 +1259,7 @@
     "unit": "クレジット",
     "loadFailed": "読み込めませんでした。閉じてから開き直してください。",
     "listEnd": "これ以上ありません",
+    "listPageFailed": "このページを読み込めませんでした。スクロールで再試行。",
     "group": {
       "records": "記録",
       "actions": "操作"
@@ -1316,6 +1317,7 @@
     "colModel": "モデル",
     "colAmount": "クレジット",
     "eventRepayment": "クレジットを割り当て、未払い分に充当",
+    "eventUnbilled": "請求なし",
     "studiosEmpty": "このアカウントのクレジットを使った Studio はまだありません。",
     "studiosNote": "未払い分は残高から差し引かず、別々に表示します。削除された Studio も残します。実際にそこで使われたためです。",
     "deletedStudio": "削除された Studio",

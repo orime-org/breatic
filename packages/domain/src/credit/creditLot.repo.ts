@@ -37,6 +37,7 @@ import {
   creditLedger,
   studioCreditDebts,
   studios,
+  studioMembers,
   projects,
   payments,
 } from "@breatic/core";
@@ -45,6 +46,7 @@ import type {
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
+  CreditLedgerKind,
 } from "@breatic/shared";
 
 /**
@@ -394,6 +396,35 @@ export async function studiosWithDebtFrom(
 }
 
 /**
+ * Which of these studios the account administers right now.
+ *
+ * Read fresh rather than carried on the lot: administering is a role that
+ * changes hands, and a stored answer would be the one that was true when the
+ * purchase was pointed there.
+ * @param userId - The account asking.
+ * @param studioIds - The studios to test; an empty list reads nothing.
+ * @returns The subset it administers.
+ */
+export async function studiosAdministeredBy(
+  userId: string,
+  studioIds: string[],
+): Promise<Set<string>> {
+  if (studioIds.length === 0) return new Set();
+  const rows = await db
+    .select({ studioId: studioMembers.studioId })
+    .from(studioMembers)
+    .where(
+      and(
+        eq(studioMembers.userId, userId),
+        eq(studioMembers.role, "admin"),
+        isNull(studioMembers.deletedAt),
+        inArray(studioMembers.studioId, [...new Set(studioIds)]),
+      ),
+    );
+  return new Set(rows.map((row) => row.studioId));
+}
+
+/**
  * What several studios owe, in one read.
  *
  * The overview lists a studio per line and each line reports its debt; asking
@@ -656,13 +687,13 @@ export async function listLotsByStudio(
 
 
 /**
- * The two ways an account's own money leaves a purchase.
+ * The two entry types an account's ledger reports.
  *
- * A debt is not one of them: it names no payer, because at the moment it is
- * recorded nobody has paid it. It is paid later, and that payment is the
- * repayment row below.
+ * A debt is neither: it names no payer, because at the moment it is recorded
+ * nobody has paid it. It is paid later, and that payment is the repayment row
+ * below.
  */
-export const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
+const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
   "spend",
   "debt_repayment",
 ];
@@ -680,9 +711,9 @@ export interface PayerLedgerRow {
   projectName: string | null;
   model: string | null;
   provider: string | null;
-  /** A generation, or a designation paying off what a studio owed. */
-  kind: "generation" | "debt_repayment";
-  /** What left this account's purchases. Negative. */
+  /** Which of the three kinds of line this is. */
+  kind: CreditLedgerKind;
+  /** What this line came to. Negative. */
   amount: string;
 }
 
@@ -695,7 +726,6 @@ export interface PayerLedgerRow {
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
  * @param studioId - Narrow to one studio, when asked for.
- * @param entryTypes - Which kinds of movement to report.
  * @returns The page, newest first.
  */
 export async function listLedgerByPayer(
@@ -703,7 +733,6 @@ export async function listLedgerByPayer(
   limit: number,
   cursor: ActivityCursor | null,
   studioId?: string,
-  entryTypes: readonly CreditLedgerEntryType[] = SPENDING_ENTRY_TYPES,
 ): Promise<PayerLedgerRow[]> {
   // Display names live on the personal studio (`users` is the pure auth
   // table), the same place the activity feed reads an actor's name from.
@@ -729,19 +758,20 @@ export async function listLedgerByPayer(
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
-      // Which of the two this line is. A repayment carries no project and no
-      // model, so without saying so it reads as a generation that never
-      // happened.
-      kind: sql<"generation" | "debt_repayment">`CASE
+      // Which of the three this line is. A repayment carries no project and
+      // no model, so without saying so it reads as a generation that never
+      // happened; and a run that drew on no purchase cost this account
+      // nothing, which the figure alone cannot say.
+      //
+      // `unbilled` is every row of a deployment that charges nobody, and the
+      // runs that reached no pool where it does charge. The line stays: this
+      // list answers "what did I use", and a run the reader started is part
+      // of that answer whether or not it cost him.
+      kind: sql<CreditLedgerKind>`CASE
+        WHEN BOOL_AND(${creditLedger.lotId} IS NULL) THEN 'unbilled'
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
         THEN 'debt_repayment' ELSE 'generation' END`,
-      // One figure, over the rows that drew on a purchase. A run nothing
-      // could cover writes a negative `spend` row too — with no lot behind
-      // it — and adding that in would report money that never left. What a
-      // run cost beyond its purchases is the studio's debt, and belongs on
-      // the studio's page.
-      amount: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
-        WHERE ${creditLedger.lotId} IS NOT NULL), 0)::text`,
+      amount: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -759,16 +789,10 @@ export async function listLedgerByPayer(
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
-        // Which kinds of movement this read is about. The caller picks:
-        // spending for the usage list, the refund types for a refund history.
         // Written into the query rather than filtered afterwards, because this
         // is a keyset page — filtering a page that the server already cut can
         // empty it while the cursor still says there is more.
-        inArray(creditLedger.entryType, entryTypes),
-        // Only what actually drew on a purchase. A charge with no pool to
-        // draw from records the usage and touches no lot; it is not this
-        // account's money leaving.
-        isNotNull(creditLedger.lotId),
+        inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
     )

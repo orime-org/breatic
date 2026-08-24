@@ -97,7 +97,11 @@ export function AssignSection({
           body={t('credits.billingOff.body')}
           tone='info'
         />
-      ) : paging.isPending ? (
+      ) : paging.isPending || studios.isPending ? (
+        // Both reads, because a row cannot be drawn without either. With only
+        // the purchases in hand every picker is built from an empty list of
+        // studios, which reads as "you no longer administer this one" on the
+        // assigned rows and leaves the rest with nowhere to point.
         <SectionSkeleton />
       ) : paging.isError || studios.isError ? (
         // Either read failing leaves this section unable to do its one job:
@@ -130,6 +134,7 @@ export function AssignSection({
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
+            failed={paging.pageFailed}
           />
           <Footnote>{t('credits.assignNote')}</Footnote>
         </>
@@ -174,12 +179,16 @@ function AssignRow({
     mutationFn: (studioId: string | null) =>
       designateCreditLot(lot.id, studioId),
     onSuccess: () => {
-      // Both reads of this account's money move at once: the purchase changed
+      // Every read of this account's money moves at once: the purchase changed
       // hands, so the studio it left and the one it joined both have a
-      // different balance than a moment ago.
+      // different balance than a moment ago, and pointing it at a studio that
+      // owed writes a repayment into the ledger.
       void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
       void client.invalidateQueries({
         queryKey: ['credits', 'overview', userId],
+      });
+      void client.invalidateQueries({
+        queryKey: ['credits', 'ledger', userId],
       });
     },
     onError: () => {

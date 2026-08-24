@@ -17,46 +17,46 @@ const {
   designateCreditLot,
 } = await import('@web/data/api/credits');
 
-describe('账号级的四个读写', () => {
+describe('the four account-level reads and writes', () => {
   beforeEach(() => {
     apiGet.mockReset().mockResolvedValue({});
     apiPatch.mockReset().mockResolvedValue({});
   });
 
-  it('总览打到 /credits/overview，不带参数', async () => {
+  it('asks /credits/overview for the overview, with no parameters', async () => {
     await fetchCreditOverview();
     expect(apiGet).toHaveBeenCalledWith('/credits/overview');
   });
 
-  it('充值记录不带条件时不发空的查询串', async () => {
+  it('sends no query string when the purchases are not narrowed', async () => {
     await fetchCreditLots();
     expect(apiGet).toHaveBeenCalledWith('/credits/lots', { params: undefined });
   });
 
-  it('充值记录把状态和游标一起带上', async () => {
+  it('carries both the lifecycle and the cursor', async () => {
     await fetchCreditLots({ lifecycle: 'active', cursor: 'c1' });
     expect(apiGet).toHaveBeenCalledWith('/credits/lots', {
       params: { lifecycle: 'active', cursor: 'c1' },
     });
   });
 
-  it('流水按 studio 筛时只带那一个参数', async () => {
+  it('narrows the ledger to one studio and sends nothing else', async () => {
     await fetchCreditLedger({ studioId: 's1' });
     expect(apiGet).toHaveBeenCalledWith('/credits/ledger', {
       params: { studioId: 's1' },
     });
   });
 
-  it('取消指定发的是 null，不是空串', async () => {
-    // 空串会被路由的 schema 收成一个 uuid 校验失败，而 null 是「取回来」这
-    // 个动作本身。
+  it('takes a purchase back with null rather than an empty string', async () => {
+    // An empty string reaches the route's schema as a uuid that fails to
+    // validate. Null is the instruction to take the purchase back.
     await designateCreditLot('l1', null);
     expect(apiPatch).toHaveBeenCalledWith('/credits/lots/l1/designation', {
       studioId: null,
     });
   });
 
-  it('积分包 id 进地址前先转义', async () => {
+  it('escapes the purchase id before it reaches the path', async () => {
     await designateCreditLot('a/b', 's1');
     expect(apiPatch).toHaveBeenCalledWith('/credits/lots/a%2Fb/designation', {
       studioId: 's1',

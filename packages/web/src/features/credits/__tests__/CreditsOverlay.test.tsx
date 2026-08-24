@@ -77,13 +77,14 @@ describe('CreditsOverlay', () => {
       .mockResolvedValue({ items: [], nextCursor: null });
   });
 
-  it('索引列出两组七项，顺序固定', async () => {
+  it('lists seven entries in two groups, in a fixed order', async () => {
     setup();
 
     const index = await screen.findByTestId('credits-index');
     const tabs = index.querySelectorAll('[role="tab"]');
     expect(tabs).toHaveLength(7);
-    // 顺序是产品定的：先能问的四项，再能改的三项。
+    // The order is the product's: the four that answer a question, then the
+    // three that change something.
     expect([...tabs].map((tab) => tab.id)).toEqual([
       'credits-tab-overview',
       'credits-tab-lots',
@@ -95,12 +96,13 @@ describe('CreditsOverlay', () => {
     ]);
   });
 
-  it('开着的时候停在总览上', async () => {
+  it('opens on the overview', async () => {
     setup();
 
     const first = await screen.findByRole('tab', { name: /Overview/ });
     expect(first).toHaveAttribute('aria-selected', 'true');
-    // 只有选中那一项在 Tab 顺序里，否则一个 Tab 键要走七下才出得去。
+    // Only the selected entry is in the tab order; otherwise leaving the
+    // index takes seven presses.
     expect(first).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
       'tabindex',
@@ -108,12 +110,12 @@ describe('CreditsOverlay', () => {
     );
   });
 
-  it('点一项就换一项，只读那一项的数据', async () => {
+  it('switches on a click and reads only what that entry needs', async () => {
     const user = userEvent.setup();
     setup();
 
     await screen.findByTestId('credits-index');
-    // 总览这一项不读分页端点。
+    // The overview reads no paged endpoint.
     expect(fetchCreditLots).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('tab', { name: /Purchases/ }));
@@ -125,14 +127,14 @@ describe('CreditsOverlay', () => {
       'aria-selected',
       'true',
     );
-    // 换过去了就不再是总览。
+    // Having moved, it is no longer on the overview.
     expect(screen.getByRole('tab', { name: /Overview/ })).toHaveAttribute(
       'aria-selected',
       'false',
     );
   });
 
-  it('方向键在索引里上下走，两端绕回去', async () => {
+  it('walks the index with the arrow keys and wraps at both ends', async () => {
     const user = userEvent.setup();
     setup();
 
@@ -145,7 +147,7 @@ describe('CreditsOverlay', () => {
       'true',
     );
 
-    // 第一项往上是最后一项，不是原地不动。
+    // Up from the first entry reaches the last, rather than staying put.
     screen.getByRole('tab', { name: /Overview/ }).focus();
     await user.click(screen.getByRole('tab', { name: /Overview/ }));
     await user.keyboard('{ArrowUp}');
@@ -155,7 +157,7 @@ describe('CreditsOverlay', () => {
     );
   });
 
-  it('End 跳到最后一项，Home 跳回第一项', async () => {
+  it('jumps to the last entry with End and back with Home', async () => {
     const user = userEvent.setup();
     setup();
 
@@ -175,9 +177,9 @@ describe('CreditsOverlay', () => {
     );
   });
 
-  it('购买积分那一项用购物车图标，跟菜单那颗星分开', async () => {
-    // 菜单入口和顶栏余额 pill 是同一颗星。覆盖层里这一项要是也用星，两个
-    // 说的就成了同一件事。
+  it('gives buying a cart, apart from the star the menu uses', async () => {
+    // The menu entry and the top bar's balance pill are the same star. This
+    // entry taking it too would make the three read as one thing.
     setup();
 
     const buy = await screen.findByRole('tab', { name: /Buy credits/ });
@@ -185,22 +187,22 @@ describe('CreditsOverlay', () => {
     expect(buy.querySelector('.lucide-star')).toBeNull();
   });
 
-  it('总览读不出来时给一句话，不是空白', async () => {
+  it('says so when the overview cannot be read, rather than showing nothing', async () => {
     fetchCreditOverview.mockRejectedValue(new Error('nope'));
     setup();
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 
-  it('内容区在一个 Scroller 里，面板内没有裸 overflow', async () => {
+  it('scrolls inside one Scroller, with no bare overflow in the panel', async () => {
     setup();
 
     const body = await screen.findByRole('tabpanel');
-    // Radix 的 viewport 是真正滚的那个元素。
+    // Radix's viewport is the element that actually scrolls.
     expect(body.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
 
-    // 面板里不许有第二种滚动容器：裸 overflow 的滚动条由浏览器画，各引擎
-    // 长得不一样。
+    // No second kind of scroll container: a bare overflow leaves the bar to
+    // the browser, and every engine draws its own.
     const dialog = screen.getByRole('dialog');
     const bare = [...dialog.querySelectorAll('*')].filter((el) => {
       if (el.hasAttribute('data-radix-scroll-area-viewport')) return false;

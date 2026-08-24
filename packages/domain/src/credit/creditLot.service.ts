@@ -514,12 +514,22 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   // Only while it still owes. Once the debt is paid — by anyone — this
   // account has no money there, has spent none there, and owes nothing:
   // four zeroes on a row that answers no question.
-  const owed = await creditLotRepo.readDebtsFor(
-    owingRows.map((row) => row.studioId),
-  );
+  // A debt belongs to the studio. Everyone who ever spent there keeps their
+  // row — that spending is their own history — but the debt is not theirs: it
+  // keeps moving as the people still inside generate, and the one thing that
+  // can be done about it, pointing a purchase at the studio, is an admin's to
+  // do. So it is answered for the studios this account administers now, and
+  // withheld from the rest.
+  const administered = await creditLotRepo.studiosAdministeredBy(userId, [
+    ...byStudio.keys(),
+    ...owingRows.map((row) => row.studioId),
+  ]);
+  const debts = await creditLotRepo.readDebtsFor([...administered]);
+
   for (const row of owingRows) {
     if (byStudio.has(row.studioId)) continue;
-    if (toMicroCredits(owed.get(row.studioId) ?? "0") <= 0) continue;
+    if (!administered.has(row.studioId)) continue;
+    if (toMicroCredits(debts.get(row.studioId) ?? "0") <= 0) continue;
     byStudio.set(row.studioId, {
       studioId: row.studioId,
       studioName: row.studioName,
@@ -533,9 +543,10 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   }
 
   const studios = [...byStudio.values()];
-  const debts = await creditLotRepo.readDebtsFor(studios.map((s) => s.studioId));
   for (const studio of studios) {
-    studio.debt = toMicroCredits(debts.get(studio.studioId) ?? "0") / 1_000_000;
+    studio.debt = administered.has(studio.studioId)
+      ? toMicroCredits(debts.get(studio.studioId) ?? "0") / 1_000_000
+      : null;
   }
 
   return {

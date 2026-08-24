@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@web/components/ui/select';
+import { Badge } from '@web/components/ui/badge';
 import { fetchCreditLedger } from '@web/data/api/credits';
 import {
   Card,
@@ -155,6 +156,7 @@ export function LedgerSection({
                 sentinelRef={paging.sentinelRef}
                 loading={paging.isFetchingNextPage}
                 more={paging.hasNextPage}
+                failed={paging.pageFailed}
               />
             </>
           )}
@@ -208,7 +210,15 @@ const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.
           <td className='py-1.5 text-muted-foreground'>{row.model ?? '—'}</td>
         </>
       )}
+      {/* The figure is what the run used. On a line that drew on no purchase
+          it is also what the run did NOT cost, and the number alone cannot
+          say which — so that line carries the word. */}
       <td className='py-1.5 text-right tabular-nums'>
+        {row.kind === 'unbilled' ? (
+          <Badge variant='secondary' className='mr-2 align-middle'>
+            {t('credits.eventUnbilled')}
+          </Badge>
+        ) : null}
         {formatCreditAmount(row.amount)}
       </td>
     </tr>

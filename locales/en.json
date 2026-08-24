@@ -1259,6 +1259,7 @@
     "unit": "credits",
     "loadFailed": "Could not load. Close and open again.",
     "listEnd": "No more",
+    "listPageFailed": "Could not load this page. Scroll to retry.",
     "group": {
       "records": "Records",
       "actions": "Actions"
@@ -1301,7 +1302,7 @@
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",
     "unassignedNotice": {
-      "title": "{count} purchases are unassigned and cannot be spent",
+      "title": "{count, plural, one {# purchase is unassigned and cannot be spent} other {# purchases are unassigned and cannot be spent}}",
       "body": "Use Assign on the left to give them to the Studios that need them."
     },
     "allSpending": "All spending",
@@ -1316,12 +1317,13 @@
     "colModel": "Model",
     "colAmount": "Credits",
     "eventRepayment": "Assigned credits, paying off debt",
+    "eventUnbilled": "Not charged",
     "studiosEmpty": "No Studio has spent this account's credits yet.",
     "studiosNote": "Debt is shown beside what a Studio can spend, not taken off it. Deleted Studios stay listed, because the money really was spent there.",
     "deletedStudio": "Deleted Studio",
     "deletedBadge": "Deleted",
     "deletedStudioHint": "This Studio is gone, so its credits cannot be spent",
-    "assignedLots": "{count} purchases assigned to it",
+    "assignedLots": "{count, plural, one {# purchase assigned to it} other {# purchases assigned to it}}",
     "noLotsHere": "Nothing assigned to it yet",
     "debtAndSpent": "owes {debt} · spent {spent}",
     "spentOnly": "spent {spent}",

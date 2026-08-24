@@ -95,6 +95,7 @@ export function LotsSection({
             sentinelRef={paging.sentinelRef}
             loading={paging.isFetchingNextPage}
             more={paging.hasNextPage}
+            failed={paging.pageFailed}
           />
           {/* Counted only once the list is read through. While there is
               another page this figure is of the pages fetched so far, and a

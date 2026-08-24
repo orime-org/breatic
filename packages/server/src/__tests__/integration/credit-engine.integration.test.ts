@@ -400,9 +400,9 @@ describe("扣不到笔时的记账", () => {
 });
 
 describe("总览的两个数", () => {
-  it("「花了多少」只算真扣到笔的那些，不算记了用量但一分没扣的", async () => {
-    // 三条不扣费的路径写的都是 entry_type='spend'，区别只在 lot_id 为空。
-    // 少了这个条件，面板会报出从未离开账户的钱。
+  it("「花了多少」把扣不满的那部分算作 studio 的欠账，不算进已消耗", async () => {
+    // 池子花光之后那次生成写的是 debt_incurred，它不在已消耗统计的两种
+    // entry_type 里，所以已消耗停在真扣到的 30。
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
     await creditLotService.chargeForGeneration({

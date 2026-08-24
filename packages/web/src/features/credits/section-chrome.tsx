@@ -329,16 +329,17 @@ export function formatMoney(cents: number, currency: string): string {
 /**
  * What unspent credits are worth, in the currency they were bought with.
  *
- * A credit is one US cent, so the two happen to share a scale — naming the
- * conversion keeps the next currency from turning that coincidence into a
- * wrong figure.
+ * A credit is one US cent. Every purchase is in USD today (`credit_lots`
+ * defaults `currency` to `usd` and no checkout writes anything else), so this
+ * rate holds for every row that can reach it. A second currency needs a rate
+ * per currency, not this constant applied to it.
  * @param credits - The credits left on the purchase.
  * @param currency - The purchase's ISO 4217 code.
  * @returns What they are worth, formatted.
  */
 export function formatRefundable(credits: number, currency: string): string {
-  const CENTS_PER_CREDIT = 1;
-  return formatMoney(credits * CENTS_PER_CREDIT, currency);
+  const US_CENTS_PER_CREDIT = 1;
+  return formatMoney(credits * US_CENTS_PER_CREDIT, currency);
 }
 
 /** The lifecycle to name. */
@@ -377,28 +378,38 @@ interface ListEndProps {
   loading: boolean;
   /** There are more pages to read. */
   more: boolean;
+  /** The last page asked for did not arrive. */
+  failed: boolean;
 }
 
 /**
  * The foot of a paging list: the sentinel that asks for the next page, and
  * what the list is doing.
- * @param props - The sentinel and the two states.
+ * @param props - The sentinel and the three states.
  * @param props.sentinelRef - Goes on the empty element after the last row.
  * @param props.loading - A further page is on its way.
  * @param props.more - There are more pages to read.
+ * @param props.failed - The last page asked for did not arrive.
  * @returns The foot.
  */
 export function ListEnd({
   sentinelRef,
   loading,
   more,
+  failed,
 }: ListEndProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <div className='flex items-center justify-center py-2 text-2xs tracking-widest text-muted-foreground'>
       <span ref={sentinelRef} aria-hidden='true' />
+      {/* A page that did not arrive says so. The watcher stops until the
+          reader scrolls again, so with nothing here the list looks exactly
+          like one that still has more coming and the reader waits for a page
+          nobody is fetching. */}
       {loading ? (
         <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
+      ) : failed ? (
+        <span role='status'>{t('credits.listPageFailed')}</span>
       ) : more ? null : (
         t('credits.listEnd')
       )}

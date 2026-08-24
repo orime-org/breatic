@@ -1259,6 +1259,7 @@
     "unit": "點數",
     "loadFailed": "無法載入，請關閉後重新開啟。",
     "listEnd": "沒有更多了",
+    "listPageFailed": "這一頁未能載入，捲動重試。",
     "group": {
       "records": "基本紀錄",
       "actions": "操作"
@@ -1316,6 +1317,7 @@
     "colModel": "模型",
     "colAmount": "點數",
     "eventRepayment": "指定點數，抵扣欠帳",
+    "eventUnbilled": "未計費",
     "studiosEmpty": "還沒有 Studio 用過這個帳號的點數。",
     "studiosNote": "可用額不扣欠帳，兩個數分開顯示。已刪除的 Studio 留在這裡，因為那筆錢真的花過。",
     "deletedStudio": "已刪除的 Studio",

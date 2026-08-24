@@ -129,8 +129,11 @@ const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowPr
               ? '—'
               : formatCreditAmount(studio.spendable)}
           </span>
+          {/* A debt is the studio's, and null here says this reader no longer
+              administers it. What they spent stays either way: that is their
+              own history. */}
           <span className='block text-xs text-muted-foreground'>
-            {studio.debt > 0
+            {studio.debt !== null && studio.debt > 0
               ? t('credits.debtAndSpent', {
                 debt: formatCreditAmount(studio.debt),
                 spent,

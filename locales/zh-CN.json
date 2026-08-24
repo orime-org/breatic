@@ -1259,6 +1259,7 @@
     "unit": "积分",
     "loadFailed": "无法加载，请关闭后重新打开。",
     "listEnd": "没有更多了",
+    "listPageFailed": "这一页没能加载，滚动重试。",
     "group": {
       "records": "基础记录",
       "actions": "操作"
@@ -1316,6 +1317,7 @@
     "colModel": "模型",
     "colAmount": "积分",
     "eventRepayment": "指定积分，抵扣欠账",
+    "eventUnbilled": "未计费",
     "studiosEmpty": "还没有 Studio 用过这个账号的积分。",
     "studiosNote": "可用额不减欠账，两个数分开显示。已删除的 Studio 留在这里，因为那笔钱真的花过。",
     "deletedStudio": "已删除的 Studio",
