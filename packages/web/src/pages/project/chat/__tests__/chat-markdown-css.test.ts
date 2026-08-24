@@ -13,32 +13,64 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { createLowlight } from 'lowlight';
+import postcss from 'postcss';
 import { describe, it, expect } from 'vitest';
 
 import { HIGHLIGHT_LANGUAGES } from '@web/pages/project/chat/highlight-languages';
 
-/** The stylesheet, comments stripped: a comment can name a selector too. */
-function stylesheet(): string {
-  return readFileSync(resolve(__dirname, '../../../../index.css'), 'utf8').replace(
-    /\/\*[\s\S]*?\*\//g,
-    '',
-  );
+/**
+ * Reads one file next to index.css.
+ * @param name - Its path, relative to the stylesheet.
+ * @returns The file's text.
+ */
+function read(name: string): string {
+  return readFileSync(resolve(__dirname, '../../../../', name), 'utf8');
 }
 
-/** Every rule whose selector mentions the chat prose scope. */
+/**
+ * Every rule whose selector mentions the chat prose scope, wherever it sits.
+ *
+ * Parsed rather than matched: a rule nested in an at-rule paints the same
+ * pixels as one at the top level, and a regex over braces reads the two
+ * differently.
+ * @returns The selector and the declarations of each such rule.
+ */
 function chatRules(): { selector: string; body: string }[] {
   const found: { selector: string; body: string }[] = [];
-  for (const [, selector, body] of stylesheet().matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-    if (selector?.includes('.chat-markdown') === true) {
-      found.push({ selector: selector.trim(), body: body ?? '' });
-    }
-  }
+  postcss.parse(read('index.css')).walkRules((rule) => {
+    if (!rule.selector.includes('.chat-markdown')) return;
+    const body = rule.nodes
+      .filter((node) => node.type === 'decl')
+      .map((decl) => `${decl.prop}: ${decl.value};`)
+      .join(' ');
+    found.push({ selector: rule.selector, body });
+  });
   return found;
+}
+
+/**
+ * The palette colours the theme actually defines.
+ *
+ * A name shaped like a token but spelt wrong resolves to nothing, and the
+ * class it was meant to paint takes the surrounding colour instead.
+ * @returns Every declared `--color-palette-*` name.
+ */
+function paletteTokens(): Set<string> {
+  const names = new Set<string>();
+  postcss.parse(read('theme/tokens.css')).walkDecls((decl) => {
+    if (decl.prop.startsWith('--color-palette-')) names.add(decl.prop);
+  });
+  return names;
 }
 
 describe('chat prose stylesheet — colours come from tokens (R10)', () => {
   it('paints every highlight class with a palette token', () => {
-    const rules = chatRules().filter((r) => r.selector.includes('.hljs-'));
+    const allowed = new Set([...paletteTokens(), '--color-muted-foreground', '--color-foreground']);
+    expect(allowed.size).toBeGreaterThan(3);
+
+    // `.hljs` without a dash is the code element's own class, and a colour on
+    // it lands on every token that has none of its own.
+    const rules = chatRules().filter((r) => /\.hljs\b/.test(r.selector));
     expect(rules.length).toBeGreaterThan(0);
 
     for (const rule of rules) {
@@ -49,9 +81,9 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
       expect(declarations.length, `${rule.selector} declares no colour`).toBeGreaterThan(0);
 
       for (const [, value] of declarations) {
-        expect(value?.trim()).toMatch(
-          /^var\(--color-(palette-[a-z]+|muted-foreground|foreground)\)$/,
-        );
+        const token = /^var\((--[a-z-]+)\)$/.exec(value?.trim() ?? '')?.[1];
+        expect(token, `${rule.selector} paints with ${value?.trim()}`).toBeDefined();
+        expect(allowed.has(token ?? ''), `${token} is not a colour this theme defines`).toBe(true);
       }
     }
   });
@@ -93,7 +125,7 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
       bash: '#!/bin/bash\nfunction go() { export NAME="x"; if [ -f "$F" ]; then echo "$NAME"; fi; }',
       css: 'a:hover, div > p::first-line, #id, .cls, a[href^="http"] { color: #fff; margin: 0 auto; }',
       diff: '@@ -1,3 +1,3 @@\n--- a/x.ts\n+++ b/x.ts\n-const a = 1;\n+const a = 2;',
-      xml: '<?xml version="1.0"?>\n<!DOCTYPE r>\n<div class="box" id="a">words</div>',
+      xml: '<?xml version="1.0"?>\n<!DOCTYPE r>\n<div class="box" id="a">a &amp; b</div>',
       javascript: 'export function f(a) { return `x ${a} z`; }',
       json: '{ "name": "x", "n": 1, "ok": true }',
       python: '@decorator\ndef f(a: int) -> int:\n    return f"v {a}"  # note',
@@ -172,7 +204,7 @@ describe('chat prose stylesheet — scope and scrolling', () => {
   });
 
   it('leaves the document body rules in place', () => {
-    const css = stylesheet();
+    const css = read('index.css');
     expect(css).toContain('.doc-body-editor .ProseMirror p');
     expect(css).toContain('.doc-body-editor .ProseMirror blockquote');
     expect(css).toMatch(/\.doc-body-editor \.ProseMirror h1\s*\{/);
@@ -188,6 +220,22 @@ describe('chat prose stylesheet — scope and scrolling', () => {
     // overflow here would be one the guard cannot see, since it reads TSX.
     for (const rule of chatRules()) {
       expect(rule.body).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
+    }
+  });
+});
+
+describe('chat prose stylesheet — every heading level is a heading (R1, R5)', () => {
+  it('gives h4 through h6 their own weight and spacing', () => {
+    // A model writes `#### ` freely and nothing here narrows the levels, so
+    // these arrive. Tailwind's preflight resets a heading to body text, which
+    // leaves an unstyled one indistinguishable from the paragraph before it.
+    for (const level of ['h4', 'h5', 'h6']) {
+      const rule = chatRules().find((r) =>
+        r.selector.split(',').some((part) => part.trim() === `.chat-markdown ${level}`),
+      );
+      expect(rule, `${level} has no rule`).toBeDefined();
+      expect(rule?.body, `${level} declares no weight`).toMatch(/font-weight:/);
+      expect(rule?.body, `${level} declares no margin`).toMatch(/margin/);
     }
   });
 });

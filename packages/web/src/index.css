@@ -1113,6 +1113,19 @@ body {
   margin: 1.5em 0 0.45em;
 }
 
+/* A model writes any level it likes and nothing here narrows them, so these
+   arrive. The size ladder above has already reached the body step by h3, so
+   what carries "this is a heading" from here down is the weight and the space
+   around it. */
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 1.3em 0 0.4em;
+}
+
 .chat-markdown strong {
   font-weight: 700;
 }
@@ -1289,8 +1302,12 @@ body {
   color: var(--color-palette-green);
 }
 
+/* A symbol upstream is a "symbolic constant, interned string, goto label" —
+   an XML entity among them, which is what the declared grammars emit it for.
+   It stands for one fixed value, same as a literal. */
 .chat-markdown .hljs-number,
-.chat-markdown .hljs-literal {
+.chat-markdown .hljs-literal,
+.chat-markdown .hljs-symbol {
   color: var(--color-palette-orange);
 }
 
