@@ -308,6 +308,12 @@ export function DocumentLinkPopover({
     inputRef.current?.select();
   }, [mode]);
 
+  // Set by the outside interaction that dismissed the panel, read once by the
+  // focus hand-back below. A ref rather than state: it is written and read
+  // inside one closing, and a re-render for it would be a re-render of a panel
+  // that is going away.
+  const leftForElsewhereRef = React.useRef(false);
+
   const canSubmit = draft.length > 0 && isLinkUrlShaped(draft);
   // Read on every render rather than held in state: it is a plain DOM lookup,
   // and every render that matters here follows a state change that already
@@ -382,14 +388,23 @@ export function DocumentLinkPopover({
         // overlays settle the same way.
         avoidCollisions={false}
         className='w-auto p-1.5'
+        onInteractOutside={() => {
+          leftForElsewhereRef.current = true;
+        }}
         onCloseAutoFocus={(event) => {
-          // Focus goes back to the body on every way out. Radix would return
-          // it to the trigger, which sits on a bar that is only on screen
-          // while the body holds focus — so the default takes the bar away
-          // and strands the caret. Same hand-back the clear-document dialog
-          // does.
+          // Radix would return focus to the trigger, which here is a zero-size
+          // aria-hidden span, so the caret would be stranded either way. The
+          // body gets it back instead — the same hand-back the clear-document
+          // dialog does.
+          //
+          // Except when the user closed this by clicking something else: the
+          // agent chat sits beside the editor, and taking focus off what they
+          // just clicked would put their next keystrokes into the shared
+          // document and send them to every peer.
           event.preventDefault();
-          if (editor.isDestroyed) return;
+          const elsewhere = leftForElsewhereRef.current;
+          leftForElsewhereRef.current = false;
+          if (elsewhere || editor.isDestroyed) return;
           editor.commands.focus();
         }}
       >

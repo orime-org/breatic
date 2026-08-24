@@ -1320,3 +1320,37 @@ test('link: the panel opens where the reader is, after a select-all', async () =
   // somewhere on screen.
   expect(Math.abs(placed.panelTop - placed.barTop)).toBeLessThan(120);
 });
+
+test('link: opening lands in the field, closing hands the caret back', async () => {
+  // §8 puts this row in a browser: jsdom's focus and Radix's portal behaviour
+  // are both unreliable there. Opening in `create` relies entirely on Radix's
+  // mount autofocus — the panel has no focus call of its own for that state —
+  // and the bar preventDefaults its own mousedown, so focus is still in the
+  // body at the moment the panel opens. A failed autofocus would put the
+  // address the user types into the document instead of the field.
+  await openFreshDocument(page);
+  await page.keyboard.type('focus me');
+  await selectFirstParagraph(page);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  const input = page.getByTestId('doc-link-input');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await expect(input).toBeFocused();
+
+  // Typing without clicking the field first: the characters have to arrive in
+  // the panel, and the body has to be left as it was.
+  await page.keyboard.type('a.example');
+  await expect(input).toHaveValue('a.example');
+  const bodyText = await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="document-space"] .ProseMirror')
+        ?.textContent ?? '',
+  );
+  expect(bodyText).toBe('focus me');
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await expect(
+    page.locator('[data-testid="document-space"] .ProseMirror'),
+  ).toBeFocused();
+});

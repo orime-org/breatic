@@ -187,10 +187,36 @@ describe('which state a press opens', () => {
     );
   });
 
+  it('selects the whole link when one in the body is clicked', async () => {
+    // The mouse route into `view`, and the only reason this slice changed
+    // `openOnClick` and `enableClickSelection`. The extension's handler asks
+    // whether the event's target is an anchor element (`extension-link`
+    // dist:138) and needs no coordinates, so a real click reaches it here.
+    const editor = mount(ONE_LINK);
+    act(() => {
+      editor.view.dom.focus();
+      editor.commands.setTextSelection(5);
+    });
+    const anchor = editor.view.dom.querySelector('a');
+    expect(anchor).not.toBeNull();
+
+    fireEvent.mouseDown(anchor!);
+    fireEvent.mouseUp(anchor!);
+    fireEvent.click(anchor!);
+
+    // The whole link, not the caret the click placed.
+    await waitFor(() => {
+      expect({
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+      }).toEqual({ from: 4, to: 12 });
+    });
+  });
+
   it('stays shut when a link in the body is clicked', async () => {
-    // `enableClickSelection` puts the whole link in the selection, which brings
-    // the bar up with its button pressed. Opening the panel is a second,
-    // deliberate act; a click that only selects must not perform it.
+    // Selecting the link brings the bar up with its button pressed. Opening
+    // the panel is a second, deliberate act; a click that only selects must
+    // not perform it.
     const editor = mount(ONE_LINK);
     act(() => {
       editor.view.dom.focus();
@@ -456,6 +482,47 @@ describe('putting the panel away', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
+  });
+
+  it('leaves focus where the user put it when they closed it by clicking elsewhere', async () => {
+    // Closing hands the caret back to the body, which is right for Escape and
+    // for a second press on the button: nothing else has taken focus, and
+    // Radix's own default would return it to the trigger, which here is a
+    // zero-size aria-hidden span. It is wrong when the user has just clicked
+    // into something else — the agent chat sits beside the editor — because
+    // their next keystrokes would land in the shared document and reach every
+    // peer.
+    const editor = mount('<p>plain text here</p>');
+    render(<input data-testid='elsewhere' />);
+    await openPopoverOver(editor, 1, 6);
+
+    await userEvent.click(screen.getByTestId('elsewhere'));
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 60);
+      });
+    });
+
+    expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByTestId('elsewhere'));
+    expect(editor.view.hasFocus()).toBe(false);
+  });
+
+  it('hands the caret back to the body on Escape', async () => {
+    const editor = mount('<p>plain text here</p>');
+    await openPopoverOver(editor, 1, 6);
+
+    fireEvent.keyDown(screen.getByTestId('doc-link-popover'), { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+    await act(async () => {
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(null));
+      });
+    });
+
+    expect(editor.view.hasFocus()).toBe(true);
   });
 
   it('closes all the way from the edit state on Escape', async () => {
