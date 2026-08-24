@@ -27,13 +27,13 @@ import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import {
   Popover,
-  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { BUBBLE_CONTROL_HEIGHT, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import {
   resolveLinkSelection,
+  anchorRange,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -44,15 +44,58 @@ import {
 /** Which of the panel's three faces is showing, or none. */
 type LinkMode = 'closed' | 'create' | 'view' | 'edit';
 
+/** Where the anchor sits, in the scroller's own coordinates. */
+interface AnchorBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 /** What the panel acts on, taken from the selection when it opened. */
 interface LinkTarget {
   range: LinkRange | null;
   href: string | null;
-  /** Where to put the panel: the link's box, or the selection's. */
-  anchorRect: DOMRect | null;
+  /** Where to put the panel, from {@link anchorRange}. */
+  anchorBox: AnchorBox | null;
 }
 
-const NO_TARGET: LinkTarget = { range: null, href: null, anchorRect: null };
+const NO_TARGET: LinkTarget = { range: null, href: null, anchorBox: null };
+
+/**
+ * The body's scroll container, which the anchor is measured against and lives
+ * inside.
+ * @param editor - The editor whose body to find the scroller of.
+ * @returns The scroller, or null before the editor is in the document.
+ */
+function bodyScroller(editor: Editor): HTMLElement | null {
+  return editor.view.dom.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+}
+
+/**
+ * Where to put the anchor, in coordinates that scroll with the text.
+ *
+ * `posToDOMRect` reads the viewport, which is where the text is right now; the
+ * scroller's own box plus how far it has been scrolled turns that into a
+ * position inside the scrolled content. An anchor placed there moves with the
+ * line it points at, and Radix — floating-ui underneath, which watches ancestor
+ * scroll by default — carries the panel along without being told to.
+ * @param editor - The editor to measure in.
+ * @param range - The span to measure, from {@link anchorRange}.
+ * @returns The box, or null before the scroller is in the document.
+ */
+function measureAnchor(editor: Editor, range: LinkRange): AnchorBox | null {
+  const scroller = bodyScroller(editor);
+  if (!scroller) return null;
+  const rect = posToDOMRect(editor.view, range.from, range.to);
+  const box = scroller.getBoundingClientRect();
+  return {
+    left: rect.left - box.left + scroller.scrollLeft,
+    top: rect.top - box.top + scroller.scrollTop,
+    width: rect.width,
+    height: rect.height,
+  };
+}
 
 /**
  * The link button and its panel.
@@ -86,11 +129,10 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
   /** Read the selection and show the face that fits it. */
   const openFromSelection = React.useCallback((): void => {
     const resolved = resolveLinkSelection(editor.state);
-    const { from, to } = resolved.range ?? editor.state.selection;
     setTarget({
       range: resolved.range,
       href: resolved.href,
-      anchorRect: posToDOMRect(editor.view, from, to),
+      anchorBox: measureAnchor(editor, anchorRange(editor.state, resolved.range)),
     });
     setDraft('');
     setShowInvalid(false);
@@ -138,12 +180,16 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
         close();
         return;
       }
-      const { from, to } = resolved.range ?? editor.state.selection;
+      // `create` opened on a selection holding no link, and that selection is
+      // what it writes to. A link a co-editor makes inside it belongs to them:
+      // adopting it would narrow the write to their span and put this user's
+      // address over their href, on text this user never selected.
+      const claimed = mode === 'create' ? null : resolved.range;
       setTarget((prev) => ({
         ...prev,
-        range: resolved.range,
-        href: resolved.href ?? prev.href,
-        anchorRect: posToDOMRect(editor.view, from, to),
+        range: claimed,
+        href: (claimed && resolved.href) ?? prev.href,
+        anchorBox: measureAnchor(editor, anchorRange(editor.state, claimed)),
       }));
     };
     editor.on('transaction', follow);
@@ -162,7 +208,13 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
     inputRef.current?.select();
   }, [mode]);
 
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+
   const canSubmit = draft.length > 0 && isLinkUrlShaped(draft);
+  // Read on every render rather than held in state: it is a plain DOM lookup,
+  // and every render that matters here follows a state change that already
+  // happened after the editor was in the document.
+  const anchorHost = bodyScroller(editor);
 
   return (
     <Popover
@@ -175,55 +227,74 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
       }}
     >
       {createPortal(
-        <PopoverAnchor asChild>
-          {/* On the body, and fixed to the viewport coordinates the selection
-              measures at.
+        <PopoverTrigger asChild>
+          {/* The anchor IS the trigger, because Radix keeps one anchor and two
+              things write it. Given a separate `PopoverAnchor`, the first render
+              still has `hasCustomAnchor` false, so Radix wraps the trigger in an
+              anchor of its own; both anchors run an effect with no dependency
+              array, the later one in the tree wins, and once `hasCustomAnchor`
+              flips the custom one never re-renders to correct it. Measured: the
+              stored anchor stayed the bubble bar's button, which the plugin then
+              removes from the document, and every rectangle it offered was zero
+              — so the panel drew itself at the window's top-left corner. One
+              element, one anchor, nothing to race.
 
-              It cannot live in the bubble bar, which the plugin takes out of
-              the document the moment a transaction arrives while the panel
-              holds focus. It cannot live in the editor either: that DOM
-              belongs to ProseMirror, which tears it down before React unmounts
-              this tree — React then tries to remove this element from a node
-              that is no longer its parent, and the whole route throws. The
-              body outlives both. */}
+              It lives inside the scroller, positioned in the scrolled content's
+              own coordinates, so it travels with the line it points at. It
+              cannot live in the bubble bar, which the plugin takes out of the
+              document the moment a transaction arrives while the panel holds
+              focus. It cannot live in the editor either: that DOM belongs to
+              ProseMirror, which tears it down before React unmounts this tree —
+              React then tries to remove this element from a node that is no
+              longer its parent, and the whole route throws. The scroller is
+              Radix's, and outlives both. */}
           <span
             data-testid='doc-link-anchor'
             aria-hidden='true'
-            className='pointer-events-none fixed'
-            style={
-              target.anchorRect
-                ? {
-                  left: target.anchorRect.left,
-                  top: target.anchorRect.top,
-                  width: target.anchorRect.width,
-                  height: target.anchorRect.height,
-                }
-                : undefined
-            }
+            className='pointer-events-none absolute'
+            style={target.anchorBox ?? undefined}
           />
-        </PopoverAnchor>,
-        document.body,
+        </PopoverTrigger>,
+        anchorHost ?? document.body,
       )}
-      <PopoverTrigger asChild>
-        <Button
-          variant={holdsLink ? 'secondary' : 'ghost'}
-          size='icon'
-          aria-label={t('spaces.document.commands.link')}
-          aria-pressed={holdsLink}
-          onClick={openFromSelection}
-          data-testid='doc-bubble-tool-link'
-          // The bar stays out of the tab order entirely, as the eight command
-          // buttons beside it do.
-          tabIndex={-1}
-          className={BUBBLE_ICON_BUTTON_SIZE}
-        >
-          <LinkIcon className='h-4 w-4' />
-        </Button>
-      </PopoverTrigger>
+      <Button
+        ref={buttonRef}
+        variant={holdsLink ? 'secondary' : 'ghost'}
+        size='icon'
+        aria-label={t('spaces.document.commands.link')}
+        aria-pressed={holdsLink}
+        // Stated here because the trigger is the anchor now, and these belong on
+        // the thing a person presses.
+        aria-haspopup='dialog'
+        aria-expanded={mode !== 'closed'}
+        onClick={() => (mode === 'closed' ? openFromSelection() : close())}
+        data-testid='doc-bubble-tool-link'
+        // The bar stays out of the tab order entirely, as the eight command
+        // buttons beside it do.
+        tabIndex={-1}
+        className={BUBBLE_ICON_BUTTON_SIZE}
+      >
+        <LinkIcon className='h-4 w-4' />
+      </Button>
       <PopoverContent
         data-testid='doc-link-popover'
         align='center'
+        // The panel travels with its anchor. Left on, collision avoidance
+        // pushes it back into view as the line it points at scrolls away, and
+        // it ends up sitting over unrelated text — the same fight the canvas
+        // overlays settle the same way.
+        avoidCollisions={false}
         className='w-auto p-1.5'
+        onPointerDownOutside={(event) => {
+          // The button belongs to this panel's own controls, so a press on it
+          // is not a press outside. Radix excludes a trigger for the same
+          // reason; here the trigger is the anchor, so the button says it.
+          // Without this the press closes the panel before its own handler
+          // runs, and a second press reopens instead of putting it away.
+          if (buttonRef.current?.contains(event.target as Node)) {
+            event.preventDefault();
+          }
+        }}
         onCloseAutoFocus={(event) => {
           // Focus goes back to the body on every way out. Radix would return
           // it to the trigger, which sits on a bar that is only on screen

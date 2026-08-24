@@ -18,7 +18,7 @@ import { cn } from '@web/lib/utils';
  *   - Larger surface, intended for rich content / forms / lists
  *   - Manages focus inside; closes on outside click / Escape
  *
- * Renders content in a portal. Default `align="center"`, `sideOffset={4}`.
+ * Renders content in a portal. Default `align="center"`, `sideOffset={8}`.
  */
 const Popover = PopoverPrimitive.Root;
 
@@ -32,7 +32,6 @@ const PopoverTrigger = PopoverPrimitive.Trigger;
  * trigger stays where it is; a trigger living inside something that comes and
  * goes takes the anchor with it, and a detached element measures as zero.
  */
-const PopoverAnchor = PopoverPrimitive.Anchor;
 
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
@@ -55,4 +54,4 @@ const PopoverContent = React.forwardRef<
 ));
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };
+export { Popover, PopoverTrigger, PopoverContent };

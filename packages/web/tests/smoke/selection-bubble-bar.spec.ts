@@ -1092,11 +1092,13 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   expect(all.barLeft).toBeGreaterThanOrEqual(all.viewLeft);
 });
 
-test('链接：主机里带空格的地址，确定按钮不亮', async () => {
-  // 这一条只有真浏览器答得出。判据落在 URL 解析器上，而两个运行时对
-  // `https://hello world` 的处理正相反：Node 的直接抛（jsdom 里跑的就是它），
-  // 浏览器的收下并把空格编码成 `hello%20world` 塞进主机——实测 Chromium 如此。
-  // 所以单测里那条同名断言绿的理由跟用户面前发生的事不是一回事。
+test('link: an address with a space in the host leaves confirm dimmed', async () => {
+  // Only a real browser answers this. The check rests on the URL parser, and
+  // the two runtimes treat `https://hello world` in opposite ways: Node's
+  // throws (that is the one jsdom runs), a browser's accepts it and encodes
+  // the space into the host as `hello%20world` — measured in Chromium. So the
+  // unit case of the same name is green for a reason other than what happens
+  // in front of a user.
   await openFreshDocument(page);
   await page.keyboard.type('link me');
   await selectFirstParagraph(page);
@@ -1106,18 +1108,112 @@ test('链接：主机里带空格的地址，确定按钮不亮', async () => {
   const confirm = page.getByTestId('doc-link-confirm');
   await expect(input).toBeVisible({ timeout: 5_000 });
 
-  // 先让它亮一次。少了这句，下面那句在按钮永远不亮的实现下也照样绿。
+  // Light it once first. Without this line the assertion below is green even
+  // against an implementation whose button never lights at all.
   await input.fill('a.example');
   await expect(confirm).toBeEnabled();
 
   await input.fill('hello world');
   await expect(confirm).toBeDisabled();
 
-  // 按下去要说得出理由，这是它带 `aria-disabled` 而不带 HTML 那个属性的全部
-  // 原因。用坐标点，不用 `confirm.click()`：后者会先等元素变成 enabled，而它
-  // 正是永远不会 —— 从窗口坐标点下去才是浏览器真正走一遍 hit-test 的那条路。
+  // The press has to state a reason, which is the whole point of the button
+  // carrying `aria-disabled`. Clicked at window coordinates, which is the path
+  // where the browser runs a real hit-test — `confirm.click()` first waits for
+  // the element to become enabled, and enabled is the one thing it never is.
   const box = await confirm.boundingBox();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect(page.getByTestId('doc-link-invalid')).toBeVisible({ timeout: 5_000 });
   await expect(input).toHaveAttribute('aria-invalid', 'true');
+});
+
+test('link: the panel sits against the link it acts on', async () => {
+  // Nothing has ever measured where this panel lands. The unit suite cannot:
+  // every rectangle in jsdom is zero. Measured before this assertion existed,
+  // the panel was drawn at the top-left corner of the window while its link sat
+  // 616px to the right — its reference was a button the bubble-menu plugin had
+  // already taken out of the document, so every rectangle it offered was zero.
+  await openFreshDocument(page);
+  await page.keyboard.type('one two three four five six seven eight');
+  await selectFirstParagraph(page);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('doc-link-input').fill('a.example/anchored');
+  await page.getByTestId('doc-link-confirm').click();
+
+  // Open the view state over that link.
+  await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+  // Radix plays an entry animation, and the panel is still travelling through it
+  // while it already counts as visible. Measured mid-flight the gap below the
+  // link reads 2.9 to 3.6 where it settles at 8.2.
+  await page.waitForTimeout(400);
+
+  const geo = await page.evaluate(() => {
+    const box = (el: Element | null) => {
+      const r = el!.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    };
+    const panel = box(document.querySelector('[data-testid="doc-link-popover"]'));
+    const link = box(document.querySelector('.ProseMirror a'));
+    return {
+      centreOffset: (panel.left + panel.right) / 2 - (link.left + link.right) / 2,
+      gapBelow: panel.top - link.bottom,
+      // What Radix believes its anchor measures. Zero means it is holding
+      // something that is not in the document.
+      anchorWidth: getComputedStyle(
+        document.querySelector('[data-radix-popper-content-wrapper]')!,
+      ).getPropertyValue('--radix-popper-anchor-width'),
+    };
+  });
+
+  // Radix measures the anchor, and the anchor is the link's own box.
+  expect(geo.anchorWidth).not.toBe('0px');
+  // `align="center"` puts the two centres on top of each other.
+  expect(Math.abs(geo.centreOffset)).toBeLessThan(2);
+  // `side="bottom"` with this repo's `sideOffset` of 8 (`components/ui/popover.tsx`).
+  expect(geo.gapBelow).toBeGreaterThan(7);
+  expect(geo.gapBelow).toBeLessThan(10);
+});
+
+test('link: the panel travels with its link when the body scrolls', async () => {
+  // The anchor lives inside the scroller in the scrolled content's own
+  // coordinates, so it moves with the line; floating-ui watches ancestor scroll
+  // and carries the panel. Measured before that: the link moved 260px and the
+  // panel moved 7.
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+  await selectParagraph(page, 0);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('doc-link-input').fill('a.example/scrolls');
+  await page.getByTestId('doc-link-confirm').click();
+
+  await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+  await page.waitForTimeout(400);
+
+  const gap = () =>
+    page.evaluate(() => {
+      const panel = document
+        .querySelector('[data-testid="doc-link-popover"]')!
+        .getBoundingClientRect();
+      const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      return { gapBelow: panel.top - link.bottom, linkTop: link.top };
+    });
+
+  const before = await gap();
+  await scrollBodyTo(page, 200);
+  const after = await gap();
+
+  // The link really did move under the panel.
+  expect(before.linkTop - after.linkTop).toBeGreaterThan(150);
+  // And the panel kept its place against it.
+  expect(Math.abs(after.gapBelow - before.gapBelow)).toBeLessThan(3);
 });

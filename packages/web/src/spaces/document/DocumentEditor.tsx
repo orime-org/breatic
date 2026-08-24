@@ -52,7 +52,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           is what sizes both of them (`--doc-body-gutter`). */}
       <ScrollArea
         className={`${BODY_SCROLLER_CLASS} flex-1`}
-        viewportClassName='px-[var(--doc-body-gutter)]'
+        // `relative` makes the viewport the containing block for the link
+        // panel's anchor, which is what lets that anchor scroll with the text
+        // it points at. Nothing else inside is measured against it: the
+        // whole-document entry is `sticky` (it answers to the scroller), the
+        // caret that opens a document is `absolute` with no offsets and so
+        // stays at its static position, and a remote caret's label is measured
+        // against the caret itself.
+        viewportClassName='relative px-[var(--doc-body-gutter)]'
       >
         <DocumentMenuEntry />
         <EditorContent
