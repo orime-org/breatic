@@ -432,9 +432,55 @@ describe('MarkdownMessage — the footnote section speaks the reader\'s language
     changeLocale('zh-CN');
     draw('A claim[^1].\n\n[^1]: the note');
 
-    expect(body().querySelector('#footnote-label')?.textContent).toBe('脚注');
+    expect(body().querySelector('section[data-footnotes] h2')?.textContent).toBe('脚注');
     expect(
       body().querySelector('a[data-footnote-backref]')?.getAttribute('aria-label'),
     ).toBe('回到引用 1');
+  });
+});
+
+describe('MarkdownMessage — footnotes stay inside their own reply (R1)', () => {
+  it('gives each back-link its own name when one note is cited twice', () => {
+    // The library passes which citation this is; both links land on the same
+    // note, so the number is the only thing telling a reader them apart.
+    draw('First[^a] and again[^a].\n\n[^a]: the note');
+
+    const labels = [...body().querySelectorAll('a[data-footnote-backref]')].map((a) =>
+      a.getAttribute('aria-label'),
+    );
+    expect(labels).toHaveLength(2);
+    expect(labels[0]).not.toBe(labels[1]);
+  });
+
+  it('does not reuse another reply\'s footnote ids', () => {
+    // Every reply in the conversation renders into one document. With a fixed
+    // prefix the second reply's marker points at the first reply's note.
+    const { container } = render(
+      <>
+        <MarkdownMessage content={'First reply[^1].\n\n[^1]: source A'} />
+        <MarkdownMessage content={'Second reply[^1].\n\n[^1]: source B'} />
+      </>,
+    );
+
+    const ids = [...container.querySelectorAll('[id]')].map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    const markers = [...container.querySelectorAll('sup > a')];
+    expect(markers).toHaveLength(2);
+    const targets = markers.map((a) =>
+      container.querySelector(`[id="${(a.getAttribute('href') ?? '').slice(1)}"]`),
+    );
+    expect(targets[0]).not.toBe(targets[1]);
+    expect(targets[0]?.textContent).toContain('source A');
+    expect(targets[1]?.textContent).toContain('source B');
+
+    // The heading each marker describes has to be the one in its own reply.
+    const described = [...container.querySelectorAll('[aria-describedby]')].map((e) =>
+      e.getAttribute('aria-describedby'),
+    );
+    expect(new Set(described).size).toBe(2);
+    for (const value of described) {
+      expect(container.querySelector(`[id="${value}"]`)).not.toBeNull();
+    }
   });
 });

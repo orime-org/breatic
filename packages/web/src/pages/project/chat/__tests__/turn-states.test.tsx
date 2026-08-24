@@ -172,9 +172,12 @@ describe('发一条消息', () => {
     await waitFor(() => {
       expect(panel.result.current.turnPhase).toBe('running');
     });
-    expect(panel.result.current.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
-    expect(panel.result.current.messages[0]?.content).toBe('找几张参考图');
-    expect(panel.result.current.messages[1]?.content).toBe('好的');
+    // 消息走 useChat 自己的 throttle，跟 turnPhase 不是同一次更新，所以等它到。
+    await waitFor(() => {
+      expect(panel.result.current.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+      expect(panel.result.current.messages[0]?.content).toBe('找几张参考图');
+      expect(panel.result.current.messages[1]?.content).toBe('好的');
+    });
   });
 });
 

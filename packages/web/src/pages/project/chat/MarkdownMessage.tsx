@@ -12,7 +12,7 @@
  * Inline HTML stays escaped: the pipeline carries no `rehype-raw`, which is
  * what react-markdown means by secure by default.
  */
-import { useMemo, type ReactElement, type ReactNode } from 'react';
+import { useId, useMemo, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -21,6 +21,7 @@ import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
 import { HIGHLIGHT_LANGUAGES } from '@web/pages/project/chat/highlight-languages';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import {
@@ -156,6 +157,8 @@ export function MarkdownMessage({
   streaming = false,
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
+  // Unique per rendered message, so the footnote ids below are too.
+  const scope = useId().replaceAll(':', '');
   // A settled message goes through untouched. An interrupted reply carries
   // unclosed markers, and those are what the model actually sent.
   const source = streaming ? remend(content, COMPLETION) : content;
@@ -165,13 +168,27 @@ export function MarkdownMessage({
   // machinery produces. Keyed on the strings so a language change rebuilds it.
   const footnotes = t('chat.markdown.footnotes');
   const backTo = t('chat.markdown.backToReference', { index: '{index}' });
+  // Runs before the colouring, which only rebuilds code elements.
+  const rehypePlugins = useMemo(
+    () => [[footnoteScopePlugin, scope], ...(streaming ? REHYPE_STREAMING : REHYPE_SETTLED)],
+    [scope, streaming],
+  );
   const remarkRehypeOptions = useMemo(
     () => ({
       footnoteLabel: footnotes,
-      footnoteBackLabel: (referenceIndex: number): string =>
-        backTo.replace('{index}', String(referenceIndex + 1)),
+      // Every reply in the conversation renders into one document, and the
+      // library's fixed prefix would give them all the same footnote ids —
+      // the second reply's marker then jumps to the first reply's note.
+      clobberPrefix: `${scope}-`,
+      // The second argument says which citation of that note this is; both
+      // links land on the same place, so it is the only thing telling a
+      // reader them apart.
+      footnoteBackLabel: (referenceIndex: number, rereferenceIndex: number): string => {
+        const name = backTo.replace('{index}', String(referenceIndex + 1));
+        return rereferenceIndex > 1 ? `${name}-${rereferenceIndex}` : name;
+      },
     }),
-    [footnotes, backTo],
+    [footnotes, backTo, scope],
   );
 
   return (
@@ -182,7 +199,7 @@ export function MarkdownMessage({
     >
       <Markdown
         components={COMPONENTS}
-        rehypePlugins={(streaming ? REHYPE_STREAMING : REHYPE_SETTLED) as never}
+        rehypePlugins={rehypePlugins as never}
         remarkPlugins={REMARK_PLUGINS}
         remarkRehypeOptions={remarkRehypeOptions}
       >
