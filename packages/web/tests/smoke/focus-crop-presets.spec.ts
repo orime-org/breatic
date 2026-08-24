@@ -31,18 +31,45 @@ const password = process.env.SMOKE_PASSWORD;
 
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
-// Desktop-web is the only supported platform; below ~1280px the studio
-// sidebar collapses to icons whose buttons lose their accessible names.
-test.use({ viewport: { width: 1680, height: 950 } });
+// One sign-in for the whole file, on a page these cases share. Sign-in is rate
+// limited to 5 a minute (`config/rate-limits.yaml`), a budget the suite spends
+// across every spec — three more logins from here is enough to push a later
+// spec past it. Same shape as selection-bubble-bar.spec.ts.
+//
+// The viewport is set on `browser.newPage` rather than through `test.use`,
+// which configures the `page` fixture no case here takes. Desktop-web is the
+// only supported platform, and below ~1280px the studio sidebar collapses to
+// icons whose buttons lose their accessible names.
+test.describe.configure({ mode: 'serial' });
 
-// Each case builds its own Space and two filled image nodes before it can
-// assert anything, and each fill rasterises a PNG and sends it up the upload
-// path. That setup alone outlasts the suite-wide 30s budget.
-test.setTimeout(120_000);
+let page: Page;
 
-/** A 4:3 solid PNG. Decodes with no network, so a node holding it is ready. */
+test.beforeAll(async ({ browser }) => {
+  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+  await page.goto('/login');
+  await page.locator('#login-email').fill(email as string);
+  await page.locator('#login-password').fill(password as string);
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+});
+
+test.afterAll(async () => {
+  await page?.close();
+});
+
+// Each case creates a Space and seeds two nodes before it can assert anything,
+// which outlasts the suite-wide 30s budget on its own.
+test.setTimeout(90_000);
+
+/**
+ * A 320x240 solid PNG, inline so it decodes with no network.
+ *
+ * Both axes have to clear the crop's degenerate floor of 8 natural pixels:
+ * under it every ratio preset renders disabled, and a click on one waits on
+ * actionability until the test times out.
+ */
 const SOLID_4_3_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAAFElEQVR4nGP8z8Dwn4GKgImaho0cAwCcxwHZ8AkusAAAAABJRU5ErkJggg==';
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAADwCAIAAAD+Tyo8AAACD0lEQVR42u3TQQkAAAgEwUtnCJMY3w7+hIFJsLCpHuCpSAAGBgwMGBgMDBgYMDBgYDAwYGDAwGBgwMCAgQEDg4EBAwMGBgwMBgYMDBgYDAwYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGAysAhgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBAwMGBgMDBgYMDAYGDAwYGDAwGBgwMGBgMDBgYMDAgIHBwICBAQMDBgYDAwYGDAwGBgwMGBgwMBgYMDBgYMDAYGDAwICBwcCAgQEDAwYGAwMGBgwMGBgMDBgYMDAYGDAwYGDAwGBgwMCAgcHAgIEBAwMGBgMDBgYMDBgYDAwYGDAwGBgwMGBgwMBgYMDAgIEBA4OBAQMDBgYDAwYGDAwYGAwMGBgwMBhYBTAwYGDAwGBgwMCAgQEDg4EBAwMGBgMDBgYMDBgYDAwYGDAwYGAwMGBgwMBgYMDAgIEBA4OBAQMDBgYMDAYGDAwYGAwMGBgwMGBgMDBgYMDAYGDAwICBAQODgQEDAwYGDAwGBgwMGBgMDBgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGDAwGBgwMHC3pCIzOUa0Hy8AAAAASUVORK5CYII=';
 
 /**
  * Writes two image nodes straight into the Space's Yjs document, side by side,
@@ -122,24 +149,17 @@ async function seedTwoImageNodes(
 }
 
 /**
- * Signs in, builds a Canvas Space holding two image nodes, then starts a focus
- * pick on one of them and enters the crop state.
+ * Builds a Canvas Space holding two image nodes on the shared signed-in page,
+ * then starts a focus pick on one of them and enters the crop state.
  *
  * The Space and both nodes are made here because every other starting point is
  * someone else's leftovers: which Space a Project opens on is the first entry
  * of that account's persisted `openTabIds`, and the other smoke specs add
  * Spaces of their own to the same Project. A run that assumed a canvas with
  * pictures in it was reading whatever the previous run happened to leave.
- * @param page - The Playwright page.
  * @returns Nothing; the page is left in the crop state.
  */
-async function openCropOverlay(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
-
+async function openCropOverlay(): Promise<void> {
   // Reuse an existing Project: this spec is about the crop overlay, and
   // minting one per run burns the tier's projects-per-studio allowance. The
   // Space inside it is ours, so nothing about the Project's contents matters.
@@ -212,10 +232,8 @@ async function openCropOverlay(page: Page): Promise<void> {
   await expect(page.getByTestId('focus-crop-controls')).toBeVisible({ timeout: 10_000 });
 }
 
-test('clicking a preset with no marquee draws one, and Original fills the material', async ({
-  page,
-}) => {
-  await openCropOverlay(page);
+test('clicking a preset with no marquee draws one, and Original fills the material', async () => {
+  await openCropOverlay();
 
   // Nothing drawn yet.
   await expect(page.getByTestId('focus-crop-rect')).toHaveCount(0);
@@ -253,8 +271,8 @@ test('clicking a preset with no marquee draws one, and Original fills the materi
   expect(fills!.dy).toBeLessThanOrEqual(2);
 });
 
-test('handle shape says whether the ratio is locked', async ({ page }) => {
-  await openCropOverlay(page);
+test('handle shape says whether the ratio is locked', async () => {
+  await openCropOverlay();
 
   await page.getByTestId('focus-ratio-1:1').click();
   await expect(page.getByTestId('focus-crop-rect')).toBeVisible();
@@ -289,8 +307,8 @@ test('handle shape says whether the ratio is locked', async ({ page }) => {
   expect(free).toEqual(['0px']);
 });
 
-test('the controls bar hugs its content in every locale', async ({ page }) => {
-  await openCropOverlay(page);
+test('the controls bar hugs its content in every locale', async () => {
+  await openCropOverlay();
 
   /**
    * Leftover width inside the bar, to the right of its last item.
