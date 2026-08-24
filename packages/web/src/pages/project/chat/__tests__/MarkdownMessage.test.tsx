@@ -349,35 +349,6 @@ describe('MarkdownMessage — the dot follows literal HTML too (R7)', () => {
   });
 });
 
-describe('MarkdownMessage — a checklist reads as a checklist (R11)', () => {
-  it('tells a done item from an open one', () => {
-    // Reading an assistant reply is viewing existing content, which
-    // docs/ACCESSIBILITY.md keeps inside the promised set. With the state left
-    // to the drawn tick alone, both items announce as the same plain bullet.
-    draw('- [x] shipped\n- [ ] pending');
-
-    const items = [...body().querySelectorAll('li')];
-    expect(items).toHaveLength(2);
-    expect(items[0]?.textContent).not.toBe(items[1]?.textContent);
-    expect(items[0]?.querySelector('.sr-only')?.textContent).toBe('Done');
-    expect(items[1]?.querySelector('.sr-only')?.textContent).toBe('Not done');
-    // R11 holds: the state is stated, the browser still draws nothing.
-    expect(body().querySelector('input[type="checkbox"]')).toBeNull();
-  });
-
-  it('keeps the drawn tick out of the reading', () => {
-    // The tick and the word say the same thing; hearing it twice is noise.
-    draw('- [x] shipped');
-
-    expect(body().querySelector('.chat-markdown-task-mark')).toHaveAttribute('aria-hidden');
-  });
-
-  it('has no a11y violations', async () => {
-    draw('- [x] shipped\n- [ ] pending');
-    await expectNoA11yViolations(document.body);
-  });
-});
-
 describe('MarkdownMessage — the dot stays out of inline elements (R7)', () => {
   it('follows struck-through text without being struck through itself', () => {
     // Inside the del the mark takes the line-through the browser draws over
@@ -412,5 +383,34 @@ describe('MarkdownMessage — the dot stays out of inline elements (R7)', () => 
 
     const mark = screen.getByTestId('chat-waiting-dot');
     expect(mark.closest('pre')).not.toBeNull();
+  });
+});
+
+describe('MarkdownMessage — the status word stays out of copied text (R11)', () => {
+  it('copies a checklist as the model wrote it', () => {
+    // Selecting a reply and copying it takes textContent. A word placed there
+    // for a screen reader travels with it: "Done✓ shipped" is not what the
+    // model sent.
+    draw('- [x] shipped\n- [ ] pending');
+
+    expect(body().textContent).not.toContain('Done');
+    expect(body().textContent).not.toContain('Not done');
+    expect(body().textContent).toContain('shipped');
+    expect(body().textContent).toContain('pending');
+  });
+
+  it('still tells a done item from an open one', () => {
+    draw('- [x] shipped\n- [ ] pending');
+
+    const marks = [...body().querySelectorAll('.chat-markdown-task-mark')];
+    expect(marks).toHaveLength(2);
+    expect(marks[0]?.getAttribute('aria-label')).toBe('Done');
+    expect(marks[1]?.getAttribute('aria-label')).toBe('Not done');
+    expect(body().querySelector('input[type="checkbox"]')).toBeNull();
+  });
+
+  it('has no a11y violations', async () => {
+    draw('- [x] shipped\n- [ ] pending');
+    await expectNoA11yViolations(document.body);
   });
 });

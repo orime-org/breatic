@@ -104,10 +104,11 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
  * The tick a task list item carries, drawn rather than left to the browser.
  *
  * The difference between a done item and an open one is the whole point of a
- * checklist, and the drawn tick carries it visually. The word beside it
- * carries the same thing for a screen reader, following the rail's pattern
- * (ReferenceRail): a `role='checkbox'` here would need an accessible name, and
- * the item's own words sit outside this element.
+ * checklist. It reaches a screen reader through this element's label, and the
+ * eye through a tick `index.css` draws — both of which stay out of the text a
+ * reader selects and copies, so a copied checklist reads as the model wrote
+ * it. `role='img'` is what gives the label a reader to reach: a label on a
+ * bare span has no role to attach to.
  * @param root0 - The props react-markdown hands an `input`.
  * @param root0.checked - Whether the item is ticked.
  * @returns The mark.
@@ -117,18 +118,12 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
   const done = checked === true;
 
   return (
-    <>
-      <span className='sr-only'>
-        {done ? t('chat.markdown.taskDone') : t('chat.markdown.taskTodo')}
-      </span>
-      <span
-        aria-hidden
-        className='chat-markdown-task-mark'
-        data-checked={done ? 'true' : undefined}
-      >
-        {done ? '✓' : ''}
-      </span>
-    </>
+    <span
+      aria-label={done ? t('chat.markdown.taskDone') : t('chat.markdown.taskTodo')}
+      className='chat-markdown-task-mark'
+      data-checked={done ? 'true' : undefined}
+      role='img'
+    />
   );
 }
 

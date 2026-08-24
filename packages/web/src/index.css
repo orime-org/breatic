@@ -1176,6 +1176,13 @@ body {
   background: var(--color-muted);
 }
 
+/* The tick is drawn rather than written, so selecting a reply and copying it
+   yields what the model sent. The state reaches a screen reader through the
+   element's own label. */
+.chat-markdown-task-mark[data-checked]::before {
+  content: '✓';
+}
+
 .chat-markdown blockquote {
   margin: 1.1em 0;
   padding-inline-start: 1em;
