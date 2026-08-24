@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { Link as LinkIcon } from 'lucide-react';
 import { posToDOMRect, type Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
+import type { Transaction } from '@tiptap/pm/state';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
@@ -116,6 +117,40 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
     if (target.range) removeLink(editor, target.range);
     close();
   }, [close, editor, target.range]);
+
+  // A co-editor typing ahead of the link moves it. The panel follows by asking
+  // the same question again — a transaction's own mapping cannot answer here,
+  // because a remote update arrives as one step replacing the whole document
+  // and maps every position to its end. The selection is mapped for us: the
+  // sync plugin restores it from a relative position, so re-reading it gives
+  // the link where it now is, or nothing when the link has gone.
+  React.useEffect(() => {
+    if (mode === 'closed') return undefined;
+    /**
+     * Follow the document.
+     * @param props - What the editor passes its transaction handler.
+     * @param props.transaction - The transaction that just landed.
+     */
+    const follow = ({ transaction }: { transaction: Transaction }): void => {
+      if (!transaction.docChanged) return;
+      const resolved = resolveLinkSelection(editor.state);
+      if (target.range && !resolved.range) {
+        close();
+        return;
+      }
+      const { from, to } = resolved.range ?? editor.state.selection;
+      setTarget((prev) => ({
+        ...prev,
+        range: resolved.range,
+        href: resolved.href ?? prev.href,
+        anchorRect: posToDOMRect(editor.view, from, to),
+      }));
+    };
+    editor.on('transaction', follow);
+    return () => {
+      editor.off('transaction', follow);
+    };
+  }, [close, editor, mode, target.range]);
 
   // Entering `edit` swaps the panel's contents without remounting it, so
   // Radix's open-time focus does not fire a second time. `create` gets its

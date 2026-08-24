@@ -268,6 +268,15 @@ describe('关掉浮层', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
+    // 焦点交回正文是排在下一帧的（`@tiptap/core` 的 focus 命令走
+    // `requestAnimationFrame`，dist:601）。真人再按一次按钮至少隔着几百毫秒，
+    // 这里不等就是在一个 tick 里做完两件事，那一帧的聚焦会落在刚开的浮层身上、
+    // 被 Radix 当成焦点离开而关掉它。
+    await act(async () => {
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(null));
+      });
+    });
 
     await pressLinkButton();
     await waitFor(() => {
@@ -303,5 +312,96 @@ describe('浮层的锚点', () => {
 
     expect(editor.view.dom.parentElement?.contains(anchor)).toBe(true);
     expect(bar?.contains(anchor)).toBe(false);
+  });
+});
+
+describe('协作对端动了正文', () => {
+  /**
+   * 以对端的身份改文档。
+   *
+   * 用 `ySyncPluginKey` 之外的 origin：同步插件据此判断这条更新不是本地发出
+   * 的，走的正是远端更新那条路径（仓里既有协作测试同款做法）。
+   * @param change - 要做的改动。
+   */
+  function asPeer(change: (body: Y.XmlFragment) => void): void {
+    act(() => {
+      doc.transact(() => {
+        change(documentBodyFragment(doc));
+      }, 'remote-peer');
+    });
+  }
+
+  it('对端删掉这条链接时浮层自己关掉', async () => {
+    const editor = mount(ONE_LINK);
+    // 选区比链接宽：链接被删掉之后它还剩非空的一截，浮出条因此留在屏幕上，
+    // 于是浮层消失只可能来自「这条链接没了」这个判定，而不是整个控件被卸载。
+    await openPopoverOver(editor, 2, 14);
+
+    // 只删链接那一段文字，段落和它前后的字都留着：正文还在，浮出条还在，
+    // 于是浮层消失只可能来自「这条链接没了」这个判定本身。
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      // 段落在 Yjs 里是一个 XmlText，链接是它的一段属性，所以按字符偏移删：
+      // `see` 占 0 到 3，`our docs` 占 3 到 11。
+      (block.get(0) as Y.XmlText).delete(3, 8);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+  });
+
+  it('对端在前面插字时浮层不关', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).insert(0, 'XX');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
+    });
+  });
+
+  it('对端在前面插字之后，去掉链接解的仍是那一条', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).insert(0, 'XX');
+    });
+    await waitFor(() => {
+      expect(editor.getHTML()).toContain('XXsee');
+    });
+
+    fireEvent.click(screen.getByTestId('doc-link-remove'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+    expect(editor.getHTML()).not.toContain('<a');
+    expect(editor.getHTML()).toContain('our docs');
+  });
+});
+
+describe('浮出条被收走之后', () => {
+  it('浮层和它的锚点都还在', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
+    expect(bar).toBeInTheDocument();
+
+    // 插件在浮层开着期间遇到任何一次事务就会这么做：`shouldShow` 要求正文
+    // 持有焦点，而焦点在浮层里，于是 `hide()` 把整条从 document 里摘掉。
+    act(() => {
+      bar?.remove();
+    });
+
+    expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-anchor')).toBeInTheDocument();
+    expect(editor.view.dom.parentElement?.contains(screen.getByTestId('doc-link-anchor'))).toBe(true);
   });
 });
