@@ -208,8 +208,6 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
     inputRef.current?.select();
   }, [mode]);
 
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-
   const canSubmit = draft.length > 0 && isLinkUrlShaped(draft);
   // Read on every render rather than held in state: it is a plain DOM lookup,
   // and every render that matters here follows a state change that already
@@ -258,7 +256,6 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
         anchorHost ?? document.body,
       )}
       <Button
-        ref={buttonRef}
         variant={holdsLink ? 'secondary' : 'ghost'}
         size='icon'
         aria-label={t('spaces.document.commands.link')}
@@ -285,16 +282,6 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
         // overlays settle the same way.
         avoidCollisions={false}
         className='w-auto p-1.5'
-        onPointerDownOutside={(event) => {
-          // The button belongs to this panel's own controls, so a press on it
-          // is not a press outside. Radix excludes a trigger for the same
-          // reason; here the trigger is the anchor, so the button says it.
-          // Without this the press closes the panel before its own handler
-          // runs, and a second press reopens instead of putting it away.
-          if (buttonRef.current?.contains(event.target as Node)) {
-            event.preventDefault();
-          }
-        }}
         onCloseAutoFocus={(event) => {
           // Focus goes back to the body on every way out. Radix would return
           // it to the trigger, which sits on a bar that is only on screen

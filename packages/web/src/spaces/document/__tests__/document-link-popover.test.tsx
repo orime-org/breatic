@@ -113,6 +113,18 @@ async function pressLinkButton(): Promise<void> {
 /** Body `see<a>our docs</a>for more`: the link occupies [4,12). */
 const ONE_LINK = `<p>see<a href="${HREF}">our docs</a>for more</p>`;
 
+/**
+ * Open `ONE_LINK`'s link in the view state, then press edit.
+ * @param editor - The editor.
+ */
+async function enterEditState(editor: Editor): Promise<void> {
+  await openPopoverOver(editor, 4, 12);
+  fireEvent.click(screen.getByTestId('doc-link-edit'));
+  await waitFor(() => {
+    expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
+  });
+}
+
 describe('the link button', () => {
   it('reads as pressed while the selection meets a link', async () => {
     const editor = mount(ONE_LINK);
@@ -173,6 +185,25 @@ describe('which state a press opens', () => {
       'aria-pressed',
       'true',
     );
+  });
+
+  it('stays shut when a link in the body is clicked', async () => {
+    // `enableClickSelection` puts the whole link in the selection, which brings
+    // the bar up with its button pressed. Opening the panel is a second,
+    // deliberate act; a click that only selects must not perform it.
+    const editor = mount(ONE_LINK);
+    act(() => {
+      editor.view.dom.focus();
+      editor.commands.setTextSelection({ from: 4, to: 12 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+    });
+    expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
   });
 
   it('opens the create state with an empty field and a dimmed confirm', async () => {
@@ -310,6 +341,43 @@ describe('changing a link', () => {
     expect(editor.getHTML()).toContain('https://b.example/other');
     expect(editor.getHTML()).not.toContain(HREF);
   });
+
+  it('re-reads the confirm button as the address is retyped', async () => {
+    const editor = mount(ONE_LINK);
+    await enterEditState(editor);
+
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'hello world' },
+    });
+    expect(screen.getByTestId('doc-link-confirm')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'https://c.example' },
+    });
+    expect(screen.getByTestId('doc-link-confirm')).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+  });
+
+  it('says why a replacement address is refused, and keeps the old one', async () => {
+    const editor = mount(ONE_LINK);
+    await enterEditState(editor);
+
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'hello world' },
+    });
+    fireEvent.click(screen.getByTestId('doc-link-confirm'));
+
+    // Still in the edit state, saying why — and the link in the document is
+    // the one it started with.
+    expect(screen.getByTestId('doc-link-invalid')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
+    expect(editor.getHTML()).toContain(HREF);
+  });
 });
 
 describe('removing a link', () => {
@@ -355,6 +423,39 @@ describe('putting the panel away', () => {
       expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
     });
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
+  });
+
+  it('closes on a second press of the button that opened it', async () => {
+    // What this pins is the button's own handler reading the mode and calling
+    // `close`. It does NOT pin what a browser adds on top: there the press
+    // also reaches Radix as a press outside, since the button is not the
+    // trigger — the anchor is. React batches the two here, so this stays green
+    // either way. The smoke case of the same name is where that half is
+    // measured.
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    await pressLinkButton();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+  });
+
+  it('closes on a press in the body, which is also what moves the selection', async () => {
+    // A press in the body is one action with two endings in the transition
+    // table — the local selection moves, and the panel is dismissed — and both
+    // arrive at the same place. Which of Radix's outside signals fires first is
+    // not asserted: deleting the panel's outside-press handling leaves this
+    // green, so the mechanism named here would be a guess.
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    await userEvent.click(editor.view.dom);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
   });
 
   it('closes all the way from the edit state on Escape', async () => {
@@ -438,6 +539,71 @@ describe('a co-editor changes the body', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
+  });
+
+  it('closes the edit state, draft and all, when the peer deletes the link', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 2, 14);
+    fireEvent.click(screen.getByTestId('doc-link-edit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'https://typed-but-never-sent.example' },
+    });
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).delete(3, 8);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+    // The draft went with it: the selection still holds no link, so the next
+    // press opens `create`, and it opens empty. The frame in between is the
+    // same one the Escape case waits out — closing hands focus back to the
+    // body a frame later, and without the wait that frame lands on the newly
+    // opened panel, which Radix reads as focus leaving.
+    await act(async () => {
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(null));
+      });
+    });
+    await pressLinkButton();
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('doc-link-input')).toHaveValue('');
+  });
+
+  it('keeps the edit state and its draft when the peer types ahead of the link', async () => {
+    const editor = mount(ONE_LINK);
+    await enterEditState(editor);
+    fireEvent.change(screen.getByTestId('doc-link-input'), {
+      target: { value: 'https://half-typed.example' },
+    });
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).insert(0, 'XX');
+    });
+
+    // The panel stays put and the half-typed address survives: following the
+    // document re-reads where the link now is, it does not re-seed the field.
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-input')).toHaveValue(
+        'https://half-typed.example',
+      );
+    });
+    // And confirming now still lands on the link, which has moved two
+    // characters along.
+    fireEvent.click(screen.getByTestId('doc-link-confirm'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+    expect(editor.getHTML()).toContain('https://half-typed.example');
+    expect(editor.getHTML()).toContain('XXsee');
   });
 
   it('keeps the panel open when the peer types ahead of the link', async () => {

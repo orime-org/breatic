@@ -1217,3 +1217,32 @@ test('link: the panel travels with its link when the body scrolls', async () => 
   // And the panel kept its place against it.
   expect(Math.abs(after.gapBelow - before.gapBelow)).toBeLessThan(3);
 });
+
+test('link: a second press on the button puts the panel away', async () => {
+  // Only a real browser answers this. The button is not the trigger — the
+  // anchor is (§4.1.3) — so a press on it reaches Radix as a press outside and
+  // dismisses the panel, on top of the button's own handler closing it. Two
+  // routes to closed, running in an order jsdom does not reproduce, and a
+  // panel that ends up open would be the sign they fought.
+  //
+  // Written after measuring: an earlier build excluded the button from the
+  // panel's outside-press handling on the reasoning that the dismiss would
+  // land first and leave the button's handler reopening what it meant to put
+  // away. Deleting that exclusion changes nothing here, so it went.
+  await openFreshDocument(page);
+  await page.keyboard.type('press me twice');
+  await selectFirstParagraph(page);
+
+  const button = page.getByTestId('doc-bubble-tool-link');
+  const panel = page.getByTestId('doc-link-popover');
+
+  await button.click();
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+
+  await button.click();
+  await expect(panel).toBeHidden({ timeout: 5_000 });
+  // Held, rather than caught mid-flight: a panel that is dismissed and
+  // reopened is briefly absent too, and this has to tell the two apart.
+  await page.waitForTimeout(400);
+  await expect(panel).toBeHidden();
+});
