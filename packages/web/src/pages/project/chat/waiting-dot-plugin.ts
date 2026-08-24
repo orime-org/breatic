@@ -183,6 +183,23 @@ export function waitingDotPlugin(): (tree: Root) => void {
       return;
     }
 
+    if (tail.tagName === 'pre') {
+      // A code block renders its whitespace, and every line a fence has
+      // received so far ends in the newline that terminates it. Sitting after
+      // that newline puts the mark on the line below the characters it is
+      // meant to ride, for as long as the block is streaming.
+      const target = slot.parent.children[slot.index];
+      if (target?.type === 'text') {
+        const printed = target.value.replace(/\s+$/, '');
+        if (printed !== target.value) {
+          const trailing = target.value.slice(printed.length);
+          target.value = printed;
+          slot.parent.children.splice(slot.index + 1, 0, mark, { type: 'text', value: trailing });
+          return;
+        }
+      }
+    }
+
     slot.parent.children.splice(slot.index + 1, 0, mark);
   };
 }

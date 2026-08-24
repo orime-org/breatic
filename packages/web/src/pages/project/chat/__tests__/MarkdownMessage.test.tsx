@@ -484,3 +484,41 @@ describe('MarkdownMessage — footnotes stay inside their own reply (R1)', () =>
     }
   });
 });
+
+describe('MarkdownMessage — scoping the footnote heading leaves the reply alone (R3)', () => {
+  it('keeps the model\'s own words when they spell the library\'s id', () => {
+    // An assistant explaining footnote markup can put those characters in an
+    // alt, a link target or a picture's source. They are the reply's content.
+    const { container } = render(
+      <MarkdownMessage content={'![footnote-label](d.png) and [x](footnote-label)'} />,
+    );
+
+    expect(container.querySelector('img')?.getAttribute('alt')).toBe('footnote-label');
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('footnote-label');
+  });
+
+  it('still points each marker at the heading in its own reply', () => {
+    const { container } = render(<MarkdownMessage content={'A[^1].\n\n[^1]: a note.'} />);
+
+    const described = container.querySelector('[aria-describedby]')?.getAttribute('aria-describedby');
+    expect(described).toBeDefined();
+    expect(described).not.toBe('footnote-label');
+    expect(container.querySelector(`[id="${described}"]`)?.tagName).toBe('H2');
+  });
+});
+
+describe('WaitingDot — a streaming code block (R7)', () => {
+  it('rides the last characters instead of the newline that ends their line', () => {
+    // A fence renders its whitespace, so a mark placed after the terminating
+    // newline draws on the line below the code that has arrived.
+    const { container } = render(
+      <MarkdownMessage content={'```js\nconst a = 1;'} streaming />,
+    );
+
+    const mark = container.querySelector('[data-testid="chat-waiting-dot"]');
+    expect(mark).not.toBeNull();
+    expect(mark?.previousSibling?.textContent?.endsWith(';')).toBe(true);
+    // The line terminator is still in the block, just behind the mark.
+    expect(container.querySelector('code')?.textContent).toBe('const a = 1;\n');
+  });
+});

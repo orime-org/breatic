@@ -32,13 +32,20 @@ export function footnoteScopePlugin(scope: string): (tree: Root) => void {
     const walk = (node: Root | Element): void => {
       for (const child of node.children) {
         if (child.type !== 'element') continue;
-        // Matched by value: the heading's `id` and the `aria-describedby` on
-        // every marker both hold it, hast spells attribute names its own way,
-        // and it keeps an id-list attribute as an array.
-        for (const [key, value] of Object.entries(child.properties)) {
-          if (value === LABEL_ID) child.properties[key] = scoped;
-          else if (Array.isArray(value) && value.includes(LABEL_ID)) {
-            child.properties[key] = value.map((one) => (one === LABEL_ID ? scoped : one));
+        // Located by element, not by value. A reply may carry the same
+        // characters in an `alt`, an `href` or a `src` — `![footnote-label](d.png)`
+        // is a picture of the markup an assistant is explaining — and those are
+        // the model's own words.
+        if (child.properties['id'] === LABEL_ID) child.properties['id'] = scoped;
+        if (child.properties['dataFootnoteRef'] !== undefined) {
+          // hast spells attribute names its own way and keeps an id-list as an
+          // array, so the reference to the heading is found by its value among
+          // this marker's own properties.
+          for (const [key, value] of Object.entries(child.properties)) {
+            if (value === LABEL_ID) child.properties[key] = scoped;
+            else if (Array.isArray(value) && value.includes(LABEL_ID)) {
+              child.properties[key] = value.map((one) => (one === LABEL_ID ? scoped : one));
+            }
           }
         }
         walk(child);
