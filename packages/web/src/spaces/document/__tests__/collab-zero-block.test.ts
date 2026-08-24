@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * #123 验收 F1-F4：`block*` 世界的协作与撤销（Yjs 关键路径，100% 覆盖）。

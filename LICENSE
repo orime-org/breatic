@@ -1,6 +1,13 @@
-                          Breatic Open Source License
+                       Breatic Source-Available License
 
                        License Version 1.0 - Effective 2026-04-24
+
+
+   Formerly published as the "Breatic Open Source License" (2026-04-24 to
+   2026-08-24). The terms are unchanged; the name is corrected because
+   Clause 1 restricts deployment, and a license that does so does not meet
+   the Open Source Definition. The SPDX identifier LicenseRef-BOSL-1.0, as
+   it appears in commits from that period, refers to this same document.
 
 
    Breatic is licensed under a modified version of the Apache License 2.0,

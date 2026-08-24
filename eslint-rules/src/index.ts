@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { activeBorder } from "#rules/rules/active-border";
 import { hoverPattern } from "#rules/rules/hover-pattern";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";

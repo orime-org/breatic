@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
