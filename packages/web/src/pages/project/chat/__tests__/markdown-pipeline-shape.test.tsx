@@ -62,13 +62,13 @@ describe('markdown pipeline — completion switches (R2, R3)', () => {
       links: true,
       linkMode: 'text-only',
       images: true,
-      htmlTags: true,
+      htmlTags: false,
       inlineCode: false,
       italic: false,
       singleTilde: true,
       comparisonOperators: true,
       setextHeadings: true,
-      katex: true,
+      katex: false,
       inlineKatex: false,
     });
   });

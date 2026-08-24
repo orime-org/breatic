@@ -293,3 +293,35 @@ describe('MarkdownMessage — typography hooks', () => {
     expect(body().className).toContain('chat-markdown');
   });
 });
+
+describe('MarkdownMessage — completion adds nothing the model did not send (R2, R3)', () => {
+  it('keeps everything after an unclosed angle bracket while streaming', () => {
+    // `Record<string, Handler`, `count<max`, "wrap it in a <div" — a reply that
+    // says any of these is still a reply that has to keep being drawn.
+    render(
+      <MarkdownMessage
+        content={'when count<max we stop\n\n```ts\nconst a = 1;\n```\n\nand a closing line'}
+        streaming
+      />,
+    );
+
+    expect(body()).toHaveTextContent('when count<max we stop');
+    expect(body().querySelector('pre > code')).toHaveTextContent('const a = 1;');
+    expect(body()).toHaveTextContent('and a closing line');
+  });
+
+  it('leaves a lone pair of dollar signs alone while streaming', () => {
+    // The shell's PID variable, a Makefile escape, `awk '{print $$1}'`. Nothing
+    // in this pipeline renders maths, so a closing `$$` is two characters the
+    // reader is shown and can copy that the model never sent.
+    render(<MarkdownMessage content={'the pid is $$ and that is all'} streaming />);
+
+    expect(body().textContent).toBe('the pid is $$ and that is all');
+  });
+
+  it('still closes the markers R2 promises', () => {
+    // The switches that stay on have to keep working after the two that go off.
+    const { container } = render(<MarkdownMessage content='half a **word' streaming />);
+    expect(container.querySelector('strong')).toHaveTextContent('word');
+  });
+});

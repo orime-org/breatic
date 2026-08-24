@@ -38,11 +38,25 @@ interface MarkdownMessageProps {
  * Which markers get closed while a reply is still arriving.
  *
  * Every switch is given a value: leaving one to its default is not a decision.
- * `inlineCode` and `italic` are off because with them on, a lone backtick or a
- * C pointer earlier in the prose takes the closing mark and the marker actually
- * being streamed stays open. `linkMode` is `text-only` because the other mode
- * closes a half-typed link into a `streamdown:incomplete-link` anchor, which in
- * a single-page app is a full reload.
+ *
+ * `inlineCode` and `italic` are off because a lone backtick or a C pointer
+ * earlier in the prose takes the closing mark, and the marker actually being
+ * streamed stays open. `htmlTags` and `katex` are off because they close
+ * constructs this pipeline never renders — inline HTML stays literal text and
+ * there is no maths renderer — so in a reply their only effect is on the prose
+ * around them: `htmlTags` drops everything from an unclosed `<` onward, which
+ * `count<max` is enough to trigger, and `katex` appends a `$$` to any reply
+ * holding an odd number of them, which a shell PID or an awk field is enough
+ * to trigger.
+ *
+ * `setextHeadings` is on: the frame where a list item is one `-` long renders
+ * the sentence above it as an h2 without it.
+ *
+ * `linkMode` is `text-only`; the other two modes close a half-typed link into
+ * a `streamdown:incomplete-link` anchor, which in a single-page app is a full
+ * reload. `links`, `images`, `singleTilde` and `comparisonOperators` return
+ * the same string on or off in this configuration — measured across half-typed
+ * and innocent spellings of each.
  */
 const COMPLETION = {
   bold: true,
@@ -51,13 +65,13 @@ const COMPLETION = {
   links: true,
   linkMode: 'text-only',
   images: true,
-  htmlTags: true,
+  htmlTags: false,
   inlineCode: false,
   italic: false,
   singleTilde: true,
   comparisonOperators: true,
   setextHeadings: true,
-  katex: true,
+  katex: false,
   inlineKatex: false,
 } as const;
 
