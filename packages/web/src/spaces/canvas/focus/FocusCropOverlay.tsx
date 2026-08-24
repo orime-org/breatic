@@ -631,13 +631,6 @@ export function FocusCropOverlay({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [backToPick, clearMarquee]);
 
-  // The root ALWAYS renders (measure needs its rect — a null-return here
-  // would never mount the ref and the overlay could never appear); the
-  // interactive layers below render only once the source box is measured.
-  const bounds = box
-    ? { width: box.width, height: box.height }
-    : { width: 0, height: 0 };
-
   // What the selected row item constrains to, for the three paths that hold a
   // gesture to it (start a marquee / drag it out / pull a handle). Derived
   // rather than stored: `original` follows the material, so a stored number
@@ -664,11 +657,11 @@ export function FocusCropOverlay({
   const onLayerPointerDown = (e: React.PointerEvent): void => {
     // A second touch mid-interaction must not hijack / destroy the marquee
     // (adversarial 2026-07-16): the first pointer owns the gesture.
-    if (e.button !== 0 || interactionRef.current) return;
+    if (e.button !== 0 || interactionRef.current || box === null) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const p = localPoint(e);
     interactionRef.current = { type: 'draw', anchor: p, pointerId: e.pointerId };
-    setRect(drawRect(p, p, bounds, ratio));
+    setRect(drawRect(p, p, box, ratio));
   };
 
   /**
@@ -713,18 +706,20 @@ export function FocusCropOverlay({
    */
   const onPointerMove = (e: React.PointerEvent): void => {
     const interaction = interactionRef.current;
-    if (!interaction || e.pointerId !== interaction.pointerId) return;
+    if (!interaction || e.pointerId !== interaction.pointerId || box === null) {
+      return;
+    }
     const p = localPoint(e);
     if (interaction.type === 'draw') {
-      setRect(drawRect(interaction.anchor, p, bounds, ratio));
+      setRect(drawRect(interaction.anchor, p, box, ratio));
     } else if (interaction.type === 'move') {
       const { last } = interaction;
       interactionRef.current = { type: 'move', last: p, pointerId: interaction.pointerId };
       setRect((prev) =>
-        prev ? moveRect(prev, p.x - last.x, p.y - last.y, bounds) : prev,
+        prev ? moveRect(prev, p.x - last.x, p.y - last.y, box) : prev,
       );
     } else {
-      setRect(resizeFromCapture(interaction.capture, p, bounds, ratio));
+      setRect(resizeFromCapture(interaction.capture, p, box, ratio));
     }
   };
 
@@ -860,7 +855,7 @@ export function FocusCropOverlay({
     }
     const natural = intrinsicSize(el);
     const accepted = onConfirm({
-      crop: toNaturalCrop(rect, bounds, natural),
+      crop: toNaturalCrop(rect, box, natural),
       natural,
       sourceSrc: measuredSrcRef.current,
       // Off the element, not the display mirror (#1987): the property is
