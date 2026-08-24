@@ -310,20 +310,11 @@ export function FocusCropOverlay({
       return;
     }
     if (lastSourceElRef.current !== el) {
-      if (
-        lastSourceElRef.current !== null &&
-        el.getAttribute('src') !== measuredSrcRef.current
-      ) {
-        // The source REMOUNTED with DIFFERENT content (handling cycle /
-        // regenerate): the marquee and baselines belong to the dead
-        // element — start fresh (round-3). The in-flight gesture dies with
-        // it (round-4). A same-src remount (viewport culling return,
-        // round-8) keeps the marquee — only the observer rebinds below.
-        interactionRef.current = null;
-        clearMarquee();
-        measuredSrcRef.current = null;
-        prevBoxRef.current = null;
-      }
+      // A remount rebinds and nothing more. What happens to the marquee is
+      // decided further down by the content check, which fires on a swapped
+      // src whether or not the element itself was replaced — so a regenerate
+      // clears the selection and a same-src remount (viewport culling
+      // return) keeps it, both without a word from here.
       lastSourceElRef.current = el;
       setSourceEl(el);
       if (typeof ResizeObserver !== 'undefined') {
