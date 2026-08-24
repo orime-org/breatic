@@ -508,35 +508,78 @@ describe('MarkdownMessage — scoping the footnote heading leaves the reply alon
 });
 
 describe('WaitingDot — a streaming code block (R7)', () => {
-  it('rides the last characters instead of the newline that ends their line', () => {
-    // A fence renders its whitespace, so a mark placed after the terminating
-    // newline draws on the line below the code that has arrived.
-    const { container } = render(
-      <MarkdownMessage content={'```js\nconst a = 1;'} streaming />,
-    );
-
+  /**
+   * Where the mark sits inside a fence, said exactly.
+   *
+   * The pipeline ends every code block with a newline the model did not send —
+   * markdown's fence terminator — and that one newline is the only thing that
+   * belongs behind the mark. Everything the model did send, blank lines and
+   * half-typed indentation included, is in front of it.
+   * @param source - The markdown to stream.
+   * @returns What lies either side of the mark, and the block's whole text.
+   */
+  const aroundTheMark = (
+    source: string,
+  ): { before: string; after: string; whole: string } => {
+    const { container } = render(<MarkdownMessage content={source} streaming />);
+    const code = container.querySelector('code');
     const mark = container.querySelector('[data-testid="chat-waiting-dot"]');
+    expect(code).not.toBeNull();
     expect(mark).not.toBeNull();
-    expect(mark?.previousSibling?.textContent?.endsWith(';')).toBe(true);
-    // The line terminator is still in the block, just behind the mark.
-    expect(container.querySelector('code')?.textContent).toBe('const a = 1;\n');
-  });
 
-  it('rides them when the line ends inside a coloured token', () => {
-    // A string or a comment running over several lines is one token, so the
-    // newline that ends the line just received sits inside that span rather
-    // than beside it.
-    for (const source of ['```python\nx = """line one\nline two', '```js\n/* first\n second']) {
-      const { container, unmount } = render(<MarkdownMessage content={source} streaming />);
+    let before = '';
+    let after = '';
+    let seen = false;
+    const walk = (node: Node): void => {
+      if (node === mark) {
+        seen = true;
+        return;
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (seen) after += node.textContent ?? '';
+        else before += node.textContent ?? '';
+        return;
+      }
+      node.childNodes.forEach(walk);
+    };
+    code!.childNodes.forEach(walk);
+    return { before, after, whole: code!.textContent ?? '' };
+  };
 
-      const mark = container.querySelector('[data-testid="chat-waiting-dot"]');
-      expect(mark).not.toBeNull();
-      expect(mark?.previousSibling?.textContent?.endsWith('\n')).toBe(false);
-      // Every character the model sent is still there, in order.
-      expect(container.querySelector('code')?.textContent).toBe(
-        `${source.split('\n').slice(1).join('\n')}\n`,
+  it('leaves only the fence terminator behind it, whatever the tail looks like', () => {
+    const shapes: Record<string, string> = {
+      'punctuation': '```js\nconst a = 1;',
+      'inside a multi-line string': '```python\nx = """line one\nline two',
+      'inside a multi-line comment': '```js\n/* first\n second',
+      // The colourer hands the newline out as a whitespace-only node of its
+      // own at the end of the tag's span.
+      'an unfinished html tag': '```html\n<div',
+      'an unfinished xml tag': '```xml\n<root',
+      'a php declaration head': '```php\n<?php\nfunction',
+      // The fence is nested, so the block this walk starts from is the list
+      // item or the quote rather than the `pre`.
+      'a fence in a list item': '- item\n\n  ```js\n  const a = 1;',
+      'a fence in a blockquote': '> ```js\n> const a = 1;',
+      // Blank lines and indentation are characters that arrived.
+      'blank lines the model sent': '```js\nconst a = 1;\n\n\n',
+      'indentation already received': '```js\nfunction f() {\n  ',
+    };
+
+    for (const [name, source] of Object.entries(shapes)) {
+      const { before, after, whole } = aroundTheMark(source);
+
+      expect(after, `${name}: only the terminator sits behind the mark`).toBe('\n');
+      expect(before, `${name}: everything else sits in front of it`).toBe(whole.slice(0, -1));
+      cleanup();
+
+      // Against the settled render of the same source, which runs no mark and
+      // no completion: the characters a reader copies are unchanged by any of
+      // this moving about.
+      const { container: settled } = render(<MarkdownMessage content={source} />);
+      expect(whole, `${name}: the block still reads as it was written`).toBe(
+        settled.querySelector('code')?.textContent,
       );
-      unmount();
+      cleanup();
     }
   });
 });

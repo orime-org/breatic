@@ -1312,12 +1312,11 @@ body {
 
 /* A symbol upstream is a "symbolic constant, interned string, goto label" —
    an XML entity among them, which is what the declared grammars emit it for.
-   It stands for one fixed value, same as a literal, and so do a goto label and
-   the `\n` of an escape. */
+   It stands for one fixed value, same as the `\n` of an escape — and same as
+   a goto label, which is why vbnet renames its `label` to this. */
 .chat-markdown .hljs-number,
 .chat-markdown .hljs-literal,
 .chat-markdown .hljs-symbol,
-.chat-markdown .hljs-label,
 .chat-markdown .hljs-char.escape_ {
   color: var(--color-palette-orange);
 }
@@ -1340,12 +1339,9 @@ body {
   font-style: italic;
 }
 
-/* A section heading names the region under it, which is what a title does, and
-   so does the name at a call site — `function` on its own wraps a whole
-   declaration and inherits, but `function.dispatch` is the called name. */
+/* A section heading names the region under it, which is what a title does. */
 .chat-markdown .hljs-title,
-.chat-markdown .hljs-section,
-.chat-markdown .hljs-function.dispatch_ {
+.chat-markdown .hljs-section {
   color: var(--color-palette-blue);
 }
 

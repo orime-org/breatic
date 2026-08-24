@@ -150,16 +150,18 @@ function lastVisibleSlot(
 }
 
 /**
- * The last node carrying characters in this subtree, in document order.
+ * The last node carrying any characters at all in this subtree.
  *
- * A fence's last line often ends inside a coloured span rather than beside
- * one: a string or a comment that runs over several lines is one token, and
- * the newline terminating the line that just arrived sits within it.
+ * Whitespace counts here, unlike everywhere else in this file: what this looks
+ * for is the newline a code block ends in, and the colourer often hands that
+ * newline out as a text node of its own at the end of a span — an unfinished
+ * `<div` in an html fence puts it inside the tag's span, alone.
  * @param node - The node to look through.
  * @returns That node, or undefined when the subtree carries no characters.
  */
 function lastLiteralIn(node: RootContent): { value: string } | undefined {
-  if (isVisibleLiteral(node)) return node as unknown as { value: string };
+  const type: string = node.type;
+  if (type === 'text' || type === 'raw') return node as unknown as { value: string };
   if (!isElement(node)) return undefined;
   for (let i = node.children.length - 1; i >= 0; i -= 1) {
     const child = node.children[i];
@@ -204,24 +206,27 @@ export function waitingDotPlugin(): (tree: Root) => void {
       return;
     }
 
-    if (tail.tagName === 'pre') {
-      // A code block renders its whitespace, and every line a fence has
-      // received so far ends in the newline that terminates it. Sitting after
-      // that newline puts the mark on the line below the characters it is
-      // meant to ride, for as long as the block is streaming.
+    // Keyed on where the mark is going rather than on the block it came from:
+    // a fence inside a list item or a blockquote is still a fence, and the
+    // block this walk started from is the `li` or the `blockquote`. Only a
+    // `code` inside a `pre` is ever a host, so this says "in a code block".
+    if (slot.parent.tagName === 'code') {
+      // A code block renders its whitespace, and the pipeline ends every one
+      // of them with a newline the model did not send: markdown's fence
+      // terminator. Sitting after that newline puts the mark on the line below
+      // the characters it is meant to ride.
       const preceding = slot.parent.children[slot.index];
       const ending = preceding === undefined ? undefined : lastLiteralIn(preceding);
-      if (ending !== undefined) {
-        const printed = ending.value.replace(/\s+$/, '');
-        if (printed !== ending.value) {
-          // The whitespace moves out to the far side of the mark, which leaves
-          // the mark itself outside the coloured span it follows -- a mark
-          // placed inside one takes that token's colour.
-          const trailing = ending.value.slice(printed.length);
-          ending.value = printed;
-          slot.parent.children.splice(slot.index + 1, 0, mark, { type: 'text', value: trailing });
-          return;
-        }
+      // Exactly the one terminator. A blank line the model did send, and the
+      // indentation of a line it has started, are characters that arrived —
+      // the mark belongs after them, and taking them too walks it backwards.
+      if (ending !== undefined && ending.value.endsWith('\n')) {
+        // The newline moves out to the far side of the mark, which leaves the
+        // mark itself outside the coloured span it follows -- a mark placed
+        // inside one takes that token's colour.
+        ending.value = ending.value.slice(0, -1);
+        slot.parent.children.splice(slot.index + 1, 0, mark, { type: 'text', value: '\n' });
+        return;
       }
     }
 

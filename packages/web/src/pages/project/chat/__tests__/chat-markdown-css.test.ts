@@ -9,10 +9,10 @@
  * a colour resolves to the same pixels whether it came from a token or from a
  * hex literal pasted in.
  */
-import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import hljs from 'highlight.js/lib/core';
 import { common, createLowlight } from 'lowlight';
 import postcss from 'postcss';
 import { describe, it, expect } from 'vitest';
@@ -61,6 +61,31 @@ function paletteTokens(): Set<string> {
     if (decl.prop.startsWith('--color-palette-')) names.add(decl.prop);
   });
   return names;
+}
+
+/**
+ * Every scope name a grammar definition declares, however deeply nested.
+ *
+ * A definition is a graph of modes rather than a tree — a mode that contains
+ * itself is how a grammar says "nested here too" — so each object is visited
+ * once. A mode names its scope with either `scope` or the older `className`.
+ * @param node - A definition object, a mode, or an array of them.
+ * @param found - The set to add to.
+ * @param seen - The objects already walked.
+ * @returns Nothing; `found` carries the result.
+ */
+function collectScopes(node: unknown, found: Set<string>, seen = new WeakSet<object>()): void {
+  if (node === null || typeof node !== 'object') return;
+  if (seen.has(node)) return;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    for (const one of node) collectScopes(one, found, seen);
+    return;
+  }
+  const mode = node as { scope?: unknown; className?: unknown };
+  if (typeof mode.scope === 'string') found.add(mode.scope);
+  if (typeof mode.className === 'string') found.add(mode.className);
+  for (const value of Object.values(node)) collectScopes(value, found, seen);
 }
 
 describe('chat prose stylesheet — colours come from tokens (R10)', () => {
@@ -122,24 +147,28 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     const names = Object.keys(common);
     expect(names.length).toBe(37);
 
-    // Every scope name each grammar declares, taken from the grammar itself
-    // rather than from a sample: a sample only exercises the constructs
-    // someone thought to write down.
-    // Resolved through Node rather than by path: the grammars live wherever
-    // the package manager put them.
-    const require_ = createRequire(import.meta.url);
-    const declared = new Set<string>();
-    for (const name of names) {
-      const grammar = readFileSync(require_.resolve(`highlight.js/lib/languages/${name}`), 'utf8');
-      // Both quote styles: six names across the set — `property` and the
-      // `title.*` family among them — are written with double quotes only.
-      for (const [, scope] of grammar.matchAll(
-        /(?:scope|className):\s*['"]([a-zA-Z_][\w.-]*)['"]/g,
-      )) {
-        declared.add(scope!);
+    // Every scope name each grammar declares, and every alias it renames one
+    // to — taken from the definition objects the library itself builds, by
+    // calling each `LanguageFn` the way `registerLanguage` does. Reading the
+    // grammar files as text instead is a model of the library, and a model
+    // gets it wrong in ways nothing here would see: it cannot know that cpp
+    // renames `function.dispatch` to `built_in`, so it would ask for a colour
+    // on a selector highlight.js can never emit.
+    // Per grammar, because `classNameAliases` is per grammar: one language
+    // renaming `label` says nothing about what another emits under that name.
+    const emitted = new Set<string>();
+    for (const define of Object.values(common)) {
+      const definition = define(hljs);
+      const aliases = definition.classNameAliases ?? {};
+      const scopes = new Set<string>();
+      collectScopes(definition, scopes);
+      for (const scope of scopes) {
+        // `scope: ''` is how a mode says it wants no class at all.
+        if (scope === '') continue;
+        emitted.add(aliases[scope] ?? scope);
       }
     }
-    expect(declared.size).toBeGreaterThan(45);
+    expect(emitted.size).toBeGreaterThan(45);
     expect(lowlight.registered('ruby')).toBe(true);
 
     // Each painted selector as the SET of classes it requires. Splitting these
@@ -179,7 +208,7 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
       return [`hljs-${head}`, ...tiers.map((tier, depth) => `${tier}${'_'.repeat(depth + 1)}`)];
     };
 
-    const unpainted = [...declared]
+    const unpainted = [...emitted]
       .filter((scope) => !containers.has(scope))
       .filter(
         (scope) =>
