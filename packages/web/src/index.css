@@ -1301,8 +1301,16 @@ body {
 .chat-markdown .hljs-selector-tag,
 .chat-markdown .hljs-selector-id,
 .chat-markdown .hljs-selector-class,
+.chat-markdown .hljs-selector-attr,
 .chat-markdown .hljs-selector-pseudo {
   color: var(--color-palette-teal);
+}
+
+/* An interpolation sits inside the string span that holds it, so without a
+   colour of its own it reads as part of that string. It is code, and the body
+   colour is what says so. */
+.chat-markdown .hljs-subst {
+  color: var(--color-foreground);
 }
 
 .chat-markdown .hljs-attr,

@@ -42,9 +42,15 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     expect(rules.length).toBeGreaterThan(0);
 
     for (const rule of rules) {
-      for (const [, value] of rule.body.matchAll(/color:\s*([^;]+);/g)) {
+      // The last declaration in a block may carry no semicolon, so the
+      // terminator is optional here; requiring it hid whatever was written
+      // last in each rule.
+      const declarations = [...rule.body.matchAll(/(?:^|;)\s*color:\s*([^;]+)/g)];
+      expect(declarations.length, `${rule.selector} declares no colour`).toBeGreaterThan(0);
+
+      for (const [, value] of declarations) {
         expect(value?.trim()).toMatch(
-          /^var\(--color-(palette-[a-z]+|muted-foreground)\)$/,
+          /^var\(--color-(palette-[a-z]+|muted-foreground|foreground)\)$/,
         );
       }
     }
@@ -85,12 +91,12 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     // marker and tags.
     const samples: Record<string, string> = {
       bash: '#!/bin/bash\nfunction go() { export NAME="x"; if [ -f "$F" ]; then echo "$NAME"; fi; }',
-      css: 'a:hover, div > p::first-line, #id, .cls { color: #fff; margin: 0 auto; }',
+      css: 'a:hover, div > p::first-line, #id, .cls, a[href^="http"] { color: #fff; margin: 0 auto; }',
       diff: '@@ -1,3 +1,3 @@\n--- a/x.ts\n+++ b/x.ts\n-const a = 1;\n+const a = 2;',
       xml: '<?xml version="1.0"?>\n<!DOCTYPE r>\n<div class="box" id="a">words</div>',
-      javascript: 'export function f(a) { return a.map((n) => n * 2); }',
+      javascript: 'export function f(a) { return `x ${a} z`; }',
       json: '{ "name": "x", "n": 1, "ok": true }',
-      python: '@decorator\ndef f(a: int) -> int:\n    return a * 2  # note',
+      python: '@decorator\ndef f(a: int) -> int:\n    return f"v {a}"  # note',
       sql: 'SELECT id, name FROM users WHERE age > 18 ORDER BY id;',
       typescript: 'export function f(a: Foo): Bar { return a as Bar; }',
       yaml: '---\nname: !x\nitems:\n  - a\nz: !!str v',
@@ -104,6 +110,9 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     // and which bash emits for a function name — into the painted set.
     const paintedCombos = chatRules()
       .filter((r) => r.selector.includes('.hljs-'))
+      // A rule that names a class without giving it a colour leaves that
+      // token the surrounding foreground, so mentioning it is not painting.
+      .filter((r) => /(?:^|;)\s*color:/.test(r.body))
       .flatMap((r) => r.selector.split(','))
       .filter((part) => part.includes('.hljs-'))
       .map((part) => {
