@@ -34,7 +34,6 @@ import { BUBBLE_CONTROL_HEIGHT, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/docu
 import {
   resolveLinkSelection,
   resolveLinkInSpan,
-  anchorRange,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -51,13 +50,30 @@ import {
 /** Which of the panel's three faces is showing, or none. */
 type LinkMode = 'closed' | 'create' | 'view' | 'edit';
 
-/** Where the anchor sits, in the scroller's own coordinates. */
-interface AnchorBox {
+/** A rectangle, in whichever coordinates its holder names. */
+interface Rect {
   left: number;
   top: number;
   width: number;
   height: number;
 }
+
+/** Where the anchor sits, in the scroller's own coordinates. */
+type AnchorBox = Rect;
+
+/**
+ * Hands this panel the line the bubble bar anchors to, in viewport coordinates.
+ *
+ * The bar is the one that knows where the reader is looking. Over a select-all
+ * nothing about the selection does: it starts at the top of the document, so a
+ * panel measuring from there lands above the fold by however far the reader has
+ * scrolled — measured at viewport top -483 after a 600px scroll.
+ */
+export type AnchorLineReader = () => {
+  left: number;
+  top: number;
+  bottom: number;
+} | null;
 
 /** What the panel acts on, taken from the selection when it opened. */
 interface LinkTarget {
@@ -69,7 +85,7 @@ interface LinkTarget {
    * built without collaboration.
    */
   tracked: TrackedLink | null;
-  /** Where to put the panel, from {@link anchorRange}. */
+  /** Where to put the panel, from {@link measureAnchor}. */
   anchorBox: AnchorBox | null;
 }
 
@@ -91,21 +107,17 @@ function bodyScroller(editor: Editor): HTMLElement | null {
 }
 
 /**
- * Where to put the anchor, in coordinates that scroll with the text.
+ * Turn a viewport rectangle into one that scrolls with the text.
  *
- * `posToDOMRect` reads the viewport, which is where the text is right now; the
- * scroller's own box plus how far it has been scrolled turns that into a
- * position inside the scrolled content. An anchor placed there moves with the
- * line it points at, and Radix — floating-ui underneath, which watches ancestor
+ * The scroller's own box plus how far it has been scrolled is the difference
+ * between the two. An anchor placed in content coordinates moves with the line
+ * it points at, and Radix — floating-ui underneath, which watches ancestor
  * scroll by default — carries the panel along without being told to.
- * @param editor - The editor to measure in.
- * @param range - The span to measure, from {@link anchorRange}.
- * @returns The box, or null before the scroller is in the document.
+ * @param scroller - The body's scroll container.
+ * @param rect - The rectangle, in viewport coordinates.
+ * @returns The same place, in the scroller's content coordinates.
  */
-function measureAnchor(editor: Editor, range: LinkRange): AnchorBox | null {
-  const scroller = bodyScroller(editor);
-  if (!scroller) return null;
-  const rect = posToDOMRect(editor.view, range.from, range.to);
+function intoContent(scroller: HTMLElement, rect: Rect): AnchorBox {
   const box = scroller.getBoundingClientRect();
   return {
     left: rect.left - box.left + scroller.scrollLeft,
@@ -113,6 +125,41 @@ function measureAnchor(editor: Editor, range: LinkRange): AnchorBox | null {
     width: rect.width,
     height: rect.height,
   };
+}
+
+/**
+ * Where to put the anchor, in coordinates that scroll with the text.
+ *
+ * The link when the selection holds one, so the panel sits against the thing it
+ * acts on. With none, the bar's own anchor line: it is the same question the
+ * bar answers to place itself, and over a select-all only its answer knows
+ * where the reader is — the selection starts at the top of the document, so
+ * measuring from there puts the panel above the fold by however far the reader
+ * has scrolled.
+ * @param editor - The editor to measure in.
+ * @param link - The link the panel acts on, if any.
+ * @param anchorLine - The bar's own anchor line, in viewport coordinates.
+ * @returns The box, or null before the scroller is in the document.
+ */
+function measureAnchor(
+  editor: Editor,
+  link: LinkRange | null,
+  anchorLine: AnchorLineReader,
+): AnchorBox | null {
+  const scroller = bodyScroller(editor);
+  if (!scroller) return null;
+  if (link) {
+    const rect = posToDOMRect(editor.view, link.from, link.to);
+    return intoContent(scroller, rect);
+  }
+  const line = anchorLine();
+  if (!line) return null;
+  return intoContent(scroller, {
+    left: line.left,
+    top: line.top,
+    width: 0,
+    height: line.bottom - line.top,
+  });
 }
 
 /**
@@ -138,9 +185,17 @@ function followedLink(editor: Editor, tracked: TrackedLink | null): LinkSelectio
  * The link button and its panel.
  * @param root0 - Props.
  * @param root0.editor - The editor the control reads and writes.
+ * @param root0.anchorLine - The bubble bar's own anchor line, for a selection
+ *   holding no link.
  * @returns The control.
  */
-export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.Element {
+export function DocumentLinkPopover({
+  editor,
+  anchorLine,
+}: {
+  editor: Editor;
+  anchorLine: AnchorLineReader;
+}): React.JSX.Element {
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
   const [draft, setDraft] = React.useState('');
@@ -170,12 +225,12 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
       range: resolved.range,
       href: resolved.href,
       tracked: resolved.range ? trackLink(editor, resolved.range) : null,
-      anchorBox: measureAnchor(editor, anchorRange(editor.state, resolved.range)),
+      anchorBox: measureAnchor(editor, resolved.range, anchorLine),
     });
     setDraft('');
     setShowInvalid(false);
     setMode(resolved.range ? 'view' : 'create');
-  }, [editor]);
+  }, [anchorLine, editor]);
 
   /** Write what is in the draft, and put the panel away. */
   const submit = React.useCallback((): void => {
@@ -221,7 +276,7 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
       if (mode === 'create') {
         setTarget((prev) => ({
           ...prev,
-          anchorBox: measureAnchor(editor, anchorRange(editor.state, null)),
+          anchorBox: measureAnchor(editor, null, anchorLine),
         }));
         return;
       }
@@ -234,14 +289,14 @@ export function DocumentLinkPopover({ editor }: { editor: Editor }): React.JSX.E
         ...prev,
         range: resolved.range,
         href: resolved.href ?? prev.href,
-        anchorBox: measureAnchor(editor, anchorRange(editor.state, resolved.range)),
+        anchorBox: measureAnchor(editor, resolved.range, anchorLine),
       }));
     };
     editor.on('transaction', follow);
     return () => {
       editor.off('transaction', follow);
     };
-  }, [close, editor, mode, target.tracked]);
+  }, [anchorLine, close, editor, mode, target.tracked]);
 
   // Entering `edit` swaps the panel's contents without remounting it, so
   // Radix's open-time focus does not fire a second time. `create` gets its

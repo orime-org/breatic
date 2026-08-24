@@ -32,7 +32,6 @@ import {
 } from '@web/spaces/document/document-extensions';
 import {
   resolveLinkSelection,
-  anchorRange,
   applyLink,
   removeLink,
   normalizeLinkUrl,
@@ -315,23 +314,15 @@ describe('which span the panel anchors to', () => {
   it('takes the link when the selection holds one', () => {
     const editor = openOneLink();
     editor.commands.setTextSelection({ from: 4, to: 12 });
-    const { range } = resolveLinkSelection(editor.state);
 
-    expect(anchorRange(editor.state, range)).toEqual({ from: 4, to: 12 });
+    expect(resolveLinkSelection(editor.state).range).toEqual({ from: 4, to: 12 });
   });
 
-  it('collapses to the selection start when it holds none', () => {
-    // Over a select-all the selection's own box is the whole document, and a
-    // panel anchored to that box sits against the first line however far the
-    // reader has scrolled from it. The start is a point on screen.
-    const editor = open('<p>first line</p><p>second line</p><p>third line</p>');
-    editor.commands.selectAll();
-    const { range } = resolveLinkSelection(editor.state);
-    const { from, to } = editor.state.selection;
-
-    expect(to - from).toBeGreaterThan(1);
-    expect(anchorRange(editor.state, range)).toEqual({ from, to: from });
-  });
+  // A selection holding no link is anchored to the bar's own line rather than
+  // to anything this module computes — the bar is the one that knows where the
+  // reader is looking, and over a select-all nothing about the selection does.
+  // `DocumentLinkPopover`'s `measureAnchor` takes that line; where it lands is
+  // measured in the smoke case "the panel opens where the reader is".
 });
 
 describe('which strings are shaped like a URL', () => {

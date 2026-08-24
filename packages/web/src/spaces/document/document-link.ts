@@ -120,24 +120,6 @@ export function resolveLinkInSpan(
 }
 
 /**
- * Which span the panel anchors to.
- *
- * The link when there is one, so the panel sits against the thing it acts on.
- * With no link the selection is what the panel acts on, and its box is no use
- * as an anchor: over a select-all that box is the whole document, which would
- * put the panel against the first line however far the reader has scrolled
- * away from it. The start of the selection is a point on screen.
- * @param state - The editor state to read the selection from.
- * @param link - The link the selection holds, from {@link resolveLinkSelection}.
- * @returns The span to measure for the anchor.
- */
-export function anchorRange(state: EditorState, link: LinkRange | null): LinkRange {
-  if (link) return link;
-  const { from } = state.selection;
-  return { from, to: from };
-}
-
-/**
  * Put a link on the given range.
  *
  * Goes through the extension's own command, which carries two things a bare

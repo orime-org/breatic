@@ -1270,3 +1270,53 @@ test('link: a second press on the button puts the panel away', async () => {
   await page.waitForTimeout(400);
   await expect(panel).toBeHidden();
 });
+
+test('link: the panel opens where the reader is, after a select-all', async () => {
+  // A select-all's `from` is position 0 — the top of the document — and the
+  // panel used to anchor there whatever the reader had scrolled past. Measured
+  // before this assertion existed: with the body scrolled 600px the panel was
+  // placed at viewport top -483, entirely off screen, and pressing the button
+  // again toggled something nobody could see.
+  //
+  // The bar answers the same question with the pointer (`SelectionBubbleBar`'s
+  // pinned point), because over a select-all the selection's own box is the
+  // whole column and says nothing about where the reader is looking. The panel
+  // opens from a button on that bar, so it anchors to the same place.
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 600);
+
+  // Two presses: the first tier takes the block, the second the document.
+  const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+  await page.keyboard.press(selectAll);
+  await page.waitForTimeout(200);
+  await page.keyboard.press(selectAll);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-popover')).toBeVisible({ timeout: 5_000 });
+  await page.waitForTimeout(400);
+
+  const placed = await page.evaluate(() => {
+    const panel = document
+      .querySelector('[data-testid="doc-link-popover"]')!
+      .getBoundingClientRect();
+    const bar = document
+      .querySelector('[data-testid="doc-selection-bubble-bar"]')!
+      .getBoundingClientRect();
+    return {
+      panelTop: Math.round(panel.top),
+      panelBottom: Math.round(panel.bottom),
+      barTop: Math.round(bar.top),
+      viewportHeight: window.innerHeight,
+    };
+  });
+
+  expect(placed.panelTop).toBeGreaterThanOrEqual(0);
+  expect(placed.panelBottom).toBeLessThanOrEqual(placed.viewportHeight);
+  // And it opened next to the bar it was pressed on, rather than merely
+  // somewhere on screen.
+  expect(Math.abs(placed.panelTop - placed.barTop)).toBeLessThan(120);
+});

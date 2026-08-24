@@ -104,7 +104,10 @@ import {
   BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
-import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
+import {
+  DocumentLinkPopover,
+  type AnchorLineReader,
+} from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
@@ -121,7 +124,7 @@ interface BubbleGroup {
    * Radix trigger, which is a different shape and not one the eight commands
    * have any use for.
    */
-  panels: React.ComponentType<{ editor: Editor }>[];
+  panels: React.ComponentType<{ editor: Editor; anchorLine: AnchorLineReader }>[];
 }
 
 /**
@@ -746,37 +749,50 @@ function BubbleBar({
     };
   }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
 
-  const getReferencedVirtualElement = React.useCallback(() => {
+  /**
+   * The one line this bar sits against, in viewport coordinates and with no
+   * gap added.
+   *
+   * A pinned point has no extent, so both edges of the "line" are the same
+   * coordinate; growing it into the gap (below) then gives it the same shape a
+   * real line gets, which is what keeps the flip behaviour identical across the
+   * two modes.
+   *
+   * Its x comes from the pointer too, not from the selection's box: over a
+   * select-all that box is the whole body column and its left edge says nothing
+   * about where the reader is looking.
+   * @returns The line, or null while the selection is empty.
+   */
+  const anchorLine = React.useCallback((): {
+    left: number;
+    top: number;
+    bottom: number;
+  } | null => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
     const pinned = pinnedPoint();
-    // A pinned point has no extent, so both edges of the "line" are the same
-    // coordinate and `anchorRect` grows it into the gap on either side — the
-    // same shape a real line gets, which is what keeps the flip behaviour
-    // identical across the two modes.
-    //
-    // Its x comes from the pointer too, not from the selection's box: over a
-    // select-all that box is the whole body column and its left edge says
-    // nothing about where the reader is looking.
-    const rect = pinned
-      ? anchorRect(pinned.x, { top: pinned.y, bottom: pinned.y })
-      // The two axes come from different places here, and they have to.
-      // Vertically the bar belongs to ONE line — the anchor. Horizontally the
-      // ruling asks for the selection's left edge, which is the left of the
-      // box it occupies: the anchor's own x is no such thing (it is usually
-      // the head, and measured, taking x from there put the bar 314px right of
-      // where the ruling wants it), and neither is `posToDOMRect`, which
-      // samples only the two endpoints and so misses the block edge that a
-      // middle line starts at.
-      : anchorRect(
-        selectionBox(view).left,
-        pickAnchorLine(view, viewport.getBoundingClientRect()),
-      );
+    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y };
+    // The two axes come from different places here, and they have to.
+    // Vertically the bar belongs to ONE line — the anchor. Horizontally the
+    // ruling asks for the selection's left edge, which is the left of the
+    // box it occupies: the anchor's own x is no such thing (it is usually
+    // the head, and measured, taking x from there put the bar 314px right of
+    // where the ruling wants it), and neither is `posToDOMRect`, which
+    // samples only the two endpoints and so misses the block edge that a
+    // middle line starts at.
+    const line = pickAnchorLine(view, viewport.getBoundingClientRect());
+    return { left: selectionBox(view).left, top: line.top, bottom: line.bottom };
+  }, [editor, viewport, pinnedPoint]);
+
+  const getReferencedVirtualElement = React.useCallback(() => {
+    const line = anchorLine();
+    if (!line) return null;
+    const rect = anchorRect(line.left, line);
     return {
       getBoundingClientRect: () => rect,
       getClientRects: () => [rect] as unknown as DOMRectList,
     };
-  }, [editor, viewport, pinnedPoint]);
+  }, [anchorLine]);
 
   const options = React.useMemo(
     () => ({
@@ -901,7 +917,7 @@ function BubbleBar({
               />
             ) : null}
             {group.panels.map((Panel, panelIndex) => (
-              <Panel key={panelIndex} editor={editor} />
+              <Panel key={panelIndex} editor={editor} anchorLine={anchorLine} />
             ))}
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
