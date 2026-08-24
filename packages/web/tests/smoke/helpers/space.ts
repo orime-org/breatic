@@ -66,10 +66,16 @@ export async function createSpace(
  */
 export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
   try {
-    await page.getByTestId('space-drawer-trigger').click();
-    await expect(page.getByTestId('space-drawer')).toBeVisible({
-      timeout: 10_000,
-    });
+    // Open the drawer only when it is shut. The trigger toggles, so calling
+    // this twice in a row on one page — which is what a case creating two
+    // Spaces does — would close the drawer the second time and then wait out
+    // the timeout looking for it. Measured: 84 removals in a row came out 42
+    // done, 42 timed out, strictly alternating.
+    const drawer = page.getByTestId('space-drawer');
+    if ((await drawer.count()) === 0) {
+      await page.getByTestId('space-drawer-trigger').click();
+      await expect(drawer).toBeVisible({ timeout: 10_000 });
+    }
 
     // The row's action group is `opacity-0` until the row is hovered, which
     // leaves it visible to Playwright and hoverable by the click itself.
@@ -88,7 +94,14 @@ export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
       0,
       { timeout: 15_000 },
     );
-    await page.keyboard.press('Escape');
+    // Shut the drawer through its own Close control, and wait for it to go.
+    // Escape does not reliably reach it from here — the row that held focus
+    // has just been removed — and a drawer still standing when the next case
+    // starts is not inert: leaving it open cost `selection-bubble-bar`'s
+    // hover case its background-colour assertion, twice out of two runs,
+    // where the same case passes on main.
+    await drawer.getByRole('button', { name: 'Close' }).click();
+    await expect(drawer).toHaveCount(0, { timeout: 10_000 });
   } catch (err) {
     console.warn(`[smoke] could not delete Space ${spaceId}:`, err);
   }
