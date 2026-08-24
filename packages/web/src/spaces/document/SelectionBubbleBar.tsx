@@ -104,6 +104,7 @@ import {
   BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
+import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
@@ -113,6 +114,14 @@ interface BubbleGroup {
   key: string;
   tools: ToolDef[];
   coming: ComingToolDef[];
+  /**
+   * Controls that open a panel instead of running a command.
+   *
+   * A `ToolDef` runs one command when pressed; these hand their element to a
+   * Radix trigger, which is a different shape and not one the eight commands
+   * have any use for.
+   */
+  panels: React.ComponentType<{ editor: Editor }>[];
 }
 
 /**
@@ -132,11 +141,12 @@ interface BubbleGroup {
  * command in its own slice.
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
-  { key: 'blocks', tools: BLOCK_TOOLS, coming: [] },
-  { key: 'marks', tools: MARK_TOOLS, coming: [] },
+  { key: 'blocks', tools: BLOCK_TOOLS, coming: [], panels: [] },
+  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [] },
   {
     key: 'inline',
     tools: INLINE_TOOLS,
+    panels: [DocumentLinkPopover],
     coming: [
       {
         id: 'comment',
@@ -148,6 +158,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
   {
     key: 'ai',
     tools: [],
+    panels: [],
     coming: [
       {
         id: 'ai',
@@ -889,6 +900,9 @@ function BubbleBar({
                 className='mx-[3px] h-4 w-px'
               />
             ) : null}
+            {group.panels.map((Panel, panelIndex) => (
+              <Panel key={panelIndex} editor={editor} />
+            ))}
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
             ))}

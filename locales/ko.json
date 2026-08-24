@@ -703,7 +703,8 @@
         "code": "인라인 코드",
         "comment": "댓글",
         "ai": "AI",
-        "comingLabel": "{name}(미제공)"
+        "comingLabel": "{name}(미제공)",
+        "link": "링크"
       },
       "schemaOutdated": {
         "headline": "문서 편집기가 업데이트되었습니다",
@@ -718,6 +719,13 @@
         "saveSnapshot": "스냅샷 저장",
         "restoreSnapshot": "스냅샷 복원",
         "notOpenYet": "미제공"
+      },
+      "link": {
+        "placeholder": "URL 붙여넣기 또는 입력",
+        "confirm": "완료",
+        "edit": "편집",
+        "remove": "링크 제거",
+        "invalid": "올바른 URL이 아닙니다"
       }
     },
     "readOnlyReconnect": "다시 연결"

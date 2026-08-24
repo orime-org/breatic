@@ -703,7 +703,8 @@
         "code": "Inline code",
         "comment": "Comment",
         "ai": "AI",
-        "comingLabel": "{name} (not open yet)"
+        "comingLabel": "{name} (not open yet)",
+        "link": "Link"
       },
       "schemaOutdated": {
         "headline": "Document editor updated",
@@ -718,6 +719,13 @@
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
         "notOpenYet": "Not open yet"
+      },
+      "link": {
+        "placeholder": "Paste or type a URL",
+        "confirm": "Done",
+        "edit": "Edit",
+        "remove": "Remove link",
+        "invalid": "Not a valid URL"
       }
     },
     "readOnlyReconnect": "Reconnect"

@@ -203,7 +203,7 @@ function markupOf(): string {
 }
 
 describe('选中浮出条', () => {
-  it('选中文字时出现，装的正好是那八个命令', async () => {
+  it('选中文字时出现，装的正好是那八个命令加链接', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -213,7 +213,12 @@ describe('选中浮出条', () => {
     ).map((el) => el.getAttribute('data-testid')?.replace('doc-bubble-tool-', ''));
 
     expect(ids.sort()).toEqual(
-      [...BLOCK_TOOLS, ...MARK_TOOLS, ...INLINE_TOOLS].map((t) => t.id).sort(),
+      // 链接不在这三个数组里：它开的是浮层不是命令，`ToolDef` 装不下
+      // （设计 §4.3）。
+      [...BLOCK_TOOLS, ...MARK_TOOLS, ...INLINE_TOOLS]
+        .map((t) => t.id)
+        .concat('link')
+        .sort(),
     );
   });
 
@@ -241,6 +246,7 @@ describe('选中浮出条', () => {
       'doc-bubble-tool-strike',
       'doc-bubble-tool-underline',
       'doc-bubble-sep-inline',
+      'doc-bubble-tool-link',
       'doc-bubble-tool-code',
       'doc-bubble-coming-comment',
       'doc-bubble-sep-ai',
@@ -1429,7 +1435,7 @@ describe('选中浮出条', () => {
     const view = bubblePluginView(editor);
     expect(
       view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
-    ).toHaveLength(8);
+    ).toHaveLength(9);
 
     act(() => {
       editor.commands.setTextSelection(3);
@@ -1490,7 +1496,7 @@ describe('选中浮出条', () => {
   // 序，鼠标点得进去）。钉它的是上面「整条不可聚焦」那条的
   // `hasAttribute('tabindex')`。这里读 `bar.tabIndex` 读不出区别——没有属性的
   // div 本来就答 -1。
-  it('浮出条的八个命令按钮都不进 Tab 序', async () => {
+  it('浮出条的九个按钮都不进 Tab 序', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1499,7 +1505,7 @@ describe('选中浮出条', () => {
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    expect(buttons).toHaveLength(8);
+    expect(buttons).toHaveLength(9);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);
     }
