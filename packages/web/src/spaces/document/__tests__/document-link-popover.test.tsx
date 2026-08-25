@@ -890,3 +890,33 @@ describe('what the bar carries and what happens around the panel', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe('text that cannot carry a link', () => {
+  it('offers the button dead over inline code', async () => {
+    // `Code`'s mark spec excludes every other mark, so `setLink` over it is a
+    // write that leaves the document untouched. Measured before this case
+    // existed: typing an address and confirming produced identical `getHTML`
+    // either side — a press that says it worked and did nothing.
+    const editor = mount('<p>run <code>npm ci</code> first</p>');
+    await selectWithFocus(editor, 5, 11);
+
+    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+  });
+
+  it('offers it dead for a selection that only partly holds code', async () => {
+    // Half of such a write would land and half would not, which is worse than
+    // neither: the user would see one of the two words they selected turn into
+    // a link.
+    const editor = mount('<p>run <code>npm ci</code> first</p>');
+    await selectWithFocus(editor, 1, 11);
+
+    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+  });
+
+  it('leaves it live over ordinary text beside code', async () => {
+    const editor = mount('<p>run <code>npm ci</code> first</p>');
+    await selectWithFocus(editor, 12, 17);
+
+    expect(screen.getByTestId('doc-bubble-tool-link')).toBeEnabled();
+  });
+});
