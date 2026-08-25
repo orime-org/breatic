@@ -177,7 +177,10 @@ import {
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
-import { attachOccupants } from '@web/spaces/canvas/attach-occupants';
+import {
+  applyOccupants,
+  attachOccupants,
+} from '@web/spaces/canvas/attach-occupants';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
@@ -1157,6 +1160,15 @@ function CanvasSpaceInner({
     setHistoryAvailability(canUndo, canRedo);
   }, [canUndo, canRedo, setHistoryAvailability]);
 
+  // The generate panels live under this provider but read who wrote last
+  // through the store, the way the toolbar reads undo availability: the value
+  // moves on every document change, and putting it on a context would re-render
+  // every node body each time a collaborator typed.
+  const setLastWriteWasLocal = useCanvasStore((s) => s.setLastWriteWasLocal);
+  React.useEffect(() => {
+    setLastWriteWasLocal(lastWriteWasLocal);
+  }, [lastWriteWasLocal, setLastWriteWasLocal]);
+
   const pendingHistoryCommand = useCanvasStore((s) => s.pendingHistoryCommand);
   const consumeHistoryCommand = useCanvasStore(
     (s) => s.consumeHistoryCommand,
@@ -1224,14 +1236,25 @@ function CanvasSpaceInner({
   // selection / drag state is per-user (not in Yjs), so carry it forward by
   // id — otherwise any collaborator / backend write would wipe the current
   // user's selection (including a just-created node's auto-selection).
+  // Read inside the mirror rather than depending on it: a change of holders
+  // has its own effect below, and running this one for it would take the
+  // node's position from Yjs — which is where it was before the drag that is
+  // still in progress.
+  const occupantsRef = React.useRef(occupants);
+  occupantsRef.current = occupants;
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeMirroredSelection(
         prev,
-        nodes.map((node) => attachOccupants(toFlowNode(node), occupants)),
+        nodes.map((node) => attachOccupants(toFlowNode(node), occupantsRef.current)),
       ),
     );
-  }, [nodes, occupants, setFlowNodes]);
+  }, [nodes, setFlowNodes]);
+
+  // Presence arriving on its own: rewrite who holds what and nothing else.
+  React.useEffect(() => {
+    setFlowNodes((prev) => applyOccupants(prev, occupants));
+  }, [occupants, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -2706,7 +2729,7 @@ function CanvasSpaceInner({
   usePublishPresence({
     awareness,
     sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
-    connected: synced,
+    synced,
     containerRef,
     toFlowPosition: toCanvasPoint,
   });

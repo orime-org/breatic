@@ -5,24 +5,16 @@ import * as React from 'react';
 
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
-import { countTagsThatFit } from '@web/spaces/canvas/fit-tags';
 
 /**
- * The row's width limit, in px. Taken from the node name it sits above
- * (`NodeHeader.tsx:80` uses `max-w-[16rem]`), the only width on this anchor
- * that has a source.
+ * How many names the row draws before it starts counting instead.
+ *
+ * Two, the number the project member stack in the top bar already uses
+ * (`MembersStack.tsx`). A name runs to about a hundred pixels, so two of them
+ * plus the count sit inside the 288px node the row hangs above, whoever is
+ * holding it and however long their names are.
  */
-const MAX_ROW_PX = 256;
-
-/** The space between two neighbouring tags, in px (`gap-1`). */
-const GAP_PX = 4;
-
-/**
- * What the `+N` badge takes, in px. An 11px `+9` plus the same padding the
- * tags carry; a node held by more than nine people at once would read `+10`
- * and run a couple of px wider, which costs one tag's place at most.
- */
-const BADGE_PX = 22;
+const MAX_NAMES = 2;
 
 /** Who is holding this node, and how far in its anchor's first line starts. */
 export interface NodeOccupantTagsProps {
@@ -47,8 +39,10 @@ export interface NodeOccupantTagsProps {
  *
  * Someone the roster cannot name is left out rather than drawn as a bare
  * coloured chip: the point of the row is who is there, and a chip with no name
- * answers nothing. A row that ends up empty renders nothing at all, so a node
- * nobody is holding looks exactly as it does today.
+ * answers nothing. Such a person is not counted either — the badge stands for
+ * people whose names exist and were not drawn. A row that ends up empty
+ * renders nothing at all, so a node nobody is holding looks exactly as it does
+ * today.
  * @param props - The component props.
  * @param props.userIds - The user ids holding this node.
  * @param props.indentPx - Left inset matching the name below.
@@ -59,47 +53,32 @@ export function NodeOccupantTags({
   indentPx,
 }: NodeOccupantTagsProps): React.JSX.Element | null {
   const names = useCollaboratorNames();
-  const resolve = names?.resolve;
 
   const people = React.useMemo(() => {
+    const resolve = names?.resolve;
     if (!resolve) return [];
     // `resolve` answers null for someone the roster cannot name — a member who
     // left, or a roster still loading. `flatMap` drops those and narrows the
     // name to a string for everyone that is left.
+    //
+    // The dependency is the whole roster bundle, not the resolver: the
+    // resolver's reference is stable for the component's lifetime by design
+    // (`useResolverRef`), so keying on it would freeze these names at whatever
+    // the roster held the first time — every later rename, and the names that
+    // land when the member query resolves, would never reach the screen.
     return userIds.flatMap((userId) => {
       const name = resolve(userId);
       return name ? [{ userId, name }] : [];
     });
-  }, [userIds, resolve]);
-
-  const rowRef = React.useRef<HTMLDivElement>(null);
-  // A measurement belongs to one exact roster of names, so the key has to
-  // survive names carrying whatever characters a person's name carries.
-  const key = JSON.stringify(people.map((p) => [p.userId, p.name]));
-  const [measured, setMeasured] = React.useState<{ key: string; fit: number } | null>(null);
-  // Until this key has been measured every tag is drawn, which is both the
-  // truthful answer for a row that fits and the state the measurement needs.
-  const fit = measured?.key === key ? measured.fit : people.length;
-
-  React.useLayoutEffect(() => {
-    const row = rowRef.current;
-    if (!row || people.length === 0) return;
-    if (measured?.key === key) return;
-    // `offsetWidth`, not the bounding rect: this row rides inside the node's
-    // counter-scale transform, and the rect would report scaled pixels while
-    // the limit above is a layout one.
-    const widths = [...row.children].map((child) => (child as HTMLElement).offsetWidth);
-    setMeasured({ key, fit: countTagsThatFit(widths, BADGE_PX, MAX_ROW_PX, GAP_PX) });
-  }, [key, people.length, measured]);
+  }, [userIds, names]);
 
   if (people.length === 0) return null;
 
-  const shown = people.slice(0, fit);
+  const shown = people.slice(0, MAX_NAMES);
   const hidden = people.length - shown.length;
 
   return (
     <div
-      ref={rowRef}
       data-testid='node-occupant-tags'
       className='pointer-events-none flex max-w-[16rem] items-center gap-1 pb-1 select-none'
       style={{ paddingLeft: `${indentPx}px` }}
@@ -107,7 +86,7 @@ export function NodeOccupantTags({
       {shown.map((person) => (
         <span
           key={person.userId}
-          className='max-w-[112px] overflow-hidden rounded-content-xs px-[0.3rem] py-[0.1rem] text-2xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]'
+          className='max-w-[112px] shrink-0 overflow-hidden rounded-content-xs px-[0.3rem] py-[0.1rem] text-2xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]'
           style={{ backgroundColor: userPaletteColor(person.userId) }}
         >
           {person.name}
@@ -116,7 +95,7 @@ export function NodeOccupantTags({
       {hidden > 0 ? (
         <span
           data-testid='node-occupant-overflow'
-          className='rounded-content-xs bg-muted-foreground px-[0.3rem] py-[0.1rem] text-2xs font-semibold whitespace-nowrap text-[color:var(--color-on-palette)]'
+          className='shrink-0 rounded-content-xs bg-muted-foreground px-[0.3rem] py-[0.1rem] text-2xs font-semibold whitespace-nowrap text-[color:var(--color-on-palette)]'
         >
           {`+${hidden}`}
         </span>

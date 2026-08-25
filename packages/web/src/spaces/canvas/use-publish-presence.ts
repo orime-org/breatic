@@ -33,8 +33,8 @@ export interface PublishPresenceInput {
   awareness: Awareness | null;
   /** The three local sources of the holding. */
   sources: ActiveNodeSources;
-  /** Whether the document's connection is currently synced. */
-  connected: boolean;
+  /** Whether this document has finished syncing with the server. */
+  synced: boolean;
   /**
    * The canvas container, whose pointer events say where this user is.
    *
@@ -108,10 +108,10 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * screen point becomes a different canvas point and has to be converted again.
  * A pointer that has left the canvas keeps no screen point, which is what stops
  * a later pan from reviving the arrow at a stale spot.
- * @param input - The awareness, the sources, the connection, and the canvas.
+ * @param input - The awareness, the sources, the sync state, and the canvas.
  */
 export function usePublishPresence(input: PublishPresenceInput): void {
-  const { awareness, sources, connected, containerRef, toFlowPosition } = input;
+  const { awareness, sources, synced, containerRef, toFlowPosition } = input;
   const { selectedIds, pickSession, focusTargetId } = sources;
 
   // Read inside the write callback instead of closing over the values, so a
@@ -159,13 +159,13 @@ export function usePublishPresence(input: PublishPresenceInput): void {
     return (): void => throttle.cancel();
   }, [awareness, throttle, selectedIds, pickSession, focusTargetId]);
 
-  // Reconnect. `connected` starts true on a healthy mount, so this also covers
-  // the first publish being scheduled before the document finished syncing.
+  // Reconnect. This also covers the first publish being scheduled before the
+  // document finished syncing, since a fresh mount starts out unsynced.
   React.useEffect(() => {
-    if (!awareness || !connected) return;
+    if (!awareness || !synced) return;
     force.current = true;
     throttle.schedule();
-  }, [awareness, connected, throttle]);
+  }, [awareness, synced, throttle]);
 
   // bfcache restore.
   React.useEffect(() => {

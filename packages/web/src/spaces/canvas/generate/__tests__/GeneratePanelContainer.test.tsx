@@ -59,6 +59,7 @@ vi.mock('@web/data/yjs/use-text-body', async (importActual) => {
 });
 
 import { toast } from 'sonner';
+import en from '@locales/en.json';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
@@ -300,6 +301,14 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession).toBeNull(),
     );
+    // Ending it silently leaves the canvas dimming candidates for a pick the
+    // user never cancelled, with no word about what happened — the whole
+    // point of the mode toggle being writable by a collaborator. The message
+    // is asserted through the catalog so a key that stops resolving is caught
+    // here rather than reaching a user as raw dots.
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEndedModeChanged,
+    );
     listSpy.mockRestore();
   });
 
@@ -394,6 +403,9 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     rerender(tree('plain'));
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession).toBeNull(),
+    );
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEndedModelChanged,
     );
     listSpy.mockRestore();
   });

@@ -28,6 +28,7 @@ import {
   evaluateExecute,
   refusalToastKey,
 } from '@web/spaces/canvas/generate/generate-guards';
+import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -527,8 +528,18 @@ function VideoGeneratePanelBody({
     const running = slotForPurpose(session.purpose);
     if (running && !slotsKey.split(',').includes(running)) {
       endPick();
+      // The slot list comes from the mode, so this is a mode change reaching
+      // the pick — and the write may well have been a collaborator's.
+      toast.warning(
+        t(
+          pickEndToastKey(
+            'modeChanged',
+            useCanvasStore.getState().lastWriteWasLocal,
+          ),
+        ),
+      );
     }
-  }, [slotsKey, nodeId, endPick]);
+  }, [slotsKey, nodeId, endPick, t]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {

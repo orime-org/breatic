@@ -50,6 +50,86 @@ describe('NodeOccupantTags', () => {
     expect(alice.style.backgroundColor).not.toBe(bob.style.backgroundColor);
   });
 
+  it('draws at most two names and counts the rest', () => {
+    // The row hangs above a 288px node and each name runs to about a hundred
+    // pixels, so the count is what keeps it from growing past the node it
+    // belongs to. Same shape as the members stack in the top bar.
+    renderTags(['u1', 'u2', 'u3', 'u4'], {
+      u1: 'Alice',
+      u2: 'Bob',
+      u3: 'Carol',
+      u4: 'Dan',
+    });
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.queryByText('Carol')).not.toBeInTheDocument();
+    expect(screen.getByTestId('node-occupant-overflow')).toHaveTextContent('+2');
+  });
+
+  it('counts only the people it left out', () => {
+    renderTags(['u1', 'u2', 'u3'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' });
+
+    // Two drawn plus the two the badge stands for is the whole party of three.
+    expect(screen.getByTestId('node-occupant-overflow')).toHaveTextContent('+1');
+  });
+
+  it('draws no count when everyone fits', () => {
+    renderTags(['u1', 'u2'], { u1: 'Alice', u2: 'Bob' });
+
+    expect(screen.queryByTestId('node-occupant-overflow')).not.toBeInTheDocument();
+  });
+
+  it('counts only people it could name', () => {
+    // Someone the roster cannot name is not a person the row is hiding — they
+    // are nobody as far as this row is concerned, and counting them would
+    // promise a name that does not exist.
+    renderTags(['u1', 'u2', 'ghost'], { u1: 'Alice', u2: 'Bob' });
+
+    expect(screen.queryByTestId('node-occupant-overflow')).not.toBeInTheDocument();
+  });
+
+  it('picks up a name that lands after the holding did', () => {
+    // The roster arrives from a query, so the first render of a tag row is
+    // routinely one where nobody can be named yet. The resolver's reference
+    // is stable for the component's lifetime by design, so keying the lookup
+    // on it would freeze these names at that first empty roster — and the row
+    // would sit there naming nobody until the node changed hands.
+    const { rerender } = render(
+      <CollaboratorNamesProvider value={roster({})}>
+        <NodeOccupantTags userIds={['u1']} indentPx={4} />
+      </CollaboratorNamesProvider>,
+    );
+    expect(screen.queryByTestId('node-occupant-tags')).not.toBeInTheDocument();
+
+    rerender(
+      <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+        <NodeOccupantTags userIds={['u1']} indentPx={4} />
+      </CollaboratorNamesProvider>,
+    );
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+  });
+
+  it('follows a rename', () => {
+    const ids = ['u1'];
+    const { rerender } = render(
+      <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+        <NodeOccupantTags userIds={ids} indentPx={4} />
+      </CollaboratorNamesProvider>,
+    );
+
+    // The same id list object, so only the roster moved.
+    rerender(
+      <CollaboratorNamesProvider value={roster({ u1: 'Alicia' })}>
+        <NodeOccupantTags userIds={ids} indentPx={4} />
+      </CollaboratorNamesProvider>,
+    );
+
+    expect(screen.getByText('Alicia')).toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+  });
+
   it('leaves out someone the roster cannot name', () => {
     // A member who left the project, or a roster that has not loaded: a
     // coloured chip with no name says nothing about who is there.

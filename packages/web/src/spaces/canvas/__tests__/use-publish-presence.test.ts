@@ -64,6 +64,22 @@ function published(awareness: Awareness): {
 }
 
 /**
+ * Whether this client still has an awareness entry at all.
+ *
+ * Withdrawal has to null the fields and leave the state standing: the collab
+ * server re-encodes each frame against a scratch awareness built fresh, and a
+ * frame carrying a deletion applies to a table that never had this client in
+ * it — so the deletion is a no-op and the peers keep the presence forever.
+ * Reading the fields alone cannot tell the two apart, because a deleted state
+ * answers null for both.
+ * @param awareness - The awareness to inspect.
+ * @returns True while a local state object exists.
+ */
+function stillListed(awareness: Awareness): boolean {
+  return awareness.getLocalState() !== null;
+}
+
+/**
  * Wait out the throttle: an animation frame plus the interval floor.
  * @returns A promise resolved once a scheduled write has run.
  */
@@ -115,7 +131,7 @@ describe('usePublishPresence, the holding', () => {
       usePublishPresence({
         awareness,
         sources: { ...NOTHING, selectedIds: ['a'] },
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -134,7 +150,7 @@ describe('usePublishPresence, the holding', () => {
         usePublishPresence({
           awareness,
           sources,
-          connected: true,
+          synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
         }),
@@ -155,7 +171,7 @@ describe('usePublishPresence, the holding', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -174,7 +190,7 @@ describe('usePublishPresence, the holding', () => {
         usePublishPresence({
           awareness,
           sources,
-          connected: true,
+          synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
         }),
@@ -202,7 +218,7 @@ describe('usePublishPresence, the holding', () => {
         usePublishPresence({
           awareness,
           sources,
-          connected: true,
+          synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
         }),
@@ -229,7 +245,7 @@ describe('usePublishPresence, the holding', () => {
         usePublishPresence({
           awareness,
           sources,
-          connected: true,
+          synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
         }),
@@ -256,11 +272,11 @@ describe('usePublishPresence, the holding', () => {
     const awareness = makeAwareness();
     const { container } = makeCanvas();
     const rendered = renderHook(
-      (connected: boolean) =>
+      (synced: boolean) =>
         usePublishPresence({
           awareness,
           sources: { ...NOTHING, selectedIds: ['a'] },
-          connected,
+          synced,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
         }),
@@ -291,7 +307,7 @@ describe('usePublishPresence, the holding', () => {
       usePublishPresence({
         awareness,
         sources: { ...NOTHING, selectedIds: ['a'] },
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -315,7 +331,7 @@ describe('usePublishPresence, the holding', () => {
       usePublishPresence({
         awareness: null,
         sources: { ...NOTHING, selectedIds: ['a'] },
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -335,7 +351,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -357,7 +373,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition,
       }),
@@ -377,7 +393,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -402,7 +418,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: (screen) => ({ x: screen.x + shift, y: screen.y }),
       }),
@@ -427,7 +443,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -450,7 +466,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: { ...NOTHING, selectedIds: ['a'] },
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -462,6 +478,7 @@ describe('usePublishPresence, the pointer', () => {
     rendered.unmount();
 
     expect(published(awareness)).toEqual({ activeNodeIds: null, pointer: null });
+    expect(stillListed(awareness)).toBe(true);
   });
 
   it('stays withdrawn when a write was already scheduled', async () => {
@@ -474,7 +491,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: { ...NOTHING, selectedIds: ['a'] },
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -486,6 +503,7 @@ describe('usePublishPresence, the pointer', () => {
     await settled();
 
     expect(published(awareness)).toEqual({ activeNodeIds: null, pointer: null });
+    expect(stillListed(awareness)).toBe(true);
   });
 
   it('keeps the user identity the server wrote', async () => {
@@ -498,7 +516,7 @@ describe('usePublishPresence, the pointer', () => {
       usePublishPresence({
         awareness,
         sources: { ...NOTHING, selectedIds: ['a'] },
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),
@@ -519,7 +537,7 @@ describe('usePublishPresence, the write rate', () => {
       usePublishPresence({
         awareness,
         sources: NOTHING,
-        connected: true,
+        synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
       }),

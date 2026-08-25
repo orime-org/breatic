@@ -136,6 +136,14 @@ interface CanvasState {
   /** Canvas → chrome mirror: whether a redo is currently available. */
   canRedo: boolean;
   /**
+   * Canvas → panel mirror: whether this client made the newest document write.
+   *
+   * A panel that has to explain why something of the user's just ended reads
+   * it to decide who it is talking about — the same split the focus-exit
+   * toasts make between "you did this" and "a collaborator did this".
+   */
+  lastWriteWasLocal: boolean;
+  /**
    * Per-user node panel host: the node id whose bottom-anchored panel (Generate,
    * reset-empty-image, or node-history) is open for THIS user, or null. Local UI
    * only (never Yjs) — one collaborator opening a panel must not open it for
@@ -196,6 +204,8 @@ interface CanvasState {
   consumePendingRename: () => void;
   /** Mirror the canvas undo manager's availability flags for the toolbar. */
   setHistoryAvailability: (canUndo: boolean, canRedo: boolean) => void;
+  /** Mirror who made the newest document write. */
+  setLastWriteWasLocal: (local: boolean) => void;
   /**
    * Open the Generate panel for a node (replaces any currently open panel).
    *
@@ -275,6 +285,7 @@ export const useCanvasStore = create<CanvasState>()(
     pendingRename: null,
     canUndo: false,
     canRedo: false,
+    lastWriteWasLocal: true,
     panelHostId: null,
     panelKind: null,
     pickSession: null,
@@ -363,6 +374,10 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.canUndo = canUndo;
         s.canRedo = canRedo;
+      }),
+    setLastWriteWasLocal: (local) =>
+      set((s) => {
+        s.lastWriteWasLocal = local;
       }),
     openGeneratePanel: (nodeId, type) =>
       set((s) => {
@@ -467,6 +482,7 @@ export const useCanvasStore = create<CanvasState>()(
         s.pendingRename = null;
         s.canUndo = false;
         s.canRedo = false;
+        s.lastWriteWasLocal = true;
         s.panelHostId = null;
         s.panelKind = null;
         s.pickSession = null;

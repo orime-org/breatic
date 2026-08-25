@@ -309,14 +309,15 @@ test('a pointer moving on one connection draws an arrow on the other', async () 
 });
 
 test('a pointer leaving the canvas takes the arrow away', async () => {
-  // Out through the top edge of the window, which fires `pointerleave` on the
-  // canvas container the way walking the mouse off the canvas does.
-  await watcher.mouse.move(400, 0);
-  await watcher.evaluate(() => {
-    document
-      .querySelector('.react-flow')
-      ?.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false }));
-  });
+  // Walk the mouse off the canvas and onto the chrome beside it, which is what
+  // a person does when they go back to the agent panel. `pointerleave` fires
+  // on the canvas container, and only a real move produces it — a synthetic
+  // event would have to name that container itself, and naming the wrong
+  // element leaves a case that passes while testing nothing.
+  const box = await watcher.getByTestId('canvas-space').boundingBox();
+  if (box === null) throw new Error('the canvas has no box');
+  await watcher.mouse.move(box.x + 200, box.y + 200);
+  await watcher.mouse.move(box.x - 40, box.y + 200, { steps: 6 });
 
   await expect(viewer.getByTestId('canvas-cursors')).toHaveCount(0, {
     timeout: SETTLE_MS,

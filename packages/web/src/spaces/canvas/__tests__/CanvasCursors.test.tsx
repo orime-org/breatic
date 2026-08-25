@@ -1,18 +1,23 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { Awareness } from 'y-protocols/awareness';
+import * as Y from 'yjs';
 
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
-import { CanvasCursors } from '@web/spaces/canvas/CanvasCursors';
+import { CanvasCursorLayer, CanvasCursors } from '@web/spaces/canvas/CanvasCursors';
 import type { RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 
 // The portal renders into the canvas viewport, which no unit test has; render
-// children in place instead so the cursors can be inspected.
+// children in place instead so the cursors can be inspected. `useStore` is the
+// zoom the counter-scale reads.
 vi.mock('@xyflow/react', () => ({
   ViewportPortal: ({ children }: { children: React.ReactNode }) => children,
+  useStore: (select: (state: { transform: [number, number, number] }) => unknown) =>
+    select({ transform: [0, 0, 1] }),
 }));
 
 /**
@@ -85,6 +90,27 @@ describe('CanvasCursors', () => {
     expect(screen.getByTestId('canvas-cursor-2').style.transform).toContain('scale(2)');
   });
 
+  it('picks up a name that lands after the pointer did', () => {
+    // Same reason as the node tag row: the roster arrives from a query, and a
+    // resolver whose reference never changes would freeze these names at the
+    // empty roster the first frame saw.
+    const pointers = [ALICE];
+    const { rerender } = render(
+      <CollaboratorNamesProvider value={roster({})}>
+        <CanvasCursors pointers={pointers} zoom={1} />
+      </CollaboratorNamesProvider>,
+    );
+    expect(screen.queryByTestId('canvas-cursors')).not.toBeInTheDocument();
+
+    rerender(
+      <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+        <CanvasCursors pointers={pointers} zoom={1} />
+      </CollaboratorNamesProvider>,
+    );
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+  });
+
   it('sits above the nodes that carry a positive z-index', () => {
     // A selected node is at 1000 and a focus crop target at 1002; the portal's
     // own div has no z-index, so without one here the arrow hides behind them.
@@ -97,5 +123,125 @@ describe('CanvasCursors', () => {
     renderCursors([ALICE], { u1: 'Alice' });
 
     expect(screen.getByTestId('canvas-cursors').className).toContain('pointer-events-none');
+  });
+});
+
+describe('CanvasCursorLayer', () => {
+  const open: Array<{ doc: Y.Doc; awareness: Awareness }> = [];
+
+  afterEach(() => {
+    // Unmount before tearing the awareness down. Destroying it drops every
+    // remote state and announces that, which a layer still on screen would
+    // hear — the order a real space closes in, and the one that keeps the
+    // teardown out of the component's render path.
+    cleanup();
+    for (const { doc, awareness } of open.splice(0)) {
+      awareness.destroy();
+      doc.destroy();
+    }
+  });
+
+  /**
+   * Build a real awareness, plus a second one standing in for a peer.
+   * @returns This client's awareness and the peer's client id.
+   */
+  function makeAwareness(): { awareness: Awareness; peerId: number } {
+    const doc = new Y.Doc();
+    const awareness = new Awareness(doc);
+    open.push({ doc, awareness });
+    // A peer is any client id that is not this one.
+    return { awareness, peerId: awareness.clientID + 1 };
+  }
+
+  /**
+   * Put a peer's pointer into the awareness table the way an update does.
+   * @param awareness - The awareness to write into.
+   * @param clientId - The peer's client id.
+   * @param at - Where the peer is pointing, in canvas coordinates.
+   */
+  function peerPointsAt(
+    awareness: Awareness,
+    clientId: number,
+    at: { x: number; y: number },
+  ): void {
+    act(() => {
+      awareness.states.set(clientId, {
+        user: { id: 'u1' },
+        pointer: at,
+      });
+      awareness.emit('change', [
+        { added: [], updated: [clientId], removed: [] },
+        'remote',
+      ]);
+    });
+  }
+
+  it('draws a pointer that was already there when it mounted', () => {
+    const { awareness, peerId } = makeAwareness();
+    awareness.states.set(peerId, { user: { id: 'u1' }, pointer: { x: 5, y: 6 } });
+
+    act(() => {
+      render(
+        <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+          <CanvasCursorLayer awareness={awareness} />
+        </CollaboratorNamesProvider>,
+      );
+    });
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+  });
+
+  it('follows a pointer that moves after it mounted', () => {
+    // The subscription is the whole point of this component: without it the
+    // cursors freeze at whatever the table held on the first render, and every
+    // assertion that only checks a pointer already in place still passes.
+    const { awareness, peerId } = makeAwareness();
+
+    act(() => {
+      render(
+        <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+          <CanvasCursorLayer awareness={awareness} />
+        </CollaboratorNamesProvider>,
+      );
+    });
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+
+    peerPointsAt(awareness, peerId, { x: 10, y: 20 });
+    expect(screen.getByTestId(`canvas-cursor-${peerId}`).style.transform).toContain(
+      'translate(10px, 20px)',
+    );
+
+    peerPointsAt(awareness, peerId, { x: 30, y: 40 });
+    expect(screen.getByTestId(`canvas-cursor-${peerId}`).style.transform).toContain(
+      'translate(30px, 40px)',
+    );
+  });
+
+  it('stops following once it unmounts', () => {
+    const { awareness, peerId } = makeAwareness();
+    const rendered = render(
+      <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+        <CanvasCursorLayer awareness={awareness} />
+      </CollaboratorNamesProvider>,
+    );
+    peerPointsAt(awareness, peerId, { x: 10, y: 20 });
+
+    rendered.unmount();
+
+    // A write after teardown must not reach a listener that is still attached;
+    // `emit` calls its handlers synchronously, so an update on a torn-down
+    // component would throw here rather than pass quietly.
+    expect(() => peerPointsAt(awareness, peerId, { x: 50, y: 60 })).not.toThrow();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+  });
+
+  it('draws nothing before the document attaches', () => {
+    render(
+      <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+        <CanvasCursorLayer awareness={null} />
+      </CollaboratorNamesProvider>,
+    );
+
+    expect(screen.queryByTestId('canvas-cursors')).not.toBeInTheDocument();
   });
 });

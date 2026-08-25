@@ -49,6 +49,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 
 import * as Y from 'yjs';
 import { toast } from 'sonner';
+import en from '@locales/en.json';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
@@ -925,6 +926,28 @@ describe('VideoGeneratePanelContainer', () => {
       await screen.findByTestId('generate-video-execute');
       await screen.findByTestId('generate-video-tool-end-frame');
     }
+
+    it('ends a pick whose slot the mode took away, and says so', async () => {
+      // The slot list comes from the mode, and a collaborator can write the
+      // mode. Without this the canvas keeps dimming candidates for a slot that
+      // no longer renders, and the banner's Exit is the only way out.
+      const view = await openPanelInMode('first_last', 'kling-i2v');
+      fireEvent.click(await screen.findByTestId('generate-video-tool-end-frame'));
+      expect(useCanvasStore.getState().pickSession?.purpose).toBe('endFrame');
+      vi.mocked(toast.warning).mockClear();
+
+      // The mode moves to one with no end-frame slot — a plain image-to-video.
+      const moved = { mode: 'i2v', model: 'kling-i2v' };
+      seedVideoNode(moved);
+      view.rerender(panelTree('video', moved));
+
+      await waitFor(() =>
+        expect(useCanvasStore.getState().pickSession).toBeNull(),
+      );
+      expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+        en.canvas.generatePanel.pickEndedModeChanged,
+      );
+    });
 
     it('offers both slots, and only in this mode', async () => {
       await openFirstLastPanel();
