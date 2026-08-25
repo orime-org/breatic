@@ -240,7 +240,10 @@ export async function chargeForGeneration(
   return db.transaction(async (tx) => {
     // The debt row first, and before any lot. Both writers take it in this
     // order, so two charges on one studio — or a charge and a designation —
-    // queue up rather than each holding half of what the other needs.
+    // queue up rather than each holding half of what the other needs. The
+    // whole order is `studios` → `studio_members` → `studio_credit_debts` →
+    // `credit_lots`; a charge joins it at the debt, a designation one table
+    // earlier, and accepting a transfer at the membership.
     await creditLotRepo.lockDebt(studioId, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
@@ -411,7 +414,9 @@ export async function designateLot(input: {
     }
 
     // The debt row before the lot, the same order a charge takes them in, so
-    // the two queue up rather than deadlocking against each other.
+    // the two queue up rather than deadlocking against each other. With the
+    // membership taken just above, this call runs the whole order:
+    // `studio_members` → `studio_credit_debts` → `credit_lots`.
     const owedMicro =
       input.studioId === null
         ? 0

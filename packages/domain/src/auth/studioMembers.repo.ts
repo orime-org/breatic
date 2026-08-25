@@ -200,9 +200,11 @@ export async function upsertMember(
  * studio's admin must use {@link lockMembership} instead — see there for why
  * filtering on `role` breaks under concurrency.
  *
- * **Ordering across tables: `studio_members` before `project_members`.**
- * Leaving locks membership first and then writes project rows; a caller that
- * took a project row first would deadlock against it.
+ * **Ordering across tables: `studios` → `studio_members` → `studio_credit_debts`
+ * → `credit_lots`, with `project_members` a leaf off `studio_members`.**
+ * Leaving locks membership first and then writes project rows; designating
+ * takes this row, then the studio's debt, then the lot; a caller that took any
+ * of those first would deadlock against them.
  * @param studioId - Studio UUID
  * @param userId - User UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
@@ -256,10 +258,12 @@ export async function lockMemberRole(
  * order, so they queue instead of deadlocking, and no caller has to reason
  * about which of the admin row and the target row to take first.
  *
- * **Ordering across tables still holds: `studio_members` before
- * `project_members`.** Leaving locks the membership here and then writes
- * project rows; a path that took a project row first would deadlock against
- * it.
+ * **Ordering across tables still holds: `studios` → `studio_members` →
+ * `studio_credit_debts` → `credit_lots`, with `project_members` a leaf off
+ * `studio_members`.** Leaving locks the membership here and then writes
+ * project rows; accepting a transfer locks it here and then releases the
+ * outgoing admin's credit lots. A path that took a project row or a lot first
+ * would deadlock against them.
  * @param studioId - Studio UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
  * @returns Every active member of an active studio; empty when the studio is
