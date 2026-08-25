@@ -118,9 +118,9 @@ interface BubbleGroup {
   /**
    * Controls that open a panel instead of running a command.
    *
-   * A `ToolDef` runs one command when pressed; these hand their element to a
-   * Radix trigger, which is a different shape and not one the eight commands
-   * have any use for.
+   * A `ToolDef` runs one command when pressed; these own a panel and the state
+   * that goes with it, which is a different shape and not one the eight
+   * commands have any use for.
    */
   panels: React.ComponentType<{
     editor: Editor;

@@ -344,6 +344,15 @@ describe('changing a link', () => {
     await waitFor(() => {
       expect(screen.getByTestId('doc-link-input')).toHaveValue(HREF);
     });
+    // Seeded, focused and selected — the three halves of §5.3's `press-edit ×
+    // view` cell. Focus is its own assertion because entering `edit` swaps the
+    // panel's contents without remounting it, so the focus manager's open-time
+    // focus does not fire again and an effect has to do it. Measured with that
+    // effect removed: the active element was the panel's own container and the
+    // caret sat at the end of the address, so a retype would append to it.
+    const field = screen.getByTestId('doc-link-input') as HTMLInputElement;
+    expect(field).toHaveFocus();
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, HREF.length]);
   });
 
   it('replaces the address and puts the panel away on confirm', async () => {

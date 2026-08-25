@@ -11,8 +11,9 @@
  * "the link just went away", and those two want opposite things.
  *
  * The button is its own kind rather than a ninth `ToolDef`: a `ToolDef` runs a
- * command on click, and this one hands its element to Radix to be the popover
- * trigger.
+ * command on click, and this one owns a panel — its own state, its own
+ * `aria-expanded`, and a position measured by `@floating-ui/react` against a
+ * DOM Range over the target.
  */
 
 import * as React from 'react';
