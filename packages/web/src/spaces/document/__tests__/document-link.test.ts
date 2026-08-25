@@ -293,6 +293,19 @@ describe('what an unqualified string becomes', () => {
     expect(editor.getHTML()).toContain('https://example.com');
   });
 
+  it('leaves a typed email address as text, so a mailto: link is hand-made', () => {
+    // Which is why `mailto:` earns its place on the hosted-scheme exception
+    // list by being a thing people type, not by being a thing this editor
+    // writes: autolink recognises URLs and not addresses. Measured — the body
+    // below comes back as `<p>someone@a.example </p>`, no anchor.
+    const editor = open('<p></p>');
+    editor.commands.setTextSelection(1);
+    editor.commands.insertContent('someone@a.example ');
+
+    expect(editor.getHTML()).not.toContain('<a');
+    expect(isLinkUrlShaped('mailto:someone@a.example')).toBe(true);
+  });
+
   it('drops the whitespace a paste carries in', () => {
     // Dragging across an address in another app puts a space on one end of the
     // clipboard often enough to be the normal case rather than the odd one.
@@ -326,10 +339,9 @@ describe('which span the panel anchors to', () => {
 });
 
 describe('which strings are shaped like a URL', () => {
-  // The last two carry no host at all, which is what their schemes are for —
-  // and `mailto:` is a shape this editor's own autolink produces from a typed
-  // email address, so refusing it would leave a link the product made that the
-  // panel can show but never change.
+  // `mailto:` and `tel:` carry no host at all, which is what their schemes are
+  // for, so a host question would refuse both. They are written by hand — the
+  // case above measures autolink leaving a typed email address alone.
   //
   // `a.example/a b` qualifies before the check runs, so its space lands in a
   // path, where it is legal. Its twin sits in UNSHAPED with the space in the

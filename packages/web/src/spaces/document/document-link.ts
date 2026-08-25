@@ -48,9 +48,13 @@ const HOST_CHARS = /^[a-z\d.-]+$/i;
  * The schemes that address a host, out of the ten the extension allows.
  *
  * The other six — `mailto` `tel` `callto` `sms` `cid` `xmpp` — address a person
- * or a thing, and parse to an empty host. One of them arrives on its own:
- * autolink turns a typed email address into a `mailto:` link, so the check
- * below has to accept what this editor itself writes.
+ * or a thing, and parse to an empty host. Asking a host question of those
+ * would refuse every one of them, so the scheme is the whole answer there and
+ * the extension's own check has already given it.
+ *
+ * They arrive by hand: measured, autolink recognises URLs and leaves a typed
+ * email address as plain text, so `mailto:` reaches this check only because
+ * someone wrote it out.
  */
 const HOSTED_SCHEMES = new Set(['http:', 'https:', 'ftp:', 'ftps:']);
 
@@ -116,10 +120,11 @@ export function resolveLinkInSpan(
     if (!node.isText) return true;
     const mark: Mark | undefined = node.marks.find((m) => m.type === linkType);
     if (!mark) return true;
-    // Inside the node and inside the selection both: a text node can start
-    // before the selection does, and `getMarkRange` reads what sits either
-    // side of the position it is given.
-    const found = getMarkRange(state.doc.resolve(Math.max(pos, from)), linkType);
+    // The node's own start, which a selection beginning mid-link sits after.
+    // That is enough because ProseMirror splits text nodes on their marks: the
+    // node this callback just found the link on carries it from end to end, so
+    // `getMarkRange` reads the same link from either position.
+    const found = getMarkRange(state.doc.resolve(pos), linkType);
     if (!found) return true;
     range = { from: found.from, to: found.to };
     href = typeof mark.attrs.href === 'string' ? mark.attrs.href : null;
