@@ -16,11 +16,17 @@ import { useId, useMemo, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components, Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import {
+  DISPLAY_MATH_CLASS,
+  displayMathPlugin,
+} from '@web/pages/project/chat/display-math-plugin';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
 
 interface MarkdownMessageProps {
@@ -28,7 +34,21 @@ interface MarkdownMessageProps {
   content: string;
   /** Whether this turn is still receiving tokens. */
   streaming?: boolean;
+  /** Which step of the type scale the prose is drawn at. */
+  size?: keyof typeof SIZE_CLASS;
 }
+
+/**
+ * The sizes this renderer is drawn at.
+ *
+ * The lengths in `.chat-markdown` are all em, based on this element, so the
+ * size belongs here rather than on whatever holds it. Written out rather than
+ * composed, because Tailwind finds a class by reading the source.
+ */
+const SIZE_CLASS = {
+  sm: 'chat-markdown text-sm',
+  '2xs': 'chat-markdown text-2xs',
+} as const;
 
 /**
  * Which markers get closed while a reply is still arriving.
@@ -69,16 +89,46 @@ const COMPLETION = {
   inlineKatex: false,
 } as const;
 
-/** The plugin list react-markdown takes, named through the prop that takes it. */
+/** The plugin lists react-markdown takes, named through the props that take them. */
+type Remark = NonNullable<Options['remarkPlugins']>;
 type Rehype = NonNullable<Options['rehypePlugins']>;
 
-const REMARK_PLUGINS = [remarkGfm];
+// `$$` on lines of their own is a formula on a line of its own, and `$$…$$`
+// inside a sentence is one inside a sentence. A lone `$` is a character:
+// remark-math would read it as a formula, and a price is written far more
+// often than one (user 2026-08-25).
+const REMARK_PLUGINS: Remark = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+
+/**
+ * How a formula is rendered.
+ *
+ * Every switch is given a value, for the reason `COMPLETION` above carries.
+ * `displayMode` and `throwOnError` are absent because rehype-katex owns them:
+ * its own option type is `Omit<KatexOptions, 'displayMode' | 'throwOnError'>`.
+ */
+const KATEX = {
+  // KaTeX's own default is a hard-coded #cc0000, which belongs to neither
+  // theme. A formula that failed to parse is shown as the LaTeX the model
+  // wrote, and there is nothing the reader can do about it, so it is said
+  // quietly. The grey is what @streamdown/math runs on.
+  errorColor: 'var(--color-muted-foreground)',
+  // `true` lets `\href` produce an anchor carrying neither target nor rel,
+  // which every other link in a reply gets from `MarkdownLink` below.
+  trust: false,
+  // The four below are KaTeX's documented defaults, written out because a
+  // later version could change what a default is. @streamdown/math, the
+  // complete implementation this pipeline borrows from, runs on all four.
+  output: 'htmlAndMathml',
+  strict: 'warn',
+  maxExpand: 1000,
+  maxSize: Infinity,
+} as const;
 
 // Handed no language set, `rehype-highlight` colours with lowlight's `common`
 // — thirty-seven grammars, all of which it imports at the top of its own
 // module whatever it is given. Its `detect` stays off, so a block reaches a
 // grammar only by naming one.
-const REHYPE: Rehype = [rehypeHighlight];
+const REHYPE_TAIL: Rehype = [rehypeHighlight];
 
 /**
  * A wide table scrolls sideways through the app's own scroller.
@@ -91,6 +141,51 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
     <ScrollArea className='my-[1.1em]' scrollbars='horizontal'>
       <table>{children}</table>
     </ScrollArea>
+  );
+}
+
+/**
+ * A formula on a line of its own scrolls sideways through the app's scroller.
+ *
+ * `min-width` on the viewport's own wrapper is what keeps a narrow formula
+ * centred: Radix sizes that wrapper as a table, which shrinks to its content
+ * and leaves `text-align: center` nothing to centre within. The margin moves
+ * out here for the reason the table's does — left inside, `.chat-markdown >
+ * :first-child` would clear the scroller's margin instead of the formula's,
+ * and a reply that opens with a formula would carry a gap.
+ * @param root0 - The props react-markdown hands the wrapper.
+ * @param root0.children - The rendered formula.
+ * @returns The formula inside a horizontal scroller.
+ */
+function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
+  return (
+    <ScrollArea
+      className='my-[1em] [&_.katex-display]:my-0'
+      scrollbars='horizontal'
+      viewportClassName='[&>div]:min-w-full'
+    >
+      {children}
+    </ScrollArea>
+  );
+}
+
+/**
+ * Either the wrapper above or the plain element the tag otherwise means.
+ * @param root0 - The props react-markdown hands a `div`.
+ * @param root0.className - What the element carries.
+ * @param root0.children - Its contents.
+ * @returns The element.
+ */
+function MarkdownDiv({
+  className,
+  children,
+  ...rest
+}: { className?: string; children?: ReactNode }): ReactElement {
+  if (className === DISPLAY_MATH_CLASS) return <ScrollableMath>{children}</ScrollableMath>;
+  return (
+    <div className={className} {...rest}>
+      {children}
+    </div>
   );
 }
 
@@ -166,6 +261,7 @@ const COMPONENTS = {
   a: MarkdownLink,
   table: ScrollableTable,
   input: TaskMark,
+  div: MarkdownDiv,
 } as Components;
 
 /**
@@ -173,11 +269,13 @@ const COMPONENTS = {
  * @param root0 - The component props.
  * @param root0.content - The assistant's prose, as markdown.
  * @param root0.streaming - Whether this turn is still receiving tokens.
+ * @param root0.size - Which step of the type scale the prose is drawn at.
  * @returns The rendered prose.
  */
 export function MarkdownMessage({
   content,
   streaming = false,
+  size = 'sm',
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
   // Unique per rendered message, so the footnote ids below are too.
@@ -191,9 +289,11 @@ export function MarkdownMessage({
   // machinery produces. Keyed on the strings so a language change rebuilds it.
   const footnotes = t('chat.markdown.footnotes');
   const backTo = t('chat.markdown.backToReference', { index: '{index}' });
-  // Runs before the colouring, which only rebuilds code elements.
+  // The wrapping step reads what KaTeX left behind, so it follows it. The
+  // footnote step runs before the colouring, which only rebuilds code
+  // elements.
   const rehypePlugins = useMemo<Rehype>(
-    () => [[footnoteScopePlugin, scope], ...REHYPE],
+    () => [[rehypeKatex, KATEX], displayMathPlugin, [footnoteScopePlugin, scope], ...REHYPE_TAIL],
     [scope],
   );
   const remarkRehypeOptions = useMemo(
@@ -216,7 +316,7 @@ export function MarkdownMessage({
   );
 
   return (
-    <div className='chat-markdown text-sm' data-testid='markdown-body'>
+    <div className={SIZE_CLASS[size]} data-testid='markdown-body'>
       <Markdown
         components={COMPONENTS}
         rehypePlugins={rehypePlugins}

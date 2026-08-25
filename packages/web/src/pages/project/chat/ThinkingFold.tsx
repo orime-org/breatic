@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 
 interface ThinkingFoldProps {
   thinking: string;
@@ -45,12 +46,15 @@ export function ThinkingFold({
         Thinking
       </Button>
       {open ? (
-        <pre
+        // The reasoning is written one step per line, and markdown folds a
+        // single newline into a space — so the lines are held here, and the
+        // renderer is left to the markdown the model wrote.
+        <div
           data-testid='thinking-fold-body'
-          className='whitespace-pre-wrap px-2 py-1 font-sans text-2xs text-muted-foreground'
+          className='whitespace-pre-line px-2 py-1 text-muted-foreground'
         >
-          {thinking}
-        </pre>
+          <MarkdownMessage content={thinking} size='2xs' />
+        </div>
       ) : null}
     </div>
   );

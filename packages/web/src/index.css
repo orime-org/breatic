@@ -9,6 +9,10 @@
    UI scale — chrome v4.x + ADR 14 amended, single source of truth). */
 @import './theme/tokens.css';
 
+/* KaTeX's own stylesheet and fonts, which its markup is unreadable without.
+   The fonts are self-hosted into the build, as @fontsource/inter's are. */
+@import 'katex/dist/katex.min.css';
+
 html,
 body,
 #root {
