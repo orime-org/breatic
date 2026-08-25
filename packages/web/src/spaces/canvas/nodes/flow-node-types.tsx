@@ -81,7 +81,10 @@ function makeFlowNode(
       // tag, whichever channels say so. Returning `held` itself keeps the
       // reference the mirror already stabilised.
       if (starter === undefined || held.includes(starter)) return held;
-      return [...held, starter];
+      // First, because the row draws two names and counts the rest: a running
+      // generation shows no author anywhere else on the node, while the people
+      // holding it by selection also carry a cursor and an outline.
+      return [starter, ...held];
     }, [held, starter]);
     const {
       renameNode,

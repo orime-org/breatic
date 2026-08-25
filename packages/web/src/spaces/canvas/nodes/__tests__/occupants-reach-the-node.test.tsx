@@ -133,6 +133,18 @@ describe('the holders reaching a node', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  it('names the starter first when the row has to count the rest', () => {
+    // The row draws two names and counts the rest, so position decides who is
+    // seen. The starter is the one name that answers a question the node body
+    // cannot: a running generation shows no author. Held-by-selection is
+    // already visible another way — those people have a cursor and an outline
+    // on screen — so the starter goes first and never falls into the count.
+    renderNode('image', ['u2', 'u3'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' }, 'u1');
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+    expect(screen.getByTestId('node-occupant-overflow')).toHaveTextContent('+1');
+  });
+
   it('keeps the tags inside the name anchor, not on the render root', () => {
     // Hung on the render root the row would land on the node name's own line:
     // the root's top edge IS the card's top edge (measured on a real canvas,
