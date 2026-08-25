@@ -55,6 +55,16 @@ const HOST_CHARS = /^[a-z\d.-]+$/i;
 const HOSTED_SCHEMES = new Set(['http:', 'https:', 'ftp:', 'ftps:']);
 
 /**
+ * A scheme at the head of the string, by RFC 3986 §3.1's grammar.
+ *
+ * `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` before the colon. Asking for a
+ * colon anywhere instead reads a scheme into strings that carry none: `8080:80`
+ * has one before the colon that no scheme may start with, and left unqualified
+ * it parses as nothing at all.
+ */
+const SCHEME = /^[a-z][a-z\d+.-]*:/i;
+
+/**
  * Which link the given selection holds.
  *
  * Reads what the selection COVERS. A probe that reads its two endpoints
@@ -164,7 +174,7 @@ export function removeLink(editor: Editor, range: LinkRange): void {
  */
 export function normalizeLinkUrl(raw: string): string {
   const trimmed = raw.trim();
-  return trimmed.includes(':') ? trimmed : `${DEFAULT_LINK_PROTOCOL}://${trimmed}`;
+  return SCHEME.test(trimmed) ? trimmed : `${DEFAULT_LINK_PROTOCOL}://${trimmed}`;
 }
 
 /**

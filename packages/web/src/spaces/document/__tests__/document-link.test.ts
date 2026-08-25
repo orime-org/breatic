@@ -339,6 +339,11 @@ describe('which strings are shaped like a URL', () => {
     HREF,
     'breatic',
     '192.168.1.1',
+    // A colon is not a scheme. RFC 3986 §3.1 says a scheme starts with a
+    // letter, so this string carries none and gets qualified like any bare
+    // address, leaving `8080` as a single-label host and `80` as its port.
+    // Read as already-qualified it parses as nothing and is refused.
+    '8080:80',
     'a.example/a b',
     'mailto:someone@a.example',
     'tel:+15551234567',
@@ -349,7 +354,18 @@ describe('which strings are shaped like a URL', () => {
     'example.com ',
     ` ${HREF}`,
   ];
-  const UNSHAPED = ['hello world', 'a b.com', 'hello<world', 'htp:/breatic', ''];
+  // `example.com:8080` carries a scheme by RFC 3986's grammar — a scheme may
+  // hold dots — so it is read as one, and the extension's own check refuses
+  // the scheme `example.com:`. Pinned as the behaviour it is; #908 is where
+  // the question of what a person means by it gets decided.
+  const UNSHAPED = [
+    'hello world',
+    'a b.com',
+    'hello<world',
+    'htp:/breatic',
+    '',
+    'example.com:8080',
+  ];
 
   SHAPED.forEach((raw) => {
     it(`accepts ${JSON.stringify(raw)}`, () => {
