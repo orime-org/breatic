@@ -155,6 +155,9 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 ## 画布内浮层必须跟随视口(MANDATORY)
 生成面板 —— **以及未来所有画布内的生成 / mini-tool 面板(视频 / 音频 / 文本生成、mini-tool 编辑面板等)** —— 里**任何锚在节点上的 Radix 浮层**(Popover / Tooltip / DropdownMenu…)打开时必须**跟随画布 pan / zoom**、相对触发它的节点固定,**不是固定在屏幕**。原因:Radix 的 Floating-UI autoUpdate 只认 scroll / resize、**不认祖先 CSS-transform**,而 ReactFlow 靠 transform 做 pan/zoom → 不接跟随的浮层会漂离节点(user 2026-07-19 报 model picker / mode 下拉 / hover 预览都漂,#1796)。做法二选一:① Radix 浮层(picker / tooltip)= `useFollowCanvasViewport(open)`(`spaces/canvas/generate/use-follow-canvas-viewport.ts`,盯 `.react-flow__viewport` 的 transform 变化→每帧 nudge 重定位)**+ `avoidCollisions={false}`**(碰视口边直接裁、不 flip/shift —— flip 会和跟随打架跳来跳去,user 拍板 clip-not-jump);② caret 锚定的 `@` suggestion 浮层 = floating-ui `autoUpdate({ animationFrame: true })`(每帧从 live caret rect 重算)。判定题:**这个浮层开在画布里、锚在某个节点 / caret 上吗?是 → 上面二选一,别只靠 Radix 默认定位**。参照实现:`RatioResolutionPicker` / `CameraPicker` / `ModelPicker` / `ImageModeToggle` / `HoverPreview`(节点历史 + 生成面板 chip 的统一 hover 预览,`followCanvas` prop 切跟随 / 屏幕两套)。
 
+## 必须送达的写入不排进帧调度(MANDATORY)
+拿 `requestAnimationFrame` 做节流的地方,**只有「晚一点也没关系」的写入可以排上去**。**隐藏的文档拿不到动画帧** —— HTML 规范的 update the rendering 步骤直接跳过 `visibilityState === 'hidden'` 的文档,而切走标签页 / 切走应用正是要发撤回的那一刻,排上去的那一帧永远不来;节流器通常还有一道「已经排了就别再排」的闸,那个不来的帧会把之后每一次请求一起吞掉,切回来也不自愈。所以**撤回、清理、离场通知一律当场写**(`awareness.setLocalState` / `sendBeacon` / `fetch(keepalive)`)。判定题:**这个写入必须送达吗?必须 → 直接写,别经过帧调度**。落地处:画布在场的窗口失焦与卸载撤回都直接 `setLocalState`(`spaces/canvas/use-publish-presence.ts`),节流器本体 `spaces/canvas/publish-throttle.ts` 只承接「说说这一刻在哪」这类可以丢的写入。**`blur` 一个事件覆盖切应用 / 切窗口 / 切标签页三种离场**,不需要再叠 `visibilitychange`。
+
 ## 节点状态门控:locked / handling(MANDATORY,单一策略源)
 画布节点有两种「冻结变更」的状态,门控规则是**单一真相源** `spaces/canvas/node-gate.ts` 的纯函数 `evaluateNodeGate(state, op)`:**每个变更入口**(删除 / 上传 / 生成执行 / 内容编辑 / 移动 / 改名)都经它判定,**keyed on 状态 + 操作、绝不 keyed on 节点类型** —— 未来 text / 音频 / 视频节点天然复用同一门,新增可生成模态时把它的变更入口接进同一策略即可,**不逐模态补 `if (locked)`**。
 
