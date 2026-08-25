@@ -1240,6 +1240,26 @@ test('link: an address with a space in the host leaves confirm dimmed', async ()
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect(page.getByTestId('doc-link-invalid')).toBeVisible({ timeout: 5_000 });
   await expect(input).toHaveAttribute('aria-invalid', 'true');
+
+  // The red edge the demo's fourth state draws, which `Input` gives the field
+  // from that attribute. Compared against the message's own colour rather than
+  // a literal, since both come from `--color-status-error-foreground` and the
+  // two themes give it different values. Polled: the field carries
+  // `transition-colors`, and on the frame the message appears it is still part
+  // way there — measured at rgb(99, 93, 93) against rgb(206, 44, 49) settled.
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const edge = getComputedStyle(
+          document.querySelector('[data-testid="doc-link-input"]')!,
+        ).borderTopColor;
+        const message = getComputedStyle(
+          document.querySelector('[data-testid="doc-link-invalid"]')!,
+        ).color;
+        return `${edge} | ${message}`;
+      }),
+    )
+    .toMatch(/^(rgba?\([^)]+\)) \| \1$/);
 });
 
 test('link: the panel sits against the link it acts on', async () => {
