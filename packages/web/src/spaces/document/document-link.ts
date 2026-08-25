@@ -135,6 +135,48 @@ export function resolveLinkInSpan(
 }
 
 /**
+ * Whether every part of a span can carry a link mark.
+ *
+ * Two ways a span refuses one, and asking about either alone leaves the other
+ * live. A mark can exclude it: inline `code`'s spec excludes every other mark.
+ * A node can refuse all marks: `codeBlock`'s content spec is `marks: ""`, and
+ * that carries no `code` mark of its own, so a question about marks answers
+ * "no code here" inside a code block. Measured: `setLink` over a code block
+ * returns byte-identical HTML — a press that says it worked and did nothing.
+ *
+ * Asked of the whole span rather than of any part of it: a write that lands on
+ * half of what the user selected turns one of their two words into a link.
+ * @param state - The editor state to read.
+ * @param from - Where the span starts.
+ * @param to - Where it ends.
+ * @returns True when a link written here would land everywhere.
+ * @throws {never}
+ */
+export function canLinkSpan(state: EditorState, from: number, to: number): boolean {
+  const linkType = state.schema.marks.link;
+  if (!linkType) return false;
+
+  let allowed = true;
+  state.doc.nodesBetween(from, to, (node, _pos, parent) => {
+    if (!allowed) return false;
+    if (!node.isText) return true;
+    if (parent && !parent.type.allowsMarkType(linkType)) {
+      allowed = false;
+      return false;
+    }
+    // A link excludes itself (ProseMirror's default `excludes: "_self"`), and
+    // replacing one is what the `edit` state does, so its own mark is not a
+    // refusal.
+    if (node.marks.some((m) => m.type !== linkType && m.type.excludes(linkType))) {
+      allowed = false;
+      return false;
+    }
+    return true;
+  });
+  return allowed;
+}
+
+/**
  * Put a link on the given range.
  *
  * Goes through the extension's own command, which carries two things a bare

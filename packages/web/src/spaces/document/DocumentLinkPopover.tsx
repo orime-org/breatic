@@ -46,6 +46,7 @@ import {
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
+  canLinkSpan,
   type LinkRange,
   type LinkSelection,
 } from '@web/spaces/document/document-link';
@@ -232,11 +233,6 @@ export function DocumentLinkPopover({
     selector: ({ editor: e }) => (e ? resolveLinkSelection(e.state).range !== null : false),
   });
 
-  // Text a link cannot be written onto: `Code`'s mark spec excludes every
-  // other mark, so `setLink` over it is a write that leaves the document
-  // untouched. Asked as "does the selection touch any" rather than "is it all
-  // code": a partial write lands on half of what the user selected, which is
-  // worse to look at than a button that says no.
   // Subscribed for the same reason: a select-all arrives as a transaction with
   // no React render behind it. Read in the render body instead, the button
   // stayed on screen after `Mod-a` and vanished only when something else
@@ -247,14 +243,15 @@ export function DocumentLinkPopover({
     selector: ({ editor: e }) => (e ? isWholeDocumentSelection(e.state) : false),
   });
 
-  const touchesCode = useEditorState({
+  // Text a link cannot be written onto — see `canLinkSpan` for the two ways a
+  // span refuses one. A write that lands nowhere, or on half of what the user
+  // selected, is what the button says no to.
+  const canLink = useEditorState({
     editor,
     selector: ({ editor: e }) => {
       if (!e) return false;
-      const codeType = e.state.schema.marks.code;
-      if (!codeType) return false;
       const { from, to } = e.state.selection;
-      return e.state.doc.rangeHasMark(from, to, codeType);
+      return canLinkSpan(e.state, from, to);
     },
   });
 
@@ -423,7 +420,7 @@ export function DocumentLinkPopover({
         aria-pressed={holdsLink}
         aria-haspopup='dialog'
         aria-expanded={mode !== 'closed'}
-        disabled={touchesCode}
+        disabled={!canLink}
         onClick={() => (mode === 'closed' ? openFromSelection() : close())}
         data-testid='doc-bubble-tool-link'
         // The bar stays out of the tab order entirely, as the eight command

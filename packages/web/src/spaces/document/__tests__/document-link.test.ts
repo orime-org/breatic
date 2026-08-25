@@ -36,6 +36,7 @@ import {
   removeLink,
   normalizeLinkUrl,
   isLinkUrlShaped,
+  canLinkSpan,
 } from '@web/spaces/document/document-link';
 
 const editors: Editor[] = [];
@@ -336,6 +337,44 @@ describe('which span the panel anchors to', () => {
   // reader is looking, and over a select-all nothing about the selection does.
   // `DocumentLinkPopover`'s `measureAnchor` takes that line; where it lands is
   // measured in the smoke case "the panel opens where the reader is".
+});
+
+
+describe('which spans can carry a link at all', () => {
+  // The question the button asks before it lets itself be pressed. Two ways a
+  // span refuses a link: a mark that excludes it (inline `code`), and a node
+  // whose content spec allows no marks (`codeBlock`, spec `marks: ""`). Asking
+  // only about the first leaves the second live — measured, `setLink` over a
+  // code block returns byte-identical HTML.
+  it('accepts ordinary prose', () => {
+    const editor = open('<p>plain words here</p>');
+    expect(canLinkSpan(editor.state, 1, 12)).toBe(true);
+  });
+
+  it('accepts prose that already holds a link', () => {
+    const editor = openOneLink();
+    expect(canLinkSpan(editor.state, 4, 12)).toBe(true);
+  });
+
+  it('refuses inline code', () => {
+    const editor = open('<p>run <code>npm ci</code> first</p>');
+    expect(canLinkSpan(editor.state, 5, 11)).toBe(false);
+  });
+
+  it('refuses a span that only partly holds inline code', () => {
+    const editor = open('<p>run <code>npm ci</code> first</p>');
+    expect(canLinkSpan(editor.state, 1, 11)).toBe(false);
+  });
+
+  it('refuses a code block', () => {
+    const editor = open('<pre><code>npm install</code></pre>');
+    expect(canLinkSpan(editor.state, 1, 12)).toBe(false);
+  });
+
+  it('refuses a span running from prose into a code block', () => {
+    const editor = open('<p>see this</p><pre><code>npm i x</code></pre>');
+    expect(canLinkSpan(editor.state, 1, 18)).toBe(false);
+  });
 });
 
 describe('which strings are shaped like a URL', () => {

@@ -899,6 +899,24 @@ describe('text that cannot carry a link', () => {
     expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
   });
 
+  it('offers it dead inside a code block', async () => {
+    // A different refusal from inline code: `codeBlock`'s content spec allows
+    // no marks at all, so a question about the `code` mark answers "no code
+    // here". Measured before the guard asked the right question: `setLink` over
+    // this selection returned byte-identical HTML.
+    const editor = mount('<pre><code>npm install</code></pre>');
+    await selectWithFocus(editor, 1, 12);
+
+    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+  });
+
+  it('offers it dead for a selection running from prose into a code block', async () => {
+    const editor = mount('<p>see this</p><pre><code>npm i x</code></pre>');
+    await selectWithFocus(editor, 1, 18);
+
+    expect(screen.getByTestId('doc-bubble-tool-link')).toBeDisabled();
+  });
+
   it('leaves it live over ordinary text beside code', async () => {
     const editor = mount('<p>run <code>npm ci</code> first</p>');
     await selectWithFocus(editor, 12, 17);
