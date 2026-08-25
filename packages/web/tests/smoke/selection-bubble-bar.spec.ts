@@ -1467,6 +1467,56 @@ test('link: the bar steps aside for the panel and stays away after it', async ()
   ).toBe(true);
 });
 
+test('link: the panel is never drawn anywhere but against its target', async () => {
+  // floating-ui computes a position asynchronously, so the first paint puts
+  // the panel at its own origin — measured at viewport top 80, left 320, while
+  // the link sat at 616. What this pins is that no such frame is ever visible:
+  // every frame carrying opacity is already beside the target.
+  await openFreshDocument(page);
+  await page.keyboard.type('a line to link');
+  await selectFirstParagraph(page);
+
+  await page.evaluate(() => {
+    (window as unknown as { __frames: unknown[] }).__frames = [];
+    const frames = (window as unknown as { __frames: unknown[] }).__frames;
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector('[data-testid="doc-link-popover"]');
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      frames.push({
+        top: Math.round(box.top),
+        left: Math.round(box.left),
+        opacity: Number(getComputedStyle(el).opacity),
+      });
+      if (frames.length > 8) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeFocused({ timeout: 5_000 });
+  await page.waitForTimeout(400);
+
+  const measured = await page.evaluate(() => {
+    const frames = (window as unknown as {
+      __frames: { top: number; left: number; opacity: number }[];
+    }).__frames;
+    const line = document
+      .querySelector('[data-testid="document-space"] .ProseMirror p')!
+      .getBoundingClientRect();
+    return { frames, lineBottom: Math.round(line.bottom) };
+  });
+
+  expect(measured.frames.length).toBeGreaterThan(1);
+  // The library's origin was among them, and it was transparent when it was.
+  expect(measured.frames[0]!.opacity).toBe(0);
+  measured.frames
+    .filter((frame) => frame.opacity > 0)
+    .forEach((frame) => {
+      expect(Math.abs(frame.top - measured.lineBottom)).toBeLessThan(20);
+    });
+});
+
 test('link: opening lands in the field, closing hands the caret back', async () => {
   // §8 puts this row in a browser: jsdom's focus handling is unreliable there.
   // Opening in `create` rests on `FloatingFocusManager`'s mount autofocus — the

@@ -365,7 +365,7 @@ export function DocumentLinkPopover({
   // overflow clips it once the target leaves the body area. Both editors that
   // ship this control do the same: Lexical portals into the editor div inside
   // its scroller, BlockNote into the editor container.
-  const { refs, floatingStyles, context } = useFloating({
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
     open: mode !== 'closed',
     onOpenChange: (open) => {
       if (!open) close();
@@ -438,7 +438,14 @@ export function DocumentLinkPopover({
           <FloatingFocusManager context={context} modal={false}>
             <div
               ref={refs.setFloating}
-              style={floatingStyles}
+              // Faded in rather than drawn straight away: the position is
+              // computed asynchronously, so the first paint puts the panel at
+              // the library's own origin — measured at viewport top 80, left
+              // 320, one frame before it arrived at top 138, left 496 beside
+              // the link. Opacity rather than visibility, because the focus
+              // manager reaches for the field on that same first frame and a
+              // `visibility: hidden` element cannot take focus.
+              style={{ ...floatingStyles, opacity: isPositioned ? 1 : 0 }}
               {...getFloatingProps()}
               data-testid='doc-link-popover'
               role='dialog'
