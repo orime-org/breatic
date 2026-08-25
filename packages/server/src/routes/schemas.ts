@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * API request schemas — re-exported from `@breatic/shared`.
@@ -315,6 +315,18 @@ export const attachmentParamSchema = z.object({
 export const creditPageQuerySchema = z.object({
   limit: z.string().optional(),
   cursor: z.string().optional(),
+});
+
+/**
+ * Purchases, optionally narrowed to one lifecycle. Three sections read the
+ * same list and each wants its own subset, and narrowing after the page is
+ * cut would leave a page with nothing on it while the cursor says there is
+ * more.
+ */
+export const creditLotQuerySchema = creditPageQuerySchema.extend({
+  lifecycle: z
+    .enum(["active", "depleted", "refund_pending", "refunding", "refunded"])
+    .optional(),
 });
 
 /** The ledger takes the same paging, plus an optional studio filter. */

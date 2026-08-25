@@ -190,6 +190,12 @@
       "failedBody": "この Project の会話を読み込めませんでした。",
       "retry": "再読み込み",
       "refusedTitle": "このチャットを開けません"
+    },
+    "markdown": {
+      "taskDone": "完了",
+      "taskTodo": "未完了",
+      "footnotes": "脚注",
+      "backToReference": "参照 {index} に戻る"
     }
   },
   "canvas": {
@@ -867,8 +873,7 @@
       "signOut": "ログアウト",
       "credits": "クレジット",
       "membership": "メンバーシップ",
-      "accountSettings": "アカウント設定",
-      "notOpenYet": "未提供"
+      "accountSettings": "アカウント設定"
     },
     "container": {
       "shell": {
@@ -1252,5 +1257,105 @@
     },
     "payNow": "支払う",
     "actionFailed": "実行できませんでした。もう一度お試しください。"
+  },
+  "credits": {
+    "panelTitle": "クレジット",
+    "close": "閉じる",
+    "indexLabel": "クレジットの項目",
+    "unit": "クレジット",
+    "loadFailed": "読み込めませんでした。閉じてから開き直してください。",
+    "listEnd": "これ以上ありません",
+    "listPageFailed": "このページを読み込めませんでした。スクロールで再試行。",
+    "group": {
+      "records": "記録",
+      "actions": "操作"
+    },
+    "section": {
+      "overview": "概要",
+      "lots": "購入履歴",
+      "ledger": "消費履歴",
+      "studios": "Studio 別",
+      "buy": "クレジットを購入",
+      "assign": "割り当て",
+      "refunds": "返金"
+    },
+    "lifecycle": {
+      "depleted": "使い切り",
+      "refund_pending": "審査中",
+      "refunding": "返金処理中",
+      "refunded": "返金済み"
+    },
+    "billingOff": {
+      "title": "この環境ではクレジットを消費しません",
+      "body": "生成しても差し引かれず、購入も不要です。使用量は記録されます。"
+    },
+    "total": "アカウント合計",
+    "unassigned": "未割り当て",
+    "assigned": "割り当て済み",
+    "pricingHint": "1 クレジット = 1 米セント、有効期限はありません。",
+    "unassignedHint": "使うには Studio に割り当てる必要があります。",
+    "distributionTitle": "どの Studio にあるか",
+    "overviewEmpty": {
+      "title": "購入したクレジットは Studio に割り当てて初めて使えます",
+      "body": "左の「クレジットを購入」から購入し、「割り当て」で使う Studio に渡してください。"
+    },
+    "lotsEmpty": "購入履歴はまだありません。",
+    "lotsEmptyNotice": {
+      "title": "購入すると、ここに一件ずつ並びます",
+      "body": "いくら分買ったか、いくら残っているか、どの Studio に渡したかが表示されます。"
+    },
+    "assignedTo": "{studio} に割り当て",
+    "ofPurchased": "全 {amount}",
+    "unassignedNotice": {
+      "title": "未割り当ての購入が {count} 件あり、そのままでは使えません",
+      "body": "左の「割り当て」で、使う Studio に渡してください。"
+    },
+    "allSpending": "すべての消費",
+    "allStudios": "すべての Studio",
+    "filterByStudio": "Studio で絞り込む",
+    "ledgerEmpty": "消費の記録はまだありません。",
+    "ledgerBillingOff": "この環境ではクレジットを消費しません。以下は使用量の記録です。",
+    "colDay": "日付",
+    "colWho": "使った人",
+    "colStudio": "Studio",
+    "colProject": "Project",
+    "colModel": "モデル",
+    "colAmount": "クレジット",
+    "eventRepayment": "クレジットを割り当て、未払い分に充当",
+    "eventUnbilled": "請求なし",
+    "studiosEmpty": "このアカウントのクレジットを使った Studio はまだありません。",
+    "studiosNote": "未払い分は残高から差し引かず、別々に表示します。削除された Studio も残します。実際にそこで使われたためです。",
+    "deletedStudio": "削除された Studio",
+    "deletedBadge": "削除済み",
+    "deletedStudioHint": "この Studio は存在しないため、残高は使えません",
+    "assignedLots": "{count} 件の購入を割り当て済み",
+    "noLotsHere": "割り当てられたクレジットはありません",
+    "debtAndSpent": "未払い {debt} · 消費 {spent}",
+    "spentOnly": "消費 {spent}",
+    "buySoon": {
+      "title": "購入はまもなく開始します",
+      "body": "開始後はここから直接購入できます。表示価格は税別で、実際のお支払いは表示価格にお住まいの地域の税額を加えた金額です。購入したクレジットは Studio に割り当てて使います。"
+    },
+    "assignEmpty": "割り当てられるクレジットがありません。",
+    "assignEmptyNotice": {
+      "title": "購入したクレジットはここで Studio に渡します",
+      "body": "購入ごとに一つの Studio へ割り当て、いつでも変更できます。"
+    },
+    "assignNote": "一覧に出るのは自分が Admin の Studio だけです。変更すると、元の Studio はその場で使えなくなります。",
+    "remaining": "残り {amount} クレジット",
+    "designationFor": "{amount} の購入の割り当て先",
+    "designateFailed": "保存できませんでした。もう一度お試しください。",
+    "refundsEmpty": "返金できるクレジットはありません。",
+    "refundable": "返金できる購入",
+    "refundableHint": "残り {credits} クレジット、{money} 相当",
+    "askRefund": "返金を申請",
+    "refundNotOpen": "返金はまだ開始していません",
+    "refundsAsked": "申請済み",
+    "refundRefused": "却下",
+    "refundRefusedHint": "この購入は再び使える状態に戻り、割り当て時にまず未払い分に充てられます",
+    "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
+    "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
+    "refundedHint": "{credits} クレジット · 返金済みのため Studio に割り当てられません",
+    "refundsNote": "未使用分のみを元の支払い方法へ返金します。審査があります。"
   }
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ReactElement } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -8,7 +8,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
-import type { StudioCredits } from '@web/data/api/credits';
+import type { StudioCreditsView } from '@breatic/shared';
 
 const fetchStudioCredits = vi.fn();
 vi.mock('@web/data/api/credits', () => ({
@@ -30,7 +30,7 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
  * @param over - 要覆盖的字段。
  * @returns 一个完整响应。
  */
-function credits(over: Partial<StudioCredits> = {}): StudioCredits {
+function credits(over: Partial<StudioCreditsView> = {}): StudioCreditsView {
   return {
     spendable: 4910,
     debt: 0,

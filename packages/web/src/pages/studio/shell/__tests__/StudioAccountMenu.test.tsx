@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -119,136 +119,36 @@ describe('StudioAccountMenu', () => {
     expect(name.className).toContain('text-foreground');
   });
 
-  it.each([['Credits', 'Credits']])(
-    'offers %s, marked unavailable in a way that still reaches the keyboard',
-    async (_label, name) => {
-      // These two entries exist to be FOUND — the feature behind each one is
-      // not built, and showing them is how a user learns it is coming. The
-      // HTML `disabled` attribute would take them out of the tab order, so
-      // the one audience that navigates by moving focus would never meet
-      // them. `aria-disabled` says the same thing and stays reachable.
-      const user = userEvent.setup();
-      useCurrentUserStore.getState().setUser(ALEX);
-      setup();
-      await openMenu(user);
-
-      const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
-      expect(entry).toHaveAttribute('aria-disabled', 'true');
-      // `data-disabled` is what Radix stamps when the `disabled` PROP is
-      // passed; its absence is the assertion that carries weight here. (There
-      // is no point checking for an HTML `disabled` attribute: the item is a
-      // div, which cannot carry one, so that check can never fail.)
-      expect(entry).not.toHaveAttribute('data-disabled');
-    },
-  );
-
-  it.each([['Credits']])(
-    'shows %s where focus is, not only to the machine',
-    async (name) => {
-      // Reachable and invisible is the same outcome as unreachable for the
-      // person looking at the screen: they arrow down, nothing appears to
-      // happen, and the entry reads as skipped. The menu primitive expresses
-      // its highlight as a background, so an entry left with no background to
-      // show has no way of saying where focus is.
-      const user = userEvent.setup();
-      useCurrentUserStore.getState().setUser(ALEX);
-      setup();
-      await openMenu(user);
-
-      const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
-      // The row must not dim ITSELF. `opacity` composites the whole element
-      // against its backdrop, background included, so a dimmed row dims its own
-      // highlight: at 50% over the primitive's accent that is a five-level step
-      // out of 255, which is no indicator at all. The row is then focusable and
-      // invisible — the outcome the `disabled` attribute was rejected for. The
-      // dimming belongs on the content.
-      expect(entry.className).not.toMatch(/(^|\s)opacity-/);
-      // Something still fills on focus, and it is not nothing. The row keeps
-      // the primitive's own `focus:bg-accent` — what stops the mouse lighting
-      // it is the cancelled pointer-move, not a change to this fill (see the
-      // sibling test about hovering). Cancelling the fill instead is a shape
-      // this was written in once and moved away from, so the assertion insists
-      // there is still a fill and that it is not `transparent`.
-      expect(entry.className).toMatch(/focus(-visible)?:bg-(?!transparent)/);
-      // The dimming is on the content instead.
-      const dimmed = entry.querySelector('[class*="opacity-"]');
-      expect(dimmed).not.toBeNull();
-      expect(dimmed?.textContent).toContain(name);
-    },
-  );
-
-  it('does not follow the mouse onto Credits, but still does onto Account settings', async () => {
-    // The menu primitive highlights whatever it focuses, and it focuses an
-    // undisabled item on pointer-move — so these two rows lit up exactly like
-    // the ones that can be pressed, offering an affordance for something that
-    // does not respond. Every other unavailable control in this product simply
-    // has no hover state.
-    //
-    // This asks about FOCUS rather than about the fill, because focus is the
-    // thing the primitive actually decides. Whether a focused element also
-    // matches `:focus-visible` is a browser heuristic that reads differently
-    // from one moment to the next, so a fix resting on it could not be checked
-    // — cancelling the focus itself can be.
+  it('takes Credits to the credits overlay, over the page below', async () => {
+    // 它不再是占位。开的是覆盖层不是页面：查余额是「看一眼」不是「去一趟」，
+    // 所以地址栏不动，底下那一层原样留着。
     const user = userEvent.setup();
     useCurrentUserStore.getState().setUser(ALEX);
     setup();
     await openMenu(user);
 
-    const credits = screen.getByRole('menuitem', { name: /Credits/ });
-    await user.hover(credits);
-    expect(document.activeElement).not.toBe(credits);
+    await user.click(screen.getByRole('menuitem', { name: /Credits/ }));
 
-    // The control: an entry that CAN be pressed still follows the mouse, so
-    // the assertion above is about these rows and not about hovering at all.
-    const settings = screen.getByRole('menuitem', { name: 'Account settings' });
-    await user.hover(settings);
-    expect(document.activeElement).toBe(settings);
+    expect(await screen.findByTestId('credits-index')).toBeInTheDocument();
+    // 精确比：这个菜单能去的每个地址都以 /studio 开头，子串断言无论它干了
+    // 什么都成立。
+    expect(screen.getByTestId('location').textContent).toBe('/studio');
   });
 
-  it.each([['Credits']])(
-    'dims %s as ONE thing — the note included',
-    async (name) => {
-      // Every disabled thing in this product dims the whole element and lets
-      // the tokens inside keep their own order: the toolbar's disabled sort
-      // button dims "Sort" and "Recently opened" together and the first stays
-      // the quieter of the two; the unavailable Timeline card dims its icon,
-      // title, subtitle and badge together. Leaving the note outside the dim
-      // is what made it the loudest thing on a row whose whole point is the
-      // feature's NAME.
-      const user = userEvent.setup();
-      useCurrentUserStore.getState().setUser(ALEX);
-      setup();
-      await openMenu(user);
+  it('marks Credits with the star the balance pill uses', async () => {
+    // 顶栏那个余额 pill 已经是这颗星。同一样东西在两处用两个图标，读的人
+    // 得自己认出它们说的是一回事。
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
 
-      const entry = screen.getByRole('menuitem', { name: new RegExp(name) });
-      const dimmed = entry.querySelector('[class*="opacity-"]');
-      expect(dimmed).not.toBeNull();
-      expect(dimmed?.textContent).toContain(name);
-      expect(dimmed?.textContent).toContain('Not open yet');
-      // Nothing readable is left outside it.
-      expect(entry.textContent).toBe(dimmed?.textContent);
-    },
-  );
-
-  it.each([['Credits']])(
-    'does nothing at all when %s is chosen',
-    async (name) => {
-      // Reachable is not the same as actionable: the entry must answer the
-      // keyboard, and then decline. A menu that closes on the press would
-      // read as "something happened" when nothing did.
-      const user = userEvent.setup();
-      useCurrentUserStore.getState().setUser(ALEX);
-      setup();
-      await openMenu(user);
-
-      await user.click(screen.getByRole('menuitem', { name: new RegExp(name) }));
-
-      // Exact: every address this menu can reach starts with `/studio`, so a
-      // substring assertion would hold whatever the entry did.
-      expect(screen.getByTestId('location').textContent).toBe('/studio');
-      expect(screen.getByRole('menu')).toBeInTheDocument();
-    },
-  );
+    const entry = screen.getByRole('menuitem', { name: /Credits/ });
+    expect(entry.querySelector('.lucide-star')).not.toBeNull();
+    // 它可以按了，所以既不该说自己不可用，也不该拒绝鼠标。
+    expect(entry).not.toHaveAttribute('aria-disabled');
+    expect(entry.className).not.toContain('cursor-not-allowed');
+  });
 
   it('takes account settings to the personal studio settings tab', async () => {
     // A personal studio's settings ARE the account's: the avatar and the

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { describe, expect, it } from "vitest";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";

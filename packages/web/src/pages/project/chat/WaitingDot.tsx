@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * What says the answer is still coming, for as long as it is.
@@ -8,9 +8,9 @@
  * figures live in `index.css` beside the other two animations this app
  * defines; the shape came from the demo page that settled it.
  *
- * It stands alone in an empty bubble before the first word and then rides
- * the end of the text until the turn is over (user 2026-08-20). What used to
- * take its place once there was text — a blinking bar — is gone.
+ * It stands alone in an empty bubble before the first word, and once there is
+ * a reply it sits on a line under it until the turn is over (user 2026-08-20:
+ * the mark must not disappear and must not turn into a bar).
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '@web/i18n/use-translation';

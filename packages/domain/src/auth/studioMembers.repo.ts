@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Studio members repository — `studio_members` table CRUD.
@@ -200,9 +200,22 @@ export async function upsertMember(
  * studio's admin must use {@link lockMembership} instead — see there for why
  * filtering on `role` breaks under concurrency.
  *
- * **Ordering across tables: `studio_members` before `project_members`.**
- * Leaving locks membership first and then writes project rows; a caller that
- * took a project row first would deadlock against it.
+ * **Ordering across tables: `studios` → `studio_members` → `studio_credit_debts`
+ * → `credit_lots`, with `project_members` a leaf off `studio_members`.**
+ * Leaving locks membership first and then writes project rows; designating
+ * takes this row, then the studio's debt, then the lot; a caller that took any
+ * of those first would deadlock against them.
+ *
+ * **Two edges run the other way**: creating the studio's debt row, and writing
+ * a non-null designation, each make the database confirm the parent studio
+ * exists, which locks that `studios` row after the tables above it have
+ * already been taken. The debt one comes first in the order and is reached by
+ * charging as well, which holds no membership row at all. Nothing deadlocks on
+ * either today — the only path holding a `studios` row before a membership row
+ * is accepting an invite, and the membership row it then writes belongs to the
+ * invitee while this one belongs to whoever is designating. Building studio
+ * deletion (#26) puts a `studios` → `{studio_credit_debts, credit_lots}` writer
+ * in the same picture and has to weigh both edges again.
  * @param studioId - Studio UUID
  * @param userId - User UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
@@ -256,10 +269,12 @@ export async function lockMemberRole(
  * order, so they queue instead of deadlocking, and no caller has to reason
  * about which of the admin row and the target row to take first.
  *
- * **Ordering across tables still holds: `studio_members` before
- * `project_members`.** Leaving locks the membership here and then writes
- * project rows; a path that took a project row first would deadlock against
- * it.
+ * **Ordering across tables still holds: `studios` → `studio_members` →
+ * `studio_credit_debts` → `credit_lots`, with `project_members` a leaf off
+ * `studio_members`.** Leaving locks the membership here and then writes
+ * project rows; accepting a transfer locks it here and then releases the
+ * outgoing admin's credit lots. A path that took a project row or a lot first
+ * would deadlock against them.
  * @param studioId - Studio UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
  * @returns Every active member of an active studio; empty when the studio is

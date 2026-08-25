@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -886,8 +886,11 @@ export const creditLots = pgTable(
  * `lot_id` is nullable for the three situations where usage is recorded but
  * no purchase is drawn down: payments disabled, a route that carries no
  * project to pick a pool from, and a studio with nothing spendable left.
- * `payer_user_id` stays NOT NULL in all three, because the account ledger
- * reads by payer and those rows have to appear in it.
+ * `payer_user_id` is absent on `debt_incurred` alone (0064, with a CHECK
+ * requiring it everywhere else): a debt is what a studio owes, recorded
+ * before anyone has paid it. The account ledger reads by payer and reports
+ * what left this account's purchases, so a debt is not one of its rows —
+ * the studio's own page reports it.
  *
  * `created_at` only. No `updated_at`, because nothing here is ever edited,
  * and no `deleted_at`, which is the repository's soft-delete mandate being
@@ -903,9 +906,13 @@ export const creditLedger = pgTable(
   "credit_ledger",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    payerUserId: uuid("payer_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    // Whose money this row moved. Null on `debt_incurred`: a debt is what a
+    // studio owes, recorded before anyone has paid for it — the payment comes
+    // later, as the `debt_repayment` row of whoever assigns a purchase. A
+    // CHECK in 0064 requires it on every other type.
+    payerUserId: uuid("payer_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     actorUserId: uuid("actor_user_id").references(() => users.id, {
       onDelete: "restrict",
     }),
@@ -945,6 +952,13 @@ export const creditLedger = pgTable(
       .on(table.studioId, desc(table.createdAt))
       .where(sql`${table.studioId} IS NOT NULL`),
     index("credit_ledger_lot_idx").on(table.lotId),
+    // The one read that asks by actor: which studios this account has run up
+    // debt in. Partial, because only `debt_incurred` rows can answer it, and
+    // 0064 cleared the payer on exactly those rows so the payer index cannot
+    // serve it. Declared as 0065 creates it.
+    index("credit_ledger_actor_debt_idx")
+      .on(table.actorUserId, table.studioId)
+      .where(sql`${table.entryType} = 'debt_incurred'`),
     index("credit_ledger_payer_studio_created_idx")
       .on(table.payerUserId, table.studioId, desc(table.createdAt))
       .where(sql`${table.studioId} IS NOT NULL`),

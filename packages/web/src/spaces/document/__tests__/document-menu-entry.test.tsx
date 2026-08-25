@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * The entry at the body's top right corner, which holds the commands whose
@@ -83,7 +83,7 @@ describe('the whole-document command entry', () => {
     expect(ids.sort()).toEqual(ITEM_IDS);
   });
 
-  it('shows both as not open yet, the way ComingEntry does', async () => {
+  it('把两条都标成尚未开放：可聚焦、变暗、带一枚说明徽章', async () => {
     const user = userEvent.setup();
     render(<DocumentEditor editor={editor} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
@@ -93,9 +93,8 @@ describe('the whole-document command entry', () => {
       expect(item).toHaveAttribute('aria-disabled', 'true');
       expect(item.className).toContain('cursor-not-allowed');
       expect(item.querySelector('.opacity-50')).not.toBeNull();
-      // The badge `ComingEntry` uses to say why the item cannot be used. What
-      // is asserted is that it carries text at all — pinning a particular
-      // language would pin the test environment's locale instead.
+      // 说明这一条为什么点不动的那枚徽章。只断言它有字 —— 钉住某种语言
+      // 等于钉住测试环境的 locale。
       const note = item.querySelector('.text-2xs');
       expect(note).not.toBeNull();
       expect(note?.textContent?.trim()).toBeTruthy();

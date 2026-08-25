@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { createInfraClientRule } from "#rules/infra-client-rule";
 
 /** Only `@breatic/core` may talk to postgres directly. */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 export type {
   UserEntity,
@@ -29,6 +29,18 @@ export type {
   SkillMeta,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
+
+export type {
+  CreditPage,
+  CreditLotView,
+  StudioLotView,
+  CreditLedgerKind,
+  CreditLedgerView,
+  StudioLedgerView,
+  StudioCreditsView,
+  StudioCreditSummary,
+  CreditOverview,
+} from "@shared/types/credit.js";
 
 export {
   HANDLING_TIMEOUT_MS,

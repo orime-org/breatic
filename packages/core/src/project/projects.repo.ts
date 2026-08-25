@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import { projects } from "@core/db/schema.js";

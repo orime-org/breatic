@@ -16,10 +16,11 @@ import { cn } from '@web/lib/utils';
  *   - the bar appears while scrolling AND when the pointer hovers its rail
  *     zone (user-ratified 2026-07-15: hover must reveal a hidden bar without
  *     scrolling first), fading in/out; the rails are force-mounted so the
- *     hover zone exists while hidden, and a per-axis scrollable gate
- *     (`data-scrollable-y/x`, ResizeObserver-maintained) turns a rail's
- *     pointer-events off when there is nothing to scroll — no phantom
- *     reveals, no swallowed clicks on non-scrollable edges;
+ *     hover zone exists while hidden, and each rail carries its own axis's
+ *     scrollability (`data-scrollable`, ResizeObserver-maintained) and turns
+ *     its pointer-events off when that axis has nothing to scroll — no
+ *     phantom reveals, no swallowed clicks on non-scrollable edges, and a
+ *     scroller nested in another one is unaffected by its host's verdict;
  *   - it overlays content — zero layout space;
  *   - hover changes COLOR only (thumb opacity 40% → 60%) and the pointer is
  *     the default arrow (native scrollbar convention — never the text/grab
@@ -88,9 +89,7 @@ const ScrollArea = React.forwardRef<
         ref={ref}
         type={type}
         data-scrollbars={scrollbars}
-        data-scrollable-y={scrollable.y}
-        data-scrollable-x={scrollable.x}
-        className={cn('group/scroller relative overflow-hidden', className)}
+        className={cn('relative overflow-hidden', className)}
         {...props}
       >
         <ScrollAreaPrimitive.Viewport
@@ -99,8 +98,12 @@ const ScrollArea = React.forwardRef<
         >
           {children}
         </ScrollAreaPrimitive.Viewport>
-        {scrollbars !== 'horizontal' ? <ScrollBar forceMount orientation='vertical' /> : null}
-        {scrollbars !== 'vertical' ? <ScrollBar forceMount orientation='horizontal' /> : null}
+        {scrollbars !== 'horizontal' ? (
+          <ScrollBar forceMount orientation='vertical' scrollable={scrollable.y} />
+        ) : null}
+        {scrollbars !== 'vertical' ? (
+          <ScrollBar forceMount orientation='horizontal' scrollable={scrollable.x} />
+        ) : null}
         <ScrollAreaPrimitive.Corner />
       </ScrollAreaPrimitive.Root>
     );
@@ -115,8 +118,10 @@ ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName;
  */
 const ScrollBar = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
-  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>
->(({ className, orientation = 'vertical', onMouseDown, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar> & {
+    scrollable?: boolean;
+  }
+>(({ className, orientation = 'vertical', onMouseDown, scrollable = true, ...props }, ref) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
   /**
    * Merges the forwarded ref with the local rail ref (the drag takeover
@@ -237,6 +242,7 @@ const ScrollBar = React.forwardRef<
       ref={setRailRef}
       orientation={orientation}
       {...props}
+      data-scrollable={scrollable ? 'true' : 'false'}
       onMouseDown={guardInputState}
       onPointerDownCapture={takeOverDrag}
       className={cn(
@@ -246,14 +252,17 @@ const ScrollBar = React.forwardRef<
         // rail zone (user-ratified 2026-07-15) — 150ms in, 300ms out, like
         // the native overlay bar. cursor-default pins the native-scrollbar
         // arrow (otherwise the rail inherits the surroundings' text/grab
-        // cursor). The per-axis scrollable gate turns pointer-events off
-        // when there is nothing to scroll, so a non-scrollable rail can
-        // neither hover-reveal nor swallow edge clicks.
-        'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 hover:opacity-100 hover:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
-        orientation === 'vertical' &&
-          'h-full w-2 group-data-[scrollable-y=false]/scroller:pointer-events-none',
-        orientation === 'horizontal' &&
-          'h-2 flex-col group-data-[scrollable-x=false]/scroller:pointer-events-none',
+        // cursor). The gate turns pointer-events off when THIS rail's own
+        // axis has nothing to scroll, so a non-scrollable rail can neither
+        // hover-reveal nor swallow edge clicks. The verdict is stamped on
+        // the rail because a `group-data-…/scroller:` variant compiles to a
+        // plain descendant selector: once scrollers nest — a wide table
+        // inside the message list — the outer one's answer about an axis it
+        // never scrolls reaches the inner rail, and the bar there shows up
+        // and cannot be grabbed.
+        'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 hover:opacity-100 hover:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100 data-[scrollable=false]:pointer-events-none',
+        orientation === 'vertical' && 'h-full w-2',
+        orientation === 'horizontal' && 'h-2 flex-col',
         className,
       )}
     >
