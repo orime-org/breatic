@@ -33,42 +33,37 @@ interface MarkdownMessageProps {
 /**
  * Which markers get closed while a reply is still arriving.
  *
- * Every switch is given a value: leaving one to its default is not a decision.
+ * Every switch is given a value: leaving one to its default is not a decision,
+ * and a later version of the package could change what a default is. The
+ * values written here are the library's own defaults, which is what Streamdown
+ * ships and therefore what a reader of any of these products is used to
+ * seeing.
  *
- * `inlineCode` and `italic` are off because a lone backtick or a C pointer
- * earlier in the prose takes the closing mark, and the marker actually being
- * streamed stays open. `htmlTags` and `katex` are off because they close
- * constructs this pipeline never renders — inline HTML stays literal text and
- * there is no maths renderer — so in a reply their only effect is on the prose
- * around them: `htmlTags` drops everything from an unclosed `<` onward, which
- * `count<max` is enough to trigger, and `katex` appends a `$$` to any reply
- * holding an odd number of them, which a shell PID or an awk field is enough
- * to trigger.
+ * What each of them does is confined to the frames between an opening marker
+ * arriving and its closing one: a settled reply never runs completion, so what
+ * the reader is left with is what the model sent. That makes the choices below
+ * about those frames alone (user 2026-08-25).
  *
- * `setextHeadings` is on: the frame where a list item is one `-` long renders
- * the sentence above it as an h2 without it.
- *
- * `linkMode` is `text-only`; the other two modes close a half-typed link into
- * a `streamdown:incomplete-link` anchor, which in a single-page app is a full
- * reload. It is `linkMode` that decides what a half-typed link becomes:
- * `links` and `images` return the same string on or off beside it, and they
- * share one handler, so the pair off together leaves a `[` where the mode
- * would have taken it.
+ * `linkMode` reaches the reader through `MarkdownLink` below, which sends
+ * every outbound anchor to a tab of its own, so the half-typed link this mode
+ * produces costs a spare tab and leaves the page it was clicked from alone.
  */
 const COMPLETION = {
   bold: true,
   boldItalic: true,
   strikethrough: true,
   links: true,
-  linkMode: 'text-only',
+  linkMode: 'protocol',
   images: true,
-  htmlTags: false,
-  inlineCode: false,
-  italic: false,
+  htmlTags: true,
+  inlineCode: true,
+  italic: true,
   singleTilde: true,
   comparisonOperators: true,
   setextHeadings: true,
-  katex: false,
+  katex: true,
+  // The library's own default, and for its own reason: a single `$` is
+  // ambiguous with currency.
   inlineKatex: false,
 } as const;
 
@@ -125,6 +120,40 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
 }
 
 /**
+ * A link the agent wrote, which leads away from the app.
+ *
+ * The reader is part-way through making something; following a link in this
+ * tab takes the canvas, the project and the running turn with it. Streamdown
+ * hands its own links `target="_blank"` for the same reason, and the app's
+ * other outbound links already carry both attributes.
+ *
+ * A footnote marker is an anchor as well and leads to a place on this page, so
+ * it keeps the tab it is in.
+ * @param root0 - The props react-markdown hands an `a`.
+ * @param root0.href - Where it leads.
+ * @param root0.children - The words it is on.
+ * @returns The link.
+ */
+function MarkdownLink({
+  href,
+  children,
+  ...rest
+}: { href?: string; children?: ReactNode }): ReactElement {
+  const staysHere = href?.startsWith('#') === true;
+
+  return (
+    <a
+      href={href}
+      rel={staysHere ? undefined : 'noopener noreferrer'}
+      target={staysHere ? undefined : '_blank'}
+      {...rest}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
  * Tag-to-component overrides.
  *
  * Module level on purpose: React decides whether it can keep a DOM node by
@@ -132,6 +161,7 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
  * update loses its scroll position, and an image is torn down and re-fetched.
  */
 const COMPONENTS = {
+  a: MarkdownLink,
   table: ScrollableTable,
   input: TaskMark,
 } as Components;

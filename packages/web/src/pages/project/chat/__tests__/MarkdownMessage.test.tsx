@@ -135,31 +135,24 @@ describe('MarkdownMessage — completion mid-stream (R2)', () => {
     expect(body().textContent).not.toContain('~~');
   });
 
-  it('leaves a half-typed link as plain words rather than a dead anchor', () => {
-    // The default mode closes it into streamdown:incomplete-link, which
-    // renders an <a> whose href goes nowhere; in a single-page app that is a
-    // full reload, and the turn being streamed goes with it.
+  it('keeps a half-typed link off this page', () => {
+    // Mid-stream the address is a placeholder scheme, which the url transform
+    // drops. What matters is that clicking it leaves the running turn alone,
+    // and `target` is what says so.
     draw('see the [official docs](https://ai-sdk.dev/docs/trouble', true);
 
-    expect(body().querySelector('a')).toBeNull();
+    const a = body().querySelector('a');
+    expect(a?.getAttribute('target')).toBe('_blank');
     expect(body()).toHaveTextContent('see the official docs');
   });
 
-  it('leaves a lone backtick alone, and stops completing after it', () => {
-    // Two halves, and the second is a limitation worth pinning.
-    //
-    // With inlineCode on, that lone backtick takes a closing tick and a long
-    // run of prose turns into inline code on screen. Off, it stays a
-    // character — but remend still reads everything after it as sitting
-    // inside an unterminated code span, so the ** further down is left alone
-    // too. Completion downstream of a lone backtick does not happen.
-    //
-    // It lasts until the model sends the closing marker, and a settled
-    // message never runs completion at all, so both states end up showing
-    // exactly what was sent.
+  it('stops completing downstream of a lone backtick', () => {
+    // remend reads everything after a lone backtick as sitting inside an
+    // unterminated code span, so the `**` further down is left as it came.
+    // The library behaves this way whatever the switches say; it lasts until
+    // the model sends the closing marker.
     draw('press ` to continue\n\nand then **the bold being written', true);
 
-    expect(body().querySelector('code')).toBeNull();
     expect(body().querySelector('strong')).toBeNull();
     expect(body()).toHaveTextContent('**the bold being written');
   });
@@ -167,15 +160,6 @@ describe('MarkdownMessage — completion mid-stream (R2)', () => {
   it('completes normally when no lone backtick precedes the marker', () => {
     draw('a clean opening line\n\nand then **the bold being written', true);
 
-    expect(body().querySelector('strong')).toHaveTextContent('the bold being written');
-  });
-
-  it('leaves a C pointer alone and closes the live marker instead', () => {
-    draw('look at int *p = &x; there\n\nand then **the bold being written', true);
-
-    expect(body().querySelector('em')).toBeNull();
-    expect(body()).toHaveTextContent('int *p = &x;');
-    // Without this half a component rendering nothing would pass.
     expect(body().querySelector('strong')).toHaveTextContent('the bold being written');
   });
 });
@@ -246,33 +230,62 @@ describe('MarkdownMessage — typography hooks', () => {
   });
 });
 
-describe('MarkdownMessage — completion adds nothing the model did not send (R2, R3)', () => {
-  it('keeps everything after an unclosed angle bracket while streaming', () => {
-    // `Record<string, Handler`, `count<max`, "wrap it in a <div" — a reply that
-    // says any of these is still a reply that has to keep being drawn.
-    render(
-      <MarkdownMessage
-        content={'when count<max we stop\n\n```ts\nconst a = 1;\n```\n\nand a closing line'}
-        streaming
-      />,
-    );
+describe('MarkdownMessage — a link leaves this page alone (R1)', () => {
+  it('opens what the agent links to in a new tab', () => {
+    // The reader is part-way through making something. Following a link in the
+    // same tab takes the canvas, the project and the running turn with it.
+    draw('详见 [官方文档](https://ai-sdk.dev/docs)');
 
-    expect(body()).toHaveTextContent('when count<max we stop');
-    expect(body().querySelector('pre > code')).toHaveTextContent('const a = 1;');
-    expect(body()).toHaveTextContent('and a closing line');
+    const a = body().querySelector('a');
+    expect(a?.getAttribute('target')).toBe('_blank');
+    expect(a?.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
-  it('leaves a lone pair of dollar signs alone while streaming', () => {
-    // The shell's PID variable, a Makefile escape, `awk '{print $$1}'`. Nothing
-    // in this pipeline renders maths, so a closing `$$` is two characters the
-    // reader is shown and can copy that the model never sent.
-    render(<MarkdownMessage content={'the pid is $$ and that is all'} streaming />);
+  it('does the same for a bare URL the model typed', () => {
+    // `remark-gfm` turns these into anchors of its own.
+    draw('见 https://ai-sdk.dev/docs 那一页');
 
-    expect(body().textContent).toBe('the pid is $$ and that is all');
+    const a = body().querySelector('a');
+    expect(a?.getAttribute('href')).toBe('https://ai-sdk.dev/docs');
+    expect(a?.getAttribute('target')).toBe('_blank');
+    expect(a?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('leaves a footnote marker pointing within the reply', () => {
+    // These are anchors too, and they lead to a place on this page.
+    draw('A claim[^1].\n\n[^1]: The note.');
+
+    const marker = body().querySelector('sup > a');
+    expect(marker?.getAttribute('href')).toMatch(/^#/);
+    expect(marker?.getAttribute('target')).toBeNull();
+  });
+});
+
+describe('MarkdownMessage — a finished reply is exactly what the model sent (R3)', () => {
+  // Completion runs only while a turn is running, so these say what the reader
+  // is left with. What the same replies look like part-way through is the
+  // library's business and is not promised (user 2026-08-25).
+  const CHARACTERS_THAT_ALSO_MEAN_SOMETHING = [
+    ['angle bracket', 'when count<max we stop'],
+    ['dollar signs', 'the pid is $$ and awk print $1'],
+    ['C pointer', 'look at int *p = &x; there'],
+    ['a lone backtick', 'press ` to continue'],
+  ] as const;
+
+  for (const [what, content] of CHARACTERS_THAT_ALSO_MEAN_SOMETHING) {
+    it(`keeps ${what} once the turn is over`, () => {
+      draw(content, false);
+      expect(body().textContent).toBe(content);
+    });
+  }
+
+  it('keeps a tilde-fenced code block as the model wrote it', () => {
+    draw('~~~bash\necho hi\n~~~', false);
+
+    expect(body().querySelector('pre > code')?.textContent).toBe('echo hi\n');
   });
 
   it('still closes the markers R2 promises', () => {
-    // The switches that stay on have to keep working after the two that go off.
     const { container } = render(<MarkdownMessage content='half a **word' streaming />);
     expect(container.querySelector('strong')).toHaveTextContent('word');
   });
