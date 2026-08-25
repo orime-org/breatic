@@ -515,10 +515,7 @@ function GeneratePanelBody({
       // the write behind it may well have been a collaborator's.
       toast.warning(
         t(
-          pickEndToastKey(
-            'modeChanged',
-            getLastWriteWasLocal(),
-          ),
+          pickEndToastKey(getLastWriteWasLocal()),
         ),
       );
     }
@@ -537,10 +534,7 @@ function GeneratePanelBody({
       endPick();
       toast.warning(
         t(
-          pickEndToastKey(
-            'modelChanged',
-            getLastWriteWasLocal(),
-          ),
+          pickEndToastKey(getLastWriteWasLocal()),
         ),
       );
     }

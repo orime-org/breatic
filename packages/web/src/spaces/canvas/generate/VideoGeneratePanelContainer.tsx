@@ -543,10 +543,7 @@ function VideoGeneratePanelBody({
       // the pick — and the write may well have been a collaborator's.
       toast.warning(
         t(
-          pickEndToastKey(
-            'modeChanged',
-            getLastWriteWasLocal(),
-          ),
+          pickEndToastKey(getLastWriteWasLocal()),
         ),
       );
     }

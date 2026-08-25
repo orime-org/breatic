@@ -248,7 +248,6 @@ function panelTree(
     spaceId: 's',
     readOnly: false,
     caretProvider: null,
-    synced: false,
   };
   return (
     <QueryClientProvider
@@ -492,7 +491,6 @@ describe('VideoGeneratePanelContainer', () => {
               spaceId: 's',
               readOnly: false,
               caretProvider: null,
-              synced: false,
             }}
           >
             <VideoGeneratePanelContainer
@@ -957,7 +955,7 @@ describe('VideoGeneratePanelContainer', () => {
         expect(useCanvasStore.getState().pickSession).toBeNull(),
       );
       expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-        en.canvas.generatePanel.pickEndedModeChanged,
+        en.canvas.generatePanel.pickEnded,
       );
     });
 
@@ -980,7 +978,7 @@ describe('VideoGeneratePanelContainer', () => {
         expect(useCanvasStore.getState().pickSession).toBeNull(),
       );
       expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-        en.canvas.generatePanel.pickEndedModeChangedByPeer,
+        en.canvas.generatePanel.pickEndedByPeer,
       );
     });
 

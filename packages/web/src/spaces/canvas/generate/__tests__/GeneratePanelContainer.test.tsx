@@ -105,7 +105,6 @@ function mountContainer(graph?: {
     spaceId: 's',
     readOnly: false,
     caretProvider: null,
-    synced: false,
   };
   return render(
     <QueryClientProvider
@@ -315,7 +314,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     // is asserted through the catalog so a key that stops resolving is caught
     // here rather than reaching a user as raw dots.
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-      en.canvas.generatePanel.pickEndedModeChanged,
+      en.canvas.generatePanel.pickEnded,
     );
     listSpy.mockRestore();
   });
@@ -347,7 +346,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     );
 
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-      en.canvas.generatePanel.pickEndedModeChangedByPeer,
+      en.canvas.generatePanel.pickEndedByPeer,
     );
     listSpy.mockRestore();
   });
@@ -461,7 +460,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await endStylePickByModelChange(LAST_WRITE_LOCAL);
 
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-      en.canvas.generatePanel.pickEndedModelChanged,
+      en.canvas.generatePanel.pickEnded,
     );
   });
 
@@ -469,7 +468,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await endStylePickByModelChange(() => false);
 
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-      en.canvas.generatePanel.pickEndedModelChangedByPeer,
+      en.canvas.generatePanel.pickEndedByPeer,
     );
   });
 });

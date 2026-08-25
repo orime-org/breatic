@@ -21,32 +21,18 @@ function lookUp(key: string): unknown {
 }
 
 describe('pickEndToastKey', () => {
-  it('names the user for their own change and a collaborator for theirs', () => {
-    expect(pickEndToastKey('modeChanged', true)).not.toBe(
-      pickEndToastKey('modeChanged', false),
-    );
-    expect(lookUp(pickEndToastKey('modeChanged', false))).toContain(
-      'A collaborator',
-    );
-    expect(lookUp(pickEndToastKey('modeChanged', true))).not.toContain(
-      'A collaborator',
-    );
+  it('says nothing about anyone else when this client made the change', () => {
+    expect(lookUp(pickEndToastKey(true))).not.toContain('collaborator');
   });
 
-  it('tells a mode change from a model change', () => {
-    expect(pickEndToastKey('modeChanged', true)).not.toBe(
-      pickEndToastKey('modelChanged', true),
-    );
-    expect(lookUp(pickEndToastKey('modeChanged', true))).toContain('Mode');
-    expect(lookUp(pickEndToastKey('modelChanged', true))).toContain('Model');
+  it('names a collaborator when the change was theirs', () => {
+    expect(lookUp(pickEndToastKey(false))).toContain('collaborator');
   });
 
-  it('resolves every combination to real text', () => {
+  it('resolves both to real text', () => {
     // A key that does not exist reaches the user as the dotted key itself.
-    for (const reason of ['modeChanged', 'modelChanged'] as const) {
-      for (const local of [true, false]) {
-        expect(typeof lookUp(pickEndToastKey(reason, local))).toBe('string');
-      }
+    for (const local of [true, false]) {
+      expect(typeof lookUp(pickEndToastKey(local))).toBe('string');
     }
   });
 });

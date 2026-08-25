@@ -2,45 +2,26 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What ended a pick session from the host node's side.
+ * The message for a pick session the host node's own change put an end to.
  *
- * Both are writes to the host that the panel reacts to, and both can come from
- * a collaborator: `setNodeMode` and `setNodeModel` are ordinary document
- * writes. The video panel's vanishing slot is a mode change too — the slot
- * list is derived from the mode — so it reports the same reason.
- */
-export type PickEndReason = 'modeChanged' | 'modelChanged';
-
-/**
- * The message for each reason, split by who made the write.
+ * Split by who made that write and by nothing else: what the person needs to
+ * know is that the session is over, and — when it was not their own doing —
+ * that somebody else ended it. Which setting moved is the explanation, which
+ * the copy rule leaves out.
  *
  * Same shape as `FOCUS_EXIT_TOAST_KEY` in `CanvasSpace`, which says the same
- * kind of thing about the target side of a pick: a local change is the user's
- * own doing coming back to them, a peer's is news.
+ * kind of thing about the target side of a pick.
  */
-const PICK_END_TOAST_KEY: Record<
-  'local' | 'peer',
-  Record<PickEndReason, string>
-> = {
-  local: {
-    modeChanged: 'canvas.generatePanel.pickEndedModeChanged',
-    modelChanged: 'canvas.generatePanel.pickEndedModelChanged',
-  },
-  peer: {
-    modeChanged: 'canvas.generatePanel.pickEndedModeChangedByPeer',
-    modelChanged: 'canvas.generatePanel.pickEndedModelChangedByPeer',
-  },
+const PICK_END_TOAST_KEY: Record<'local' | 'peer', string> = {
+  local: 'canvas.generatePanel.pickEnded',
+  peer: 'canvas.generatePanel.pickEndedByPeer',
 };
 
 /**
  * Which message to show when a host-side change ends a pick session.
- * @param reason - What changed on the host.
  * @param lastWriteWasLocal - Whether this client made that write.
  * @returns The translation key for the toast.
  */
-export function pickEndToastKey(
-  reason: PickEndReason,
-  lastWriteWasLocal: boolean,
-): string {
-  return PICK_END_TOAST_KEY[lastWriteWasLocal ? 'local' : 'peer'][reason];
+export function pickEndToastKey(lastWriteWasLocal: boolean): string {
+  return PICK_END_TOAST_KEY[lastWriteWasLocal ? 'local' : 'peer'];
 }

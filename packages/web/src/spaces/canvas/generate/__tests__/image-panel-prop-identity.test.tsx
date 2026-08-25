@@ -40,7 +40,6 @@ vi.mock('@web/components/ui/tooltip', () => ({
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: vi.fn(() => ({
     provider: null,
-    synced: false,
     status: 'connecting',
     authFailedReason: null,
   })),
@@ -73,7 +72,6 @@ const CANVAS: CanvasContextValue = {
   spaceId: 's',
   readOnly: false,
   caretProvider: null,
-  synced: false,
 };
 
 /**
