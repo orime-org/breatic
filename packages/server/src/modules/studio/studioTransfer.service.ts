@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Studio transfer-admin handshake — the admin offers the studio to a member,
@@ -48,7 +48,7 @@ import {
   ValidationError,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { creditLotService, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
   getDecisionWindowMs,
@@ -179,13 +179,18 @@ export async function requestTransfer(
  * Demote the old admin FIRST, promote the recipient SECOND: the reverse order
  * collides with `studio_members_one_admin_per_studio` mid-transaction. The old
  * admin drops ONE rank to maintainer (#1612 / D1), not all the way to guest.
+ *
+ * Between those two, every credit lot of the outgoing admin's that pointed at
+ * this studio stops pointing (#15). A studio spends what its admin designated
+ * to it, so the designation cannot outlive the role — and it happens in this
+ * transaction because the rule is about the same instant.
  * @param transferId - The `studio_transfers` row id
  * @param receiverUserId - The recipient confirming
- * @throws {NotFoundError} there is no such offer, or a role swap finds no row
+ * @throws {NotFoundError} there is no such offer
  * @throws {ForbiddenError} the caller is not the offer's named recipient
  * @throws {ConflictError} the offer was already answered, has timed out, the
- *   recipient no longer qualifies, or the initiator no longer administers the
- *   studio
+ *   recipient no longer qualifies, the initiator no longer administers the
+ *   studio, or a role swap finds no row
  */
 export async function confirmTransfer(
   transferId: string,
@@ -249,6 +254,19 @@ export async function confirmTransfer(
       tx,
     );
     if (!demoted) return { refusal: "conflict" };
+
+    // The initiator has stopped administering this studio, so the studio stops
+    // being able to spend their credits. Below the demote because every branch
+    // above it returns — and returning commits — so a release placed higher
+    // would strip someone who never stopped being admin. Inside this
+    // transaction because the rule is about the same instant: run apart, the
+    // studio keeps drawing on their money in the window between.
+    await creditLotService.releaseDesignations({
+      userId: fromUserId,
+      studioId,
+      tx,
+    });
+
     const promoted = await studioMembersRepo.updateRole(
       studioId,
       receiverUserId,

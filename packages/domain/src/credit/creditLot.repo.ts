@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Data access for `credit_lots` and `credit_ledger` (task #11).
@@ -37,13 +37,16 @@ import {
   creditLedger,
   studioCreditDebts,
   studios,
+  studioMembers,
   projects,
+  payments,
 } from "@breatic/core";
 import type {
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
+  CreditLedgerKind,
 } from "@breatic/shared";
 
 /**
@@ -298,7 +301,8 @@ export async function applyCharge(
  */
 export async function appendLedgerEntry(
   entry: {
-    payerUserId: string;
+    /** Whose money moved. Null on a debt, which nobody has paid yet. */
+    payerUserId: string | null;
     entryType: CreditLedgerEntryType;
     amount: string;
     actorUserId?: string | null;
@@ -350,6 +354,94 @@ export async function sumSpendableForStudio(
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(spendableByStudio(studioId));
   return rows[0]?.total ?? "0";
+}
+
+/**
+ * Studios where this account ran a generation that outran the credits.
+ *
+ * A debt row names no payer — the studio owes it and nobody has paid yet — so
+ * the payer-keyed reads cannot reach it. Somebody who ran a generation that
+ * did not go through needs to see that the studio owes, because the next
+ * purchase they assign there is spent paying it off before anything else.
+ * @param actorUserId - Who ran the generations.
+ * @returns The studios, with their names.
+ */
+export async function studiosWithDebtFrom(
+  actorUserId: string,
+): Promise<{ studioId: string; studioName: string; studioSlug: string; deleted: boolean }[]> {
+  const rows = await db
+    .selectDistinct({
+      studioId: creditLedger.studioId,
+      studioName: studios.name,
+      studioSlug: studios.slug,
+      deleted: sql<boolean>`${studios.deletedAt} IS NOT NULL`,
+    })
+    .from(creditLedger)
+    .leftJoin(studios, eq(studios.id, creditLedger.studioId))
+    .where(
+      and(
+        eq(creditLedger.actorUserId, actorUserId),
+        eq(creditLedger.entryType, "debt_incurred"),
+        isNotNull(creditLedger.studioId),
+      ),
+    );
+  return rows
+    .filter((row): row is typeof row & { studioId: string } => row.studioId !== null)
+    .map((row) => ({
+      studioId: row.studioId,
+      studioName: row.studioName ?? "",
+      studioSlug: row.studioSlug ?? "",
+      deleted: row.deleted,
+    }));
+}
+
+/**
+ * Which of these studios the account administers right now.
+ *
+ * Read fresh rather than carried on the lot: administering is a role that
+ * changes hands, and a stored answer would be the one that was true when the
+ * purchase was pointed there.
+ * @param userId - The account asking.
+ * @param studioIds - The studios to test; an empty list reads nothing.
+ * @returns The subset it administers.
+ */
+export async function studiosAdministeredBy(
+  userId: string,
+  studioIds: string[],
+): Promise<Set<string>> {
+  if (studioIds.length === 0) return new Set();
+  const rows = await db
+    .select({ studioId: studioMembers.studioId })
+    .from(studioMembers)
+    .where(
+      and(
+        eq(studioMembers.userId, userId),
+        eq(studioMembers.role, "admin"),
+        isNull(studioMembers.deletedAt),
+        inArray(studioMembers.studioId, [...new Set(studioIds)]),
+      ),
+    );
+  return new Set(rows.map((row) => row.studioId));
+}
+
+/**
+ * What several studios owe, in one read.
+ *
+ * The overview lists a studio per line and each line reports its debt; asking
+ * per studio would put a query on every line.
+ * @param studioIds - The studios to look up. An empty list reads nothing.
+ * @returns Debt by studio id, in credits as a decimal string. A studio that
+ *   owes nothing is absent rather than zero — the caller defaults it.
+ */
+export async function readDebtsFor(
+  studioIds: string[],
+): Promise<Map<string, string>> {
+  if (studioIds.length === 0) return new Map();
+  const rows = await db
+    .select({ studioId: studioCreditDebts.studioId, amount: studioCreditDebts.amount })
+    .from(studioCreditDebts)
+    .where(inArray(studioCreditDebts.studioId, studioIds));
+  return new Map(rows.map((row) => [row.studioId, row.amount]));
 }
 
 /**
@@ -450,6 +542,42 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
 }
 
 /**
+ * One account's lots pointed at one studio, in the order a charge takes them.
+ *
+ * Ids rather than rows: every caller locks each one before deciding anything,
+ * and the row the lock hands back is the only one worth reading. Ordering by
+ * `created_at, id` is what keeps this in step with {@link listSpendableLots} —
+ * two writers taking the same lots in the same order queue instead of each
+ * holding half of what the other needs.
+ *
+ * Live studios are not required here. The caller is acting on a studio it has
+ * already resolved, and joining `studios` would silently skip the lots of one
+ * that had just been soft-deleted — leaving them pointed at it forever.
+ * @param userId - The account whose lots to list.
+ * @param studioId - The studio they point at.
+ * @param tx - The enclosing transaction.
+ * @returns Their ids, oldest first.
+ */
+export async function listDesignatedLotIds(
+  userId: string,
+  studioId: string,
+  tx: DbTx,
+): Promise<string[]> {
+  const rows = await tx
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        eq(creditLots.designatedStudioId, studioId),
+        isNull(creditLots.deletedAt),
+      ),
+    )
+    .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
+  return rows.map((row) => row.id);
+}
+
+/**
  * Point a lot at a studio, or at nothing.
  *
  * The caller holds the row lock and has already checked that the lifecycle
@@ -472,6 +600,15 @@ export async function setDesignation(
   return toLotEntity(rows[0]!);
 }
 
+/** What a lot's row carries beyond the lot itself. */
+export interface LotContext {
+  /** What was paid for it, in the smallest unit of `currency`. */
+  paidCents: number;
+  currency: string;
+  /** The studio it points at, named. Null when it points at none. */
+  designatedStudioName: string | null;
+}
+
 /**
  * One account's purchases, newest first, one keyset page at a time.
  *
@@ -481,26 +618,53 @@ export async function setDesignation(
  * @param userId - Whose purchases to list.
  * @param limit - How many rows to return.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
+ * @param lifecycle - Narrow to one state; omit for every purchase.
  * @returns The page, newest first.
  */
 export async function listLotsByUser(
   userId: string,
   limit: number,
   cursor: ActivityCursor | null,
-): Promise<(CreditLotEntity & { cursorAt: string })[]> {
+  lifecycle?: CreditLotLifecycle,
+): Promise<(CreditLotEntity & LotContext & { cursorAt: string })[]> {
   const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
   const rows = await db
     .select({
       lot: creditLots,
+      // What was really paid for it, which lives on the payment rather than the
+      // lot. Working it back from the credit count would not do: the price
+      // table gets replaced, and an old lot was bought at the price of its own
+      // day.
+      paidCents: payments.amountCents,
+      currency: payments.currency,
+      // A studio that is gone holds nothing: the moment it is deleted its
+      // projects stop working, so a purchase pointed at it is pointed
+      // nowhere. Both columns answer that way, which is the same answer
+      // `sumUnassignedForUser` gives — one predicate, read the same in every
+      // section, so a purchase is never unassigned on one screen and assigned
+      // to a name that no longer exists on another.
+      designatedStudioId: sql<
+        string | null
+      >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${creditLots.designatedStudioId} END`,
+      designatedStudioName: sql<
+        string | null
+      >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
+    .innerJoin(payments, eq(payments.id, creditLots.paymentId))
+    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
         eq(creditLots.userId, userId),
         isNull(creditLots.deletedAt),
+        // Three sections read this list and each wants its own subset: assign
+        // takes the active ones, refunds sorts by refund state, purchases take
+        // everything. Narrowing after the page is cut would leave a page with
+        // nothing on it while the cursor says there is more.
+        lifecycle ? eq(creditLots.lifecycle, lifecycle) : undefined,
         at
           ? or(
               lt(creditLots.createdAt, at),
@@ -511,7 +675,14 @@ export async function listLotsByUser(
     )
     .orderBy(desc(creditLots.createdAt), desc(creditLots.id))
     .limit(limit);
-  return rows.map((row) => ({ ...toLotEntity(row.lot), cursorAt: row.cursorAt }));
+  return rows.map((row) => ({
+    ...toLotEntity(row.lot),
+    designatedStudioId: row.designatedStudioId,
+    paidCents: row.paidCents,
+    currency: row.currency,
+    designatedStudioName: row.designatedStudioName,
+    cursorAt: row.cursorAt,
+  }));
 }
 
 /** One lot a studio holds, with the buyer's display name. */
@@ -559,6 +730,38 @@ export async function listLotsByStudio(
   }));
 }
 
+
+/**
+ * The two entry types an account's ledger reports.
+ *
+ * A debt is neither: it names no payer, because at the moment it is recorded
+ * nobody has paid it. It is paid later, and that payment is the repayment row
+ * below.
+ */
+const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
+  "spend",
+  "debt_repayment",
+];
+
+/** One event on an account's ledger, with every row of it added up. */
+export interface PayerLedgerRow {
+  id: string;
+  createdAt: Date;
+  cursorAt: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  studioId: string | null;
+  studioName: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  model: string | null;
+  provider: string | null;
+  /** Which of the three kinds of line this is. */
+  kind: CreditLedgerKind;
+  /** What this line came to. Negative. */
+  amount: string;
+}
+
 /**
  * One account's ledger, newest first, one keyset page at a time.
  *
@@ -575,16 +778,45 @@ export async function listLedgerByPayer(
   limit: number,
   cursor: ActivityCursor | null,
   studioId?: string,
-): Promise<(CreditLedgerEntryEntity & { cursorAt: string })[]> {
+): Promise<PayerLedgerRow[]> {
   // Display names live on the personal studio (`users` is the pure auth
   // table), the same place the activity feed reads an actor's name from.
   const actorStudio = alias(studios, "actor_studio");
+  const spendingStudio = alias(studios, "spending_studio");
+  // Same three expressions `listLedgerByStudio` groups on, and for the same
+  // reason: uuid has no min/max aggregate before PostgreSQL 18 and this
+  // repository runs 16, and a keyset comparison against a differently-computed
+  // id skips or repeats rows.
+  const groupId = sql<string>`(ARRAY_AGG(${creditLedger.id} ORDER BY ${creditLedger.id}))[1]`;
+  const groupAt = sql<Date>`MAX(${creditLedger.createdAt})`;
+  const groupCursorAt = sql<string>`MAX(${creditLedger.createdAt})::text`;
   const rows = await db
     .select({
-      entry: creditLedger,
-      actorName: actorStudio.name,
-      projectName: projects.name,
-      cursorAt: sql<string>`${creditLedger.createdAt}::text`,
+      id: groupId,
+      createdAt: groupAt,
+      cursorAt: groupCursorAt,
+      actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
+      actorName: sql<string | null>`MAX(${actorStudio.name})`,
+      studioId: sql<string | null>`MAX(${creditLedger.studioId}::text)`,
+      studioName: sql<string | null>`MAX(${spendingStudio.name})`,
+      projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
+      projectName: sql<string | null>`MAX(${projects.name})`,
+      model: sql<string | null>`MAX(${creditLedger.model})`,
+      provider: sql<string | null>`MAX(${creditLedger.provider})`,
+      // Which of the three this line is. A repayment carries no project and
+      // no model, so without saying so it reads as a generation that never
+      // happened; and a run that drew on no purchase cost this account
+      // nothing, which the figure alone cannot say.
+      //
+      // `unbilled` is every row of a deployment that charges nobody, and the
+      // runs that reached no pool where it does charge. The line stays: this
+      // list answers "what did I use", and a run the reader started is part
+      // of that answer whether or not it cost him.
+      kind: sql<CreditLedgerKind>`CASE
+        WHEN BOOL_AND(${creditLedger.lotId} IS NULL) THEN 'unbilled'
+        WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
+        THEN 'debt_repayment' ELSE 'generation' END`,
+      amount: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text`,
     })
     .from(creditLedger)
     .leftJoin(
@@ -595,33 +827,33 @@ export async function listLedgerByPayer(
         isNull(actorStudio.deletedAt),
       ),
     )
+    // No liveness condition: a run that happened in a studio since deleted
+    // still has to say which studio it was.
+    .leftJoin(spendingStudio, eq(spendingStudio.id, creditLedger.studioId))
     .leftJoin(projects, eq(projects.id, creditLedger.projectId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
+        // Written into the query rather than filtered afterwards, because this
+        // is a keyset page — filtering a page that the server already cut can
+        // empty it while the cursor still says there is more.
+        inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
-        cursor
-          ? or(
-              lt(creditLedger.createdAt, sql`${cursor.createdAt}::timestamptz`),
-              and(
-                eq(creditLedger.createdAt, sql`${cursor.createdAt}::timestamptz`),
-                lt(creditLedger.id, cursor.id),
-              ),
-            )
-          : undefined,
       ),
     )
-    .orderBy(desc(creditLedger.createdAt), desc(creditLedger.id))
+    // One generation writes a row per lot it drew on, all in the same instant.
+    // Grouping in SQL rather than after paging is what keeps a page boundary
+    // from landing inside a generation and showing it twice, each time with a
+    // fragment of its total.
+    .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
+    .having(
+      cursor
+        ? sql`(${groupAt}, ${groupId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
+        : sql`TRUE`,
+    )
+    .orderBy(sql`${groupAt} DESC`, sql`${groupId} DESC`)
     .limit(limit);
-  return rows.map((row) =>
-    ({
-      ...toLedgerEntity(row.entry, {
-        actorName: row.actorName,
-        projectName: row.projectName,
-      }),
-      cursorAt: row.cursorAt,
-    }),
-  );
+  return rows.map((row) => ({ ...row, createdAt: new Date(row.createdAt) }));
 }
 
 /** One line of a studio's ledger: everything one event moved. */
@@ -672,9 +904,9 @@ export interface StudioLedgerRow {
  * used; what is owed is the difference, written as its own row.
  *
  * Taken by studio, not by who paid. A generation that ran short writes its
- * `spend` rows against the lot owner and its shortfall against the person
- * running it, so filtering by payer splits one line between two people and
- * leaves neither of them a whole one.
+ * `spend` rows against the lot owner and its shortfall against nobody at
+ * all — the studio owes that part — so filtering by payer would leave out
+ * the shortfall entirely and report the run as costing less than it did.
  * @param studioId - The studio whose ledger to read.
  * @param limit - How many lines to return.
  * @param cursor - The `(created_at, id)` of the previous page's last line.
@@ -755,32 +987,69 @@ export async function listLedgerByStudio(
  */
 export async function sumSpentByStudio(
   payerUserId: string,
-): Promise<{ studioId: string; spent: string }[]> {
+): Promise<
+  {
+    studioId: string;
+    studioName: string;
+    studioSlug: string;
+    deleted: boolean;
+    spent: string;
+  }[]
+> {
   const rows = await db
     .select({
       studioId: creditLedger.studioId,
+      studioName: studios.name,
+      studioSlug: studios.slug,
+      // Read rather than inferred. Whether a studio is gone is a column on the
+      // table this already joins, and every other way of telling answers a
+      // different question: a studio with no spendable lots left looks exactly
+      // like a deleted one from the outside.
+      deleted: sql<boolean>`${studios.deletedAt} IS NOT NULL`,
       spent: sql<string>`(-SUM(${creditLedger.amount}))::text`,
     })
     .from(creditLedger)
+    // No liveness condition. A studio that was deleted or handed over keeps
+    // the spending that happened on it: `payer_user_id` says whose money it
+    // was and no later event rewrites it. AWS and Google Cloud both keep the
+    // cost of resources that are gone for the same reason — the money left.
+    .leftJoin(studios, eq(studios.id, creditLedger.studioId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
-        // Both ways money leaves a purchase. A repayment is a charge the studio
+        // The two entry types a studio's spending is made of. Usage that
+        // drew on no purchase is a `spend` row too, with no lot behind it:
+        // this studio consumed it, which is what this figure answers. A repayment is a charge the studio
         // ran up before it had the credits: the debt was recorded first and
         // drawn from a lot later, and the lot is smaller by exactly that much.
         // The studio ledger totals the same two types for the same reason.
         inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
-        // Only rows that actually drew down a purchase. Usage recorded without
-        // a charge carries no lot, and counting it reports money that never
-        // left the account.
-        isNotNull(creditLedger.lotId),
       ),
     )
-    .groupBy(creditLedger.studioId);
+    .groupBy(
+      creditLedger.studioId,
+      studios.name,
+      studios.slug,
+      studios.deletedAt,
+    );
   return rows
-    .filter((row): row is { studioId: string; spent: string } => row.studioId !== null)
-    .map((row) => ({ studioId: row.studioId, spent: row.spent }));
+    .filter(
+      (row): row is {
+        studioId: string;
+        studioName: string | null;
+        studioSlug: string | null;
+        deleted: boolean;
+        spent: string;
+      } => row.studioId !== null,
+    )
+    .map((row) => ({
+      studioId: row.studioId,
+      studioName: row.studioName ?? "",
+      studioSlug: row.studioSlug ?? "",
+      deleted: row.deleted,
+      spent: row.spent,
+    }));
 }
 
 /**
@@ -788,31 +1057,62 @@ export async function sumSpentByStudio(
  * @param userId - Whose lots to group.
  * @returns One entry per studio holding a live lot of this account's.
  */
-export async function sumSpendableByStudio(
-  userId: string,
-): Promise<{ studioId: string; spendable: string }[]> {
+export async function sumSpendableByStudio(userId: string): Promise<
+  {
+    studioId: string;
+    studioName: string;
+    studioSlug: string;
+    spendable: string;
+    lotCount: number;
+  }[]
+> {
   const rows = await db
     .select({
       studioId: creditLots.designatedStudioId,
-      spendable: sql<string>`SUM(${creditLots.remainingCredits})::text`,
+      studioName: studios.name,
+      studioSlug: studios.slug,
+      // Only what is still spendable. A spent purchase is still pointed
+      // here, and still counted below, but there is nothing left of it.
+      spendable: sql<string>`COALESCE(SUM(${creditLots.remainingCredits})
+        FILTER (WHERE ${creditLots.lifecycle} = 'active'), 0)::text`,
+      // Every purchase pointed here, spent or not. The figure answers "how
+      // many did I put here", and spending one does not take it back —
+      // saying "nothing assigned yet" while the purchases page shows it
+      // pointing here is two answers to one question.
+      lotCount: sql<number>`COUNT(*)::int`,
     })
     .from(creditLots)
     .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
         eq(creditLots.userId, userId),
-        eq(creditLots.lifecycle, "active"),
         isNull(creditLots.deletedAt),
         isNull(studios.deletedAt),
       ),
     )
-    .groupBy(creditLots.designatedStudioId);
-  // Same three conditions as `spendableByStudio`, grouped instead of pinned to
-  // one studio — the shared helper takes a studio id, which this one does not
-  // have.
+    // The name and slug join the key rather than riding along: a column in the
+    // select list that is neither grouped nor aggregated makes Postgres refuse
+    // the query outright.
+    .groupBy(creditLots.designatedStudioId, studios.name, studios.slug);
   return rows
-    .filter((row): row is { studioId: string; spendable: string } => row.studioId !== null)
-    .map((row) => ({ studioId: row.studioId, spendable: row.spendable }));
+    .filter(
+      (
+        row,
+      ): row is {
+        studioId: string;
+        studioName: string;
+        studioSlug: string;
+        spendable: string;
+        lotCount: number;
+      } => row.studioId !== null,
+    )
+    .map((row) => ({
+      studioId: row.studioId,
+      studioName: row.studioName,
+      studioSlug: row.studioSlug,
+      spendable: row.spendable,
+      lotCount: row.lotCount,
+    }));
 }
 
 /**

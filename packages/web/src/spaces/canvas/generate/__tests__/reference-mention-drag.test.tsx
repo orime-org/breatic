@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 // Chip drag (user 2026-07-14 item ⑥): a selected chip (single NodeSelection or
 // a chip-only TextSelection) could not be dragged in ANY browser. Root cause is

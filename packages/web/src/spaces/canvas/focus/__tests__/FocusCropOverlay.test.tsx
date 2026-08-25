@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * FocusCropOverlay component tests (#1782): marquee draw / ratio presets /
@@ -383,6 +383,38 @@ describe('FocusCropOverlay', () => {
     expect(rect.style.top).toBe('100px');
     expect(rect.style.width).toBe('200px');
     expect(rect.style.height).toBe('160px');
+  });
+
+  it('a box that dips to the video placeholder height and back restores a locked ratio exactly', () => {
+    renderOverlay();
+    // Draw first: the rescale branch needs both a marquee and a measured
+    // baseline, and drawing is what establishes them.
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    fireEvent.click(screen.getByTestId('focus-ratio-1:1'));
+    const read = (): string[] => {
+      const s = screen.getByTestId('focus-crop-rect').style;
+      return [s.left, s.top, s.width, s.height];
+    };
+    const before = read();
+
+    // A remounted <video> reports the replaced element's placeholder height
+    // until its metadata arrives, while `w-full` keeps the width — a
+    // non-uniform box change, which rescales the two axes by different
+    // factors and so cannot preserve the ratio on its own.
+    IMG_BOX.height = 150;
+    fireEvent(window, new Event('resize'));
+    // Half the box height means half the marquee height: the dip is real, and
+    // asserting it is what separates a working rescale from one that leaves
+    // the vertical axis alone — both of which return to the same place.
+    expect(parseFloat(read()[3])).toBeCloseTo(parseFloat(before[3]) / 2);
+    // Metadata lands and the box returns to its real height.
+    IMG_BOX.height = 300;
+    fireEvent(window, new Event('resize'));
+
+    expect(read()).toEqual(before);
+    expect(
+      screen.getByTestId('focus-ratio-1:1').getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 
   it('Esc mid-drag cancels the gesture — the next pointermove does not resurrect the rect (adversarial R2)', () => {

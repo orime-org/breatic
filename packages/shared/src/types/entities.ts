@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Shared entity interfaces for cross-layer data transfer.
@@ -440,7 +440,11 @@ export interface CreditLotEntity {
  */
 export interface CreditLedgerEntryEntity {
   id: string;
-  payerUserId: string;
+  /**
+   * Whose money this row moved. Null on `debt_incurred`: a debt is what a
+   * studio owes, recorded before anyone has paid for it.
+   */
+  payerUserId: string | null;
   actorUserId: string | null;
   /** Who spent it, by display name. Absent when nobody did, or they are gone. */
   actorName: string | null;

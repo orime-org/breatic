@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * 支付关闭时的积分引擎（任务 #11）。
@@ -11,8 +11,10 @@
  * 取不到笔。所以哨兵必须放在派生查询之外：预检直接放行、扣费什么都不动，
  * 但**用量记录照写** —— 不扣费的部署同样要知道自己产出了什么。
  *
- * 这让 `credit_ledger.lot_id` 必须可空：这一行没有对应的笔。`payer_user_id`
- * 不跟着可空 —— 账号流水恒按付款方取，这些行必须出现在里面。
+ * 这让 `credit_ledger.lot_id` 必须可空：这一行没有对应的笔。这些行照样带着
+ * 发起生成的人，账号流水恒按付款方取，所以它们出现在他自己的流水里、标着
+ * 「未计费」。（`payer_user_id` 本身在 0064 之后是可空的，那是给欠账行用的：
+ * 记下欠账的那一刻没有人付过钱。）
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -34,6 +36,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, env } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
+import { creditViewService } from "@server/modules/index.js";
 
 const PG_DRIVER_LOCAL = "credit-engine-off-test-driver";
 
@@ -133,5 +136,55 @@ describe("支付关闭", () => {
         amount: 1,
       }),
     ).resolves.toMatchObject({ billed: false });
+  });
+});
+
+describe("the account ledger on a deployment that charges nobody", () => {
+  it("lists the usage, marked as having drawn on no purchase", async () => {
+    // 这个部署里每一行用量的 lot_id 都是空的。验收项 13 说消耗流水照常
+    // 显示，而这一项的脚注也已经对用户说了「下面是用量记录」。
+    const fx = await seedFixture();
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 42,
+      model: "seedream-4.0",
+      referenceId: `off-ledger-${Date.now()}`,
+    });
+
+    const page = await creditViewService.listLedger(fx.userId);
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      kind: "unbilled",
+      amount: -42,
+      model: "seedream-4.0",
+      studioId: fx.studioId,
+    });
+  });
+});
+
+describe("支付关闭时的已消耗（任务 #12，计划 §4.6）", () => {
+  it("无包可扣的用量算进这个 studio 的已消耗", async () => {
+    const fx = await seedFixture();
+    await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 42,
+      model: "seedream-4.0",
+    });
+
+    const overview = await creditLotService.getOverview(fx.userId);
+    const mine = overview.studios.find((s) => s.studioId === fx.studioId);
+
+    // 消耗和扣费是两个行为（user 2026-08-23）。支付关闭只是没有积分可扣，
+    // 消耗照样发生——`creditLot.service.ts` 那个分支的注释自己写着「a
+    // deployment that charges nobody still wants to know what it produced」。
+    //
+    // 而 sumSpentByStudio 有 isNotNull(lotId)，把这类行滤掉了。去掉那个条件
+    // 不影响支付开启：那时被统计的两类行（spend 与 debt_repayment）都挂着
+    // lot，扣不满写的是 debt_incurred、本来就不在 inArray 里。
+    expect(mine).toBeDefined();
+    expect(Number(mine!.spent)).toBe(42);
   });
 });

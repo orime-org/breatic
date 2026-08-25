@@ -34,6 +34,7 @@
 - **核心用户流**:注册 → 登录 → 建 project → canvas 节点 create → mini-tool apply → 邀请
 - **工具**:web Playwright(`pnpm --filter @breatic/web test:smoke`)/ chrome-devtools MCP(交互式驱动)/ Yjs 协作类场景需两个会话验证多端 sync
 - **视觉改动**:必真浏览器 verify(看实际渲染,不靠文字描述),小批 ship + ground truth 对照(详见 [ARCHITECTURE.md#frontend](./ARCHITECTURE.md#frontend))
+- **建了什么就删掉什么(MANDATORY)**:spec 在共享的 smoke 账号里建的东西(Space / project / 节点)一律在 `afterEach` 里删掉。**每条用例各建一个是对的**(不依赖上一次跑剩下的东西),但**留着就是错的** —— 档位对数量有上限(`config/membership.yaml`),而同一个账号被所有 spec 反复跑:实测一次全套建 32 个 Space,攒到 86 个时标签栏全是测试垃圾。判定题:**这条 spec 建了什么下次跑还看得见的东西吗?建了 → 它自己负责删。** 建和删走同一份实现(`packages/web/tests/smoke/helpers/space.ts`),别每个 spec 各写一遍;**删要走用户真实路径**(Space 的删除是 collab 的 `space:delete` RPC,鉴权和审计都在服务端,ADR 2026-05-23 yjs-collab-only-write-authz 禁止客户端直写 `meta.spaces`)
 
 ## 4. 边界
 

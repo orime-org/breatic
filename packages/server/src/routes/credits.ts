@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Credit routes (task #11) — the account's own view of its credits, and the
@@ -22,7 +22,7 @@ import { validate } from "@server/middleware/validate.js";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService } from "@server/modules";
 import {
-  creditPageQuerySchema,
+  creditLotQuerySchema,
   creditLedgerQuerySchema,
   designationSchema,
   lotParamSchema,
@@ -50,10 +50,10 @@ credits.get("/overview", async (c) => {
  * `GET /credits/lots` — this account's purchases, newest first.
  * @returns `200` with one keyset page.
  */
-credits.get("/lots", validate("query", creditPageQuerySchema), async (c) => {
+credits.get("/lots", validate("query", creditLotQuerySchema), async (c) => {
   const user = c.get("user");
-  const { limit, cursor } = c.req.valid("query");
-  const data = await creditViewService.listLots(user.id, limit, cursor);
+  const { limit, cursor, lifecycle } = c.req.valid("query");
+  const data = await creditViewService.listLots(user.id, limit, cursor, lifecycle);
   return c.json({ data });
 });
 

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -57,9 +57,12 @@ describe('MessageBubble', () => {
 
     const dot = screen.getByTestId('chat-waiting-dot');
     expect(dot).toBeInTheDocument();
-    // 在最后一个字后面,不是气泡里别的什么位置。
+    // 紧跟在最后一个字后面,不是气泡里别的什么位置。原来这一条断言的是
+    // 「点是正文容器的最后一个元素子节点」—— 那时正文是一个字符串,两种说法
+    // 指同一处。正文现在是一棵元素树,最后一个字在某个块里面,所以断言改成
+    // 直接量它:点的前一个节点就是那个字。
+    expect(dot.previousSibling?.textContent).toContain('好');
     const said = container.querySelector('[data-testid="message-bubble-content"]');
-    expect(said?.lastElementChild).toBe(dot);
     expect(said?.textContent).toContain('好');
   });
 
@@ -155,5 +158,102 @@ describe('MessageBubble', () => {
       />,
     );
     expect(screen.getByTestId('message-bubble-error').getAttribute('role')).toBe('alert');
+  });
+});
+
+describe('MessageBubble — markdown rendering', () => {
+  it('renders assistant prose through the markdown renderer', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'a line with **bold** in it' });
+
+    const md = screen.getByTestId('markdown-body');
+    expect(md.querySelector('strong')).toHaveTextContent('bold');
+  });
+
+  it('leaves what the reader typed as plain text (R13)', () => {
+    // Someone typing **text** into the composer means those characters.
+    setup({ id: 'm1', role: 'user', content: 'a line with **bold** in it' });
+
+    expect(screen.queryByTestId('markdown-body')).toBeNull();
+    expect(screen.getByTestId('message-bubble')).toHaveTextContent('**bold**');
+    expect(screen.getByTestId('message-bubble').querySelector('strong')).toBeNull();
+  });
+
+  it('tells the renderer the turn is still running (R2)', () => {
+    // Half of "drawn as it streams" is this one prop reaching the renderer:
+    // only a running turn has its unclosed markers completed, so an unclosed
+    // `**` becoming a `strong` is what says the wire is connected.
+    setup({ id: 'm1', role: 'assistant', content: 'half a **word', streaming: true });
+
+    expect(screen.getByTestId('markdown-body').querySelector('strong')).toHaveTextContent('word');
+  });
+
+  it('leaves a settled reply exactly as it came (R3)', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'half a **word' });
+
+    const md = screen.getByTestId('markdown-body');
+    expect(md.querySelector('strong')).toBeNull();
+    expect(md).toHaveTextContent('half a **word');
+  });
+
+  it('keeps the dot out of the rendering once prose has arrived', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'still writing', streaming: true });
+
+    const dot = screen.getByTestId('chat-waiting-dot');
+    expect(dot.closest('[data-testid="markdown-body"]')).toBeNull();
+  });
+
+  it('shows the dot alone before the first character', () => {
+    setup({ id: 'm1', role: 'assistant', content: '', streaming: true });
+
+    expect(screen.getByTestId('chat-waiting-dot')).toBeInTheDocument();
+    expect(screen.queryByTestId('markdown-body')).toBeNull();
+  });
+});
+
+describe('MessageBubble — the waiting mark is the turn\'s own state (R7)', () => {
+  /**
+   * Renders one streaming assistant turn.
+   * @param content - What has arrived so far.
+   * @returns The container.
+   */
+  const streamingTurn = (content: string): HTMLElement =>
+    render(
+      <MessageBubble
+        message={{
+          id: 'm1',
+          role: 'assistant',
+          content,
+          streaming: true,
+        }}
+      />,
+    ).container;
+
+  it('sits after the whole rendered reply, whatever the reply is made of', () => {
+    // The mark says the answer is still coming. It is not part of the answer,
+    // so it goes after the rendering rather than inside it — a code fence, a
+    // table, a footnote section are all just "the reply" to it.
+    for (const content of [
+      'hello wor',
+      '```js\nconst a = 1;',
+      '```js\nreturn\n  ',
+      '```js\n   ',
+      'A claim[^1].\n\n[^1]: the note being writt',
+      '| a | b |\n| - | - |\n| 1 | 2',
+    ]) {
+      const container = streamingTurn(content);
+      const mark = container.querySelector('[data-testid="chat-waiting-dot"]');
+      const body = container.querySelector('[data-testid="markdown-body"]');
+
+      expect(mark, `${content}: the mark is drawn`).not.toBeNull();
+      expect(body, `${content}: the reply is rendered`).not.toBeNull();
+      expect(
+        body?.contains(mark ?? null),
+        `${content}: the mark is outside the rendering`,
+      ).toBe(false);
+      // Adjacent, not merely last: the rule that spaces the two apart is
+      // written with `+`, and anything in between silences it.
+      expect(body?.nextElementSibling, `${content}: the mark follows the rendering`).toBe(mark);
+      cleanup();
+    }
   });
 });

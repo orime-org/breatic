@@ -1,88 +1,82 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { apiGet } from '@web/data/api/request';
+import type {
+  CreditLedgerView,
+  CreditLotView,
+  CreditOverview,
+  CreditPage,
+  StudioCreditsView,
+} from '@breatic/shared';
 
-/** One purchase, as the server reports it. */
-export interface CreditLotView {
-  id: string;
-  purchasedCredits: number;
-  remainingCredits: number;
-  /** The studio allowed to spend it; `null` means unassigned, so unspendable. */
-  designatedStudioId: string | null;
-  lifecycle: string;
-  /** How many refund requests were refused; the lifecycle keeps no trace. */
-  refundAttempts: number;
-  createdAt: string;
+import { apiGet, apiPatch } from '@web/data/api/request';
+
+/**
+ * Read what this account holds and where it went.
+ * @returns The totals, plus a line per studio it has money in or spent in.
+ */
+export async function fetchCreditOverview(): Promise<CreditOverview> {
+  return apiGet<CreditOverview>('/credits/overview');
 }
 
-/** One movement of credits. */
-export interface CreditLedgerView {
-  id: string;
-  entryType: string;
-  /** Signed: positive in, negative out. */
-  amount: number;
-  /** Who spent them, which in a team is often not who paid. */
-  actorUserId: string | null;
-  actorName: string | null;
-  projectName: string | null;
-  studioId: string | null;
-  projectId: string | null;
-  lotId: string | null;
-  model: string | null;
-  provider: string | null;
-  tokensUsed: number | null;
-  description: string | null;
-  createdAt: string;
+/**
+ * Read this account's purchases, newest first.
+ * @param options - Which purchases, and where to resume.
+ * @param options.lifecycle - Narrow to one state; omit for every purchase.
+ * @param options.cursor - The previous page's `nextCursor`.
+ * @returns One page of purchases.
+ */
+export async function fetchCreditLots(options?: {
+  lifecycle?: string;
+  cursor?: string;
+}): Promise<CreditPage<CreditLotView>> {
+  const params: Record<string, string> = {};
+  if (options?.lifecycle !== undefined) params['lifecycle'] = options.lifecycle;
+  if (options?.cursor !== undefined) params['cursor'] = options.cursor;
+  return apiGet<CreditPage<CreditLotView>>('/credits/lots', {
+    params: Object.keys(params).length > 0 ? params : undefined,
+  });
 }
 
-/** One keyset page. */
-export interface CreditPage<T> {
-  items: T[];
-  /** Pass back as the cursor for the next page; `null` at the end. */
-  nextCursor: string | null;
+/**
+ * Read this account's spending, one line per generation, newest first.
+ * @param options - Which spending, and where to resume.
+ * @param options.studioId - Narrow to one studio; omit for all of them.
+ * @param options.cursor - The previous page's `nextCursor`.
+ * @returns One page of the ledger.
+ */
+export async function fetchCreditLedger(options?: {
+  studioId?: string;
+  cursor?: string;
+}): Promise<CreditPage<CreditLedgerView>> {
+  const params: Record<string, string> = {};
+  if (options?.studioId !== undefined) params['studioId'] = options.studioId;
+  if (options?.cursor !== undefined) params['cursor'] = options.cursor;
+  return apiGet<CreditPage<CreditLedgerView>>('/credits/ledger', {
+    params: Object.keys(params).length > 0 ? params : undefined,
+  });
 }
 
-/** One lot a studio holds, where the buyer is a column. */
-export interface StudioLotView extends CreditLotView {
-  /** Who bought it. Absent when their personal studio is gone. */
-  buyerName: string | null;
-}
-
-/** One line of a studio's ledger: everything one event moved. */
-export interface StudioLedgerView {
-  id: string;
-  /** A generation, or a designation paying off what the studio owed. */
-  kind: 'generation' | 'debt_repayment';
-  /** Who ran it, which in a team is often not who paid. */
-  actorUserId: string | null;
-  actorName: string | null;
-  projectId: string | null;
-  projectName: string | null;
-  model: string | null;
-  provider: string | null;
-  /** What left the pool. This is the figure the amount column shows. */
-  charged: number;
-  /** What the run used. Equal to `charged` unless a lot could not cover it. */
-  consumed: number;
-  /** The part of that no lot covered. */
-  owed: number;
-  createdAt: string;
-}
-
-/** What one studio's credits tab shows. */
-export interface StudioCredits {
-  /**
-   * What this studio can spend right now, below zero when it owes. Sent with
-   * the first page only.
-   */
-  spendable?: number;
-  /** What it owes, as a positive number. Sent with the first page only. */
-  debt?: number;
-  /** The lots it holds right now, newest first. Sent with the first page only. */
-  lots?: StudioLotView[];
-  /** This studio's spending, one line per event, newest first. */
-  ledger: CreditPage<StudioLedgerView>;
+/**
+ * Point a purchase at a studio, or at none.
+ *
+ * `null` is an instruction rather than an omission — it takes the purchase
+ * back from whichever studio held it, which is how credits are moved.
+ *
+ * Nothing is read from the reply. Pointing a purchase changes what several of
+ * these reads answer, so the caller refetches them; the one lot the reply
+ * carries would be a second, narrower answer to a question already asked.
+ * @param lotId - The purchase being pointed.
+ * @param studioId - The studio to point it at, or null to take it back.
+ */
+export async function designateCreditLot(
+  lotId: string,
+  studioId: string | null,
+): Promise<void> {
+  await apiPatch<unknown>(
+    `/credits/lots/${encodeURIComponent(lotId)}/designation`,
+    { studioId },
+  );
 }
 
 /**
@@ -110,8 +104,8 @@ export async function fetchProjectCredits(
 export async function fetchStudioCredits(
   slug: string,
   cursor?: string,
-): Promise<StudioCredits> {
-  return apiGet<StudioCredits>(`/studio/${encodeURIComponent(slug)}/credits`, {
+): Promise<StudioCreditsView> {
+  return apiGet<StudioCreditsView>(`/studio/${encodeURIComponent(slug)}/credits`, {
     params: cursor ? { cursor } : undefined,
   });
 }

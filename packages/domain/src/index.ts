@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -22,6 +22,7 @@
 // designation, and what is left on it.
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";

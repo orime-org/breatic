@@ -34,7 +34,7 @@ bodies if it helps reviewers understand the change.
 
 The authorship *identity* of the commit must be a human. Automated
 tooling cannot grant copyright, so listing it in any of the fields
-below creates licensing ambiguity — the Breatic Open Source License
+below creates licensing ambiguity — the Breatic Source-Available License
 depends on identifiable human authors being able to grant rights.
 
 Don't put automated tooling in:

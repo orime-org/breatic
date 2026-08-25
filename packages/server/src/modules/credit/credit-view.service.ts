@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * The read side of credits (task #11) — what the overlay and the studio's
@@ -13,55 +13,20 @@
  */
 
 import { assetService, creditLotRepo, creditLotService } from "@breatic/domain";
+import type { LotContext, PayerLedgerRow } from "@breatic/domain";
 import { encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
 import type { ActivityCursor } from "@breatic/core";
-import type { CreditLotEntity, CreditLedgerEntryEntity } from "@breatic/shared";
+import type {
+  CreditLotEntity,
+  CreditLotLifecycle,
+  CreditLedgerView,
+  CreditLotView,
+  CreditPage,
+  StudioCreditsView,
+  StudioLedgerView,
+  StudioLotView,
+} from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
-
-/** One purchase, as the overlay shows it. */
-export interface CreditLotView {
-  id: string;
-  purchasedCredits: number;
-  remainingCredits: number;
-  designatedStudioId: string | null;
-  lifecycle: string;
-  /** How many refund requests were refused; the lifecycle keeps no trace. */
-  refundAttempts: number;
-  createdAt: string;
-}
-
-/** One lot a studio holds, where the buyer is a column. */
-export interface StudioLotView extends CreditLotView {
-  /** Who bought it. Absent when their personal studio is gone. */
-  buyerName: string | null;
-}
-
-/** One ledger row, as the overlay shows it. */
-export interface CreditLedgerView {
-  id: string;
-  entryType: string;
-  amount: number;
-  actorUserId: string | null;
-  /** Who spent it, by display name. */
-  actorName: string | null;
-  /** Where it was spent, by name. */
-  projectName: string | null;
-  studioId: string | null;
-  projectId: string | null;
-  lotId: string | null;
-  model: string | null;
-  provider: string | null;
-  tokensUsed: number | null;
-  description: string | null;
-  createdAt: string;
-}
-
-/** One keyset page. */
-export interface CreditPage<T> {
-  items: T[];
-  /** Feed back as `?cursor` for the next page; null at the end. */
-  nextCursor: string | null;
-}
 
 /**
  * Decode a cursor, treating anything unusable as "start from the beginning".
@@ -98,12 +63,15 @@ function toNumber(value: string): number {
  * @param lot - The stored lot.
  * @returns The view.
  */
-function toLotView(lot: CreditLotEntity): CreditLotView {
+function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
   return {
     id: lot.id,
     purchasedCredits: toNumber(lot.purchasedCredits),
     remainingCredits: toNumber(lot.remainingCredits),
     designatedStudioId: lot.designatedStudioId,
+    designatedStudioName: lot.designatedStudioName,
+    paidCents: lot.paidCents,
+    currency: lot.currency,
     lifecycle: lot.lifecycle,
     refundAttempts: lot.refundAttempts,
     createdAt: lot.createdAt.toISOString(),
@@ -116,30 +84,37 @@ function toLotView(lot: CreditLotEntity): CreditLotView {
  * @returns The view model.
  */
 function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
-  return { ...toLotView(lot), buyerName: lot.buyerName };
+  return {
+    id: lot.id,
+    purchasedCredits: toNumber(lot.purchasedCredits),
+    remainingCredits: toNumber(lot.remainingCredits),
+    designatedStudioId: lot.designatedStudioId,
+    lifecycle: lot.lifecycle,
+    refundAttempts: lot.refundAttempts,
+    createdAt: lot.createdAt.toISOString(),
+    buyerName: lot.buyerName,
+  };
 }
 
 /**
  * Map a ledger row to its display shape.
- * @param entry - The stored row.
+ * @param row - One generation's grouped row.
  * @returns The view.
  */
-function toLedgerView(entry: CreditLedgerEntryEntity): CreditLedgerView {
+function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
   return {
-    id: entry.id,
-    entryType: entry.entryType,
-    amount: toNumber(entry.amount),
-    actorUserId: entry.actorUserId,
-    actorName: entry.actorName,
-    projectName: entry.projectName,
-    studioId: entry.studioId,
-    projectId: entry.projectId,
-    lotId: entry.lotId,
-    model: entry.model,
-    provider: entry.provider,
-    tokensUsed: entry.tokensUsed,
-    description: entry.description,
-    createdAt: entry.createdAt.toISOString(),
+    id: row.id,
+    kind: row.kind,
+    actorUserId: row.actorUserId,
+    actorName: row.actorName,
+    studioId: row.studioId,
+    studioName: row.studioName,
+    projectId: row.projectId,
+    projectName: row.projectName,
+    model: row.model,
+    provider: row.provider,
+    amount: toNumber(row.amount),
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -189,16 +164,18 @@ export async function getOverview(
  * @param userId - The signed-in account.
  * @param rawLimit - The client's `?limit`, if any.
  * @param rawCursor - The client's `?cursor`, if any.
+ * @param lifecycle - Narrow to one state; omit for every purchase.
  * @returns One page of purchases.
  */
 export async function listLots(
   userId: string,
   rawLimit?: string,
   rawCursor?: string,
+  lifecycle?: CreditLotLifecycle,
 ): Promise<CreditPage<CreditLotView>> {
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
-  const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor);
+  const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor, lifecycle);
   return toPage(rows, size, toLotView, (row) => ({
     cursorAt: row.cursorAt,
     id: row.id,
@@ -245,39 +222,6 @@ export async function listLedger(
 export async function getProjectCredits(projectId: string): Promise<number> {
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   return creditLotService.getSpendableCredits(studioId);
-}
-
-/** One line of a studio's ledger: everything one event moved. */
-export interface StudioLedgerView {
-  id: string;
-  /** A generation, or a designation paying off what the studio owed. */
-  kind: "generation" | "debt_repayment";
-  actorUserId: string | null;
-  /** Who ran it, by display name. */
-  actorName: string | null;
-  projectId: string | null;
-  /** Where it ran, by name. */
-  projectName: string | null;
-  model: string | null;
-  provider: string | null;
-  /** What left the pool. This is the figure the amount column shows. */
-  charged: number;
-  /** What the run used. Equal to `charged` unless a lot could not cover it. */
-  consumed: number;
-  /** The part of that no lot covered. */
-  owed: number;
-  createdAt: string;
-}
-
-/** What one studio holds and has spent, for its credits tab. */
-export interface StudioCreditsView {
-  /** Present on the first page only — it does not change between pages. */
-  spendable?: number;
-  /** What the studio owes, as a positive number. First page only. */
-  debt?: number;
-  /** Present on the first page only, for the same reason. */
-  lots?: StudioLotView[];
-  ledger: CreditPage<StudioLedgerView>;
 }
 
 /**

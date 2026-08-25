@@ -279,6 +279,19 @@ body {
   vertical-align: middle;
   animation: chat-waiting-dot 1.2s ease-in-out infinite;
 }
+/* The mark is appended after the whole rendering, so it lands on a line of its
+   own under the reply. One paragraph's worth of space is what separates any
+   two blocks in this scope, and the mark reads as the next one. Only when
+   there is a reply above it: alone in a fresh bubble it sits where the first
+   line of text is about to appear. */
+.chat-markdown + .chat-waiting-dot {
+  /* A margin on an inline box is half swallowed by the line box it sits in —
+     measured 12.08px against the 11.05px a paragraph break gives. Its own
+     block box makes the figure below mean what it says. */
+  display: block;
+  margin-top: 0.85em;
+}
+
 @keyframes chat-waiting-dot {
   0%,
   100% {
@@ -1055,4 +1068,325 @@ body {
 }
 .collaboration-carets__label.collaboration-carets__label--below.collaboration-carets__label--flip-left {
   border-radius: 3px 0 3px 3px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Chat: assistant prose
+
+   Its own scope. The document body has a settled spec for these same blocks
+   and the values below are taken from it, but the two are different settings:
+   a 13px read-only column against a full-screen 15px editor, one carrying
+   collaboration carets and empty-block placeholders and the other carrying
+   neither. Three of that spec's rules are built on facts that hold only there
+   — a custom property declared inside its scope, quote edges counted past
+   carets, and selection padding figured from its line height — so they are
+   written out here rather than shared.
+
+   Spacing and size are written in em, so they follow the container's font
+   size; the hairlines — borders and the underline offset — stay in px, since
+   a line that thin reads as a line at one width only.
+   ───────────────────────────────────────────────────────────────────────── */
+.chat-markdown {
+  line-height: 1.65;
+  /* The document body leans on a stylesheet @tiptap/core injects for this.
+     There is no editor here. */
+  overflow-wrap: break-word;
+}
+
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown p {
+  margin: 0.85em 0;
+}
+
+.chat-markdown h1 {
+  font-size: calc(1em * 8 / 5);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 1.9em 0 0.55em;
+}
+
+.chat-markdown h2 {
+  font-size: calc(1em * 4 / 3);
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1.7em 0 0.5em;
+}
+
+.chat-markdown h3 {
+  font-size: calc(1em * 17 / 15);
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 1.5em 0 0.45em;
+}
+
+/* A model writes any level it likes and nothing here narrows them, so these
+   arrive. The size ladder above has already reached the body step by h3, so
+   what carries "this is a heading" from here down is the weight and the space
+   around it. */
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 1.3em 0 0.4em;
+}
+
+.chat-markdown strong {
+  font-weight: 700;
+}
+
+.chat-markdown del {
+  text-decoration: line-through;
+  color: var(--color-muted-foreground);
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0.85em 0;
+  padding-inline-start: 1.5em;
+}
+
+/* Preflight clears these to none; without writing them back a list has its
+   indent and nothing else. */
+.chat-markdown ul {
+  list-style-type: disc;
+}
+
+.chat-markdown ol {
+  list-style-type: decimal;
+}
+
+.chat-markdown :is(ul, ol) > li > * {
+  margin: 0;
+}
+
+.chat-markdown :is(ul, ol) > li > * + * {
+  margin-top: 0.3em;
+}
+
+.chat-markdown li + li {
+  margin-top: 0.3em;
+}
+
+/* remark-gfm marks a task list on the ul and each of its items. The tick is
+   drawn in place of the checkbox the browser would render. */
+.chat-markdown ul.contains-task-list {
+  list-style-type: none;
+  padding-inline-start: 0.2em;
+}
+
+.chat-markdown-task-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-content-xs);
+  font-size: 0.8em;
+  line-height: 1;
+  vertical-align: -0.1em;
+  color: var(--color-muted-foreground);
+}
+
+.chat-markdown-task-mark[data-checked] {
+  background: var(--color-muted);
+}
+
+/* The tick is drawn rather than written, so selecting a reply and copying it
+   yields what the model sent. The state reaches a screen reader through the
+   element's own label. */
+.chat-markdown-task-mark[data-checked]::before {
+  content: '✓';
+}
+
+.chat-markdown blockquote {
+  margin: 1.1em 0;
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--color-border);
+  color: var(--color-muted-foreground);
+  /* The one block here that holds other blocks: without closing it vertically
+     their margins collapse through and replace its own. */
+  display: flow-root;
+}
+
+.chat-markdown blockquote > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* A fenced block renders pre > code; without excluding it the two 0.9em
+   multiply into 0.81em. */
+.chat-markdown :not(pre) > code {
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-xs);
+}
+
+.chat-markdown pre {
+  font-size: 0.9em;
+  line-height: 1.6;
+  margin: 1.1em 0;
+  padding: 0.75em 1em;
+  background: var(--color-muted);
+  border-radius: var(--radius-content-sm);
+  /* Same reason as overflow-wrap above: no editor injects this here. */
+  white-space: pre-wrap;
+}
+
+.chat-markdown hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.chat-markdown a {
+  color: var(--color-content-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-markdown img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1.1em 0;
+  border-radius: var(--radius-content-sm);
+}
+
+/* nowrap is what makes the scroller appear at all: allowed to fold, a wide
+   table fits any width and scrollWidth never exceeds the viewport. */
+.chat-markdown table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--color-border);
+  padding: 0.35em 0.6em;
+  text-align: left;
+}
+
+.chat-markdown th {
+  font-weight: 600;
+  background: var(--color-muted);
+}
+
+/* Code colours. Class names are highlight.js's own, read from the scope names
+   each of lowlight's `common` grammars declares; the colours are ours, and
+   which names share one is decided here rather than upstream. A name that
+   says "this is a kind of thing" goes teal — the five selector-* names, class,
+   type, and a title the grammar knew was a class. A name that says "this is
+   what something is called" goes blue — a bare title, and a section heading,
+   which names the region under it. A title carries a second class only where
+   the grammar knows which kind it is, so bash's `function go()` arrives as a
+   bare .hljs-title. Containers — params, function, tag, punctuation — inherit,
+   and the tokens inside them carry the colour.
+
+   meta is its own group upstream ("flags, modifiers, annotations, processing
+   instructions, preprocessor directives"): a shebang, a diff hunk header, a
+   Python decorator, an XML prolog, a YAML document marker. They read as
+   instructions, so they take the keyword colour. A doctag — the `@param` of a
+   JSDoc block — is an annotation of the same kind, sitting inside a comment
+   and inheriting its slant. */
+.chat-markdown .hljs-keyword,
+.chat-markdown .hljs-built_in,
+.chat-markdown .hljs-name,
+.chat-markdown .hljs-operator,
+.chat-markdown .hljs-bullet,
+.chat-markdown .hljs-meta,
+.chat-markdown .hljs-doctag {
+  color: var(--color-palette-violet);
+}
+
+/* A markdown link's target and a markdown span of code are both literal text
+   the surrounding language quotes rather than evaluates, which is what the
+   string colour says. */
+.chat-markdown .hljs-string,
+.chat-markdown .hljs-regexp,
+.chat-markdown .hljs-addition,
+.chat-markdown .hljs-code,
+.chat-markdown .hljs-link {
+  color: var(--color-palette-green);
+}
+
+/* A symbol upstream is a "symbolic constant, interned string, goto label" —
+   an XML entity among them, which is what the declared grammars emit it for.
+   It stands for one fixed value, same as the `\n` of an escape — and same as
+   a goto label, which is why vbnet renames its `label` to this. */
+.chat-markdown .hljs-number,
+.chat-markdown .hljs-literal,
+.chat-markdown .hljs-symbol,
+.chat-markdown .hljs-char.escape_ {
+  color: var(--color-palette-orange);
+}
+
+/* A quoted passage in markdown is someone else's words carried along, which
+   is the same standing a comment has next to the code around it. */
+.chat-markdown .hljs-comment,
+.chat-markdown .hljs-quote {
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+
+/* Markdown's bold and italic are a shape rather than a kind of token, so they
+   keep the body colour and take the shape they name. */
+.chat-markdown .hljs-strong {
+  font-weight: 600;
+}
+
+.chat-markdown .hljs-emphasis {
+  font-style: italic;
+}
+
+/* A section heading names the region under it, which is what a title does. */
+.chat-markdown .hljs-title,
+.chat-markdown .hljs-section {
+  color: var(--color-palette-blue);
+}
+
+.chat-markdown .hljs-title.class_,
+.chat-markdown .hljs-class,
+.chat-markdown .hljs-type,
+.chat-markdown .hljs-selector-tag,
+.chat-markdown .hljs-selector-id,
+.chat-markdown .hljs-selector-class,
+.chat-markdown .hljs-selector-attr,
+.chat-markdown .hljs-selector-pseudo {
+  color: var(--color-palette-teal);
+}
+
+/* An interpolation sits inside the string span that holds it, so without a
+   colour of its own it reads as part of that string. It is code, and the body
+   colour is what says so. */
+.chat-markdown .hljs-subst {
+  color: var(--color-foreground);
+}
+
+.chat-markdown .hljs-attr,
+.chat-markdown .hljs-property,
+.chat-markdown .hljs-attribute,
+.chat-markdown .hljs-variable,
+.chat-markdown .hljs-template-variable {
+  color: var(--color-palette-pink);
+}
+
+.chat-markdown .hljs-deletion {
+  color: var(--color-palette-red);
 }

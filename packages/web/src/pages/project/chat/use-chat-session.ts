@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
@@ -130,6 +130,21 @@ export interface ChatSession {
   remove: (conversationId: string) => void;
 }
 
+/**
+ * How often a streaming reply is allowed to redraw the panel, in milliseconds.
+ *
+ * SSE delivery is untouched: chunks arrive and land in the message as they
+ * always did. This paces the notification that follows, which is what makes
+ * React parse and rebuild the whole message again — measured in jsdom at 18.5ms
+ * for an 8000-character reply, so a few dozen chunks a second would leave the
+ * main thread nothing.
+ *
+ * The first chunk still shows immediately, intervening ones coalesce rather
+ * than drop, and the last one always lands: `throttleit` runs the callback
+ * straight away when the window has passed and queues it when it has not.
+ */
+const UPDATE_THROTTLE_MS = 50;
+
 /** What a panel is looking at before the conversation has arrived. */
 const NO_MESSAGES: StoredUiMessage[] = [];
 
@@ -199,7 +214,10 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     onTitled: noteTitle(conversationId ?? ''),
     onFirstFrame: emptyTheBox(conversationId ?? ''),
   });
-  const { messages: onScreen, status, error } = useChat({ chat });
+  const { messages: onScreen, status, error } = useChat({
+    chat,
+    throttle: UPDATE_THROTTLE_MS,
+  });
   // The stretch of a send with no turn to carry the wait: the first message in
   // a project opens a conversation first, and that is a whole request during
   // which the SDK has not been asked for anything and says it is ready. Left

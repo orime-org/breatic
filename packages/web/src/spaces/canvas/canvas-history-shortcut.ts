@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /** A canvas history action a keyboard shortcut can request. */
 export type HistoryShortcut = 'undo' | 'redo';
