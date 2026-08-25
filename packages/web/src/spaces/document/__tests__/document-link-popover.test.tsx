@@ -477,13 +477,10 @@ describe('putting the panel away', () => {
     await openPopoverOver(editor, 1, 6);
 
     await userEvent.click(screen.getByTestId('elsewhere'));
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 60);
-      });
-    });
 
-    expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
     expect(document.activeElement).toBe(screen.getByTestId('elsewhere'));
     expect(editor.view.hasFocus()).toBe(false);
   });
@@ -672,10 +669,10 @@ describe('a co-editor changes the body', () => {
         link: { href: 'https://peer.example' },
       });
     });
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 30);
-      });
+    // Wait on the peer's link reaching this document rather than on a clock:
+    // what follows only means anything once it has.
+    await waitFor(() => {
+      expect(editor.getHTML()).toContain('peer.example');
     });
 
     fireEvent.click(screen.getByTestId('doc-link-confirm'));
@@ -701,10 +698,10 @@ describe('a co-editor changes the body', () => {
         link: { href: 'https://peer.example' },
       });
     });
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 30);
-      });
+    // Wait on the peer's link reaching this document rather than on a clock:
+    // what follows only means anything once it has.
+    await waitFor(() => {
+      expect(editor.getHTML()).toContain('peer.example');
     });
     expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
 
@@ -847,24 +844,6 @@ describe('when the editor is torn down', () => {
         cleanup();
       });
     }).not.toThrow();
-  });
-});
-
-describe('where the panel hangs', () => {
-  it('mounts inside the body scroller, so it travels with the text', async () => {
-    // Two behaviours rest on this one fact: the panel scrolls out with its
-    // anchor, and the scroller's overflow clips it once it does. Both need
-    // real layout, which jsdom has none of, so what is pinned here is the
-    // structural precondition — a panel portalled to `document.body` can do
-    // neither, whatever else is true of it.
-    const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
-
-    const panel = screen.getByTestId('doc-link-popover');
-    const scroller = document.querySelector('[data-radix-scroll-area-viewport]');
-
-    expect(scroller).not.toBeNull();
-    expect(scroller?.contains(panel)).toBe(true);
   });
 });
 

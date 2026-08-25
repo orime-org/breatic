@@ -123,6 +123,12 @@ export function trackLink(
  * The span comes back first and the link is then read out of it, so a link the
  * peer lengthened is reported at its new extent. A null span means the text it
  * covered is gone.
+ *
+ * The two ends meeting is one way for that to read: a peer deleting the whole
+ * link leaves both positions at the deletion point. Measured, the caller does
+ * not need telling — a zero-width span holds no link either, so it reaches the
+ * same answer through `resolveLinkInSpan`. What the comparison is here for is
+ * the reversed case, which would hand `nodesBetween` a backwards range.
  * @param editor - The editor to resolve against.
  * @param tracked - The handle from {@link trackLink}.
  * @returns The span the link now occupies, or null when it has gone.
