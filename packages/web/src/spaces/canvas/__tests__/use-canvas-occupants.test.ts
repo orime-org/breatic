@@ -68,8 +68,7 @@ describe('useCanvasOccupants', () => {
   it('starts empty and stays empty without an awareness', () => {
     const { result } = renderHook(() => useCanvasOccupants(null));
 
-    expect(result.current.byNode.size).toBe(0);
-    expect(result.current.byEdge.size).toBe(0);
+    expect(result.current.size).toBe(0);
   });
 
   it('reads the holding a peer already published before it mounted', () => {
@@ -78,7 +77,7 @@ describe('useCanvasOccupants', () => {
 
     const { result } = renderHook(() => useCanvasOccupants(local));
 
-    expect(result.current.byNode.get('n1')).toEqual(['alice']);
+    expect(result.current.get('n1')).toEqual(['alice']);
   });
 
   it('follows a peer taking and releasing a node', () => {
@@ -86,19 +85,18 @@ describe('useCanvasOccupants', () => {
     const { result } = renderHook(() => useCanvasOccupants(local));
 
     act(() => remote.setLocalStateField('activeNodeIds', ['n1']));
-    expect(result.current.byNode.get('n1')).toEqual(['alice']);
+    expect(result.current.get('n1')).toEqual(['alice']);
 
     act(() => remote.setLocalStateField('activeNodeIds', null));
-    expect(result.current.byNode.size).toBe(0);
+    expect(result.current.size).toBe(0);
   });
 
-  it('keeps both tables identical when only a pointer moved', () => {
+  it('keeps the table identical when only a pointer moved', () => {
     // This is the whole point of the read-side split: the writer republishes
     // the entire state at up to 30fps while a pointer moves, and none of those
-    // notifications may reach the node or edge renderers.
+    // notifications may reach the node renderer.
     const { local, remote } = pair();
     remote.setLocalStateField('activeNodeIds', ['n1']);
-    remote.setLocalStateField('activeEdgeIds', ['e1']);
 
     let renders = 0;
     const { result } = renderHook(() => {
@@ -118,32 +116,6 @@ describe('useCanvasOccupants', () => {
     expect(renders).toBe(before);
   });
 
-  it('hands out a new node table without disturbing the edge table', () => {
-    const { local, remote } = pair();
-    remote.setLocalStateField('activeNodeIds', ['n1']);
-    remote.setLocalStateField('activeEdgeIds', ['e1']);
-    const { result } = renderHook(() => useCanvasOccupants(local));
-    const firstEdges = result.current.byEdge;
-
-    act(() => remote.setLocalStateField('activeNodeIds', ['n1', 'n2']));
-
-    expect(result.current.byNode.get('n2')).toEqual(['alice']);
-    expect(result.current.byEdge).toBe(firstEdges);
-  });
-
-  it('hands out a new edge table without disturbing the node table', () => {
-    const { local, remote } = pair();
-    remote.setLocalStateField('activeNodeIds', ['n1']);
-    remote.setLocalStateField('activeEdgeIds', ['e1']);
-    const { result } = renderHook(() => useCanvasOccupants(local));
-    const firstNodes = result.current.byNode;
-
-    act(() => remote.setLocalStateField('activeEdgeIds', ['e1', 'e2']));
-
-    expect(result.current.byEdge.get('e2')).toEqual(['alice']);
-    expect(result.current.byNode).toBe(firstNodes);
-  });
-
   it('leaves this client out of its own view', () => {
     const { local } = pair();
     local.setLocalStateField('user', { id: 'me' });
@@ -151,7 +123,7 @@ describe('useCanvasOccupants', () => {
 
     const { result } = renderHook(() => useCanvasOccupants(local));
 
-    expect(result.current.byNode.size).toBe(0);
+    expect(result.current.size).toBe(0);
   });
 
   it('drops the peer when it leaves', () => {
@@ -161,7 +133,7 @@ describe('useCanvasOccupants', () => {
 
     act(() => remote.setLocalState(null));
 
-    expect(result.current.byNode.size).toBe(0);
+    expect(result.current.size).toBe(0);
   });
 
   it('stops listening once unmounted', () => {

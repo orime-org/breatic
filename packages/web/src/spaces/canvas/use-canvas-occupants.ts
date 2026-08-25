@@ -4,37 +4,20 @@
 import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
-import type { CanvasOccupants } from '@web/spaces/canvas/occupants';
-import { collectOccupants, sameOccupantTable } from '@web/spaces/canvas/occupants';
+import { collectNodeOccupants, sameOccupantTable } from '@web/spaces/canvas/node-occupants';
+
+/** Node id to the user ids holding it. */
+export type NodeOccupants = ReadonlyMap<string, readonly string[]>;
 
 /** What every reader sees before an awareness has handed over anything. */
-const EMPTY: CanvasOccupants = { byNode: new Map(), byEdge: new Map() };
-
-/**
- * Carry over the tables that did not change, so their references stay put.
- *
- * Both unchanged returns the previous value itself, which is what lets React
- * skip the render entirely.
- * @param prev - The snapshot the readers are holding.
- * @param next - What awareness says now.
- * @returns The snapshot to hand the readers.
- */
-function carryOverUnchanged(prev: CanvasOccupants, next: CanvasOccupants): CanvasOccupants {
-  const sameNodes = sameOccupantTable(prev.byNode, next.byNode);
-  const sameEdges = sameOccupantTable(prev.byEdge, next.byEdge);
-  if (sameNodes && sameEdges) return prev;
-  return {
-    byNode: sameNodes ? prev.byNode : next.byNode,
-    byEdge: sameEdges ? prev.byEdge : next.byEdge,
-  };
-}
+const EMPTY: NodeOccupants = new Map();
 
 /** An external store over one awareness, in the shape React subscribes to. */
 interface OccupantsStore {
   /** Register for snapshot changes; returns the unsubscribe. */
   subscribe: (onChange: () => void) => () => void;
   /** The current snapshot, stable until its contents change. */
-  getSnapshot: () => CanvasOccupants;
+  getSnapshot: () => NodeOccupants;
 }
 
 /**
@@ -43,14 +26,12 @@ interface OccupantsStore {
  * @returns A store `useSyncExternalStore` can read.
  */
 function createOccupantsStore(awareness: Awareness | null): OccupantsStore {
-  let snapshot: CanvasOccupants = EMPTY;
-  /** Re-collect the tables, keeping whichever of them held still. */
+  let snapshot: NodeOccupants = EMPTY;
+  /** Re-collect the table, keeping the previous one when it held still. */
   const refresh = (): void => {
     if (!awareness) return;
-    snapshot = carryOverUnchanged(
-      snapshot,
-      collectOccupants(awareness.getStates(), awareness.clientID),
-    );
+    const next = collectNodeOccupants(awareness.getStates(), awareness.clientID);
+    if (!sameOccupantTable(snapshot, next)) snapshot = next;
   };
   return {
     /**
@@ -80,19 +61,19 @@ function createOccupantsStore(awareness: Awareness | null): OccupantsStore {
 }
 
 /**
- * Who is holding which node and which edge, as one table each.
+ * Who is holding which node.
  *
- * This is the only place `activeNodeIds` and `activeEdgeIds` enter React. The
- * writer republishes the whole awareness state at up to 30fps while a pointer
- * moves (the protocol has no per-field update), so a reader wired straight to
- * the change event would rebuild the node and edge mirrors thirty times a
- * second over a holding that never moved. Each table is compared by value, and
- * a snapshot whose tables both held still is handed back as the same object —
- * which is what an external store needs for React to skip the render.
+ * This is the only place `activeNodeIds` enters React. The writer republishes
+ * the whole awareness state at up to 30fps while a pointer moves (the protocol
+ * has no per-field update), so a reader wired straight to the change event
+ * would rebuild the node mirror thirty times a second over a holding that
+ * never moved. The table is compared by value, and one that held still is
+ * handed back as the same object — which is what an external store needs for
+ * React to skip the render.
  * @param awareness - This space's awareness, or null before it is attached.
- * @returns The two tables, each keeping its reference until its own contents change.
+ * @returns The table, keeping its reference until its contents change.
  */
-export function useCanvasOccupants(awareness: Awareness | null): CanvasOccupants {
+export function useCanvasOccupants(awareness: Awareness | null): NodeOccupants {
   const store = React.useMemo(() => createOccupantsStore(awareness), [awareness]);
   return React.useSyncExternalStore(store.subscribe, store.getSnapshot);
 }

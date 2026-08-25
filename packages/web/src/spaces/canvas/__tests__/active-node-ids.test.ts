@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  deriveActiveEdgeIds,
   deriveActiveNodeIds,
   sameIdList,
 } from '@web/spaces/canvas/active-node-ids';
@@ -165,41 +164,5 @@ describe('sameIdList', () => {
     // node order, so a reorder means the previous value is stale even though
     // the set is the same. Republishing costs one awareness frame.
     expect(sameIdList(['a', 'b'], ['b', 'a'])).toBe(false);
-  });
-});
-
-describe('deriveActiveEdgeIds', () => {
-  it('reports the selected edges when no pick is running', () => {
-    expect(
-      deriveActiveEdgeIds({ selectedEdgeIds: ['e1', 'e2'], pickSession: null }),
-    ).toEqual(['e1', 'e2']);
-  });
-
-  it('reports null when no edge is selected', () => {
-    expect(
-      deriveActiveEdgeIds({ selectedEdgeIds: [], pickSession: null }),
-    ).toBeNull();
-  });
-
-  it('holds no edge while a pick is running', () => {
-    // Selection is switched off canvas-wide during a pick, edges included:
-    // xyflow reads `edge.selectable ?? elementsSelectable` and `toFlowEdge`
-    // leaves `selectable` undefined. Whatever is still flagged is the state
-    // the pick froze.
-    expect(
-      deriveActiveEdgeIds({
-        selectedEdgeIds: ['stale'],
-        pickSession: { nodeId: 'host', purpose: 'style' },
-      }),
-    ).toBeNull();
-  });
-
-  it('holds no edge under a focus pick either', () => {
-    expect(
-      deriveActiveEdgeIds({
-        selectedEdgeIds: ['stale'],
-        pickSession: { nodeId: 'host', purpose: 'focus' },
-      }),
-    ).toBeNull();
   });
 });

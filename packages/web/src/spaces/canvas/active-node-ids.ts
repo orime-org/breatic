@@ -41,29 +41,6 @@ export function deriveActiveNodeIds(sources: ActiveNodeSources): string[] | null
   return target === null ? [pickSession.nodeId] : [pickSession.nodeId, target];
 }
 
-/** The two sources that say which edges this client is holding. */
-export interface ActiveEdgeSources {
-  /** Ids of the currently selected edges. */
-  selectedEdgeIds: readonly string[];
-  /** The in-progress pick session, when the canvas is in pick mode. */
-  pickSession: PickSession | null;
-}
-
-/**
- * Reduce the edge sources to the set published as `activeEdgeIds`.
- *
- * A running pick empties the set for the same reason it outranks the node
- * selection: `elementsSelectable` switches selection off canvas-wide and
- * xyflow reads `edge.selectable ?? elementsSelectable`, which `toFlowEdge`
- * leaves undefined — so whatever is still flagged is what the pick froze.
- * @param sources - One snapshot of the two sources.
- * @returns The occupied edge ids, or null when this client holds none.
- */
-export function deriveActiveEdgeIds(sources: ActiveEdgeSources): string[] | null {
-  if (sources.pickSession !== null) return null;
-  return sources.selectedEdgeIds.length === 0 ? null : [...sources.selectedEdgeIds];
-}
-
 /**
  * Compare a freshly derived set against the one that actually reached the
  * awareness state, so an unchanged holding is not republished every render.
