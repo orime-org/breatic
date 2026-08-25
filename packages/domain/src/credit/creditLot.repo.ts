@@ -542,6 +542,42 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
 }
 
 /**
+ * One account's lots pointed at one studio, in the order a charge takes them.
+ *
+ * Ids rather than rows: every caller locks each one before deciding anything,
+ * and the row the lock hands back is the only one worth reading. Ordering by
+ * `created_at, id` is what keeps this in step with {@link listSpendableLots} —
+ * two writers taking the same lots in the same order queue instead of each
+ * holding half of what the other needs.
+ *
+ * Live studios are not required here. The caller is acting on a studio it has
+ * already resolved, and joining `studios` would silently skip the lots of one
+ * that had just been soft-deleted — leaving them pointed at it forever.
+ * @param userId - The account whose lots to list.
+ * @param studioId - The studio they point at.
+ * @param tx - The enclosing transaction.
+ * @returns Their ids, oldest first.
+ */
+export async function listDesignatedLotIds(
+  userId: string,
+  studioId: string,
+  tx: DbTx,
+): Promise<string[]> {
+  const rows = await tx
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        eq(creditLots.designatedStudioId, studioId),
+        isNull(creditLots.deletedAt),
+      ),
+    )
+    .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
+  return rows.map((row) => row.id);
+}
+
+/**
  * Point a lot at a studio, or at nothing.
  *
  * The caller holds the row lock and has already checked that the lifecycle
