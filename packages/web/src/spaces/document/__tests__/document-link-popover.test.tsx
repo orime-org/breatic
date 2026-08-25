@@ -175,16 +175,14 @@ describe('which state a press opens', () => {
     // selection, while the probe this control uses answers true. Without a
     // case on it, either reader could be swapped for a different criterion and
     // nothing would go red — the button would light while the panel opened
-    // with no way to remove the link the button says is there.
+    // with no way to remove the link the button says is there. The button's
+    // own reading of this same span is pinned by the first case in this file,
+    // which asks it before the panel opens; by this point the bar is gone.
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 2, 14);
 
     expect(screen.getByTestId('doc-link-url')).toHaveTextContent(HREF);
     expect(screen.getByTestId('doc-link-remove')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-bubble-tool-link')).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
   });
 
   it('selects the whole link when one in the body is clicked', async () => {
@@ -435,37 +433,19 @@ describe('putting the panel away', () => {
     });
     // Handing focus back to the body is scheduled a frame out (`@tiptap/core`'s
     // focus command goes through `requestAnimationFrame`, dist:601). A person
-    // pressing the button again is hundreds of milliseconds away; without this
-    // wait both actions land in one tick, and that frame's focus arrives at the
-    // freshly opened panel, which Radix reads as focus leaving and closes it.
+    // reaching for the text again is hundreds of milliseconds away; without
+    // this wait both actions land in one tick, and that frame's focus arrives
+    // at the freshly opened panel, which Radix reads as focus leaving.
     await act(async () => {
       await new Promise((resolve) => {
         requestAnimationFrame(() => resolve(null));
       });
     });
 
-    await pressLinkButton();
-    await waitFor(() => {
-      expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
-    });
+    // Closing dropped the selection, so reaching the button again means
+    // selecting again — the same route a person takes.
+    await openPopoverOver(editor, 1, 6);
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
-  });
-
-  it('closes on a second press of the button that opened it', async () => {
-    // What this pins is the button's own handler reading the mode and calling
-    // `close`. It does NOT pin what a browser adds on top: there the press
-    // also reaches Radix as a press outside, since the button is not the
-    // trigger — the anchor is. React batches the two here, so this stays green
-    // either way. The smoke case of the same name is where that half is
-    // measured.
-    const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
-
-    await pressLinkButton();
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
-    });
   });
 
   it('closes on a press in the body, which is also what moves the selection', async () => {
@@ -547,19 +527,19 @@ describe('the panel\'s container', () => {
     // that the scroller's overflow clips it once that text scrolls away.
     //
     // The other two containers both disappear while the panel is still open:
-    // the plugin takes the bar away, and ProseMirror tears the editor's DOM
-    // down when a Space tab changes. The panel enters neither.
+    // the bar is taken away the moment the panel opens, and ProseMirror tears
+    // the editor's DOM down when a Space tab changes. The panel enters
+    // neither, so it outlives both.
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 4, 12);
 
     const panel = screen.getByTestId('doc-link-popover');
     const scroller = editor.view.dom.closest('[data-radix-scroll-area-viewport]');
-    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
 
     expect(scroller).not.toBeNull();
     expect(scroller?.contains(panel)).toBe(true);
     expect(editor.view.dom.contains(panel)).toBe(false);
-    expect(bar?.contains(panel)).toBe(false);
+    expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeInTheDocument();
     // The scroller has to be the containing block, or a position computed in
     // its coordinates lands somewhere else. Asked as the class name: jsdom
     // loads no compiled stylesheet, so `getComputedStyle` answers the default
@@ -626,20 +606,17 @@ describe('a co-editor changes the body', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
-    // The draft went with it: the selection still holds no link, so the next
-    // press opens `create`, and it opens empty. The frame in between is the
-    // same one the Escape case waits out — closing hands focus back to the
-    // body a frame later, and without the wait that frame lands on the newly
-    // opened panel, which Radix reads as focus leaving.
+    // The draft went with it: the text that carried the link is gone, so the
+    // next open is a `create` over plain text, and it opens empty. The frame
+    // in between is the same one the Escape case waits out — closing hands
+    // focus back to the body a frame later, and without the wait that frame
+    // lands on the newly opened panel, which Radix reads as focus leaving.
     await act(async () => {
       await new Promise((resolve) => {
         requestAnimationFrame(() => resolve(null));
       });
     });
-    await pressLinkButton();
-    await waitFor(() => {
-      expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
-    });
+    await openPopoverOver(editor, 1, 4);
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
   });
 
@@ -873,24 +850,6 @@ describe('when the editor is torn down', () => {
   });
 });
 
-describe('after the bubble bar is taken away', () => {
-  it('keeps the panel and its anchor', async () => {
-    const editor = mount(ONE_LINK);
-    await openPopoverOver(editor, 4, 12);
-    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
-    expect(bar).toBeInTheDocument();
-
-    // The plugin does exactly this on any transaction while the panel is open:
-    // `shouldShow` asks for the body to hold focus, focus is in the panel, and
-    // `hide()` takes the whole bar out of the document.
-    act(() => {
-      bar?.remove();
-    });
-
-    expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
-  });
-});
-
 describe('where the panel hangs', () => {
   it('mounts inside the body scroller, so it travels with the text', async () => {
     // Two behaviours rest on this one fact: the panel scrolls out with its
@@ -906,5 +865,28 @@ describe('where the panel hangs', () => {
 
     expect(scroller).not.toBeNull();
     expect(scroller?.contains(panel)).toBe(true);
+  });
+});
+
+describe('what the bar carries and what happens around the panel', () => {
+  it('takes the bar away while the panel is open', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+    expect(
+      screen.queryByTestId('doc-selection-bubble-bar'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('drops the selection when the panel closes, so the bar stays away', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
+    });
+    expect(editor.state.selection.empty).toBe(true);
+    expect(
+      screen.queryByTestId('doc-selection-bubble-bar'),
+    ).not.toBeInTheDocument();
   });
 });

@@ -38,6 +38,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
+import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all';
 import {
   resolveLinkSelection,
   resolveLinkInSpan,
@@ -69,11 +70,6 @@ export type AnchorLineReader = () => {
   left: number;
   top: number;
   bottom: number;
-  /**
-   * The bar is on the reader's pointer rather than on a line of the selection,
-   * which is what it does over a select-all.
-   */
-  pinned: boolean;
 } | null;
 
 /** What the panel acts on, taken from the selection when it opened. */
@@ -145,25 +141,14 @@ function panelReference(
 ): ReferenceType | null {
   const { view } = editor;
   const contextElement = view.dom as HTMLElement;
-  const line = anchorLine();
-  /**
-   * The bar's own line, as a reference with no width.
-   * @returns The reference, or null while the selection is empty.
-   * @throws {never}
-   */
-  const point = (): ReferenceType | null => {
+  const extent = span ?? { from: view.state.selection.from, to: view.state.selection.to };
+  const range = domRangeOver(editor, extent);
+  if (!range) {
+    const line = anchorLine();
     if (!line) return null;
     const rect = new DOMRect(line.left, line.top, 0, line.bottom - line.top);
     return { getBoundingClientRect: () => rect, contextElement };
-  };
-  // Without a span of its own the target is the selection, and over a
-  // select-all that is the whole document: a box whose bottom edge is below the
-  // last line, wherever the reader has scrolled to. The bar has already decided
-  // that case in favour of the pointer, and this follows the answer it gives.
-  if (!span && line?.pinned) return point();
-  const extent = span ?? { from: view.state.selection.from, to: view.state.selection.to };
-  const range = domRangeOver(editor, extent);
-  if (!range) return point();
+  }
   return {
     getBoundingClientRect: () => range.getBoundingClientRect(),
     getClientRects: () => range.getClientRects(),
@@ -221,15 +206,19 @@ function followedLink(editor: Editor, tracked: TrackedLink | null): LinkSelectio
  * @param root0.editor - The editor the control reads and writes.
  * @param root0.anchorLine - The bubble bar's own anchor line, for a selection
  *   holding no link.
+ * @param root0.onPanelOpenChange - Told when the panel opens and closes, so
+ *   the bar can step aside for it.
  * @returns The control.
  */
 export function DocumentLinkPopover({
   editor,
   anchorLine,
+  onPanelOpenChange,
 }: {
   editor: Editor;
   anchorLine: AnchorLineReader;
-}): React.JSX.Element {
+  onPanelOpenChange: (open: boolean) => void;
+}): React.JSX.Element | null {
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
   const [draft, setDraft] = React.useState('');
@@ -250,7 +239,11 @@ export function DocumentLinkPopover({
     setDraft('');
     setShowInvalid(false);
     setTarget(NO_TARGET);
-  }, []);
+    // The selection goes with the panel. The bar shows on a selection, and a
+    // reader who wants it back makes one — leaving the old selection standing
+    // would put the bar back over text the reader has finished with.
+    editor.commands.setTextSelection(editor.state.selection.to);
+  }, [editor]);
 
   /** Read the selection and show the face that fits it. */
   const openFromSelection = React.useCallback((): void => {
@@ -377,12 +370,21 @@ export function DocumentLinkPopover({
     }),
   ]);
 
+  // The bar takes itself away while this panel is up (§4.6).
+  React.useEffect(() => {
+    onPanelOpenChange(mode !== 'closed');
+  }, [mode, onPanelOpenChange]);
+
   // The reference is rebuilt whenever the target moves to a different span. In
   // between, the Range it holds tracks its own text.
   React.useEffect(() => {
     if (mode === 'closed') return;
     refs.setPositionReference(panelReference(editor, target.range, anchorLine));
   }, [anchorLine, editor, mode, refs, target.range]);
+
+  // A select-all's target is the whole document, and giving that a link is not
+  // an operation (§4.6). The button goes with it, so there is nothing to press.
+  if (isWholeDocumentSelection(editor.state)) return null;
 
   return (
     <>

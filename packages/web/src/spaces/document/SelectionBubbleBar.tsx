@@ -124,7 +124,11 @@ interface BubbleGroup {
    * Radix trigger, which is a different shape and not one the eight commands
    * have any use for.
    */
-  panels: React.ComponentType<{ editor: Editor; anchorLine: AnchorLineReader }>[];
+  panels: React.ComponentType<{
+    editor: Editor;
+    anchorLine: AnchorLineReader;
+    onPanelOpenChange: (open: boolean) => void;
+  }>[];
 }
 
 /**
@@ -763,16 +767,11 @@ function BubbleBar({
    * about where the reader is looking.
    * @returns The line, or null while the selection is empty.
    */
-  const anchorLine = React.useCallback((): {
-    left: number;
-    top: number;
-    bottom: number;
-    pinned: boolean;
-  } | null => {
+  const anchorLine = React.useCallback((): ReturnType<AnchorLineReader> => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
     const pinned = pinnedPoint();
-    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y, pinned: true };
+    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y };
     // The two axes come from different places here, and they have to.
     // Vertically the bar belongs to ONE line — the anchor. Horizontally the
     // ruling asks for the selection's left edge, which is the left of the
@@ -786,9 +785,26 @@ function BubbleBar({
       left: selectionBox(view).left,
       top: line.top,
       bottom: line.bottom,
-      pinned: false,
     };
   }, [editor, viewport, pinnedPoint]);
+
+  /**
+   * Step aside while a panel is up.
+   *
+   * The panel holds the focus and the reader's attention while it is open, and
+   * the two would otherwise be anchored to the same line: measured, a panel
+   * that `flip` sent above its target landed on the bar's own pixels. Closing
+   * the panel drops the selection, so the bar does not come back on its own.
+   * @param open - Whether a panel is showing.
+   */
+  const onPanelOpenChange = React.useCallback(
+    (open: boolean): void => {
+      if (!open) return;
+      const { view } = editor;
+      view.dispatch(view.state.tr.setMeta(pluginKey, 'hide'));
+    },
+    [editor, pluginKey],
+  );
 
   const getReferencedVirtualElement = React.useCallback(() => {
     const line = anchorLine();
@@ -923,7 +939,12 @@ function BubbleBar({
               />
             ) : null}
             {group.panels.map((Panel, panelIndex) => (
-              <Panel key={panelIndex} editor={editor} anchorLine={anchorLine} />
+              <Panel
+                key={panelIndex}
+                editor={editor}
+                anchorLine={anchorLine}
+                onPanelOpenChange={onPanelOpenChange}
+              />
             ))}
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
