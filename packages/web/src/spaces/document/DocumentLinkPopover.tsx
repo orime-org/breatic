@@ -326,12 +326,12 @@ export function DocumentLinkPopover({
       // Reads the target's per-line rectangles, so a target that wraps gets the
       // panel against one line rather than the box drawn around all of them.
       inline(),
-      // Named rather than left to the default clipping ancestors: the box that
-      // decides "it does not fit" is the body's visible area, the same one the
-      // bar names for its own middleware.
-      ...(scroller
-        ? [flip({ boundary: scroller }), shift({ boundary: scroller, crossAxis: true })]
-        : []),
+      // The box that decides "it does not fit" is the body's visible area, the
+      // same one the bar names for its own middleware. `shift` keeps its
+      // default axis, which for a bottom placement is the horizontal one: the
+      // panel is held inside the body column, and follows its target out of
+      // sight vertically the way the line it sits on does.
+      ...(scroller ? [flip({ boundary: scroller }), shift({ boundary: scroller })] : []),
     ],
     whileElementsMounted: autoUpdate,
   });
