@@ -22,11 +22,6 @@ import remend from 'remend';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
-import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
-import {
-  WAITING_DOT_TAG,
-  waitingDotPlugin,
-} from '@web/pages/project/chat/waiting-dot-plugin';
 
 interface MarkdownMessageProps {
   /** The assistant's prose, as markdown. */
@@ -85,11 +80,7 @@ const REMARK_PLUGINS = [remarkGfm];
 // grammar only by naming one.
 const HIGHLIGHT = [rehypeHighlight];
 
-const REHYPE_SETTLED = [HIGHLIGHT];
-
-// The mark goes in after the colouring: rehype-highlight rebuilds a code
-// element's children, dropping anything already placed among them.
-const REHYPE_STREAMING = [HIGHLIGHT, waitingDotPlugin];
+const REHYPE = [HIGHLIGHT];
 
 /**
  * A wide table scrolls sideways through the app's own scroller.
@@ -142,10 +133,6 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
 const COMPONENTS = {
   table: ScrollableTable,
   input: TaskMark,
-  // Present in both states. The element only exists while streaming, so a
-  // mapping with nothing to match produces nothing; keeping it here means the
-  // map itself never changes identity between renders.
-  [WAITING_DOT_TAG]: WaitingDot,
 } as Components;
 
 /**
@@ -173,8 +160,8 @@ export function MarkdownMessage({
   const backTo = t('chat.markdown.backToReference', { index: '{index}' });
   // Runs before the colouring, which only rebuilds code elements.
   const rehypePlugins = useMemo(
-    () => [[footnoteScopePlugin, scope], ...(streaming ? REHYPE_STREAMING : REHYPE_SETTLED)],
-    [scope, streaming],
+    () => [[footnoteScopePlugin, scope], ...REHYPE],
+    [scope],
   );
   const remarkRehypeOptions = useMemo(
     () => ({

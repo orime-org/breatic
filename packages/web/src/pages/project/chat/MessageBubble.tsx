@@ -80,12 +80,13 @@ export const MessageBubble = React.memo(function MessageBubble({
                 been said so far. It starts alone in an empty bubble and stays
                 on the heels of the last character until the turn is over
                 (user 2026-08-20: the dot must not disappear and must not turn
-                into a bar). Once prose has arrived the renderer places it,
-                since by then the last character sits inside an element tree
-                rather than at the end of a string. */}
-            {message.streaming && (isUser || !message.content) ? (
-              <WaitingDot />
-            ) : null}
+                into a bar).
+
+                It says the answer is still coming, which makes it this turn's
+                state rather than part of the answer — so it goes after the
+                rendering, and what the reply is made of never enters into it
+                (user 2026-08-25). */}
+            {message.streaming ? <WaitingDot /> : null}
           </div>
         ) : null}
         {message.interrupted ? (

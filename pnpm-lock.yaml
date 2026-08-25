@@ -940,9 +940,6 @@ importers:
       globals:
         specifier: 'catalog:'
         version: 16.5.0
-      highlight.js:
-        specifier: ^11.11.2
-        version: 11.11.2
       husky:
         specifier: ^9.1.7
         version: 9.1.7

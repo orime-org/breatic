@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -178,11 +178,11 @@ describe('MessageBubble — markdown rendering', () => {
     expect(screen.getByTestId('message-bubble').querySelector('strong')).toBeNull();
   });
 
-  it('hands the dot to the renderer once prose has arrived', () => {
+  it('keeps the dot out of the rendering once prose has arrived', () => {
     setup({ id: 'm1', role: 'assistant', content: 'still writing', streaming: true });
 
     const dot = screen.getByTestId('chat-waiting-dot');
-    expect(dot.closest('[data-testid="markdown-body"]')).toBeInTheDocument();
+    expect(dot.closest('[data-testid="markdown-body"]')).toBeNull();
   });
 
   it('shows the dot alone before the first character', () => {
@@ -190,5 +190,54 @@ describe('MessageBubble — markdown rendering', () => {
 
     expect(screen.getByTestId('chat-waiting-dot')).toBeInTheDocument();
     expect(screen.queryByTestId('markdown-body')).toBeNull();
+  });
+});
+
+describe('MessageBubble — the waiting mark is the turn\'s own state (R7)', () => {
+  /**
+   * Renders one streaming assistant turn.
+   * @param content - What has arrived so far.
+   * @returns The container.
+   */
+  const streamingTurn = (content: string): HTMLElement =>
+    render(
+      <MessageBubble
+        message={{
+          id: 'm1',
+          role: 'assistant',
+          content,
+          streaming: true,
+        }}
+      />,
+    ).container;
+
+  it('sits after the whole rendered reply, whatever the reply is made of', () => {
+    // The mark says the answer is still coming. It is not part of the answer,
+    // so it goes after the rendering rather than inside it — a code fence, a
+    // table, a footnote section are all just "the reply" to it.
+    for (const content of [
+      'hello wor',
+      '```js\nconst a = 1;',
+      '```js\nreturn\n  ',
+      '```js\n   ',
+      'A claim[^1].\n\n[^1]: the note being writt',
+      '| a | b |\n| - | - |\n| 1 | 2',
+    ]) {
+      const container = streamingTurn(content);
+      const mark = container.querySelector('[data-testid="chat-waiting-dot"]');
+      const body = container.querySelector('[data-testid="markdown-body"]');
+
+      expect(mark, `${content}: the mark is drawn`).not.toBeNull();
+      expect(body, `${content}: the reply is rendered`).not.toBeNull();
+      expect(
+        body?.contains(mark ?? null),
+        `${content}: the mark is outside the rendering`,
+      ).toBe(false);
+      expect(
+        body?.nextElementSibling === mark || body?.parentElement?.lastElementChild === mark,
+        `${content}: the mark follows the rendering`,
+      ).toBe(true);
+      cleanup();
+    }
   });
 });

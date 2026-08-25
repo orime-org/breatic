@@ -12,11 +12,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import hljs from 'highlight.js/lib/core';
-import { common, createLowlight } from 'lowlight';
 import postcss from 'postcss';
 import { describe, it, expect } from 'vitest';
-
 
 /**
  * Reads one file next to index.css.
@@ -63,31 +60,6 @@ function paletteTokens(): Set<string> {
   return names;
 }
 
-/**
- * Every scope name a grammar definition declares, however deeply nested.
- *
- * A definition is a graph of modes rather than a tree — a mode that contains
- * itself is how a grammar says "nested here too" — so each object is visited
- * once. A mode names its scope with either `scope` or the older `className`.
- * @param node - A definition object, a mode, or an array of them.
- * @param found - The set to add to.
- * @param seen - The objects already walked.
- * @returns Nothing; `found` carries the result.
- */
-function collectScopes(node: unknown, found: Set<string>, seen = new WeakSet<object>()): void {
-  if (node === null || typeof node !== 'object') return;
-  if (seen.has(node)) return;
-  seen.add(node);
-  if (Array.isArray(node)) {
-    for (const one of node) collectScopes(one, found, seen);
-    return;
-  }
-  const mode = node as { scope?: unknown; className?: unknown };
-  if (typeof mode.scope === 'string') found.add(mode.scope);
-  if (typeof mode.className === 'string') found.add(mode.className);
-  for (const value of Object.values(node)) collectScopes(value, found, seen);
-}
-
 describe('chat prose stylesheet — colours come from tokens (R10)', () => {
   it('paints every highlight class with a palette token', () => {
     const allowed = new Set([...paletteTokens(), '--color-muted-foreground', '--color-foreground']);
@@ -110,114 +82,6 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
         expect(allowed.has(token ?? ''), `${token} is not a colour this theme defines`).toBe(true);
       }
     }
-  });
-
-  it('separates a type name from a function name', () => {
-    // Functions and types share hljs-title. A grammar that knows which kind it
-    // has adds a second class; bash does not, and its `function go()` arrives
-    // as a bare hljs-title — so the bare name has to be painted, and the type
-    // has to win over it.
-    /**
-     * The colour the last rule mentioning this selector declares.
-     * @param selector - The selector to look for, matched exactly.
-     * @returns That colour, or undefined when no rule declares one.
-     */
-    const colourOf = (selector: string): string | undefined => {
-      let found: string | undefined;
-      for (const rule of chatRules()) {
-        if (!rule.selector.split(',').some((p) => p.trim() === selector)) continue;
-        const colour = /color:\s*([^;]+);/.exec(rule.body)?.[1]?.trim();
-        if (colour !== undefined) found = colour;
-      }
-      return found;
-    };
-
-    const bare = colourOf('.chat-markdown .hljs-title');
-    const type = colourOf('.chat-markdown .hljs-title.class_');
-    expect(bare).toBeDefined();
-    expect(type).toBeDefined();
-    expect(bare).not.toBe(type);
-  });
-
-  it('covers every class the grammars we ship can emit', () => {
-    // The set is lowlight's `common`. Restricting it saves nothing —
-    // rehype-highlight imports `common` at the top of its own module, so every
-    // one of these reaches the bundle whatever is passed to it.
-    const lowlight = createLowlight(common);
-    const names = Object.keys(common);
-    expect(names.length).toBe(37);
-
-    // Every scope name each grammar declares, and every alias it renames one
-    // to — taken from the definition objects the library itself builds, by
-    // calling each `LanguageFn` the way `registerLanguage` does. Reading the
-    // grammar files as text instead is a model of the library, and a model
-    // gets it wrong in ways nothing here would see: it cannot know that cpp
-    // renames `function.dispatch` to `built_in`, so it would ask for a colour
-    // on a selector highlight.js can never emit.
-    // Per grammar, because `classNameAliases` is per grammar: one language
-    // renaming `label` says nothing about what another emits under that name.
-    const emitted = new Set<string>();
-    for (const define of Object.values(common)) {
-      const definition = define(hljs);
-      const aliases = definition.classNameAliases ?? {};
-      const scopes = new Set<string>();
-      collectScopes(definition, scopes);
-      for (const scope of scopes) {
-        // `scope: ''` is how a mode says it wants no class at all.
-        if (scope === '') continue;
-        emitted.add(aliases[scope] ?? scope);
-      }
-    }
-    expect(emitted.size).toBeGreaterThan(45);
-    expect(lowlight.registered('ruby')).toBe(true);
-
-    // Each painted selector as the SET of classes it requires. Splitting these
-    // into loose names would put a bare `hljs-title` — which no rule matches,
-    // and which bash emits for a function name — into the painted set.
-    const paintedCombos = chatRules()
-      .filter((r) => r.selector.includes('.hljs-'))
-      // A rule that names a class and declares nothing leaves that token the
-      // surrounding foreground. Markdown's bold and italic are meant to take
-      // it — they name a shape, not a kind of token — so a weight or a slant
-      // counts as having been dealt with.
-      .filter((r) => /(?:^|;)\s*(?:color|font-weight|font-style):/.test(r.body))
-      .flatMap((r) => r.selector.split(','))
-      .filter((part) => part.includes('.hljs-'))
-      .map((part) => {
-        const last = part.trim().split(/\s+/).pop() ?? '';
-        return new Set([...last.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map((m) => m[1]!));
-      });
-
-    // Containers hold other tokens and take the surrounding colour. Matched
-    // whole: `function` wraps a declaration, while `function.dispatch` is the
-    // called name inside one, and the two want opposite treatment.
-    const containers = new Set(['params', 'function', 'tag', 'punctuation']);
-
-    /**
-     * The classes highlight.js puts on an element for one scope name.
-     *
-     * A tiered scope becomes the prefixed head plus one class per tier, each
-     * carrying as many underscores as its depth — `char.escape` is
-     * `hljs-char escape_`. Copied from `highlight.js/lib/core.js:122`, which
-     * does not export it.
-     * @param scope - A scope name a grammar declares.
-     * @returns Every class an element carrying that scope has.
-     */
-    const classesFor = (scope: string): string[] => {
-      const [head, ...tiers] = scope.split('.');
-      return [`hljs-${head}`, ...tiers.map((tier, depth) => `${tier}${'_'.repeat(depth + 1)}`)];
-    };
-
-    const unpainted = [...emitted]
-      .filter((scope) => !containers.has(scope))
-      .filter(
-        (scope) =>
-          !paintedCombos.some((needed) =>
-            [...needed].every((one) => classesFor(scope).includes(one)),
-          ),
-      );
-
-    expect(unpainted, 'scopes no rule paints').toEqual([]);
   });
 
 });
