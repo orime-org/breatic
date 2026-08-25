@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 
 const remendCalls: unknown[] = [];
+const katexCalls: unknown[] = [];
 
 vi.mock('remend', async (importOriginal) => {
   const actual = await importOriginal<{ default:(t: string, o?: unknown) => string }>();
@@ -22,6 +23,16 @@ vi.mock('remend', async (importOriginal) => {
     default: (text: string, options?: unknown) => {
       remendCalls.push(options);
       return actual.default(text, options as never);
+    },
+  };
+});
+
+vi.mock('rehype-katex', async (importOriginal) => {
+  const actual = await importOriginal<{ default:(o?: unknown) => unknown }>();
+  return {
+    default: (options?: unknown) => {
+      katexCalls.push(options);
+      return actual.default(options as never);
     },
   };
 });
@@ -70,6 +81,32 @@ describe('markdown pipeline — completion switches (R2, R3)', () => {
       setextHeadings: true,
       katex: true,
       inlineKatex: false,
+    });
+  });
+
+  it('asks katex for exactly the settled set', () => {
+    // Same rule as the line above. `displayMode` and `throwOnError` are not
+    // here because rehype-katex owns them: its own option type is
+    // `Omit<KatexOptions, 'displayMode' | 'throwOnError'>`.
+    katexCalls.length = 0;
+    render(<MarkdownMessage content='a line' streaming={false} />);
+
+    expect(katexCalls).toHaveLength(1);
+    expect(katexCalls[0]).toEqual({
+      // KaTeX's own default is a hard-coded #cc0000, which owns no place in
+      // either theme. The grey is what @streamdown/math runs on.
+      errorColor: 'var(--color-muted-foreground)',
+      // `true` lets `\href` produce an anchor carrying neither target nor
+      // rel, which is every link in a reply except the ones MarkdownLink
+      // draws.
+      trust: false,
+      // The four below are KaTeX's documented defaults, written out because a
+      // later version could change what a default is. @streamdown/math, the
+      // complete implementation this pipeline borrows from, runs on all four.
+      output: 'htmlAndMathml',
+      strict: 'warn',
+      maxExpand: 1000,
+      maxSize: Infinity,
     });
   });
 
