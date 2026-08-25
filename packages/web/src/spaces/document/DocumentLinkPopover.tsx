@@ -59,20 +59,6 @@ import {
 /** Which of the panel's three faces is showing, or none. */
 type LinkMode = 'closed' | 'create' | 'view' | 'edit';
 
-/**
- * Hands this panel the line the bubble bar anchors to, in viewport coordinates.
- *
- * The bar is the one that knows where the reader is looking. Over a select-all
- * nothing about the selection does: it starts at the top of the document, so a
- * panel measuring from there lands above the fold by however far the reader has
- * scrolled — measured at viewport top -483 after a 600px scroll.
- */
-export type AnchorLineReader = () => {
-  left: number;
-  top: number;
-  bottom: number;
-} | null;
-
 /** What the panel acts on, taken from the selection when it opened. */
 interface LinkTarget {
   range: LinkRange | null;
@@ -126,30 +112,20 @@ function bodyScroller(editor: Editor): HTMLElement | null {
  * (`engineering/demo/2026-08-25-live-range-probe.mjs`). `getClientRects` is
  * what the `inline` middleware reads to pick a line out of a target that wraps.
  *
- * Over a select-all there is no useful Range: it spans the whole document, so
- * its bottom edge is below the last line and the panel would open off screen.
- * The bar answers that case with the pointer, and this follows it.
+ * Null when the target has no DOM to measure, which happens for the moment a
+ * co-editor's replacement of the whole document is landing. The caller keeps
+ * the reference it already has, and the next transaction builds a fresh one.
  * @param editor - The editor to measure in.
  * @param span - The target's extent in the document, when it has one.
- * @param anchorLine - The bar's own anchor line, in viewport coordinates.
  * @returns The reference, or null while the target cannot be measured.
  * @throws {never}
  */
-function panelReference(
-  editor: Editor,
-  span: LinkRange | null,
-  anchorLine: AnchorLineReader,
-): ReferenceType | null {
+function panelReference(editor: Editor, span: LinkRange | null): ReferenceType | null {
   const { view } = editor;
   const contextElement = view.dom as HTMLElement;
   const extent = span ?? { from: view.state.selection.from, to: view.state.selection.to };
   const range = domRangeOver(editor, extent);
-  if (!range) {
-    const line = anchorLine();
-    if (!line) return null;
-    const rect = new DOMRect(line.left, line.top, 0, line.bottom - line.top);
-    return { getBoundingClientRect: () => rect, contextElement };
-  }
+  if (!range) return null;
   return {
     getBoundingClientRect: () => range.getBoundingClientRect(),
     getClientRects: () => range.getClientRects(),
@@ -204,19 +180,15 @@ function followedLink(editor: Editor, tracked: TrackedLink | null): LinkSelectio
  * The link button and its panel.
  * @param root0 - Props.
  * @param root0.editor - The editor the control reads and writes.
- * @param root0.anchorLine - The bubble bar's own anchor line, for a selection
- *   holding no link.
  * @param root0.onPanelOpenChange - Told when the panel opens and closes, so
  *   the bar can step aside for it.
  * @returns The control.
  */
 export function DocumentLinkPopover({
   editor,
-  anchorLine,
   onPanelOpenChange,
 }: {
   editor: Editor;
-  anchorLine: AnchorLineReader;
   onPanelOpenChange: (open: boolean) => void;
 }): React.JSX.Element | null {
   const t = useTranslation();
@@ -346,28 +318,27 @@ export function DocumentLinkPopover({
     ],
     whileElementsMounted: autoUpdate,
   });
-  // The button is not an outside press. `useDismiss` acts on `pointerdown`
-  // while the button's own toggle runs on the following `click`, and those are
-  // two separate event loops: left to itself, dismiss closes the panel and the
-  // click then reads `mode` as `closed` and opens it straight back.
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-  const { getFloatingProps } = useInteractions([
-    useDismiss(context, {
-      outsidePress: (event) => !buttonRef.current?.contains(event.target as Node),
-    }),
-  ]);
+  // The button needs no exception from outside-press handling: the bar it sits
+  // on is invisible and click-through-dead for as long as the panel is open,
+  // so the button receives no pointer event to be mistaken for one.
+  const { getFloatingProps } = useInteractions([useDismiss(context)]);
 
-  // The bar takes itself away while this panel is up (§4.6).
+  // The bar takes itself away while this panel is up (§4.6). A whole-document
+  // selection takes the whole control away below, panel included, so it also
+  // ends the bar's standing aside — otherwise the bar would be left invisible
+  // with nothing on screen able to bring it back.
+  const panelShowing = mode !== 'closed' && !wholeDocument;
   React.useEffect(() => {
-    onPanelOpenChange(mode !== 'closed');
-  }, [mode, onPanelOpenChange]);
+    onPanelOpenChange(panelShowing);
+  }, [onPanelOpenChange, panelShowing]);
 
   // The reference is rebuilt whenever the target moves to a different span. In
   // between, the Range it holds tracks its own text.
   React.useEffect(() => {
     if (mode === 'closed') return;
-    refs.setPositionReference(panelReference(editor, target.range, anchorLine));
-  }, [anchorLine, editor, mode, refs, target.range]);
+    const reference = panelReference(editor, target.range);
+    if (reference) refs.setPositionReference(reference);
+  }, [editor, mode, refs, target.range]);
 
   // A co-editor typing ahead of the link moves it, and the panel follows the
   // link it was opened over. Which link that is comes from the handle taken at
@@ -396,7 +367,8 @@ export function DocumentLinkPopover({
       // the peer inserted ahead of it. `view` gets its rebuild from the target
       // moving; `create` has no target, so it asks here.
       if (mode === 'create') {
-        refs.setPositionReference(panelReference(editor, null, anchorLine));
+        const reference = panelReference(editor, null);
+        if (reference) refs.setPositionReference(reference);
         return;
       }
       const resolved = followedLink(editor, target.tracked);
@@ -414,7 +386,7 @@ export function DocumentLinkPopover({
     return () => {
       editor.off('transaction', follow);
     };
-  }, [anchorLine, close, editor, mode, refs, target.tracked]);
+  }, [close, editor, mode, refs, target.tracked]);
 
   // A select-all's target is the whole document, and giving that a link is not
   // an operation (§4.6). The button goes with it, so there is nothing to press.
@@ -423,7 +395,6 @@ export function DocumentLinkPopover({
   return (
     <>
       <Button
-        ref={buttonRef}
         variant={holdsLink ? 'secondary' : 'ghost'}
         size='icon'
         aria-label={t('spaces.document.commands.link')}
@@ -431,7 +402,7 @@ export function DocumentLinkPopover({
         aria-haspopup='dialog'
         aria-expanded={mode !== 'closed'}
         disabled={!canLink}
-        onClick={() => (mode === 'closed' ? openFromSelection() : close())}
+        onClick={openFromSelection}
         data-testid='doc-bubble-tool-link'
         // The bar stays out of the tab order entirely, as the eight command
         // buttons beside it do.

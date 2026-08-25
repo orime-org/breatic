@@ -104,10 +104,7 @@ import {
   BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
-import {
-  DocumentLinkPopover,
-  type AnchorLineReader,
-} from '@web/spaces/document/DocumentLinkPopover';
+import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
@@ -127,7 +124,6 @@ interface BubbleGroup {
    */
   panels: React.ComponentType<{
     editor: Editor;
-    anchorLine: AnchorLineReader;
     onPanelOpenChange: (open: boolean) => void;
   }>[];
 }
@@ -768,7 +764,11 @@ function BubbleBar({
    * about where the reader is looking.
    * @returns The line, or null while the selection is empty.
    */
-  const anchorLine = React.useCallback((): ReturnType<AnchorLineReader> => {
+  const anchorLine = React.useCallback((): {
+    left: number;
+    top: number;
+    bottom: number;
+  } | null => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
     const pinned = pinnedPoint();
@@ -950,12 +950,7 @@ function BubbleBar({
               />
             ) : null}
             {group.panels.map((Panel, panelIndex) => (
-              <Panel
-                key={panelIndex}
-                editor={editor}
-                anchorLine={anchorLine}
-                onPanelOpenChange={setPanelOpen}
-              />
+              <Panel key={panelIndex} editor={editor} onPanelOpenChange={setPanelOpen} />
             ))}
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
