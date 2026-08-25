@@ -35,9 +35,10 @@ function sameValue(a: unknown, b: unknown): boolean {
  * element-wise. A nested non-array object inside data (`paramsByModel` /
  * `modelByMode` — whole-object rewrites whose stored reference is stable via
  * `toJSON` until actually replaced) compares by reference: unchanged → same
- * ref → equal; rewritten → new ref → changed. (`handlingBy` never reaches
- * here — `toNodeView` folds it into the derived `status` STRING, so a
- * handling transition is caught by the status value compare.)
+ * ref → equal; rewritten → new ref → changed. (`toNodeView` folds the wire
+ * `handlingBy` into two flat fields — the derived `status` string and the
+ * starter's `handlingByUserId` — so both a handling transition and a
+ * generation changing hands are caught by the value compare above.)
  * @param a - One node's data record (or undefined).
  * @param b - The other node's data record (or undefined).
  * @returns True when both have identical own keys with {@link sameValue}-equal

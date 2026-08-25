@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
 import { describe, it, expect } from 'vitest';
-import type { CanvasNodeFields, NodeType } from '@breatic/shared';
+import { HANDLING_TIMEOUT_MS, type CanvasNodeFields, type NodeType } from '@breatic/shared';
 
 import {
   deriveStatus,
@@ -122,6 +122,38 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       kind: 'annotation',
       locked: true,
     });
+  });
+
+  it('projects who started a running generation onto a content view', () => {
+    // Everything else about `handlingBy` collapses into the derived status
+    // string; the user id is what lets the node say WHO is generating, which
+    // is the one part of the actor a viewer can act on.
+    const v = toNodeView(
+      fields('image', {
+        state: 'handling',
+        handlingBy: {
+          userId: 'alice',
+          type: 'backend',
+          startedAt: Date.now(),
+          gen: 1,
+        },
+      }),
+    );
+    expect(v).toMatchObject({ status: 'handling', handlingByUserId: 'alice' });
+  });
+
+  it('drops the starter once the lease has run out', () => {
+    // An expired lease already derives `error` at the display level, and a
+    // node showing an error is not generating for anybody — carrying the
+    // starter across would put a name above a node nobody is working on.
+    const startedAt = Date.now() - HANDLING_TIMEOUT_MS - 1;
+    const v = toNodeView(
+      fields('image', {
+        state: 'handling',
+        handlingBy: { userId: 'alice', type: 'backend', startedAt, gen: 1 },
+      }),
+    );
+    expect(v).toMatchObject({ status: 'error', handlingByUserId: undefined });
   });
 
   it('projects Generate inputs (prompt/model/mode/modelByMode) onto a content view', () => {

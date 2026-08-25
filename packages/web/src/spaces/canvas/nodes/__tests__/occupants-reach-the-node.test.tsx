@@ -44,11 +44,13 @@ const ACTIONS = {
  * @param kind - Which node type to render.
  * @param holders - Who is holding it.
  * @param names - The roster to resolve them against.
+ * @param handlingByUserId - Who started a run on it; absent leaves it idle.
  */
 function renderNode(
   kind: 'image' | 'group',
   holders: readonly string[],
   names: Record<string, string>,
+  handlingByUserId?: string,
 ): void {
   const base = {
     id: 'n1',
@@ -57,7 +59,12 @@ function renderNode(
     data:
       kind === 'group'
         ? { kind: 'group', status: 'idle', name: 'A group' }
-        : { kind: 'image', status: 'idle', name: 'A node' },
+        : {
+          kind: 'image',
+          status: handlingByUserId === undefined ? 'idle' : 'handling',
+          name: 'A node',
+          handlingByUserId,
+        },
   };
   const withHolders = attachOccupants(
     base as Parameters<typeof attachOccupants>[0],
@@ -100,6 +107,30 @@ describe('the holders reaching a node', () => {
     renderNode('image', [], { u1: 'Alice' });
 
     expect(screen.queryByTestId('node-occupant-tags')).not.toBeInTheDocument();
+  });
+
+  it('names whoever started a running generation', () => {
+    // Generating is the longest a node stays busy, and the person who started
+    // it is holding it in every sense that matters to a viewer — the tag says
+    // so with the same visual as a selection tag.
+    renderNode('image', [], { u1: 'Alice' }, 'u1');
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+  });
+
+  it('draws one tag for someone who both started the generation and holds the node', () => {
+    // The two sources answer the same question, so a person who is in both
+    // must not be drawn twice — that would read as two collaborators.
+    renderNode('image', ['u1'], { u1: 'Alice' }, 'u1');
+
+    expect(screen.getAllByText('Alice')).toHaveLength(1);
+  });
+
+  it('draws both the starter and a separate holder', () => {
+    renderNode('image', ['u2'], { u1: 'Alice', u2: 'Bob' }, 'u1');
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
   it('keeps the tags inside the name anchor, not on the render root', () => {

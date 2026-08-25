@@ -68,6 +68,17 @@ interface ContentNodeViewBase extends NodeViewCommon {
   name?: string;
   status: DisplayStatus;
   errorMessage?: string;
+  /**
+   * Who started the run this node is in the middle of (wire
+   * `data.handlingBy.userId`), so the node can name them the way it names the
+   * collaborators holding it. Everything else about the actor collapses into
+   * {@link DisplayStatus}; this is the part a viewer can act on.
+   *
+   * Present only while `status` is `handling`: an expired lease already
+   * derives `error`, and a node showing an error is not generating for
+   * anybody. Absent on the legacy zombies that carry no actor at all.
+   */
+  handlingByUserId?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -288,6 +299,8 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     name: data.name,
     status,
     errorMessage,
+    handlingByUserId:
+      status === 'handling' ? data.handlingBy?.userId : undefined,
     locked,
     prompt: data.prompt,
     model: data.model,

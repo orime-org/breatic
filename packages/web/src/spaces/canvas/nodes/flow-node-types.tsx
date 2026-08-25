@@ -70,7 +70,19 @@ function makeFlowNode(
     // Who is holding this node, baked onto it by the mirror (`attachOccupants`).
     // A node nobody holds carries nothing, and the context's own default — one
     // shared empty array — is what every such node reads.
-    const occupants = (props.data as { occupants?: readonly string[] }).occupants ?? NOBODY;
+    const held = (props.data as { occupants?: readonly string[] }).occupants ?? NOBODY;
+    // Starting a generation is holding the node too, and for longer than any
+    // other way of holding it. It arrives on a different channel (the document,
+    // not awareness) and outlives its starter's presence, so the two lists are
+    // joined here rather than upstream.
+    const starter = (data as { handlingByUserId?: string }).handlingByUserId;
+    const occupants = React.useMemo((): readonly string[] => {
+      // Someone already in the list must not be named twice — one person, one
+      // tag, whichever channels say so. Returning `held` itself keeps the
+      // reference the mirror already stabilised.
+      if (starter === undefined || held.includes(starter)) return held;
+      return [...held, starter];
+    }, [held, starter]);
     const {
       renameNode,
       activateNodeUpload,

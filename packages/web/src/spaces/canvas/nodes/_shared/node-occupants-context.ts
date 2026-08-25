@@ -8,7 +8,10 @@ export const NOBODY: readonly string[] = [];
 
 /**
  * Who is holding the node currently being rendered, provided by the node
- * wrapper (`flow-node-types`) — the layer that has `props.data`.
+ * wrapper (`flow-node-types`) — the layer that has `props.data`. It joins the
+ * two channels a hold can arrive on, the live one (awareness) and the one
+ * recorded in the document (whoever started a running generation), and names
+ * each person once whichever of them say so.
  *
  * It travels as a context rather than a prop because the frame below takes a
  * fixed set of named parameters and the six modality components build their
