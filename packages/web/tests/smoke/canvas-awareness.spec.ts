@@ -384,15 +384,22 @@ test('the tag row floats above the name without growing the node', async () => {
   // this canvas responds to: laid out in the anchor's flow it grew the anchor's
   // box, and the anchor sits inside the node — so the strip above the name
   // turned into node hit-area whenever somebody else held it.
-  const anchor = viewer.getByTestId('node-header-anchor');
+  // A node of its own, because the baseline has to be taken while nobody holds
+  // it and the preceding cases leave a selection standing. Seeding one is
+  // cheaper than unwinding whatever they left behind.
+  const fresh = `presence-e2e-geometry-${Date.now()}`;
+  await seedImageNode(watcher, fresh, { x: 900, y: 120 });
+  const own = viewer.locator(`.react-flow__node[data-id="${fresh}"]`);
+  await expect(own).toBeVisible({ timeout: SETTLE_MS });
+
+  const anchor = own.getByTestId('node-header-anchor');
   const before = await anchor.boundingBox();
 
   await watcher
-    .locator('.react-flow__node')
-    .first()
+    .locator(`.react-flow__node[data-id="${fresh}"]`)
     .locator('[data-testid=image-node]')
     .click();
-  const tags = viewer.getByTestId('node-occupant-tags');
+  const tags = own.getByTestId('node-occupant-tags');
   await expect(tags).toBeVisible({ timeout: SETTLE_MS });
 
   const geometry = await tags.evaluate((el) => {
@@ -417,7 +424,7 @@ test('the tag row floats above the name without growing the node', async () => {
   expect(Math.round(geometry.anchorTop)).toBe(Math.round(before?.y ?? -1));
 });
 
-test('a node somebody else holds still moves, renames and deletes', async () => {
+test('a node somebody else holds still moves and deletes', async () => {
   // The one acceptance item that holds only because nobody wired presence into
   // a gate: "B can still drag, delete, edit and generate on a node A occupies."
   // Nothing in the unit suite would notice an `if (occupants.length) return`
@@ -447,4 +454,16 @@ test('a node somebody else holds still moves, renames and deletes', async () => 
     .not.toBe(before);
   // Still held while it moved — the tag did not have to go for the drag to work.
   await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible();
+
+  // And the destructive one, on the same held node: the drag left it selected,
+  // so the canvas delete key applies to it. This is the last case in the file
+  // and `afterAll` drops the whole Space, so removing the node costs nothing.
+  const standing = await viewer.locator('.react-flow__node').count();
+  await viewer.keyboard.press('Delete');
+  await expect(viewer.locator('.react-flow__node')).toHaveCount(standing - 1, {
+    timeout: SETTLE_MS,
+  });
+  await expect(watcher.locator('.react-flow__node')).toHaveCount(standing - 1, {
+    timeout: SETTLE_MS,
+  });
 });

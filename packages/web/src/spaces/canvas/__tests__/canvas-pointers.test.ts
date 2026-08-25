@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { collectPointers, toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
+import { collectPointers, samePointers, toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 
 interface Published {
   userId?: string;
@@ -101,5 +101,36 @@ describe('toCanvasPoint', () => {
     toCanvasPoint(convert, { x: 40, y: 60 });
 
     expect(convert).toHaveBeenCalledWith({ x: 40, y: 60 }, { snapToGrid: false });
+  });
+});
+
+describe('samePointers', () => {
+  // This comparison is the only gate between an awareness change and a redraw
+  // of the arrows, so every field it reads has to be able to fail the test.
+  const alice = { clientId: 2, userId: 'u1', x: 5, y: 6 };
+
+  it('holds two identical lists equal', () => {
+    expect(samePointers([alice], [{ ...alice }])).toBe(true);
+  });
+
+  it('sees a move along y alone', () => {
+    expect(samePointers([alice], [{ ...alice, y: 7 }])).toBe(false);
+  });
+
+  it('sees a move along x alone', () => {
+    expect(samePointers([alice], [{ ...alice, x: 6 }])).toBe(false);
+  });
+
+  it('sees the same spot taken by a different person', () => {
+    expect(samePointers([alice], [{ ...alice, userId: 'u2' }])).toBe(false);
+  });
+
+  it('sees the same person arriving on a different connection', () => {
+    expect(samePointers([alice], [{ ...alice, clientId: 3 }])).toBe(false);
+  });
+
+  it('sees somebody joining or leaving', () => {
+    expect(samePointers([alice], [])).toBe(false);
+    expect(samePointers([], [alice])).toBe(false);
   });
 });

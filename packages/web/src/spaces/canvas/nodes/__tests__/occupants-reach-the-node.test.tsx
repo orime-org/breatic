@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
@@ -152,6 +152,20 @@ describe('the holders reaching a node', () => {
     renderNode('image', ['u2', 'u3', 'u1'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' }, 'u1');
 
     expect(screen.getByTestId('node-occupant-tags')).toHaveTextContent('AliceBob+1');
+  });
+
+  it('lines the row up with each name, which the two mounts indent differently', () => {
+    // A content node's name sits inside a header with its own 4px padding; a
+    // group's name has none. One unparameterised component would be 4px off in
+    // whichever of the two it was not tuned for, so each mount passes its own
+    // inset and both are read back here.
+    renderNode('image', ['u1'], { u1: 'Alice' });
+    expect(screen.getByTestId('node-occupant-tags').style.paddingLeft).toBe('4px');
+
+    cleanup();
+
+    renderNode('group', ['u1'], { u1: 'Alice' });
+    expect(screen.getByTestId('node-occupant-tags').style.paddingLeft).toBe('0px');
   });
 
   it('keeps the tags inside the name anchor, not on the render root', () => {
