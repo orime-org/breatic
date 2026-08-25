@@ -46,42 +46,46 @@ function chatRules(): { selector: string; body: string }[] {
 }
 
 /**
- * The palette colours the theme actually defines.
+ * Every colour name the theme actually declares.
  *
  * A name shaped like a token but spelt wrong resolves to nothing, and the
- * class it was meant to paint takes the surrounding colour instead.
- * @returns Every declared `--color-palette-*` name.
+ * text it was meant to paint takes the surrounding colour instead.
+ * @returns Every declared `--color-*` name.
  */
-function paletteTokens(): Set<string> {
+function colourTokens(): Set<string> {
   const names = new Set<string>();
   postcss.parse(read('theme/tokens.css')).walkDecls((decl) => {
-    if (decl.prop.startsWith('--color-palette-')) names.add(decl.prop);
+    if (decl.prop.startsWith('--color-')) names.add(decl.prop);
   });
   return names;
 }
 
 describe('chat prose stylesheet — colours come from tokens (R10)', () => {
-  it('paints every highlight class with a palette token', () => {
-    const allowed = new Set([...paletteTokens(), '--color-muted-foreground', '--color-foreground']);
-    expect(allowed.size).toBeGreaterThan(3);
+  it('draws every colour it declares from a name the theme defines', () => {
+    // Every rule in the scope, not only the highlight ones: the link, the
+    // strikethrough, the blockquote and the task mark each name a colour too,
+    // and a raw hex or a misspelt token in any of them is the same defect.
+    const allowed = colourTokens();
+    expect(allowed.size).toBeGreaterThan(20);
 
-    // `.hljs` without a dash is the code element's own class, and a colour on
-    // it lands on every token that has none of its own.
-    const rules = chatRules().filter((r) => /\.hljs\b/.test(r.selector));
+    const rules = chatRules();
     expect(rules.length).toBeGreaterThan(0);
 
+    let declared = 0;
     for (const rule of rules) {
       // The last declaration in a block may carry no semicolon, so the
       // terminator is optional here; requiring it hid whatever was written
       // last in each rule.
-      const declarations = [...rule.body.matchAll(/(?:^|;)\s*color:\s*([^;]+)/g)];
-
-      for (const [, value] of declarations) {
+      for (const [, value] of rule.body.matchAll(/(?:^|;)\s*color:\s*([^;]+)/g)) {
+        declared += 1;
         const token = /^var\((--[a-z-]+)\)$/.exec(value?.trim() ?? '')?.[1];
         expect(token, `${rule.selector} paints with ${value?.trim()}`).toBeDefined();
         expect(allowed.has(token ?? ''), `${token} is not a colour this theme defines`).toBe(true);
       }
     }
+    // The scope paints in more than one place; a filter that quietly stopped
+    // matching would otherwise leave this green with nothing checked.
+    expect(declared).toBeGreaterThan(10);
   });
 
 });
