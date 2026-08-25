@@ -101,6 +101,7 @@ function mountContainer(graph?: {
     spaceId: 's',
     readOnly: false,
     caretProvider: null,
+    synced: false,
   };
   return render(
     <QueryClientProvider

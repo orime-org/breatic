@@ -95,6 +95,7 @@ describe('FLOW_NODE_TYPES', () => {
             spaceId: SID,
             readOnly: false,
             caretProvider: null,
+            synced: false,
           }}
         >
           <Text {...({ id: 'n2', data, selected: false } as unknown as NodeProps)} />

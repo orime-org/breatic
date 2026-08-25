@@ -44,6 +44,15 @@ export interface CanvasContextValue {
    * provider, so editors mount carets only once this is present.
    */
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
+  /**
+   * Whether the space's document has finished syncing.
+   *
+   * The presence publisher needs it: closing the socket moves neither side's
+   * clock, so a re-send carrying the old clock is discarded as already seen
+   * and the peers never get this client's presence back. Reconnecting has to
+   * push a fresh write, and this is the edge that says when.
+   */
+  synced: boolean;
 }
 
 /**
@@ -59,6 +68,7 @@ const NO_CANVAS: CanvasContextValue = {
   spaceId: '',
   readOnly: true,
   caretProvider: null,
+  synced: false,
 };
 
 export const CanvasContext = React.createContext<CanvasContextValue>(NO_CANVAS);

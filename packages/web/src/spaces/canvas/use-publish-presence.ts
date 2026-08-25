@@ -35,8 +35,14 @@ export interface PublishPresenceInput {
   sources: ActiveNodeSources;
   /** Whether the document's connection is currently synced. */
   connected: boolean;
-  /** The canvas container, whose pointer events say where this user is. */
-  container: HTMLElement | null;
+  /**
+   * The canvas container, whose pointer events say where this user is.
+   *
+   * A ref rather than the element: the element is null on the first render and
+   * filling a ref schedules nothing, so an effect keyed on the element itself
+   * would keep the null it was given and never attach a listener.
+   */
+  containerRef: React.RefObject<HTMLElement | null>;
   /** Turn a screen point into a canvas point. */
   toFlowPosition: (screen: Point) => Point;
 }
@@ -105,7 +111,7 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * @param input - The awareness, the sources, the connection, and the canvas.
  */
 export function usePublishPresence(input: PublishPresenceInput): void {
-  const { awareness, sources, connected, container, toFlowPosition } = input;
+  const { awareness, sources, connected, containerRef, toFlowPosition } = input;
   const { selectedIds, pickSession, focusTargetId } = sources;
 
   // Read inside the write callback instead of closing over the values, so a
@@ -179,6 +185,7 @@ export function usePublishPresence(input: PublishPresenceInput): void {
   // The pointer, from the canvas container and from the viewport moving under
   // a pointer that stayed put.
   React.useEffect(() => {
+    const container = containerRef.current;
     if (!awareness || !container) return undefined;
     /**
      * Remember where the pointer is and publish it.
@@ -205,7 +212,7 @@ export function usePublishPresence(input: PublishPresenceInput): void {
       container.removeEventListener('pointerleave', onLeave);
       stopWatching();
     };
-  }, [awareness, container, throttle]);
+  }, [awareness, containerRef, throttle]);
 
   // Withdraw. Leaving the space must take the presence with it, and this runs
   // after the throttle above was cancelled, so it is the last word.

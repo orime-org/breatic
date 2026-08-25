@@ -70,6 +70,7 @@ const CANVAS: CanvasContextValue = {
   spaceId: 's',
   readOnly: false,
   caretProvider: null,
+  synced: false,
 };
 
 /**

@@ -176,9 +176,14 @@ import {
   resolveReleaseElement,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
+import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
+import { attachOccupants } from '@web/spaces/canvas/attach-occupants';
+import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
+import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
   CanvasContext,
   type CanvasContextValue,
+  useCanvasContext,
 } from '@web/spaces/canvas/canvas-context';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -634,6 +639,10 @@ function CanvasSpaceInner({
     return () => useCanvasGraphStore.getState().reset();
   }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  // Presence: one awareness for the space, shared with the carets.
+  const { caretProvider, synced } = useCanvasContext();
+  const awareness = caretProvider?.awareness ?? null;
+  const occupants = useCanvasOccupants(awareness);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -1216,8 +1225,13 @@ function CanvasSpaceInner({
   // id — otherwise any collaborator / backend write would wipe the current
   // user's selection (including a just-created node's auto-selection).
   React.useEffect(() => {
-    setFlowNodes((prev) => mergeMirroredSelection(prev, nodes.map(toFlowNode)));
-  }, [nodes, setFlowNodes]);
+    setFlowNodes((prev) =>
+      mergeMirroredSelection(
+        prev,
+        nodes.map((node) => attachOccupants(toFlowNode(node), occupants)),
+      ),
+    );
+  }, [nodes, occupants, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -2677,6 +2691,26 @@ function CanvasSpaceInner({
     [selectedIds, groupInfos],
   );
 
+  const toCanvasPoint = React.useCallback(
+    (screen: { x: number; y: number }): { x: number; y: number } =>
+      // Snapping is off explicitly: `screenToFlowPosition` reads the store's
+      // `snapToGrid` when the option is absent, and the viewport toolbar's
+      // snap switch feeds that flag — with it on, the published pointer would
+      // jump in 24-unit steps (`SNAP_GRID`).
+      screenToFlowPosition({ x: screen.x, y: screen.y }, { snapToGrid: false }),
+    [screenToFlowPosition],
+  );
+
+  // Presence out: which nodes this client holds, and where its pointer is.
+  // One writer for both fields — awareness resends the whole state per field.
+  usePublishPresence({
+    awareness,
+    sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
+    connected: synced,
+    containerRef,
+    toFlowPosition: toCanvasPoint,
+  });
+
   // Wrap the loose selection in a new Group (group redesign). The Group
   // stores its own width/height (the members' padded bounding box); members bind
   // back via `parentId` with positions relative to the Group. The new Group is
@@ -3517,8 +3551,19 @@ function CanvasSpaceInner({
     [],
   );
   const onNodeMenuRename = React.useMemo(
-    () => (nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)),
-    [nodeMenu.locked, nodeMenu.nodeId, requestRename],
+    () =>
+      nodeMenu.locked
+        ? undefined
+        : () => {
+          // Select first: renaming from the menu used to leave the selection
+          // untouched, so the whole rename went unseen by everyone else,
+          // while renaming by double-click selected as a side effect of the
+          // click. Both entries now say the same thing about who is busy
+          // with this node.
+          selectOnlyNode(nodeMenu.nodeId);
+          requestRename(nodeMenu.nodeId);
+        },
+    [nodeMenu.locked, nodeMenu.nodeId, requestRename, selectOnlyNode],
   );
   const onNodeMenuCopy = React.useCallback(
     () => writeNodesToClipboard(nodeMenuClipboard()),
@@ -3664,6 +3709,9 @@ function CanvasSpaceInner({
           // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
           zoomOnDoubleClick={false}
         >
+          {/* Everyone else's pointer. Inside ReactFlow because it portals into
+              the viewport, so pan and zoom carry it with the nodes. */}
+          <CanvasCursorLayer awareness={awareness} />
           <Background
             variant={BackgroundVariant.Dots}
             gap={DOT_GAP_PX}
@@ -3995,7 +4043,7 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // the shared provider the space's tab already holds, so this opens no second
   // connection; what it buys is a single answer to "whose caret is this",
   // instead of one per editor that could drift apart.
-  const { provider: caretProvider } = useSocket({
+  const { provider: caretProvider, synced } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,
   });
@@ -4005,8 +4053,9 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       spaceId: props.spaceId,
       readOnly: props.readOnly ?? false,
       caretProvider,
+      synced,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider],
+    [props.projectId, props.spaceId, props.readOnly, caretProvider, synced],
   );
   return (
     <CanvasContext.Provider value={canvas}>

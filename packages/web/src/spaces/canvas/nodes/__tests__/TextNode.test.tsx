@@ -113,6 +113,7 @@ function canvasValue(over: Partial<CanvasContextValue> = {}): CanvasContextValue
     spaceId: SID,
     readOnly: false,
     caretProvider: null,
+    synced: false,
     ...over,
   };
 }

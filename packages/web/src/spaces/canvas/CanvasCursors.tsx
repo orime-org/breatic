@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
-import { ViewportPortal } from '@xyflow/react';
+import { ViewportPortal, useStore } from '@xyflow/react';
+import type { Awareness } from 'y-protocols/awareness';
 import * as React from 'react';
 
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
-import type { RemotePointer } from '@web/spaces/canvas/canvas-pointers';
+import { collectPointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 
 /**
@@ -119,4 +120,44 @@ export function CanvasCursors({ pointers, zoom }: CanvasCursorsProps): React.JSX
       </div>
     </ViewportPortal>
   );
+}
+
+/**
+ * Follow every peer's pointer and draw them.
+ *
+ * The subscription lives here rather than in the canvas body on purpose: a
+ * moving pointer produces an awareness change up to thirty times a second, and
+ * whatever component holds that subscription re-renders each time. Held here,
+ * those renders reach the cursors and nothing else — the node mirror reads the
+ * damped table from `useCanvasOccupants` instead.
+ * @param props - The component props.
+ * @param props.awareness - This space's awareness, or null before it attaches.
+ * @returns The cursor layer.
+ */
+export function CanvasCursorLayer({
+  awareness,
+}: {
+  awareness: Awareness | null;
+}): React.JSX.Element | null {
+  const zoom = useStore((s) => s.transform[2]);
+  const [pointers, setPointers] = React.useState<readonly RemotePointer[]>([]);
+
+  React.useEffect(() => {
+    if (!awareness) {
+      setPointers([]);
+      return undefined;
+    }
+    /**
+     *
+     */
+    /** Re-read every peer's pointer out of awareness. */
+    const read = (): void => {
+      setPointers(collectPointers(awareness.getStates(), awareness.clientID));
+    };
+    read();
+    awareness.on('change', read);
+    return (): void => awareness.off('change', read);
+  }, [awareness]);
+
+  return <CanvasCursors pointers={pointers} zoom={zoom} />;
 }

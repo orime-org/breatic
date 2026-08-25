@@ -241,6 +241,7 @@ function panelTree(
     spaceId: 's',
     readOnly: false,
     caretProvider: null,
+    synced: false,
   };
   return (
     <QueryClientProvider
@@ -479,6 +480,7 @@ describe('VideoGeneratePanelContainer', () => {
               spaceId: 's',
               readOnly: false,
               caretProvider: null,
+              synced: false,
             }}
           >
             <VideoGeneratePanelContainer
