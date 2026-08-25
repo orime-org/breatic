@@ -1650,11 +1650,26 @@ test('link: a target that wraps gets the panel under its last line', async () =>
 test('link: a target at the bottom edge keeps the panel inside the body column', async () => {
   // `shift`'s boundary is the body's visible area, so a panel that would hang
   // off the side of the column is pushed back into it (§4.1.2).
-  await page.setViewportSize({ width: 1680, height: 950 });
+  //
+  // The link is the tail of its line rather than the whole of it. A link that
+  // covers a line is centred on the column, and a panel centred there stays
+  // inside it whatever `shift` does — measured, dropping `shift` altogether
+  // left every assertion here green.
+  // Narrow enough that the panel cannot fit beside the line's end. The panel
+  // has a maximum width of its own, so widening it is not a way to reach the
+  // boundary — the visible area has to come down to meet it. Measured with
+  // `shift` removed: the panel ran to 865 with the area ending at 760; with it
+  // back, 760 exactly. At 1680 both readings are inside the area and the case
+  // says nothing.
+  await page.setViewportSize({ width: 760, height: 950 });
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 2);
+  await page.keyboard.press('ArrowRight');
+  for (let step = 0; step < 6; step += 1) {
+    await page.keyboard.press('Shift+ArrowLeft');
+  }
   await linkTheSelection(page, 'a.example/edge');
   await openViewOverFirstLink(page);
 
@@ -1678,8 +1693,10 @@ test('link: a target at the bottom edge keeps the panel inside the body column',
       .getBoundingClientRect();
     const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
     return {
-      panelLeft: panel.left,
-      panelRight: panel.right,
+      panelLeft: Math.round(panel.left),
+      panelRight: Math.round(panel.right),
+      linkLeft: Math.round(link.left),
+      linkRight: Math.round(link.right),
       linkVisible: link.top >= 0,
     };
   });
