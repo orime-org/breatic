@@ -109,6 +109,7 @@ import {
   type AnchorLineReader,
 } from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
+import { cn } from '@web/lib/utils';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
 /** One run of controls, drawn between two separators. */
@@ -793,18 +794,20 @@ function BubbleBar({
    *
    * The panel holds the focus and the reader's attention while it is open, and
    * the two would otherwise be anchored to the same line: measured, a panel
-   * that `flip` sent above its target landed on the bar's own pixels. Closing
-   * the panel drops the selection, so the bar does not come back on its own.
-   * @param open - Whether a panel is showing.
+   * that `flip` sent above its target landed on the bar's own pixels.
+   *
+   * Made invisible rather than hidden through the plugin. Telling the plugin to
+   * hide takes the bar's whole subtree with it, and every panel is part of that
+   * subtree: measured in a browser, pressing the link button left bar, button
+   * and panel all absent, because a portalled panel still belongs to the
+   * component that renders it. jsdom does not show this — its bar element goes
+   * while React keeps the children — which is why it is a browser case that
+   * pins it.
+   *
+   * Coming back is the selection's business either way: closing a panel drops
+   * the selection, so `shouldShow` turns the bar off a moment later.
    */
-  const onPanelOpenChange = React.useCallback(
-    (open: boolean): void => {
-      if (!open) return;
-      const { view } = editor;
-      view.dispatch(view.state.tr.setMeta(pluginKey, 'hide'));
-    },
-    [editor, pluginKey],
-  );
+  const [panelOpen, setPanelOpen] = React.useState(false);
 
   const getReferencedVirtualElement = React.useCallback(() => {
     const line = anchorLine();
@@ -920,7 +923,15 @@ function BubbleBar({
       // follows that selection far enough to reach the entry's corner. The
       // editor shell is `isolate`, so this number is compared against the
       // entry's and nothing else on the page.
-      className='z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
+      className={cn(
+        'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
+        // `invisible!` rather than `invisible`: the plugin writes
+        // `visibility` as an inline style when it shows the bar
+        // (`extension-bubble-menu`), and an inline declaration beats a plain
+        // class. Measured — with the plain one the classes were on the element
+        // and the bar was still on screen.
+        panelOpen && 'invisible! pointer-events-none',
+      )}
     >
       {hasSelection
         ? BUBBLE_GROUPS.map((group, index) => (
@@ -943,7 +954,7 @@ function BubbleBar({
                 key={panelIndex}
                 editor={editor}
                 anchorLine={anchorLine}
-                onPanelOpenChange={onPanelOpenChange}
+                onPanelOpenChange={setPanelOpen}
               />
             ))}
             {group.tools.map((tool) => (

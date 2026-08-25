@@ -1333,8 +1333,11 @@ test('link: the panel travels with its link when the body scrolls', async () => 
   await page.getByTestId('doc-link-input').fill('a.example/scrolls');
   await page.getByTestId('doc-link-confirm').click();
 
+  // Clicking the link selects the whole of it, which is the shape that opens
+  // `view`. A `Mod-a` here would not: this paragraph holds nothing but the
+  // link, so the first tier is already satisfied and the press promotes
+  // straight to the document tier, where the bar carries no link button.
   await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
   await page.getByTestId('doc-bubble-tool-link').click();
   await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
   await page.waitForTimeout(400);
@@ -1416,14 +1419,18 @@ test('link: a select-all carries no link button', async () => {
   await openFreshDocument(page);
   await typeLongBody(page);
 
-  const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
-  // Two presses: the first tier takes the block, the second the document.
-  await page.keyboard.press(selectAll);
-  await page.waitForTimeout(200);
+  // A block's worth of text carries the button, which is what makes the
+  // absence below about the select-all rather than about the bar.
+  await selectParagraph(page, 0);
   await expect(page.getByTestId('doc-bubble-tool-link')).toBeVisible({
     timeout: 5_000,
   });
 
+  // Two presses from there: the first tier takes the block, the second the
+  // document.
+  const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+  await page.keyboard.press(selectAll);
+  await page.waitForTimeout(200);
   await page.keyboard.press(selectAll);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
     timeout: 5_000,

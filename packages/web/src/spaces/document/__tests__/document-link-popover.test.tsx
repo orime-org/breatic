@@ -523,10 +523,9 @@ describe('the panel\'s container', () => {
     // In the scroller so that it travels with the text it points at, and so
     // that the scroller's overflow clips it once that text scrolls away.
     //
-    // The other two containers both disappear while the panel is still open:
-    // the bar is taken away the moment the panel opens, and ProseMirror tears
-    // the editor's DOM down when a Space tab changes. The panel enters
-    // neither, so it outlives both.
+    // The editor's own DOM is torn down when a Space tab changes, and the bar
+    // steps out of sight the moment the panel opens. The panel is inside
+    // neither.
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 4, 12);
 
@@ -536,7 +535,7 @@ describe('the panel\'s container', () => {
     expect(scroller).not.toBeNull();
     expect(scroller?.contains(panel)).toBe(true);
     expect(editor.view.dom.contains(panel)).toBe(false);
-    expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('doc-selection-bubble-bar').contains(panel)).toBe(false);
     // The scroller has to be the containing block, or a position computed in
     // its coordinates lands somewhere else. Asked as the class name: jsdom
     // loads no compiled stylesheet, so `getComputedStyle` answers the default
@@ -848,12 +847,18 @@ describe('when the editor is torn down', () => {
 });
 
 describe('what the bar carries and what happens around the panel', () => {
-  it('takes the bar away while the panel is open', async () => {
+  it('puts the bar out of sight while the panel is open', async () => {
+    // Out of sight rather than out of the document: the panel is rendered by a
+    // component the bar owns, so a bar that leaves takes the panel with it.
+    // Measured in a browser — telling the plugin to hide left bar, button and
+    // panel all absent. Whether these classes really make it invisible is a
+    // question for the browser too; jsdom loads no stylesheet.
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 4, 12);
-    expect(
-      screen.queryByTestId('doc-selection-bubble-bar'),
-    ).not.toBeInTheDocument();
+
+    const bar = screen.getByTestId('doc-selection-bubble-bar');
+    expect(bar.className).toContain('invisible!');
+    expect(bar.className).toContain('pointer-events-none');
   });
 
   it('drops the selection when the panel closes, so the bar stays away', async () => {
@@ -864,6 +869,8 @@ describe('what the bar carries and what happens around the panel', () => {
       expect(screen.queryByTestId('doc-link-popover')).not.toBeInTheDocument();
     });
     expect(editor.state.selection.empty).toBe(true);
+    // Which is what keeps it away: the bar shows on a selection, and there is
+    // none left for it to show on.
     expect(
       screen.queryByTestId('doc-selection-bubble-bar'),
     ).not.toBeInTheDocument();

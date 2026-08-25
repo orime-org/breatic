@@ -237,6 +237,16 @@ export function DocumentLinkPopover({
   // untouched. Asked as "does the selection touch any" rather than "is it all
   // code": a partial write lands on half of what the user selected, which is
   // worse to look at than a button that says no.
+  // Subscribed for the same reason: a select-all arrives as a transaction with
+  // no React render behind it. Read in the render body instead, the button
+  // stayed on screen after `Mod-a` and vanished only when something else
+  // re-rendered — measured in a browser, that something else was the press
+  // itself, so the button was there to be pressed and the panel never opened.
+  const wholeDocument = useEditorState({
+    editor,
+    selector: ({ editor: e }) => (e ? isWholeDocumentSelection(e.state) : false),
+  });
+
   const touchesCode = useEditorState({
     editor,
     selector: ({ editor: e }) => {
@@ -401,7 +411,7 @@ export function DocumentLinkPopover({
 
   // A select-all's target is the whole document, and giving that a link is not
   // an operation (§4.6). The button goes with it, so there is nothing to press.
-  if (isWholeDocumentSelection(editor.state)) return null;
+  if (wholeDocument) return null;
 
   return (
     <>
