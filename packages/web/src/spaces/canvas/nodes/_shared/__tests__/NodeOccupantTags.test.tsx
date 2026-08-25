@@ -10,11 +10,12 @@ import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantT
 
 /**
  * Build a roster that answers from a plain map.
- * @param names - User id to display name; a missing id resolves to ''.
+ * @param names - User id to display name; a missing id resolves to null,
+ * which is what `resolveNameFrom` answers for someone it cannot name.
  * @returns The roster bundle the provider publishes.
  */
 function roster(names: Record<string, string>): CollaboratorNames {
-  return { resolve: (userId: string) => names[userId] ?? '', members: [] };
+  return { resolve: (userId: string) => names[userId] ?? null, members: [] };
 }
 
 /**

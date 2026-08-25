@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BOSL-1.0
 
+import { readUserId } from '@web/spaces/canvas/awareness-user';
+
 /**
  * Compare two occupant tables by value.
  *
@@ -22,21 +24,6 @@ export function sameOccupantTable(
     if (!users.every((id, i) => id === other[i])) return false;
   }
   return true;
-}
-
-/**
- * Read one awareness entry's user id, if the server has stamped one.
- *
- * Every accepted connection has its `user.id` written by the server, so an
- * entry without one is either mid-handshake or something we have no name for
- * either way.
- * @param state - One client's awareness state.
- * @returns The user id, or null when there is none to render.
- */
-function readUserId(state: Record<string, unknown>): string | null {
-  const user = state.user;
-  const id = typeof user === 'object' && user !== null ? (user as { id?: unknown }).id : undefined;
-  return typeof id === 'string' ? id : null;
 }
 
 /**
