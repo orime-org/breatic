@@ -56,3 +56,31 @@ export function collectPointers(
   }
   return found;
 }
+
+/**
+ * Whether two collected pointer lists say the same thing.
+ *
+ * The same job `sameOccupantTable` does for the holding, and for the same
+ * reason: one awareness carries both fields and the writer republishes the
+ * whole state at up to 30fps, so a peer moving nothing but its holding still
+ * raises a change here.
+ * @param a - The list already on screen.
+ * @param b - The freshly collected one.
+ * @returns True when neither the peers nor their positions moved.
+ */
+export function samePointers(
+  a: readonly RemotePointer[],
+  b: readonly RemotePointer[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((left, index) => {
+    const right = b[index];
+    return (
+      right !== undefined &&
+      left.clientId === right.clientId &&
+      left.userId === right.userId &&
+      left.x === right.x &&
+      left.y === right.y
+    );
+  });
+}

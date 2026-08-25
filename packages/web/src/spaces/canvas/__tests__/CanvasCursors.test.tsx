@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as React from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -175,6 +176,53 @@ describe('CanvasCursorLayer', () => {
       ]);
     });
   }
+
+  it('holds still while a peer publishes anything other than a pointer', () => {
+    // One awareness carries both fields, and the writer republishes the whole
+    // state at up to 30fps. A peer rubber-band selecting sends a stream of
+    // holding updates with the pointer untouched, and this client's own writes
+    // raise `change` here too — none of that may reach the arrows.
+    const { awareness, peerId } = makeAwareness();
+    let renders = 0;
+    act(() => {
+      awareness.states.set(peerId, { user: { id: 'u1' }, pointer: { x: 5, y: 6 } });
+      render(
+        <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+          <React.Profiler id='cursors' onRender={() => { renders += 1; }}>
+            <CanvasCursorLayer awareness={awareness} />
+          </React.Profiler>
+        </CollaboratorNamesProvider>,
+      );
+    });
+    /**
+     * Publish a round of holding updates with the pointer standing still.
+     * @param count - How many updates to send.
+     */
+    const holdingUpdates = (count: number): void => {
+      act(() => {
+        for (let i = 0; i < count; i += 1) {
+          awareness.states.set(peerId, {
+            user: { id: 'u1' },
+            pointer: { x: 5, y: 6 },
+            activeNodeIds: [`n${i}`],
+          });
+          awareness.emit('change', [
+            { added: [], updated: [peerId], removed: [] },
+            'remote',
+          ]);
+        }
+      });
+    };
+
+    // Counted across two rounds of different sizes: React may still render once
+    // on its way to bailing out, so what matters is that the count stops
+    // growing with the traffic rather than that it never moves at all.
+    holdingUpdates(10);
+    const afterFirstRound = renders;
+    holdingUpdates(30);
+
+    expect(renders).toBe(afterFirstRound);
+  });
 
   it('draws a pointer that was already there when it mounted', () => {
     const { awareness, peerId } = makeAwareness();

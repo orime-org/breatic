@@ -7,7 +7,7 @@ import * as React from 'react';
 
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
-import { collectPointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
+import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 
 /**
@@ -152,9 +152,10 @@ export function CanvasCursorLayer({
       setPointers([]);
       return undefined;
     }
-    /** Re-read every peer's pointer out of awareness. */
+    /** Re-read every peer's pointer, keeping the list when none moved. */
     const read = (): void => {
-      setPointers(collectPointers(awareness.getStates(), awareness.clientID));
+      const next = collectPointers(awareness.getStates(), awareness.clientID);
+      setPointers((prev) => (samePointers(prev, next) ? prev : next));
     };
     read();
     awareness.on('change', read);
