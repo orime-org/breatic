@@ -541,26 +541,25 @@ describe('putting the panel away', () => {
   });
 });
 
-describe('the panel\'s anchor', () => {
+describe('the panel\'s container', () => {
   it('lives in the body scroller, and in neither the bar nor the editor', async () => {
-    // In the scroller so that it travels with the line it points at: the
-    // floating-ui under Radix watches ancestor scroll by default, so the anchor
-    // moves itself and the panel comes along.
+    // In the scroller so that it travels with the text it points at, and so
+    // that the scroller's overflow clips it once that text scrolls away.
     //
     // The other two containers both disappear while the panel is still open:
     // the plugin takes the bar away, and ProseMirror tears the editor's DOM
-    // down when a Space tab changes. The anchor enters neither.
+    // down when a Space tab changes. The panel enters neither.
     const editor = mount(ONE_LINK);
     await openPopoverOver(editor, 4, 12);
 
-    const anchor = screen.getByTestId('doc-link-anchor');
+    const panel = screen.getByTestId('doc-link-popover');
     const scroller = editor.view.dom.closest('[data-radix-scroll-area-viewport]');
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
 
     expect(scroller).not.toBeNull();
-    expect(anchor.parentElement).toBe(scroller);
-    expect(editor.view.dom.parentElement?.contains(anchor)).toBe(false);
-    expect(bar?.contains(anchor)).toBe(false);
+    expect(scroller?.contains(panel)).toBe(true);
+    expect(editor.view.dom.contains(panel)).toBe(false);
+    expect(bar?.contains(panel)).toBe(false);
     // The scroller has to be the containing block, or a position computed in
     // its coordinates lands somewhere else. Asked as the class name: jsdom
     // loads no compiled stylesheet, so `getComputedStyle` answers the default
@@ -855,7 +854,7 @@ describe('when the editor is torn down', () => {
   it('unmounts this tree without throwing after the body container goes', async () => {
     const editor = mount(ONE_LINK);
     await selectWithFocus(editor, 4, 12);
-    expect(screen.getByTestId('doc-link-anchor')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-bubble-tool-link')).toBeInTheDocument();
 
     // This is the order a Space tab change produces: the editor's DOM is torn
     // down first, React unmounts this tree after. An anchor living inside that
@@ -889,7 +888,6 @@ describe('after the bubble bar is taken away', () => {
     });
 
     expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
-    expect(screen.getByTestId('doc-link-anchor')).toBeInTheDocument();
   });
 });
 

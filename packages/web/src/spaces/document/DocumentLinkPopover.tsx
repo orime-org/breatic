@@ -16,20 +16,27 @@
  */
 
 import * as React from 'react';
-import { createPortal } from 'react-dom';
 import { Link as LinkIcon } from 'lucide-react';
-import { posToDOMRect, type Editor } from '@tiptap/core';
+import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 import type { Transaction } from '@tiptap/pm/state';
+import {
+  useFloating,
+  useDismiss,
+  useInteractions,
+  FloatingPortal,
+  FloatingFocusManager,
+  autoUpdate,
+  offset,
+  inline,
+  flip,
+  shift,
+  type ReferenceType,
+} from '@floating-ui/react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@web/components/ui/popover';
 import { BUBBLE_CONTROL_HEIGHT, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import {
   resolveLinkSelection,
@@ -49,17 +56,6 @@ import {
 
 /** Which of the panel's three faces is showing, or none. */
 type LinkMode = 'closed' | 'create' | 'view' | 'edit';
-
-/** A rectangle, in whichever coordinates its holder names. */
-interface Rect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-/** Where the anchor sits, in the scroller's own coordinates. */
-type AnchorBox = Rect;
 
 /**
  * Hands this panel the line the bubble bar anchors to, in viewport coordinates.
@@ -85,15 +81,12 @@ interface LinkTarget {
    * built without collaboration.
    */
   tracked: TrackedLink | null;
-  /** Where to put the panel, from {@link measureAnchor}. */
-  anchorBox: AnchorBox | null;
 }
 
 const NO_TARGET: LinkTarget = {
   range: null,
   href: null,
   tracked: null,
-  anchorBox: null,
 };
 
 /**
@@ -107,59 +100,69 @@ function bodyScroller(editor: Editor): HTMLElement | null {
 }
 
 /**
- * Turn a viewport rectangle into one that scrolls with the text.
+ * What floating-ui measures the panel against.
  *
- * The scroller's own box plus how far it has been scrolled is the difference
- * between the two. An anchor placed in content coordinates moves with the line
- * it points at, and Radix — floating-ui underneath, which watches ancestor
- * scroll by default — carries the panel along without being told to.
- * @param scroller - The body's scroll container.
- * @param rect - The rectangle, in viewport coordinates.
- * @returns The same place, in the scroller's content coordinates.
- */
-function intoContent(scroller: HTMLElement, rect: Rect): AnchorBox {
-  const box = scroller.getBoundingClientRect();
-  return {
-    left: rect.left - box.left + scroller.scrollLeft,
-    top: rect.top - box.top + scroller.scrollTop,
-    width: rect.width,
-    height: rect.height,
-  };
-}
-
-/**
- * Where to put the anchor, in coordinates that scroll with the text.
+ * A DOM Range over the target itself. Held rather than re-read from
+ * `getSelection()`: the selection is emptied the moment the panel takes focus,
+ * while a Range keeps tracking its text — measured, it survives focus leaving,
+ * moves when a peer inserts ahead of it, and follows a reflow
+ * (`engineering/demo/2026-08-25-live-range-probe.mjs`). `getClientRects` is
+ * what the `inline` middleware reads to pick a line out of a target that wraps.
  *
- * The link when the selection holds one, so the panel sits against the thing it
- * acts on. With none, the bar's own anchor line: it is the same question the
- * bar answers to place itself, and over a select-all only its answer knows
- * where the reader is — the selection starts at the top of the document, so
- * measuring from there puts the panel above the fold by however far the reader
- * has scrolled.
+ * Over a select-all there is no useful Range: it spans the whole document, so
+ * its bottom edge is below the last line and the panel would open off screen.
+ * The bar answers that case with the pointer, and this follows it.
  * @param editor - The editor to measure in.
- * @param link - The link the panel acts on, if any.
+ * @param span - The target's extent in the document, when it has one.
  * @param anchorLine - The bar's own anchor line, in viewport coordinates.
- * @returns The box, or null before the scroller is in the document.
+ * @returns The reference, or null while the target cannot be measured.
+ * @throws {never}
  */
-function measureAnchor(
+function panelReference(
   editor: Editor,
-  link: LinkRange | null,
+  span: LinkRange | null,
   anchorLine: AnchorLineReader,
-): AnchorBox | null {
-  const scroller = bodyScroller(editor);
-  if (!scroller) return null;
-  if (link) {
-    const rect = posToDOMRect(editor.view, link.from, link.to);
-    return intoContent(scroller, rect);
+): ReferenceType | null {
+  const { view } = editor;
+  const contextElement = view.dom as HTMLElement;
+  const extent = span ?? { from: view.state.selection.from, to: view.state.selection.to };
+  const range = domRangeOver(editor, extent);
+  if (range) {
+    return {
+      getBoundingClientRect: () => range.getBoundingClientRect(),
+      getClientRects: () => range.getClientRects(),
+      contextElement,
+    };
   }
   const line = anchorLine();
   if (!line) return null;
-  return intoContent(scroller, {
-    left: line.left,
-    top: line.top,
-    width: 0,
-    height: line.bottom - line.top,
-  });
+  const point = new DOMRect(line.left, line.top, 0, line.bottom - line.top);
+  return { getBoundingClientRect: () => point, contextElement };
+}
+
+/**
+ * A live DOM Range over a span of the document.
+ *
+ * `domAtPos` gives the node and offset ProseMirror renders a position at, which
+ * is exactly what a Range's boundary points take.
+ * @param editor - The editor to read.
+ * @param span - The extent to cover.
+ * @returns The range, or null when the positions have no DOM yet.
+ * @throws {never}
+ */
+function domRangeOver(editor: Editor, span: LinkRange): Range | null {
+  try {
+    const start = editor.view.domAtPos(span.from);
+    const end = editor.view.domAtPos(span.to);
+    const range = document.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    return range;
+  } catch {
+    // Positions outside the rendered document, which happens while a co-editor's
+    // replacement of the whole doc is landing. The caller falls back to the bar.
+    return null;
+  }
 }
 
 /**
@@ -225,12 +228,11 @@ export function DocumentLinkPopover({
       range: resolved.range,
       href: resolved.href,
       tracked: resolved.range ? trackLink(editor, resolved.range) : null,
-      anchorBox: measureAnchor(editor, resolved.range, anchorLine),
     });
     setDraft('');
     setShowInvalid(false);
     setMode(resolved.range ? 'view' : 'create');
-  }, [anchorLine, editor]);
+  }, [editor]);
 
   /** Write what is in the draft, and put the panel away. */
   const submit = React.useCallback((): void => {
@@ -273,13 +275,7 @@ export function DocumentLinkPopover({
       // what it writes to. A link a co-editor makes inside it belongs to them:
       // adopting it would narrow the write to their span and put this user's
       // address over their href, on text this user never selected.
-      if (mode === 'create') {
-        setTarget((prev) => ({
-          ...prev,
-          anchorBox: measureAnchor(editor, null, anchorLine),
-        }));
-        return;
-      }
+      if (mode === 'create') return;
       const resolved = followedLink(editor, target.tracked);
       if (!resolved.range) {
         close();
@@ -289,18 +285,17 @@ export function DocumentLinkPopover({
         ...prev,
         range: resolved.range,
         href: resolved.href ?? prev.href,
-        anchorBox: measureAnchor(editor, resolved.range, anchorLine),
       }));
     };
     editor.on('transaction', follow);
     return () => {
       editor.off('transaction', follow);
     };
-  }, [anchorLine, close, editor, mode, target.tracked]);
+  }, [close, editor, mode, target.tracked]);
 
-  // Entering `edit` swaps the panel's contents without remounting it, so
-  // Radix's open-time focus does not fire a second time. `create` gets its
-  // focus from that default.
+  // Entering `edit` swaps the panel's contents without remounting it, so the
+  // focus manager's open-time focus does not fire a second time. `create` gets
+  // its focus from that default.
   const inputRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (mode !== 'edit') return;
@@ -308,66 +303,64 @@ export function DocumentLinkPopover({
     inputRef.current?.select();
   }, [mode]);
 
-  // Set by the outside interaction that dismissed the panel, read once by the
-  // focus hand-back below. A ref rather than state: it is written and read
-  // inside one closing, and a re-render for it would be a re-render of a panel
-  // that is going away.
-  const leftForElsewhereRef = React.useRef(false);
-
   const canSubmit = draft.length > 0 && isLinkUrlShaped(draft);
   // Read on every render rather than held in state: it is a plain DOM lookup,
   // and every render that matters here follows a state change that already
   // happened after the editor was in the document.
-  const anchorHost = bodyScroller(editor);
+  const scroller = bodyScroller(editor);
+
+  // The panel hangs inside the scroller and is positioned in the scrolled
+  // content's own coordinates, so it travels with the text and the scroller's
+  // overflow clips it once the target leaves the body area. Both editors that
+  // ship this control do the same: Lexical portals into the editor div inside
+  // its scroller, BlockNote into the editor container.
+  const { refs, floatingStyles, context } = useFloating({
+    open: mode !== 'closed',
+    onOpenChange: (open) => {
+      if (!open) close();
+    },
+    strategy: 'absolute',
+    placement: 'bottom',
+    middleware: [
+      offset(8),
+      // Reads the target's per-line rectangles, so a target that wraps gets the
+      // panel against one line rather than the box drawn around all of them.
+      inline(),
+      // Named rather than left to the default clipping ancestors: the box that
+      // decides "it does not fit" is the body's visible area, the same one the
+      // bar names for its own middleware.
+      ...(scroller
+        ? [flip({ boundary: scroller }), shift({ boundary: scroller, crossAxis: true })]
+        : []),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+  // The button is not an outside press. `useDismiss` acts on `pointerdown`
+  // while the button's own toggle runs on the following `click`, and those are
+  // two separate event loops: left to itself, dismiss closes the panel and the
+  // click then reads `mode` as `closed` and opens it straight back.
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const { getFloatingProps } = useInteractions([
+    useDismiss(context, {
+      outsidePress: (event) => !buttonRef.current?.contains(event.target as Node),
+    }),
+  ]);
+
+  // The reference is rebuilt whenever the target moves to a different span. In
+  // between, the Range it holds tracks its own text.
+  React.useEffect(() => {
+    if (mode === 'closed') return;
+    refs.setPositionReference(panelReference(editor, target.range, anchorLine));
+  }, [anchorLine, editor, mode, refs, target.range]);
 
   return (
-    <Popover
-      open={mode !== 'closed'}
-      onOpenChange={(open) => {
-        // Only the button opens the panel. Radix reports every other way it
-        // can go away — Escape, a click outside, a second press on the button
-        // — and all of them mean the same thing.
-        if (!open) close();
-      }}
-    >
-      {createPortal(
-        <PopoverTrigger asChild>
-          {/* The anchor IS the trigger, because Radix keeps one anchor and two
-              things write it. Given a separate `PopoverAnchor`, the first render
-              still has `hasCustomAnchor` false, so Radix wraps the trigger in an
-              anchor of its own; both anchors run an effect with no dependency
-              array, the later one in the tree wins, and once `hasCustomAnchor`
-              flips the custom one never re-renders to correct it. Measured: the
-              stored anchor stayed the bubble bar's button, which the plugin then
-              removes from the document, and every rectangle it offered was zero
-              — so the panel drew itself at the window's top-left corner. One
-              element, one anchor, nothing to race.
-
-              It lives inside the scroller, positioned in the scrolled content's
-              own coordinates, so it travels with the line it points at. It
-              cannot live in the bubble bar, which the plugin takes out of the
-              document the moment a transaction arrives while the panel holds
-              focus. It cannot live in the editor either: that DOM belongs to
-              ProseMirror, which tears it down before React unmounts this tree —
-              React then tries to remove this element from a node that is no
-              longer its parent, and the whole route throws. The scroller is
-              Radix's, and outlives both. */}
-          <span
-            data-testid='doc-link-anchor'
-            aria-hidden='true'
-            className='pointer-events-none absolute'
-            style={target.anchorBox ?? undefined}
-          />
-        </PopoverTrigger>,
-        anchorHost ?? document.body,
-      )}
+    <>
       <Button
+        ref={buttonRef}
         variant={holdsLink ? 'secondary' : 'ghost'}
         size='icon'
         aria-label={t('spaces.document.commands.link')}
         aria-pressed={holdsLink}
-        // Stated here because the trigger is the anchor now, and these belong on
-        // the thing a person presses.
         aria-haspopup='dialog'
         aria-expanded={mode !== 'closed'}
         onClick={() => (mode === 'closed' ? openFromSelection() : close())}
@@ -379,118 +372,103 @@ export function DocumentLinkPopover({
       >
         <LinkIcon className='h-4 w-4' />
       </Button>
-      <PopoverContent
-        data-testid='doc-link-popover'
-        align='center'
-        // The panel travels with its anchor. Left on, collision avoidance
-        // pushes it back into view as the line it points at scrolls away, and
-        // it ends up sitting over unrelated text — the same fight the canvas
-        // overlays settle the same way.
-        avoidCollisions={false}
-        className='w-auto p-1.5'
-        onInteractOutside={() => {
-          leftForElsewhereRef.current = true;
-        }}
-        onCloseAutoFocus={(event) => {
-          // Radix would return focus to the trigger, which here is a zero-size
-          // aria-hidden span, so the caret would be stranded either way. The
-          // body gets it back instead — the same hand-back the clear-document
-          // dialog does.
-          //
-          // Except when the user closed this by clicking something else: the
-          // agent chat sits beside the editor, and taking focus off what they
-          // just clicked would put their next keystrokes into the shared
-          // document and send them to every peer.
-          event.preventDefault();
-          const elsewhere = leftForElsewhereRef.current;
-          leftForElsewhereRef.current = false;
-          if (elsewhere || editor.isDestroyed) return;
-          editor.commands.focus();
-        }}
-      >
-        {mode === 'view' ? (
-          <div className='flex items-center gap-1.5'>
-            <a
-              data-testid='doc-link-url'
-              href={target.href ?? undefined}
-              target='_blank'
-              rel='noopener noreferrer'
-              className='max-w-[250px] truncate px-1 text-sm text-content-link underline underline-offset-2'
+      {mode !== 'closed' && scroller ? (
+        <FloatingPortal root={scroller}>
+          <FloatingFocusManager context={context} modal={false}>
+            <div
+              ref={refs.setFloating}
+              style={floatingStyles}
+              {...getFloatingProps()}
+              data-testid='doc-link-popover'
+              role='dialog'
+              className='z-50 w-auto rounded-overlay border border-border bg-popover p-1.5 text-popover-foreground shadow outline-none'
             >
-              {target.href}
-            </a>
-            <Button
-              variant='outline'
-              size={null}
-              onClick={() => {
-                setDraft(target.href ?? '');
-                setShowInvalid(false);
-                setMode('edit');
-              }}
-              data-testid='doc-link-edit'
-              className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
-            >
-              {t('spaces.document.link.edit')}
-            </Button>
-            <Button
-              variant='outline'
-              size={null}
-              onClick={unlink}
-              data-testid='doc-link-remove'
-              className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
-            >
-              {t('spaces.document.link.remove')}
-            </Button>
-          </div>
-        ) : (
-          <div className='flex flex-col gap-1.5'>
-            <div className='flex items-center gap-1.5'>
-              <Input
-                data-testid='doc-link-input'
-                ref={inputRef}
-                value={draft}
-                aria-invalid={showInvalid}
-                placeholder={t('spaces.document.link.placeholder')}
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  setShowInvalid(false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    submit();
-                  }
-                }}
-                className={`${BUBBLE_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
-              />
-              {/* `aria-disabled`, so the press still arrives: the reason an
+              {mode === 'view' ? (
+                <div className='flex items-center gap-1.5'>
+                  <a
+                    data-testid='doc-link-url'
+                    href={target.href ?? undefined}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='max-w-[250px] truncate px-1 text-sm text-content-link underline underline-offset-2'
+                  >
+                    {target.href}
+                  </a>
+                  <Button
+                    variant='outline'
+                    size={null}
+                    onClick={() => {
+                      setDraft(target.href ?? '');
+                      setShowInvalid(false);
+                      setMode('edit');
+                    }}
+                    data-testid='doc-link-edit'
+                    className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
+                  >
+                    {t('spaces.document.link.edit')}
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size={null}
+                    onClick={unlink}
+                    data-testid='doc-link-remove'
+                    className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
+                  >
+                    {t('spaces.document.link.remove')}
+                  </Button>
+                </div>
+              ) : (
+                <div className='flex flex-col gap-1.5'>
+                  <div className='flex items-center gap-1.5'>
+                    <Input
+                      data-testid='doc-link-input'
+                      ref={inputRef}
+                      value={draft}
+                      aria-invalid={showInvalid}
+                      placeholder={t('spaces.document.link.placeholder')}
+                      onChange={(event) => {
+                        setDraft(event.target.value);
+                        setShowInvalid(false);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          submit();
+                        }
+                      }}
+                      className={`${BUBBLE_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
+                    />
+                    {/* `aria-disabled`, so the press still arrives: the reason an
                   address is refused is a thing this panel has to say, and a
                   button carrying the HTML attribute is handed no click to say
                   it on — nor any focus, which is what would have let the
                   input's blur say it instead. Pressing it runs `submit`, which
                   turns the field red and puts the reason underneath. */}
-              <Button
-                variant='outline'
-                size={null}
-                aria-disabled={!canSubmit}
-                onClick={submit}
-                data-testid='doc-link-confirm'
-                className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
-              >
-                {t('spaces.document.link.confirm')}
-              </Button>
+                    <Button
+                      variant='outline'
+                      size={null}
+                      aria-disabled={!canSubmit}
+                      onClick={submit}
+                      data-testid='doc-link-confirm'
+                      className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
+                    >
+                      {t('spaces.document.link.confirm')}
+                    </Button>
+                  </div>
+                  {showInvalid ? (
+                    <p
+                      data-testid='doc-link-invalid'
+                      className='px-0.5 text-xs text-status-error-foreground'
+                    >
+                      {t('spaces.document.link.invalid')}
+                    </p>
+                  ) : null}
+                </div>
+              )}
             </div>
-            {showInvalid ? (
-              <p
-                data-testid='doc-link-invalid'
-                className='px-0.5 text-xs text-status-error-foreground'
-              >
-                {t('spaces.document.link.invalid')}
-              </p>
-            ) : null}
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+          </FloatingFocusManager>
+        </FloatingPortal>
+      ) : null}
+    </>
   );
 }
