@@ -76,16 +76,12 @@ export const MessageBubble = React.memo(function MessageBubble({
                 streaming={message.streaming === true}
               />
             ) : null}
-            {/* One mark for the whole turn, always at the end of what has
-                been said so far. It starts alone in an empty bubble and stays
-                on the heels of the last character until the turn is over
-                (user 2026-08-20: the dot must not disappear and must not turn
-                into a bar).
-
-                It says the answer is still coming, which makes it this turn's
+            {/* One mark for the whole turn, after everything said so far. It
+                says the answer is still coming, which makes it this turn's
                 state rather than part of the answer — so it goes after the
                 rendering, and what the reply is made of never enters into it
-                (user 2026-08-25). */}
+                (user 2026-08-25). The space between the two is in the
+                stylesheet, beside the mark's own figures. */}
             {message.streaming ? <WaitingDot /> : null}
           </div>
         ) : null}

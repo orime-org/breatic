@@ -279,6 +279,19 @@ body {
   vertical-align: middle;
   animation: chat-waiting-dot 1.2s ease-in-out infinite;
 }
+/* The mark is appended after the whole rendering, so it lands on a line of its
+   own under the reply. One paragraph's worth of space is what separates any
+   two blocks in this scope, and the mark reads as the next one. Only when
+   there is a reply above it: alone in a fresh bubble it sits where the first
+   line of text is about to appear. */
+.chat-markdown + .chat-waiting-dot {
+  /* A margin on an inline box is half swallowed by the line box it sits in —
+     measured 12.08px against the 11.05px a paragraph break gives. Its own
+     block box makes the figure below mean what it says. */
+  display: block;
+  margin-top: 0.85em;
+}
+
 @keyframes chat-waiting-dot {
   0%,
   100% {

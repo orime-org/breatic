@@ -25,17 +25,18 @@ function read(name: string): string {
 }
 
 /**
- * Every rule whose selector mentions the chat prose scope, wherever it sits.
+ * Every rule whose selector mentions a given class, wherever it sits.
  *
  * Parsed rather than matched: a rule nested in an at-rule paints the same
  * pixels as one at the top level, and a regex over braces reads the two
  * differently.
+ * @param needle - The text a selector must contain.
  * @returns The selector and the declarations of each such rule.
  */
-function chatRules(): { selector: string; body: string }[] {
+function rulesNaming(needle: string): { selector: string; body: string }[] {
   const found: { selector: string; body: string }[] = [];
   postcss.parse(read('index.css')).walkRules((rule) => {
-    if (!rule.selector.includes('.chat-markdown')) return;
+    if (!rule.selector.includes(needle)) return;
     const body = rule.nodes
       .filter((node) => node.type === 'decl')
       .map((decl) => `${decl.prop}: ${decl.value};`)
@@ -43,6 +44,14 @@ function chatRules(): { selector: string; body: string }[] {
     found.push({ selector: rule.selector, body });
   });
   return found;
+}
+
+/**
+ * Every rule whose selector mentions the chat prose scope.
+ * @returns The selector and the declarations of each such rule.
+ */
+function chatRules(): { selector: string; body: string }[] {
+  return rulesNaming('.chat-markdown');
 }
 
 /**
@@ -116,6 +125,30 @@ describe('chat prose stylesheet — scope and scrolling', () => {
     // overflow here would be one the guard cannot see, since it reads TSX.
     for (const rule of chatRules()) {
       expect(rule.body).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
+    }
+  });
+});
+
+describe('chat prose stylesheet — the waiting mark stands off the reply (#159)', () => {
+  it('spaces the mark from the reply it follows', () => {
+    const rule = rulesNaming('.chat-waiting-dot').find(
+      (r) => r.selector.trim() === '.chat-markdown + .chat-waiting-dot',
+    );
+    expect(rule, 'nothing separates the mark from the last line of the reply').toBeDefined();
+    expect(rule?.body).toMatch(/margin-top:/);
+    // Without a block box of its own the line box swallows half that margin,
+    // and the gap stops being the paragraph break it is written as.
+    expect(rule?.body, 'the margin lands on an inline box').toMatch(/display:\s*block/);
+  });
+
+  it('leaves the mark where it is when it stands alone', () => {
+    // Before the first word there is no reply above it, and a margin that
+    // applied then would drop the mark below where the text is about to start
+    // and then jerk it back up.
+    const alone = rulesNaming('.chat-waiting-dot').filter((r) => !r.selector.includes('+'));
+    expect(alone.length).toBeGreaterThan(0);
+    for (const rule of alone) {
+      expect(rule.body, `${rule.selector} moves the lone mark`).not.toMatch(/margin/);
     }
   });
 });
