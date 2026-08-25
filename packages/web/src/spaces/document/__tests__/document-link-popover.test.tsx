@@ -616,6 +616,37 @@ describe('a co-editor changes the body', () => {
     expect(screen.getByTestId('doc-link-input')).toHaveValue('');
   });
 
+  it('rebuilds the create panel\'s anchor when the peer edits the same block', async () => {
+    // The anchor is a live DOM Range, and a peer's edit in the same block
+    // replaces the text node it points into: measured, a Range held over
+    // "beta" came back empty and collapsed after the peer inserted ahead of
+    // it. In `view` the anchor is rebuilt because the target moves; `create`
+    // has no target to move, so it has to be rebuilt on its own account, or
+    // the panel spends the rest of its life at the head of the paragraph
+    // while its owner is still typing an address into it.
+    const editor = mount('<p>alpha beta gamma</p>');
+    await openPopoverOver(editor, 7, 11);
+    expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
+
+    const built: string[] = [];
+    const realCreateRange = document.createRange.bind(document);
+    vi.spyOn(document, 'createRange').mockImplementation(() => {
+      built.push('built');
+      return realCreateRange();
+    });
+
+    asPeer((body) => {
+      const block = body.get(0) as Y.XmlElement;
+      (block.get(0) as Y.XmlText).insert(0, 'XX');
+    });
+    await waitFor(() => {
+      expect(editor.getHTML()).toContain('XXalpha');
+    });
+
+    expect(built.length).toBeGreaterThan(0);
+    expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
+  });
+
   it('keeps the edit state and its draft when the peer types ahead of the link', async () => {
     const editor = mount(ONE_LINK);
     await enterEditState(editor);

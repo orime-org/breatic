@@ -301,43 +301,6 @@ export function DocumentLinkPopover({
     close();
   }, [close, editor, target.range]);
 
-  // A co-editor typing ahead of the link moves it, and the panel follows the
-  // link it was opened over. Which link that is comes from the handle taken at
-  // open time: re-reading the selection answers "which link does this
-  // selection hold", and a peer linking a word earlier in the same selection
-  // takes over that answer, so a confirm would write this user's address onto
-  // the peer's word. See `document-link-tracking.ts` for why neither the
-  // transaction's mapping nor the selection can stand in for the handle.
-  React.useEffect(() => {
-    if (mode === 'closed') return undefined;
-    /**
-     * Follow the document.
-     * @param props - What the editor passes its transaction handler.
-     * @param props.transaction - The transaction that just landed.
-     */
-    const follow = ({ transaction }: { transaction: Transaction }): void => {
-      if (!transaction.docChanged) return;
-      // `create` opened on a selection holding no link, and that selection is
-      // what it writes to. A link a co-editor makes inside it belongs to them:
-      // adopting it would narrow the write to their span and put this user's
-      // address over their href, on text this user never selected.
-      if (mode === 'create') return;
-      const resolved = followedLink(editor, target.tracked);
-      if (!resolved.range) {
-        close();
-        return;
-      }
-      setTarget((prev) => ({
-        ...prev,
-        range: resolved.range,
-        href: resolved.href ?? prev.href,
-      }));
-    };
-    editor.on('transaction', follow);
-    return () => {
-      editor.off('transaction', follow);
-    };
-  }, [close, editor, mode, target.tracked]);
 
   // Entering `edit` swaps the panel's contents without remounting it, so the
   // focus manager's open-time focus does not fire a second time. `create` gets
@@ -405,6 +368,53 @@ export function DocumentLinkPopover({
     if (mode === 'closed') return;
     refs.setPositionReference(panelReference(editor, target.range, anchorLine));
   }, [anchorLine, editor, mode, refs, target.range]);
+
+  // A co-editor typing ahead of the link moves it, and the panel follows the
+  // link it was opened over. Which link that is comes from the handle taken at
+  // open time: re-reading the selection answers "which link does this
+  // selection hold", and a peer linking a word earlier in the same selection
+  // takes over that answer, so a confirm would write this user's address onto
+  // the peer's word. See `document-link-tracking.ts` for why neither the
+  // transaction's mapping nor the selection can stand in for the handle.
+  React.useEffect(() => {
+    if (mode === 'closed') return undefined;
+    /**
+     * Follow the document.
+     * @param props - What the editor passes its transaction handler.
+     * @param props.transaction - The transaction that just landed.
+     */
+    const follow = ({ transaction }: { transaction: Transaction }): void => {
+      if (!transaction.docChanged) return;
+      // `create` opened on a selection holding no link, and that selection is
+      // what it writes to. A link a co-editor makes inside it belongs to them:
+      // adopting it would narrow the write to their span and put this user's
+      // address over their href, on text this user never selected.
+      //
+      // The anchor still has to be rebuilt. It is a live DOM Range, and a
+      // peer's edit in the same block replaces the text node it points into:
+      // measured, a Range held over "beta" came back empty and collapsed once
+      // the peer inserted ahead of it. `view` gets its rebuild from the target
+      // moving; `create` has no target, so it asks here.
+      if (mode === 'create') {
+        refs.setPositionReference(panelReference(editor, null, anchorLine));
+        return;
+      }
+      const resolved = followedLink(editor, target.tracked);
+      if (!resolved.range) {
+        close();
+        return;
+      }
+      setTarget((prev) => ({
+        ...prev,
+        range: resolved.range,
+        href: resolved.href ?? prev.href,
+      }));
+    };
+    editor.on('transaction', follow);
+    return () => {
+      editor.off('transaction', follow);
+    };
+  }, [anchorLine, close, editor, mode, refs, target.tracked]);
 
   // A select-all's target is the whole document, and giving that a link is not
   // an operation (§4.6). The button goes with it, so there is nothing to press.
