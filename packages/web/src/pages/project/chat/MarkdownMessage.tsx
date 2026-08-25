@@ -23,6 +23,9 @@ import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+// Puts a copy handler on the document, so a copied formula reads as the
+// source the model wrote rather than as the glyphs it was drawn into.
+import '@web/pages/project/chat/copy-formula-source';
 import {
   DISPLAY_MATH_CLASS,
   displayMathPlugin,

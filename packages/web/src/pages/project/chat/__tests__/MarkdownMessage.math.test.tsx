@@ -75,6 +75,41 @@ describe('MarkdownMessage — maths', () => {
     expect(bad?.textContent).toBe('\\frac{');
   });
 
+  it('gives a copier the formula source, once (A8)', () => {
+    // KaTeX draws a formula three times over: MathML for a screen reader, the
+    // LaTeX it came from, and the glyphs. Measured in Chrome, a selection
+    // across a formula serialises two of the three, so a reader copying a
+    // reply gets the formula twice and neither copy is readable.
+    const body = draw('$$\nE = mc^2\n$$').querySelector('[data-testid="markdown-body"]');
+    expect(body?.querySelector('.katex-display'), 'the formula is rendered at all').not.toBeNull();
+
+    // Selected the way a reader drags across a whole reply, which takes in the
+    // scroller around the formula — and Radix gives each scroller a `style`
+    // element of its own, which the browser never renders and a reader must
+    // never be handed.
+    const range = document.createRange();
+    range.selectNodeContents(body as Element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const written = new Map<string, string>();
+    const copy = new Event('copy', { bubbles: true, cancelable: true });
+    Object.defineProperty(copy, 'clipboardData', {
+      value: {
+        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
+      },
+    });
+    document.dispatchEvent(copy);
+
+    const plain = written.get('text/plain') ?? '';
+    // The source as the model wrote it, delimiters and line breaks included,
+    // so a copied reply pastes back as the same reply.
+    expect(plain, 'the copy carries the LaTeX the model wrote').toContain('$$\nE = mc^2\n$$');
+    expect(plain.match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
+    expect(plain, 'and carries nothing the reader cannot see').not.toContain('scrollbar-width');
+  });
+
   it('hands a display formula its own horizontal scroller (A7)', () => {
     // KaTeX writes `white-space: nowrap` on a display formula and offers no
     // overflow of its own, and the list around the reply only scrolls
