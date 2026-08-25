@@ -222,9 +222,8 @@ Do **not** open public GitHub issues for security vulnerabilities.
 
 ## License
 
-Breatic is released under the **Breatic Open Source License v1.0** —
-a source-available license based on Apache 2.0, with additional
-conditions:
+Breatic is released under the **Breatic Source-Available License v1.0**,
+based on Apache 2.0 with additional conditions:
 
 - No public-facing deployment without authorization (paid or free)
 - Brand and copyright must be preserved across all components

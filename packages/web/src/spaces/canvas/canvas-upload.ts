@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
 import { validFocusImages } from '@web/data/focus-images';
