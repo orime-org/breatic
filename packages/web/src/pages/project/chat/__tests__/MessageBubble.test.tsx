@@ -178,6 +178,23 @@ describe('MessageBubble — markdown rendering', () => {
     expect(screen.getByTestId('message-bubble').querySelector('strong')).toBeNull();
   });
 
+  it('tells the renderer the turn is still running (R2)', () => {
+    // Half of "drawn as it streams" is this one prop reaching the renderer:
+    // only a running turn has its unclosed markers completed, so an unclosed
+    // `**` becoming a `strong` is what says the wire is connected.
+    setup({ id: 'm1', role: 'assistant', content: 'half a **word', streaming: true });
+
+    expect(screen.getByTestId('markdown-body').querySelector('strong')).toHaveTextContent('word');
+  });
+
+  it('leaves a settled reply exactly as it came (R3)', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'half a **word' });
+
+    const md = screen.getByTestId('markdown-body');
+    expect(md.querySelector('strong')).toBeNull();
+    expect(md).toHaveTextContent('half a **word');
+  });
+
   it('keeps the dot out of the rendering once prose has arrived', () => {
     setup({ id: 'm1', role: 'assistant', content: 'still writing', streaming: true });
 
@@ -233,10 +250,9 @@ describe('MessageBubble — the waiting mark is the turn\'s own state (R7)', () 
         body?.contains(mark ?? null),
         `${content}: the mark is outside the rendering`,
       ).toBe(false);
-      expect(
-        body?.nextElementSibling === mark || body?.parentElement?.lastElementChild === mark,
-        `${content}: the mark follows the rendering`,
-      ).toBe(true);
+      // Adjacent, not merely last: the rule that spaces the two apart is
+      // written with `+`, and anything in between silences it.
+      expect(body?.nextElementSibling, `${content}: the mark follows the rendering`).toBe(mark);
       cleanup();
     }
   });

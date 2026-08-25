@@ -77,24 +77,39 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     const allowed = colourTokens();
     expect(allowed.size).toBeGreaterThan(20);
 
-    const rules = chatRules();
+    // Everything this change paints: the prose and the mark that trails it.
+    const bySelector = new Map(
+      [...chatRules(), ...rulesNaming('.chat-waiting-dot')].map((r) => [r.selector, r]),
+    );
+    const rules = [...bySelector.values()];
     expect(rules.length).toBeGreaterThan(0);
 
     let declared = 0;
     for (const rule of rules) {
-      // The last declaration in a block may carry no semicolon, so the
-      // terminator is optional here; requiring it hid whatever was written
-      // last in each rule.
+      // Text colour is the strict case: the whole value is the token, so it
+      // can be read as one. The last declaration in a block may carry no
+      // semicolon, so the terminator is optional here; requiring it hid
+      // whatever was written last in each rule.
       for (const [, value] of rule.body.matchAll(/(?:^|;)\s*color:\s*([^;]+)/g)) {
-        declared += 1;
         const token = /^var\((--[a-z-]+)\)$/.exec(value?.trim() ?? '')?.[1];
         expect(token, `${rule.selector} paints with ${value?.trim()}`).toBeDefined();
         expect(allowed.has(token ?? ''), `${token} is not a colour this theme defines`).toBe(true);
       }
+      // The rest name a colour among other things — `border: 1px solid …`,
+      // `background: …` — so they are read the other way round: nothing that
+      // spells a colour out, and every name they do use one the theme has.
+      expect(
+        rule.body,
+        `${rule.selector} spells a colour out`,
+      ).not.toMatch(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?|oklch|lab|lch|color-mix)\(/i);
+      for (const [, name] of rule.body.matchAll(/var\((--color-[a-z0-9-]+)\)/g)) {
+        declared += 1;
+        expect(allowed.has(name ?? ''), `${name} is not a colour this theme defines`).toBe(true);
+      }
     }
     // The scope paints in more than one place; a filter that quietly stopped
     // matching would otherwise leave this green with nothing checked.
-    expect(declared).toBeGreaterThan(10);
+    expect(declared).toBeGreaterThan(15);
   });
 
 });

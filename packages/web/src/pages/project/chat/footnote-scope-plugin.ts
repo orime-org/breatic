@@ -37,16 +37,10 @@ export function footnoteScopePlugin(scope: string): (tree: Root) => void {
         // is a picture of the markup an assistant is explaining — and those are
         // the model's own words.
         if (child.properties['id'] === LABEL_ID) child.properties['id'] = scoped;
+        // The marker points at the heading through this one attribute, which
+        // hast spells its own way and keeps as an id-list.
         if (child.properties['dataFootnoteRef'] !== undefined) {
-          // hast spells attribute names its own way and keeps an id-list as an
-          // array, so the reference to the heading is found by its value among
-          // this marker's own properties.
-          for (const [key, value] of Object.entries(child.properties)) {
-            if (value === LABEL_ID) child.properties[key] = scoped;
-            else if (Array.isArray(value) && value.includes(LABEL_ID)) {
-              child.properties[key] = value.map((one) => (one === LABEL_ID ? scoped : one));
-            }
-          }
+          child.properties['ariaDescribedBy'] = [scoped];
         }
         walk(child);
       }

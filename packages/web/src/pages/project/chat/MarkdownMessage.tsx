@@ -14,7 +14,7 @@
  */
 import { useId, useMemo, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
-import type { Components } from 'react-markdown';
+import type { Components, Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import remend from 'remend';
@@ -72,15 +72,16 @@ const COMPLETION = {
   inlineKatex: false,
 } as const;
 
+/** The plugin list react-markdown takes, named through the prop that takes it. */
+type Rehype = NonNullable<Options['rehypePlugins']>;
+
 const REMARK_PLUGINS = [remarkGfm];
 
 // Handed no language set, `rehype-highlight` colours with lowlight's `common`
 // — thirty-seven grammars, all of which it imports at the top of its own
 // module whatever it is given. Its `detect` stays off, so a block reaches a
 // grammar only by naming one.
-const HIGHLIGHT = [rehypeHighlight];
-
-const REHYPE = [HIGHLIGHT];
+const REHYPE: Rehype = [rehypeHighlight];
 
 /**
  * A wide table scrolls sideways through the app's own scroller.
@@ -148,7 +149,7 @@ export function MarkdownMessage({
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
   // Unique per rendered message, so the footnote ids below are too.
-  const scope = useId().replaceAll(':', '');
+  const scope = useId();
   // A settled message goes through untouched. An interrupted reply carries
   // unclosed markers, and those are what the model actually sent.
   const source = streaming ? remend(content, COMPLETION) : content;
@@ -159,7 +160,7 @@ export function MarkdownMessage({
   const footnotes = t('chat.markdown.footnotes');
   const backTo = t('chat.markdown.backToReference', { index: '{index}' });
   // Runs before the colouring, which only rebuilds code elements.
-  const rehypePlugins = useMemo(
+  const rehypePlugins = useMemo<Rehype>(
     () => [[footnoteScopePlugin, scope], ...REHYPE],
     [scope],
   );
@@ -182,14 +183,10 @@ export function MarkdownMessage({
   );
 
   return (
-    <div
-      className='chat-markdown text-sm'
-      data-streaming={streaming ? 'true' : undefined}
-      data-testid='markdown-body'
-    >
+    <div className='chat-markdown text-sm' data-testid='markdown-body'>
       <Markdown
         components={COMPONENTS}
-        rehypePlugins={rehypePlugins as never}
+        rehypePlugins={rehypePlugins}
         remarkPlugins={REMARK_PLUGINS}
         remarkRehypeOptions={remarkRehypeOptions}
       >

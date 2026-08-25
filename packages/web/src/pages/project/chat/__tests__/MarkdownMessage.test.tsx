@@ -45,6 +45,27 @@ describe('MarkdownMessage — elements (R1)', () => {
     expect(code?.className).toContain('language-typescript');
   });
 
+  it('colours a fenced block by the language it names (R10)', () => {
+    // `language-typescript` above says only that the fence carried a name.
+    // These say a grammar read the code: `const` came back a keyword and `1`
+    // a number, which is the whole of what colouring the block means here.
+    draw('```typescript\nconst x = 1;\n```');
+
+    const code = body().querySelector('pre > code');
+    expect(code?.querySelector('.hljs-keyword')).toHaveTextContent('const');
+    expect(code?.querySelector('.hljs-number')).toHaveTextContent('1');
+  });
+
+  it('leaves a block that names no language uncoloured (R10)', () => {
+    // Detection stays off, so a nameless block is text and nothing guesses at
+    // it — a wrong guess would paint the code in colours that mean something.
+    draw('```\nconst x = 1;\n```');
+
+    const code = body().querySelector('pre > code');
+    expect(code).toHaveTextContent('const x = 1;');
+    expect(code?.querySelector('[class^="hljs-"]')).toBeNull();
+  });
+
   it('builds a table with its header cells', () => {
     draw('| Item | Value |\n|---|---|\n| Size | 33 KB |');
 
