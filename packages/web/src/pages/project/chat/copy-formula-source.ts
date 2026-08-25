@@ -48,10 +48,15 @@ function replaceFormulaeWithSource(fragment: DocumentFragment): void {
     // The LaTeX KaTeX kept alongside the MathML it built.
     const source = formula.querySelector('annotation')?.textContent ?? '';
     const onItsOwnLine = formula.closest(`.${DISPLAY_CLASS}`) !== null;
-    const written = onItsOwnLine
+    const holder = document.createElement('span');
+    // Source, not prose: the line breaks around a formula on its own line are
+    // part of what makes it one, and normal white-space handling would fold
+    // them into spaces on the way out.
+    holder.style.whiteSpace = 'pre';
+    holder.textContent = onItsOwnLine
       ? `${DELIMITER}\n${source}\n${DELIMITER}`
       : `${DELIMITER}${source}${DELIMITER}`;
-    formula.replaceWith(document.createTextNode(written));
+    formula.replaceWith(holder);
   }
 }
 
@@ -73,13 +78,20 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   // Neither of these belongs in something a person pastes, and a stylesheet
   // pasted into a rich-text target would apply itself there.
   for (const unrendered of fragment.querySelectorAll('style, script')) unrendered.remove();
-
-  const html = [...fragment.childNodes]
-    .map((node) => (node instanceof Element ? node.outerHTML : node.textContent))
-    .join('');
   replaceFormulaeWithSource(fragment);
 
-  event.clipboardData.setData('text/html', html);
-  event.clipboardData.setData('text/plain', fragment.textContent ?? '');
+  // Serialising this by hand is what the browser is for: `textContent` knows
+  // nothing of block boundaries, table cells or list markers, and markup
+  // built by joining text escapes nothing — a reply whose words look like a
+  // tag would arrive as a live one. `innerText` reads what was laid out, so
+  // the element has to be rendered somewhere out of sight rather than hidden.
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;top:0;left:-9999px';
+  host.append(fragment);
+  document.body.append(host);
+  event.clipboardData.setData('text/html', host.innerHTML);
+  event.clipboardData.setData('text/plain', host.innerText);
+  host.remove();
+
   event.preventDefault();
 });

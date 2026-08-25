@@ -27,7 +27,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 // source the model wrote rather than as the glyphs it was drawn into.
 import '@web/pages/project/chat/copy-formula-source';
 import {
-  DISPLAY_MATH_CLASS,
+  DISPLAY_MATH_TAG,
   displayMathPlugin,
 } from '@web/pages/project/chat/display-math-plugin';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
@@ -118,13 +118,20 @@ const KATEX = {
   // `true` lets `\href` produce an anchor carrying neither target nor rel,
   // which every other link in a reply gets from `MarkdownLink` below.
   trust: false,
-  // The four below are KaTeX's documented defaults, written out because a
-  // later version could change what a default is. @streamdown/math, the
-  // complete implementation this pipeline borrows from, runs on all four.
+  // The rest are KaTeX's documented defaults, written out because a later
+  // version could change what a default is. @streamdown/math, the complete
+  // implementation this pipeline borrows from, runs on all of them.
+  // `macros`, `minRuleThickness` and `colorIsTextColor` are absent because
+  // they are not switches: KaTeX documents no default for any of the three,
+  // and it writes into `macros` — one object shared by every render would
+  // carry a reply's `\gdef` into the next one.
   output: 'htmlAndMathml',
   strict: 'warn',
   maxExpand: 1000,
   maxSize: Infinity,
+  fleqn: false,
+  leqno: false,
+  globalGroup: false,
 } as const;
 
 // Handed no language set, `rehype-highlight` colours with lowlight's `common`
@@ -150,45 +157,18 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
 /**
  * A formula on a line of its own scrolls sideways through the app's scroller.
  *
- * `min-width` on the viewport's own wrapper is what keeps a narrow formula
- * centred: Radix sizes that wrapper as a table, which shrinks to its content
- * and leaves `text-align: center` nothing to centre within. The margin moves
- * out here for the reason the table's does — left inside, `.chat-markdown >
- * :first-child` would clear the scroller's margin instead of the formula's,
- * and a reply that opens with a formula would carry a gap.
+ * The margin moves out here for the reason the table's does — left inside,
+ * `.chat-markdown > :first-child` would clear the scroller's margin instead
+ * of the formula's, and a reply that opens with a formula would carry a gap.
  * @param root0 - The props react-markdown hands the wrapper.
  * @param root0.children - The rendered formula.
  * @returns The formula inside a horizontal scroller.
  */
 function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
   return (
-    <ScrollArea
-      className='my-[1em] [&_.katex-display]:my-0'
-      scrollbars='horizontal'
-      viewportClassName='[&>div]:min-w-full'
-    >
+    <ScrollArea className='my-[1em] [&_.katex-display]:my-0' scrollbars='horizontal'>
       {children}
     </ScrollArea>
-  );
-}
-
-/**
- * Either the wrapper above or the plain element the tag otherwise means.
- * @param root0 - The props react-markdown hands a `div`.
- * @param root0.className - What the element carries.
- * @param root0.children - Its contents.
- * @returns The element.
- */
-function MarkdownDiv({
-  className,
-  children,
-  ...rest
-}: { className?: string; children?: ReactNode }): ReactElement {
-  if (className === DISPLAY_MATH_CLASS) return <ScrollableMath>{children}</ScrollableMath>;
-  return (
-    <div className={className} {...rest}>
-      {children}
-    </div>
   );
 }
 
@@ -264,7 +244,7 @@ const COMPONENTS = {
   a: MarkdownLink,
   table: ScrollableTable,
   input: TaskMark,
-  div: MarkdownDiv,
+  [DISPLAY_MATH_TAG]: ScrollableMath,
 } as Components;
 
 /**

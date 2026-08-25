@@ -16,8 +16,14 @@
  */
 import type { Element, Root } from 'hast';
 
-/** What the wrapper is found by, both here and in the renderer. */
-export const DISPLAY_MATH_CLASS = 'chat-markdown-math-block';
+/**
+ * What the wrapper is, both here and in the renderer.
+ *
+ * A tag of its own rather than a `div`: react-markdown looks its components
+ * up by tag name, and a name nothing else in markdown produces is one the
+ * renderer can answer without asking what any other element is.
+ */
+export const DISPLAY_MATH_TAG = 'chat-math-block';
 
 /** What KaTeX marks a formula rendered in display mode with. */
 const DISPLAY_CLASS = 'katex-display';
@@ -50,8 +56,8 @@ export function displayMathPlugin(): (tree: Root) => void {
         if (!isDisplayMath(child)) return child;
         return {
           type: 'element',
-          tagName: 'div',
-          properties: { className: [DISPLAY_MATH_CLASS] },
+          tagName: DISPLAY_MATH_TAG,
+          properties: {},
           children: [child],
         } satisfies Element;
       });

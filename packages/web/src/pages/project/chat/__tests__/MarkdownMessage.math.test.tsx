@@ -102,12 +102,47 @@ describe('MarkdownMessage — maths', () => {
     });
     document.dispatchEvent(copy);
 
-    const plain = written.get('text/plain') ?? '';
+    // The browser derives the plain-text flavour from what it has laid out,
+    // which jsdom has none of — `innerText` is undefined here. What both
+    // flavours are built from is the same fragment, so this asserts on the
+    // markup; §6.1 of the design carries the browser's own plain text.
+    const html = written.get('text/html') ?? '';
     // The source as the model wrote it, delimiters and line breaks included,
     // so a copied reply pastes back as the same reply.
-    expect(plain, 'the copy carries the LaTeX the model wrote').toContain('$$\nE = mc^2\n$$');
-    expect(plain.match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
-    expect(plain, 'and carries nothing the reader cannot see').not.toContain('scrollbar-width');
+    expect(html, 'the copy carries the LaTeX the model wrote').toContain('$$\nE = mc^2\n$$');
+    expect(html.match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
+    expect(html, 'and carries nothing the reader cannot see').not.toContain('scrollbar-width');
+  });
+
+  it('leaves markup in a reply inert on the clipboard (A8)', () => {
+    // The pipeline renders no inline HTML, so this reaches the reader as
+    // characters. Building the markup flavour by hand would hand it on as
+    // live markup instead — the browser escapes what it serialises.
+    const body = draw('A tag <img src=x onerror=alert(1)> and $$x$$ after.').querySelector(
+      '[data-testid="markdown-body"]',
+    );
+    const paragraph = body?.querySelector('p');
+    const range = document.createRange();
+    // Started part-way through, the way a drag does, so the copy holds loose
+    // text as well as elements.
+    range.setStart(paragraph?.firstChild as Node, 2);
+    range.setEndAfter(paragraph?.lastChild as Node);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const written = new Map<string, string>();
+    const copy = new Event('copy', { bubbles: true, cancelable: true });
+    Object.defineProperty(copy, 'clipboardData', {
+      value: {
+        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
+      },
+    });
+    document.dispatchEvent(copy);
+
+    const html = written.get('text/html') ?? '';
+    expect(html, 'the tag is still characters').toContain('&lt;img');
+    expect(html, 'and not markup').not.toContain('<img');
   });
 
   it('hands a display formula its own horizontal scroller (A7)', () => {

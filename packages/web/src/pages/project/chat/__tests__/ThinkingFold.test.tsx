@@ -71,7 +71,34 @@ describe('ThinkingFold — the body reads as prose (B1, B3)', () => {
     // markdown was for.
     const body = await expand('step one\nstep two');
 
-    expect(body).toHaveClass('whitespace-pre-line');
-    expect(body.textContent).toContain('\n');
+    expect(
+      body.classList.contains('[&_p]:whitespace-pre-line'),
+      'the break is held on the paragraphs',
+    ).toBe(true);
+    expect(
+      body.classList.contains('[&_li]:whitespace-pre-line'),
+      'and on the list items',
+    ).toBe(true);
+    expect(body.querySelector('p')?.textContent).toContain('\n');
+  });
+
+  it('leaves no blank line between one block and the next', async () => {
+    // `mdast-util-to-hast` writes a newline text node between block children,
+    // so holding the breaks on the container would turn each of those into a
+    // blank line — a gap before every list and between every bullet.
+    const body = await expand('first paragraph\n\nsecond paragraph\n\n- a\n- b');
+
+    const container = body.querySelector('[data-testid="markdown-body"]');
+    expect(container).not.toBeNull();
+    expect(
+      [...(container?.childNodes ?? [])].some((n) => n.nodeType === 3 && n.textContent === '\n'),
+      'the separators react-markdown leaves between blocks are still there',
+    ).toBe(true);
+    for (const node of [body, container as Element]) {
+      expect(
+        node.classList.contains('whitespace-pre-line'),
+        'and nothing above the blocks preserves them',
+      ).toBe(false);
+    }
   });
 });

@@ -100,13 +100,20 @@ describe('markdown pipeline — completion switches (R2, R3)', () => {
       // rel, which is every link in a reply except the ones MarkdownLink
       // draws.
       trust: false,
-      // The four below are KaTeX's documented defaults, written out because a
-      // later version could change what a default is. @streamdown/math, the
-      // complete implementation this pipeline borrows from, runs on all four.
+      // The rest are KaTeX's documented defaults, written out because a later
+      // version could change what a default is. @streamdown/math, the complete
+      // implementation this pipeline borrows from, runs on all of them.
+      // `macros`, `minRuleThickness` and `colorIsTextColor` are absent because
+      // they are not switches: KaTeX documents no default for any of the
+      // three, and it writes into `macros` — one object shared by every render
+      // would carry a reply's `\gdef` into the next one.
       output: 'htmlAndMathml',
       strict: 'warn',
       maxExpand: 1000,
       maxSize: Infinity,
+      fleqn: false,
+      leqno: false,
+      globalGroup: false,
     });
   });
 
