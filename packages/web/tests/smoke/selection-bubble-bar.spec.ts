@@ -1650,3 +1650,76 @@ test('link: the panel still meets its target after the window changes width', as
 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
+
+test('link: the panel keeps its place while a co-editor types', async ({ browser }) => {
+  // Two contexts, so two sessions and two websocket connections into the same
+  // document. The panel holds a handle on the link rather than a position, and
+  // a Range for its geometry; an edit above the link moves it down the page,
+  // and the panel has to arrive with it.
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('the paragraph a co-editor will grow');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('link me');
+  await selectParagraph(page, 1);
+  await linkTheSelection(page, 'a.example/coedited');
+  await openViewOverFirstLink(page);
+
+  const linkBox = () =>
+    page.evaluate(() => {
+      const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    });
+  const before = await linkBox();
+  const settled = await settlePanelUnder(page, before);
+
+  const projectUrl = page.url();
+  const spaceTab = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
+        .getAttribute('data-testid')!,
+  );
+
+  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  try {
+    const other = await peer.newPage();
+    await other.goto('/login');
+    await other.locator('#login-email').fill(email as string);
+    await other.locator('#login-password').fill(password as string);
+    await other.locator('form button[type="submit"]').click();
+    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+
+    await other.goto(projectUrl);
+    await other.getByTestId(spaceTab).click();
+    const peerEditor = other.locator('[data-testid="document-space"] .ProseMirror');
+    await expect(peerEditor).toBeVisible({ timeout: 15_000 });
+    // The link A made has to have reached B before B edits around it.
+    await expect(
+      other.locator('[data-testid="document-space"] .ProseMirror a'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await other.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+    await other.keyboard.press('End');
+    await other.keyboard.type(
+      ' and here is a good deal more of it, enough that the paragraph has to take a second line and push everything below it down the page',
+    );
+
+    // The peer's text has to be in this document, and the line has to have
+    // moved because of it rather than because a second reader arrived.
+    await expect(
+      page.locator('[data-testid="document-space"] .ProseMirror'),
+    ).toContainText('push everything below it down the page', { timeout: 15_000 });
+    await expect.poll(async () => (await linkBox()).top - before.top).toBeGreaterThan(20);
+  } finally {
+    await peer.close();
+  }
+
+  const after = await linkBox();
+  const moved = await panelAgainst(page, after);
+  expect(Math.abs(moved.gapBelow - settled.gapBelow)).toBeLessThan(1);
+  expect(Math.abs(moved.centreOffset - settled.centreOffset)).toBeLessThan(2);
+  // And the panel is the same one, still in view rather than reopened.
+  await expect(page.getByTestId('doc-link-url')).toBeVisible();
+});
