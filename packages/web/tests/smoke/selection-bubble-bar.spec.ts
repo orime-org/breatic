@@ -1743,3 +1743,55 @@ test('link: the panel keeps its place while a co-editor types', async ({ browser
   // And the panel is the same one, still in view rather than reopened.
   await expect(page.getByTestId('doc-link-url')).toBeVisible();
 });
+
+test('link: the panel is built to the demo measurements', async () => {
+  // Every number here is measured off the demo's third section, which is the
+  // spec for this panel: box 42 high, controls 28, the address line 21, and in
+  // the refused state a 67-high box holding a 19-high message. `offsetHeight`
+  // rather than a rectangle, so a transform mid-flight cannot read as a size.
+  //
+  // The box's own font size is left off: the demo sets 14 on it, every piece of
+  // text in the panel carries its own size, and `--text-*` has no 14 rung.
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('measure me');
+  await selectFirstParagraph(page);
+
+  const sizes = () =>
+    page.evaluate(() => {
+      const el = (t: string) =>
+        document.querySelector<HTMLElement>(`[data-testid="${t}"]`);
+      const panel = el('doc-link-popover');
+      return {
+        panel: panel ? panel.offsetHeight : null,
+        input: el('doc-link-input')?.offsetHeight ?? null,
+        inputWidth: el('doc-link-input')?.offsetWidth ?? null,
+        url: el('doc-link-url')?.offsetHeight ?? null,
+        message: el('doc-link-invalid')?.offsetHeight ?? null,
+        buttons: [...(panel?.querySelectorAll('button') ?? [])].map(
+          (b) => (b as HTMLElement).offsetHeight,
+        ),
+      };
+    });
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  const create = await sizes();
+  expect(create).toMatchObject({
+    panel: 42,
+    input: 28,
+    inputWidth: 250,
+    buttons: [28],
+  });
+
+  await page.getByTestId('doc-link-input').fill('htp:/breatic');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('doc-link-invalid')).toBeVisible({ timeout: 5_000 });
+  expect(await sizes()).toMatchObject({ panel: 67, input: 28, message: 19 });
+
+  await page.getByTestId('doc-link-input').fill('a.example/measured');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await openViewOverFirstLink(page);
+  expect(await sizes()).toMatchObject({ panel: 42, url: 21, buttons: [28, 28] });
+});

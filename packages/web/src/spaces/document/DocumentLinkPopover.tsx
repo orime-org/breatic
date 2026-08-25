@@ -37,7 +37,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
-import { BUBBLE_CONTROL_HEIGHT, BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
+import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import {
   resolveLinkSelection,
   resolveLinkInSpan,
@@ -88,6 +88,21 @@ const NO_TARGET: LinkTarget = {
   href: null,
   tracked: null,
 };
+
+/**
+ * The height the demo draws the panel's input and buttons at, which is the
+ * `--btn-inline` rung.
+ *
+ * Its own value rather than the bar's `BUBBLE_CONTROL_HEIGHT`: the demo's third
+ * section gives this panel 28 and the bar 26, and the two move independently.
+ */
+const LINK_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
+
+/**
+ * The line height the demo's page gives its text, which decides how tall the
+ * address line and the message under a refused address come out.
+ */
+const LINK_TEXT_LEADING = 'leading-[1.6]';
 
 /**
  * The body's scroll container, which the anchor is measured against and lives
@@ -390,7 +405,7 @@ export function DocumentLinkPopover({
                     href={target.href ?? undefined}
                     target='_blank'
                     rel='noopener noreferrer'
-                    className='max-w-[250px] truncate px-1 text-sm text-content-link underline underline-offset-2'
+                    className={`max-w-[250px] truncate px-1 text-sm ${LINK_TEXT_LEADING} text-content-link underline underline-offset-2`}
                   >
                     {target.href}
                   </a>
@@ -403,7 +418,7 @@ export function DocumentLinkPopover({
                       setMode('edit');
                     }}
                     data-testid='doc-link-edit'
-                    className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
+                    className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
                   >
                     {t('spaces.document.link.edit')}
                   </Button>
@@ -412,7 +427,7 @@ export function DocumentLinkPopover({
                     size={null}
                     onClick={unlink}
                     data-testid='doc-link-remove'
-                    className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
+                    className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm`}
                   >
                     {t('spaces.document.link.remove')}
                   </Button>
@@ -436,7 +451,7 @@ export function DocumentLinkPopover({
                           submit();
                         }
                       }}
-                      className={`${BUBBLE_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
+                      className={`${LINK_CONTROL_HEIGHT} w-[250px] bg-background px-2 py-0 text-sm`}
                     />
                     {/* `aria-disabled`, so the press still arrives: the reason an
                   address is refused is a thing this panel has to say, and a
@@ -450,7 +465,7 @@ export function DocumentLinkPopover({
                       aria-disabled={!canSubmit}
                       onClick={submit}
                       data-testid='doc-link-confirm'
-                      className={`${BUBBLE_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
+                      className={`${LINK_CONTROL_HEIGHT} bg-transparent px-2.5 text-sm aria-disabled:opacity-50`}
                     >
                       {t('spaces.document.link.confirm')}
                     </Button>
@@ -458,7 +473,7 @@ export function DocumentLinkPopover({
                   {showInvalid ? (
                     <p
                       data-testid='doc-link-invalid'
-                      className='px-0.5 text-xs text-status-error-foreground'
+                      className={`px-0.5 text-xs ${LINK_TEXT_LEADING} text-status-error-foreground`}
                     >
                       {t('spaces.document.link.invalid')}
                     </p>
