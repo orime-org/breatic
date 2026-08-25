@@ -1403,8 +1403,11 @@ test('link: a second press on the button puts the panel away', async () => {
 });
 
 test('link: the panel opens where the reader is, after a select-all', async () => {
-  // A select-all's `from` is position 0 — the top of the document — and the
-  // panel used to anchor there whatever the reader had scrolled past. Measured
+  // A select-all's range covers the whole document, so its box says nothing
+  // about where the reader is looking. The body here runs far below the fold,
+  // which is what tells the two answers apart: anchored to that box the panel
+  // lands at the document's edge — measured at viewport top 59 with the bar at
+  // 471 — and anchored to the bar's pinned point it opens next to the bar. Measured
   // before this assertion existed: with the body scrolled 600px the panel was
   // placed at viewport top -483, entirely off screen, and pressing the button
   // again toggled something nobody could see.
@@ -1415,7 +1418,7 @@ test('link: the panel opens where the reader is, after a select-all', async () =
   // opens from a button on that bar, so it anchors to the same place.
   await openFreshDocument(page);
   await typeLongBody(page);
-  await scrollBodyTo(page, 600);
+  await scrollBodyTo(page, 200);
 
   // Two presses: the first tier takes the block, the second the document.
   const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';

@@ -69,6 +69,11 @@ export type AnchorLineReader = () => {
   left: number;
   top: number;
   bottom: number;
+  /**
+   * The bar is on the reader's pointer rather than on a line of the selection,
+   * which is what it does over a select-all.
+   */
+  pinned: boolean;
 } | null;
 
 /** What the panel acts on, taken from the selection when it opened. */
@@ -140,19 +145,30 @@ function panelReference(
 ): ReferenceType | null {
   const { view } = editor;
   const contextElement = view.dom as HTMLElement;
+  const line = anchorLine();
+  /**
+   * The bar's own line, as a reference with no width.
+   * @returns The reference, or null while the selection is empty.
+   * @throws {never}
+   */
+  const point = (): ReferenceType | null => {
+    if (!line) return null;
+    const rect = new DOMRect(line.left, line.top, 0, line.bottom - line.top);
+    return { getBoundingClientRect: () => rect, contextElement };
+  };
+  // Without a span of its own the target is the selection, and over a
+  // select-all that is the whole document: a box whose bottom edge is below the
+  // last line, wherever the reader has scrolled to. The bar has already decided
+  // that case in favour of the pointer, and this follows the answer it gives.
+  if (!span && line?.pinned) return point();
   const extent = span ?? { from: view.state.selection.from, to: view.state.selection.to };
   const range = domRangeOver(editor, extent);
-  if (range) {
-    return {
-      getBoundingClientRect: () => range.getBoundingClientRect(),
-      getClientRects: () => range.getClientRects(),
-      contextElement,
-    };
-  }
-  const line = anchorLine();
-  if (!line) return null;
-  const point = new DOMRect(line.left, line.top, 0, line.bottom - line.top);
-  return { getBoundingClientRect: () => point, contextElement };
+  if (!range) return point();
+  return {
+    getBoundingClientRect: () => range.getBoundingClientRect(),
+    getClientRects: () => range.getClientRects(),
+    contextElement,
+  };
 }
 
 /**

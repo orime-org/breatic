@@ -767,11 +767,12 @@ function BubbleBar({
     left: number;
     top: number;
     bottom: number;
+    pinned: boolean;
   } | null => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
     const pinned = pinnedPoint();
-    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y };
+    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y, pinned: true };
     // The two axes come from different places here, and they have to.
     // Vertically the bar belongs to ONE line — the anchor. Horizontally the
     // ruling asks for the selection's left edge, which is the left of the
@@ -781,7 +782,12 @@ function BubbleBar({
     // samples only the two endpoints and so misses the block edge that a
     // middle line starts at.
     const line = pickAnchorLine(view, viewport.getBoundingClientRect());
-    return { left: selectionBox(view).left, top: line.top, bottom: line.bottom };
+    return {
+      left: selectionBox(view).left,
+      top: line.top,
+      bottom: line.bottom,
+      pinned: false,
+    };
   }, [editor, viewport, pinnedPoint]);
 
   const getReferencedVirtualElement = React.useCallback(() => {
