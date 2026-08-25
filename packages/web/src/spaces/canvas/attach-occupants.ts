@@ -6,7 +6,7 @@ import type { Node } from '@xyflow/react';
 import { sameIdList } from '@web/spaces/canvas/active-node-ids';
 
 /** The key the occupant list travels under inside a node's `data`. */
-export const OCCUPANTS_KEY = 'occupants';
+const OCCUPANTS_KEY = 'occupants';
 
 /**
  * Read the holders out of a node's `data`, if it carries any.
@@ -18,7 +18,8 @@ export const OCCUPANTS_KEY = 'occupants';
  * @returns The user ids holding it, or null when it carries none.
  */
 export function readOccupants(data: unknown): readonly string[] | null {
-  return (data as { occupants?: readonly string[] } | null)?.occupants ?? null;
+  const held = (data as Record<string, unknown> | null)?.[OCCUPANTS_KEY];
+  return (held as readonly string[] | undefined) ?? null;
 }
 
 /**

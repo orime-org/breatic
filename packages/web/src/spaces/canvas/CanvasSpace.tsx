@@ -609,13 +609,19 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.readOnly - Viewer read-only mode; blocks node creation.
+ * @param root0.synced - Whether the socket has finished syncing this document.
+ * Closing the socket moves neither side's clock, so a re-send carrying the old
+ * one is discarded as already seen and the peers never get this client's
+ * presence back; reconnecting has to push a fresh write, and this is the edge
+ * that says when.
  * @returns The ReactFlow canvas surface.
  */
 function CanvasSpaceInner({
   projectId,
   spaceId,
   readOnly = false,
-}: SpaceBodyProps): React.JSX.Element {
+  synced,
+}: SpaceBodyProps & { synced: boolean }): React.JSX.Element {
   const t = useTranslation();
   const {
     nodes,
@@ -652,7 +658,7 @@ function CanvasSpaceInner({
   }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
   // Presence: one awareness for the space, shared with the carets.
-  const { caretProvider, synced } = useCanvasContext();
+  const { caretProvider } = useCanvasContext();
   const awareness = caretProvider?.awareness ?? null;
   const occupants = useCanvasOccupants(awareness);
   const {
@@ -4081,7 +4087,7 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   return (
     <CanvasContext.Provider value={canvas}>
       <ReactFlowProvider>
-        <CanvasSpaceInner {...props} />
+        <CanvasSpaceInner {...props} synced={synced} />
       </ReactFlowProvider>
     </CanvasContext.Provider>
   );

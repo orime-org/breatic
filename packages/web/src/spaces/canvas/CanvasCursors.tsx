@@ -8,6 +8,10 @@ import * as React from 'react';
 import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
 import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
+import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+
+/** What the layer reads while nobody else is pointing at anything. */
+const NO_POINTERS: readonly RemotePointer[] = [];
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 
 /**
@@ -128,22 +132,12 @@ export function CanvasCursorLayer({
   awareness: Awareness | null;
 }): React.JSX.Element | null {
   const zoom = useStore((s) => s.transform[2]);
-  const [pointers, setPointers] = React.useState<readonly RemotePointer[]>([]);
-
-  React.useEffect(() => {
-    if (!awareness) {
-      setPointers([]);
-      return undefined;
-    }
-    /** Re-read every peer's pointer, keeping the list when none moved. */
-    const read = (): void => {
-      const next = collectPointers(awareness.getStates(), awareness.clientID);
-      setPointers((prev) => (samePointers(prev, next) ? prev : next));
-    };
-    read();
-    awareness.on('change', read);
-    return (): void => awareness.off('change', read);
-  }, [awareness]);
+  const pointers = useAwarenessSlice(
+    awareness,
+    NO_POINTERS,
+    collectPointers,
+    samePointers,
+  );
 
   return <CanvasCursors pointers={pointers} zoom={zoom} />;
 }

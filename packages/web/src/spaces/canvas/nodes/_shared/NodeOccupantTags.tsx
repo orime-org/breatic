@@ -18,7 +18,11 @@ const MAX_NAMES = 2;
 
 /** Who is holding this node, and how far in its anchor's first line starts. */
 export interface NodeOccupantTagsProps {
-  /** The user ids holding this node, in the order they arrived. */
+  /**
+   * The user ids holding this node, already in the order to draw them: the
+   * generation starter first, then the rest by user id. Order decides who is
+   * named and who the count folds away, so it is settled upstream.
+   */
   userIds: readonly string[];
   /**
    * Left inset, in px, matching the horizontal padding of the name below —
@@ -32,7 +36,7 @@ export interface NodeOccupantTagsProps {
  * The collaborators holding a node, drawn as name tags on the line above its
  * name.
  *
- * The tags carry the same visual as the text-caret labels already on screen
+ * The tags carry the same fill, size and weight as the text-caret labels already on screen
  * (`index.css` `.collaboration-carets__label`): the writer's identity hue as
  * the fill, 11px semibold, and a text colour that turns over with the theme
  * because those hues are tuned as coloured text.
