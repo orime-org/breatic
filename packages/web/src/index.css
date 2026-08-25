@@ -1030,7 +1030,11 @@ body {
   font-weight: 600;
   line-height: normal;
   white-space: nowrap;
-  color: white;
+  /* The label's background is the writer's identity hue, and those hues are
+     tuned as coloured text — dark in the light theme, light in the dark one.
+     White clears 4.5:1 on the first set and 2.10:1 on the second, so the text
+     colour has to turn over with the theme (`--color-on-palette`). */
+  color: var(--color-on-palette);
   user-select: none;
   pointer-events: none;
 }
