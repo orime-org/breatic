@@ -211,10 +211,11 @@ describe('which state a press opens', () => {
     });
   });
 
-  it('stays shut when a link in the body is clicked', async () => {
+  it('stays shut when the selection lands on a link', async () => {
     // Selecting the link brings the bar up with its button pressed. Opening
-    // the panel is a second, deliberate act; a click that only selects must
-    // not perform it.
+    // the panel is a second, deliberate act, and nothing about arriving at a
+    // link performs it. The selection is set directly here; the mouse route
+    // that produces the same selection is the case above.
     const editor = mount(ONE_LINK);
     act(() => {
       editor.view.dom.focus();
@@ -474,10 +475,10 @@ describe('putting the panel away', () => {
   });
 
   it('leaves focus where the user put it when they closed it by clicking elsewhere', async () => {
-    // Closing hands the caret back to the body, which is right for Escape and
-    // for a second press on the button: nothing else has taken focus, and
-    // Radix's own default would return it to the trigger, which here is a
-    // zero-size aria-hidden span. It is wrong when the user has just clicked
+    // Closing hands the caret back to the body, which is right for Escape:
+    // nothing else has taken focus, and floating-ui's own default returns it
+    // to whatever held focus before the panel opened. It is wrong when the
+    // user has just clicked
     // into something else — the agent chat sits beside the editor — because
     // their next keystrokes would land in the shared document and reach every
     // peer.
@@ -801,10 +802,13 @@ describe('a co-editor changes the body', () => {
     });
     fireEvent.click(screen.getByTestId('doc-link-confirm'));
 
-    const linked = [...editor.getHTML().matchAll(/<a[^>]*>([^<]*)<\/a>/g)]
-      .map((m) => m[1])
-      .join('');
+    const html = editor.getHTML();
+    const linked = [...html.matchAll(/<a[^>]*>([^<]*)<\/a>/g)].map((m) => m[1]).join('');
     expect(linked).toBe('abcdefghij');
+    // Every one of those ten characters carries the address that was typed
+    // here — the text check alone would also pass for a split where the peer's
+    // href survived on their word.
+    expect(html).not.toContain('peer.example');
   });
 
   it('writes no link when the peer deletes the text this panel had selected', async () => {

@@ -77,7 +77,8 @@ const SCHEME = /^[a-z][a-z\d+.-]*:/i;
  * over-reads beyond them, since an endpoint resting on a link's boundary
  * reports the link it is merely touching. Acting on that second answer would
  * strip a link the user never selected. Nine relative positions are pinned in
- * `document-link.test.ts`; the endpoint probe answers four of them wrongly.
+ * `document-link.test.ts`; the endpoint probe answers five of them wrongly —
+ * three it misses, two it claims.
  *
  * `getMarkRange` then widens the text node that was found to the whole link,
  * which is the question it does answer: how far the mark under one position

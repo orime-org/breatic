@@ -4,12 +4,16 @@
 /**
  * The six strings the link control puts on screen, in all five catalogs.
  *
- * A missing one renders its own key, and a key is an English dotted string
- * nobody can read. Nothing else would notice: a catalog short one entry breaks
- * no type and fails no other test, so it takes someone counting.
+ * A missing one falls back to English (`t()` in `@breatic/shared`: current
+ * locale, then English, then the key itself), so a reader who set the product
+ * to Japanese gets an English word in the middle of a Japanese panel and
+ * nothing reports it. Only a key missing from English too renders as a dotted
+ * string. Nothing else would notice either way: a catalog short one entry
+ * breaks no type and fails no other test, so it takes someone counting.
  *
- * The button's name sits under `commands` with the bubble bar's other nine
- * controls; the five inside the panel form their own group. The first answers
+ * The button's name sits under `commands` with the bubble bar's other ten
+ * controls — the eight commands plus the two entries that are not open yet;
+ * the five inside the panel form their own group. The first answers
  * "what is this button called", the rest are this panel's own words.
  */
 

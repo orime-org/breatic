@@ -6,7 +6,7 @@
  * without the user losing work.
  *
  * 1. Does this selection hold a link, and which one. Three design rounds were
- *    spent here: a probe that reads the two endpoints answers four of the nine
+ *    spent here: a probe that reads the two endpoints answers five of the nine
  *    relative positions wrongly, in both directions. It misses a link the
  *    selection swallows whole (triple-click, select-all), and it claims one
  *    the selection merely touches — which would strip a link the user never
@@ -108,7 +108,11 @@ function storedHrefAt(editor: Editor, pos: number): string | null {
 }
 
 describe('which link a selection holds', () => {
-  /** Every relative position a selection can hold against one link. */
+  /**
+   * Eight relative positions a selection can hold against one link. The ninth
+   * shape, a select-all, has its own case below — it is a different kind of
+   * selection rather than another position.
+   */
   const POSITIONS: readonly {
     name: string;
     from: number;
@@ -332,11 +336,10 @@ describe('which span the panel anchors to', () => {
     expect(resolveLinkSelection(editor.state).range).toEqual({ from: 4, to: 12 });
   });
 
-  // A selection holding no link is anchored to the bar's own line rather than
-  // to anything this module computes — the bar is the one that knows where the
-  // reader is looking, and over a select-all nothing about the selection does.
-  // `DocumentLinkPopover`'s `measureAnchor` takes that line; where it lands is
-  // measured in the smoke case "the panel opens where the reader is".
+  // A selection holding no link is anchored to the selection itself: the panel
+  // builds a DOM Range over it (`DocumentLinkPopover`'s `panelReference`). Over
+  // a select-all there is no panel at all — the bar carries no link button
+  // there (§4.6).
 });
 
 
