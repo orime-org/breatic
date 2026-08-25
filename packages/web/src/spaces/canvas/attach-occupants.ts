@@ -9,13 +9,16 @@ import { sameIdList } from '@web/spaces/canvas/active-node-ids';
 export const OCCUPANTS_KEY = 'occupants';
 
 /**
- * Read the holders off a node, if it carries any.
- * @param node - A render-buffer node.
+ * Read the holders out of a node's `data`, if it carries any.
+ *
+ * The one place that knows the key's shape, so a rename stays a rename: every
+ * reader goes through here, including the node renderer that receives `data`
+ * from ReactFlow rather than a whole node.
+ * @param data - A render-buffer node's data record.
  * @returns The user ids holding it, or null when it carries none.
  */
-export function readOccupants(node: Node): readonly string[] | null {
-  const value = (node.data as { occupants?: readonly string[] }).occupants;
-  return value ?? null;
+export function readOccupants(data: unknown): readonly string[] | null {
+  return (data as { occupants?: readonly string[] } | null)?.occupants ?? null;
 }
 
 /**
@@ -81,7 +84,7 @@ export function applyOccupants(
   let changed = false;
   const next = nodes.map((node) => {
     const holders = byNode.get(node.id) ?? null;
-    if (sameIdList(readOccupants(node), holders)) return node;
+    if (sameIdList(readOccupants(node.data), holders)) return node;
     changed = true;
     return holders === null
       ? withoutOccupants(node)

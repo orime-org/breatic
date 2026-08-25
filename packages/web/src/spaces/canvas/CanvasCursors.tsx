@@ -5,7 +5,7 @@ import { ViewportPortal, useStore } from '@xyflow/react';
 import type { Awareness } from 'y-protocols/awareness';
 import * as React from 'react';
 
-import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
+import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
 import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
@@ -80,24 +80,7 @@ function Cursor({ name, color }: { name: string; color: string }): React.JSX.Ele
  * @returns The cursor layer, or null when nobody else is pointing at anything.
  */
 export function CanvasCursors({ pointers, zoom }: CanvasCursorsProps): React.JSX.Element | null {
-  const names = useCollaboratorNames();
-
-  const drawable = React.useMemo(() => {
-    const resolve = names?.resolve;
-    if (!resolve) return [];
-    // `resolve` answers null for someone the roster cannot name — a member who
-    // left, or a roster still loading. `flatMap` drops those and narrows the
-    // name to a string for everyone that is left.
-    //
-    // The dependency is the whole roster bundle, not the resolver: the
-    // resolver's reference is stable for the component's lifetime by design
-    // (`useResolverRef`), so keying on it would freeze these names at whatever
-    // the roster held the first time.
-    return pointers.flatMap((pointer) => {
-      const name = resolve(pointer.userId);
-      return name ? [{ ...pointer, name }] : [];
-    });
-  }, [pointers, names]);
+  const drawable = useNamed(pointers);
 
   if (drawable.length === 0) return null;
 

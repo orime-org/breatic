@@ -6,6 +6,7 @@ import type { ComponentType } from 'react';
 import * as React from 'react';
 
 import { useCanvasStore } from '@web/stores';
+import { readOccupants } from '@web/spaces/canvas/attach-occupants';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
@@ -70,7 +71,7 @@ function makeFlowNode(
     // Who is holding this node, baked onto it by the mirror (`attachOccupants`).
     // A node nobody holds carries nothing, and the context's own default — one
     // shared empty array — is what every such node reads.
-    const held = (props.data as { occupants?: readonly string[] }).occupants ?? NOBODY;
+    const held = readOccupants(props.data) ?? NOBODY;
     // Starting a generation is holding the node too, and for longer than any
     // other way of holding it. It arrives on a different channel (the document,
     // not awareness) and outlives its starter's presence, so the two lists are

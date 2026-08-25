@@ -64,11 +64,11 @@ describe('useCanvasSpace 交出「这批节点是谁写的」（#2000）', () =>
 
     // Nothing has happened yet: a document that just loaded carries no peer's
     // doing, so the first read counts as local.
-    expect(result.current.lastWriteWasLocal).toBe(true);
+    expect(result.current.getLastWriteWasLocal()).toBe(true);
 
     act(() => addNode(p, s, makeNode('A')));
     expect(result.current.nodes.map((n) => n.id)).toEqual(['A']);
-    expect(result.current.lastWriteWasLocal).toBe(true);
+    expect(result.current.getLastWriteWasLocal()).toBe(true);
 
     // A peer's write arrives the only way it ever does — as an update applied
     // to this doc. Yjs opens that transaction with local: false.
@@ -82,11 +82,11 @@ describe('useCanvasSpace 交出「这批节点是谁写的」（#2000）', () =>
     });
 
     expect(result.current.nodes).toHaveLength(0);
-    expect(result.current.lastWriteWasLocal).toBe(false);
+    expect(result.current.getLastWriteWasLocal()).toBe(false);
 
     // And back: this client writing again returns the flag to local.
     act(() => addNode(p, s, makeNode('B')));
-    expect(result.current.lastWriteWasLocal).toBe(true);
+    expect(result.current.getLastWriteWasLocal()).toBe(true);
   });
 
   it('the getter answers a peer write before any effect of that commit runs', () => {

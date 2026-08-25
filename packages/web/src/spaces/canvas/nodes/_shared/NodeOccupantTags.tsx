@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
+import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
 
 /**
@@ -52,25 +52,9 @@ export function NodeOccupantTags({
   userIds,
   indentPx,
 }: NodeOccupantTagsProps): React.JSX.Element | null {
-  const names = useCollaboratorNames();
-
-  const people = React.useMemo(() => {
-    const resolve = names?.resolve;
-    if (!resolve) return [];
-    // `resolve` answers null for someone the roster cannot name — a member who
-    // left, or a roster still loading. `flatMap` drops those and narrows the
-    // name to a string for everyone that is left.
-    //
-    // The dependency is the whole roster bundle, not the resolver: the
-    // resolver's reference is stable for the component's lifetime by design
-    // (`useResolverRef`), so keying on it would freeze these names at whatever
-    // the roster held the first time — every later rename, and the names that
-    // land when the member query resolves, would never reach the screen.
-    return userIds.flatMap((userId) => {
-      const name = resolve(userId);
-      return name ? [{ userId, name }] : [];
-    });
-  }, [userIds, names]);
+  const people = useNamed(
+    React.useMemo(() => userIds.map((userId) => ({ userId })), [userIds]),
+  );
 
   if (people.length === 0) return null;
 

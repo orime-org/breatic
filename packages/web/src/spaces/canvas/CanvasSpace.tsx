@@ -623,7 +623,6 @@ function CanvasSpaceInner({
     redo,
     canUndo,
     canRedo,
-    lastWriteWasLocal,
     getLastWriteWasLocal,
   } =
     useCanvasSpace(
@@ -785,10 +784,10 @@ function CanvasSpaceInner({
     }
     // Who wrote it decides which column speaks: a peer's delete is news, a
     // local undo is the user's own keystroke coming back to him.
-    const author = lastWriteWasLocal ? 'local' : 'peer';
+    const author = getLastWriteWasLocal() ? 'local' : 'peer';
     toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, lastWriteWasLocal, t]);
+  }, [focusTargetVerdict, getLastWriteWasLocal, t]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same

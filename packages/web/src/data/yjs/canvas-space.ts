@@ -91,26 +91,21 @@ interface CanvasSpaceState {
   /** Whether a redo is currently available (drives the toolbar button). */
   canRedo: boolean;
   /**
-   * Whether THIS client made the write that produced the current `nodes`.
+   * Whether THIS client made the newest write to the document.
    *
    * Yjs marks a transaction it applied from a peer as non-local
    * (`applyUpdateV2` opens it with `local: false`), while every write this
    * client makes — an undo included, since the undo manager transacts on the
    * local doc — is local. A consumer that has to tell the user who changed
-   * something reads this.
+   * something reads this. Before any write it answers local: nothing a peer
+   * did can be attributed to a document that just loaded.
    *
-   * The first read has no transaction behind it and counts as local: nothing
-   * a peer did can be attributed to a document that just loaded.
-   */
-  lastWriteWasLocal: boolean;
-  /**
-   * The same fact, readable at any moment rather than at render time.
-   *
-   * A consumer reacting to a document change inside an effect cannot use the
-   * value above: effects run child-first, so a child reading a parent's
-   * mirrored copy sees the previous write's author on the very commit that
-   * matters. This reads the value the document handler recorded, which is
-   * already the current one by the time any effect of that commit runs.
+   * A getter rather than a rendered value, because every consumer reads it
+   * while reacting to a document change inside an effect: effects run
+   * child-first, so a child reading a mirrored copy would see the previous
+   * write's author on the very commit that matters. This reads what the
+   * document handler recorded, which is current before any effect of that
+   * commit runs.
    *
    * The function's reference is stable, so passing it down costs no renders.
    */
@@ -315,7 +310,6 @@ export function useCanvasSpace(
   const [edges, setEdges] = React.useState<ReadonlyArray<CanvasEdge>>(() =>
     readEdges(doc),
   );
-  const [lastWriteWasLocal, setLastWriteWasLocal] = React.useState(true);
   // Written straight from the document handler, so it is current before React
   // has rendered anything about this change. See `getLastWriteWasLocal`.
   const lastWriteWasLocalRef = React.useRef(true);
@@ -326,18 +320,11 @@ export function useCanvasSpace(
     /**
      * Re-read all nodes from the doc into React state, recording whether this
      * client is the one that wrote them.
-     *
-     * Both setters run in one event-loop turn, so React batches them and the
-     * flag can never be read against a different set of nodes than the one it
-     * describes.
      * @param _events - The Yjs events (unused; the whole map is re-read).
      * @param tx - The transaction behind them; absent on the first read.
      */
     const updateNodes = (_events?: unknown, tx?: Y.Transaction): void => {
-      if (tx) {
-        lastWriteWasLocalRef.current = tx.local;
-        setLastWriteWasLocal(tx.local);
-      }
+      if (tx) lastWriteWasLocalRef.current = tx.local;
       setNodes(readNodes(doc));
     };
     /**
@@ -424,7 +411,6 @@ export function useCanvasSpace(
     redo,
     canUndo,
     canRedo,
-    lastWriteWasLocal,
     getLastWriteWasLocal,
   };
 }
