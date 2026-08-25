@@ -233,12 +233,15 @@ interface BoardOverrides {
  * @param reactNodeData - Extra data on the target's REACT view (which a case
  *   can deliberately let disagree with Yjs).
  * @param board - Extra reference-source nodes and the edges wiring them in.
+ * @param author - Reads whether this client made the newest document write;
+ *   defaults to "this client did".
  * @returns The element tree.
  */
 function panelTree(
   kind: 'video' | 'image' = 'video',
   reactNodeData?: Record<string, unknown>,
   board: BoardOverrides = {},
+  author: () => boolean = LAST_WRITE_LOCAL,
 ): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -279,7 +282,7 @@ function panelTree(
               { id: 'other', data: { kind: 'video', status: 'idle' } },
               ...(board.nodes ?? []),
             ]}
-            getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            getLastWriteWasLocal={author}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -294,14 +297,16 @@ function panelTree(
  * @param kind - The target node's modality.
  * @param reactNodeData - Extra fields on the target node's view data.
  * @param board - Extra board nodes and edges.
+ * @param author - Reads whether this client made the newest document write.
  * @returns The render result, whose `rerender` takes another `panelTree`.
  */
 function mountContainer(
   kind: 'video' | 'image' = 'video',
   reactNodeData?: Record<string, unknown>,
   board: BoardOverrides = {},
+  author: () => boolean = LAST_WRITE_LOCAL,
 ): ReturnType<typeof render> {
-  return render(panelTree(kind, reactNodeData, board));
+  return render(panelTree(kind, reactNodeData, board, author));
 }
 
 /**
@@ -316,6 +321,7 @@ function mountContainer(
  * @param model - The model name to store on the node.
  * @param stored - Extra node fields (slot picks, and the like).
  * @param board - Extra board nodes and edges.
+ * @param author - Reads whether this client made the newest document write.
  * @returns The render result, for a case that switches mode by rerendering.
  */
 async function openPanelInMode(
@@ -323,11 +329,12 @@ async function openPanelInMode(
   model: string,
   stored: Record<string, unknown> = {},
   board: BoardOverrides = {},
+  author: () => boolean = LAST_WRITE_LOCAL,
 ): Promise<ReturnType<typeof render>> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   const data = { mode, model, ...stored };
   seedVideoNode(data);
-  const view = mountContainer('video', data, board);
+  const view = mountContainer('video', data, board, author);
   act(() => {
     useCanvasStore.getState().openGeneratePanel('target', 'video');
   });
@@ -951,6 +958,29 @@ describe('VideoGeneratePanelContainer', () => {
       );
       expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
         en.canvas.generatePanel.pickEndedModeChanged,
+      );
+    });
+
+    it('names the collaborator when the mode change that took the slot was theirs', async () => {
+      // Same ending, other author. A mode change reaching this client through
+      // the document is either its own write coming back or news from someone
+      // else, and only the first wording was ever asserted — the call site
+      // could have passed a constant and stayed green.
+      const byPeer = (): boolean => false;
+      const view = await openPanelInMode('first_last', 'kling-i2v', {}, {}, byPeer);
+      fireEvent.click(await screen.findByTestId('generate-video-tool-end-frame'));
+      expect(useCanvasStore.getState().pickSession?.purpose).toBe('endFrame');
+      vi.mocked(toast.warning).mockClear();
+
+      const moved = { mode: 'i2v', model: 'kling-i2v' };
+      seedVideoNode(moved);
+      view.rerender(panelTree('video', moved, {}, byPeer));
+
+      await waitFor(() =>
+        expect(useCanvasStore.getState().pickSession).toBeNull(),
+      );
+      expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+        en.canvas.generatePanel.pickEndedModeChangedByPeer,
       );
     });
 

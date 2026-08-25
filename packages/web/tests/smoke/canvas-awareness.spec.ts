@@ -191,7 +191,7 @@ test('a selection on one connection tags the node on the other', async () => {
 
 test('the tag matches the values the demo wrote down', async () => {
   // The demo the design was signed off against
-  // (2026-08-25-awareness-edge-and-cursor.html) fixes these. Class names are
+  // (2026-08-25-awareness-marker-and-cursor.html) fixes these. Class names are
   // not the check: a token can move, a rule can be overridden, and a value
   // written in the source can still fail to render — so each one is read back
   // off the live canvas.
@@ -336,4 +336,45 @@ test('a pointer leaving the canvas takes the arrow away', async () => {
   await expect(viewer.getByTestId('canvas-cursors')).toHaveCount(0, {
     timeout: SETTLE_MS,
   });
+});
+
+test('a peer selection arriving mid-drag leaves the dragged node where it is', async () => {
+  // The one case that needs a drag actually in progress. A node's position is
+  // written back to the document on drag stop, so while the button is held the
+  // only copy of where it sits is local — and a presence update that rebuilt
+  // the mirror would take the position from the document instead, snapping the
+  // node back under the pointer's own hand.
+  await expect(viewer.getByTestId('node-occupant-tags')).toHaveCount(0, {
+    timeout: SETTLE_MS,
+  });
+
+  const node = viewer.locator('.react-flow__node').first();
+  const box = await node.boundingBox();
+  if (box === null) throw new Error('the node has no box');
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  await viewer.mouse.move(from.x, from.y);
+  await viewer.mouse.down();
+  try {
+    await viewer.mouse.move(from.x + 160, from.y + 120, { steps: 10 });
+    const dragged = await node.evaluate((el) => (el as HTMLElement).style.transform);
+
+    // The peer selects the same node — on its own screen it is still where the
+    // document says, since this drag has not stopped. The tag appearing here
+    // is the proof that the presence update landed while the button is held.
+    await watcher
+      .locator('.react-flow__node')
+      .first()
+      .locator('[data-testid=image-node]')
+      .click();
+    await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
+      timeout: SETTLE_MS,
+    });
+
+    expect(
+      await node.evaluate((el) => (el as HTMLElement).style.transform),
+    ).toBe(dragged);
+  } finally {
+    await viewer.mouse.up();
+  }
 });

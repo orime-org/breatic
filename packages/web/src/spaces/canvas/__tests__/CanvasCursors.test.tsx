@@ -223,6 +223,7 @@ describe('CanvasCursorLayer', () => {
     // listener would look exactly like one that let go — while really holding
     // the space's provider alive for as long as anything referenced it.
     const { awareness, peerId } = makeAwareness();
+    const on = vi.spyOn(awareness, 'on');
     const off = vi.spyOn(awareness, 'off');
     const rendered = render(
       <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
@@ -230,10 +231,15 @@ describe('CanvasCursorLayer', () => {
       </CollaboratorNamesProvider>,
     );
     peerPointsAt(awareness, peerId, { x: 10, y: 20 });
+    const subscribed = on.mock.calls.find(([event]) => event === 'change')?.[1];
+    expect(subscribed).toBeTypeOf('function');
 
     rendered.unmount();
 
-    expect(off).toHaveBeenCalledWith('change', expect.any(Function));
+    // The listener it subscribed, not merely some function: `off` with a
+    // different callback removes nothing, and an assertion that takes any
+    // function cannot tell the two apart.
+    expect(off).toHaveBeenCalledWith('change', subscribed);
   });
 
   it('draws nothing before the document attaches', () => {
