@@ -13,6 +13,8 @@ import {
   MAX_NODE_NAME_LEN,
   useInlineRename,
 } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
+import { NodeOccupantsContext } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
+import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantTags';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
 import type { GroupNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -51,6 +53,7 @@ export const GroupNode = React.memo(function GroupNode({
   selected,
   onRename,
 }: GroupNodeProps): React.JSX.Element {
+  const occupants = React.useContext(NodeOccupantsContext);
   const display =
     data.name && data.name.length > 0 ? data.name : GROUP_DEFAULT_NAME;
   const background = groupBackgroundStyle(data.backgroundColor);
@@ -121,6 +124,9 @@ export const GroupNode = React.memo(function GroupNode({
       {/* Name floats above the group's top-left, counter-scaled by zoom so it
           stays a constant screen size — mirrors the node name header. */}
       <ZoomCounterScaled className='absolute bottom-full left-0 origin-bottom-left pb-1'>
+        {/* No inset here: the group's name carries no horizontal padding of
+            its own, so the tags line up with it at zero. */}
+        <NodeOccupantTags userIds={occupants} indentPx={0} />
         {editing ? (
           <input
             ref={inputRef}

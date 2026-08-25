@@ -10,6 +10,10 @@ import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
+import {
+  NodeOccupantsContext,
+  NOBODY,
+} from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
@@ -63,6 +67,10 @@ function makeFlowNode(
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
     const data = props.data as unknown as NodeView;
+    // Who is holding this node, baked onto it by the mirror (`attachOccupants`).
+    // A node nobody holds carries nothing, and the context's own default — one
+    // shared empty array — is what every such node reads.
+    const occupants = (props.data as { occupants?: readonly string[] }).occupants ?? NOBODY;
     const {
       renameNode,
       activateNodeUpload,
@@ -142,25 +150,26 @@ function makeFlowNode(
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
-          <div
-            className={isGroup ? 'relative size-full' : 'relative'}
-            onDoubleClickCapture={onDoubleClickCapture}
-          >
-            {isGroup &&
+          <NodeOccupantsContext.Provider value={occupants}>
+            <div
+              className={isGroup ? 'relative size-full' : 'relative'}
+              onDoubleClickCapture={onDoubleClickCapture}
+            >
+              {isGroup &&
             Boolean(props.selected) &&
             !data.locked &&
             resizeBounds.length > 0 ? (
-                <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
-              ) : null}
-            <Inner
-              data={data}
-              selected={props.selected}
-              locked={data.locked}
-              onRename={onRename}
-              onActivate={onActivate}
-              {...(canRetryUpload && { onRetryUpload })}
-            />
-            {/* Connection handles are for content nodes only — a Group is a
+                  <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
+                ) : null}
+              <Inner
+                data={data}
+                selected={props.selected}
+                locked={data.locked}
+                onRename={onRename}
+                onActivate={onActivate}
+                {...(canRetryUpload && { onRetryUpload })}
+              />
+              {/* Connection handles are for content nodes only — a Group is a
                 container (Figma-Frame-style), not an edge endpoint, so it renders
                 none (Bug 7: the Left handle also sat on the group's left edge and
                 interfered with the left resize grab). Both handles render AFTER
@@ -168,26 +177,27 @@ function makeFlowNode(
                 handle placed BEFORE the body has its inner half covered by the
                 body's surface and reads as a half-circle (the left-handle bug);
                 painting both on top of the body shows each as a full dot. */}
-            {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
+              {/* Magnetic handles (user 2026-07-11): a 36px outside-the-border
                 hit zone whose visible dot spring-follows the cursor, while
                 the 8px anchor keeps the wire attachment on the border.
                 MagneticHandle forwards all three connectable flags — the
                 gesture gates sit on Start/End, so a viewer / pick session
                 that drops them keeps handles live (adversarial round-1). See
                 MagneticHandle for the three-layer decoupling. */}
-            {!isGroup ? (
-              <>
-                <MagneticHandle
-                  type='target'
-                  isConnectable={props.isConnectable}
-                />
-                <MagneticHandle
-                  type='source'
-                  isConnectable={props.isConnectable}
-                />
-              </>
-            ) : null}
-          </div>
+              {!isGroup ? (
+                <>
+                  <MagneticHandle
+                    type='target'
+                    isConnectable={props.isConnectable}
+                  />
+                  <MagneticHandle
+                    type='source'
+                    isConnectable={props.isConnectable}
+                  />
+                </>
+              ) : null}
+            </div>
+          </NodeOccupantsContext.Provider>
         </NodeScaleContext.Provider>
       </NodeIdContext.Provider>
     );

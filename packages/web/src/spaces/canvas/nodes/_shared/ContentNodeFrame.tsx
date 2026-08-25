@@ -4,6 +4,8 @@
 import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
+import { NodeOccupantsContext } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
+import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantTags';
 import { NodeHeader } from '@web/spaces/canvas/nodes/_shared/NodeHeader';
 import {
   NodeResolutionBadge,
@@ -96,6 +98,7 @@ export function ContentNodeFrame({
   // badge; that is accepted (user, 2026-07-06) — low zoom is for overview /
   // moving nodes, not editing, so a corner-pinned badge matters more than the
   // overlap.
+  const occupants = React.useContext(NodeOccupantsContext);
   const mediaShown = status !== 'handling' && status !== 'error';
   return (
     <div className='relative'>
@@ -103,6 +106,11 @@ export function ContentNodeFrame({
         testId='node-header-anchor'
         className='absolute bottom-full left-0 origin-bottom-left pb-1'
       >
+        {/* Inside this anchor, not on the render root: the root's top edge is
+            the card's top edge, so an `absolute bottom-full` row hung there
+            lands on the same line as the name (measured 2026-08-25). The 4px
+            inset matches `NodeHeader`'s own `px-1`. */}
+        <NodeOccupantTags userIds={occupants} indentPx={4} />
         <NodeHeader
           modality={modality}
           name={name}
