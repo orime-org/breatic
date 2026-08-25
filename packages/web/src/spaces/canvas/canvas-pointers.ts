@@ -84,3 +84,29 @@ export function samePointers(
     );
   });
 }
+
+/** What `screenToFlowPosition` accepts, narrowed to what this call needs. */
+type ScreenToCanvas = (
+  screen: { x: number; y: number },
+  options?: { snapToGrid?: boolean },
+) => { x: number; y: number };
+
+/**
+ * Turn a screen point into the canvas point to publish.
+ *
+ * Snapping is off explicitly: `screenToFlowPosition` reads the store's
+ * `snapToGrid` when the option is absent, and the viewport toolbar's snap
+ * switch feeds that flag — with it on, the published pointer would quantise to
+ * `SNAP_GRID`, landing up to half a step from where the person is pointing.
+ * @param convert - ReactFlow's `screenToFlowPosition`.
+ * @param screen - The pointer's screen coordinates.
+ * @param screen.x - Screen x.
+ * @param screen.y - Screen y.
+ * @returns The canvas point.
+ */
+export function toCanvasPoint(
+  convert: ScreenToCanvas,
+  screen: { x: number; y: number },
+): { x: number; y: number } {
+  return convert(screen, { snapToGrid: false });
+}

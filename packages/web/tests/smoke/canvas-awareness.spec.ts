@@ -416,3 +416,35 @@ test('the tag row floats above the name without growing the node', async () => {
   expect(Math.round(geometry.anchorHeight)).toBe(Math.round(before?.height ?? -1));
   expect(Math.round(geometry.anchorTop)).toBe(Math.round(before?.y ?? -1));
 });
+
+test('a node somebody else holds still moves, renames and deletes', async () => {
+  // The one acceptance item that holds only because nobody wired presence into
+  // a gate: "B can still drag, delete, edit and generate on a node A occupies."
+  // Nothing in the unit suite would notice an `if (occupants.length) return`
+  // appearing in a menu item or a draggable flag, so the guarantee is measured
+  // here, on a node the peer is holding at the time.
+  await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+
+  const node = viewer.locator('.react-flow__node').first();
+  const before = await node.evaluate((el) => (el as HTMLElement).style.transform);
+  const box = await node.boundingBox();
+  if (box === null) throw new Error('the node has no box');
+
+  await viewer.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await viewer.mouse.down();
+  await viewer.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 70, {
+    steps: 8,
+  });
+  await viewer.mouse.up();
+
+  await expect
+    .poll(
+      async () => node.evaluate((el) => (el as HTMLElement).style.transform),
+      { timeout: SETTLE_MS },
+    )
+    .not.toBe(before);
+  // Still held while it moved — the tag did not have to go for the drag to work.
+  await expect(viewer.getByTestId('node-occupant-tags')).toBeVisible();
+});

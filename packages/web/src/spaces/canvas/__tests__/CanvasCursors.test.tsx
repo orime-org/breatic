@@ -12,11 +12,16 @@ import type { CollaboratorNames } from '@web/features/collab-editor/use-collabor
 import { CanvasCursorLayer, CanvasCursors } from '@web/spaces/canvas/CanvasCursors';
 import type { RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 
-// The portal renders into the canvas viewport, which no unit test has; render
-// children in place instead so the cursors can be inspected. `useStore` is the
-// zoom the counter-scale reads.
+// The portal renders into the canvas viewport, which no unit test has; stand in
+// a marked element so the cursors can be inspected AND the portal itself stays
+// visible — a transparent passthrough cannot tell a layer inside the portal
+// from one that dropped it, and dropping it draws every arrow's canvas
+// coordinates as if they were screen coordinates. `useStore` is the zoom the
+// counter-scale reads.
 vi.mock('@xyflow/react', () => ({
-  ViewportPortal: ({ children }: { children: React.ReactNode }) => children,
+  ViewportPortal: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid='viewport-portal'>{children}</div>
+  ),
   useStore: (select: (state: { transform: [number, number, number] }) => unknown) =>
     select({ transform: [0, 0, 1] }),
 }));
@@ -298,5 +303,19 @@ describe('CanvasCursorLayer', () => {
     );
 
     expect(screen.queryByTestId('canvas-cursors')).not.toBeInTheDocument();
+  });
+});
+
+describe('CanvasCursors placement', () => {
+  it('draws inside the viewport portal', () => {
+    // The published positions are canvas coordinates. Outside the portal they
+    // would be laid out against the screen, so every arrow lands somewhere
+    // else — and no assertion about its transform string can see the
+    // difference.
+    renderCursors([ALICE], { u1: 'Alice' });
+
+    expect(screen.getByTestId('viewport-portal')).toContainElement(
+      screen.getByTestId('canvas-cursors'),
+    );
   });
 });

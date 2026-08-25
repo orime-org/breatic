@@ -99,6 +99,28 @@ function published(awareness: Awareness): {
 }
 
 /**
+ * Wait until what this client publishes satisfies the assertion.
+ *
+ * The throttle answers on a frame plus up to its interval floor, and under a
+ * loaded suite that is longer than any fixed sleep worth writing. Polling the
+ * assertion is immune to how busy the machine is; `settled` stays for the
+ * cases that check a write did NOT happen, where waiting longer cannot
+ * conjure one.
+ * @param awareness - The awareness to read.
+ * @param assert - Throws until the published state is the expected one.
+ * @returns A promise resolved once the assertion passes.
+ */
+function untilPublished(
+  awareness: Awareness,
+  assert: (published: {
+    activeNodeIds: readonly string[] | null;
+    pointer: { x: number; y: number } | null;
+  }) => void,
+): Promise<void> {
+  return vi.waitFor(() => assert(published(awareness)), { timeout: 2_000 });
+}
+
+/**
  * Whether this client still has an awareness entry at all.
  *
  * Withdrawal has to null the fields and leave the state standing: the collab
@@ -181,9 +203,9 @@ describe('usePublishPresence, the holding', () => {
       }),
     );
 
-    await settled();
-
-    expect(published(awareness).activeNodeIds).toEqual(['a']);
+    await untilPublished(awareness, (p) => {
+      expect(p.activeNodeIds).toEqual(['a']);
+    });
   });
 
   it('follows the sources when they change', async () => {
@@ -203,9 +225,9 @@ describe('usePublishPresence, the holding', () => {
     await settled();
 
     rendered.rerender({ ...NOTHING, selectedIds: ['b', 'c'] });
-    await settled();
-
-    expect(published(awareness).activeNodeIds).toEqual(['b', 'c']);
+    await untilPublished(awareness, (p) => {
+      expect(p.activeNodeIds).toEqual(['b', 'c']);
+    });
   });
 
   it('leaves the field null while nothing is held', async () => {
@@ -221,9 +243,9 @@ describe('usePublishPresence, the holding', () => {
       }),
     );
 
-    await settled();
-
-    expect(published(awareness).activeNodeIds).toBeNull();
+    await untilPublished(awareness, (p) => {
+      expect(p.activeNodeIds).toBeNull();
+    });
   });
 
   it('does not republish a holding that has not changed', async () => {
@@ -276,9 +298,9 @@ describe('usePublishPresence, the holding', () => {
     expect(published(awareness).activeNodeIds).toBeNull();
 
     rendered.rerender({ ...NOTHING, selectedIds: ['a'] });
-    await settled();
-
-    expect(published(awareness).activeNodeIds).toEqual(['a']);
+    await untilPublished(awareness, (p) => {
+      expect(p.activeNodeIds).toEqual(['a']);
+    });
   });
 
   it('collapses several changes within one frame into a single write', async () => {
@@ -364,9 +386,9 @@ describe('usePublishPresence, the holding', () => {
     const restored = new Event('pageshow');
     Object.defineProperty(restored, 'persisted', { value: true });
     window.dispatchEvent(restored);
-    await settled();
-
-    expect(published(awareness).activeNodeIds).toEqual(['a']);
+    await untilPublished(awareness, (p) => {
+      expect(p.activeNodeIds).toEqual(['a']);
+    });
   });
 
   it('writes nothing when there is no awareness yet', async () => {
@@ -446,9 +468,9 @@ describe('usePublishPresence, the pointer', () => {
     await settled();
 
     sendPointer(container, 'pointerleave');
-    await settled();
-
-    expect(published(awareness).pointer).toBeNull();
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toBeNull();
+    });
   });
 
   it('forgets the pointer when the window loses focus', async () => {
@@ -473,9 +495,9 @@ describe('usePublishPresence, the pointer', () => {
     expect(published(awareness).pointer).not.toBeNull();
 
     window.dispatchEvent(new Event('blur'));
-    await settled();
-
-    expect(published(awareness).pointer).toBeNull();
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toBeNull();
+    });
   });
 
   it('recomputes the pointer when the container is resized', async () => {
@@ -496,14 +518,15 @@ describe('usePublishPresence, the pointer', () => {
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
-    await settled();
-    expect(published(awareness).pointer).toMatchObject({ x: 1040 });
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toMatchObject({ x: 1040 });
+    });
 
     shift = 2000;
     resizeContainer(container);
-    await settled();
-
-    expect(published(awareness).pointer).toMatchObject({ x: 2040 });
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toMatchObject({ x: 2040 });
+    });
   });
 
   it('recomputes the pointer when the viewport pans', async () => {
@@ -523,14 +546,15 @@ describe('usePublishPresence, the pointer', () => {
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 0 });
-    await settled();
-    expect(published(awareness).pointer).toEqual({ x: 1040, y: 0 });
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toEqual({ x: 1040, y: 0 });
+    });
 
     shift = 2000;
     viewport.style.transform = 'translate(50px, 0px) scale(1)';
-    await settled();
-
-    expect(published(awareness).pointer).toEqual({ x: 2040, y: 0 });
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toEqual({ x: 2040, y: 0 });
+    });
   });
 
   it('leaves the pointer null when the viewport pans after it left', async () => {
@@ -553,9 +577,9 @@ describe('usePublishPresence, the pointer', () => {
     await settled();
 
     viewport.style.transform = 'translate(50px, 0px) scale(1)';
-    await settled();
-
-    expect(published(awareness).pointer).toBeNull();
+    await untilPublished(awareness, (p) => {
+      expect(p.pointer).toBeNull();
+    });
   });
 
   it('clears both fields when it unmounts', async () => {
@@ -599,9 +623,9 @@ describe('usePublishPresence, the pointer', () => {
 
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
     rendered.unmount();
-    await settled();
-
-    expect(published(awareness)).toEqual({ activeNodeIds: null, pointer: null });
+    await untilPublished(awareness, (p) => {
+      expect(p).toEqual({ activeNodeIds: null, pointer: null });
+    });
     expect(stillListed(awareness)).toBe(true);
   });
 

@@ -226,6 +226,7 @@ import {
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -2713,13 +2714,9 @@ function CanvasSpaceInner({
     [selectedIds, groupInfos],
   );
 
-  const toCanvasPoint = React.useCallback(
+  const publishedPoint = React.useCallback(
     (screen: { x: number; y: number }): { x: number; y: number } =>
-      // Snapping is off explicitly: `screenToFlowPosition` reads the store's
-      // `snapToGrid` when the option is absent, and the viewport toolbar's
-      // snap switch feeds that flag — with it on, the published pointer would
-      // jump in 24-unit steps (`SNAP_GRID`).
-      screenToFlowPosition({ x: screen.x, y: screen.y }, { snapToGrid: false }),
+      toCanvasPoint(screenToFlowPosition, screen),
     [screenToFlowPosition],
   );
 
@@ -2730,7 +2727,7 @@ function CanvasSpaceInner({
     sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
     synced,
     containerRef,
-    toFlowPosition: toCanvasPoint,
+    toFlowPosition: publishedPoint,
   });
 
   // Wrap the loose selection in a new Group (group redesign). The Group

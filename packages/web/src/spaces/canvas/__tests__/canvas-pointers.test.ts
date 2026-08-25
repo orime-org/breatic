@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { collectPointers } from '@web/spaces/canvas/canvas-pointers';
+import { collectPointers, toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 
 interface Published {
   userId?: string;
@@ -87,5 +87,19 @@ describe('collectPointers', () => {
     ]);
 
     expect(collectPointers(hostile, 1)).toEqual([]);
+  });
+});
+
+describe('toCanvasPoint', () => {
+  it('turns snapping off explicitly', () => {
+    // `screenToFlowPosition` falls back to the store's `snapToGrid` when the
+    // option is absent, and the viewport toolbar's snap switch feeds that flag.
+    // With it on, every published pointer would quantise to SNAP_GRID — up to
+    // half a grid step away from where the person is actually pointing.
+    const convert = vi.fn(() => ({ x: 0, y: 0 }));
+
+    toCanvasPoint(convert, { x: 40, y: 60 });
+
+    expect(convert).toHaveBeenCalledWith({ x: 40, y: 60 }, { snapToGrid: false });
   });
 });
