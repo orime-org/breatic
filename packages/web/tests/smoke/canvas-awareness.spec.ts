@@ -378,3 +378,41 @@ test('a peer selection arriving mid-drag leaves the dragged node where it is', a
     await viewer.mouse.up();
   }
 });
+
+test('the tag row floats above the name without growing the node', async () => {
+  // The row hangs in the name anchor, and a peer arriving must not change what
+  // this canvas responds to: laid out in the anchor's flow it grew the anchor's
+  // box, and the anchor sits inside the node — so the strip above the name
+  // turned into node hit-area whenever somebody else held it.
+  const anchor = viewer.getByTestId('node-header-anchor');
+  const before = await anchor.boundingBox();
+
+  await watcher
+    .locator('.react-flow__node')
+    .first()
+    .locator('[data-testid=image-node]')
+    .click();
+  const tags = viewer.getByTestId('node-occupant-tags');
+  await expect(tags).toBeVisible({ timeout: SETTLE_MS });
+
+  const geometry = await tags.evaluate((el) => {
+    const row = el.getBoundingClientRect();
+    const anchorBox = (el.parentElement as HTMLElement).getBoundingClientRect();
+    const card = (el.closest('.react-flow__node') as HTMLElement).getBoundingClientRect();
+    return {
+      // Bottom of the row meets the top of the anchor, which is the name's line.
+      sitsOnTheAnchor: Math.abs(row.bottom - anchorBox.top) < 1,
+      // And the whole row is above the card, not over its content.
+      clearsTheCard: row.bottom <= card.top + 1,
+      anchorHeight: anchorBox.height,
+      anchorTop: anchorBox.top,
+    };
+  });
+
+  expect(geometry.sitsOnTheAnchor).toBe(true);
+  expect(geometry.clearsTheCard).toBe(true);
+  // The anchor is the node's own hit-area up here: its box must read the same
+  // held and unheld.
+  expect(Math.round(geometry.anchorHeight)).toBe(Math.round(before?.height ?? -1));
+  expect(Math.round(geometry.anchorTop)).toBe(Math.round(before?.y ?? -1));
+});

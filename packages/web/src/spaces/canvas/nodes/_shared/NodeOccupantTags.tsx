@@ -64,7 +64,7 @@ export function NodeOccupantTags({
   return (
     <div
       data-testid='node-occupant-tags'
-      className='pointer-events-none flex items-center gap-1 pb-1 select-none'
+      className='pointer-events-none absolute bottom-full left-0 flex items-center gap-1 pb-1 select-none'
       style={{ paddingLeft: `${indentPx}px` }}
     >
       {shown.map((person) => (
@@ -79,7 +79,7 @@ export function NodeOccupantTags({
       {hidden > 0 ? (
         <span
           data-testid='node-occupant-overflow'
-          className='shrink-0 rounded-content-xs bg-muted-foreground px-[0.3rem] py-[0.1rem] text-2xs font-semibold whitespace-nowrap text-[color:var(--color-on-palette)]'
+          className='shrink-0 rounded-content-xs bg-muted-foreground px-[0.3rem] py-[0.1rem] text-2xs font-semibold whitespace-nowrap text-background'
         >
           {`+${hidden}`}
         </span>
