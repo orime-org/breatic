@@ -892,3 +892,21 @@ describe('after the bubble bar is taken away', () => {
     expect(screen.getByTestId('doc-link-anchor')).toBeInTheDocument();
   });
 });
+
+describe('where the panel hangs', () => {
+  it('mounts inside the body scroller, so it travels with the text', async () => {
+    // Two behaviours rest on this one fact: the panel scrolls out with its
+    // anchor, and the scroller's overflow clips it once it does. Both need
+    // real layout, which jsdom has none of, so what is pinned here is the
+    // structural precondition — a panel portalled to `document.body` can do
+    // neither, whatever else is true of it.
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    const panel = screen.getByTestId('doc-link-popover');
+    const scroller = document.querySelector('[data-radix-scroll-area-viewport]');
+
+    expect(scroller).not.toBeNull();
+    expect(scroller?.contains(panel)).toBe(true);
+  });
+});
