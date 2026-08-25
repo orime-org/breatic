@@ -206,14 +206,16 @@ export async function upsertMember(
  * takes this row, then the studio's debt, then the lot; a caller that took any
  * of those first would deadlock against them.
  *
- * **One edge runs the other way**: writing a non-null designation makes the
- * database confirm the parent studio exists, which locks that `studios` row
- * after this one has already been taken. Nothing reaches it today — the only
- * path holding a `studios` row before a membership row is accepting an invite,
- * and the membership row it then writes belongs to the invitee while this one
- * belongs to whoever is designating. Building studio deletion (#26) puts a
- * `studios` → `credit_lots` writer in the same picture and has to weigh that
- * edge again.
+ * **Two edges run the other way**: creating the studio's debt row, and writing
+ * a non-null designation, each make the database confirm the parent studio
+ * exists, which locks that `studios` row after the tables above it have
+ * already been taken. The debt one comes first in the order and is reached by
+ * charging as well, which holds no membership row at all. Nothing deadlocks on
+ * either today — the only path holding a `studios` row before a membership row
+ * is accepting an invite, and the membership row it then writes belongs to the
+ * invitee while this one belongs to whoever is designating. Building studio
+ * deletion (#26) puts a `studios` → `{studio_credit_debts, credit_lots}` writer
+ * in the same picture and has to weigh both edges again.
  * @param studioId - Studio UUID
  * @param userId - User UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one

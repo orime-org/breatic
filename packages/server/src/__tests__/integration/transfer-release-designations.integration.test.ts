@@ -280,9 +280,9 @@ async function seedStudio(): Promise<Seeded> {
 /**
  * Seed a studio and put a transfer offer on the table.
  *
- * The bell entry's own id comes back too: settling the offer retires it, which
- * is the last write the confirm makes and therefore the one place a test can
- * park the transaction after the release has already run.
+ * The bell entry's own id comes back too: settling the offer retires it, and
+ * that happens after the release, so holding that row parks the transaction at
+ * a point where the release has already run.
  * @returns The seeded studio plus the offer's id and its bell entry's id.
  */
 async function seedPendingTransfer(): Promise<
@@ -398,9 +398,9 @@ describe("a transfer takes the admin away and the designations go with it", () =
   });
 
   it("skips a lot that moved to another studio while its lock was waited for", async () => {
-    // Two lots, oldest first. A held lock on the second parks the release
-    // between listing and locking; the first is already clear by then, and the
-    // second moves elsewhere in that window. The row the lock hands back is
+    // Two lots. A held lock on the older one parks the release between listing
+    // and locking, before it has cleared anything; the younger one, still
+    // unread, moves elsewhere in that window. The row the lock hands back is
     // what decides, so the moved one must survive.
     const s = await seedPendingTransfer();
     const elsewhere = await insertStudioWithAdmin(s.adminId);
@@ -528,9 +528,9 @@ describe("a transfer takes the admin away and the designations go with it", () =
   });
 
   it("queues with a charge and a designation without deadlocking", async () => {
-    // All three writers on this studio at once, each entering the order at a
-    // different table: the transfer at the membership, the designation one
-    // table later at the debt, the charge later still.
+    // All three writers on this studio at once: the transfer and the
+    // designation both enter the order at the membership, the charge one table
+    // later at the debt.
     const s = await seedPendingTransfer();
     const projectId = await insertProject(s.studioId, s.adminId);
     const held = await insertLot(s.adminId, s.studioId, 500, 60);
@@ -600,9 +600,9 @@ describe("a transfer takes the admin away and the designations go with it", () =
   it("keeps the clearing and the demote in one transaction", async () => {
     // The parking point has to sit AFTER the release, or the assertions below
     // read a transaction that has not reached it yet and hold whatever it
-    // goes on to do. Retiring the bell entry is the confirm's last write, so
-    // a held lock on that row stops it with the demote and the clearing both
-    // done and nothing committed. A reader on another connection must still
+    // goes on to do. Retiring the bell entry comes after both, so a held lock
+    // on that row stops the transaction with the demote and the clearing done
+    // and nothing committed. A reader on another connection must still
     // see the old values; had the clearing committed on its own, the lot
     // would already read as null here.
     const s = await seedPendingTransfer();

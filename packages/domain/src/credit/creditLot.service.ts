@@ -399,9 +399,9 @@ export async function designateLot(input: {
     // lot. Reading the role outside the transaction answers about a moment
     // that is already gone by the time this writes: a transfer committing in
     // the gap leaves a maintainer's lot pointed at a studio that is no longer
-    // theirs, and nothing clears it afterwards. `lockMemberRole` filters on
-    // the studio and the user alone — see there for why a predicate naming
-    // `role` cannot hold under concurrency.
+    // theirs, and nothing clears it afterwards. `lockMemberRole`'s predicate
+    // never names `role` — see there for why one that did cannot hold under
+    // concurrency.
     if (input.studioId !== null) {
       const role = await studioMembersRepo.lockMemberRole(
         input.studioId,

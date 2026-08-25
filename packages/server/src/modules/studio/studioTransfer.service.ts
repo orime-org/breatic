@@ -186,11 +186,11 @@ export async function requestTransfer(
  * transaction because the rule is about the same instant.
  * @param transferId - The `studio_transfers` row id
  * @param receiverUserId - The recipient confirming
- * @throws {NotFoundError} there is no such offer, or a role swap finds no row
+ * @throws {NotFoundError} there is no such offer
  * @throws {ForbiddenError} the caller is not the offer's named recipient
  * @throws {ConflictError} the offer was already answered, has timed out, the
- *   recipient no longer qualifies, or the initiator no longer administers the
- *   studio
+ *   recipient no longer qualifies, the initiator no longer administers the
+ *   studio, or a role swap finds no row
  */
 export async function confirmTransfer(
   transferId: string,
