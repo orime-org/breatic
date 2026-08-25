@@ -1408,82 +1408,56 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
   await expect(input).toHaveValue('a.example/half-more');
 });
 
-test('link: a second press on the button puts the panel away', async () => {
-  // The button is not the panel's trigger, so `useDismiss` sees a press on it
-  // as a press outside and the button's own handler toggles the panel — two
-  // routes to closed, on `pointerdown` and on the `click` that follows. The
-  // button is excluded from the outside-press handling for that reason
-  // (`DocumentLinkPopover`), and a panel that ends up open again is what an
-  // unexcluded button produces: dismissed on the press, reopened on the click.
-  await openFreshDocument(page);
-  await page.keyboard.type('press me twice');
-  await selectFirstParagraph(page);
-
-  const button = page.getByTestId('doc-bubble-tool-link');
-  const panel = page.getByTestId('doc-link-popover');
-
-  await button.click();
-  await expect(panel).toBeVisible({ timeout: 5_000 });
-
-  await button.click();
-  await expect(panel).toBeHidden({ timeout: 5_000 });
-  // Held, rather than caught mid-flight: a panel that is dismissed and
-  // reopened is briefly absent too, and this has to tell the two apart.
-  await page.waitForTimeout(400);
-  await expect(panel).toBeHidden();
-});
-
-test('link: the panel opens where the reader is, after a select-all', async () => {
-  // A select-all's range covers the whole document, so its box says nothing
-  // about where the reader is looking. The body here runs far below the fold,
-  // which is what tells the two answers apart: anchored to that box the panel
-  // lands at the document's edge — measured at viewport top 59 with the bar at
-  // 471 — and anchored to the bar's pinned point it opens next to the bar. Measured
-  // before this assertion existed: with the body scrolled 600px the panel was
-  // placed at viewport top -483, entirely off screen, and pressing the button
-  // again toggled something nobody could see.
-  //
-  // The bar answers the same question with the pointer (`SelectionBubbleBar`'s
-  // pinned point), because over a select-all the selection's own box is the
-  // whole column and says nothing about where the reader is looking. The panel
-  // opens from a button on that bar, so it anchors to the same place.
+test('link: a select-all carries no link button', async () => {
+  // The whole document is not a thing a link can be put on, and the panel
+  // would have nothing to anchor to: over a select-all the selection's box is
+  // the whole column. The rest of the bar stays — bold over everything is a
+  // sensible thing to ask for.
   await openFreshDocument(page);
   await typeLongBody(page);
-  await scrollBodyTo(page, 200);
 
-  // Two presses: the first tier takes the block, the second the document.
   const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+  // Two presses: the first tier takes the block, the second the document.
   await page.keyboard.press(selectAll);
   await page.waitForTimeout(200);
+  await expect(page.getByTestId('doc-bubble-tool-link')).toBeVisible({
+    timeout: 5_000,
+  });
+
   await page.keyboard.press(selectAll);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
     timeout: 5_000,
   });
+  await expect(page.getByTestId('doc-bubble-tool-link')).toBeHidden();
+});
+
+test('link: the bar steps aside for the panel and stays away after it', async () => {
+  // Two rules in one pass, because they are one pass for the reader: the bar
+  // goes as the panel opens, and it does not come back when the panel closes,
+  // because closing drops the selection. Held rather than caught mid-flight —
+  // the bar has a 250ms debounce on selection changes, so a bar that is merely
+  // recomputing is also briefly absent.
+  await openFreshDocument(page);
+  await page.keyboard.type('a line to link');
+  await selectFirstParagraph(page);
+
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+  const panel = page.getByTestId('doc-link-popover');
 
   await page.getByTestId('doc-bubble-tool-link').click();
-  await expect(page.getByTestId('doc-link-popover')).toBeVisible({ timeout: 5_000 });
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+  await expect(bar).toBeHidden({ timeout: 5_000 });
+
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden({ timeout: 5_000 });
   await page.waitForTimeout(400);
-
-  const placed = await page.evaluate(() => {
-    const panel = document
-      .querySelector('[data-testid="doc-link-popover"]')!
-      .getBoundingClientRect();
-    const bar = document
-      .querySelector('[data-testid="doc-selection-bubble-bar"]')!
-      .getBoundingClientRect();
-    return {
-      panelTop: Math.round(panel.top),
-      panelBottom: Math.round(panel.bottom),
-      barTop: Math.round(bar.top),
-      viewportHeight: window.innerHeight,
-    };
-  });
-
-  expect(placed.panelTop).toBeGreaterThanOrEqual(0);
-  expect(placed.panelBottom).toBeLessThanOrEqual(placed.viewportHeight);
-  // And it opened next to the bar it was pressed on, rather than merely
-  // somewhere on screen.
-  expect(Math.abs(placed.panelTop - placed.barTop)).toBeLessThan(120);
+  await expect(bar).toBeHidden();
+  expect(
+    await page.evaluate(() => {
+      const selection = window.getSelection();
+      return selection === null || selection.isCollapsed;
+    }),
+  ).toBe(true);
 });
 
 test('link: opening lands in the field, closing hands the caret back', async () => {
