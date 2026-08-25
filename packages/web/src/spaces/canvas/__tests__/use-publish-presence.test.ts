@@ -495,9 +495,12 @@ describe('usePublishPresence, the pointer', () => {
     expect(published(awareness).pointer).not.toBeNull();
 
     window.dispatchEvent(new Event('blur'));
-    await untilPublished(awareness, (p) => {
-      expect(p.pointer).toBeNull();
-    });
+
+    // Read back with no frame and no timer allowed to run. Losing focus is
+    // usually the page being hidden too, and a hidden document is given no
+    // animation frames — a withdrawal parked on one would never be sent, and
+    // the throttle's own guard would then swallow every later attempt.
+    expect(published(awareness).pointer).toBeNull();
   });
 
   it('recomputes the pointer when the container is resized', async () => {
@@ -577,9 +580,11 @@ describe('usePublishPresence, the pointer', () => {
     await settled();
 
     viewport.style.transform = 'translate(50px, 0px) scale(1)';
-    await untilPublished(awareness, (p) => {
-      expect(p.pointer).toBeNull();
-    });
+    await settled();
+
+    // `settled`, not a poll: this case checks that a write did NOT happen, and
+    // a poll passes at t=0 on the null that `pointerleave` already published.
+    expect(published(awareness).pointer).toBeNull();
   });
 
   it('clears both fields when it unmounts', async () => {

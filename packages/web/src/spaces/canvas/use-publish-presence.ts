@@ -200,6 +200,20 @@ export function usePublishPresence(input: PublishPresenceInput): void {
       screenPoint.current = null;
       throttle.schedule();
     };
+    /**
+     * Forget the pointer and say so in the same turn.
+     *
+     * Losing focus is usually the page being hidden as well, and a hidden
+     * document is given no animation frames — the throttle would park this on
+     * one that never arrives, and its own guard would then swallow every later
+     * attempt. A withdrawal that has to land is written the way the teardown
+     * below writes its own: directly.
+     */
+    const onWindowBlur = (): void => {
+      throttle.cancel();
+      screenPoint.current = null;
+      publish();
+    };
     container.addEventListener('pointermove', onMove);
     container.addEventListener('pointerleave', onLeave);
     // Switching to another window leaves the pointer resting on the canvas, so
@@ -207,7 +221,7 @@ export function usePublishPresence(input: PublishPresenceInput): void {
     // nobody is looking at. The text-caret presence publishes window focus for
     // the same reason (`use-collab-caret-presence.ts`); the next real move
     // republishes on the way back.
-    window.addEventListener('blur', onLeave);
+    window.addEventListener('blur', onWindowBlur);
     // A pointer that already left has no screen point, so every recomputation
     // from here on produces null — the same null that is already published,
     // which the de-duplication drops. That is what keeps a later pan from
@@ -221,11 +235,11 @@ export function usePublishPresence(input: PublishPresenceInput): void {
     return (): void => {
       container.removeEventListener('pointermove', onMove);
       container.removeEventListener('pointerleave', onLeave);
-      window.removeEventListener('blur', onLeave);
+      window.removeEventListener('blur', onWindowBlur);
       stopWatching();
       resize.disconnect();
     };
-  }, [awareness, containerRef, throttle]);
+  }, [awareness, containerRef, throttle, publish]);
 
   // Withdraw. Leaving the space must take the presence with it, and this runs
   // after the throttle above was cancelled, so it is the last word.
