@@ -133,16 +133,25 @@ describe('the holders reaching a node', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 
+  // The row draws two names and counts the rest, so position decides who is
+  // seen. The starter is the one holder whose identity has no second source:
+  // a running generation names its author nowhere else on the node, and the
+  // handling outlives its starter's presence. Anyone folded into the count is
+  // still counted, so nobody is lost. Both cases below read the whole row in
+  // order, which pins the position, the cap and the count in one assertion.
   it('names the starter first when the row has to count the rest', () => {
-    // The row draws two names and counts the rest, so position decides who is
-    // seen. The starter is the one name that answers a question the node body
-    // cannot: a running generation shows no author. Held-by-selection is
-    // already visible another way — those people have a cursor and an outline
-    // on screen — so the starter goes first and never falls into the count.
     renderNode('image', ['u2', 'u3'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' }, 'u1');
 
-    expect(screen.getByText('Alice')).toBeInTheDocument();
-    expect(screen.getByTestId('node-occupant-overflow')).toHaveTextContent('+1');
+    expect(screen.getByTestId('node-occupant-tags')).toHaveTextContent('AliceBob+1');
+  });
+
+  it('names the starter first when they are also holding the node', () => {
+    // The common case: whoever pressed generate usually still has the node
+    // selected, so they arrive through both channels and the join must lift
+    // them out of whatever order awareness happened to deliver.
+    renderNode('image', ['u2', 'u3', 'u1'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' }, 'u1');
+
+    expect(screen.getByTestId('node-occupant-tags')).toHaveTextContent('AliceBob+1');
   });
 
   it('keeps the tags inside the name anchor, not on the render root', () => {

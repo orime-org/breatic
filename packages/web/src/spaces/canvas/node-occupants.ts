@@ -69,5 +69,10 @@ export function collectNodeOccupants(
       }
     }
   }
+  // By user id, not by arrival: the tag row draws two names and counts the
+  // rest, and awareness hands its table back in insertion order — where a peer
+  // that timed out and came back sits at the end. Without this, one peer
+  // reconnecting reshuffles who is named on nodes it has nothing to do with.
+  for (const users of byNode.values()) users.sort();
   return byNode;
 }

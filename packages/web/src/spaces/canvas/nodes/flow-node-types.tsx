@@ -77,14 +77,15 @@ function makeFlowNode(
     // joined here rather than upstream.
     const starter = (data as { handlingByUserId?: string }).handlingByUserId;
     const occupants = React.useMemo((): readonly string[] => {
-      // Someone already in the list must not be named twice — one person, one
-      // tag, whichever channels say so. Returning `held` itself keeps the
-      // reference the mirror already stabilised.
-      if (starter === undefined || held.includes(starter)) return held;
-      // First, because the row draws two names and counts the rest: a running
-      // generation shows no author anywhere else on the node, while the people
-      // holding it by selection also carry a cursor and an outline.
-      return [starter, ...held];
+      // With no generation running the mirror's own array goes through, keeping
+      // the reference it stabilised.
+      if (starter === undefined) return held;
+      // The starter leads, and appears once however many channels name them.
+      // The row draws two names and counts the rest, and the starter is the one
+      // holder whose identity has no second source: a running generation names
+      // its author nowhere else on the node. Whoever the count folds away is
+      // still counted, so nobody is lost.
+      return [starter, ...held.filter((userId) => userId !== starter)];
     }, [held, starter]);
     const {
       renameNode,

@@ -61,6 +61,24 @@ describe('collectNodeOccupants', () => {
     expect(byNode.get('n1')).toEqual(['alice', 'bob']);
   });
 
+  it('lists them in the same order however the states arrive', () => {
+    // The row draws two names and counts the rest, so the order decides who is
+    // seen. Awareness hands its table back in insertion order, and a peer that
+    // times out and comes back is re-inserted at the end — which would reshuffle
+    // who is named on a node that peer has nothing to do with.
+    const held = (order: Array<[number, Published]>): string[] | undefined =>
+      collectNodeOccupants(states(order), 1).get('n1');
+
+    const arrivals: Array<[number, Published]> = [
+      [2, { userId: 'carol', activeNodeIds: ['n1'] }],
+      [3, { userId: 'alice', activeNodeIds: ['n1'] }],
+      [4, { userId: 'bob', activeNodeIds: ['n1'] }],
+    ];
+
+    expect(held(arrivals)).toEqual(['alice', 'bob', 'carol']);
+    expect(held([...arrivals].reverse())).toEqual(['alice', 'bob', 'carol']);
+  });
+
   it('counts one person once when they have two tabs on the same node', () => {
     // Same account, two browser tabs: two client ids, one person to show.
     const byNode = collectNodeOccupants(
