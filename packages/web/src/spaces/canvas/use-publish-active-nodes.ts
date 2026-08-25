@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
-import { deriveActiveNodeIds, sameActiveNodeIds } from '@web/spaces/canvas/active-node-ids';
+import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 
 /** The awareness field this hook owns. */
 const FIELD = 'activeNodeIds';
@@ -69,7 +69,7 @@ export function usePublishActiveNodes(input: PublishActiveNodesInput): void {
     if (!awareness) return;
     frame.current = null;
     const next = deriveActiveNodeIds(latest.current);
-    const skip = !force.current && sameActiveNodeIds(readPublished(awareness), next);
+    const skip = !force.current && sameIdList(readPublished(awareness), next);
     force.current = false;
     if (skip) return;
     awareness.setLocalStateField(FIELD, next);
