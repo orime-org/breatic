@@ -637,11 +637,15 @@ describe('a co-editor changes the body', () => {
     await openPopoverOver(editor, 7, 11);
     expect(screen.getByTestId('doc-link-input')).toBeInTheDocument();
 
-    const built: string[] = [];
+    // Every Range this component builds, kept so the last one can be read for
+    // what it covers. A count alone would pass for a rebuild over the wrong
+    // span, which is the failure this case is here to catch.
+    const built: Range[] = [];
     const realCreateRange = document.createRange.bind(document);
     vi.spyOn(document, 'createRange').mockImplementation(() => {
-      built.push('built');
-      return realCreateRange();
+      const range = realCreateRange();
+      built.push(range);
+      return range;
     });
 
     asPeer((body) => {
@@ -653,6 +657,9 @@ describe('a co-editor changes the body', () => {
     });
 
     expect(built.length).toBeGreaterThan(0);
+    // The selection moved two characters along with the peer's insertion, and
+    // the fresh anchor covers the same words at their new place.
+    expect(built[built.length - 1]!.toString()).toBe('beta');
     expect(screen.getByTestId('doc-link-popover')).toBeInTheDocument();
   });
 

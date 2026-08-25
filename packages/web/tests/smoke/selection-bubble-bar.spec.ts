@@ -1388,16 +1388,31 @@ test('link: scrolling the target away clips the panel and keeps the draft', asyn
         .querySelector('[data-testid="document-space"] .ProseMirror')!
         .closest('[data-radix-scroll-area-viewport]')!
         .getBoundingClientRect();
+      // Where the panel's own centre lands answers the question the rectangle
+      // cannot: a box above the body's box is equally true of a panel plainly
+      // visible over the tab strip, and being clipped rather than merely
+      // elsewhere is the whole reason it is portalled into the scroller.
+      const centre = document.elementFromPoint(
+        Math.round(panel.left + panel.width / 2),
+        Math.round(panel.top + panel.height / 2),
+      );
+      const el = document.querySelector('[data-testid="doc-link-popover"]')!;
       return {
         aboveTheBody: panel.bottom < view.top,
         insideTheBody: panel.top >= view.top && panel.bottom <= view.bottom,
+        reachableAtItsCentre: centre !== null && el.contains(centre),
       };
     });
 
-  expect((await placement()).insideTheBody).toBe(true);
+  const onOpen = await placement();
+  expect(onOpen.insideTheBody).toBe(true);
+  expect(onOpen.reachableAtItsCentre).toBe(true);
 
   await scrollBodyTo(page, 400);
-  expect((await placement()).aboveTheBody).toBe(true);
+  const scrolledAway = await placement();
+  expect(scrolledAway.aboveTheBody).toBe(true);
+  // Clipped, so nothing of it is at its own centre any more.
+  expect(scrolledAway.reachableAtItsCentre).toBe(false);
   // Out of sight, and still holding everything the reader put into it.
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('a.example/half');
@@ -1705,6 +1720,14 @@ test('link: a target at the bottom edge keeps the panel inside the body column',
   expect(placed.linkVisible).toBe(true);
   expect(placed.panelLeft).toBeGreaterThanOrEqual(view.left);
   expect(placed.panelRight).toBeLessThanOrEqual(view.right);
+  // Pushed, rather than fitting by luck. Every other case in this file has the
+  // panel centred on its target; here it cannot be, and the distance is the
+  // measurement that says `shift` did the work. Measured with `shift` removed:
+  // the two centres were half a pixel apart and the panel ran to 865 past a
+  // boundary ending at 760.
+  const panelCentre = (placed.panelLeft + placed.panelRight) / 2;
+  const linkCentre = (placed.linkLeft + placed.linkRight) / 2;
+  expect(Math.abs(panelCentre - linkCentre)).toBeGreaterThan(20);
 });
 
 test('link: the panel still meets its target after the window changes width', async () => {

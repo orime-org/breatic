@@ -154,7 +154,8 @@ function domRangeOver(editor: Editor, span: LinkRange): Range | null {
     return range;
   } catch {
     // Positions outside the rendered document, which happens while a co-editor's
-    // replacement of the whole doc is landing. The caller falls back to the bar.
+    // replacement of the whole doc is landing. The caller keeps the reference
+    // it already has, and the next transaction builds a fresh one.
     return null;
   }
 }
