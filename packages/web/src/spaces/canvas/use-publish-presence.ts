@@ -202,15 +202,28 @@ export function usePublishPresence(input: PublishPresenceInput): void {
     };
     container.addEventListener('pointermove', onMove);
     container.addEventListener('pointerleave', onLeave);
+    // Switching to another window leaves the pointer resting on the canvas, so
+    // no `pointerleave` arrives and the peers would keep an arrow at a spot
+    // nobody is looking at. The text-caret presence publishes window focus for
+    // the same reason (`use-collab-caret-presence.ts`); the next real move
+    // republishes on the way back.
+    window.addEventListener('blur', onLeave);
     // A pointer that already left has no screen point, so every recomputation
     // from here on produces null — the same null that is already published,
     // which the de-duplication drops. That is what keeps a later pan from
     // reviving the arrow at a stale spot.
     const stopWatching = observeViewportTransform(() => throttle.schedule());
+    // The conversion subtracts the container's own rect, so its size and place
+    // on screen are as much an input as the viewport's transform: a sidebar
+    // opening moves the canvas point a resting pointer maps to.
+    const resize = new ResizeObserver(() => throttle.schedule());
+    resize.observe(container);
     return (): void => {
       container.removeEventListener('pointermove', onMove);
       container.removeEventListener('pointerleave', onLeave);
+      window.removeEventListener('blur', onLeave);
       stopWatching();
+      resize.disconnect();
     };
   }, [awareness, containerRef, throttle]);
 

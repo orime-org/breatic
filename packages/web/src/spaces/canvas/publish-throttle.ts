@@ -35,14 +35,17 @@ export function createPublishThrottle(
   const fire = (): void => {
     frame = null;
     timer = null;
-    lastRunAt = Date.now();
+    // Monotonic: an NTP correction or somebody setting the date moves the wall
+    // clock, and the next wait would be computed as the size of that jump —
+    // with every later caller folded into the one pending run.
+    lastRunAt = performance.now();
     run();
   };
 
   /** Ask for a run, folding into whatever is already waiting. */
   const schedule = (): void => {
     if (frame !== null || timer !== null) return;
-    const waitMs = minIntervalMs - (Date.now() - lastRunAt);
+    const waitMs = minIntervalMs - (performance.now() - lastRunAt);
     // Waiting out the interval folds this frame's callers together on its own,
     // so the wait replaces the frame rather than preceding it: adding one
     // would stretch every capped run by a frame and lower the real ceiling.

@@ -11,7 +11,7 @@
  * this test expected instead.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -45,6 +45,41 @@ function makeCanvas(): { container: HTMLElement; viewport: HTMLElement } {
   document.body.appendChild(container);
   mounted.push(container);
   return { container, viewport };
+}
+
+// The global stub in `vitest.setup.ts` never calls back, which is right for
+// components that only need the constructor to exist. These specs drive the
+// callback, so they swap in one that remembers what it observes.
+const resizeCallbacks = new Map<Element,() => void>();
+
+class TriggerableResizeObserver {
+  private readonly targets: Element[] = [];
+
+  constructor(private readonly callback: () => void) {}
+
+  observe(target: Element): void {
+    this.targets.push(target);
+    resizeCallbacks.set(target, this.callback);
+  }
+
+  unobserve(target: Element): void {
+    resizeCallbacks.delete(target);
+  }
+
+  disconnect(): void {
+    for (const target of this.targets) resizeCallbacks.delete(target);
+  }
+}
+
+/**
+ * Report a size change on an element that something is observing.
+ * @param target - The observed element.
+ * @throws {Error} When nothing observes it, which would leave a silent no-op.
+ */
+function resizeContainer(target: Element): void {
+  const callback = resizeCallbacks.get(target);
+  if (!callback) throw new Error('nothing observes this element');
+  callback();
 }
 
 /**
@@ -115,7 +150,16 @@ const SHIFTED = (screen: { x: number; y: number }): { x: number; y: number } => 
   y: screen.y + 2000,
 });
 
+const realResizeObserver = globalThis.ResizeObserver;
+
+beforeEach(() => {
+  globalThis.ResizeObserver =
+    TriggerableResizeObserver as unknown as typeof ResizeObserver;
+});
+
 afterEach(() => {
+  globalThis.ResizeObserver = realResizeObserver;
+  resizeCallbacks.clear();
   for (const { doc, awareness } of open.splice(0)) {
     awareness.destroy();
     doc.destroy();
@@ -405,6 +449,61 @@ describe('usePublishPresence, the pointer', () => {
     await settled();
 
     expect(published(awareness).pointer).toBeNull();
+  });
+
+  it('forgets the pointer when the window loses focus', async () => {
+    // Switching to another window leaves the pointer sitting on the canvas, so
+    // no `pointerleave` fires and the peers keep a frozen arrow at a spot this
+    // person is no longer looking at. The text-caret presence in the same app
+    // already publishes window focus for exactly this reason
+    // (`use-collab-caret-presence.ts`).
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+      }),
+    );
+    sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
+    await settled();
+    expect(published(awareness).pointer).not.toBeNull();
+
+    window.dispatchEvent(new Event('blur'));
+    await settled();
+
+    expect(published(awareness).pointer).toBeNull();
+  });
+
+  it('recomputes the pointer when the container is resized', async () => {
+    // The screen-to-canvas conversion subtracts the container's own rect, so a
+    // sidebar opening or the window resizing changes the answer for a pointer
+    // that never moved. Only the viewport's transform was watched, which such
+    // a resize does not touch.
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    let shift = 1000;
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: (screen) => ({ x: screen.x + shift, y: screen.y }),
+      }),
+    );
+    sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
+    await settled();
+    expect(published(awareness).pointer).toMatchObject({ x: 1040 });
+
+    shift = 2000;
+    resizeContainer(container);
+    await settled();
+
+    expect(published(awareness).pointer).toMatchObject({ x: 2040 });
   });
 
   it('recomputes the pointer when the viewport pans', async () => {
