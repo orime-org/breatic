@@ -17,6 +17,29 @@ export interface CanvasOccupants {
 }
 
 /**
+ * Compare two occupant tables by value.
+ *
+ * Order counts on both levels: the key order decides nothing on screen, but
+ * comparing it is what makes this a single walk, and the holder order is the
+ * order the name tags are laid out in — a swap really is a different picture.
+ * @param a - The previous table.
+ * @param b - The freshly collected table.
+ * @returns True when the two describe the same holdings.
+ */
+export function sameOccupantTable(
+  a: ReadonlyMap<string, readonly string[]>,
+  b: ReadonlyMap<string, readonly string[]>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, users] of a) {
+    const other = b.get(key);
+    if (other === undefined || other.length !== users.length) return false;
+    if (!users.every((id, i) => id === other[i])) return false;
+  }
+  return true;
+}
+
+/**
  * Read one awareness entry's user id, if the server has stamped one.
  *
  * Every accepted connection has its `user.id` written by the server, so an

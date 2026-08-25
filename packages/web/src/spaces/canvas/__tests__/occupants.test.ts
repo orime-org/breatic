@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { collectOccupants } from '@web/spaces/canvas/occupants';
+import { collectOccupants, sameOccupantTable } from '@web/spaces/canvas/occupants';
 
 interface Published {
   userId?: string;
@@ -177,6 +177,71 @@ describe('collectOccupants, edge table', () => {
     const { byEdge } = collectOccupants(states([[2, { activeEdgeIds: ['e1'] }]]), 1);
 
     expect(byEdge.size).toBe(0);
+  });
+});
+
+describe('sameOccupantTable', () => {
+  /**
+   * Build an occupant table from plain pairs.
+   * @param pairs - Key paired with the user ids holding it.
+   * @returns The table.
+   */
+  function table(pairs: Array<[string, string[]]>): Map<string, string[]> {
+    return new Map(pairs);
+  }
+
+  it('calls two empty tables the same', () => {
+    expect(sameOccupantTable(table([]), table([]))).toBe(true);
+  });
+
+  it('calls tables with equal contents the same', () => {
+    expect(
+      sameOccupantTable(
+        table([
+          ['n1', ['alice']],
+          ['n2', ['bob', 'carol']],
+        ]),
+        table([
+          ['n1', ['alice']],
+          ['n2', ['bob', 'carol']],
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it('sees a key appear', () => {
+    expect(sameOccupantTable(table([]), table([['n1', ['alice']]]))).toBe(false);
+  });
+
+  it('sees a key disappear', () => {
+    expect(sameOccupantTable(table([['n1', ['alice']]]), table([]))).toBe(false);
+  });
+
+  it('sees the same count of keys under different names', () => {
+    // Two people swapping which node they hold keeps the size at one.
+    expect(sameOccupantTable(table([['n1', ['alice']]]), table([['n2', ['alice']]]))).toBe(
+      false,
+    );
+  });
+
+  it('sees a holder join a key', () => {
+    expect(
+      sameOccupantTable(table([['n1', ['alice']]]), table([['n1', ['alice', 'bob']]])),
+    ).toBe(false);
+  });
+
+  it('sees a holder replaced by another', () => {
+    expect(sameOccupantTable(table([['n1', ['alice']]]), table([['n1', ['bob']]]))).toBe(
+      false,
+    );
+  });
+
+  it('sees the holders reordered', () => {
+    // Order decides the order the name tags are laid out in, so it is part of
+    // what the renderer draws, not an implementation detail to look past.
+    expect(
+      sameOccupantTable(table([['n1', ['alice', 'bob']]]), table([['n1', ['bob', 'alice']]])),
+    ).toBe(false);
   });
 });
 
