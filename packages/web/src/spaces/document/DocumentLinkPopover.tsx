@@ -184,18 +184,17 @@ function domRangeOver(editor: Editor, span: LinkRange): Range | null {
 /**
  * Where the link a panel opened over is now, after the document changed.
  *
- * With a handle, the answer comes from where it points; a handle that no
- * longer resolves means the text it covered has gone. Without one — an editor
- * built with no shared document, which other suites do — the selection is the
- * only thing left to ask.
+ * The answer comes from where the handle points; one that no longer resolves
+ * means the text it covered has gone. So does no handle at all: this runs only
+ * in `view` and `edit`, both of which opened on a link and so took one, and an
+ * editor bound to no shared document could not follow anything anyway.
  * @param editor - The editor to read.
  * @param tracked - The handle taken when the panel opened, if there is one.
  * @returns The link and its span, or nulls when it is gone.
  * @throws {never}
  */
 function followedLink(editor: Editor, tracked: TrackedLink | null): LinkSelection {
-  if (!tracked) return resolveLinkSelection(editor.state);
-  const span = resolveTrackedSpan(editor, tracked);
+  const span = tracked ? resolveTrackedSpan(editor, tracked) : null;
   if (!span) return { range: null, href: null };
   return resolveLinkInSpan(editor.state, span.from, span.to);
 }
