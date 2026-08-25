@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * 打开会员面板时跟 Stripe 对一次账（#106 §10.2、§11）—— 真 PG，Stripe 替身。

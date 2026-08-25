@@ -322,6 +322,14 @@
       "focusExportFailed": "Could not crop — please try again.",
       "focusUploadFailed": "Could not upload the focus crop — please try again.",
       "focusSourceChanged": "Source changed — the region was cleared.",
+      "focusSourceUnavailable": "Source is unavailable.",
+      "focusSourceDeleted": "Source deleted.",
+      "focusSourceReplaced": "Source replaced.",
+      "focusSourceBusy": "Source is processing.",
+      "focusSourceFailed": "Source processing failed.",
+      "focusSourceDeletedByPeer": "A collaborator deleted the source.",
+      "focusSourceReplacedByPeer": "A collaborator replaced the source.",
+      "focusSourceBusyByPeer": "A collaborator is processing the source.",
       "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
       "duration": "Duration",
       "durationSeconds": "{n}s",
@@ -704,7 +712,12 @@
         "bulletList": "Bullet list",
         "orderedList": "Ordered list",
         "quote": "Quote",
-        "strike": "Strikethrough"
+        "strike": "Strikethrough",
+        "underline": "Underline",
+        "code": "Inline code",
+        "comment": "Comment",
+        "ai": "AI",
+        "comingLabel": "{name} (not open yet)"
       },
       "schemaOutdated": {
         "headline": "Document editor updated",
@@ -860,8 +873,7 @@
       "signOut": "Sign out",
       "credits": "Credits",
       "membership": "Membership",
-      "accountSettings": "Account settings",
-      "notOpenYet": "Not open yet"
+      "accountSettings": "Account settings"
     },
     "container": {
       "shell": {
@@ -1245,5 +1257,105 @@
     },
     "payNow": "Pay now",
     "actionFailed": "That did not go through. Try again."
+  },
+  "credits": {
+    "panelTitle": "Credits",
+    "close": "Close",
+    "indexLabel": "Credit sections",
+    "unit": "credits",
+    "loadFailed": "Could not load. Close and open again.",
+    "listEnd": "No more",
+    "listPageFailed": "Could not load this page. Scroll to retry.",
+    "group": {
+      "records": "Records",
+      "actions": "Actions"
+    },
+    "section": {
+      "overview": "Overview",
+      "lots": "Purchases",
+      "ledger": "Spending",
+      "studios": "By Studio",
+      "buy": "Buy credits",
+      "assign": "Assign",
+      "refunds": "Refunds"
+    },
+    "lifecycle": {
+      "depleted": "Spent",
+      "refund_pending": "Under review",
+      "refunding": "Refunding",
+      "refunded": "Refunded"
+    },
+    "billingOff": {
+      "title": "This deployment does not charge credits",
+      "body": "Generating costs nothing and there is nothing to buy. What gets used is still recorded."
+    },
+    "total": "Account total",
+    "unassigned": "Unassigned",
+    "assigned": "Assigned",
+    "pricingHint": "1 credit = 1 US cent, and credits never expire.",
+    "unassignedHint": "Assign these to a Studio before they can be spent.",
+    "distributionTitle": "Which Studios hold it",
+    "overviewEmpty": {
+      "title": "Credits have to be assigned to a Studio before they can be spent",
+      "body": "Buy credits on the left, then use Assign to give each purchase to the Studio that will spend it."
+    },
+    "lotsEmpty": "No purchases yet.",
+    "lotsEmptyNotice": {
+      "title": "Every purchase will be listed here",
+      "body": "Each one shows what it bought, what is left of it, and which Studio it went to."
+    },
+    "assignedTo": "Assigned to {studio}",
+    "ofPurchased": "of {amount}",
+    "unassignedNotice": {
+      "title": "{count, plural, one {# purchase is unassigned and cannot be spent} other {# purchases are unassigned and cannot be spent}}",
+      "body": "Use Assign on the left to give them to the Studios that need them."
+    },
+    "allSpending": "All spending",
+    "allStudios": "All Studios",
+    "filterByStudio": "Filter by Studio",
+    "ledgerEmpty": "Nothing spent yet.",
+    "ledgerBillingOff": "This deployment does not charge credits. Below is what was used.",
+    "colDay": "Date",
+    "colWho": "Who",
+    "colStudio": "Studio",
+    "colProject": "Project",
+    "colModel": "Model",
+    "colAmount": "Credits",
+    "eventRepayment": "Assigned credits, paying off debt",
+    "eventUnbilled": "Not charged",
+    "studiosEmpty": "No Studio has spent this account's credits yet.",
+    "studiosNote": "Debt is shown beside what a Studio can spend, not taken off it. Deleted Studios stay listed, because the money really was spent there.",
+    "deletedStudio": "Deleted Studio",
+    "deletedBadge": "Deleted",
+    "deletedStudioHint": "This Studio is gone, so its credits cannot be spent",
+    "assignedLots": "{count, plural, one {# purchase assigned to it} other {# purchases assigned to it}}",
+    "noLotsHere": "Nothing assigned to it yet",
+    "debtAndSpent": "owes {debt} · spent {spent}",
+    "spentOnly": "spent {spent}",
+    "buySoon": {
+      "title": "Buying opens soon",
+      "body": "You will be able to buy here. Prices exclude tax; what you pay is the price plus the tax where you are. Credits bought have to be assigned to a Studio before they can be spent."
+    },
+    "assignEmpty": "Nothing to assign.",
+    "assignEmptyNotice": {
+      "title": "Give purchases to Studios here",
+      "body": "Each purchase goes to one Studio, and can be moved at any time."
+    },
+    "assignNote": "The list holds only Studios you administer. Moving a purchase takes it from the Studio that had it, immediately.",
+    "remaining": "{amount} credits left",
+    "designationFor": "Studio for the {amount} purchase",
+    "designateFailed": "That did not save. Try again.",
+    "refundsEmpty": "Nothing can be refunded.",
+    "refundable": "Refundable purchases",
+    "refundableHint": "{credits} credits left, worth {money}",
+    "askRefund": "Ask for a refund",
+    "refundNotOpen": "Refunds are not open yet",
+    "refundsAsked": "Requests made",
+    "refundRefused": "Refused",
+    "refundRefusedHint": "This purchase is spendable again, and will pay off any debt first",
+    "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
+    "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
+    "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
+    "refundsNote": "Only what is unspent is refunded, to the original payment method, after review."
   }
 }

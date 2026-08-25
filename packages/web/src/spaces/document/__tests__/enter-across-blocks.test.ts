@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * 跨块选区上按回车，不许抛异常（#111 时代的验收项 A10，无标题世界照钉）。

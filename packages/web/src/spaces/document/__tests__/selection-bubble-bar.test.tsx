@@ -1,20 +1,22 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * 选中浮出条（任务 #112，菜单体系第 4 步）。
  *
- * 这一步只建载体、零新命令，所以这里问的核心问题只有一个：**把现有六个命令
- * 搬进新载体之后，在那儿按下去，文档真的变了吗**。设计对抗（2026-08-19）
+ * 载体是 #112 建的，当时零新命令，核心问题只有一个：**把命令搬进新载体之后，
+ * 在那儿按下去，文档真的变了吗**。#902 给条加了下划线和行内代码，条上现在是
+ * 八个命令加两个还没开放的入口。设计对抗（2026-08-19）
  * 咬出初版验收清单十条里没有一条验证这件事——`canRun` 只决定按钮亮不亮，
  * `run` 是 `ToolDef` 上另一个字段，复用 `canRun` 一个字都没覆盖它；而且点击
  * 发生在编辑器 DOM 之外（浮出条走 `appendTo` 挂出滚动容器），要靠 bubble-menu
  * 自己的焦点豁免兜住，那恰恰是本次新引入的一层。
  *
- * 两个载体渲染同一批 `ToolDef`，所以 testid 必须带载体前缀，否则六个
- * `doc-tool-*` 各出现两份：既有的 `DocumentEditor.test.tsx` 用全文档
- * `querySelectorAll` 数按钮、用 `getByTestId` 取单个（多个匹配即抛错），
- * 会当场变红。
+ * testid 带载体前缀（`doc-bubble-tool-*`）：#112 那时横条和条同时渲染同一批
+ * `ToolDef`，不带前缀每个 id 会各出现两份，让 `DocumentEditor.test.tsx` 的
+ * `getByTestId`（多个匹配即抛错）当场变红。横条 2026-08-22 删了，前缀留着是
+ * 为 #113 的块手柄菜单，理由写在 `document-tool-button.tsx` 的模块注释里
+ * （前缀是在那儿拼出来的）。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -26,8 +28,13 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { MARK_TOOLS, BLOCK_TOOLS } from '@web/spaces/document/document-tools';
+import {
+  MARK_TOOLS,
+  BLOCK_TOOLS,
+  INLINE_TOOLS,
+} from '@web/spaces/document/document-tools';
 
 const editors: Editor[] = [];
 let doc: Y.Doc;
@@ -101,7 +108,13 @@ async function selectWithFocus(
  * @param readOnly - 是否只读。
  */
 function mount(editor: Editor, readOnly = false): void {
-  render(<DocumentEditor editor={editor} readOnly={readOnly} />);
+  // 包一层 provider 模拟 App：全站只有一个 `TooltipProvider`、挂在 `App.tsx`，
+  // 而条上那两个未开放的入口用 tooltip 说明自己为什么不能用。
+  render(
+    <TooltipProvider>
+      <DocumentEditor editor={editor} readOnly={readOnly} />
+    </TooltipProvider>,
+  );
 }
 
 /** 插件视图上我们真正配进去的那几样，取出来直接问。 */
@@ -190,7 +203,7 @@ function markupOf(): string {
 }
 
 describe('选中浮出条', () => {
-  it('选中文字时出现，装的正好是那六个命令', async () => {
+  it('选中文字时出现，装的正好是那八个命令', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -200,17 +213,200 @@ describe('选中浮出条', () => {
     ).map((el) => el.getAttribute('data-testid')?.replace('doc-bubble-tool-', ''));
 
     expect(ids.sort()).toEqual(
-      [...MARK_TOOLS, ...BLOCK_TOOLS].map((t) => t.id).sort(),
+      [...BLOCK_TOOLS, ...MARK_TOOLS, ...INLINE_TOOLS].map((t) => t.id).sort(),
     );
   });
 
-  // A11：这一步存在的唯一理由。六个逐一验，不抽验。
+  // A4: the order the demo draws, read straight off the DOM. Asserted as the
+  // whole sequence rather than a few neighbours — a control landing in the
+  // wrong group is exactly what this has to catch, and pairwise checks let it
+  // through.
+  it('lays the controls out in the order the demo draws', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
+    const rendered = Array.from(
+      bar.querySelectorAll('[data-testid^="doc-bubble-"]'),
+    ).map((el) => el.getAttribute('data-testid'));
+
+    expect(rendered).toEqual([
+      'doc-bubble-tool-bullet-list',
+      'doc-bubble-tool-ordered-list',
+      'doc-bubble-tool-quote',
+      'doc-bubble-sep-marks',
+      'doc-bubble-tool-bold',
+      'doc-bubble-tool-italic',
+      'doc-bubble-tool-strike',
+      'doc-bubble-tool-underline',
+      'doc-bubble-sep-inline',
+      'doc-bubble-tool-code',
+      'doc-bubble-coming-comment',
+      'doc-bubble-sep-ai',
+      'doc-bubble-coming-ai',
+    ]);
+  });
+
+  // A5 / A6: what jsdom can answer about the separators is that they are
+  // there, that they carry the semantics of one, and how many there are. The
+  // geometry the demo pins (1px by 16px, 3px either side) needs a browser and
+  // is measured in `selection-bubble-bar.spec.ts`.
+  it('separates the groups with a real separator element', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
+    const seps = bar.querySelectorAll('[role="separator"]');
+
+    expect(seps).toHaveLength(3);
+    for (const sep of seps) {
+      expect(sep.getAttribute('aria-orientation')).toBe('vertical');
+    }
+  });
+
+  // A9 / A10: the two entries whose commands are not open yet. They stand in
+  // the bar so the shape is whole, and say for themselves that they cannot be
+  // used — the same treatment the two snapshot commands got in the
+  // whole-document menu (task #129).
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('shows %s as an entry that is not open yet', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    expect(entry).toHaveAttribute('aria-disabled', 'true');
+    expect(entry.className).toContain('cursor-not-allowed');
+    expect(entry.className).toContain('opacity-50');
+  });
+
+  // A10: clicking one leaves the document exactly as it was.
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('does nothing when %s is clicked', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const before = markupOf();
+
+    act(() => {
+      screen.getByTestId(`doc-bubble-coming-${id}`).click();
+    });
+
+    expect(markupOf()).toBe(before);
+  });
+
+  // A11: the whole bar stays out of the tab order (ruling R4), so these two
+  // follow the command buttons beside them. What they do carry is
+  // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
+  // accessibility tree to be read, the second drops them out of it.
+  it.each([
+    ['comment'],
+    ['ai'],
+  ])('keeps %s out of the tab order, the way the bar does', async (id) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    expect(entry.getAttribute('tabindex')).toBe('-1');
+    expect(entry.hasAttribute('disabled')).toBe(false);
+  });
+
+  // A3: the buttons report what the document is, not what was last clicked.
+  // Driven through the editor's own command so the path under test is the one
+  // a keyboard shortcut takes — `Mod-u` and `Mod-e` reach exactly these.
+  it('lights underline when the mark is on, whoever turned it on', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const button = screen.getByTestId('doc-bubble-tool-underline');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    act(() => {
+      editor.commands.toggleUnderline();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
+
+    act(() => {
+      editor.commands.toggleUnderline();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  it('lights inline code when the mark is on, whoever turned it on', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+    const button = screen.getByTestId('doc-bubble-tool-code');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+
+    act(() => {
+      editor.commands.toggleCode();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
+
+    act(() => {
+      editor.commands.toggleCode();
+    });
+    await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  // A9：AI 那一个按 demo 是带文字和箭头的下拉样子，评论是图标按钮。没有这一条
+  // 时把 `drawsAsDropdown` 摘掉，两层测试都是绿的（第二轮对抗变异证过）。
+  it('draws the AI entry the way the demo draws a menu opener', async () => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const ai = screen.getByTestId('doc-bubble-coming-ai');
+    const comment = screen.getByTestId('doc-bubble-coming-comment');
+
+    expect(ai).toHaveTextContent('AI');
+    // 图标加箭头两个 svg；评论只有图标一个。
+    expect(ai.querySelectorAll('svg')).toHaveLength(2);
+    expect(comment.querySelectorAll('svg')).toHaveLength(1);
+    expect(comment.textContent).toBe('');
+
+    // demo 给评论画的是带文字线的那版气泡（`message-square-text`：气泡一条、
+    // 文字线三条）。数 path 分得出它和光气泡的 `message-square`——文案对抗
+    // 逮到实现取的是后者，而上面那些断言对两个都成立。
+    expect(comment.querySelectorAll('svg path')).toHaveLength(4);
+  });
+
+  // A8: an icon-only button with no visible text is a square without a name.
+  // Asserted as "not the key itself" rather than "not empty": `t()` hands back
+  // the key when it resolves nothing (`shared/src/i18n/index.ts:131`), so a
+  // label pointing at a key no catalog has would pass the weaker check.
+  it.each([
+    ['tool-underline', 'spaces.document.commands.underline'],
+    ['tool-code', 'spaces.document.commands.code'],
+    ['coming-comment', 'spaces.document.commands.comment'],
+    ['coming-ai', 'spaces.document.commands.ai'],
+  ])('gives %s a name that can be read out', async (id, key) => {
+    const editor = open('<p>hello world</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 6);
+
+    const label = screen.getByTestId(`doc-bubble-${id}`).getAttribute('aria-label');
+    expect(label).toBeTruthy();
+    expect(label).not.toContain(key);
+  });
+
+  // A11：这一步存在的唯一理由。八个逐一验，不抽验。
   // 标记是 Yjs 片段里的 schema 节点名，不是 HTML 标签名——`toString()` 打出来
   // 的是 `<bold>` / `<bulletlist>` 这一套。
   it.each([
     ['bold', '<bold>', '<p>hello world</p>', 1, 6],
     ['italic', '<italic>', '<p>hello world</p>', 1, 6],
     ['strike', '<strike>', '<p>hello world</p>', 1, 6],
+    ['underline', '<underline>', '<p>hello world</p>', 1, 6],
+    ['code', '<code>', '<p>hello world</p>', 1, 6],
     ['bullet-list', '<bulletlist>', '<p>hello world</p>', 1, 6],
     ['ordered-list', '<orderedlist', '<p>hello world</p>', 1, 6],
     ['quote', '<blockquote>', '<p>hello world</p>', 1, 6],
@@ -690,7 +886,7 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      // 六个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
+      // 八个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
       // viewer 不渲染整条的正是这个理由）。
       expect(shouldShowNow(editor)).toBe(false);
     });
@@ -1219,12 +1415,12 @@ describe('选中浮出条', () => {
     expect((shift as { boundary?: unknown }).boundary).toBe(viewport);
   });
 
-  // 没有选区时六个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
+  // 没有选区时八个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
   // 时它被 `element.remove()` 摘出文档（`dist/index.js:377-379`），从 document
   // 里查什么都查不到，那样的断言分辨不出「没建」和「建了但不在文档里」。
   //
   // 为什么要不建：每个按钮都在每一笔事务上跑一次自己命令的干跑（`canRun`），
-  // 而浮出条绝大多数时间是隐藏的——留着它们等于给每次击键多付六次干跑，换来
+  // 而浮出条绝大多数时间是隐藏的——留着它们等于给每次击键多付八次干跑，换来
   // 一个没人看得见的载体。
   it('没有选区时，浮出条里一个按钮都不建', async () => {
     const editor = open('<p>hello world</p>');
@@ -1233,7 +1429,7 @@ describe('选中浮出条', () => {
     const view = bubblePluginView(editor);
     expect(
       view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
-    ).toHaveLength(6);
+    ).toHaveLength(8);
 
     act(() => {
       editor.commands.setTextSelection(3);
@@ -1286,7 +1482,7 @@ describe('选中浮出条', () => {
   // A9：浮出条整条不进 tab 序（定稿 §5.2，user 2026-08-19 拍定）。
   //
   // 理由是层次：顶部横条跟正文并排、常驻，这一条浮在正文**上面**，而浮在上面
-  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。六个按钮是原生 `<button>`、天生
+  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。八个按钮是原生 `<button>`、天生
   // 可聚焦，所以每个都显式设成 -1。
   //
   // 容器那一半不在这里：插件默认给它 `tabIndex = 0`（`dist/index.js:178`），
@@ -1294,7 +1490,7 @@ describe('选中浮出条', () => {
   // 序，鼠标点得进去）。钉它的是上面「整条不可聚焦」那条的
   // `hasAttribute('tabindex')`。这里读 `bar.tabIndex` 读不出区别——没有属性的
   // div 本来就答 -1。
-  it('浮出条的六个按钮都不进 Tab 序', async () => {
+  it('浮出条的八个命令按钮都不进 Tab 序', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1303,7 +1499,7 @@ describe('选中浮出条', () => {
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    expect(buttons).toHaveLength(6);
+    expect(buttons).toHaveLength(8);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);
     }
@@ -1325,14 +1521,14 @@ describe('选中浮出条', () => {
     mount(editor);
     await selectWithFocus(editor, from, to);
 
-    // 先确认这个选区真的造出了要测的那种局面。少了这一句，将来某天六个按钮
-    // All lit or all dark would still "agree", and this would say nothing.
+    // 先确认这个选区真的造出了要测的那种局面：八个按钮全亮或全暗，下面那个
+    // 循环照样「一致」，而它什么都没说。
     const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
     ).filter((b) => b.disabled).length;
     expect(dark > 0).toBe(hasDark);
 
-    for (const tool of [...MARK_TOOLS, ...BLOCK_TOOLS]) {
+    for (const tool of [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS]) {
       const button = document.querySelector<HTMLButtonElement>(
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * y-tiptap 的补丁是**包级**的：画布的文本节点和生成面板的 prompt 编辑器

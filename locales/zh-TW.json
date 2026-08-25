@@ -313,6 +313,14 @@
       "focusExportFailed": "無法裁剪——請重試。",
       "focusUploadFailed": "聚焦圖上傳失敗——請重試。",
       "focusSourceChanged": "來源素材已變更——選區已清除。",
+      "focusSourceUnavailable": "素材目前無法使用。",
+      "focusSourceDeleted": "素材已被刪除。",
+      "focusSourceReplaced": "素材已更換。",
+      "focusSourceBusy": "素材正在處理。",
+      "focusSourceFailed": "素材處理失敗。",
+      "focusSourceDeletedByPeer": "協作者刪除了素材。",
+      "focusSourceReplacedByPeer": "協作者更換了素材。",
+      "focusSourceBusyByPeer": "協作者正在處理素材。",
       "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。",
       "duration": "生成時長",
       "durationSeconds": "{n} 秒",
@@ -704,7 +712,12 @@
         "bulletList": "無序列表",
         "orderedList": "有序列表",
         "quote": "引用",
-        "strike": "刪除線"
+        "strike": "刪除線",
+        "underline": "底線",
+        "code": "行內程式碼",
+        "comment": "評論",
+        "ai": "AI",
+        "comingLabel": "{name}（未開放）"
       },
       "schemaOutdated": {
         "headline": "文件編輯器已更新",
@@ -860,8 +873,7 @@
       "signOut": "登出",
       "credits": "點數",
       "membership": "會員",
-      "accountSettings": "帳號設定",
-      "notOpenYet": "未開放"
+      "accountSettings": "帳號設定"
     },
     "container": {
       "shell": {
@@ -1245,5 +1257,105 @@
     },
     "payNow": "去付款",
     "actionFailed": "沒有成功，請再試一次。"
+  },
+  "credits": {
+    "panelTitle": "點數",
+    "close": "關閉",
+    "indexLabel": "點數內容",
+    "unit": "點數",
+    "loadFailed": "無法載入，請關閉後重新開啟。",
+    "listEnd": "沒有更多了",
+    "listPageFailed": "這一頁未能載入，捲動重試。",
+    "group": {
+      "records": "基本紀錄",
+      "actions": "操作"
+    },
+    "section": {
+      "overview": "總覽",
+      "lots": "儲值紀錄",
+      "ledger": "消耗明細",
+      "studios": "各 Studio",
+      "buy": "購買點數",
+      "assign": "指定",
+      "refunds": "退款"
+    },
+    "lifecycle": {
+      "depleted": "已用完",
+      "refund_pending": "審核中",
+      "refunding": "退款中",
+      "refunded": "已退款"
+    },
+    "billingOff": {
+      "title": "這個部署不計點數",
+      "body": "生成不扣點數，也不需要儲值。用量仍會記錄下來。"
+    },
+    "total": "帳號總額",
+    "unassigned": "未指定",
+    "assigned": "已指定",
+    "pricingHint": "1 點數 = 1 美分，永不過期。",
+    "unassignedHint": "需要指定給某個 Studio 才能使用。",
+    "distributionTitle": "分給了哪些 Studio",
+    "overviewEmpty": {
+      "title": "買了點數之後，還要指定給某個 Studio 才能用",
+      "body": "左側「購買點數」可以儲值；儲值後在「指定」裡把每個點數包分給要用它的 Studio。"
+    },
+    "lotsEmpty": "還沒有儲值紀錄。",
+    "lotsEmptyNotice": {
+      "title": "儲值之後每個點數包都會出現在這裡",
+      "body": "每個點數包會顯示買了多少、還剩多少、指給了哪個 Studio。"
+    },
+    "assignedTo": "指定給 {studio}",
+    "ofPurchased": "共 {amount}",
+    "unassignedNotice": {
+      "title": "有 {count} 個點數包還沒指定，需要指定才能用",
+      "body": "到左側「指定」把它們分給要用的 Studio。"
+    },
+    "allSpending": "全部消耗",
+    "allStudios": "全部 Studio",
+    "filterByStudio": "依 Studio 篩選",
+    "ledgerEmpty": "還沒有消耗紀錄。",
+    "ledgerBillingOff": "這個部署不計點數，以下是用量紀錄。",
+    "colDay": "日期",
+    "colWho": "誰花的",
+    "colStudio": "Studio",
+    "colProject": "Project",
+    "colModel": "模型",
+    "colAmount": "點數",
+    "eventRepayment": "指定點數，抵扣欠帳",
+    "eventUnbilled": "未計費",
+    "studiosEmpty": "還沒有 Studio 用過這個帳號的點數。",
+    "studiosNote": "可用額不扣欠帳，兩個數分開顯示。已刪除的 Studio 留在這裡，因為那筆錢真的花過。",
+    "deletedStudio": "已刪除的 Studio",
+    "deletedBadge": "已刪除",
+    "deletedStudioHint": "這個 Studio 已經不在了，錢花不出去",
+    "assignedLots": "已指定 {count} 個點數包",
+    "noLotsHere": "還沒有指定給它的點數",
+    "debtAndSpent": "欠帳 {debt} · 已消耗 {spent}",
+    "spentOnly": "已消耗 {spent}",
+    "buySoon": {
+      "title": "儲值即將開放",
+      "body": "開放後可以在這裡直接購買，標價不含稅，實付金額是標價加上你所在地的稅額。買到的點數需要指定給某個 Studio 才能用。"
+    },
+    "assignEmpty": "沒有可以指定的點數。",
+    "assignEmptyNotice": {
+      "title": "買了點數之後在這裡分給 Studio",
+      "body": "每個點數包整個指定給一個 Studio，隨時可以改。"
+    },
+    "assignNote": "下拉裡只有你是 Admin 的 Studio。改了之後原本那個 Studio 立刻失去這個點數包。",
+    "remaining": "還剩 {amount} 點數",
+    "designationFor": "{amount} 這個點數包的指定去向",
+    "designateFailed": "指定沒能儲存，請重試。",
+    "refundsEmpty": "沒有可以退的點數。",
+    "refundable": "可以退的點數包",
+    "refundableHint": "還剩 {credits} 點數，可退 {money}",
+    "askRefund": "申請退款",
+    "refundNotOpen": "退款還沒開放",
+    "refundsAsked": "已送出的申請",
+    "refundRefused": "已駁回",
+    "refundRefusedHint": "這個點數包已回到可用狀態，重新指定時會先抵欠帳",
+    "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
+    "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
+    "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
+    "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。"
   }
 }

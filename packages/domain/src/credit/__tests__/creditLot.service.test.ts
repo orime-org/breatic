@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * 扣费开头解析 studio 失败时，两种错因的处置完全相反（任务 #11）。

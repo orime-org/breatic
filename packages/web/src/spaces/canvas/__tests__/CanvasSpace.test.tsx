@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -112,6 +112,7 @@ function mockSpace(
     redo: redoSpy,
     canUndo: false,
     canRedo: false,
+    lastWriteWasLocal: true,
     ...over,
   };
 }

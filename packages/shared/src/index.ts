@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 export {
   Environment,
@@ -168,6 +168,18 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+} from "@shared/types/index.js";
+
+export type {
+  CreditPage,
+  CreditLotView,
+  StudioLotView,
+  CreditLedgerKind,
+  CreditLedgerView,
+  StudioLedgerView,
+  StudioCreditsView,
+  StudioCreditSummary,
+  CreditOverview,
 } from "@shared/types/index.js";
 
 export type {

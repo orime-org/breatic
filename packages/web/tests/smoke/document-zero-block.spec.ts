@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * Document Space zero-block E2E — the browser-only half of the structure
@@ -19,6 +19,8 @@
  */
 import { test, expect } from 'playwright/test';
 
+import { createSpace, deleteSpace } from './helpers/space';
+
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
@@ -27,6 +29,14 @@ test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 // Desktop-web is the only supported platform, and below ~1280px the studio
 // sidebar collapses to icons whose buttons lose their accessible names.
 test.use({ viewport: { width: 1680, height: 950 } });
+
+const createdSpaceIds: string[] = [];
+
+test.afterEach(async ({ page }) => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+});
 
 test('a zero-block document takes typing, survives a confirmed clear, and takes typing again', async ({ page }) => {
   // Sign in.
@@ -48,10 +58,9 @@ test('a zero-block document takes typing, survives a confirmed clear, and takes 
   await page.waitForURL(/\/project\//, { timeout: 15_000 });
 
   // A fresh Document Space.
-  await page.getByTestId('new-space-button').click();
-  await page.getByTestId('new-space-type-document').click();
-  await page.getByTestId('new-space-name').fill(`zero-block-e2e-${Date.now()}`);
-  await page.getByTestId('new-space-submit').click();
+  createdSpaceIds.push(
+    await createSpace(page, 'document', `zero-block-e2e-${Date.now()}`),
+  );
 
   const editor = page.locator('[data-testid="document-space"] .ProseMirror');
   await expect(editor).toBeVisible({ timeout: 15_000 });

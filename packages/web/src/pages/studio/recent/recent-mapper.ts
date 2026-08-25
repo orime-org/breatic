@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { RecentFeedItem } from '@web/data/api/studios';
 import type { RecentItem } from '@web/pages/studio/recent/recent-types';

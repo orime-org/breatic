@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
  * The formatting commands, and nothing about where they are shown.
@@ -25,11 +25,20 @@
  * 3. Their labels go through i18n, where they were hard-coded English.
  */
 
-import { Bold, Italic, List, ListOrdered, Quote, Strikethrough } from 'lucide-react';
+import {
+  Bold,
+  Code,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Strikethrough,
+  Underline,
+} from 'lucide-react';
 
 import type { ToolDef } from '@web/spaces/document/document-tool-button';
 
-/** The three marks. */
+/** The four marks the demo groups together as `B I S U`. */
 export const MARK_TOOLS: ToolDef[] = [
   {
     id: 'bold',
@@ -54,6 +63,34 @@ export const MARK_TOOLS: ToolDef[] = [
     isActive: (e) => e.isActive('strike'),
     canRun: (e) => e.can().chain().toggleStrike().run(),
     run: (e) => e.chain().focus().toggleStrike().run(),
+  },
+  {
+    id: 'underline',
+    labelKey: 'spaces.document.commands.underline',
+    Icon: Underline,
+    isActive: (e) => e.isActive('underline'),
+    canRun: (e) => e.can().chain().toggleUnderline().run(),
+    run: (e) => e.chain().focus().toggleUnderline().run(),
+  },
+];
+
+/**
+ * The group the demo draws between `B I S U` and the AI entry.
+ *
+ * Inline code sits here rather than beside the other marks because that is
+ * where the demo puts it (`§3.3` reads `B I S U │ link code A∨ comment`).
+ * Neither the demo nor the design says why, so this comment does not invent a
+ * reason: the grouping is the decision, and the slices that follow fill the
+ * group out with the link control and the colour picker.
+ */
+export const INLINE_TOOLS: ToolDef[] = [
+  {
+    id: 'code',
+    labelKey: 'spaces.document.commands.code',
+    Icon: Code,
+    isActive: (e) => e.isActive('code'),
+    canRun: (e) => e.can().chain().toggleCode().run(),
+    run: (e) => e.chain().focus().toggleCode().run(),
   },
 ];
 

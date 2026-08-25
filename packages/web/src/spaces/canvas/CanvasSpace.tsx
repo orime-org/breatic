@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BOSL-1.0
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
   Background,
@@ -129,7 +129,10 @@ import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
-import type { Modality } from '@web/spaces/canvas/types/node-view';
+import type {
+  DisplayStatus,
+  Modality,
+} from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
@@ -222,6 +225,89 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
+
+/**
+ * Render-layer z for the node a focus crop is open on (#2000), set instead of
+ * touching `selected` — that field is the selection set six commands read to
+ * pick their range, and this is a purely visual need.
+ *
+ * The ceiling it has to clear is a group member whose group is selected:
+ * xyflow adds SELECTED_NODE_Z (1000) to the group, and `calculateChildXYZ`
+ * gives the member `parentZ + 1`. That makes 1001 the highest a node
+ * reaches, and 1002 clears it — on two conditions.
+ *
+ * Groups stay one level deep, which four separate places enforce:
+ * `group-toolbar.ts`'s `allLoose` (a group cannot be put inside a new
+ * group), `group-drag.ts`'s `draggedMembers` filter (a group dragged over
+ * another never reparents), the loose-node filter inside
+ * `commitGroupResize` below (a grown group swallows loose nodes only), and
+ * `node-clipboard.ts`'s group branch, which drops the parentId it just
+ * resolved (a pasted group is always a root — and that payload is parsed
+ * out of the clipboard, so it is the one path an outside shape can enter).
+ * Nesting two levels would put a member at 1002 and three at 1003.
+ *
+ * And `zIndexMode` stays `'basic'`, its default, which we never override.
+ * Under `'auto'` xyflow adds `rootParentIndex * 10` to a root that has
+ * children, counting from 1, on top of whatever `calculateZ` already gave
+ * it — so the FIRST selected group with children lands on 1010 and its
+ * member on 1011.
+ *
+ * It does not clear the generate panel, and cannot: NodeToolbar portals into
+ * `.react-flow__renderer`, landing as a sibling of the pane that holds every
+ * node, and the viewport inside that pane is its own stacking context.
+ */
+const FOCUS_TARGET_Z = 1002;
+
+/** What became of the node a focus crop is open on (#2000). */
+type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy' | 'failed';
+
+/**
+ * Which verdict a node that stopped being croppable lands on.
+ *
+ * Stated as a total map over the non-idle statuses so that a new member of
+ * `DisplayStatus` fails typecheck here instead of falling into whichever
+ * branch happened to be last (#2000, second adversarial round).
+ */
+const STATUS_VERDICT: Record<
+  Exclude<DisplayStatus, 'idle'>,
+  Extract<FocusTargetVerdict, 'busy' | 'failed'>
+> = { handling: 'busy', error: 'failed' };
+
+/**
+ * The toast each ending verdict shows, by who made the write.
+ *
+ * Separate from the confirm-time `focusSourceChanged`, which says the crop
+ * did not happen and leaves the user inside the crop — these say the crop is
+ * over. The two columns exist because a user told "a collaborator deleted
+ * it" learns something the local column cannot claim: this side only knows
+ * the write came from this client, never which gesture produced it — an
+ * undo, a redo and a plain delete all land here — so it states what happened
+ * and stops (user 2026-08-23).
+ *
+ * `busy` / `failed` say "processing" rather than "generating": `handling` is
+ * also what an upload sets (`canvas-upload.ts` calls `setHandling` before it
+ * starts), so naming the cause would be wrong half the time.
+ *
+ * A failure has no author to name — the upload or the generation failed on
+ * its own — so both columns share one line for it.
+ */
+const FOCUS_EXIT_TOAST_KEY: Record<
+  'local' | 'peer',
+  Record<Exclude<FocusTargetVerdict, 'ok'>, string>
+> = {
+  local: {
+    gone: 'canvas.generatePanel.focusSourceDeleted',
+    replaced: 'canvas.generatePanel.focusSourceReplaced',
+    busy: 'canvas.generatePanel.focusSourceBusy',
+    failed: 'canvas.generatePanel.focusSourceFailed',
+  },
+  peer: {
+    gone: 'canvas.generatePanel.focusSourceDeletedByPeer',
+    replaced: 'canvas.generatePanel.focusSourceReplacedByPeer',
+    busy: 'canvas.generatePanel.focusSourceBusyByPeer',
+    failed: 'canvas.generatePanel.focusSourceFailed',
+  },
+};
 
 /**
  * Whether a node can be picked as a focus crop source.
@@ -522,10 +608,11 @@ function CanvasSpaceInner({
   readOnly = false,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
-  const { nodes, edges, undo, redo, canUndo, canRedo } = useCanvasSpace(
-    projectId,
-    spaceId,
-  );
+  const { nodes, edges, undo, redo, canUndo, canRedo, lastWriteWasLocal } =
+    useCanvasSpace(
+      projectId,
+      spaceId,
+    );
   // The ReactFlow render buffer lives in a dedicated plain zustand store
   // (#1647 step 4), not local state, so discrete consumers can subscribe to
   // just their slice instead of the whole component re-running on every change.
@@ -612,48 +699,75 @@ function CanvasSpaceInner({
    * bare Esc land here; a further Esc then exits via the pick Esc handler.
    */
   const onFocusBackToPick = React.useCallback((): void => {
-    setFocusCropTargetId(null);
+    setFocusTarget(null);
   }, []);
   // The image or video node a focus crop marquee is open on (#1782, video
-  // #1987), or null. Local
-  // React state — it only exists while THIS user's focus pick runs; the
-  // effect clears it whenever the session ends or changes purpose (Exit,
-  // zombie guards, a style/reference pick replacing it).
-  const [focusCropTargetId, setFocusCropTargetId] = React.useState<
-    string | null
-  >(null);
+  // #1987), or null, together with the content it carried when the crop
+  // opened. Local React state — it only exists while THIS user's focus pick
+  // runs; the effect clears it whenever the session ends or changes purpose
+  // (Exit, zombie guards, a style/reference pick replacing it).
+  //
+  // The id and the snapshot live in ONE object so they cannot describe
+  // different nodes: the verdict below compares the snapshot against the
+  // node the id names, and a split pair would let a switch of target leave
+  // the previous node's content behind.
+  const [focusTarget, setFocusTarget] = React.useState<{
+    id: string;
+    content: string;
+  } | null>(null);
+  const focusCropTargetId = focusTarget?.id ?? null;
   React.useEffect(() => {
-    if (pickSession?.purpose !== 'focus') setFocusCropTargetId(null);
+    if (pickSession?.purpose !== 'focus') setFocusTarget(null);
   }, [pickSession]);
-  // A DELETED crop target unmounts the overlay (all its state dies with
-  // it); mere viewport CULLING (onlyRenderVisibleElements unmounts the
-  // node's DOM but the node still exists) keeps it mounted so the marquee
-  // survives a pan-away-and-back (adversarial round-8 — the img-absent
-  // discard was eating careful selections on every pan). Existence is
-  // judged on the graph mirror, which culling never removes from.
-  const focusTargetExists = useCanvasGraphStore(
-    (st) =>
-      focusCropTargetId === null ||
-      st.flowNodes.some((n) => n.id === focusCropTargetId),
-  );
-  React.useEffect(() => {
-    if (!focusTargetExists) {
-      // Third overlay-unmount path (adversarial round-2): a collaborator
-      // deleting the crop source mid-crop must not orphan keyboard focus to
-      // <body>. Unlike Esc stage-two (a deliberate keypress), this rescue
-      // only fires when focus actually sits INSIDE the dying overlay — a
-      // remote deletion must never grab focus from elsewhere. The effect
-      // runs while the overlay DOM is still mounted (unmount lands next
-      // render), so the containment check still sees it.
-      const overlay = document.querySelector(
-        '[data-testid="focus-crop-overlay"]',
-      );
-      if (overlay?.contains(document.activeElement)) {
-        handOffFocusToPickBanner(overlay);
-      }
-      setFocusCropTargetId(null);
+  // What became of the crop target (#2000). Four things end a crop: the node
+  // is gone, its content was swapped, it entered handling, or it failed. Any
+  // of them can come from this client or from a peer — this selector reads
+  // the node and nothing else, and the effect below picks the wording from
+  // who wrote it. `ok` also covers "no crop open".
+  //
+  // Existence is judged on the graph mirror, which viewport CULLING never
+  // removes from (onlyRenderVisibleElements unmounts the node's DOM but the
+  // node still exists) — that keeps a marquee alive across a pan-away-and-
+  // back (adversarial round-8 of #1782, where an img-absent discard was
+  // eating careful selections on every pan).
+  const focusTargetVerdict = useCanvasGraphStore((st): FocusTargetVerdict => {
+    if (focusTarget === null) return 'ok';
+    const node = st.flowNodes.find((n) => n.id === focusTarget.id);
+    if (!node) return 'gone';
+    if ((node.data as { content?: unknown }).content !== focusTarget.content) {
+      return 'replaced';
     }
-  }, [focusTargetExists]);
+    // The pick's own admission test, reapplied: it already states every
+    // condition a croppable source must hold (type, non-empty content, idle),
+    // so a target that stops satisfying it has stopped being croppable. The
+    // host id it wants can be anything but this node's own id.
+    if (isFocusCandidate(node, '')) return 'ok';
+    // Reaching here means `status` left 'idle' — the predicate's other three
+    // conditions cannot fail at this point. The host check gets '' (always
+    // true), a node's type never changes, and an emptied `content` is caught
+    // by `replaced` above (the snapshot is non-empty).
+    const status = (node.data as { status?: DisplayStatus }).status;
+    if (status === undefined || status === 'idle') return 'ok';
+    return STATUS_VERDICT[status];
+  });
+  React.useEffect(() => {
+    if (focusTargetVerdict === 'ok') return;
+    // Keyboard-focus rescue (adversarial round-2 of #1782): a collaborator
+    // ending the crop must not orphan focus to <body>. It only fires when
+    // focus actually sits INSIDE the dying overlay — a remote write must
+    // never grab focus from elsewhere. The effect runs while the overlay DOM
+    // is still mounted (unmount lands next render), so the containment check
+    // still sees it.
+    const overlay = document.querySelector('[data-testid="focus-crop-overlay"]');
+    if (overlay?.contains(document.activeElement)) {
+      handOffFocusToPickBanner(overlay);
+    }
+    // Who wrote it decides which column speaks: a peer's delete is news, a
+    // local undo is the user's own keystroke coming back to him.
+    const author = lastWriteWasLocal ? 'local' : 'peer';
+    toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
+    setFocusTarget(null);
+  }, [focusTargetVerdict, lastWriteWasLocal, t]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -1714,7 +1828,32 @@ function CanvasSpaceInner({
         // session runs until Exit. Same predicate the dimming uses, so the two
         // cannot say different things.
         if (!isFocusCandidate(node, target)) return;
-        setFocusCropTargetId(node.id);
+        // Re-judge the node the VERDICT will read, with the SAME predicate.
+        // The `node` this handler receives comes from ReactFlow's render
+        // array, and the graph store can lead the DOM by a commit (see the
+        // note on onFocusCropConfirm), so a target admitted on the render
+        // copy alone could open a crop the verdict ends on its first pass —
+        // and the snapshot taken off the render copy would be compared
+        // against fresher content, ejecting the user the instant they click.
+        const fresh = useCanvasGraphStore
+          .getState()
+          .flowNodes.find((n) => n.id === node.id);
+        if (!fresh || !isFocusCandidate(fresh, target)) {
+          // The node looked pickable — the dimming reads the render copy, and
+          // the store can lead it by a commit — so a bare return would be the
+          // "looks selectable, click does nothing" shape the pick predicate's
+          // own docstring says round-4 already fixed once. Before this
+          // re-judgement existed the crop opened for a frame and the verdict
+          // ejected the user with the reason. This says the crop cannot start
+          // rather than why: the reasons the verdict tells apart need a
+          // snapshot to compare against, and none exists until a target is
+          // set.
+          toast.warning(t('canvas.generatePanel.focusSourceUnavailable'));
+          return;
+        }
+        // The predicate already established this is a non-empty string.
+        const { content } = fresh.data as { content: string };
+        setFocusTarget({ id: node.id, content });
         return;
       }
 
@@ -3264,11 +3403,23 @@ function CanvasSpaceInner({
     prevGroupsRef.current = reconciledGroups;
     return [
       ...reconciledGroups,
-      ...rest.map((node) =>
-        frozen.has(node.id) ? { ...node, draggable: false } : node,
-      ),
+      ...rest.map((node) => {
+        // The two flags are independent: a locked node can be the focus
+        // target (isFocusCandidate never reads data.locked), and it must come
+        // out lifted AND undraggable. A non-group node's `draggable` is
+        // derived here and nowhere else (groups get theirs in the branch
+        // above), so an either/or branch would drop the lock for that node.
+        const lifted = node.id === focusCropTargetId;
+        const locked = frozen.has(node.id);
+        if (!lifted && !locked) return node;
+        return {
+          ...node,
+          ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
+          ...(locked ? { draggable: false } : {}),
+        };
+      }),
     ];
-  }, [flowNodes, readOnly]);
+  }, [flowNodes, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
   // + any node ineligible for the active purpose are dimmed + non-pickable;
