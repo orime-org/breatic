@@ -56,7 +56,7 @@ function Cursor({ name, color }: { name: string; color: string }): React.JSX.Ele
         <path d='M0.5 0.5 L15 14 Q10 13.2 8.1 14.6 Q5.9 16.2 4.1 20 Q1.9 10 0.5 0.5 Z' />
       </svg>
       <span
-        className='absolute top-6 left-[15px] max-w-[8rem] overflow-hidden rounded-chrome px-2 py-[3px] text-xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]'
+        className='absolute top-6 left-[15px] max-w-[132px] overflow-hidden rounded-chrome px-2 py-[3px] text-xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]'
         style={{ backgroundColor: color }}
       >
         {name}
@@ -147,9 +147,6 @@ export function CanvasCursorLayer({
       setPointers([]);
       return undefined;
     }
-    /**
-     *
-     */
     /** Re-read every peer's pointer out of awareness. */
     const read = (): void => {
       setPointers(collectPointers(awareness.getStates(), awareness.clientID));

@@ -101,13 +101,13 @@ export function NodeOccupantTags({
     <div
       ref={rowRef}
       data-testid='node-occupant-tags'
-      className='pointer-events-none flex max-w-[16rem] items-center gap-1 pb-0.5 select-none'
+      className='pointer-events-none flex max-w-[16rem] items-center gap-1 pb-1 select-none'
       style={{ paddingLeft: `${indentPx}px` }}
     >
       {shown.map((person) => (
         <span
           key={person.userId}
-          className='overflow-hidden rounded-content-xs px-[0.3rem] py-[0.1rem] text-2xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]'
+          className='max-w-[112px] overflow-hidden rounded-content-xs px-[0.3rem] py-[0.1rem] text-2xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]'
           style={{ backgroundColor: userPaletteColor(person.userId) }}
         >
           {person.name}
