@@ -205,6 +205,15 @@ export async function upsertMember(
  * Leaving locks membership first and then writes project rows; designating
  * takes this row, then the studio's debt, then the lot; a caller that took any
  * of those first would deadlock against them.
+ *
+ * **One edge runs the other way**: writing a non-null designation makes the
+ * database confirm the parent studio exists, which locks that `studios` row
+ * after this one has already been taken. Nothing reaches it today — the only
+ * path holding a `studios` row before a membership row is accepting an invite,
+ * and the membership row it then writes belongs to the invitee while this one
+ * belongs to whoever is designating. Building studio deletion (#26) puts a
+ * `studios` → `credit_lots` writer in the same picture and has to weigh that
+ * edge again.
  * @param studioId - Studio UUID
  * @param userId - User UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one

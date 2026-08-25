@@ -43,11 +43,17 @@ import * as studioTransferService from "@server/modules/studio/studioTransfer.se
 
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
-try {
-  initCore(process.env);
-} catch {
-  // already initialised by a sibling suite in this worker — fine.
-}
+// Payments on, because charging is one of the writers these tests make queue
+// against the release. With them off, `chargeForGeneration` records the usage
+// without a transaction and takes no lock at all, so the ordering pinned here
+// never happens. The two placeholder keys only get past the startup check that
+// payments imply keys; no Stripe call is made.
+initCore({
+  ...process.env,
+  PAYMENT_ENABLED: "true",
+  STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+  STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+});
 
 let sql: ReturnType<typeof postgres>;
 /** A second pool, so a test can hold a lock while the code under test runs. */
@@ -120,17 +126,42 @@ async function insertMemberRaw(
   `;
 }
 
+/** A project in this studio; a charge needs one to know who pays. */
+async function insertProject(
+  studioId: string,
+  userId: string,
+): Promise<string> {
+  const [project] = await sql<{ id: string }[]>`
+    INSERT INTO projects (studio_id, created_by_user_id, slug, name)
+    VALUES (${studioId}, ${userId}, ${`rd-project-${seq++}`}, 'Release Project')
+    RETURNING id
+  `;
+  return project!.id;
+}
+
 /**
  * Open a lot through the real grant path, then point it somewhere.
  *
  * The designation is set with raw SQL rather than through `designateLot`,
  * because that call would repay any debt the studio carries — which is exactly
  * what the two-books test needs to stay out of its setup.
+ *
+ * `ageMinutes` backdates the row. Every reader of these lots orders by
+ * `created_at` and settles ties on the id, and two grants made microseconds
+ * apart can share a timestamp — leaving a random uuid to decide which one a
+ * test believes is first. Any test whose setup depends on that order says how
+ * far apart it wants them.
+ * @param userId - Who bought it.
+ * @param studioId - Where to point it, or null to leave it unassigned.
+ * @param credits - How many credits the purchase opened with.
+ * @param ageMinutes - How far into the past to date it.
+ * @returns The lot's id.
  */
 async function insertLot(
   userId: string,
   studioId: string | null,
   credits = 500,
+  ageMinutes = 0,
 ): Promise<string> {
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (user_id, amount_cents, status, credits_granted)
@@ -144,6 +175,13 @@ async function insertLot(
   if (studioId !== null) {
     await sql`
       UPDATE credit_lots SET designated_studio_id = ${studioId} WHERE id = ${lot.id}
+    `;
+  }
+  if (ageMinutes !== 0) {
+    await sql`
+      UPDATE credit_lots
+      SET created_at = now() - make_interval(mins => ${ageMinutes})
+      WHERE id = ${lot.id}
     `;
   }
   return lot.id;
@@ -165,10 +203,21 @@ async function remainingOf(lotId: string): Promise<string> {
   return row!.remaining_credits;
 }
 
-/** How many ledger rows exist for one account. */
-async function ledgerCount(userId: string): Promise<number> {
+/**
+ * Ledger rows this transfer could possibly add, whoever they name.
+ *
+ * Both columns are asked for because one of the ledger's own kinds carries no
+ * payer at all — `debt_incurred` writes `payer_user_id: null` with the studio
+ * on it — and a count filtered on the payer alone would not see a row of that
+ * shape appear.
+ * @param userId - The account whose purchases are in play.
+ * @param studioId - The studio the transfer is moving.
+ * @returns How many rows name either of them.
+ */
+async function ledgerCount(userId: string, studioId: string): Promise<number> {
   const [row] = await sql<{ c: number }[]>`
-    SELECT count(*)::int AS c FROM credit_ledger WHERE payer_user_id = ${userId}
+    SELECT count(*)::int AS c FROM credit_ledger
+    WHERE payer_user_id = ${userId} OR studio_id = ${studioId}
   `;
   return row!.c;
 }
@@ -228,21 +277,34 @@ async function seedStudio(): Promise<Seeded> {
   return { studioId: studio.id, slug: studio.slug, adminId, memberId };
 }
 
-/** Seed a studio and put a transfer offer on the table; returns its id too. */
-async function seedPendingTransfer(): Promise<Seeded & { transferId: string }> {
+/**
+ * Seed a studio and put a transfer offer on the table.
+ *
+ * The bell entry's own id comes back too: settling the offer retires it, which
+ * is the last write the confirm makes and therefore the one place a test can
+ * park the transaction after the release has already run.
+ * @returns The seeded studio plus the offer's id and its bell entry's id.
+ */
+async function seedPendingTransfer(): Promise<
+  Seeded & { transferId: string; notificationId: string }
+> {
   const seeded = await seedStudio();
   await studioTransferService.requestTransfer(
     seeded.slug,
     seeded.adminId,
     seeded.memberId,
   );
-  const [req] = await sql<{ transfer_id: string }[]>`
-    SELECT payload->>'transferId' AS transfer_id FROM notifications
+  const [req] = await sql<{ id: string; transfer_id: string }[]>`
+    SELECT id, payload->>'transferId' AS transfer_id FROM notifications
     WHERE user_id = ${seeded.memberId} AND type = 'studio.transfer_request'
       AND deleted_at IS NULL
     ORDER BY created_at DESC
   `;
-  return { ...seeded, transferId: req!.transfer_id };
+  return {
+    ...seeded,
+    transferId: req!.transfer_id,
+    notificationId: req!.id,
+  };
 }
 
 describe("a transfer takes the admin away and the designations go with it", () => {
@@ -306,12 +368,12 @@ describe("a transfer takes the admin away and the designations go with it", () =
       INSERT INTO studio_credit_debts (studio_id, amount) VALUES (${s.studioId}, 120)
     `;
     const remainingBefore = await remainingOf(lot);
-    const ledgerBefore = await ledgerCount(s.adminId);
+    const ledgerBefore = await ledgerCount(s.adminId, s.studioId);
 
     await studioTransferService.confirmTransfer(s.transferId, s.memberId);
 
     expect(await remainingOf(lot)).toBe(remainingBefore);
-    expect(await ledgerCount(s.adminId)).toBe(ledgerBefore);
+    expect(await ledgerCount(s.adminId, s.studioId)).toBe(ledgerBefore);
     expect(await debtOf(s.studioId)).toBe("120.000000");
   });
 
@@ -342,7 +404,10 @@ describe("a transfer takes the admin away and the designations go with it", () =
     // what decides, so the moved one must survive.
     const s = await seedPendingTransfer();
     const elsewhere = await insertStudioWithAdmin(s.adminId);
-    const first = await insertLot(s.adminId, s.studioId);
+    // Dated an hour apart, because which one the release reaches first is the
+    // whole setup here and two lots opened in the same microsecond would let a
+    // random uuid decide it.
+    const first = await insertLot(s.adminId, s.studioId, 500, 60);
     const second = await insertLot(s.adminId, s.studioId);
 
     let transfer: Promise<void>;
@@ -357,6 +422,8 @@ describe("a transfer takes the admin away and the designations go with it", () =
       );
       await waitUntilBlockedOn(sql, ["credit_lots", "for update"]);
 
+      // On its own connection: the probe above polls through `sql`, and this
+      // write must not queue behind a pool that is busy watching.
       await sql`
         UPDATE credit_lots SET designated_studio_id = ${elsewhere.id}
         WHERE id = ${second}
@@ -411,16 +478,66 @@ describe("a transfer takes the admin away and the designations go with it", () =
     expect(await designationOf(lot)).toBe(s.studioId);
   });
 
-  it("takes its locks in the order a charge takes them", async () => {
-    // The release runs inside the transfer, which already holds every
-    // membership row; a designation on the same studio wants that row too and
-    // queues behind it. Neither side ever holds one of the two and waits on
-    // the other, so nothing here can deadlock.
+  it("takes the lots in the order a charge takes them", async () => {
+    // A charge walks a studio's lots oldest first. This drives that cycle
+    // deliberately rather than hoping for it: one connection plays the
+    // charge's two steps by hand, taking the oldest lot and then a younger
+    // one, with the release running between them. Sharing the charge's order,
+    // the release is still waiting on the oldest when the second step comes,
+    // so that step goes through. Reverse the release's order and it is
+    // already holding the younger lot by then, which closes the loop.
     const s = await seedPendingTransfer();
-    const held = await insertLot(s.adminId, s.studioId);
+    const oldest = await insertLot(s.adminId, s.studioId, 500, 60);
+    await insertLot(s.adminId, s.studioId, 500, 30);
+    const youngest = await insertLot(s.adminId, s.studioId);
+
+    const charge = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+    let secondStepError: unknown = null;
+    let transfer: Promise<void>;
+    try {
+      await charge.begin(async (c) => {
+        await c`SELECT id FROM credit_lots WHERE id = ${oldest} FOR UPDATE`;
+
+        transfer = studioTransferService.confirmTransfer(
+          s.transferId,
+          s.memberId,
+        );
+        await waitUntilBlockedOn(sql, ["credit_lots", "for update"]);
+
+        try {
+          await c`SELECT id FROM credit_lots WHERE id = ${youngest} FOR UPDATE`;
+        } catch (err) {
+          secondStepError = err;
+        }
+      });
+    } finally {
+      await charge.end({ timeout: 5 });
+    }
+    const transferError = await transfer!.then(
+      () => null,
+      (err: unknown) => err,
+    );
+
+    expect(sqlStateOf(secondStepError)).not.toBe(DEADLOCK);
+    expect(sqlStateOf(transferError)).not.toBe(DEADLOCK);
+    // Neither side merely survived: both ran to completion.
+    expect(secondStepError).toBeNull();
+    expect(transferError).toBeNull();
+    expect(await designationOf(oldest)).toBeNull();
+    expect(await designationOf(youngest)).toBeNull();
+  });
+
+  it("queues with a charge and a designation without deadlocking", async () => {
+    // All three writers on this studio at once, each entering the order at a
+    // different table: the transfer at the membership, the designation one
+    // table later at the debt, the charge later still.
+    const s = await seedPendingTransfer();
+    const projectId = await insertProject(s.studioId, s.adminId);
+    const held = await insertLot(s.adminId, s.studioId, 500, 60);
     const loose = await insertLot(s.adminId, null);
 
     let transfer: Promise<void>;
+    let charging: Promise<unknown>;
     let designating: Promise<unknown>;
     await holder.begin(async (tx) => {
       await tx`SELECT id FROM credit_lots WHERE id = ${held} FOR UPDATE`;
@@ -431,6 +548,17 @@ describe("a transfer takes the admin away and the designations go with it", () =
       );
       await waitUntilBlockedOn(sql, ["credit_lots", "for update"]);
 
+      charging = creditLotService
+        .chargeForGeneration({
+          projectId,
+          actorUserId: s.adminId,
+          amount: 10,
+          model: "smoke",
+        })
+        .then(
+          (out) => out,
+          (err: unknown) => err,
+        );
       designating = creditLotService
         .designateLot({
           lotId: loose,
@@ -441,45 +569,56 @@ describe("a transfer takes the admin away and the designations go with it", () =
           () => "designated" as const,
           (err: unknown) => err,
         );
-      await waitUntilBlockedOn(sql, ["studio_members", "for update"]);
+      // Both newcomers must be parked before the holder lets go, or they
+      // would simply run one after another and prove nothing. The charge
+      // takes the debt nobody holds and joins the transfer on the held lot;
+      // the designation stops at the membership the transfer is holding.
+      await waitUntilBlockedOn(sql, ["credit_lots", "for update"], 2);
+      await waitUntilBlockedOn(sql, ["studio_members", "for update"], 1);
     });
 
     const transferError = await transfer!.then(
       () => null,
       (err: unknown) => err,
     );
-    const outcome = await designating!;
+    const charged = await charging!;
+    const designated = await designating!;
 
-    // Neither side may have been aborted by the deadlock detector.
+    // Whatever order they settled in, none may have been aborted to break a
+    // cycle.
     expect(sqlStateOf(transferError)).not.toBe(DEADLOCK);
-    expect(sqlStateOf(outcome)).not.toBe(DEADLOCK);
+    expect(sqlStateOf(charged)).not.toBe(DEADLOCK);
+    expect(sqlStateOf(designated)).not.toBe(DEADLOCK);
     expect(transferError).toBeNull();
     // The designation queued behind the transfer, so by the time it read the
     // role it was no longer the admin's to give.
-    expect(outcome).toMatchObject({ statusCode: 403 });
+    expect(designated).toMatchObject({ statusCode: 403 });
     expect(await designationOf(held)).toBeNull();
     expect(await designationOf(loose)).toBeNull();
   });
 
   it("keeps the clearing and the demote in one transaction", async () => {
-    // Parked on the settle write, the transfer has already demoted and
-    // cleared but committed nothing. A reader on another connection must
-    // still see both old values; seeing a cleared lot next to an unchanged
-    // role would mean the clearing had committed on its own.
+    // The parking point has to sit AFTER the release, or the assertions below
+    // read a transaction that has not reached it yet and hold whatever it
+    // goes on to do. Retiring the bell entry is the confirm's last write, so
+    // a held lock on that row stops it with the demote and the clearing both
+    // done and nothing committed. A reader on another connection must still
+    // see the old values; had the clearing committed on its own, the lot
+    // would already read as null here.
     const s = await seedPendingTransfer();
     const lot = await insertLot(s.adminId, s.studioId);
 
     let transfer: Promise<void>;
     await holder.begin(async (tx) => {
       await tx`
-        SELECT id FROM studio_transfers WHERE id = ${s.transferId} FOR UPDATE
+        SELECT id FROM notifications WHERE id = ${s.notificationId} FOR UPDATE
       `;
 
       transfer = studioTransferService.confirmTransfer(
         s.transferId,
         s.memberId,
       );
-      await waitUntilBlockedOn(sql, ["studio_transfers", "for update"]);
+      await waitUntilBlockedOn(sql, ["notifications", "read_at"]);
 
       expect(await designationOf(lot)).toBe(s.studioId);
       expect(await studioMembersRepo.getRole(s.studioId, s.adminId)).toBe(

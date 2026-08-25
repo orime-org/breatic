@@ -179,6 +179,11 @@ export async function requestTransfer(
  * Demote the old admin FIRST, promote the recipient SECOND: the reverse order
  * collides with `studio_members_one_admin_per_studio` mid-transaction. The old
  * admin drops ONE rank to maintainer (#1612 / D1), not all the way to guest.
+ *
+ * Between those two, every credit lot of the outgoing admin's that pointed at
+ * this studio stops pointing (#15). A studio spends what its admin designated
+ * to it, so the designation cannot outlive the role — and it happens in this
+ * transaction because the rule is about the same instant.
  * @param transferId - The `studio_transfers` row id
  * @param receiverUserId - The recipient confirming
  * @throws {NotFoundError} there is no such offer, or a role swap finds no row
