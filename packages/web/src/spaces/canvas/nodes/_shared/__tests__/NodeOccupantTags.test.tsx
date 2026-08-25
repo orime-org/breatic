@@ -70,7 +70,7 @@ describe('NodeOccupantTags', () => {
   it('counts only the people it left out', () => {
     renderTags(['u1', 'u2', 'u3'], { u1: 'Alice', u2: 'Bob', u3: 'Carol' });
 
-    // Two drawn plus the two the badge stands for is the whole party of three.
+    // Two drawn plus the one the badge stands for is the whole party of three.
     expect(screen.getByTestId('node-occupant-overflow')).toHaveTextContent('+1');
   });
 

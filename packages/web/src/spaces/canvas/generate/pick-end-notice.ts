@@ -9,8 +9,9 @@
  * that somebody else ended it. Which setting moved is the explanation, which
  * the copy rule leaves out.
  *
- * Same shape as `FOCUS_EXIT_TOAST_KEY` in `CanvasSpace`, which says the same
- * kind of thing about the target side of a pick.
+ * `FOCUS_EXIT_TOAST_KEY` in `CanvasSpace` says the same kind of thing about
+ * the target side of a pick, and splits by the same author. It carries a
+ * second level the target side needs: which verdict ended it.
  */
 const PICK_END_TOAST_KEY: Record<'local' | 'peer', string> = {
   local: 'canvas.generatePanel.pickEnded',

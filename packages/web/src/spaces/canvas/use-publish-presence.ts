@@ -95,8 +95,9 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * rather than a local copy, so a state removed from the outside reads as a
  * difference and gets re-sent. Two moments need a nudge because the sources do
  * not move across them at all. A bfcache round trip needs one write: the
- * provider drops the local state on the way in and restores an empty one, and
- * that emptiness is itself the difference. A reconnect needs the write to skip
+ * provider removes the local state on the way out and the socket registry puts
+ * an empty one back on the way in, and that emptiness is itself the
+ * difference. A reconnect needs the write to skip
  * de-duplication entirely: the state survived the close intact, so nothing
  * differs locally, while the peers dropped it — and neither side's clock
  * advanced while the socket was closed, so a re-send carrying the old clock
@@ -172,7 +173,7 @@ export function usePublishPresence(input: PublishPresenceInput): void {
     if (!awareness) return undefined;
     /**
      * Re-send the presence after a restore from the bfcache.
-     * @param event - The pageshow event; only a restore carries `persisted`.
+     * @param event - The pageshow event; `persisted` is true only on a restore.
      */
     const onPageShow = (event: PageTransitionEvent): void => {
       if (!event.persisted) return;

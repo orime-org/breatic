@@ -14,7 +14,8 @@
  * `transform` is a fresh array on every pan frame — moving that call into a
  * custom hook does not change who re-renders.
  *
- * Coalescing is the caller's to decide: this fires once per mutation record.
+ * Coalescing is the caller's to decide: this fires once per delivery, however
+ * many records that delivery queued.
  * @param onChange - Run on every viewport move.
  * @returns The teardown; a no-op when there is no canvas on the page.
  */

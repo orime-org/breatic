@@ -4,8 +4,9 @@
 /**
  * Canvas presence E2E (#2004) — the half no jsdom test can reach.
  *
- * Every unit test in this slice drives one side of the wire: a fake awareness
- * in, a table or a list of tags out. What none of them can answer is whether
+ * Every unit test in this slice drives one side of the wire on its own: what
+ * goes into awareness, or what comes out of it. What none of them can answer
+ * is whether
  * the two sides are joined — whether what one browser publishes is what
  * another browser draws. That needs two live connections to one collab
  * server, which is what this file sets up.
