@@ -87,9 +87,7 @@ describe('chat prose stylesheet — colours come from tokens (R10)', () => {
     let declared = 0;
     for (const rule of rules) {
       // Text colour is the strict case: the whole value is the token, so it
-      // can be read as one. The last declaration in a block may carry no
-      // semicolon, so the terminator is optional here; requiring it hid
-      // whatever was written last in each rule.
+      // can be read as one.
       for (const [, value] of rule.body.matchAll(/(?:^|;)\s*color:\s*([^;]+)/g)) {
         const token = /^var\((--[a-z-]+)\)$/.exec(value?.trim() ?? '')?.[1];
         expect(token, `${rule.selector} paints with ${value?.trim()}`).toBeDefined();

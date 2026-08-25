@@ -345,8 +345,9 @@ describe('MarkdownMessage — the footnote section speaks the reader\'s language
 
 describe('MarkdownMessage — footnotes stay inside their own reply (R1)', () => {
   it('gives each back-link its own name when one note is cited twice', () => {
-    // The library passes which citation this is; both links land on the same
-    // note, so the number is the only thing telling a reader them apart.
+    // One back link per citation, each returning to its own. What tells a
+    // screen reader which is which is this name, since the accessible name
+    // comes from the label rather than from the arrow the eye reads.
     draw('First[^a] and again[^a].\n\n[^a]: the note');
 
     const labels = [...body().querySelectorAll('a[data-footnote-backref]')].map((a) =>

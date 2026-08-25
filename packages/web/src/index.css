@@ -1082,8 +1082,9 @@ body {
    carets, and selection padding figured from its line height — so they are
    written out here rather than shared.
 
-   Every length is relative to the container, so the column's width can change
-   without any of this moving.
+   Spacing and size are written in em, so they follow the container's font
+   size; the hairlines — borders and the underline offset — stay in px, since
+   a line that thin reads as a line at one width only.
    ───────────────────────────────────────────────────────────────────────── */
 .chat-markdown {
   line-height: 1.65;
@@ -1288,13 +1289,15 @@ body {
 }
 
 /* Code colours. Class names are highlight.js's own, read from the scope names
-   each of lowlight's `common` grammars declares; the colours are ours. Which
-   names share a colour follows the scope groups highlight.js documents: the
-   four selector-* names are one group, and title / title.function /
-   title.class are another — a title carries a second class only where the
-   grammar knows which kind it is, so bash's `function go()` arrives as a bare
-   .hljs-title. Containers — params, function, tag, punctuation — inherit, and
-   the tokens inside them carry the colour.
+   each of lowlight's `common` grammars declares; the colours are ours, and
+   which names share one is decided here rather than upstream. A name that
+   says "this is a kind of thing" goes teal — the five selector-* names, class,
+   type, and a title the grammar knew was a class. A name that says "this is
+   what something is called" goes blue — a bare title, and a section heading,
+   which names the region under it. A title carries a second class only where
+   the grammar knows which kind it is, so bash's `function go()` arrives as a
+   bare .hljs-title. Containers — params, function, tag, punctuation — inherit,
+   and the tokens inside them carry the colour.
 
    meta is its own group upstream ("flags, modifiers, annotations, processing
    instructions, preprocessor directives"): a shebang, a diff hunk header, a

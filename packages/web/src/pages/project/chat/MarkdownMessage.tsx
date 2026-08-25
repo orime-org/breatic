@@ -39,10 +39,12 @@ interface MarkdownMessageProps {
  * ships and therefore what a reader of any of these products is used to
  * seeing.
  *
- * What each of them does is confined to the frames between an opening marker
- * arriving and its closing one: a settled reply never runs completion, so what
- * the reader is left with is what the model sent. That makes the choices below
- * about those frames alone (user 2026-08-25).
+ * They do three different things — close a marker the model has opened, escape
+ * a character that would read as one (`20~25`), and drop an unclosed tag with
+ * the prose after it — and all three run only while a turn is running. A
+ * settled reply never goes through here, so what the reader is left with is
+ * what the model sent, and the choices below are about the time in between
+ * (user 2026-08-25).
  *
  * `linkMode` reaches the reader through `MarkdownLink` below, which sends
  * every outbound anchor to a tab of its own, so the half-typed link this mode
@@ -201,9 +203,10 @@ export function MarkdownMessage({
       // library's fixed prefix would give them all the same footnote ids —
       // the second reply's marker then jumps to the first reply's note.
       clobberPrefix: `${scope}-`,
-      // The second argument says which citation of that note this is; both
-      // links land on the same place, so it is the only thing telling a
-      // reader them apart.
+      // A note cited more than once gets one back link per citation, each
+      // returning to its own. The second argument says which citation this
+      // one is; the eye reads it off the ↩² the library draws, and a screen
+      // reader off this label, which takes the accessible name from it.
       footnoteBackLabel: (referenceIndex: number, rereferenceIndex: number): string => {
         const name = backTo.replace('{index}', String(referenceIndex + 1));
         return rereferenceIndex > 1 ? `${name}-${rereferenceIndex}` : name;
