@@ -1195,6 +1195,37 @@ async function settlePanelUnder(
   return panelAgainst(page, rect);
 }
 
+/**
+ * The panel is under `rect` and inside the body column.
+ *
+ * At a narrow width, centring the panel on a short target would hang it off the
+ * column's left edge, so `shift` holds it in and the centres come apart. The
+ * last assertion is what says the gap is `shift`'s doing.
+ */
+async function expectPanelHeldInColumn(
+  page: Page,
+  rect: { left: number; right: number; bottom: number },
+): Promise<void> {
+  await settlePanelUnder(page, rect);
+  const view = await bodyView(page);
+  const panel = await panelBox(page);
+  expect(panel.left).toBeGreaterThanOrEqual(view.left);
+  expect(panel.right).toBeLessThanOrEqual(view.right);
+  expect((rect.left + rect.right) / 2 - panel.width / 2).toBeLessThan(view.left);
+}
+
+/** Where the panel is, and how wide. */
+async function panelBox(
+  page: Page,
+): Promise<{ left: number; right: number; width: number; centre: number }> {
+  return page.evaluate(() => {
+    const r = document
+      .querySelector('[data-testid="doc-link-popover"]')!
+      .getBoundingClientRect();
+    return { left: r.left, right: r.right, width: r.width, centre: (r.left + r.right) / 2 };
+  });
+}
+
 /** The body's visible area. */
 async function bodyView(
   page: Page,
@@ -1646,30 +1677,62 @@ test('link: the panel still meets its target after the window changes width', as
 
   await settlePanelUnder(page, await linkBox());
   const wide = await linkBox();
+  const panelWide = await panelBox(page);
 
   await page.setViewportSize({ width: 1100, height: 950 });
   await page.waitForTimeout(400);
   const narrow = await linkBox();
+  const panelNarrow = await panelBox(page);
 
-  // The reflow really did move the link, so the assertion below has something
+  // The reflow really did move the link, so the assertions below have something
   // to be wrong about.
   expect(Math.abs(narrow.left - wide.left)).toBeGreaterThan(50);
+  // And the panel went with it. This is the assertion a reference holding a
+  // rectangle it measured once would fail: the panel would sit where the link
+  // used to be, and every check that reads only the vertical gap would still
+  // pass, since a width change leaves a one-line paragraph at the same height.
+  expect(Math.abs(panelNarrow.centre - panelWide.centre)).toBeGreaterThan(20);
 
-  // Under the link again, and inside the column: at this width centring the
-  // panel on a link that short would hang it off the left edge, so `shift`
-  // holds it in — measured 49px to the right of centre.
-  await settlePanelUnder(page, narrow);
-  const view = await bodyView(page);
-  const panel = await page.evaluate(() => {
-    const r = document
-      .querySelector('[data-testid="doc-link-popover"]')!
-      .getBoundingClientRect();
-    return { left: r.left, right: r.right, width: r.width };
+  // Measured 49px to the right of centre at this width.
+  await expectPanelHeldInColumn(page, narrow);
+
+  // The same event in `create`, which reaches the reference by a different
+  // route: a Range over the selection rather than over a link (§5.3.1).
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await openFreshDocument(page);
+  await page.keyboard.type('no link on this one');
+  await selectFirstParagraph(page);
+
+  const selected = () =>
+    page.evaluate(() => {
+      const r = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
+      return { left: r.left, right: r.right, bottom: r.bottom };
+    });
+  const beforeResize = await selected();
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  await settlePanelUnder(page, beforeResize);
+  const panelCreateWide = await panelBox(page);
+
+  await page.setViewportSize({ width: 1100, height: 950 });
+  await page.waitForTimeout(400);
+  // Read from the panel's own Range: the selection is emptied once the field
+  // takes focus, so the live selection has nothing left to measure.
+  const afterResize = await page.evaluate(() => {
+    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p')!;
+    const r = document.createRange();
+    r.selectNodeContents(p);
+    const box = r.getBoundingClientRect();
+    return { left: box.left, right: box.right, bottom: box.bottom };
   });
-  expect(panel.left).toBeGreaterThanOrEqual(view.left);
-  expect(panel.right).toBeLessThanOrEqual(view.right);
-  // And the shift is the reason the centres are apart, rather than drift.
-  expect((narrow.left + narrow.right) / 2 - panel.width / 2).toBeLessThan(view.left);
+  expect(Math.abs(afterResize.left - beforeResize.left)).toBeGreaterThan(50);
+  expect(Math.abs((await panelBox(page)).centre - panelCreateWide.centre)).toBeGreaterThan(
+    20,
+  );
+  await expectPanelHeldInColumn(page, afterResize);
 
   await page.setViewportSize({ width: 1680, height: 950 });
 });
