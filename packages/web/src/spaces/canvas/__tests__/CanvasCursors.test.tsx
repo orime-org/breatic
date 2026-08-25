@@ -218,7 +218,12 @@ describe('CanvasCursorLayer', () => {
   });
 
   it('stops following once it unmounts', () => {
+    // Asserted through the awareness rather than the screen: React 18 neither
+    // throws nor warns on a setState after unmount, so a layer that kept its
+    // listener would look exactly like one that let go — while really holding
+    // the space's provider alive for as long as anything referenced it.
     const { awareness, peerId } = makeAwareness();
+    const off = vi.spyOn(awareness, 'off');
     const rendered = render(
       <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
         <CanvasCursorLayer awareness={awareness} />
@@ -228,11 +233,7 @@ describe('CanvasCursorLayer', () => {
 
     rendered.unmount();
 
-    // A write after teardown must not reach a listener that is still attached;
-    // `emit` calls its handlers synchronously, so an update on a torn-down
-    // component would throw here rather than pass quietly.
-    expect(() => peerPointsAt(awareness, peerId, { x: 50, y: 60 })).not.toThrow();
-    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    expect(off).toHaveBeenCalledWith('change', expect.any(Function));
   });
 
   it('draws nothing before the document attaches', () => {

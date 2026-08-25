@@ -95,6 +95,15 @@ interface VideoGeneratePanelContainerProps {
   projectId: string;
   /** Canvas space id. */
   spaceId: string;
+  /**
+   * Who made the newest document write, read at the moment it is needed.
+   *
+   * A function rather than a value: this panel reacts to a document change
+   * inside an effect, and effects run child-first — a value mirrored by the
+   * canvas above would still be the previous write's author on the very
+   * commit that ends a pick.
+   */
+  getLastWriteWasLocal: () => boolean;
 }
 
 /**
@@ -125,6 +134,7 @@ function asNum(value: unknown): number | undefined {
  * @param root0.edges - Live canvas edges.
  * @param root0.projectId - Project id.
  * @param root0.spaceId - Canvas space id.
+ * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
  * @returns The video Generate panel.
  */
 function VideoGeneratePanelBody({
@@ -133,6 +143,7 @@ function VideoGeneratePanelBody({
   edges,
   projectId,
   spaceId,
+  getLastWriteWasLocal,
 }: VideoGeneratePanelContainerProps & {
   nodeId: string;
 }): React.JSX.Element {
@@ -534,12 +545,12 @@ function VideoGeneratePanelBody({
         t(
           pickEndToastKey(
             'modeChanged',
-            useCanvasStore.getState().lastWriteWasLocal,
+            getLastWriteWasLocal(),
           ),
         ),
       );
     }
-  }, [slotsKey, nodeId, endPick, t]);
+  }, [slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {

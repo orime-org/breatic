@@ -88,4 +88,49 @@ describe('useCanvasSpace 交出「这批节点是谁写的」（#2000）', () =>
     act(() => addNode(p, s, makeNode('B')));
     expect(result.current.lastWriteWasLocal).toBe(true);
   });
+
+  it('the getter answers a peer write before any effect of that commit runs', () => {
+    // A consumer that reacts to a document change does so inside an effect,
+    // and effects run child-first: a child reading a copy the canvas above it
+    // mirrored in ITS effect gets the previous write's author on the very
+    // commit that matters. This getter reads what the document handler
+    // recorded, which is already current when the render begins.
+    const p = 'proj-author-getter';
+    const s = 'space-author-getter';
+    const { result } = renderHook(() => useCanvasSpace(p, s));
+    const doc = getDoc(docName.canvasSpace(p, s));
+    const seenDuringRender: boolean[] = [];
+
+    act(() => addNode(p, s, makeNode('A')));
+    expect(result.current.getLastWriteWasLocal()).toBe(true);
+
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    peer.transact(() => {
+      peer.getMap<Y.Map<unknown>>('nodesMap').delete('A');
+    });
+
+    // Read it the moment the change lands, before React renders anything.
+    const stopWatching = doc.on('afterTransaction', () => {
+      seenDuringRender.push(result.current.getLastWriteWasLocal());
+    });
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'peer');
+    });
+    doc.off('afterTransaction', stopWatching as never);
+
+    expect(seenDuringRender).toContain(false);
+    expect(result.current.getLastWriteWasLocal()).toBe(false);
+  });
+
+  it('keeps one reference across renders, so passing it down costs nothing', () => {
+    const p = 'proj-author-stable';
+    const s = 'space-author-stable';
+    const { result } = renderHook(() => useCanvasSpace(p, s));
+    const first = result.current.getLastWriteWasLocal;
+
+    act(() => addNode(p, s, makeNode('A')));
+
+    expect(result.current.getLastWriteWasLocal).toBe(first);
+  });
 });

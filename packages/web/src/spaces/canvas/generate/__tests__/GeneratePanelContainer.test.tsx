@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/** The canvas hands the panels a getter; these trees answer 'this client'. */
+const LAST_WRITE_LOCAL = (): boolean => true;
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   act,
@@ -141,6 +144,7 @@ function mountContainer(graph?: {
               ]
             }
             edges={graph?.edges ?? []}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -237,6 +241,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
           spaceId='s'
           nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
           edges={[]}
+          getLastWriteWasLocal={LAST_WRITE_LOCAL}
         />
       </ReactFlow>
     </QueryClientProvider>
@@ -380,6 +385,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               },
             ]}
             edges={[]}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
           />
         </ReactFlow>
       </QueryClientProvider>

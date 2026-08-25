@@ -16,6 +16,9 @@
  * 从而以错误的理由通过，而引用正是 `React.memo` 拿去比的东西。
  */
 
+/** The canvas hands the panels a getter; these trees answer 'this client'. */
+const LAST_WRITE_LOCAL = (): boolean => true;
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -142,6 +145,7 @@ function mount(): ReturnType<typeof render> {
             spaceId='s'
             edges={[]}
             nodes={nodes()}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -209,6 +213,7 @@ describe('图片容器让它的 memo 子组件还能 bail', () => {
               spaceId='s'
               edges={[]}
               nodes={nodes()}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
           </CanvasContext.Provider>
         </ReactFlow>

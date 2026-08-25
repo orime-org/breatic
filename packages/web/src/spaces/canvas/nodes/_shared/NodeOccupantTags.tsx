@@ -80,7 +80,7 @@ export function NodeOccupantTags({
   return (
     <div
       data-testid='node-occupant-tags'
-      className='pointer-events-none flex max-w-[16rem] items-center gap-1 pb-1 select-none'
+      className='pointer-events-none flex items-center gap-1 pb-1 select-none'
       style={{ paddingLeft: `${indentPx}px` }}
     >
       {shown.map((person) => (

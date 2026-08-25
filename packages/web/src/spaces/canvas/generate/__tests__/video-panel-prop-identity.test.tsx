@@ -18,6 +18,9 @@
  * the wrong reason, while identity is exactly what `React.memo` compares.
  */
 
+/** The canvas hands the panels a getter; these trees answer 'this client'. */
+const LAST_WRITE_LOCAL = (): boolean => true;
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -176,6 +179,7 @@ function mount(): ReturnType<typeof render> {
             spaceId='s'
             edges={[]}
             nodes={nodes()}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -252,6 +256,7 @@ describe('the container keeps its memoized children bail-able', () => {
               spaceId='s'
               edges={[]}
               nodes={nodes()}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
           </CanvasContext.Provider>
         </ReactFlow>
@@ -312,6 +317,7 @@ describe('the container keeps its memoized children bail-able', () => {
                   typeof VideoGeneratePanelContainer
                 >[0]['nodes']
               }
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
           </CanvasContext.Provider>
         </ReactFlow>

@@ -33,6 +33,7 @@ export function mockSpace(
     canUndo: false,
     canRedo: false,
     lastWriteWasLocal,
+    getLastWriteWasLocal: () => lastWriteWasLocal,
   };
 }
 

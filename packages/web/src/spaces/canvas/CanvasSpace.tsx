@@ -616,7 +616,16 @@ function CanvasSpaceInner({
   readOnly = false,
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
-  const { nodes, edges, undo, redo, canUndo, canRedo, lastWriteWasLocal } =
+  const {
+    nodes,
+    edges,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    lastWriteWasLocal,
+    getLastWriteWasLocal,
+  } =
     useCanvasSpace(
       projectId,
       spaceId,
@@ -1159,15 +1168,6 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     setHistoryAvailability(canUndo, canRedo);
   }, [canUndo, canRedo, setHistoryAvailability]);
-
-  // The generate panels live under this provider but read who wrote last
-  // through the store, the way the toolbar reads undo availability: the value
-  // moves on every document change, and putting it on a context would re-render
-  // every node body each time a collaborator typed.
-  const setLastWriteWasLocal = useCanvasStore((s) => s.setLastWriteWasLocal);
-  React.useEffect(() => {
-    setLastWriteWasLocal(lastWriteWasLocal);
-  }, [lastWriteWasLocal, setLastWriteWasLocal]);
 
   const pendingHistoryCommand = useCanvasStore((s) => s.pendingHistoryCommand);
   const consumeHistoryCommand = useCanvasStore(
@@ -3776,6 +3776,7 @@ function CanvasSpaceInner({
             edges={edges}
             projectId={projectId}
             spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
           />
           {/* Video Generate panel: its own panel kind, so only one of the two
               is ever open on a node — a video node opens this one. */}
@@ -3784,6 +3785,7 @@ function CanvasSpaceInner({
             edges={edges}
             projectId={projectId}
             spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
           />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its

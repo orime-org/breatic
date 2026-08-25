@@ -103,6 +103,18 @@ interface CanvasSpaceState {
    * a peer did can be attributed to a document that just loaded.
    */
   lastWriteWasLocal: boolean;
+  /**
+   * The same fact, readable at any moment rather than at render time.
+   *
+   * A consumer reacting to a document change inside an effect cannot use the
+   * value above: effects run child-first, so a child reading a parent's
+   * mirrored copy sees the previous write's author on the very commit that
+   * matters. This reads the value the document handler recorded, which is
+   * already the current one by the time any effect of that commit runs.
+   *
+   * The function's reference is stable, so passing it down costs no renders.
+   */
+  getLastWriteWasLocal: () => boolean;
 }
 
 const NODES_KEY = 'nodesMap';
@@ -304,6 +316,9 @@ export function useCanvasSpace(
     readEdges(doc),
   );
   const [lastWriteWasLocal, setLastWriteWasLocal] = React.useState(true);
+  // Written straight from the document handler, so it is current before React
+  // has rendered anything about this change. See `getLastWriteWasLocal`.
+  const lastWriteWasLocalRef = React.useRef(true);
 
   React.useEffect(() => {
     const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -319,7 +334,10 @@ export function useCanvasSpace(
      * @param tx - The transaction behind them; absent on the first read.
      */
     const updateNodes = (_events?: unknown, tx?: Y.Transaction): void => {
-      if (tx) setLastWriteWasLocal(tx.local);
+      if (tx) {
+        lastWriteWasLocalRef.current = tx.local;
+        setLastWriteWasLocal(tx.local);
+      }
       setNodes(readNodes(doc));
     };
     /**
@@ -394,7 +412,21 @@ export function useCanvasSpace(
     syncAvailability();
   }, [syncAvailability]);
 
-  return { nodes, edges, undo, redo, canUndo, canRedo, lastWriteWasLocal };
+  const getLastWriteWasLocal = React.useCallback(
+    (): boolean => lastWriteWasLocalRef.current,
+    [],
+  );
+
+  return {
+    nodes,
+    edges,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    lastWriteWasLocal,
+    getLastWriteWasLocal,
+  };
 }
 
 /**

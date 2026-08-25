@@ -240,13 +240,27 @@ test('a pointer moving on one connection draws an arrow on the other', async () 
   const pane = watcher.locator('.react-flow__pane');
   const box = await pane.boundingBox();
   if (box === null) throw new Error('the canvas pane has no box');
-  await watcher.mouse.move(box.x + 400, box.y + 300);
-  await watcher.mouse.move(box.x + 420, box.y + 320);
 
   // The layer itself is an anchor: everything inside it is absolutely
   // positioned, so its own box is 0x0 and only what it holds can be seen.
   const cursors = viewer.getByTestId('canvas-cursors');
+  const cursor = cursors.locator('[data-testid^=canvas-cursor-]').first();
+
+  // Put the pointer somewhere, then somewhere else, and read the drawn
+  // position each time. Asserting only that an arrow exists would pass on an
+  // arrow parked by an earlier case's click, which also moves the real mouse.
+  await watcher.mouse.move(box.x + 400, box.y + 300);
   await expect(cursors).toHaveCount(1, { timeout: SETTLE_MS });
+  const first = await cursor.evaluate((el) => (el as HTMLElement).style.transform);
+
+  await watcher.mouse.move(box.x + 560, box.y + 420, { steps: 8 });
+  await expect
+    .poll(
+      async () => cursor.evaluate((el) => (el as HTMLElement).style.transform),
+      { timeout: SETTLE_MS },
+    )
+    .not.toBe(first);
+
   const arrow = cursors.locator('svg').first();
   await expect(arrow).toBeVisible({ timeout: SETTLE_MS });
 

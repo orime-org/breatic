@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { readUserId } from '@web/spaces/canvas/awareness-user';
 
 /**
  * Compare two occupant tables by value.
  *
- * Order counts on both levels: the key order decides nothing on screen, but
- * comparing it is what makes this a single walk, and the holder order is the
- * order the name tags are laid out in — a swap really is a different picture.
+ * Which nodes are in the table is compared as a set — each is looked up by id,
+ * so two tables built in a different order describe the same holdings. Who
+ * holds one node is compared in order, because that order is the order the
+ * name tags are laid out in: a swap really is a different picture.
  * @param a - The previous table.
  * @param b - The freshly collected table.
  * @returns True when the two describe the same holdings.
@@ -19,9 +21,7 @@ export function sameOccupantTable(
 ): boolean {
   if (a.size !== b.size) return false;
   for (const [key, users] of a) {
-    const other = b.get(key);
-    if (other === undefined || other.length !== users.length) return false;
-    if (!users.every((id, i) => id === other[i])) return false;
+    if (!sameIdList(users, b.get(key) ?? null)) return false;
   }
   return true;
 }

@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/** The canvas hands the panels a getter; these trees answer 'this client'. */
+const LAST_WRITE_LOCAL = (): boolean => true;
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -276,6 +279,7 @@ function panelTree(
               { id: 'other', data: { kind: 'video', status: 'idle' } },
               ...(board.nodes ?? []),
             ]}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -489,6 +493,7 @@ describe('VideoGeneratePanelContainer', () => {
               spaceId='s'
               nodes={[]}
               edges={[]}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
           </CanvasContext.Provider>
         </ReactFlow>
