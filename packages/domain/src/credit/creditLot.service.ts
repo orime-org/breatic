@@ -36,6 +36,7 @@ import {
   AppError,
   NotFoundError,
   ForbiddenError,
+  type DbTx,
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type {
@@ -390,17 +391,25 @@ export async function designateLot(input: {
   requestingUserId: string;
   studioId: string | null;
 }): Promise<CreditLotEntity> {
-  if (input.studioId !== null) {
-    const role = await studioMembersRepo.getRole(
-      input.studioId,
-      input.requestingUserId,
-    );
-    if (role !== "admin") {
-      throw new ForbiddenError(t("server.credit.not_studio_admin"));
-    }
-  }
-
   return db.transaction(async (tx) => {
+    // The membership row first, under lock, and only then the debt and the
+    // lot. Reading the role outside the transaction answers about a moment
+    // that is already gone by the time this writes: a transfer committing in
+    // the gap leaves a maintainer's lot pointed at a studio that is no longer
+    // theirs, and nothing clears it afterwards. `lockMemberRole` filters on
+    // the studio and the user alone — see there for why a predicate naming
+    // `role` cannot hold under concurrency.
+    if (input.studioId !== null) {
+      const role = await studioMembersRepo.lockMemberRole(
+        input.studioId,
+        input.requestingUserId,
+        tx,
+      );
+      if (role !== "admin") {
+        throw new ForbiddenError(t("server.credit.not_studio_admin"));
+      }
+    }
+
     // The debt row before the lot, the same order a charge takes them in, so
     // the two queue up rather than deadlocking against each other.
     const owedMicro =
@@ -666,4 +675,47 @@ export async function getStudioDebt(studioId: string): Promise<number> {
  */
 export async function getUnassignedCredits(userId: string): Promise<number> {
   return toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)) / 1_000_000;
+}
+
+/**
+ * Cut an account's lots loose from a studio it no longer administers.
+ *
+ * Designating is how an admin decides which studio may spend a purchase, so
+ * the moment someone stops being one, every lot of theirs pointed there stops
+ * pointing. The designation lives in a column, which is why this has to
+ * happen rather than follow: a membership read would go on answering
+ * correctly while the column went on saying otherwise.
+ *
+ * Runs in the caller's transaction so the two facts land together. Split
+ * apart, there is a window in which the studio is still spending the money of
+ * someone who has already left it.
+ *
+ * Each lot is locked on its own, oldest first, the order a charge takes them
+ * in. The row the lock hands back is what decides: one that moved to another
+ * studio while this waited is no longer this studio's to release, and its new
+ * home may well be one the account still administers.
+ *
+ * Neither book changes. What the studio drew from these lots stays on the
+ * lot's account and on the studio's own, and no debt is repaid — releasing
+ * settles nothing, it only says where the next charge may not come from.
+ * @param input - Whose lots, which studio, and the transaction to run in.
+ * @param input.userId - The account that no longer administers the studio.
+ * @param input.studioId - The studio they are losing.
+ * @param input.tx - The transaction the role change is happening in.
+ */
+export async function releaseDesignations(input: {
+  userId: string;
+  studioId: string;
+  tx: DbTx;
+}): Promise<void> {
+  const ids = await creditLotRepo.listDesignatedLotIds(
+    input.userId,
+    input.studioId,
+    input.tx,
+  );
+  for (const lotId of ids) {
+    const lot = await creditLotRepo.lockLot(lotId, input.tx);
+    if (!lot || lot.designatedStudioId !== input.studioId) continue;
+    await creditLotRepo.setDesignation(lotId, null, input.tx);
+  }
 }

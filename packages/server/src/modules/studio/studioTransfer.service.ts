@@ -48,7 +48,7 @@ import {
   ValidationError,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { creditLotService, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
   getDecisionWindowMs,
@@ -249,6 +249,19 @@ export async function confirmTransfer(
       tx,
     );
     if (!demoted) return { refusal: "conflict" };
+
+    // The initiator has stopped administering this studio, so the studio stops
+    // being able to spend their credits. Below the demote because every branch
+    // above it returns — and returning commits — so a release placed higher
+    // would strip someone who never stopped being admin. Inside this
+    // transaction because the rule is about the same instant: run apart, the
+    // studio keeps drawing on their money in the window between.
+    await creditLotService.releaseDesignations({
+      userId: fromUserId,
+      studioId,
+      tx,
+    });
+
     const promoted = await studioMembersRepo.updateRole(
       studioId,
       receiverUserId,
