@@ -190,6 +190,12 @@
       "failedBody": "이 Project의 대화를 읽지 못했습니다.",
       "retry": "다시 불러오기",
       "refusedTitle": "이 대화를 열 수 없습니다"
+    },
+    "markdown": {
+      "taskDone": "완료",
+      "taskTodo": "미완료",
+      "footnotes": "각주",
+      "backToReference": "참조 {index}(으)로 돌아가기"
     }
   },
   "canvas": {

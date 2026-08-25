@@ -190,6 +190,12 @@
       "failedBody": "沒能讀取這個 Project 的對話。",
       "retry": "重新載入",
       "refusedTitle": "打不開這個對話"
+    },
+    "markdown": {
+      "taskDone": "已完成",
+      "taskTodo": "未完成",
+      "footnotes": "腳註",
+      "backToReference": "回到引用 {index}"
     }
   },
   "canvas": {
