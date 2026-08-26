@@ -10,6 +10,7 @@ import type {
   CreditLedgerView,
   CreditLotView,
   CreditOverview,
+  PurchaseRow,
   StudioCreditSummary,
 } from '@breatic/shared';
 
@@ -31,6 +32,7 @@ vi.mock('@web/data/api/credits', () => ({
 }));
 
 const listUserStudios = vi.fn();
+const paymentHistory = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
   paymentApi: {
     tiers: () =>
@@ -39,6 +41,8 @@ vi.mock('@web/data/api/payment', () => ({
         { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
       ]),
     checkout: vi.fn(),
+    history: (...args: unknown[]) => paymentHistory(...args),
+    resendConfirmation: vi.fn(),
   },
 }));
 
@@ -131,6 +135,31 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
 }
 
 /**
+ * One purchase, as the history reports it.
+ * @param over - Fields to override.
+ * @returns The row.
+ */
+function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
+  return {
+    paymentId: 'p1',
+    amountCents: 5000,
+    totalCents: 5000,
+    taxCents: 0,
+    currency: 'usd',
+    creditsGranted: 4550,
+    remainingCredits: 2400,
+    lifecycle: 'active',
+    designatedStudioId: 's1',
+    designatedStudioName: 'Orime Studio',
+    status: 'completed',
+    createdAt: '2026-08-21T10:00:00.000Z',
+    mailStatus: 'sent',
+    canResend: false,
+    ...over,
+  };
+}
+
+/**
  * One generation's line.
  * @param over - Fields to override.
  * @returns The line.
@@ -197,6 +226,9 @@ describe('the credits overlay, section by section', () => {
     fetchCreditLots
       .mockReset()
       .mockResolvedValue({ items: [lot()], nextCursor: null });
+    paymentHistory
+      .mockReset()
+      .mockResolvedValue({ items: [purchase()], nextCursor: null });
     fetchCreditLedger
       .mockReset()
       .mockResolvedValue({ items: [entry()], nextCursor: null });
@@ -266,11 +298,11 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('prompts when some point nowhere, and counts them right', async () => {
-      fetchCreditLots.mockResolvedValue({
+      paymentHistory.mockResolvedValue({
         items: [
-          lot(),
-          lot({ id: 'l2', designatedStudioId: null, designatedStudioName: null }),
-          lot({ id: 'l3', designatedStudioId: null, designatedStudioName: null }),
+          purchase(),
+          purchase({ paymentId: 'p2', designatedStudioId: null, designatedStudioName: null }),
+          purchase({ paymentId: 'p3', designatedStudioId: null, designatedStudioName: null }),
         ],
         nextCursor: null,
       });
@@ -284,11 +316,11 @@ describe('the credits overlay, section by section', () => {
       // Asking for a refund detaches it from every studio and bars it from
       // being pointed anywhere. Counting it asks the reader to do something
       // the server refuses.
-      fetchCreditLots.mockResolvedValue({
+      paymentHistory.mockResolvedValue({
         items: [
-          lot(),
-          lot({
-            id: 'l4',
+          purchase(),
+          purchase({
+            paymentId: 'p4',
             lifecycle: 'refund_pending',
             designatedStudioId: null,
             designatedStudioName: null,
@@ -315,11 +347,11 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/does not charge credits/i);
-      expect(fetchCreditLots).not.toHaveBeenCalled();
+      expect(paymentHistory).not.toHaveBeenCalled();
     });
 
     it('says so when the read fails, rather than showing nothing', async () => {
-      fetchCreditLots.mockRejectedValue(new Error('nope'));
+      paymentHistory.mockRejectedValue(new Error('nope'));
       await openOn('lots');
 
       expect(await screen.findByRole('alert')).toBeInTheDocument();
@@ -440,8 +472,8 @@ describe('the credits overlay, section by section', () => {
     it('withholds the unassigned count while a further page is coming', async () => {
       // The count covers only the pages read so far, so stating it makes it
       // climb as the reader scrolls.
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+      paymentHistory.mockResolvedValue({
+        items: [purchase({ designatedStudioId: null, designatedStudioName: null })],
         nextCursor: 'more',
       });
       await openOn('lots');
@@ -559,15 +591,15 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('says a page failed, and leaves the rows already in hand', async () => {
-      fetchCreditLots
-        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
+      paymentHistory
+        .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
       await openOn('lots');
       await panel();
 
       reachEnd!();
       await waitFor(() => {
-        expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+        expect(paymentHistory).toHaveBeenCalledTimes(2);
       });
 
       // The first page is still there, and the foot is no longer blank.
@@ -577,21 +609,21 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('stops the watcher after a failed page until the reader scrolls again', async () => {
-      fetchCreditLots
-        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'c2' })
+      paymentHistory
+        .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'c2' })
         .mockRejectedValueOnce(new Error('nope'));
       await openOn('lots');
       await panel();
 
       reachEnd!();
       await waitFor(() => {
-        expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+        expect(paymentHistory).toHaveBeenCalledTimes(2);
       });
       // No retry of its own accord, and the first page stays: replacing what
       // the reader has already seen with a failure loses more than the
       // failure did.
       await new Promise((r) => setTimeout(r, 60));
-      expect(fetchCreditLots).toHaveBeenCalledTimes(2);
+      expect(paymentHistory).toHaveBeenCalledTimes(2);
       // 观察器收到的就是这个信号。断言它，而不是断言「没有再请求」——
       // 后者靠 react-query 的 retry:false 就成立，把接线删掉照样绿。
       expect(watcherStopped).toBe(true);
@@ -680,7 +712,7 @@ describe('the credits overlay, section by section', () => {
 
   describe('loading, empty, failed, and paging', () => {
     it.each([
-      ['lots' as const, () => fetchCreditLots],
+      ['lots' as const, () => paymentHistory],
       ['ledger' as const, () => fetchCreditLedger],
       ['assign' as const, () => fetchCreditLots],
       ['refunds' as const, () => fetchCreditLots],
@@ -699,6 +731,7 @@ describe('the credits overlay, section by section', () => {
     ])('%s says what is missing when it is empty', async (section, message) => {
       fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       fetchCreditLedger.mockResolvedValue({ items: [], nextCursor: null });
+      paymentHistory.mockResolvedValue({ items: [], nextCursor: null });
       await openOn(section);
       const body = await panel();
 
@@ -707,7 +740,7 @@ describe('the credits overlay, section by section', () => {
 
     it('shows a skeleton while the first read is in flight', async () => {
       // Held unresolved: this is the moment the reader sees.
-      fetchCreditLots.mockReturnValue(new Promise(() => {}));
+      paymentHistory.mockReturnValue(new Promise(() => {}));
       await openOn('lots');
 
       expect(
@@ -716,10 +749,10 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('asks again with the cursor once the reader reaches the end', async () => {
-      fetchCreditLots
-        .mockResolvedValueOnce({ items: [lot()], nextCursor: 'cursor-2' })
+      paymentHistory
+        .mockResolvedValueOnce({ items: [purchase()], nextCursor: 'cursor-2' })
         .mockResolvedValueOnce({
-          items: [lot({ id: 'l2', paidCents: 777 })],
+          items: [purchase({ paymentId: 'p2', totalCents: 777 })],
           nextCursor: null,
         });
       await openOn('lots');
@@ -732,9 +765,7 @@ describe('the credits overlay, section by section', () => {
       reachEnd!();
 
       await waitFor(() => {
-        expect(fetchCreditLots).toHaveBeenLastCalledWith(
-          expect.objectContaining({ cursor: 'cursor-2' }),
-        );
+        expect(paymentHistory).toHaveBeenLastCalledWith('cursor-2');
       });
       // The second page's rows follow the first rather than replacing it.
       const body = await screen.findByRole('tabpanel');

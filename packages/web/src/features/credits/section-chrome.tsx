@@ -84,7 +84,11 @@ interface SectionEmptyProps {
 export function SectionEmpty({
   message,
 }: SectionEmptyProps): React.JSX.Element {
-  return <p className='text-sm text-muted-foreground'>{message}</p>;
+  return (
+    <p data-testid='credits-empty' className='text-sm text-muted-foreground'>
+      {message}
+    </p>
+  );
 }
 
 /** A line explaining what is above it. */
@@ -253,6 +257,8 @@ interface NoticeProps {
    * the amber fill; anything merely informative stays neutral.
    */
   tone?: 'warning' | 'info';
+  /** A hook for tests to name this particular block. */
+  'data-testid'?: string;
 }
 
 /**
@@ -261,15 +267,18 @@ interface NoticeProps {
  * @param props.title - Its first line.
  * @param props.body - The explanation under it.
  * @param props.tone - Whether something needs doing.
+ * @param props.'data-testid' - A hook for tests to name this particular block.
  * @returns The block.
  */
 export function Notice({
   title,
   body,
   tone = 'warning',
+  'data-testid': testId,
 }: NoticeProps): React.JSX.Element {
   return (
     <div
+      data-testid={testId}
       className={cn(
         'rounded-content-sm border px-3 py-2.5 text-sm',
         tone === 'warning'

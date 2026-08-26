@@ -1,0 +1,232 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import * as React from 'react';
+import type { PurchaseRow } from '@breatic/shared';
+
+import { Badge } from '@web/components/ui/badge';
+import { Button } from '@web/components/ui/button';
+import { paymentApi } from '@web/data/api/payment';
+import {
+  Card,
+  ListEnd,
+  Notice,
+  Row,
+  Rows,
+  Section,
+  SectionEmpty,
+  SectionError,
+  SectionSkeleton,
+  formatMoney,
+} from '@web/features/credits/section-chrome';
+import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
+import { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { formatLocalDay } from '@web/lib/format-day';
+import { toast } from '@web/lib/toast';
+
+/** Whose purchases, and whether billing is on at all. */
+interface PurchasesSectionProps {
+  /** The signed-in account, for the query key. */
+  userId: string | null;
+  /** Whether this deployment charges for generation at all. */
+  billing: boolean;
+}
+
+/**
+ * Every purchase this account has made, newest first.
+ *
+ * It lists payments, so a purchase still processing and one the buyer
+ * abandoned are both here — those are what somebody comes to this screen to
+ * ask about. Neither has credits behind it, so the figures that come from a
+ * lot are absent on those rows rather than shown as zero.
+ * @param props - The account and whether billing is on.
+ * @param props.userId - The signed-in account, for the query key.
+ * @param props.billing - Whether this deployment charges at all.
+ * @returns The section.
+ */
+export function PurchasesSection({
+  userId,
+  billing,
+}: PurchasesSectionProps): React.JSX.Element {
+  const t = useTranslation();
+  const read = React.useCallback(
+    (cursor: string | undefined) => paymentApi.history(cursor),
+    [],
+  );
+  const paging = useCreditsPaging<PurchaseRow>({
+    // Its own key. The assign and refund screens read the lots and act on lot
+    // ids; a page of payments in their cache would give them rows with no lot
+    // and ids the refund action cannot use.
+    queryKey: ['payment', 'history', userId],
+    read,
+    enabled: billing && userId !== null,
+  });
+
+  const unassigned = paging.rows.filter(
+    (purchase) =>
+      purchase.lifecycle === 'active' && purchase.designatedStudioId === null,
+  ).length;
+
+  return (
+    <Section title={t('credits.section.lots')}>
+      {!billing ? (
+        <Notice
+          title={t('credits.billingOff.title')}
+          body={t('credits.billingOff.body')}
+          tone='info'
+        />
+      ) : paging.isPending ? (
+        <SectionSkeleton />
+      ) : paging.isError ? (
+        <SectionError />
+      ) : paging.rows.length === 0 ? (
+        <>
+          <SectionEmpty message={t('credits.lotsEmpty')} />
+          <Notice
+            title={t('credits.lotsEmptyNotice.title')}
+            body={t('credits.lotsEmptyNotice.body')}
+          />
+        </>
+      ) : (
+        <>
+          <Card>
+            <Rows>
+              {paging.rows.map((purchase) => (
+                <PurchaseLine key={purchase.paymentId} purchase={purchase} />
+              ))}
+            </Rows>
+          </Card>
+          <ListEnd
+            sentinelRef={paging.sentinelRef}
+            loading={paging.isFetchingNextPage}
+            more={paging.hasNextPage}
+            failed={paging.pageFailed}
+          />
+          {/* Counted only once the list is read through. While there is
+              another page this figure is of the pages fetched so far, and a
+              number that climbs as you scroll says less than none. */}
+          {unassigned === 0 || paging.hasNextPage ? null : (
+            <Notice
+              data-testid='unassigned-notice'
+              title={t('credits.unassignedNotice.title', { count: unassigned })}
+              body={t('credits.unassignedNotice.body')}
+            />
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
+/** Which badge a purchase carries, if any. */
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'credits.purchase.processing',
+  expired: 'credits.purchase.expired',
+  failed: 'credits.purchase.failed',
+};
+
+/** The purchase to draw. */
+interface PurchaseLineProps {
+  /** The purchase. */
+  purchase: PurchaseRow;
+}
+
+/**
+ * One purchase: what it cost, when, where it stands, and what is left of it.
+ *
+ * A purchase that has landed carries no badge — that is the ordinary case, and
+ * a badge on every row says nothing. The other three each say what happened.
+ * @param props - The purchase.
+ * @param props.purchase - The purchase.
+ * @returns The row.
+ */
+const PurchaseLine = React.memo(function PurchaseLine({
+  purchase,
+}: PurchaseLineProps): React.JSX.Element {
+  const t = useTranslation();
+  const [sending, setSending] = React.useState(false);
+  const landed = purchase.totalCents !== null;
+  const statusKey = STATUS_LABEL[purchase.status];
+
+  const resend = React.useCallback(async (): Promise<void> => {
+    setSending(true);
+    try {
+      const { sent } = await paymentApi.resendConfirmation(purchase.paymentId);
+      if (sent) toast.success(t('credits.purchase.resendSent'));
+      else toast.error(t('credits.purchase.resendFailed'));
+    } catch {
+      toast.error(t('credits.purchase.resendFailed'));
+    } finally {
+      setSending(false);
+    }
+  }, [purchase.paymentId, t]);
+
+  return (
+    <div data-testid='purchase-row'>
+      <Row
+        main={
+          <>
+            {/* What the card was charged, tax included: this is the figure a
+                buyer matches against a statement. A purchase that has not
+                landed has no such figure, and printing the pre-tax price as
+                though it were one would misstate what they paid. */}
+            {landed
+              ? formatMoney(purchase.totalCents!, purchase.currency)
+              : t('credits.purchase.pendingAmount')}{' '}
+            · {formatLocalDay(purchase.createdAt)}
+            {statusKey === undefined ? null : (
+              <Badge
+                data-testid='purchase-status'
+                variant='secondary'
+                className='ml-2 align-middle'
+              >
+                {t(statusKey)}
+              </Badge>
+            )}
+          </>
+        }
+        sub={
+          purchase.designatedStudioName === null
+            ? t('credits.unassigned')
+            : t('credits.assignedTo', { studio: purchase.designatedStudioName })
+        }
+        right={
+          <>
+            {purchase.remainingCredits === null ? (
+              <span className='block text-xs text-muted-foreground'>
+                {t('credits.purchase.creditsOnArrival')}
+              </span>
+            ) : (
+              <>
+                <span
+                  data-testid='purchase-remaining'
+                  className='block text-sm font-semibold'
+                >
+                  {formatCreditAmount(purchase.remainingCredits)}
+                </span>
+                <span className='block text-xs text-muted-foreground'>
+                  {t('credits.ofPurchased', {
+                    amount: formatCreditAmount(purchase.creditsGranted),
+                  })}
+                </span>
+              </>
+            )}
+            {purchase.canResend ? (
+              <Button
+                data-testid='resend-confirmation'
+                variant='outline'
+                size='sm'
+                className='mt-1'
+                disabled={sending}
+                onClick={resend}
+              >
+                {t('credits.purchase.resend')}
+              </Button>
+            ) : null}
+          </>
+        }
+      />
+    </div>
+  );
+});

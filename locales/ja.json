@@ -1317,8 +1317,8 @@
     },
     "lotsEmpty": "購入履歴はまだありません。",
     "lotsEmptyNotice": {
-      "title": "購入すると、ここに一件ずつ並びます",
-      "body": "いくら分買ったか、いくら残っているか、どの Studio に渡したかが表示されます。"
+      "title": "購入はすべてここに表示されます",
+      "body": "各購入について、金額、処理状況、クレジットの割り当て先 Studio が表示されます。"
     },
     "assignedTo": "{studio} に割り当て",
     "ofPurchased": "全 {amount}",
@@ -1384,6 +1384,16 @@
       "cancel": "キャンセル",
       "pay": "支払いに進む",
       "failed": "この購入を開始できませんでした。もう一度お試しください。"
+    },
+    "purchase": {
+      "processing": "処理中",
+      "expired": "期限切れ",
+      "failed": "失敗",
+      "pendingAmount": "決済時に請求",
+      "creditsOnArrival": "付与後に表示",
+      "resend": "再送信",
+      "resendSent": "確認メールを送信しています。",
+      "resendFailed": "このメールはまだ送信できていません。"
     }
   }
 }

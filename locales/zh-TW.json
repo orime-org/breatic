@@ -1288,7 +1288,7 @@
     },
     "section": {
       "overview": "總覽",
-      "lots": "儲值紀錄",
+      "lots": "購買記錄",
       "ledger": "消耗明細",
       "studios": "各 Studio",
       "buy": "購買點數",
@@ -1317,8 +1317,8 @@
     },
     "lotsEmpty": "還沒有儲值紀錄。",
     "lotsEmptyNotice": {
-      "title": "儲值之後每個點數包都會出現在這裡",
-      "body": "每個點數包會顯示買了多少、還剩多少、指給了哪個 Studio。"
+      "title": "每一筆購買都會列在這裡",
+      "body": "每一筆會顯示花了多少、處理到哪一步，以及點數去了哪個 Studio。"
     },
     "assignedTo": "指定給 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1384,6 +1384,16 @@
       "cancel": "取消",
       "pay": "前往付款",
       "failed": "這筆購買沒能發起，請再試一次。"
+    },
+    "purchase": {
+      "processing": "處理中",
+      "expired": "已失效",
+      "failed": "未成功",
+      "pendingAmount": "結帳時收取",
+      "creditsOnArrival": "入帳後顯示",
+      "resend": "重新寄送",
+      "resendSent": "確認信正在寄送。",
+      "resendFailed": "這封信仍然沒能寄出。"
     }
   }
 }

@@ -1318,7 +1318,7 @@
     "lotsEmpty": "No purchases yet.",
     "lotsEmptyNotice": {
       "title": "Every purchase will be listed here",
-      "body": "Each one shows what it bought, what is left of it, and which Studio it went to."
+      "body": "Each one shows what it cost, where it stands, and which Studio its credits went to."
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",
@@ -1384,6 +1384,16 @@
       "cancel": "Cancel",
       "pay": "Continue to payment",
       "failed": "That purchase could not be started. Try again."
+    },
+    "purchase": {
+      "processing": "Processing",
+      "expired": "Expired",
+      "failed": "Failed",
+      "pendingAmount": "Charged at checkout",
+      "creditsOnArrival": "Shown once it lands",
+      "resend": "Send again",
+      "resendSent": "The confirmation is on its way.",
+      "resendFailed": "That letter still could not be sent."
     }
   }
 }

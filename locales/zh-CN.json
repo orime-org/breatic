@@ -1288,7 +1288,7 @@
     },
     "section": {
       "overview": "总览",
-      "lots": "充值记录",
+      "lots": "购买记录",
       "ledger": "消耗流水",
       "studios": "各 Studio",
       "buy": "购买积分",
@@ -1317,8 +1317,8 @@
     },
     "lotsEmpty": "还没有充值记录。",
     "lotsEmptyNotice": {
-      "title": "充值之后每个积分包都会出现在这里",
-      "body": "每个积分包会显示买了多少、还剩多少、指给了哪个 Studio。"
+      "title": "每一笔购买都会列在这里",
+      "body": "每一笔会显示花了多少、处理到哪一步，以及积分去了哪个 Studio。"
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1384,6 +1384,16 @@
       "cancel": "取消",
       "pay": "去支付",
       "failed": "这笔购买没能发起，请再试一次。"
+    },
+    "purchase": {
+      "processing": "处理中",
+      "expired": "已失效",
+      "failed": "未成功",
+      "pendingAmount": "结账时收取",
+      "creditsOnArrival": "到账后显示",
+      "resend": "重发",
+      "resendSent": "确认邮件已在发送。",
+      "resendFailed": "这封邮件仍然没能发出。"
     }
   }
 }
