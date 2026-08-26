@@ -177,11 +177,9 @@ import {
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
-import {
-  applyOccupants,
-  attachOccupants,
-} from '@web/spaces/canvas/attach-occupants';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
+import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
+import { useRemoteGesture } from '@web/spaces/canvas/use-canvas-gesture';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
   CanvasContext,
@@ -204,7 +202,6 @@ import { NodeContextMenu } from '@web/spaces/canvas/NodeContextMenu';
 import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 import {
   mergeMirroredEdgeSelection,
-  mergeMirroredSelection,
   reconcileGroupNodes,
   reconcileSelection,
 } from '@web/spaces/canvas/mirror-selection';
@@ -661,6 +658,7 @@ function CanvasSpaceInner({
   const { caretProvider } = useCanvasContext();
   const awareness = caretProvider?.awareness ?? null;
   const occupants = useCanvasOccupants(awareness);
+  const remoteGesture = useRemoteGesture(awareness);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -1242,25 +1240,23 @@ function CanvasSpaceInner({
   // selection / drag state is per-user (not in Yjs), so carry it forward by
   // id — otherwise any collaborator / backend write would wipe the current
   // user's selection (including a just-created node's auto-selection).
-  // Read inside the mirror rather than depending on it: a change of holders
-  // has its own effect below, and running this one for it would take the
-  // node's position from Yjs — which is where it was before the drag that is
-  // still in progress.
-  const occupantsRef = React.useRef(occupants);
-  occupantsRef.current = occupants;
+  //
+  // One effect, so the arbitration between the document, this client's own
+  // gesture and the remotes' has a single place it happens in: `mergeCanvasNodes`
+  // decides every node's geometry from all three (#2010, design §5.5). The
+  // gesture this client is running is read through a ref rather than depended
+  // on — the buffer already holds what ReactFlow is drawing when it starts, and
+  // the write on release moves the document, which runs this again.
+  const gestureIdsRef = React.useRef<ReadonlySet<string>>(new Set());
   React.useEffect(() => {
     setFlowNodes((prev) =>
-      mergeMirroredSelection(
-        prev,
-        nodes.map((node) => attachOccupants(toFlowNode(node), occupantsRef.current)),
-      ),
+      mergeCanvasNodes(prev, nodes.map(toFlowNode), {
+        occupants,
+        remoteGesture,
+        localGestureIds: gestureIdsRef.current,
+      }),
     );
-  }, [nodes, setFlowNodes]);
-
-  // Presence arriving on its own: rewrite who holds what and nothing else.
-  React.useEffect(() => {
-    setFlowNodes((prev) => applyOccupants(prev, occupants));
-  }, [occupants, setFlowNodes]);
+  }, [nodes, occupants, remoteGesture, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
