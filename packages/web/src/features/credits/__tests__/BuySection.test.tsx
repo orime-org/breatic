@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 「购买积分」那一屏，和它前面那道二次确认（任务 #13 §4.7）。
+ * The "buy credits" screen, and the confirmation step in front of it
+ * (task #13 §4.7).
  *
- * 这一屏只管**发起**购买。一笔付款处理到哪一步是「购买记录」的事，所以这里
- * 断言的一半是「什么东西不在这儿」。
+ * This screen only **starts** a purchase. How far along a payment is belongs to
+ * the purchase history, so half of what is asserted here is what is *not* on
+ * this screen.
  *
- * 同意勾选在二次确认对话框上，不在这一屏底部：它是这一笔的确认，不是屏幕上
- * 的一段说明。勾之前「去支付」不可点。
+ * The consent tick lives on the confirmation dialog, not at the bottom of the
+ * screen: it confirms this one purchase rather than standing as a notice on the
+ * page. Until it is ticked, the pay button stays disabled.
  */
 
 import * as React from 'react';

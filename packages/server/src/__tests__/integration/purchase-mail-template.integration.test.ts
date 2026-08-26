@@ -2,19 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 确认邮件的正文（任务 #13 §4.5，同意 spec §4.2 的六项加积分侧两项）。
+ * The body of the confirmation mail (task #13 §4.5: the six items of the
+ * consent spec §4.2 plus the two on the credits side).
  *
- * 这封信是耐久介质确认，所以它检查的不是「好不好看」，是**八样东西在不在**。
- * 其中两样最容易被写成摘要而不是原文：
+ * This letter is the durable-medium confirmation, so what is checked here is
+ * not whether it reads nicely but whether all eight things are present. Two of
+ * them are the ones most likely to be turned into a summary instead of being
+ * quoted:
  *
- * 一、**买家勾的那段字要原文照抄**，不能写成「您已同意条款」。同意的核心
- * 就是把当时那段字重新给他看。
+ * 1. The wording the buyer ticked must be repeated verbatim, never reduced to
+ *    "you agreed to the terms". Handing that exact wording back is what the
+ *    consent is.
  *
- * 二、**退款截止要印算好的具体日期**，不能写「30 天内」。买家读到的必须是
- * 一个他能对着日历数的日子。
+ * 2. The refund deadline must be printed as the computed date, never as
+ *    "within 30 days". What the buyer reads has to be a day they can count to
+ *    on a calendar.
  *
- * 语言取的是买家买的时候那个，不是触发这次渲染的请求那个——从另一台设备
- * 点重发，信不该换种语言。
+ * The language is the one the purchase was made in, not the one of the request
+ * that triggered this render — hitting resend from another device must not
+ * switch the letter to a different language.
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -30,18 +36,40 @@ import {
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 
 /**
- * 该语言的同意文案。
- * @param locale - 语言。
- * @returns 当前那一版的文案。
+ * The consent wording in a given language.
+ * @param locale - The language.
+ * @returns The wording as the current version has it.
  */
 function consentText(locale: string): string {
   return consentTextAt(CONSENT_CREDITS_VERSION, locale);
 }
 
 /**
- * 该语言的退款三行。
- * @param locale - 语言。
- * @returns 当前那一版的三行。
+ * The consent wording in a given language, with the emphasis markers removed.
+ *
+ * The `**` in the wording is there for the Stripe checkout page, which renders
+ * markdown; the letter should never show the markers themselves, so assertions
+ * against the plain-text body compare with the markers stripped.
+ * @param locale - The language.
+ * @returns The same sentence, without the markers.
+ */
+function plainConsent(locale: string): string {
+  return consentText(locale).replace(/\*\*(.+?)\*\*/g, "$1");
+}
+
+/**
+ * The consent wording in a given language, with the emphasis rendered as HTML.
+ * @param locale - The language.
+ * @returns The same sentence, with the emphasis as `<strong>`.
+ */
+function htmlConsent(locale: string): string {
+  return consentText(locale).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
+/**
+ * The three refund lines in a given language.
+ * @param locale - The language.
+ * @returns The three lines as the current version has them.
  */
 function refundLines(locale: string): readonly string[] {
   return refundLinesAt(REFUND_CREDITS_VERSION, locale);
@@ -105,7 +133,7 @@ describe("the confirmation carries all eight things", () => {
 
   it("repeats the consent wording itself, not a summary of it", () => {
     const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
-    expect(mail.text).toContain(consentText("en"));
+    expect(mail.text).toContain(plainConsent("en"));
   });
 
   it("repeats all three refund lines", () => {
@@ -157,7 +185,7 @@ describe("the confirmation is written in the language the purchase was made in",
     "writes a %s purchase in %s, whatever the request that triggered it",
     (locale) => {
       const mail = renderPurchaseConfirmation(view({ locale }), "UTC", SUPPORT);
-      expect(mail.text).toContain(consentText(locale));
+      expect(mail.text).toContain(plainConsent(locale));
       for (const line of refundLines(locale)) {
         expect(mail.text).toContain(line);
       }
@@ -171,10 +199,43 @@ describe("the confirmation is written in the language the purchase was made in",
 describe("the HTML body says the same things as the text one", () => {
   it("carries the consent wording and every refund line", () => {
     const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
-    expect(mail.html).toContain(consentText("en"));
+    expect(mail.html).toContain(htmlConsent("en"));
     for (const line of refundLines("en")) {
       expect(mail.html).toContain(line);
     }
     expect(mail.html).toContain("9f1c7c2e-0000-4000-8000-000000000001");
+  });
+});
+
+/**
+ * One piece of consent wording has two consumers: the Stripe checkout page,
+ * which renders markdown (it really does turn `**` into bold), and this letter,
+ * which does not. Each has to end up with the form it needs — not a single
+ * asterisk printed as-is in the mail, and the emphasised words still there.
+ */
+describe("the emphasis in the consent wording is rendered, not printed", () => {
+  it("leaves no asterisks in either body", () => {
+    const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    expect(mail.text).not.toContain("**");
+    expect(mail.html).not.toContain("**");
+  });
+
+  it("keeps the emphasised words themselves", () => {
+    const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    // The English wording emphasises the sentence about spending a credit.
+    expect(mail.text).toContain(
+      "once I use any of them I can no longer get this purchase refunded",
+    );
+    expect(mail.html).toContain(
+      "<strong>once I use any of them I can no longer get this purchase refunded</strong>",
+    );
+  });
+
+  it("does the same in every language we sell in", () => {
+    for (const locale of ["en", "zh-CN", "zh-TW", "ja", "ko"]) {
+      const mail = renderPurchaseConfirmation(view({ locale }), "UTC", SUPPORT);
+      expect(mail.text).not.toContain("**");
+      expect(mail.html).not.toContain("**");
+    }
   });
 });

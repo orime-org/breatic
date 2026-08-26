@@ -2,26 +2,34 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 建结账 session 那一步（任务 #13 §4.2、§4.7）—— 真 PG，Stripe 客户端替身。
+ * Creating the checkout session (task #13 §4.2, §4.7) — real PG, Stripe client
+ * doubled.
  *
- * 这一步产出两样东西，两样都必须在同一次调用里对：发给 Stripe 的那个
- * session，和我们自己那行 `payments`。
+ * This step produces two things, and both have to come out right in the same
+ * call: the session we hand to Stripe, and our own `payments` row.
  *
- * 三处最容易写错的地方，各有一组用例钉着：
+ * Three places are easy to get wrong, and each has a group of cases pinning it
+ * down:
  *
- * 一、**`{CHECKOUT_SESSION_ID}` 必须原样发出去**。`new URL()` 配
- * `searchParams.set()` 会把花括号编码成 `%7B...%7D`，Stripe 不再替换它，
- * 返回侧的确认端点拿一个字面量去查行、查不到答 404，即时到账整条路静默
- * 失效——而 webhook 照样让积分到账，所以这个失效在验证里看不见。
+ * 1. **`{CHECKOUT_SESSION_ID}` has to go out verbatim.** `new URL()` together
+ * with `searchParams.set()` encodes the braces as `%7B...%7D`, Stripe then no
+ * longer substitutes it, and the confirmation endpoint on the return leg looks
+ * the row up by a literal string, finds nothing, and answers 404 — the whole
+ * instant-credit path fails silently. The webhook still grants the credits, so
+ * nothing about the failure is visible from the outside.
  *
- * 二、**`payment.id` 在建 session 之前就得生成**。它要拼进 `cancel_url`，
- * 买家点返回时靠它找到那一行。倒过来做（先插行、`stripe_session_id` 留空
- * 回填）的话，`sessions.create` 抛一次错就留下一行 session id 为空的
- * `pending`：三条转 `expired` 的路径全都够不着它，对账捞到它却拿空值去
- * retrieve，买家看到一行永久「处理中」。
+ * 2. **`payment.id` has to exist before the session is created.** It goes into
+ * `cancel_url`, which is how a buyer who clicks back gets us to the right row.
+ * Doing it the other way round (insert the row first, leave
+ * `stripe_session_id` empty and fill it in afterwards) means one throw from
+ * `sessions.create` leaves behind a `pending` row with no session id: none of
+ * the three paths that move a row to `expired` can reach it, and reconciliation
+ * picks it up only to retrieve on an empty value. The buyer is left with a row
+ * that says "processing" forever.
  *
- * 三、**`time_zone` 来自客户端，不可信**。它进 `payments.metadata`，确认
- * 邮件按它换算购买时刻，认不出来就兜底 UTC。
+ * 3. **`time_zone` comes from the client and is not trusted.** It lands in
+ * `payments.metadata`, and the confirmation mail converts the purchase time
+ * with it; anything we do not recognise falls back to UTC.
  */
 
 import {
@@ -68,12 +76,14 @@ import {
 import { CONSENT_CREDITS_VERSION } from "@server/modules/payment/legal-text.js";
 
 /**
- * 该语言的积分同意文案，直接从语言文件读。
+ * The credits consent wording for a locale, read straight from the locale file.
  *
- * 断言的是「发给 Stripe 的那句话，就是语言文件里该语言那一条」。绕开
- * `t()` 自己读文件，是为了让这条断言在 i18n 那一层出问题时也照样红。
- * @param locale - 语言。
- * @returns 那一条文案。
+ * What is being asserted is that the sentence we send to Stripe is the one that
+ * locale's file actually carries. Reading the file directly instead of going
+ * through `t()` is what keeps the assertion red when something breaks in the
+ * i18n layer itself.
+ * @param locale - The locale to read.
+ * @returns That locale's wording.
  */
 function consentText(locale: string): string {
   const raw = readFileSync(resolve(MONOREPO_ROOT, `locales/${locale}.json`), "utf-8");
@@ -84,13 +94,15 @@ function consentText(locale: string): string {
 }
 
 /**
- * 用某个语言发起一次结账。
+ * Starts one checkout under a given locale.
  *
- * 生产路径上语言由 `localeMiddleware` 从 `Accept-Language` 协商出来、用
- * `runWithLocale` 钉在这次请求上，`createCheckout` 自己读它。这里照同一条
- * 路走，免得测试拿到一条生产代码里不存在的传参路径。
- * @param input - 买谁的、买哪一档、从哪来、什么语言。
- * @returns 那一行的 id 与结账地址。
+ * In production the locale is negotiated from `Accept-Language` by
+ * `localeMiddleware`, pinned to the request with `runWithLocale`, and read back
+ * by `createCheckout` itself. Going the same way here keeps the test off a
+ * parameter path that does not exist in production code.
+ * @param input - Who is buying, which pack, where they came from, and in what
+ * locale.
+ * @returns The row's id and the checkout URL.
  */
 async function checkout(input: {
   userId: string;

@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 「购买记录」那一屏（任务 #13 §4.6）。
+ * The purchase history screen (task #13 §4.6).
  *
- * 它列的是**付款**，所以一笔还没到账的、一笔弃单的都在这张表里 —— 那两种
- * 正是买家来这儿要问的。它们的积分包那一侧整排是 null，所以这一屏一半的
- * 断言是「哪几格这时候不该印数」。
+ * What it lists is *payments*, so a purchase that has not landed yet and one
+ * that was abandoned both show up in this table - and those two are exactly
+ * what a buyer comes here to ask about. For those rows the whole credit-lot
+ * side is null, which is why half the assertions here are about which cells
+ * must print no figure at this point.
  *
- * 重发只在确认邮件没发出去的行上出现，判据由服务端算成 `canResend` 送来：
- * `sending` 那个超时的值只有服务器读得到。
+ * Resending only appears on rows whose confirmation mail did not go out. That
+ * call is made on the server and arrives as `canResend`: the timeout that
+ * decides when a still-`sending` mail counts as stuck is only readable there.
  */
 
 import * as React from 'react';

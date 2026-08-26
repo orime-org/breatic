@@ -2,32 +2,43 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 充值链路新加的两张表与 `payments` 新加的三列（任务 #13）—— 真 PG。
+ * The two tables the top-up flow adds, plus the three new `payments` columns
+ * (task #13) — against a real Postgres.
  *
- * 只有真库能证的结构承诺，每条附上它挡住的那个故障：
+ * These are the structural promises only a real database can prove. Each one
+ * comes with the failure it holds back:
  *
- * 一、`purchase_consents.payment_id` 是 UNIQUE。同意记录由 `fulfillPayment`
- * 的四个调用方竞争写入（确认端点 · webhook · 覆盖层对账 · cancel 读到已付款），
- * 谁先到谁写，靠这条约束让后到的天然幂等。没有它，一笔付款会落下多条互相矛盾
- * 的同意证据，而它是法定证据。
+ * 1. `purchase_consents.payment_id` is UNIQUE. Consent rows are written by the
+ * four callers of `fulfillPayment` racing each other (the confirm endpoint,
+ * the webhook, the overlay reconciliation, and cancel finding the payment
+ * already paid). Whoever gets there first writes; the constraint is what makes
+ * every later arrival idempotent for free. Without it a single payment ends up
+ * with several contradictory consent records — and consent is legal evidence.
  *
- * 二、`purchase_mail_outbox.payment_id` 是 UNIQUE，且这张表有 `updated_at`。
- * 一笔一行是「连点五次只发一封」的前提；`sending` 的超时判据读的正是
- * `updated_at`，它必须随每次写自动更新，否则崩在 `sending` 的那一行永远
- * 出不来，买家点不到重发。
+ * 2. `purchase_mail_outbox.payment_id` is UNIQUE, and the table carries
+ * `updated_at`. One row per payment is the precondition for "five clicks send
+ * one mail"; the timeout that rescues a row stuck in `sending` reads exactly
+ * `updated_at`, so it has to move on every write. If it does not, a row that
+ * died in `sending` never comes back out and the buyer can never trigger a
+ * resend.
  *
- * 三、两张表都只有 `created_at` / `updated_at`，没有 `deleted_at`。它们跟着
- * 那笔付款存续，没有可删语义——这是仓库软删 mandate 在这两张表上的书面豁免
- * 理由，同时要写进 `schema-timestamps` 守卫的 `NO_SOFT_DELETE` 名单。
+ * 3. Neither table has `deleted_at` — only `created_at` / `updated_at`. They
+ * live and die with their payment and have no deletable meaning. That is the
+ * written justification for exempting them from the repository's soft-delete
+ * mandate, and it also has to go into the `NO_SOFT_DELETE` list of the
+ * `schema-timestamps` guard.
  *
- * 四、`payments` 的 `tax_cents` / `total_cents` 可空。未到账的行上没有这两个
- * 值（它们与 CAS 同事务写入），NOT NULL 会让结账那一刻建不出行。
+ * 4. `payments.tax_cents` and `payments.total_cents` are nullable. A row that
+ * has not been paid yet has neither value (both are written in the same
+ * transaction as the CAS), so NOT NULL would make the row impossible to create
+ * at checkout time.
  *
- * 五、`payments.status` 有 CHECK，四个值 `pending / completed / failed /
- * expired`。`expired` 是本次新增的终态，弃单的笔靠它离开「处理中」。
+ * 5. `payments.status` has a CHECK over four values: `pending / completed /
+ * failed / expired`. `expired` is the terminal state added here — it is how an
+ * abandoned checkout leaves "in progress".
  *
- * 跑在 global-setup.ts 起的 testcontainer Postgres 上，读的是迁移真正产出的
- * schema。
+ * Runs against the testcontainer Postgres that global-setup.ts brings up, so
+ * what it reads is the schema the migrations actually produce.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

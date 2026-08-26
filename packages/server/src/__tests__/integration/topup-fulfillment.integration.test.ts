@@ -2,27 +2,40 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 入账那一个事务（任务 #13 §4.3）—— 真 PG，Stripe 客户端替身。
+ * The one transaction that grants a top-up (task #13 §4.3) — real PG, doubled
+ * Stripe client.
  *
- * `fulfillPayment(sessionId, eventId | null)` 有四个调用方：返回侧确认端点 ·
- * webhook · 覆盖层对账 · cancel 读到已付款那一支。四个调的是同一个函数，
- * 所以下面每一条断言的都是「不管谁先到，结果只有一种」。
+ * `fulfillPayment(sessionId, eventId | null)` has four callers: the
+ * return-side confirmation endpoint, the webhook, the overlay reconciliation
+ * pass, and the branch cancel takes when it reads the session as already
+ * paid. All four go through the same function, so every assertion below is
+ * really the same one: whoever gets there first, there is only one outcome.
  *
- * 两道幂等各管一段，这是这一层最容易写错的地方：
+ * Two idempotency guards each cover a different half, and that split is the
+ * easiest thing to get wrong at this layer:
  *
- * 一、**认领挡的是同一个事件被投递两次**。Stripe 至少投递一次，重投是常态。
- * 认领跟入账在同一个事务里——这一点照会员腿（`subscription-events.ts:286`）
- * 与 `schema.ts` 上那条注释办。认领先提交、入账另开事务是错的：入账失败之后
- * 事件已被标记为已处理，三天内的重投全部短路，钱进了而积分永远不发。
+ * 1. **The claim stops the same event being delivered twice.** Stripe
+ *    delivers at least once, so redelivery is routine. The claim and the
+ *    grant share one transaction — the same shape the membership leg uses
+ *    (`subscription-events.ts:286`) and what the note in `schema.ts` says to
+ *    do. Committing the claim first and granting in a separate transaction is
+ *    wrong: once the grant fails, the event is already marked handled, every
+ *    redelivery over the next three days short-circuits, and the money is in
+ *    while the credits never arrive.
  *
- * 二、**CAS 挡的是四个调用方之间的并发**。webhook 与确认端点同一秒各自读到
- * paid，两边手上的事件不同或没有事件，认领拦不住，靠 `payments.status` 上的
- * CAS 只成一次。
+ * 2. **The CAS stops two of the four callers racing each other.** The webhook
+ *    and the confirmation endpoint can both read `paid` in the same second
+ *    holding different events, or no event at all; the claim cannot separate
+ *    them, so the CAS on `payments.status` is what lets exactly one win.
  *
- * 三、**首发确认邮件只在这一趟真的建了 lot 时才发**。每个调用方都会走完事务
- * 并提交，包括什么都没写的那几种（认领撞了的、CAS 不匹配答 replay 的），而
- * replay 是最常见的一条路：确认端点抢先入账，几秒后 webhook 到、认领成功、
- * CAS 不匹配。少了这个条件，每一笔确认端点跑赢 webhook 的购买都收两封信。
+ * 3. **The confirmation mail goes out only on the pass that actually created
+ *    the lot.** Every caller runs the transaction to completion and commits,
+ *    including the passes that wrote nothing (claim collided, or CAS did not
+ *    match and the answer was `replay`) — and `replay` is the common path:
+ *    the confirmation endpoint grants first, the webhook lands seconds later,
+ *    claims successfully, and finds the CAS no longer matching. Without that
+ *    condition, every purchase where the endpoint beats the webhook sends two
+ *    emails.
  */
 
 import {
@@ -139,6 +152,23 @@ async function dropUser(userId: string): Promise<void> {
   await sql`DELETE FROM users WHERE id = ${userId}`;
 }
 
+/**
+ * A webhook event.
+ *
+ * The claim records the id and the type together, so both travel as one
+ * argument. Defaults to `checkout.session.completed`, the most common of the
+ * four types.
+ * @param id - The event's own id; this is what the claim deduplicates on.
+ * @param type - The event type.
+ * @returns That event.
+ */
+function evt(
+  id: string,
+  type = "checkout.session.completed",
+): { id: string; type: string } {
+  return { id, type };
+}
+
 /** A paid Checkout Session as the SDK returns it. */
 function paidSession(
   sessionId: string,
@@ -192,7 +222,7 @@ describe("one paid session grants exactly once", () => {
         paidSession(sessionId),
       );
 
-      const outcome = await fulfillPayment(sessionId, `evt_${sessionId}`);
+      const outcome = await fulfillPayment(sessionId, evt(`evt_${sessionId}`));
 
       expect(outcome.status).toBe("granted");
       expect(await countsFor(userId)).toEqual({
@@ -223,17 +253,19 @@ describe("one paid session grants exactly once", () => {
       );
 
       await fulfillPayment(sessionId, null);
-      // 发信有意不被 await——请求不能等 SMTP，那是 §4.5 的承诺。所以这里等
-      // 它自己跑到替身，而不是断言「已经跑完了」。
+      // The send is deliberately not awaited — a request must never wait on
+      // SMTP, which is what §4.5 promises. So wait for it to reach the double
+      // on its own rather than asserting it has already finished.
       await waitForMail(1);
       expect(sentMail).toHaveBeenCalledTimes(1);
 
       // The webhook arrives seconds later with an event id of its own: the
       // claim succeeds, the CAS no longer matches, and this pass wrote
       // nothing. It must not mail again.
-      const replay = await fulfillPayment(sessionId, `evt_${sessionId}`);
+      const replay = await fulfillPayment(sessionId, evt(`evt_${sessionId}`));
       expect(replay.status).toBe("replay");
-      // 给它同样长的机会去发第二封；没发才是对的。
+      // Give a second send the same chance to happen; not happening is the
+      // correct outcome.
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(sentMail).toHaveBeenCalledTimes(1);
     } finally {
@@ -251,8 +283,8 @@ describe("the two guards cover different things", () => {
         paidSession(sessionId),
       );
 
-      const first = await fulfillPayment(sessionId, eventId);
-      const second = await fulfillPayment(sessionId, eventId);
+      const first = await fulfillPayment(sessionId, evt(eventId));
+      const second = await fulfillPayment(sessionId, evt(eventId));
 
       expect(first.status).toBe("granted");
       expect(second.status).toBe("replay");
@@ -275,7 +307,7 @@ describe("the two guards cover different things", () => {
       // Neither collides on the claim, so only the CAS separates them.
       const [a, b] = await Promise.all([
         fulfillPayment(sessionId, null),
-        fulfillPayment(sessionId, `evt_race_${sessionId}`),
+        fulfillPayment(sessionId, evt(`evt_race_${sessionId}`)),
       ]);
 
       const granted = [a, b].filter((r) => r.status === "granted");
@@ -303,7 +335,7 @@ describe("the two guards cover different things", () => {
         paidSession(sessionId),
       );
 
-      await expect(fulfillPayment(sessionId, eventId)).rejects.toThrow();
+      await expect(fulfillPayment(sessionId, evt(eventId))).rejects.toThrow();
 
       // The claim must be gone with it: otherwise Stripe's redelivery — the
       // only automatic recovery there is — short-circuits forever.
@@ -410,7 +442,7 @@ describe("what the session says decides", () => {
       paidSession("cs_test_stranger"),
     );
 
-    const outcome = await fulfillPayment("cs_test_stranger", "evt_stranger");
+    const outcome = await fulfillPayment("cs_test_stranger", evt("evt_stranger"));
 
     expect(outcome.status).toBe("unknown");
   });
@@ -451,6 +483,35 @@ describe("what a purchase agreed to is read off our own row", () => {
         SELECT locale FROM purchase_mail_outbox WHERE payment_id = ${paymentId}
       `;
       expect(mail!.locale).toBe("ja");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  /**
+   * A checkout page can sit open for two hours (`expires_at`), so when the
+   * session was created and when the buyer actually ticked the box can be up
+   * to two hours apart. A consent record is our evidence for a distance sale,
+   * so its timestamp may only be the moment we genuinely observed the consent
+   * to exist.
+   */
+  it("stamps the consent at the moment we saw it, not when the page was opened", async () => {
+    const { userId, sessionId, paymentId } = await seedPending();
+    try {
+      const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 60 * 60;
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, { created: twoHoursAgo }),
+      );
+      const before = Date.now();
+
+      await fulfillPayment(sessionId, null);
+
+      const [consent] = await sql<{ consented_at: Date }[]>`
+        SELECT consented_at FROM purchase_consents WHERE payment_id = ${paymentId}
+      `;
+      const stamped = consent!.consented_at.getTime();
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      expect(stamped).toBeLessThanOrEqual(Date.now());
     } finally {
       await dropUser(userId);
     }

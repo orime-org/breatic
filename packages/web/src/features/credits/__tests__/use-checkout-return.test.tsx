@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 买家从 Stripe 跳回来那一下（任务 #13 §4.4）。
+ * The moment a buyer comes back from Stripe (task #13 §4.4).
  *
- * 跳回来是**整页重载**，所以覆盖层那个组件内的开关恒为关 —— 落地这件事必须
- * 由地址上的参数驱动，不能指望页面里还留着什么状态。
+ * Coming back is a full page reload, so the overlay's in-component open flag
+ * is always false by then. Landing has to be driven by the parameters on the
+ * address; nothing left in the page can be relied on.
  *
- * 两条路从同一个 `return_url` 派生、落在同一条路由上，靠参数分辨：付完款那
- * 条带 `session_id`，点返回那条带 `cancelled` 和 `payment_id`。分不出来就会
- * 拿弃单去调确认端点，主动作废那套永不触发。
+ * Both routes back are derived from the same `return_url` and land on the same
+ * route, told apart only by their parameters: a paid checkout carries
+ * `session_id`, a pressed Back button carries `cancelled` and `payment_id`.
+ * Confusing the two means calling the confirm endpoint with an abandoned
+ * checkout, and the abandon path never runs at all.
  *
- * 等待层有一个不依赖答复的出口：超时就照样撤掉、照样落在购买记录，那一笔
- * 显示「处理中」。买家不会被一层转个不停的遮罩困住。
+ * The waiting layer has an exit that does not depend on an answer: on timeout
+ * it is torn down anyway and still lands on the purchase history, where that
+ * purchase reads as pending. The buyer is never stuck behind a spinner that
+ * never resolves.
  */
 
 import * as React from 'react';

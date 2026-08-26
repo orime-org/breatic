@@ -2,24 +2,32 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 买家回来那两个端点，加覆盖层打开时的对账（任务 #13 §4.4、§4.6）。
+ * The two entrances the buyer comes back through, plus the reconcile pass that
+ * runs when the overlay opens (task #13 §4.4, §4.6).
  *
- * 三条路各自解决同一件事的一部分：**一笔付了钱的购买必须到账，而一笔弃单
- * 必须停止显示成「处理中」**。
+ * All three paths serve one guarantee: a purchase that was paid for must be
+ * credited, and an abandoned checkout must stop showing as in flight.
  *
- * 一、`POST /payment/confirm`——买家付完款回来打的那一下，即时到账。
+ * 1. `POST /payment/confirm` - the call the buyer makes on returning from a
+ *    completed payment. Credits land there and then.
  *
- * 二、`POST /payment/cancel`——买家点「返回」那一下。Stripe 的 expire 端点
- * 只收 `open` 的 session，**被拒时不猜**：接着 retrieve 一次按真实状态办。
- * 读到已付款那一支尤其要紧——它是「付完款、确认端点没成、买家回到还开着
- * 的结账页点了返回」这条真实路径，这时候把本地写成 `expired` 就是收了钱
- * 不发积分。
+ * 2. `POST /payment/cancel` - the call behind pressing Back. Stripe's expire
+ *    endpoint only accepts a session that is still `open`, and when it refuses
+ *    we do not guess: we retrieve the session and act on what it really says.
+ *    The paid branch is the one that matters most - it is the real sequence
+ *    "payment went through, the confirm call never landed, the buyer returned
+ *    to the still-open checkout page and pressed Back". Writing `expired`
+ *    locally there means taking the money and granting no credits.
  *
- * 三、对账——两条路都断了的兜底，挂在覆盖层每次打开都要打的那个查询上。
- * 三个界（只取 `pending` 与 `failed`、跳过太新的、按 `updated_at` 升序取
- * 几笔）里最容易漏的是**排序那一条**：弃单在 session 的两小时里 retrieve
- * 回来都是 `open`、都会留在 `pending`，按创建时间取最老的几笔，这几个名额
- * 会被同一批弃单长期占满，而真正付了钱的那一笔永远轮不到。
+ * 3. Reconciling - the fallback for when both of the above fell through. It
+ *    hangs off the one query the overlay makes every time it opens. Of its
+ *    three bounds (only `pending` and `failed`, skip rows too young to have
+ *    been abandoned, take a few ordered by `updated_at` ascending), the
+ *    ordering is the easiest to get wrong: for the two hours a session lives,
+ *    an abandoned checkout retrieves as `open` and stays `pending`, so picking
+ *    the oldest few by creation time lets the same batch of abandoned rows
+ *    hold those slots indefinitely and the row that was actually paid for
+ *    never gets a turn.
  */
 
 import {

@@ -2,22 +2,27 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 「购买记录」那一屏的数据源（任务 #13 §4.6）—— 真 PG。
+ * What backs the purchase history screen (task #13 §4.6) — against real PG.
  *
- * 这一屏改成列**付款**而不是积分包，因为它要回答的问题是「我那笔钱怎么样
- * 了」。一笔还没到账的、一笔弃单的，都没有积分包，而它们正是买家最需要在
- * 这里看到的两种。
+ * The screen lists payments rather than credit lots, because the question it
+ * answers is "what became of my money". A payment still in flight and an
+ * abandoned one both have no lot, and those are exactly the two a buyer most
+ * needs to find here.
  *
- * 由此来的三件事，各有一组用例钉着：
+ * Three things follow from that, each pinned down by a group of cases:
  *
- * 一、**没到账的行，lot 那一侧整排是 null**。实付、还剩多少、指定去向全都
- * 拿不到，而这不是「数据缺了」，是「这笔还没落地」。
+ * 1. On a row that has not landed, the whole lot side reads null. What was
+ *    actually charged, what is left, where it points — none of it exists yet.
+ *    That is not missing data; it is a purchase that has not landed.
  *
- * 二、**游标必须钉在 `payments` 上**。lot 那两列在这些行上为 null，排序键
- * 和游标同时塌，翻到页尾会取到空游标、更早的付款再也读不出来。
+ * 2. Paging must key on `payments`. Key it on the lot and both the sort key
+ *    and the cursor go null on these rows: the walk reaches an empty cursor
+ *    and every earlier payment becomes unreachable.
  *
- * 三、**指定去向按「那个 studio 还在不在」读**。同一笔在总览里算「未指定」、
- * 在这一屏写着「已指定给 X」而 X 已经没了，是同一个事实的两个答案。
+ * 3. Where a purchase points is read through whether that studio still
+ *    exists. One purchase counting as unassigned in the overview while this
+ *    screen says "assigned to X" with X already gone is two answers to the
+ *    same question.
  */
 
 import {
@@ -62,6 +67,7 @@ import {
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { CreditPage, PurchaseRow } from "@breatic/shared";
+import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -467,5 +473,61 @@ describe("POST /payment/:id/resend-confirmation", () => {
       { method: "POST" },
     );
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * The current balance printed on the confirmation mail.
+ *
+ * It is the only number in that mail that moves: everything else is read off
+ * this purchase's own row and comes back identical on a resend months later.
+ * Since it claims to be current, it has to come from the same place as the
+ * figure at the top of the overlay — what is left (`remaining_credits`), not
+ * what was ever bought (`purchased_credits`).
+ */
+describe("what the confirmation calls the balance", () => {
+  it("counts what is left, not what was ever bought", async () => {
+    const buyer = await seedBuyer();
+    try {
+      const paymentId = await seedLanded(buyer.userId);
+      // 1700 bought, 1200 of it spent.
+      await sql`
+        UPDATE credit_lots SET remaining_credits = 500
+        WHERE payment_id = ${paymentId}
+      `;
+      const view = await getConfirmationView(paymentId);
+      expect(view?.balanceCredits).toBe(500);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("leaves out a lot that is no longer active", async () => {
+    const buyer = await seedBuyer();
+    try {
+      const live = await seedLanded(buyer.userId);
+      const refunded = await seedLanded(buyer.userId);
+      await sql`
+        UPDATE credit_lots SET lifecycle = 'refunded'
+        WHERE payment_id = ${refunded}
+      `;
+      const view = await getConfirmationView(live);
+      // Only the live lot's 1700 counts; the refunded one's does not.
+      expect(view?.balanceCredits).toBe(1700);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("adds up every live lot the account holds, not just this purchase's", async () => {
+    const buyer = await seedBuyer();
+    try {
+      const first = await seedLanded(buyer.userId);
+      await seedLanded(buyer.userId);
+      const view = await getConfirmationView(first);
+      expect(view?.balanceCredits).toBe(3400);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
   });
 });

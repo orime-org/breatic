@@ -139,8 +139,13 @@ describe("POST /payment/webhook — 分流与状态码", () => {
     });
 
     expect(res.status).toBe(200);
-    // 事件 id 一路传进去：认领就是靠它挡住 Stripe 的重投。
-    expect(paymentService.fulfillPayment).toHaveBeenCalledWith("cs_2", "evt_4");
+    // The event reaches the service whole. Its id is what the claim keys on,
+    // and its type is what the claim records: passing a constant there would
+    // leave the audit table saying every delivery was the same kind.
+    expect(paymentService.fulfillPayment).toHaveBeenCalledWith("cs_2", {
+      id: "evt_4",
+      type: "checkout.session.completed",
+    });
   });
 
   it("签名不对答 400，且不碰任何一条腿", async () => {
