@@ -12,11 +12,12 @@
  * Inline HTML stays escaped: the pipeline carries no `rehype-raw`, which is
  * what react-markdown means by secure by default.
  */
-import { useId, useMemo, type ReactElement, type ReactNode } from 'react';
+import { memo, useId, useMemo, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components, Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remend from 'remend';
@@ -39,6 +40,8 @@ interface MarkdownMessageProps {
   streaming?: boolean;
   /** Which step of the type scale the prose is drawn at. */
   size?: keyof typeof SIZE_CLASS;
+  /** Whether a single newline in the source is a line the reader sees. */
+  softBreaks?: boolean;
 }
 
 /**
@@ -101,6 +104,12 @@ type Rehype = NonNullable<Options['rehypePlugins']>;
 // remark-math would read it as a formula, and a price is written far more
 // often than one (user 2026-08-25).
 const REMARK_PLUGINS: Remark = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+
+// Markdown folds a single newline into a space. Where the words were written
+// one per line, `remark-breaks` makes each of those a break in the document
+// itself, so it is drawn wherever the words are and travels with them when
+// they are copied.
+const REMARK_PLUGINS_WITH_BREAKS: Remark = [...REMARK_PLUGINS, remarkBreaks];
 
 /**
  * How a formula is rendered.
@@ -249,16 +258,24 @@ const COMPONENTS = {
 
 /**
  * Draw one assistant message.
+ *
+ * Memoised on the way out: parsing is the expensive part of this component,
+ * and a reply arriving piece by piece re-renders everything beside it every
+ * 50ms. An expanded thinking block is the case that shows it — its text is
+ * settled while the reply beside it grows. Every prop is a primitive, so the
+ * comparison React does by default is the right one.
  * @param root0 - The component props.
  * @param root0.content - The assistant's prose, as markdown.
  * @param root0.streaming - Whether this turn is still receiving tokens.
  * @param root0.size - Which step of the type scale the prose is drawn at.
+ * @param root0.softBreaks - Whether a single newline is a line the reader sees.
  * @returns The rendered prose.
  */
-export function MarkdownMessage({
+export const MarkdownMessage = memo(function MarkdownMessage({
   content,
   streaming = false,
   size = 'sm',
+  softBreaks = false,
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
   // Unique per rendered message, so the footnote ids below are too.
@@ -303,11 +320,11 @@ export function MarkdownMessage({
       <Markdown
         components={COMPONENTS}
         rehypePlugins={rehypePlugins}
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={softBreaks ? REMARK_PLUGINS_WITH_BREAKS : REMARK_PLUGINS}
         remarkRehypeOptions={remarkRehypeOptions}
       >
         {source}
       </Markdown>
     </div>
   );
-}
+});

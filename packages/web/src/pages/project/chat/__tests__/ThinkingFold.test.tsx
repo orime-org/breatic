@@ -13,7 +13,7 @@
  * captured from a real turn.
  */
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
@@ -57,6 +57,20 @@ describe('ThinkingFold — the fold itself (B2)', () => {
 });
 
 describe('ThinkingFold — the body reads as prose (B1, B3)', () => {
+  it('hands a copier the lines the reader saw', async () => {
+    // What the reader is copying is cloned away from everything around it, so
+    // a break that lived in a rule about its surroundings would not travel
+    // with it — the steps would arrive as one run-on line.
+    const body = await expand('step one\nstep two');
+    const range = document.createRange();
+    range.selectNodeContents(body.querySelector('p') as Element);
+
+    const host = document.createElement('div');
+    host.append(range.cloneContents());
+
+    expect(host.querySelector('br'), 'the break came along').not.toBeNull();
+  });
+
   it('renders the reasoning through the reply renderer', async () => {
     const body = await expand('the **wider** ratio wins');
 
@@ -71,34 +85,25 @@ describe('ThinkingFold — the body reads as prose (B1, B3)', () => {
     // markdown was for.
     const body = await expand('step one\nstep two');
 
-    expect(
-      body.classList.contains('[&_p]:whitespace-pre-line'),
-      'the break is held on the paragraphs',
-    ).toBe(true);
-    expect(
-      body.classList.contains('[&_li]:whitespace-pre-line'),
-      'and on the list items',
-    ).toBe(true);
-    expect(body.querySelector('p')?.textContent).toContain('\n');
+    const paragraph = body.querySelector('p');
+    expect(paragraph?.querySelector('br'), 'the break is in the document').not.toBeNull();
+    expect(paragraph?.textContent).toContain('step one');
+    expect(paragraph?.textContent).toContain('step two');
   });
 
-  it('leaves no blank line between one block and the next', async () => {
-    // `mdast-util-to-hast` writes a newline text node between block children,
-    // so holding the breaks on the container would turn each of those into a
-    // blank line — a gap before every list and between every bullet.
-    const body = await expand('first paragraph\n\nsecond paragraph\n\n- a\n- b');
-
-    const container = body.querySelector('[data-testid="markdown-body"]');
-    expect(container).not.toBeNull();
-    expect(
-      [...(container?.childNodes ?? [])].some((n) => n.nodeType === 3 && n.textContent === '\n'),
-      'the separators react-markdown leaves between blocks are still there',
-    ).toBe(true);
-    for (const node of [body, container as Element]) {
-      expect(
-        node.classList.contains('whitespace-pre-line'),
-        'and nothing above the blocks preserves them',
-      ).toBe(false);
+  it('leaves the shape of a list to the list', async () => {
+    // Every break the reader sees is an element, so the newlines the renderer
+    // writes between blocks stay what they were: separators nobody draws.
+    // Loose and nested items hold blocks, and are where a rule about
+    // white-space reaches furthest past what it was written for.
+    for (const source of ['- first\n\n- second', '- a\n  - b', '- one\n\n  two']) {
+      const body = await expand(source);
+      const items = [...body.querySelectorAll('li')];
+      expect(items.length, `${source} renders its items`).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.querySelector('br'), `${source} draws no break of its own`).toBeNull();
+      }
+      cleanup();
     }
   });
 });

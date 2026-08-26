@@ -117,6 +117,18 @@ describe('markdown pipeline — completion switches (R2, R3)', () => {
     });
   });
 
+  it('runs nothing again when nothing about the message changed', () => {
+    // A reply arriving piece by piece re-renders everything beside it every
+    // 50ms, and parsing markdown is the expensive part of this component. An
+    // expanded thinking block is the case that shows it: its text is settled
+    // while the reply beside it grows.
+    remendCalls.length = 0;
+    const { rerender } = render(<MarkdownMessage content='a line' streaming />);
+    rerender(<MarkdownMessage content='a line' streaming />);
+
+    expect(remendCalls).toHaveLength(1);
+  });
+
   it('leaves a settled message out of completion entirely', () => {
     remendCalls.length = 0;
     render(<MarkdownMessage content='a line' streaming={false} />);

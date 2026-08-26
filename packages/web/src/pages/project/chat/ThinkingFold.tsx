@@ -46,16 +46,8 @@ export function ThinkingFold({
         Thinking
       </Button>
       {open ? (
-        // The reasoning is written one step per line, and markdown folds a
-        // single newline into a space — so the breaks are held on the blocks
-        // that hold the words. Held any higher, the newline `mdast-util-to-hast`
-        // writes between two block children would become a break of its own,
-        // and every paragraph and every bullet would sit a blank line apart.
-        <div
-          data-testid='thinking-fold-body'
-          className='px-2 py-1 text-muted-foreground [&_li]:whitespace-pre-line [&_p]:whitespace-pre-line'
-        >
-          <MarkdownMessage content={thinking} size='2xs' />
+        <div data-testid='thinking-fold-body' className='px-2 py-1 text-muted-foreground'>
+          <MarkdownMessage content={thinking} size='2xs' softBreaks />
         </div>
       ) : null}
     </div>
