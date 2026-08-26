@@ -23,9 +23,6 @@
 /** Both ends of a formula, inline or on a line of its own (user 2026-08-25). */
 const DELIMITER = '$$';
 
-/** What KaTeX marks a formula rendered on a line of its own with. */
-const DISPLAY_CLASS = 'katex-display';
-
 /** What KaTeX marks any rendered formula with. */
 const FORMULA_CLASS = 'katex';
 
@@ -41,13 +38,17 @@ function formulaAround(node: Node): Element | null {
 
 /**
  * Turn every formula in this copy back into the source it was drawn from.
- * @param fragment - The copied selection, modified in place.
+ * @param copied - The copied selection, modified in place.
  */
-function replaceFormulaeWithSource(fragment: DocumentFragment): void {
-  for (const formula of fragment.querySelectorAll(`.${FORMULA_CLASS}`)) {
+function replaceFormulaeWithSource(copied: Element): void {
+  for (const formula of copied.querySelectorAll(`.${FORMULA_CLASS}`)) {
     // The LaTeX KaTeX kept alongside the MathML it built.
     const source = formula.querySelector('annotation')?.textContent ?? '';
-    const onItsOwnLine = formula.closest(`.${DISPLAY_CLASS}`) !== null;
+    // Read off the formula, which is all a copy of one holds: the block it
+    // stood in is not cloned when the reader drags across the formula alone.
+    // KaTeX writes MathML's own way of saying it, and leaves the attribute
+    // off an inline formula.
+    const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
     const holder = document.createElement('span');
     // Source, not prose: the line breaks around a formula on its own line are
     // part of what makes it one, and normal white-space handling would fold
@@ -64,22 +65,6 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !event.clipboardData) return;
 
-  // A reader who dragged across half a formula meant the formula: half of one
-  // is neither readable nor valid source.
-  const range = selection.getRangeAt(0);
-  const start = formulaAround(range.startContainer);
-  if (start) range.setStartBefore(start);
-  const end = formulaAround(range.endContainer);
-  if (end) range.setEndAfter(end);
-
-  const fragment = range.cloneContents();
-  if (!fragment.querySelector(`.${FORMULA_CLASS}`)) return;
-
-  // Neither of these belongs in something a person pastes, and a stylesheet
-  // pasted into a rich-text target would apply itself there.
-  for (const unrendered of fragment.querySelectorAll('style, script')) unrendered.remove();
-  replaceFormulaeWithSource(fragment);
-
   // Serialising this by hand is what the browser is for: `textContent` knows
   // nothing of block boundaries, table cells or list markers, and markup
   // built by joining text escapes nothing — a reply whose words look like a
@@ -87,7 +72,28 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   // the element has to be rendered somewhere out of sight rather than hidden.
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;top:0;left:-9999px';
-  host.append(fragment);
+
+  // Gecko makes a selection of several ranges out of a ctrl-drag, and all of
+  // them are what the reader asked for.
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    // A reader who dragged across half a formula meant the formula: half of
+    // one is neither readable nor valid source. The widening is done on a
+    // copy, so what stays highlighted is what the reader drew.
+    const range = selection.getRangeAt(index).cloneRange();
+    const start = formulaAround(range.startContainer);
+    if (start) range.setStartBefore(start);
+    const end = formulaAround(range.endContainer);
+    if (end) range.setEndAfter(end);
+    host.append(range.cloneContents());
+  }
+
+  if (!host.querySelector(`.${FORMULA_CLASS}`)) return;
+
+  // Neither of these belongs in something a person pastes, and a stylesheet
+  // pasted into a rich-text target would apply itself there.
+  for (const unrendered of host.querySelectorAll('style, script')) unrendered.remove();
+  replaceFormulaeWithSource(host);
+
   document.body.append(host);
   event.clipboardData.setData('text/html', host.innerHTML);
   event.clipboardData.setData('text/plain', host.innerText);

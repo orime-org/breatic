@@ -145,12 +145,19 @@ describe('MarkdownMessage — maths', () => {
     expect(html, 'and not markup').not.toContain('<img');
   });
 
-  it('hands a display formula its own horizontal scroller (A7)', () => {
-    // KaTeX writes `white-space: nowrap` on a display formula and offers no
-    // overflow of its own, and the list around the reply only scrolls
-    // vertically — so a formula wider than the 320px column is cut off with
-    // nothing to drag. Wide tables reach a ScrollArea for the same reason.
-    draw('$$\nx = 1\n$$');
+  // KaTeX writes `white-space: nowrap` on a display formula and offers no
+  // overflow of its own, and the list around the reply only scrolls
+  // vertically — so a formula wider than the 320px column is cut off with
+  // nothing to drag. Wide tables reach a ScrollArea for the same reason.
+  // A model deriving something writes formulas inside quotes and numbered
+  // steps as readily as at the top, and those reach the scroller by a
+  // different line of the plugin.
+  it.each([
+    ['on its own', '$$\nx = 1\n$$'],
+    ['inside a quote', '> $$\n> x = 1\n> $$'],
+    ['inside a list item', '- step\n\n  $$\n  x = 1\n  $$'],
+  ])('hands a display formula %s its own horizontal scroller (A7)', (_where, content) => {
+    draw(content);
 
     const display = screen.getByTestId('markdown-body').querySelector('.katex-display');
     expect(display, 'the formula is rendered at all').not.toBeNull();
@@ -158,5 +165,70 @@ describe('MarkdownMessage — maths', () => {
       display?.closest('[data-scrollbars="horizontal"]') ?? null,
       'a display formula sits inside a horizontal ScrollArea',
     ).not.toBeNull();
+  });
+
+  it('copies a formula selected on its own as one on its own line (A8)', () => {
+    // The most direct way to copy a formula is to drag across it, and both
+    // ends of that drag are inside it. What is cloned is the formula, not the
+    // block it sits in — so whether it stands on its own has to be read off
+    // the formula.
+    const body = draw('$$\nE = mc^2\n$$').querySelector('[data-testid="markdown-body"]');
+    const formula = body?.querySelector('.katex') as Element;
+    const range = document.createRange();
+    range.setStartBefore(formula);
+    range.setEndAfter(formula);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const written = new Map<string, string>();
+    const copy = new Event('copy', { bubbles: true, cancelable: true });
+    Object.defineProperty(copy, 'clipboardData', {
+      value: {
+        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
+      },
+    });
+    document.dispatchEvent(copy);
+
+    expect(written.get('text/html') ?? '').toContain('$$\nE = mc^2\n$$');
+  });
+
+  it('copies every part of a selection that holds more than one (A8)', () => {
+    // Gecko makes a selection of several ranges out of a ctrl-drag, and
+    // Firefox is a browser this product is built for. Neither jsdom nor Blink
+    // will hold more than one range, so the selection is the one thing here
+    // that has to be stood in for.
+    const body = draw('one\n\ntwo\n\n$$\nx = 1\n$$').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const paragraphs = [...body.querySelectorAll('p')];
+    const formula = body.querySelector('.katex') as Element;
+    const ranges = [...paragraphs, formula].map((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range;
+    });
+    const many = {
+      isCollapsed: false,
+      rangeCount: ranges.length,
+      getRangeAt: (index: number): Range => ranges[index] as Range,
+    } as unknown as Selection;
+    const realSelection = window.getSelection.bind(window);
+    window.getSelection = (): Selection => many;
+
+    const written = new Map<string, string>();
+    const copy = new Event('copy', { bubbles: true, cancelable: true });
+    Object.defineProperty(copy, 'clipboardData', {
+      value: {
+        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
+      },
+    });
+    document.dispatchEvent(copy);
+    window.getSelection = realSelection;
+
+    const html = written.get('text/html') ?? '';
+    expect(html, 'the first range is there').toContain('one');
+    expect(html, 'and so is the second').toContain('two');
+    expect(html, 'and the formula').toContain('x = 1');
   });
 });
