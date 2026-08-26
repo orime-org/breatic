@@ -30,7 +30,10 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { bubbleAnchorRect } from '@web/spaces/document/SelectionBubbleBar';
+import {
+  bubbleAnchorRect,
+  pinnedScreenPoint,
+} from '@web/spaces/document/SelectionBubbleBar';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
@@ -191,6 +194,37 @@ function anchorRectOf(
     (viewport as HTMLElement).getBoundingClientRect(),
     pinned,
   );
+}
+
+/**
+ * 条此刻摆在屏幕上的纵坐标，从它自己的定位样式里读。
+ *
+ * 这是「条在哪」这件事在用户那边的唯一出口——定位换成 floating-ui 之后，锚点
+ * 算成什么样最终都体现在这个数上。
+ *
+ * 只读纵坐标：jsdom 里每个元素的 `clientWidth` 恒为 0，`shift` 据此算出的可见
+ * 区宽度也是 0，于是横坐标一律被推回 0。那是 jsdom 量不出尺寸导致的失真，不是
+ * 条的行为，横向留给真机。
+ * @returns 条的纵坐标。
+ */
+function barTop(): number {
+  const bar = screen.getByTestId('doc-selection-bubble-bar');
+  const matched = /translate\(-?[\d.]+px,\s*(-?[\d.]+)px\)/.exec(bar.style.transform);
+  expect(matched).not.toBeNull();
+  return Number((matched as RegExpExecArray)[1]);
+}
+
+/**
+ * 等条落到某个纵坐标上。
+ *
+ * floating-ui 算位置是异步的（`computePosition` 返回 promise），所以每一次重算
+ * 都要等一等，同步读到的可能还是上一轮的值。
+ * @param top - 期望的纵坐标。
+ */
+async function expectBarTop(top: number): Promise<void> {
+  await waitFor(() => {
+    expect(barTop()).toBe(top);
+  });
 }
 
 /** 锚点测试里选区包围盒的固定值，`left` 是水平轴唯一该取的那个数。 */
@@ -499,6 +533,28 @@ describe('选中浮出条', () => {
       };
     }
 
+    it('换一个选区，条真的挪到新那一行上方去', async () => {
+      const editor = open('<p>hello</p><p>world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      pinLines(editor, { 1: 300, 6: 300, 8: 200, 12: 200 });
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 6 });
+      });
+      await expectBarTop(292);
+
+      // 改选到第二段。锚点是实时算的，但算出来的数要送到条身上才算数——
+      // floating-ui 只在自己被叫醒时重算，选区变化不在它自己听的那几件事里
+      // （它听的是滚动和尺寸变化）。少了这一下，条会留在第一段上方。
+      act(() => {
+        editor.commands.setTextSelection({ from: 8, to: 12 });
+      });
+
+      await expectBarTop(192);
+    });
+
     it('拖出来的选区锚在松手那一行——也就是选区的 head', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
@@ -732,9 +788,7 @@ describe('选中浮出条', () => {
       moveMouseTo(420, 50);
 
       expect(shouldShowNow()).toBe(true);
-      const rect = anchorRectOf(editor, { x: 420, y: 50 });
-      expect(rect?.top).toBe(242);
-      expect(rect?.left).toBe(420);
+      await expectBarTop(242);
     });
 
     it('鼠标从正文外面进到正文里，条就摆出来——不用等滚动', async () => {
@@ -771,16 +825,13 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      const first = anchorRectOf(editor, { x: 420, y: 250 });
-      expect(first?.left).toBe(420);
+      await expectBarTop(242);
 
-      // 出去再进来：条已经摆出来了，这一进不该把它挪到新位置。
+      // 出去再进来：条已经摆出来了，这一进不该把它挪到新位置（那会是 292）。
       moveMouseTo(420, 50);
       moveMouseTo(700, 300);
 
-      const after = anchorRectOf(editor, { x: 700, y: 300 });
-      expect(after?.left).toBe(420);
-      expect(after?.top).toBe(first?.top);
+      await expectBarTop(242);
     });
 
     it('鼠标进正文时不是全选，什么都不发生', async () => {
@@ -791,15 +842,14 @@ describe('选中浮出条', () => {
 
       // 选区只是一小段，鼠标从外面进来——这一档跟着选区走，不看鼠标。
       moveMouseTo(420, 50);
+      editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
       act(() => {
         editor.commands.setTextSelection({ from: 1, to: 4 });
       });
-      editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
       moveMouseTo(420, 250);
 
-      const rect = anchorRectOf(editor, { x: 420, y: 250 });
-      // 锚在行上（200 撑 8），不是鼠标那一点。
-      expect(rect?.top).toBe(192);
+      // 锚在行上（200 撑 8），不是鼠标那一点（那会是 242）。
+      await expectBarTop(192);
     });
 
     it('鼠标进正文不绕开显示判据：编辑器没有焦点时，条不摆出来', async () => {
@@ -857,8 +907,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      const pinned = anchorRectOf(editor, { x: 420, y: 250 });
-      expect(pinned?.left).toBe(420);
+      await expectBarTop(242);
 
       // 把鼠标挪到别处，然后造一个事务。选区仍是全选，钉的位置不该动。挡住
       // 它的是 `follow` 里的 `became`——选区在上一笔就已经是全选了，这一笔
@@ -872,8 +921,8 @@ describe('选中浮出条', () => {
         editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
       });
 
-      const after = anchorRectOf(editor, { x: 700, y: 300 });
-      expect(after?.left).toBe(420);
+      // 事务本身会让条重算一次位置，所以这个数是重算出来的，不是没人动过它。
+      await expectBarTop(242);
     });
 
     it('条钉住之后，协作对端敲字不会把它挪到当下的鼠标位置', async () => {
@@ -886,9 +935,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(
-        anchorRectOf(editor, { x: 420, y: 250 })?.left,
-      ).toBe(420);
+      await expectBarTop(242);
 
       // 真的走一遍 wire：另一个 Y.Doc 上打一个字，把增量应用回来。上一条用的
       // 本地 dispatch 代替不了它——y-prosemirror 把每一笔远程变更投递成整篇
@@ -907,9 +954,7 @@ describe('选中浮出条', () => {
       });
       remote.destroy();
 
-      expect(
-        anchorRectOf(editor, { x: 700, y: 300 })?.left,
-      ).toBe(420);
+      await expectBarTop(242);
     });
 
     it('鼠标一步没动，正文区域长大把它包了进来——下一个鼠标事件就该摆出条', async () => {
@@ -959,9 +1004,7 @@ describe('选中浮出条', () => {
       });
 
       expect(shouldShowNow()).toBe(true);
-      expect(
-        anchorRectOf(editor)?.left,
-      ).toBe(420);
+      await expectBarTop(242);
     });
 
     it('编辑器没有焦点时变成全选，不钉——焦点回来也不会凭空摆出来', async () => {
@@ -1089,20 +1132,19 @@ describe('选中浮出条', () => {
 
       // 鼠标停在正文区域外，而选区只是一小段：这一档照常显示，锚在行上。
       moveMouseTo(420, 50);
-      act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 6 });
-      });
       editor.view.coordsAtPos = () => ({
         top: 200,
         bottom: 220,
         left: 40,
         right: 60,
       });
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 4 });
+      });
 
       expect(shouldShowNow()).toBe(true);
-      const rect = anchorRectOf(editor, { x: 420, y: 50 });
-      expect(rect?.top).toBe(192);
-      expect(rect?.left).toBe(SELECTION_BOX.left);
+      // 那一行的顶是 200，上下各撑 8。鼠标那个 50 一点没参与。
+      await expectBarTop(192);
     });
   });
 
@@ -1128,149 +1170,95 @@ describe('选中浮出条', () => {
     expect(document.activeElement).not.toBe(bar);
   });
 
-  it('正文区域被读到零尺寸时，钉住的坐标不参与换算', async () => {
-    const editor = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
+  /**
+   * 全选那一档的换算规则：钉住的点在正文区域变了之后落在哪。
+   *
+   * 直接调算它的那个函数。这套规则整个住在 `pinnedScreenPoint` 里，它只认
+   * 「钉的点 + 钉它时的区域 + 现在的区域」三样，跟编辑器、跟条挂在哪都无关；
+   * 经组件绕一圈还会撞上 jsdom 量不出元素尺寸这件事，量出来的横坐标是失真的。
+   */
+  describe('钉住的点跟着正文区域换算', () => {
+    const AREA = new DOMRect(0, 100, 800, 400);
 
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editor.commands.selectAll();
-    });
-    const before = anchorRectOf(editor);
-    expect(before?.left).toBe(420);
+    it('正文区域被读到零尺寸时，钉住的坐标不参与换算', () => {
+      const pin = { x: 420, y: 250, area: AREA };
 
-    // 这里不针对任何具体场景——第九轮对抗把原稿点名的两个（Space 切换、
-    // 面板折叠）都证伪了。它是那个比例换算自己的定义域。**新**框为零时算出
-    // 来的是 `0`（比例乘以零宽），不是 NaN——实测；条会跳到区域左上角。
-    pinViewport(new DOMRect(0, 100, 0, 0));
-    anchorRectOf(editor);
+      // 这里不针对任何具体场景——第九轮对抗把原稿点名的两个（Space 切换、
+      // 面板折叠）都证伪了。它是那个比例换算自己的定义域。**新**框为零时算出
+      // 来的是 `0`（比例乘以零宽），不是 NaN——实测；条会跳到区域左上角。
+      expect(pinnedScreenPoint(pin, new DOMRect(0, 100, 0, 0))).toEqual({
+        x: 420,
+        y: 250,
+      });
 
-    // 尺寸回来之后，坐标必须还是原来那个。
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    const after = anchorRectOf(editor);
-    expect(after?.left).toBe(420);
-  });
-
-  // 上一条判的是**新**读数为零；分母其实是**旧**框——点当初是在那个框里定的
-  // 位置。旧框也能是零：`isInside` 接受一个塌成一点的矩形（`x >= left &&
-  // x <= right` 在两者相等时同时成立），所以一次 0×0 的读数照样能让坐标被
-  // 记下来。删掉那半判据这条就红。
-  it('钉下坐标时区域是零尺寸，之后也不拿它当分母', async () => {
-    const editor = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-
-    // 区域塌成 (420,250) 这一个点，鼠标正好停在那儿——`isInside` 放行。
-    pinViewport(new DOMRect(420, 250, 0, 0));
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editor.commands.selectAll();
+      // 尺寸回来之后，坐标必须还是原来那个。读取从不写回，所以中间那次零读数
+      // 不会在钉住的点上留下痕迹。
+      expect(pinnedScreenPoint(pin, AREA)).toEqual({ x: 420, y: 250 });
     });
 
-    // 区域恢复正常尺寸。分母是钉下时那个零宽，而分子也是零——指针只有正好
-    // 落在那一个点上才过得了 `isInside`，所以不判的话算的是 `0 / 0`，得 NaN。
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    const rect = anchorRectOf(editor);
-    expect(rect?.left).toBe(420);
-    expect(Number.isFinite(rect?.left)).toBe(true);
-    expect(Number.isFinite(rect?.top)).toBe(true);
-  });
+    // 上一条判的是**新**读数为零；分母其实是**旧**框——点当初是在那个框里定的
+    // 位置。旧框也能是零：`isInside` 接受一个塌成一点的矩形（`x >= left &&
+    // x <= right` 在两者相等时同时成立），所以一次 0×0 的读数照样能让坐标被
+    // 记下来。删掉那半判据这条就红。
+    it('钉下坐标时区域是零尺寸，之后也不拿它当分母', () => {
+      // 区域塌成 (420,250) 这一个点，鼠标正好停在那儿——`isInside` 放行。
+      const pin = { x: 420, y: 250, area: new DOMRect(420, 250, 0, 0) };
 
-  // 窗口连着变两次，条落在哪，跟一步变到最终尺寸应当一致——A17 说的「跟着动」
-  // 不能因为中间经过了几步就漂。
-  //
-  // 这条**分辨不出**换算把中间结果存不存回去：两种写法都满足这个性质（线性
-  // 映射可传递），实测把存回那两行加回来它照样绿。所以它是这个性质的守卫，
-  // 不是那次改写的守卫；那次改写按非逻辑改动处理，依据是让读取函数不再写。
-  it('区域连着变两次，跟一步变到位算出来的是同一个点', async () => {
-    const editorA = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editorA);
-    await selectWithFocus(editorA, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editorA.commands.selectAll();
+      // 区域恢复正常尺寸。分母是钉下时那个零宽，而分子也是零——指针只有正好
+      // 落在那一个点上才过得了 `isInside`，所以不判的话算的是 `0 / 0`，得 NaN。
+      const point = pinnedScreenPoint(pin, AREA);
+
+      expect(point).toEqual({ x: 420, y: 250 });
+      expect(Number.isFinite(point?.x)).toBe(true);
+      expect(Number.isFinite(point?.y)).toBe(true);
     });
 
-    // 走两步：800 → 600 → 400。
-    pinViewport(new DOMRect(0, 100, 600, 400));
-    anchorRectOf(editorA);
-    pinViewport(new DOMRect(0, 100, 400, 400));
-    const twoSteps = anchorRectOf(editorA);
+    // 窗口连着变两次，条落在哪，跟一步变到最终尺寸应当一致——A17 说的「跟着动」
+    // 不能因为中间经过了几步就漂。
+    //
+    // 这条**分辨不出**换算把中间结果存不存回去：两种写法都满足这个性质（线性
+    // 映射可传递），实测把存回那两行加回来它照样绿。所以它是这个性质的守卫，
+    // 不是那次改写的守卫；那次改写按非逻辑改动处理，依据是让读取函数不再写。
+    it('区域连着变两次，跟一步变到位算出来的是同一个点', () => {
+      const pin = { x: 420, y: 250, area: AREA };
 
-    // 一步到位：800 → 400。
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    const oneStep = anchorRectOf(editorA);
-    expect(oneStep?.left).toBe(420);
-    pinViewport(new DOMRect(0, 100, 400, 400));
-    const direct = anchorRectOf(editorA);
+      // 走两步：800 → 600 → 400。
+      pinnedScreenPoint(pin, new DOMRect(0, 100, 600, 400));
+      const twoSteps = pinnedScreenPoint(pin, new DOMRect(0, 100, 400, 400));
 
-    expect(twoSteps?.left).toBe(direct?.left);
-    expect(twoSteps?.top).toBe(direct?.top);
-  });
+      // 一步到位：800 → 400。
+      expect(pinnedScreenPoint(pin, AREA)).toEqual({ x: 420, y: 250 });
+      const direct = pinnedScreenPoint(pin, new DOMRect(0, 100, 400, 400));
 
-  // 「区域变没变」比的是四个数。只比宽高的话，一个平移了但没缩放的区域会被
-  // 当成没变，而换算公式读的正是 left/top——条会留在正文原来的位置上。
-  it('区域整体平移、尺寸没变时，钉住的点跟着平移', async () => {
-    const editor = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
-
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editor.commands.selectAll();
-    });
-    expect(
-      anchorRectOf(editor)?.left,
-    ).toBe(420);
-
-    // 同样大小的区域，整体右移 100、下移 50。点在区域里的相对位置不变，屏幕
-    // 坐标跟着 +100 / +50。
-    pinViewport(new DOMRect(100, 150, 800, 400));
-    const moved = anchorRectOf(editor);
-    expect(moved?.left).toBe(520);
-    // 锚点是零高度的点上下各撑 8，所以顶 = 钉住的 y 减 8。
-    expect(moved?.top).toBe(250 + 50 - 8);
-  });
-
-  // 竖直方向的换算单独走一遍：只改高度，不动宽度。上一条改的是位置，这条改
-  // 的是尺寸——把 `moved.y` 里的 `area.height` 写成 `area.width` 这类同族错误
-  // 只有这条钉得住，而两条轴的代码几乎一模一样，正是最容易漏改一个词的形状。
-  it('区域高度变了，钉住的点按高度比例跟着动', async () => {
-    const editorH = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editorH);
-    await selectWithFocus(editorH, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 300, bubbles: true }),
-      );
-      editorH.commands.selectAll();
+      expect(twoSteps).toEqual(direct);
     });
 
-    // 点在区域里的纵向相对位置是 (300 − 100) ÷ 400 = 0.5。
-    // 高度减半之后应当落在 100 + 0.5 × 200 = 200。
-    pinViewport(new DOMRect(0, 100, 800, 200));
-    const rect = anchorRectOf(editorH);
-    expect(rect?.top).toBe(200 - 8);
-    // 宽度没变，横坐标不该动。
-    expect(rect?.left).toBe(420);
+    // 「区域变没变」比的是四个数。只比宽高的话，一个平移了但没缩放的区域会被
+    // 当成没变，而换算公式读的正是 left/top——条会留在正文原来的位置上。
+    it('区域整体平移、尺寸没变时，钉住的点跟着平移', () => {
+      const pin = { x: 420, y: 250, area: AREA };
+
+      // 同样大小的区域，整体右移 100、下移 50。点在区域里的相对位置不变，屏幕
+      // 坐标跟着 +100 / +50。
+      expect(pinnedScreenPoint(pin, new DOMRect(100, 150, 800, 400))).toEqual({
+        x: 520,
+        y: 300,
+      });
+    });
+
+    // 竖直方向的换算单独走一遍：只改高度，不动宽度。上一条改的是位置，这条改
+    // 的是尺寸——把 `moved.y` 里的 `area.height` 写成 `area.width` 这类同族错误
+    // 只有这条钉得住，而两条轴的代码几乎一模一样，正是最容易漏改一个词的形状。
+    it('区域高度变了，钉住的点按高度比例跟着动', () => {
+      const pin = { x: 420, y: 300, area: AREA };
+
+      // 点在区域里的纵向相对位置是 (300 − 100) ÷ 400 = 0.5。
+      // 高度减半之后应当落在 100 + 0.5 × 200 = 200；宽度没变，横坐标不该动。
+      expect(pinnedScreenPoint(pin, new DOMRect(0, 100, 800, 200))).toEqual({
+        x: 420,
+        y: 200,
+      });
+    });
   });
 
   // 第九轮实现对抗查实：去掉 tabindex 只改了焦点的落点，没挡住焦点离开正文。
@@ -1323,18 +1311,19 @@ describe('选中浮出条', () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
-    const view = bubblePluginView();
     expect(
-      view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
+      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
     ).toHaveLength(6);
 
     act(() => {
       editor.commands.setTextSelection(3);
     });
 
+    // 从整个文档里查，不是从先前那个条元素里查：条不该出现时组件整个不渲染，
+    // 而先前抓到的那个节点已经脱离文档，它自己的子树上按钮还在。
     await waitFor(() => {
       expect(
-        view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
+        document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
       ).toHaveLength(0);
     });
   });

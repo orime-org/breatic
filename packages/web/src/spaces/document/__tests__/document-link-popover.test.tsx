@@ -908,7 +908,10 @@ describe('what the bar carries and what happens around the panel', () => {
     await openPopoverOver(editor, 4, 12);
 
     const bar = screen.getByTestId('doc-selection-bubble-bar');
-    expect(bar.className).toContain('invisible!');
+    // A plain `invisible`, no `!`. The important marker was there to beat the
+    // inline `visibility` the bubble-menu plugin wrote when it showed the bar;
+    // the bar now positions itself and writes that property only to hide.
+    expect(bar.className).toContain('invisible');
     expect(bar.className).toContain('pointer-events-none');
   });
 

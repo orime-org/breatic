@@ -550,9 +550,9 @@ function BubbleBar({
   // the screen — measured, hovering a slot removed the whole bar.
   const [barEl, setBarEl] = React.useState<HTMLDivElement | null>(null);
   const barRef = React.useRef<HTMLDivElement | null>(null);
-  // Whether any of the four menus is open. Read by `isWarranted`, written just
-  // below where the open one is tracked.
-  const menuOpenRef = React.useRef(false);
+  // Whether one of the bar's own overlays — a slot menu or the link panel — is
+  // open. Read by `isWarranted`, written just below where both are tracked.
+  const overlayOpenRef = React.useRef(false);
   // Whether the bar belongs on screen at all. Two paths write it: every
   // transaction (plus focus and blur), and the mouse-event path that pins a
   // select-all to the pointer — the latter carries no transaction of its own.
@@ -604,7 +604,7 @@ function BubbleBar({
     // `hasTextIn` stops at the first text node — so this order is no longer
     // about cost; it is just the cheapest question asked first.
     //
-    // An open menu counts as the focus being where it should. Radix moves
+    // An open overlay counts as the focus being where it should. Radix moves
     // focus into the menu content when one opens, and the prop that would stop
     // that move (`onOpenAutoFocus`) is `Omit`ted from the public type — Radix
     // saying it is not ours to pass. The reading is OUR OWN STATE rather than
@@ -613,7 +613,7 @@ function BubbleBar({
     // layout the menu is not focusable at all, so it stays `<body>` — measured
     // both ways, reading the DOM took the bar off screen the moment a slot was
     // hovered.
-    if (!view.hasFocus() && !menuOpenRef.current) return false;
+    if (!view.hasFocus() && !overlayOpenRef.current) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 
@@ -868,7 +868,13 @@ function BubbleBar({
   // Mirrored into a ref so `isWarranted` can read it without listing it as a
   // dependency: that callback is handed to listeners registered once, and a new
   // identity on every menu open would re-register all of them.
-  menuOpenRef.current = openMenu !== null;
+  //
+  // A panel counts the same as a menu. Both are the bar's own overlays, both
+  // take the focus when they open, and the bar is what renders them — so a bar
+  // that judged focus-has-left while one was up would take that overlay away
+  // with itself. Measured: pressing edit inside the link panel put the whole
+  // panel out of the document.
+  overlayOpenRef.current = openMenu !== null || panelOpen;
   const setMenuOpen = React.useCallback((id: string, open: boolean): void => {
     setOpenMenu((current) => {
       if (open) return id;
@@ -946,7 +952,7 @@ function BubbleBar({
     [anchorLine, editor],
   );
 
-  const { refs, floatingStyles, middlewareData } = useFloating({
+  const { refs, floatingStyles, middlewareData, update } = useFloating({
     // The bar hangs OUTSIDE the scroller (see `appendTo`), in a positioned
     // ancestor of it, so the coordinates are that box's own.
     strategy: 'absolute',
@@ -1037,9 +1043,15 @@ function BubbleBar({
   // carry no transaction of their own, so a bar left up after the reader
   // clicked away would have nothing to take it down.
   React.useEffect(() => {
-    /** Re-ask whether the bar belongs on screen. */
+    /** Re-ask whether the bar belongs on screen, and where it belongs. */
     const ask = (): void => {
       setWarranted(shouldShow({ view: editor.view }));
+      // Whether and where are asked together: these same three moments are
+      // the ones that move the anchor. `autoUpdate` does not cover them — it
+      // listens for scrolls and for elements changing size, and a new
+      // selection is neither, so without this the bar stays above the line
+      // the previous selection was on.
+      update();
     };
     /**
      * The editor lost focus — ask again, unless the focus is on its way into
@@ -1068,7 +1080,7 @@ function BubbleBar({
       editor.off('focus', ask);
       editor.off('blur', askOnBlur);
     };
-  }, [editor, shouldShow]);
+  }, [editor, shouldShow, update]);
 
   // Whether there is a selection at all, subscribed rather than read during
   // render — a co-editor's change arrives with no React render behind it. The
