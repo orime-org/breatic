@@ -1,16 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Breatic logo — brand 彩色 / 透明底 / full-bleed viewBox
-  viewBox -37 -37 74 74:几何外接 73×70 单位 + 1 unit safe buffer(给 stroke linecap rounded 外突)
-  → 横向 1.4% margin / 纵向 2.7% margin,接近 GitHub / Twitter favicon 满版视觉
+  Breatic logo N1b — brand 彩色 / 透明底 / full-bleed viewBox(留白 4，favicon 与 app icon 用)
+  几何来源:marketing/logo/n1b/SPEC.md
+  圆环 r=38 stroke-width=5.5 / 两椭圆 rx=18 ry=9 cy=±11.5
+  brand 三色:#BC4B36(锈红 圆环)/ #15D45A(cyber lime 上椭圆)/ #0EA5E9(sky-500 下椭圆)
+  每个元素显式 fill/stroke 不靠 <g> 继承(避免 raster backend 兼容问题)
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-38 -38.5 75 75">
-  <g transform="scale(1, -1)">
-    <circle cx="25.98" cy="-15" r="10" fill="#BC4B36"/>
-    <path d="M 25.98 -15 A 30 30 0 0 0 -25.98 -15" fill="none" stroke="#BC4B36" stroke-width="8" stroke-linecap="round"/>
-    <circle cx="-30" cy="0" r="7" fill="#0EA5E9"/>
-    <path d="M -30 0 A 30 30 0 0 0 -7.76 28.98" fill="none" stroke="#0EA5E9" stroke-width="6" stroke-linecap="round"/>
-    <circle cx="7.76" cy="28.98" r="7" fill="#15D45A"/>
-    <path d="M 7.76 28.98 A 30 30 0 0 0 30 0" fill="none" stroke="#15D45A" stroke-width="6" stroke-linecap="round"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-42 -42 84 84">
+  <circle cx="0" cy="0" r="38" fill="none" stroke="#BC4B36" stroke-width="5.5"/><ellipse cx="0" cy="-11.5" rx="18" ry="9" fill="#15D45A"/><ellipse cx="0" cy="11.5" rx="18" ry="9" fill="#0EA5E9"/>
 </svg>
