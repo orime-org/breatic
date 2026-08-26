@@ -422,26 +422,31 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   expect(middle.hitAtOwnTop).toBe(true);
 });
 
-test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不是被裁掉', async () => {
+test('keeps the side it came up on as its line scrolls to the top (E3)', async () => {
   test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 6);
 
-  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 46。
-  // 滚动量按量到的位置算，不写死——写死的数字随字号和行距一起漂，而漂到
-  // 「整段滚出视野」时测的就完全是另一件事了（那种情形不在本次范围内）。
+  // It comes up above the selection: this paragraph has room over it.
   const before = await readGeometry(page);
+  expect(before.below).toBe(false);
+
+  // Scroll until that line rests 10px below the top of the visible body, so
+  // there is no longer room for the bar's 46 above it. The distance is
+  // measured rather than written down: a fixed number drifts with the font
+  // size and the line height, and drifting as far as "the paragraph leaves the
+  // view" would make this test about something else entirely.
   await scrollBodyTo(page, before.lineTop - (await bodyViewportTop(page)) - 10);
 
-  const m = await readGeometry(page);
-  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
-  // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉（实测条顶 76、
-  // 裁切盒顶 80）。现在它该翻到选区下方。
-  expect(m.below).toBe(true);
-  expect(m.gap).toBe(8);
-  expect(m.hitAtOwnTop).toBe(true);
+  const after = await readGeometry(page);
+  expect(after.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
+  // Which side was settled when the bar came up and holds for as long as it
+  // stays up (user 2026-08-26). It travels with its line and the scroller's
+  // overflow clips whatever no longer fits, the way the link panel does.
+  expect(after.below).toBe(false);
+  expect(after.gap).toBe(8);
 });
 
 test('浮出条不占 tab 站：从正文按 Tab 不会落进它', async () => {

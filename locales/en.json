@@ -735,6 +735,7 @@
         "color": "Colour",
         "textColor": "Text colour",
         "fillColor": "Background colour",
+        "colorReset": "Reset to default",
         "aiRewriteGroup": "Rewrite the selection",
         "aiProduceGroup": "Make something from the selection",
         "aiOtherGroup": "Other",

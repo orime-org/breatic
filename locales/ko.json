@@ -735,6 +735,7 @@
         "color": "색",
         "textColor": "글자색",
         "fillColor": "배경색",
+        "colorReset": "기본값으로 되돌리기",
         "aiRewriteGroup": "선택한 글 다시 쓰기",
         "aiProduceGroup": "선택한 글로 만들기",
         "aiOtherGroup": "기타",

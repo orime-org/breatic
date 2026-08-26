@@ -15,7 +15,13 @@
  */
 
 import * as React from 'react';
-import { ChevronDown, TextAlignStart, Sparkles } from 'lucide-react';
+import {
+  ChevronDown,
+  TextAlignStart,
+  TextAlignCenter,
+  TextAlignEnd,
+  Sparkles,
+} from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 
@@ -23,9 +29,11 @@ import { Button } from '@web/components/ui/button';
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
 import {
@@ -33,6 +41,7 @@ import {
   currentBlockTypeItem,
 } from '@web/spaces/document/document-block-type';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
+import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
 /** The shape every slot shares: `.bubble-drop` — 28 tall, 6px either side. */
 const SLOT = `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5`;
@@ -78,6 +87,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   return (
     <DocumentBubbleMenu
       id={id}
+      editor={editor}
       container={container}
       scroller={scroller}
       open={openId === id}
@@ -103,27 +113,33 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
         const Icon = item.Icon;
         const runnable = item.run !== undefined;
         return (
-          <DropdownMenuItem
-            key={item.id}
-            data-testid={`${id}-item-${item.id}`}
-            aria-disabled={runnable ? undefined : 'true'}
-            className={runnable ? undefined : UNAVAILABLE}
-            onSelect={(event) => {
-              if (!runnable) {
-                event.preventDefault();
-                return;
-              }
-              item.run?.(editor);
-            }}
-          >
-            <Icon />
-            {t(item.labelKey)}
-            {item.shortcut ? (
-              <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
-                {item.shortcut}
-              </DropdownMenuShortcut>
-            ) : null}
-          </DropdownMenuItem>
+          <React.Fragment key={item.id}>
+            {/* demo:571 rules off the headings from the lists below them. */}
+            {item.id === 'bullet-list' ? <DropdownMenuSeparator /> : null}
+            <DropdownMenuItem
+              data-testid={`${id}-item-${item.id}`}
+              // The row the selection is already in, marked the way demo:560
+              // marks it (`.menu-item[data-active="true"]` takes
+              // `--color-muted`).
+              data-active={item.id === current ? 'true' : undefined}
+              aria-disabled={runnable ? undefined : 'true'}
+              className={cn(
+                item.id === current && 'bg-muted',
+                !runnable && UNAVAILABLE,
+              )}
+              onSelect={runnable ? () => {
+                item.run?.(editor);
+              } : undefined}
+            >
+              <Icon />
+              {t(item.labelKey)}
+              {item.shortcut ? (
+                <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
+                  {formatShortcut(item.shortcut)}
+                </DropdownMenuShortcut>
+              ) : null}
+            </DropdownMenuItem>
+          </React.Fragment>
         );
       })}
     </DocumentBubbleMenu>
@@ -132,9 +148,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 
 /** The alignment menu's three rows, from demo:590-596. */
 const ALIGN_ITEMS = [
-  { id: 'left', labelKey: 'spaces.document.commands.alignLeft' },
-  { id: 'center', labelKey: 'spaces.document.commands.alignCenter' },
-  { id: 'right', labelKey: 'spaces.document.commands.alignRight' },
+  { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
+  { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
+  { id: 'right', labelKey: 'spaces.document.commands.alignRight', Icon: TextAlignEnd },
 ];
 
 /**
@@ -146,11 +162,12 @@ const ALIGN_ITEMS = [
  * @returns The slot.
  */
 export const AlignSlot = React.memo(function AlignSlot({
+  editor,
   container,
   scroller,
   openId,
   onOpenChange,
-}: Omit<SlotProps, 'editor'>): React.JSX.Element {
+}: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-align';
   const label = t('spaces.document.commands.comingLabel', {
@@ -160,6 +177,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   return (
     <DocumentBubbleMenu
       id={id}
+      editor={editor}
       container={container}
       scroller={scroller}
       open={openId === id}
@@ -185,12 +203,14 @@ export const AlignSlot = React.memo(function AlignSlot({
         <DropdownMenuItem
           key={item.id}
           data-testid={`${id}-item-${item.id}`}
+          // Left is where every block already is, so it is the row demo:590
+          // draws as active. Alignment reaches no command yet (#905), and this
+          // is the state the menu describes until it does.
+          data-active={item.id === 'left' ? 'true' : undefined}
           aria-disabled='true'
-          className={UNAVAILABLE}
-          onSelect={(event) => {
-            event.preventDefault();
-          }}
+          className={cn(item.id === 'left' && 'bg-muted', UNAVAILABLE)}
         >
+          <item.Icon />
           {t(item.labelKey)}
         </DropdownMenuItem>
       ))}
@@ -201,21 +221,28 @@ export const AlignSlot = React.memo(function AlignSlot({
 /** The colour panel's seven hues, from demo 3.5 and the palette. */
 const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
 
+/** One cell of either colour row: 30 square, 6px apart (demo:241-247). */
+const COLOUR_CELL =
+  'flex size-[30px] items-center justify-center rounded-content-sm border border-border';
+
 /**
  * The colour slot.
  *
  * Its opener is the letter A and a chevron (demo:506-509). The panel holds two
- * rows of seven: the text row colours the A, the background row is a swatch
- * (demo 3.5). No command behind it this time round — task #905.
+ * rows of eight and a reset button (demo:693-695): the text row is a default
+ * plus the seven hues, each colouring the letter A; the background row is a
+ * "none" cell plus the same seven as swatches. No command behind any of it this
+ * time round — task #905.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
 export const ColorSlot = React.memo(function ColorSlot({
+  editor,
   container,
   scroller,
   openId,
   onOpenChange,
-}: Omit<SlotProps, 'editor'>): React.JSX.Element {
+}: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-color';
   const label = t('spaces.document.commands.comingLabel', {
@@ -225,6 +252,7 @@ export const ColorSlot = React.memo(function ColorSlot({
   return (
     <DocumentBubbleMenu
       id={id}
+      editor={editor}
       container={container}
       scroller={scroller}
       open={openId === id}
@@ -249,12 +277,21 @@ export const ColorSlot = React.memo(function ColorSlot({
       <DropdownMenuLabel>
         {t('spaces.document.commands.textColor')}
       </DropdownMenuLabel>
-      <div className='flex gap-1 px-2 pb-1'>
+      <div className='flex gap-1.5 px-2 pb-3.5'>
+        {/* The default sits first and reads as the one in force, since nothing
+            has coloured the text (demo:665). */}
+        <span
+          data-testid={`${id}-text-default`}
+          data-selected='true'
+          className={cn(COLOUR_CELL, UNAVAILABLE, 'border-palette-blue font-semibold')}
+        >
+          A
+        </span>
         {PALETTE.map((hue) => (
           <span
             key={hue}
             data-testid={`${id}-text-${hue}`}
-            className={`${UNAVAILABLE} flex size-6 items-center justify-center rounded-chrome font-semibold`}
+            className={cn(COLOUR_CELL, UNAVAILABLE, 'font-semibold')}
             style={{ color: `var(--color-palette-${hue})` }}
           >
             A
@@ -264,17 +301,45 @@ export const ColorSlot = React.memo(function ColorSlot({
       <DropdownMenuLabel>
         {t('spaces.document.commands.fillColor')}
       </DropdownMenuLabel>
-      <div className='flex gap-1 px-2 pb-1'>
+      <div className='flex gap-1.5 px-2 pb-1'>
+        {/* No background, drawn as the struck-through cell demo:252-260 draws,
+            and likewise the one in force. */}
+        <span
+          data-testid={`${id}-fill-none`}
+          data-selected='true'
+          className={cn(
+            COLOUR_CELL,
+            UNAVAILABLE,
+            'relative overflow-hidden border-palette-blue bg-background',
+            'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
+            + ' after:border-muted-foreground after:[content:""]'
+            + ' after:[transform:rotate(-38deg)]',
+          )}
+        />
         {PALETTE.map((hue) => (
           <span
             key={hue}
             data-testid={`${id}-fill-${hue}`}
-            className={`${UNAVAILABLE} size-6 rounded-chrome`}
+            className={cn(COLOUR_CELL, UNAVAILABLE)}
             style={{
               background: `color-mix(in srgb, var(--color-palette-${hue}) 14%, transparent)`,
             }}
           />
         ))}
+      </div>
+      {/* Takes both marks off the selection, once there are marks to take off
+          (demo:695). */}
+      <div className='px-2 pb-1 pt-0.5'>
+        <Button
+          variant='outline'
+          size={null}
+          aria-disabled='true'
+          data-testid={`${id}-reset`}
+          tabIndex={-1}
+          className={cn('h-8 w-full text-sm', UNAVAILABLE)}
+        >
+          {t('spaces.document.commands.colorReset')}
+        </Button>
       </div>
     </DocumentBubbleMenu>
   );
@@ -318,11 +383,12 @@ const AI_GROUPS = [
  * @returns The slot.
  */
 export const AiSlot = React.memo(function AiSlot({
+  editor,
   container,
   scroller,
   openId,
   onOpenChange,
-}: Omit<SlotProps, 'editor'>): React.JSX.Element {
+}: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-coming-ai';
   const label = t('spaces.document.commands.comingLabel', {
@@ -332,6 +398,7 @@ export const AiSlot = React.memo(function AiSlot({
   return (
     <DocumentBubbleMenu
       id={id}
+      editor={editor}
       container={container}
       scroller={scroller}
       open={openId === id}
@@ -363,9 +430,6 @@ export const AiSlot = React.memo(function AiSlot({
               data-testid={`doc-bubble-ai-item-${item.id}`}
               aria-disabled='true'
               className={UNAVAILABLE}
-              onSelect={(event) => {
-                event.preventDefault();
-              }}
             >
               {t(item.labelKey)}
             </DropdownMenuItem>

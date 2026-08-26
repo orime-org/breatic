@@ -30,6 +30,8 @@ import {
 } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 
+import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
+
 /** The nine blocks this slot knows. */
 export type BlockTypeId =
   | 'paragraph'
@@ -47,8 +49,14 @@ export interface BlockTypeItem {
   id: BlockTypeId;
   labelKey: string;
   Icon: LucideIcon;
-  /** The shortcut the demo draws on the right; absent means no such column. */
-  shortcut?: string;
+  /**
+   * The shortcut the demo draws on the right; absent means no such column.
+   *
+   * A descriptor rather than a string: the same chord reads `⌘⌥1` on macOS and
+   * `Ctrl+Alt+1` on Windows, and `packages/web/CLAUDE.md` makes carrying both
+   * mandatory. `formatShortcut` turns it into whichever the reader is on.
+   */
+  shortcut?: ShortcutSpec;
   /**
    * The command behind this row.
    *
@@ -70,25 +78,25 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     id: 'heading-1',
     labelKey: 'spaces.document.commands.heading1',
     Icon: Heading1,
-    shortcut: '⌘⌥1',
+    shortcut: { mod: true, alt: true, key: '1' },
   },
   {
     id: 'heading-2',
     labelKey: 'spaces.document.commands.heading2',
     Icon: Heading2,
-    shortcut: '⌘⌥2',
+    shortcut: { mod: true, alt: true, key: '2' },
   },
   {
     id: 'heading-3',
     labelKey: 'spaces.document.commands.heading3',
     Icon: Heading3,
-    shortcut: '⌘⌥3',
+    shortcut: { mod: true, alt: true, key: '3' },
   },
   {
     id: 'bullet-list',
     labelKey: 'spaces.document.commands.bulletList',
     Icon: List,
-    shortcut: '⌘⇧8',
+    shortcut: { mod: true, shift: true, key: '8' },
     run: (e) => {
       e.chain().focus().toggleBulletList().run();
     },
@@ -97,7 +105,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     id: 'ordered-list',
     labelKey: 'spaces.document.commands.orderedList',
     Icon: ListOrdered,
-    shortcut: '⌘⇧7',
+    shortcut: { mod: true, shift: true, key: '7' },
     run: (e) => {
       e.chain().focus().toggleOrderedList().run();
     },
@@ -106,7 +114,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     id: 'quote',
     labelKey: 'spaces.document.commands.quote',
     Icon: Quote,
-    shortcut: '⌘⇧B',
+    shortcut: { mod: true, shift: true, key: 'B' },
     run: (e) => {
       e.chain().focus().toggleBlockquote().run();
     },
@@ -115,7 +123,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     id: 'code-block',
     labelKey: 'spaces.document.commands.codeBlock',
     Icon: SquareCode,
-    shortcut: '⌘⌥C',
+    shortcut: { mod: true, alt: true, key: 'C' },
   },
   {
     id: 'task-list',

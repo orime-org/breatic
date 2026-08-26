@@ -735,6 +735,7 @@
         "color": "顏色",
         "textColor": "文字顏色",
         "fillColor": "背景顏色",
+        "colorReset": "恢復預設",
         "aiRewriteGroup": "改寫選取的文字",
         "aiProduceGroup": "依選取的文字產出新東西",
         "aiOtherGroup": "其他",

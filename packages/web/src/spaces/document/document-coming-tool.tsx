@@ -54,9 +54,15 @@ import { useTranslation } from '@web/i18n/use-translation';
  * give: `cn()` runs twMerge, and a class named here beats the variant's own
  * in the same group. Without them the entry lights up under the pointer the
  * way a working button does, and says it can be pressed.
+ *
+ * `focus:` as well as `hover:`, and they are not the same thing: inside a menu
+ * Radix highlights the row under the pointer by moving the focus to it and
+ * styling `focus:bg-accent`, so an entry that turned only `hover:` off still
+ * lit up like a working one.
  */
 export const UNAVAILABLE =
-  'hover:bg-transparent hover:text-current cursor-not-allowed opacity-50';
+  'hover:bg-transparent hover:text-current focus:bg-transparent focus:text-current'
+  + ' cursor-not-allowed opacity-50';
 
 /** An entry whose command has no implementation behind it yet. */
 export interface ComingToolDef {

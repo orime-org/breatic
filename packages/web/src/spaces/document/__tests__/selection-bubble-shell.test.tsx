@@ -229,6 +229,9 @@ describe('the bubble bar shell', () => {
         expect(screen.queryByTestId('doc-bubble-block-type-menu')).toBeNull();
       });
       expect(screen.queryByTestId('doc-bubble-block-type')).not.toBeNull();
+      // Closing hands the focus back to the body, so the bar has no reason to
+      // judge focus-has-left and take itself away.
+      expect(editor.view.hasFocus()).toBe(true);
 
       // R4 again: the opener also answers a click. Radix's trigger opens on
       // `pointerdown` rather than on `click`.
@@ -358,21 +361,96 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-task-list',
       ]);
 
-      // demo:566-585 draws a shortcut column on seven of the items.
+      // demo:566-585 draws a shortcut column on seven of the items. This
+      // environment reports a non-Mac platform, so they read in the Windows
+      // spelling; the Mac one is asserted below.
       const shortcuts = items.map(
         (n) => n.querySelector('[data-testid^="doc-bubble-block-type-shortcut-"]')?.textContent?.trim() ?? null,
       );
       expect(shortcuts).toEqual([
         null,
-        '⌘⌥1',
-        '⌘⌥2',
-        '⌘⌥3',
-        '⌘⇧8',
-        '⌘⇧7',
-        '⌘⇧B',
-        '⌘⌥C',
+        'Ctrl+Alt+1',
+        'Ctrl+Alt+2',
+        'Ctrl+Alt+3',
+        'Ctrl+Shift+8',
+        'Ctrl+Shift+7',
+        'Ctrl+Shift+B',
+        'Ctrl+Alt+C',
         null,
       ]);
+    });
+
+    // `packages/web/CLAUDE.md` makes carrying both platforms mandatory, and a
+    // hardcoded glyph reads as a chord Windows readers cannot press.
+    it('spells the shortcuts the Mac way on a Mac', async () => {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-block-type');
+
+      expect(
+        menu.querySelector('[data-testid="doc-bubble-block-type-shortcut-heading-1"]')?.textContent?.trim(),
+      ).toBe('⌘⌥1');
+      expect(
+        menu.querySelector('[data-testid="doc-bubble-block-type-shortcut-bullet-list"]')?.textContent?.trim(),
+      ).toBe('⌘⇧8');
+    });
+
+    // demo:560 marks the row the selection is already in with
+    // `data-active="true"`, which takes `--color-muted`.
+    it('marks the row the selection is already in', async () => {
+      const editor = open('<h1>a heading</h1><p>a paragraph</p>');
+      mount(editor);
+      await selectWithFocus(editor, 2, 6);
+      const menu = await hoverOpen('doc-bubble-block-type');
+
+      const active = Array.from(
+        menu.querySelectorAll('[data-testid^="doc-bubble-block-type-item-"]'),
+      ).filter((n) => n.getAttribute('data-active') === 'true');
+
+      expect(active.map((n) => n.getAttribute('data-testid'))).toEqual([
+        'doc-bubble-block-type-item-heading-1',
+      ]);
+      expect(active[0].className).toContain('bg-muted');
+    });
+
+    // demo:571 rules the headings off from the lists below them.
+    it('rules the headings off from the lists', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-block-type');
+
+      const rows = Array.from(
+        menu.querySelectorAll(
+          '[data-testid^="doc-bubble-block-type-item-"], [role="separator"]',
+        ),
+      );
+      const separators = rows.filter((n) => n.getAttribute('role') === 'separator');
+      expect(separators).toHaveLength(1);
+      // Between heading 3 and the bulleted list, nowhere else.
+      expect(rows.indexOf(separators[0])).toBe(4);
+    });
+
+    // Every row of the demo's alignment menu carries a 16px icon, the way the
+    // block type menu's rows do.
+    it('gives each alignment row an icon', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-align');
+
+      const rows = Array.from(
+        menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]'),
+      );
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row.querySelectorAll('svg')).toHaveLength(1);
+      }
+      // Three different icons, not the same one three times.
+      const shapes = rows.map((r) => r.querySelector('svg')?.innerHTML);
+      expect(new Set(shapes).size).toBe(3);
     });
 
     it('greys the task list item out, the way the demo draws it', async () => {
@@ -404,14 +482,25 @@ describe('the bubble bar shell', () => {
       ]);
     });
 
-    it('lays the colour panel out in two rows of seven, the way the demo draws it', async () => {
+    it('lays the colour panel out in two rows of eight with a reset, the way the demo draws it', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
       const menu = await hoverOpen('doc-bubble-color');
 
-      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-text-"]')).toHaveLength(7);
-      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-fill-"]')).toHaveLength(7);
+      // Eight, not seven: demo:693-694 puts a default in front of the seven
+      // hues on the text row and a "none" in front of them on the background
+      // row, each marked as the one in force.
+      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-text-"]')).toHaveLength(8);
+      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-fill-"]')).toHaveLength(8);
+      expect(
+        menu.querySelector('[data-testid="doc-bubble-color-text-default"]')?.getAttribute('data-selected'),
+      ).toBe('true');
+      expect(
+        menu.querySelector('[data-testid="doc-bubble-color-fill-none"]')?.getAttribute('data-selected'),
+      ).toBe('true');
+      // demo:695: one full-width button under both rows.
+      expect(menu.querySelector('[data-testid="doc-bubble-color-reset"]')).not.toBeNull();
     });
 
     it('lists the eight AI commands the ruling draws', async () => {

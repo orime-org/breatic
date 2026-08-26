@@ -735,6 +735,7 @@
         "color": "色",
         "textColor": "文字色",
         "fillColor": "背景色",
+        "colorReset": "デフォルトに戻す",
         "aiRewriteGroup": "選択した文章を書き換える",
         "aiProduceGroup": "選択した文章から作る",
         "aiOtherGroup": "その他",

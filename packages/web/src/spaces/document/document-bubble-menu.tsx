@@ -17,6 +17,7 @@
  */
 
 import * as React from 'react';
+import type { Editor } from '@tiptap/core';
 
 import {
   DropdownMenu,
@@ -52,6 +53,8 @@ const MENU_SIDE_OFFSET = 8 + 5;
 interface DocumentBubbleMenuProps {
   /** Stable id, used to build the test ids. */
   id: string;
+  /** The editor the focus goes back to when this menu closes. */
+  editor: Editor;
   /** What the slot itself looks like. */
   trigger: React.ReactNode;
   /** What the menu holds. */
@@ -77,6 +80,7 @@ interface DocumentBubbleMenuProps {
  * One dropdown that opens on hover.
  * @param props - See {@link DocumentBubbleMenuProps}.
  * @param props.id - Stable id, used to build the test ids.
+ * @param props.editor - The editor the focus goes back to on close.
  * @param props.trigger - What the slot itself looks like.
  * @param props.children - What the menu holds.
  * @param props.container - Which element the menu mounts inside.
@@ -87,6 +91,7 @@ interface DocumentBubbleMenuProps {
  */
 export function DocumentBubbleMenu({
   id,
+  editor,
   trigger,
   children,
   container,
@@ -175,13 +180,31 @@ export function DocumentBubbleMenu({
           align='start'
           sideOffset={MENU_SIDE_OFFSET}
           onPointerEnter={enter}
-          // Closing does not hand focus back to the trigger. Radix does by
-          // default (`@radix-ui/react-dropdown-menu:114-115`), and the trigger
-          // sits on the bar, where nothing takes focus (ruling R4 / §5.2).
-          // `composeEventHandlers` carries `checkForDefaultPrevented`, so the
-          // `preventDefault` here keeps Radix's own `focus()` from running.
+          // Closing hands the focus back to the BODY, not to the trigger.
+          //
+          // Radix returns it to the trigger by default
+          // (`@radix-ui/react-dropdown-menu:114-115`), and the trigger sits on
+          // the bar, where nothing takes focus (ruling R4 / §5.2). Merely
+          // refusing that (`preventDefault` and nothing else) leaves the focus
+          // wherever Radix took it on open — measured: `activeElement` was
+          // `BODY`, and typing did nothing, because Radix moves focus into the
+          // menu when it opens and the prop that would stop it
+          // (`onOpenAutoFocus`) is `Omit`ted from the public type. So the body
+          // is given it back explicitly, the same way `DocumentSpace.tsx:155`
+          // does on every way out of the clear-document dialog.
           onCloseAutoFocus={(event) => {
             event.preventDefault();
+            // A menu can outlive its editor: closing the tab destroys the
+            // editor first, and a destroyed editor's `view` getter throws
+            // rather than answering.
+            if (editor.isDestroyed) return;
+            // `view.focus()`, not `commands.focus()`. The command wraps the
+            // real call in a `requestAnimationFrame` while dispatching its
+            // transaction straight away, so the bar re-decides a whole frame
+            // before the focus lands — measured, it judged focus-has-left and
+            // took itself away, menu and all. The view's own call is
+            // synchronous.
+            editor.view.focus();
           }}
         >
           {children}

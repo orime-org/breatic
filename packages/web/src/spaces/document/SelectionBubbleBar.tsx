@@ -36,6 +36,9 @@
  * - **The gap.** Part of the anchor rectangle (see {@link anchorRect}) rather
  *   than an `offset` middleware, so that `flip` decides with the gap already
  *   counted rather than before it exists.
+ * - **When the side is decided.** Once, as the bar comes up, and it holds for
+ *   as long as the bar stays up (E3, user 2026-08-26). `flip` picks the side
+ *   on that first computation and is then left out of the middleware array.
  *
  * Nothing takes the bar away when its anchor scrolls out of the body: it hangs
  * inside the scroller, so the scroller's own overflow clips it, which is what
@@ -65,6 +68,7 @@ import {
   autoUpdate,
   flip,
   shift,
+  type Placement,
   type VirtualElement,
 } from '@floating-ui/react';
 
@@ -911,25 +915,61 @@ function BubbleBar({
     [anchorLine, editor],
   );
 
-  const { refs, floatingStyles, update } = useFloating({
-    // The bar hangs inside the scroller, positioned in the scrolled content's
-    // own coordinates, so it travels with the text.
-    strategy: 'absolute',
-    placement: 'top-start',
-    middleware: [
+  // Which side the bar came up on, settled the moment it came up (E3).
+  //
+  // `flip` runs while this is null and is left out of the array once it holds
+  // a side, which fixes the placement for as long as the bar stays up. User
+  // 2026-08-26: "decide where it goes when it appears; after that do not let
+  // it turn over again". A bar that keeps re-deciding jumps from above the
+  // selection to below it mid-scroll, under a pointer that is not on it.
+  const [side, setSide] = React.useState<Placement | null>(null);
+
+  // Held rather than written inline: `useFloating` compares the array by
+  // identity, and a new one on every render would recompute the position on
+  // every render.
+  const middleware = React.useMemo(
+    () => (side === null
       // No `offset`: the gap is already part of the anchor rectangle
       // (`anchorRect`), and a middleware adding it again would double it.
       //
       // Both boundaries name the body's visible area rather than letting each
       // middleware find whichever ancestor happens to clip, and they keep the
-      // bar inside it. Nothing has to take the bar away when the anchor leaves:
-      // the bar sits inside the scroller, so the scroller's own overflow clips
-      // it, which is how the link panel does it too (E5).
-      flip({ boundary: viewport }),
-      shift({ boundary: viewport }),
-    ],
+      // bar inside it. Nothing has to take the bar away when the anchor
+      // leaves: the bar sits inside the scroller, so the scroller's own
+      // overflow clips it, which is how the link panel does it too (E5).
+      ? [flip({ boundary: viewport }), shift({ boundary: viewport })]
+      // `shift` stays on either side of that decision: it holds the bar inside
+      // the body column horizontally, which is a different question from which
+      // side of the selection it sits on.
+      : [shift({ boundary: viewport })]),
+    [side, viewport],
+  );
+
+  const { refs, floatingStyles, update, placement, isPositioned } = useFloating({
+    // Tracked so `isPositioned` means "this bar, as it stands now, has been
+    // placed" — it goes back to false each time the bar leaves.
+    open: warranted,
+    // The bar hangs inside the scroller, positioned in the scrolled content's
+    // own coordinates, so it travels with the text.
+    strategy: 'absolute',
+    placement: side ?? 'top-start',
+    middleware,
     whileElementsMounted: autoUpdate,
   });
+
+  // Take the side down as soon as it has been placed, and let it go when the
+  // bar does. The open menu goes with it: that id lives here, on a component
+  // that stays mounted, while the slots unmount with the bar — left set, it
+  // would open a menu again the moment the next selection brings them back.
+  React.useEffect(() => {
+    if (!warranted) {
+      setSide(null);
+      setOpenMenu(null);
+      return;
+    }
+    if (side !== null || !isPositioned) return;
+    setSide(placement);
+  }, [warranted, isPositioned, placement, side]);
 
   React.useEffect(() => {
     refs.setPositionReference(anchor);
