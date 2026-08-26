@@ -89,19 +89,24 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection, PluginKey } from '@tiptap/pm/state';
 import { BubbleMenu } from '@tiptap/react/menus';
 
-import { MessageSquareText, Sparkles } from 'lucide-react';
+import { MessageSquareText } from 'lucide-react';
 
 import {
   ToolButton,
   type ToolDef,
 } from '@web/spaces/document/document-tool-button';
 import {
+  BlockTypeSlot,
+  AlignSlot,
+  ColorSlot,
+  AiSlot,
+} from '@web/spaces/document/document-bubble-slots';
+import {
   ComingTool,
   type ComingToolDef,
 } from '@web/spaces/document/document-coming-tool';
 import {
   MARK_TOOLS,
-  BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
@@ -126,31 +131,48 @@ interface BubbleGroup {
     editor: Editor;
     onPanelOpenChange: (open: boolean) => void;
   }>[];
+  /**
+   * Slots that open a menu on hover.
+   *
+   * Their open state lives on the bar rather than on each of them, so that one
+   * is open at a time (§5.3 I-7): the bar hands every slot the id that is open
+   * and the setter, each compares.
+   */
+  slots: React.ComponentType<{
+    editor: Editor;
+    container: HTMLElement | null;
+    scroller: HTMLElement | null;
+    openId: string | null;
+    onOpenChange: (id: string, open: boolean) => void;
+  }>[];
 }
 
 /**
  * The controls this carrier shows, grouped the way the demo draws them.
  *
- * The demo's full shape is five groups: block type, alignment, `B I S U`,
- * the inline run, and AI. Alignment holds nothing yet (#905), so it is absent
- * below; the first group holds the three block buttons a dropdown will replace
- * (#904). A separator belongs between two runs of controls, so the empty group
- * draws none — a line for it would stand beside another with nothing between
- * them.
+ * Five groups split by four separators, the order the demo's own caption gives
+ * (`2026-08-21-editor-command-surface.html:521`): block type ｜ alignment ｜
+ * bold italic strike underline ｜ link inline-code colour comment ｜ AI.
  *
- * Comment and AI stand here with no command behind them (design §3.3 calls
- * both "placeholder only"): their functions are task #18 and a later one, so
- * "not open yet" is the truth about them. The controls still to come — block
- * type, alignment, colour, link — are none of them; each arrives with its
- * command in its own slice.
+ * Three of the five hold a slot that opens a menu on hover; the three block
+ * commands that used to sit flat in the first group now live inside the block
+ * type menu, which is where the demo draws them.
+ *
+ * Comment stands here with no command behind it (its function is task #18), as
+ * do alignment, colour, and every AI command — each of those needs schema or a
+ * model call that arrives with its own slice. They all carry the treatment
+ * `document-coming-tool.tsx` defines (user 2026-08-23: a control that reads as
+ * available and answers a click with nothing tells the reader it is broken).
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
-  { key: 'blocks', tools: BLOCK_TOOLS, coming: [], panels: [] },
-  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [] },
+  { key: 'blocks', tools: [], coming: [], panels: [], slots: [BlockTypeSlot] },
+  { key: 'align', tools: [], coming: [], panels: [], slots: [AlignSlot] },
+  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [], slots: [] },
   {
     key: 'inline',
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
+    slots: [ColorSlot],
     coming: [
       {
         id: 'comment',
@@ -159,19 +181,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
       },
     ],
   },
-  {
-    key: 'ai',
-    tools: [],
-    panels: [],
-    coming: [
-      {
-        id: 'ai',
-        labelKey: 'spaces.document.commands.ai',
-        Icon: Sparkles,
-        drawsAsDropdown: true,
-      },
-    ],
-  },
+  { key: 'ai', tools: [], coming: [], panels: [], slots: [AiSlot] },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -496,12 +506,20 @@ function BubbleBar({
    * @returns True when a bar is warranted at all.
    */
   const isWarranted = React.useCallback((view: EditorView): boolean => {
+    const bar = barRef.current;
     const { doc, selection } = view.state;
     if (selection.empty || !editor.isEditable) return false;
     // Focus first, then the text. Both answer in constant time now —
     // `hasTextIn` stops at the first text node — so this order is no longer
     // about cost; it is just the cheapest question asked first.
-    if (!view.hasFocus()) return false;
+    // 焦点落在条自己这棵子树里也算数。四个下拉的菜单 portal 进条内部
+    // （`DropdownMenuContent` 的 `container`），而 Radix 打开菜单时会把焦点
+    // 移进菜单内容 —— 拦那次移动的 prop（`onOpenAutoFocus`）住在
+    // `MenuContentImplPrivateProps` 里、被公开类型 `Omit` 掉了，Radix 明说
+    // 它不对外。所以判据跟着放宽，这也正是 bubble-menu 插件自己的语义
+    // （`dist/index.js:71-72` 的 `isChildOfMenu`）。
+    const focusInBar = bar !== null && bar.contains(bar.ownerDocument.activeElement);
+    if (!view.hasFocus() && !focusInBar) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 
@@ -809,6 +827,58 @@ function BubbleBar({
    */
   const [panelOpen, setPanelOpen] = React.useState(false);
 
+  // 一次只开一个菜单（§5.3 的 I-7）。开合由条持有，每一格拿到「现在开着的是
+  // 谁」和这个 setter 自己比对 —— 各格自己存一份的话，指针从一格挪到另一格
+  // 时旧的那个收不到任何信号。
+  const [openMenu, setOpenMenu] = React.useState<string | null>(null);
+  const setMenuOpen = React.useCallback((id: string, open: boolean): void => {
+    setOpenMenu((current) => {
+      if (open) return id;
+      // 关的信号只对当前开着的那一格作数：指针从 A 挪到 B 时，A 的关和 B 的
+      // 开先后到达，晚到的那个关会把 B 也收掉。
+      return current === id ? null : current;
+    });
+  }, []);
+
+  // 鼠标按着的时候不显示条（D1）。
+  //
+  // 插件对选区变化有 250ms 防抖，判据是「选区静止 250ms」—— 拖拽中手一停就
+  // 满足，条冒出来，继续拖又跟着跳。它判的是「选区不动了」，不是「选择这个
+  // 动作结束了」。业界解法是门控不是延迟：BlockNote 的 `FormattingToolbar`
+  // 按下时收起、松开时再判（注释里写明照抄 Notion，`setTimeout` 零命中），
+  // Plate 的 `useFloatingToolbar` 同理。
+  // 指针按着的时候条不出现（D1）。
+  //
+  // 走跟链接面板同一条路径 —— 给条挂上 `invisible!`，而不是让插件重问
+  // `shouldShow`：插件的 `update` 在选区和文档都没变时直接 return
+  // （`bubble-menu-plugin.ts` 的 `handleDebouncedUpdate`），一次不改内容的
+  // 事务换不回一次重问。
+  const [pointerDown, setPointerDown] = React.useState(false);
+  React.useEffect(() => {
+    const { view } = editor;
+    /** 按下了：条让开，菜单收掉。 */
+    const down = (): void => {
+      setPointerDown(true);
+      setOpenMenu(null);
+    };
+    /** 松开了：门开，条按当前选区自己决定出不出来。 */
+    const up = (): void => {
+      setPointerDown(false);
+    };
+    view.dom.addEventListener('pointerdown', down);
+    // 挂在 root 上并捕获：用户常把指针拖出编辑器之外才松手，挂 `view.dom` 会
+    // 漏掉那一次，门就永远关着了。
+    const root = view.root as Document | ShadowRoot;
+    root.addEventListener('pointerup', up, true);
+    // 指针被系统取消（拖出窗口、切走应用）同样要开门，否则卡在永不显示。
+    root.addEventListener('pointercancel', up, true);
+    return () => {
+      view.dom.removeEventListener('pointerdown', down);
+      root.removeEventListener('pointerup', up, true);
+      root.removeEventListener('pointercancel', up, true);
+    };
+  }, [editor]);
+
   const getReferencedVirtualElement = React.useCallback(() => {
     const line = anchorLine();
     if (!line) return null;
@@ -930,7 +1000,7 @@ function BubbleBar({
         // (`extension-bubble-menu`), and an inline declaration beats a plain
         // class. Measured — with the plain one the classes were on the element
         // and the bar was still on screen.
-        panelOpen && 'invisible! pointer-events-none',
+        (panelOpen || pointerDown) && 'invisible! pointer-events-none',
       )}
     >
       {hasSelection
@@ -954,6 +1024,16 @@ function BubbleBar({
             ))}
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
+            ))}
+            {group.slots.map((Slot, slotIndex) => (
+              <Slot
+                key={slotIndex}
+                editor={editor}
+                container={barRef.current}
+                scroller={viewport}
+                openId={openMenu}
+                onOpenChange={setMenuOpen}
+              />
             ))}
             {group.coming.map((tool) => (
               <ComingTool key={tool.id} tool={tool} />

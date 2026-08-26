@@ -55,7 +55,7 @@ import { useTranslation } from '@web/i18n/use-translation';
  * in the same group. Without them the entry lights up under the pointer the
  * way a working button does, and says it can be pressed.
  */
-const UNAVAILABLE =
+export const UNAVAILABLE =
   'hover:bg-transparent hover:text-current cursor-not-allowed opacity-50';
 
 /** An entry whose command has no implementation behind it yet. */

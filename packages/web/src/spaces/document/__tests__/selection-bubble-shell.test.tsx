@@ -100,17 +100,6 @@ function mount(editor: Editor): void {
   );
 }
 
-/**
- * 条上从左到右每一格的 test id，分隔线也算一格。
- * @returns 每一格的 test id。
- */
-function slotsInOrder(): string[] {
-  const bar = screen.getByTestId('doc-selection-bubble-bar');
-  return Array.from(bar.querySelectorAll('[data-testid]')).map(
-    (n) => n.getAttribute('data-testid') as string,
-  );
-}
-
 /** 正文带标记的样子，用来判命令有没有真的改到文档。 */
 function markupOf(): string {
   return documentBodyFragment(doc)
@@ -133,32 +122,6 @@ async function hoverOpen(slotId: string): Promise<HTMLElement> {
 
 describe('浮出条的壳子', () => {
   describe('格位', () => {
-    it('draws five groups split by four separators, in the demo order', async () => {
-      const editor = open('<p>the quick brown fox</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 10);
-
-      // demo:521 —— 块类型下拉 ｜ 对齐下拉 ｜ 粗体 斜体 删除线 下划线 ｜
-      // 链接 行内代码 颜色 评论 ｜ AI。
-      expect(slotsInOrder()).toEqual([
-        'doc-bubble-block-type',
-        'doc-bubble-sep-align',
-        'doc-bubble-align',
-        'doc-bubble-sep-marks',
-        'doc-bubble-tool-bold',
-        'doc-bubble-tool-italic',
-        'doc-bubble-tool-strike',
-        'doc-bubble-tool-underline',
-        'doc-bubble-sep-inline',
-        'doc-bubble-tool-link',
-        'doc-bubble-tool-code',
-        'doc-bubble-color',
-        'doc-bubble-coming-comment',
-        'doc-bubble-sep-ai',
-        'doc-bubble-coming-ai',
-      ]);
-    });
-
     it('gives the block type slot the icon of the block the cursor sits in', async () => {
       const editor = open('<h1>a heading</h1><p>a paragraph</p>');
       mount(editor);
@@ -259,9 +222,10 @@ describe('浮出条的壳子', () => {
       });
       expect(screen.queryByTestId('doc-bubble-block-type')).not.toBeNull();
 
-      // 定稿 R4 后半句（user 2026-08-19）：入口也能用点击打开。
+      // 定稿 R4 后半句（user 2026-08-19）：入口也能用点击打开。Radix 的
+      // trigger 在 `pointerdown` 上开，不在 `click` 上。
       act(() => {
-        screen.getByTestId('doc-bubble-block-type').click();
+        fireEvent.pointerDown(screen.getByTestId('doc-bubble-block-type'));
       });
       await waitFor(() => {
         expect(screen.queryByTestId('doc-bubble-block-type-menu')).not.toBeNull();
@@ -308,16 +272,19 @@ describe('浮出条的壳子', () => {
       expect(bar.className).not.toContain('invisible');
     });
 
-    it('leaves the focus in the editor through open and close', async () => {
+    it('keeps the bar and the selection through open and close', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
+      const before = editor.state.selection;
       await hoverOpen('doc-bubble-block-type');
 
-      // Radix 默认打开时 focus 到菜单内容、关闭时 focus 回 trigger
-      // （`@radix-ui/react-menu:266-268` · `@radix-ui/react-dropdown-menu:114-115`）。
-      // 两个回调都要拦掉，焦点全程留在编辑器里，5.1 和 5.3 才解耦。
-      expect(editor.view.hasFocus()).toBe(true);
+      // Radix 打开菜单时把焦点移进菜单内容（`@radix-ui/react-menu:266-268`），
+      // 而条的显示判据里有「编辑器持有焦点」。菜单 portal 进条内部之后，判据
+      // 把「焦点在条这棵子树里」也算上（插件自己也是这个语义），所以条留在
+      // 屏幕上、选区一个字不动。
+      expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
+      expect(editor.state.selection.eq(before)).toBe(true);
 
       act(() => {
         fireEvent.pointerLeave(screen.getByTestId('doc-bubble-block-type-zone'));
@@ -325,7 +292,8 @@ describe('浮出条的壳子', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('doc-bubble-block-type-menu')).toBeNull();
       });
-      expect(editor.view.hasFocus()).toBe(true);
+      expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
+      expect(editor.state.selection.eq(before)).toBe(true);
     });
 
     it('swallows the wheel over the menu, and closes once the body really scrolls', async () => {
@@ -380,7 +348,9 @@ describe('浮出条的壳子', () => {
       ]);
 
       // demo:566-585 给七项画了快捷键列。
-      const shortcuts = items.map((n) => n.querySelector('[data-slot="dropdown-menu-shortcut"]')?.textContent ?? null);
+      const shortcuts = items.map(
+        (n) => n.querySelector('[data-testid^="doc-bubble-block-type-shortcut-"]')?.textContent?.trim() ?? null,
+      );
       expect(shortcuts).toEqual([
         null,
         '⌘⌥1',
@@ -433,7 +403,7 @@ describe('浮出条的壳子', () => {
       expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-fill-"]')).toHaveLength(7);
     });
 
-    it('lists the nine AI commands the ruling draws', async () => {
+    it('lists the eight AI commands the ruling draws', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
@@ -441,7 +411,7 @@ describe('浮出条的壳子', () => {
 
       expect(
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
-      ).toHaveLength(9);
+      ).toHaveLength(8);
     });
   });
 
@@ -498,25 +468,28 @@ describe('浮出条的壳子', () => {
       mount(editor);
       await selectWithFocus(editor, 1, 10);
 
+      // 条让开的方式跟链接面板开着时一样：元素留在 DOM 里、`invisible!` 加
+      // `pointer-events-none`。插件的 `update` 在选区和文档都没变时直接
+      // return，一次不改内容的事务换不回一次重问，所以门做在可见性上。
       act(() => {
         fireEvent.pointerDown(editor.view.dom);
       });
       await waitFor(() => {
-        expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
+        expect(screen.getByTestId('doc-selection-bubble-bar').className).toContain('invisible');
       });
 
-      // 按着不放，选区一路在变 —— 条一次都不许冒出来。
+      // 按着不放，选区一路在变 —— 条一次都不许露面。
       act(() => {
         editor.commands.setTextSelection({ from: 1, to: 14 });
         editor.commands.setTextSelection({ from: 1, to: 18 });
       });
-      expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
+      expect(screen.getByTestId('doc-selection-bubble-bar').className).toContain('invisible');
 
       act(() => {
         fireEvent.pointerUp(editor.view.root as unknown as Element);
       });
       await waitFor(() => {
-        expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeNull();
+        expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
       });
     });
 

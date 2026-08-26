@@ -15,16 +15,26 @@ export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
  * Dropdown menu surface — `bg-popover` + border + `shadow-md` at `z-popover`,
  * 4px inner padding. Items use the neutral hover fill (`bg-muted`) on focus,
  * matching the ghost-button hover.
- * @param props - Radix Content props (`sideOffset`, …).
+ *
+ * `container` reaches the Portal underneath. A menu opened from something that
+ * itself floats has to render INSIDE that float: the float decides whether to
+ * stay on screen by asking where the focus is, and a menu portalled to `body`
+ * answers "somewhere else" — the float takes itself away and the menu goes with
+ * it. The selection bubble bar's four openers pass their own element here.
+ * @param props - Radix Content props (`sideOffset`, …), plus `container`.
+ * @param props.container - Where the Portal mounts. Defaults to `body`.
  * @returns The dropdown menu panel.
  */
 export function DropdownMenuContent({
   className,
   sideOffset = 6,
+  container,
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.Content>): ReactNode {
+}: ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  container?: ComponentProps<typeof DropdownMenuPrimitive.Portal>['container'];
+}): ReactNode {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={container}>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(

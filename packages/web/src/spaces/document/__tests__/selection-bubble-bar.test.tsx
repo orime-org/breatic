@@ -32,7 +32,6 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
   MARK_TOOLS,
-  BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 
@@ -213,9 +212,11 @@ describe('选中浮出条', () => {
     ).map((el) => el.getAttribute('data-testid')?.replace('doc-bubble-tool-', ''));
 
     expect(ids.sort()).toEqual(
-      // 链接不在这三个数组里：它开的是浮层不是命令，`ToolDef` 装不下
-      // （设计 §4.3）。
-      [...BLOCK_TOOLS, ...MARK_TOOLS, ...INLINE_TOOLS]
+      // 链接不在这两个数组里：它开的是浮层不是命令，`ToolDef` 装不下
+      // （设计 §4.3）。三个块命令（无序列表 · 有序列表 · 引用）2026-08-26
+      // 起住在块类型菜单里，demo:521 画的就是那个形态；它们还能不能用由
+      // `selection-bubble-shell.test.tsx` 钉着。
+      [...MARK_TOOLS, ...INLINE_TOOLS]
         .map((t) => t.id)
         .concat('link')
         .sort(),
@@ -232,14 +233,16 @@ describe('选中浮出条', () => {
     await selectWithFocus(editor, 1, 6);
 
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
-    const rendered = Array.from(
-      bar.querySelectorAll('[data-testid^="doc-bubble-"]'),
-    ).map((el) => el.getAttribute('data-testid'));
+    const rendered = Array.from(bar.querySelectorAll('[data-testid^="doc-bubble-"]'))
+      .map((el) => el.getAttribute('data-testid') as string)
+      // 四个下拉各包一层 `-zone`（判定指针在不在「格子加菜单」这片区域用
+      // 的容器），展开的 `-menu` 也 portal 进条里 —— 两者都不是格位。
+      .filter((id) => !id.endsWith('-zone') && !id.endsWith('-menu'));
 
     expect(rendered).toEqual([
-      'doc-bubble-tool-bullet-list',
-      'doc-bubble-tool-ordered-list',
-      'doc-bubble-tool-quote',
+      'doc-bubble-block-type',
+      'doc-bubble-sep-align',
+      'doc-bubble-align',
       'doc-bubble-sep-marks',
       'doc-bubble-tool-bold',
       'doc-bubble-tool-italic',
@@ -248,6 +251,7 @@ describe('选中浮出条', () => {
       'doc-bubble-sep-inline',
       'doc-bubble-tool-link',
       'doc-bubble-tool-code',
+      'doc-bubble-color',
       'doc-bubble-coming-comment',
       'doc-bubble-sep-ai',
       'doc-bubble-coming-ai',
@@ -266,7 +270,8 @@ describe('选中浮出条', () => {
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const seps = bar.querySelectorAll('[role="separator"]');
 
-    expect(seps).toHaveLength(3);
+    // 五组四线（demo:521）：块类型 ｜ 对齐 ｜ B I S U ｜ 链接 代码 颜色 评论 ｜ AI。
+    expect(seps).toHaveLength(4);
     for (const sep of seps) {
       expect(sep.getAttribute('aria-orientation')).toBe('vertical');
     }
@@ -413,9 +418,9 @@ describe('选中浮出条', () => {
     ['strike', '<strike>', '<p>hello world</p>', 1, 6],
     ['underline', '<underline>', '<p>hello world</p>', 1, 6],
     ['code', '<code>', '<p>hello world</p>', 1, 6],
-    ['bullet-list', '<bulletlist>', '<p>hello world</p>', 1, 6],
-    ['ordered-list', '<orderedlist', '<p>hello world</p>', 1, 6],
-    ['quote', '<blockquote>', '<p>hello world</p>', 1, 6],
+    // 三个块命令（无序列表 · 有序列表 · 引用）2026-08-26 起住在块类型菜单
+    // 里，从那儿点还改不改得动文档由 `selection-bubble-shell.test.tsx` 的
+    // 「running %s from the menu still changes the document」钉着。
   ])('在浮出条里点 %s，文档真的变了', async (id, marker, body, from, to) => {
     const editor = open(body);
     mount(editor);
@@ -1435,7 +1440,7 @@ describe('选中浮出条', () => {
     const view = bubblePluginView(editor);
     expect(
       view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
-    ).toHaveLength(9);
+    ).toHaveLength(6);
 
     act(() => {
       editor.commands.setTextSelection(3);
@@ -1496,7 +1501,7 @@ describe('选中浮出条', () => {
   // 序，鼠标点得进去）。钉它的是上面「整条不可聚焦」那条的
   // `hasAttribute('tabindex')`。这里读 `bar.tabIndex` 读不出区别——没有属性的
   // div 本来就答 -1。
-  it('浮出条的九个按钮都不进 Tab 序', async () => {
+  it('浮出条的六个按钮都不进 Tab 序', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1505,7 +1510,11 @@ describe('选中浮出条', () => {
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    expect(buttons).toHaveLength(9);
+    // 六个：B I S U 加行内代码加链接。三个块命令搬进块类型菜单之后，这一条
+    // 只数留在条上的；四个下拉的触发器由
+    // `selection-bubble-shell.test.tsx` 的「keeps the four new openers out of
+    // the tab order」钉着。
+    expect(buttons).toHaveLength(6);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);
     }
@@ -1534,7 +1543,9 @@ describe('选中浮出条', () => {
     ).filter((b) => b.disabled).length;
     expect(dark > 0).toBe(hasDark);
 
-    for (const tool of [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS]) {
+    // 只遍历留在条上的那些。`BLOCK_TOOLS` 那三个 2026-08-26 起住在块类型
+    // 菜单里，菜单项的亮暗归 `selection-bubble-shell.test.tsx`。
+    for (const tool of [...MARK_TOOLS, ...INLINE_TOOLS]) {
       const button = document.querySelector<HTMLButtonElement>(
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );
