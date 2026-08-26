@@ -719,7 +719,8 @@
         "code": "行内代码",
         "comment": "评论",
         "ai": "AI",
-        "comingLabel": "{name}（未开放）"
+        "comingLabel": "{name}（未开放）",
+        "link": "链接"
       },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",
@@ -734,6 +735,13 @@
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
         "notOpenYet": "未开放"
+      },
+      "link": {
+        "placeholder": "粘贴或输入网址",
+        "confirm": "确定",
+        "edit": "编辑",
+        "remove": "去掉链接",
+        "invalid": "网址格式不对"
       }
     },
     "readOnlyReconnect": "重新连接"

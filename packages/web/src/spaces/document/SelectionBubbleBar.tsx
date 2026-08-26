@@ -104,7 +104,9 @@ import {
   BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
+import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
+import { cn } from '@web/lib/utils';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
 /** One run of controls, drawn between two separators. */
@@ -113,6 +115,17 @@ interface BubbleGroup {
   key: string;
   tools: ToolDef[];
   coming: ComingToolDef[];
+  /**
+   * Controls that open a panel instead of running a command.
+   *
+   * A `ToolDef` runs one command when pressed; these own a panel and the state
+   * that goes with it, which is a different shape and not one the eight
+   * commands have any use for.
+   */
+  panels: React.ComponentType<{
+    editor: Editor;
+    onPanelOpenChange: (open: boolean) => void;
+  }>[];
 }
 
 /**
@@ -132,11 +145,12 @@ interface BubbleGroup {
  * command in its own slice.
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
-  { key: 'blocks', tools: BLOCK_TOOLS, coming: [] },
-  { key: 'marks', tools: MARK_TOOLS, coming: [] },
+  { key: 'blocks', tools: BLOCK_TOOLS, coming: [], panels: [] },
+  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [] },
   {
     key: 'inline',
     tools: INLINE_TOOLS,
+    panels: [DocumentLinkPopover],
     coming: [
       {
         id: 'comment',
@@ -148,6 +162,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
   {
     key: 'ai',
     tools: [],
+    panels: [],
     coming: [
       {
         id: 'ai',
@@ -735,37 +750,74 @@ function BubbleBar({
     };
   }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
 
-  const getReferencedVirtualElement = React.useCallback(() => {
+  /**
+   * The one line this bar sits against, in viewport coordinates and with no
+   * gap added.
+   *
+   * A pinned point has no extent, so both edges of the "line" are the same
+   * coordinate; growing it into the gap (below) then gives it the same shape a
+   * real line gets, which is what keeps the flip behaviour identical across the
+   * two modes.
+   *
+   * Its x comes from the pointer too, not from the selection's box: over a
+   * select-all that box is the whole body column and its left edge says nothing
+   * about where the reader is looking.
+   * @returns The line, or null while the selection is empty.
+   */
+  const anchorLine = React.useCallback((): {
+    left: number;
+    top: number;
+    bottom: number;
+  } | null => {
     const { view } = editor;
     if (view.state.selection.empty) return null;
     const pinned = pinnedPoint();
-    // A pinned point has no extent, so both edges of the "line" are the same
-    // coordinate and `anchorRect` grows it into the gap on either side — the
-    // same shape a real line gets, which is what keeps the flip behaviour
-    // identical across the two modes.
-    //
-    // Its x comes from the pointer too, not from the selection's box: over a
-    // select-all that box is the whole body column and its left edge says
-    // nothing about where the reader is looking.
-    const rect = pinned
-      ? anchorRect(pinned.x, { top: pinned.y, bottom: pinned.y })
-      // The two axes come from different places here, and they have to.
-      // Vertically the bar belongs to ONE line — the anchor. Horizontally the
-      // ruling asks for the selection's left edge, which is the left of the
-      // box it occupies: the anchor's own x is no such thing (it is usually
-      // the head, and measured, taking x from there put the bar 314px right of
-      // where the ruling wants it), and neither is `posToDOMRect`, which
-      // samples only the two endpoints and so misses the block edge that a
-      // middle line starts at.
-      : anchorRect(
-        selectionBox(view).left,
-        pickAnchorLine(view, viewport.getBoundingClientRect()),
-      );
+    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y };
+    // The two axes come from different places here, and they have to.
+    // Vertically the bar belongs to ONE line — the anchor. Horizontally the
+    // ruling asks for the selection's left edge, which is the left of the
+    // box it occupies: the anchor's own x is no such thing (it is usually
+    // the head, and measured, taking x from there put the bar 314px right of
+    // where the ruling wants it), and neither is `posToDOMRect`, which
+    // samples only the two endpoints and so misses the block edge that a
+    // middle line starts at.
+    const line = pickAnchorLine(view, viewport.getBoundingClientRect());
+    return {
+      left: selectionBox(view).left,
+      top: line.top,
+      bottom: line.bottom,
+    };
+  }, [editor, viewport, pinnedPoint]);
+
+  /**
+   * Step aside while a panel is up.
+   *
+   * The panel holds the focus and the reader's attention while it is open, and
+   * the two would otherwise be anchored to the same line: measured, a panel
+   * that `flip` sent above its target landed on the bar's own pixels.
+   *
+   * Made invisible rather than hidden through the plugin. Telling the plugin to
+   * hide takes the bar's whole subtree with it, and every panel is part of that
+   * subtree: measured in a browser, pressing the link button left bar, button
+   * and panel all absent, because a portalled panel still belongs to the
+   * component that renders it. jsdom does not show this — its bar element goes
+   * while React keeps the children — which is why it is a browser case that
+   * pins it.
+   *
+   * Coming back is the selection's business either way: closing a panel drops
+   * the selection, so `shouldShow` turns the bar off a moment later.
+   */
+  const [panelOpen, setPanelOpen] = React.useState(false);
+
+  const getReferencedVirtualElement = React.useCallback(() => {
+    const line = anchorLine();
+    if (!line) return null;
+    const rect = anchorRect(line.left, line);
     return {
       getBoundingClientRect: () => rect,
       getClientRects: () => [rect] as unknown as DOMRectList,
     };
-  }, [editor, viewport, pinnedPoint]);
+  }, [anchorLine]);
 
   const options = React.useMemo(
     () => ({
@@ -871,7 +923,15 @@ function BubbleBar({
       // follows that selection far enough to reach the entry's corner. The
       // editor shell is `isolate`, so this number is compared against the
       // entry's and nothing else on the page.
-      className='z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md'
+      className={cn(
+        'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
+        // `invisible!` rather than `invisible`: the plugin writes
+        // `visibility` as an inline style when it shows the bar
+        // (`extension-bubble-menu`), and an inline declaration beats a plain
+        // class. Measured — with the plain one the classes were on the element
+        // and the bar was still on screen.
+        panelOpen && 'invisible! pointer-events-none',
+      )}
     >
       {hasSelection
         ? BUBBLE_GROUPS.map((group, index) => (
@@ -889,6 +949,9 @@ function BubbleBar({
                 className='mx-[3px] h-4 w-px'
               />
             ) : null}
+            {group.panels.map((Panel, panelIndex) => (
+              <Panel key={panelIndex} editor={editor} onPanelOpenChange={setPanelOpen} />
+            ))}
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
             ))}

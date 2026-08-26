@@ -719,7 +719,8 @@
         "code": "行內程式碼",
         "comment": "評論",
         "ai": "AI",
-        "comingLabel": "{name}（未開放）"
+        "comingLabel": "{name}（未開放）",
+        "link": "連結"
       },
       "schemaOutdated": {
         "headline": "文件編輯器已更新",
@@ -734,6 +735,13 @@
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
         "notOpenYet": "未開放"
+      },
+      "link": {
+        "placeholder": "貼上或輸入網址",
+        "confirm": "確定",
+        "edit": "編輯",
+        "remove": "移除連結",
+        "invalid": "網址格式不對"
       }
     },
     "readOnlyReconnect": "重新連線"

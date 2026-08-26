@@ -719,7 +719,8 @@
         "code": "インラインコード",
         "comment": "コメント",
         "ai": "AI",
-        "comingLabel": "{name}（未提供）"
+        "comingLabel": "{name}（未提供）",
+        "link": "リンク"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
@@ -734,6 +735,13 @@
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
         "notOpenYet": "未提供"
+      },
+      "link": {
+        "placeholder": "URL を貼り付けるか入力",
+        "confirm": "完了",
+        "edit": "編集",
+        "remove": "リンクを解除",
+        "invalid": "URL の形式が正しくありません"
       }
     },
     "readOnlyReconnect": "再接続"

@@ -18,7 +18,7 @@ import { cn } from '@web/lib/utils';
  *   - Larger surface, intended for rich content / forms / lists
  *   - Manages focus inside; closes on outside click / Escape
  *
- * Renders content in a portal. Default `align="center"`, `sideOffset={4}`.
+ * Renders content in a portal. Default `align="center"`, `sideOffset={8}`.
  */
 const Popover = PopoverPrimitive.Root;
 
