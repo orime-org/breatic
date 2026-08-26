@@ -78,3 +78,32 @@ describe('planGroupCreation', () => {
     expect(sel['c']).toBe(true); // untouched
   });
 });
+
+describe('planGroupCreation while a remote gesture runs', () => {
+  it('leaves the nodes it was not given where the buffer has them', () => {
+    // The buffer is what the canvas draws, remote gestures included. Handing
+    // the planner a document view instead would put every one of those nodes
+    // back at its stored position the moment somebody grouped anything.
+    const flying = {
+      id: 'flying',
+      type: 'image',
+      position: { x: 4_000, y: 4_000 },
+      data: {},
+      measured: { width: 100, height: 100 },
+    } as Node;
+    const buffer: Node[] = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: {},
+        measured: { width: 100, height: 100 } } as Node,
+      { id: 'b', type: 'image', position: { x: 200, y: 0 }, data: {},
+        measured: { width: 100, height: 100 } } as Node,
+      flying,
+    ];
+    const plan = planGroupCreation(buffer, ['a', 'b'], 'g-new');
+    expect(plan).not.toBeNull();
+    const after = plan?.nextNodes.find((n) => n.id === 'flying');
+    expect(after?.position).toEqual({ x: 4_000, y: 4_000 });
+    expect(plan?.members.map((m) => m.id)).toEqual(['a', 'b']);
+    // The box wraps the two it was given, nothing else.
+    expect(plan?.width).toBeLessThan(1_000);
+  });
+});

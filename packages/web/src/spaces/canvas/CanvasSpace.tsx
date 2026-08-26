@@ -2826,7 +2826,16 @@ function CanvasSpaceInner({
   const groupSelection = React.useCallback((): void => {
     if (readOnly || groupOffer.kind !== 'group') return;
     const groupId = newId();
-    const plan = planGroupCreation(writableNodes(), selectedIds, groupId);
+    // The box is drawn around what is on screen, which is what the user
+    // selected. A node a remote gesture is holding is left out of the new
+    // Group: taking it in would write its parent and its position relative to
+    // an origin that did not exist a moment ago, while its coordinates are
+    // still moving.
+    const plan = planGroupCreation(
+      flowNodesRef.current,
+      selectedIds.filter((id) => !remoteGestureRef.current.has(id)),
+      groupId,
+    );
     if (!plan) return;
     const group = createGroupNode(
       groupId,
@@ -2845,7 +2854,6 @@ function CanvasSpaceInner({
   }, [
     readOnly,
     groupOffer,
-    writableNodes,
     selectedIds,
     userId,
     projectId,
