@@ -188,15 +188,39 @@ describe('mergeCanvasNodes, Group member coordinates', () => {
     expect(merged[1]?.position).toEqual({ x: 30, y: 50 });
   });
 
-  it('measures from the Group current position when only the member is in the batch', () => {
-    const buffer = [
+  it('measures from where this client is dragging the Group, not where the document has it', () => {
+    // The three places a Group's origin could come from are given three
+    // different values, so the case says which one was used.
+    const prev = [
       node('g1', 100, 200, { type: 'group', width: 400, height: 300 }),
       node('m1', 0, 0, { parentId: 'g1' }),
     ];
-    const merged = mergeCanvasNodes(buffer, buffer, {
+    const fresh = [
+      node('g1', 700, 800, { type: 'group', width: 400, height: 300 }),
+      node('m1', 0, 0, { parentId: 'g1' }),
+    ];
+    const merged = mergeCanvasNodes(prev, fresh, {
       ...QUIET,
       localGestureIds: new Set(['g1']),
       remoteGesture: gesturing(['m1', { x: 130, y: 250 }]),
+    });
+    // Measured against the local drag's 100,200 — the document's 700,800 would
+    // give -570,-550.
+    expect(merged[1]?.position).toEqual({ x: 30, y: 50 });
+  });
+
+  it('measures from the document when nobody is holding the Group', () => {
+    const prev = [
+      node('g1', 100, 200, { type: 'group', width: 400, height: 300 }),
+      node('m1', 0, 0, { parentId: 'g1' }),
+    ];
+    const fresh = [
+      node('g1', 700, 800, { type: 'group', width: 400, height: 300 }),
+      node('m1', 0, 0, { parentId: 'g1' }),
+    ];
+    const merged = mergeCanvasNodes(prev, fresh, {
+      ...QUIET,
+      remoteGesture: gesturing(['m1', { x: 730, y: 850 }]),
     });
     expect(merged[1]?.position).toEqual({ x: 30, y: 50 });
   });

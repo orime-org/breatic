@@ -72,7 +72,7 @@ describe('useGestureBroadcast, a drag', () => {
     const buffer = { current: [loose('n1', 10, 20), loose('n2', 30, 40)] };
     const { broadcast, log } = mount(buffer);
 
-    broadcast.begin(['n1'], null);
+    broadcast.begin('n1', ['n1'], null);
 
     expect(log).toEqual([{ kind: 'publish', batch: { n1: { x: 10, y: 20 } } }]);
   });
@@ -80,10 +80,10 @@ describe('useGestureBroadcast, a drag', () => {
   it('publishes the whole batch again as it moves', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin(['n1'], null);
+    broadcast.begin('n1', ['n1'], null);
 
     buffer.current = [loose('n1', 11, 21)];
-    broadcast.update(null);
+    broadcast.update();
 
     expect(log[1]).toEqual({ kind: 'publish', batch: { n1: { x: 11, y: 21 } } });
   });
@@ -97,23 +97,23 @@ describe('useGestureBroadcast, a drag', () => {
     };
     const { broadcast, activeIds } = mount(buffer);
 
-    broadcast.begin(['g1'], null);
+    broadcast.begin('g1', ['g1'], null);
 
     expect([...activeIds.current].sort()).toEqual(['g1', 'm1']);
-    expect(broadcast.isRunning()).toBe(true);
+    expect(broadcast.anchorId()).toBe('g1');
   });
 
   it('holds nothing before a gesture and after one', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, activeIds } = mount(buffer);
     expect(activeIds.current.size).toBe(0);
-    expect(broadcast.isRunning()).toBe(false);
+    expect(broadcast.anchorId()).toBeNull();
 
-    broadcast.begin(['n1'], null);
-    broadcast.end(null, () => undefined);
+    broadcast.begin('n1', ['n1'], null);
+    broadcast.end(() => undefined);
 
     expect(activeIds.current.size).toBe(0);
-    expect(broadcast.isRunning()).toBe(false);
+    expect(broadcast.anchorId()).toBeNull();
   });
 });
 
@@ -125,11 +125,11 @@ describe('useGestureBroadcast, the release', () => {
     // same geometry (design §5.6, invariant 8).
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin(['n1'], null);
+    broadcast.begin('n1', ['n1'], null);
     log.length = 0;
 
     buffer.current = [loose('n1', 99, 99)];
-    broadcast.end(null, () => log.push({ kind: 'document' }));
+    broadcast.end(() => log.push({ kind: 'document' }));
 
     expect(log).toEqual([
       { kind: 'publishNow', batch: { n1: { x: 99, y: 99 } } },
@@ -141,12 +141,12 @@ describe('useGestureBroadcast, the release', () => {
   it('reads the final geometry off the buffer, not off the last frame published', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin(['n1'], null);
+    broadcast.begin('n1', ['n1'], null);
 
     // The limiter can have parked the last stretch of a fast gesture, so the
     // release has to look at where the node actually ended up.
     buffer.current = [loose('n1', 500, 600)];
-    broadcast.end(null, () => undefined);
+    broadcast.end(() => undefined);
 
     expect(log[1]).toEqual({ kind: 'publishNow', batch: { n1: { x: 500, y: 600 } } });
   });
@@ -154,11 +154,11 @@ describe('useGestureBroadcast, the release', () => {
   it('takes the field down even when the document write throws', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, activeIds, log } = mount(buffer);
-    broadcast.begin(['n1'], null);
+    broadcast.begin('n1', ['n1'], null);
     log.length = 0;
 
     expect(() =>
-      broadcast.end(null, () => {
+      broadcast.end(() => {
         throw new Error('write failed');
       }),
     ).toThrow('write failed');
@@ -180,7 +180,7 @@ describe('useGestureBroadcast, a resize', () => {
     };
     const { broadcast, log } = mount(buffer);
 
-    broadcast.begin(['g1'], 'g1');
+    broadcast.begin('g1', ['g1'], 'g1');
 
     expect(log[0]).toEqual({
       kind: 'publish',
@@ -196,14 +196,31 @@ describe('useGestureBroadcast, a resize', () => {
       current: [{ id: 'g1', position: { x: 0, y: 0 }, width: 400, height: 300 }] as GeometryNode[],
     };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin(['g1'], 'g1');
+    broadcast.begin('g1', ['g1'], 'g1');
 
     buffer.current = [{ id: 'g1', position: { x: 0, y: 0 }, width: 800, height: 300 }];
-    broadcast.update('g1');
+    broadcast.update();
 
     expect(log[1]).toEqual({
       kind: 'publish',
       batch: { g1: { x: 0, y: 0, width: 800, height: 300 } },
+    });
+  });
+
+  it('still carries the size at the release, without being told again', () => {
+    const buffer = {
+      current: [{ id: 'g1', position: { x: 0, y: 0 }, width: 400, height: 300 }] as GeometryNode[],
+    };
+    const { broadcast, log } = mount(buffer);
+    broadcast.begin('g1', ['g1'], 'g1');
+    log.length = 0;
+
+    buffer.current = [{ id: 'g1', position: { x: 0, y: 0 }, width: 900, height: 700 }];
+    broadcast.end(() => undefined);
+
+    expect(log[0]).toEqual({
+      kind: 'publishNow',
+      batch: { g1: { x: 0, y: 0, width: 900, height: 700 } },
     });
   });
 });
@@ -214,13 +231,27 @@ describe('useGestureBroadcast, a gesture cut short', () => {
     // fires no stop for any node in the batch, so the batch has to go as one.
     const buffer = { current: [loose('n1', 10, 20), loose('n2', 30, 40)] };
     const { broadcast, activeIds, log } = mount(buffer);
-    broadcast.begin(['n1', 'n2'], null);
+    broadcast.begin('n1', ['n1', 'n2'], null);
     log.length = 0;
 
     broadcast.abandon();
 
     expect(log).toEqual([{ kind: 'clear' }]);
     expect(activeIds.current.size).toBe(0);
+  });
+
+  it('names the node the pointer grabbed, so the caller knows which one ends it', () => {
+    // xyflow aborts a drag when THIS node leaves its lookup and then fires no
+    // stop for any node in the batch; deleting any other node of the batch
+    // leaves the drag running. The caller needs the anchor to tell them apart.
+    const buffer = { current: [loose('n1', 10, 20), loose('n2', 30, 40)] };
+    const { broadcast } = mount(buffer);
+
+    broadcast.begin('n1', ['n1', 'n2'], null);
+
+    expect(broadcast.anchorId()).toBe('n1');
+    broadcast.abandon();
+    expect(broadcast.anchorId()).toBeNull();
   });
 
   it('says nothing when there was no gesture to drop', () => {

@@ -181,7 +181,6 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-canvas-gesture';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
-import type { GestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
@@ -681,7 +680,11 @@ function CanvasSpaceInner({
   }, [flowNodes, nodes, remoteGesture]);
   const writableNodes = React.useCallback(
     (): Node[] =>
-      docGeometryView(flowNodesRef.current, docNodesRef.current, remoteGestureRef.current),
+      docGeometryView(
+        flowNodesRef.current,
+        docNodesRef.current.map(toFlowNode),
+        remoteGestureRef.current,
+      ),
     [],
   );
   const {
@@ -1273,7 +1276,6 @@ function CanvasSpaceInner({
   // on — the buffer already holds what ReactFlow is drawing when it starts, and
   // the write on release moves the document, which runs this again.
   const gestureIdsRef = React.useRef<ReadonlySet<string>>(new Set());
-  const gestureRef = React.useRef<GestureBroadcast | null>(null);
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeCanvasNodes(prev, nodes.map(toFlowNode), {
@@ -1284,22 +1286,6 @@ function CanvasSpaceInner({
     );
   }, [nodes, occupants, remoteGesture, setFlowNodes]);
 
-  // A gesture whose nodes leave the document is over, and xyflow says so by
-  // saying nothing: when the grabbed node is gone from its lookup it aborts the
-  // whole drag and fires no stop for any node in the batch
-  // (`@xyflow/system:2237` and `:2264`). So the batch is dropped here, as one —
-  // leaving the rest of it published would freeze those nodes on every other
-  // screen.
-  React.useEffect(() => {
-    if (!gestureRef.current?.isRunning()) return;
-    const present = new Set(nodes.map((node) => node.id));
-    for (const id of gestureIdsRef.current) {
-      if (!present.has(id)) {
-        gestureRef.current.abandon();
-        return;
-      }
-    }
-  }, [nodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -2640,11 +2626,10 @@ function CanvasSpaceInner({
      */
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
+      const writable = writableNodes();
       const clipboardNodes = captureClipboardWithText(
-        flowNodesRef.current
-          .filter((node) => node.selected)
-          .map((node) => node.id),
-        flowNodesRef.current,
+        writable.filter((node) => node.selected).map((node) => node.id),
+        writable,
       );
       if (clipboardNodes.length === 0) return;
       event.clipboardData?.setData(
@@ -2655,7 +2640,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly, captureClipboardWithText]);
+  }, [readOnly, captureClipboardWithText, writableNodes]);
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
@@ -2705,15 +2690,26 @@ function CanvasSpaceInner({
     toFlowPosition: publishedPoint,
   });
   const gesture = useGestureBroadcast(publisher, flowNodesRef, gestureIdsRef);
-  gestureRef.current = gesture;
+
+  // xyflow aborts a drag when the GRABBED node leaves its lookup and then fires
+  // no stop for any node in the batch (`@xyflow/system:2237` and `:2264`), so
+  // that node leaving the document is what ends the gesture. Deleting any OTHER
+  // node of the batch leaves the drag running, and the gesture with it.
+  React.useEffect(() => {
+    const anchorId = gesture.anchorId();
+    if (anchorId === null) return;
+    if (nodes.some((node) => node.id === anchorId)) return;
+    gesture.abandon();
+  }, [nodes, gesture]);
 
   // Say where a gesture starts, and keep saying where it is. The buffer is
   // already carrying what ReactFlow drew for this frame by the time either of
   // these runs, so both read it as it stands.
   const onNodeDragStart = React.useCallback<OnNodeDrag<Node>>(
-    (_event, _node, dragged): void => {
+    (_event, node, dragged): void => {
       if (readOnly) return;
       gesture.begin(
+        node.id,
         dragged.map((item) => item.id),
         null,
       );
@@ -2722,7 +2718,7 @@ function CanvasSpaceInner({
   );
   const onNodeDrag = React.useCallback<OnNodeDrag<Node>>((): void => {
     if (readOnly) return;
-    gesture.update(null);
+    gesture.update();
   }, [readOnly, gesture]);
 
   // Group drag carries its members natively (ReactFlow `parentId` positions
@@ -2777,7 +2773,7 @@ function CanvasSpaceInner({
       // batching, captureTimeout:0 would split them so undo restored a
       // half-applied state. Apply reparents + positions BEFORE expansions, since
       // expandGroup reanchors members off their just-written positions.
-      gesture.end(null, () => {
+      gesture.end(() => {
         runCanvasUndoBatch(projectId, spaceId, () => {
           for (const r of ops.reparents) {
             setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
@@ -2909,23 +2905,20 @@ function CanvasSpaceInner({
   // The clipboard-portable form of the current selection — Group-aware: a
   // selected Group brings its members and a member resolves to absolute (see
   // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
-  const collectSelectedClipboard = React.useCallback(
-    (): ClipboardNode[] =>
-      captureClipboardWithText(
-        flowNodesRef.current
-          .filter((node) => node.selected)
-          .map((node) => node.id),
-        flowNodesRef.current,
-      ),
-    [captureClipboardWithText],
-  );
+  const collectSelectedClipboard = React.useCallback((): ClipboardNode[] => {
+    const writable = writableNodes();
+    return captureClipboardWithText(
+      writable.filter((node) => node.selected).map((node) => node.id),
+      writable,
+    );
+  }, [captureClipboardWithText, writableNodes]);
 
   // The clipboard-portable form of the right-clicked node. Used by the node
   // menu's copy.
   const nodeMenuClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboardWithText([nodeMenu.nodeId], flowNodesRef.current),
-    [nodeMenu.nodeId, captureClipboardWithText],
+      captureClipboardWithText([nodeMenu.nodeId], writableNodes()),
+    [nodeMenu.nodeId, captureClipboardWithText, writableNodes],
   );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
@@ -3392,11 +3385,11 @@ function CanvasSpaceInner({
       },
       reportGroupResize: (groupId): void => {
         if (readOnly) return;
-        if (gesture.isRunning()) {
-          gesture.update(groupId);
+        if (gesture.anchorId() !== null) {
+          gesture.update();
           return;
         }
-        gesture.begin([groupId], groupId);
+        gesture.begin(groupId, [groupId], groupId);
       },
       commitGroupResize: (groupId, rect): void => {
         if (readOnly) return;
@@ -3437,7 +3430,7 @@ function CanvasSpaceInner({
         // render buffer); persist those so the next Yjs mirror keeps them. One
         // atomic undo entry: the Group's new size/position, its members, PLUS any
         // newly absorbed loose nodes.
-        gesture.end(groupId, () => {
+        gesture.end(() => {
           runCanvasUndoBatch(projectId, spaceId, () => {
             resizeGroup(
               projectId,

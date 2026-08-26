@@ -80,7 +80,7 @@ export function readGestureField(value: unknown): GestureTable | null {
  * @param b - The other geometry.
  * @returns True when both describe the same place and size.
  */
-function sameGeometry(a: GestureGeometry, b: GestureGeometry): boolean {
+export function sameGeometry(a: GestureGeometry, b: GestureGeometry): boolean {
   return (
     a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
   );
@@ -107,8 +107,9 @@ export function sameGestureTable(a: GestureTable, b: GestureTable): boolean {
  *
  * Identity plays no part: this table answers what geometry a node is at right
  * now, and who is holding it is already answered by the occupant tags. Two
- * remotes moving one node resolve to the one awareness lists later, which is
- * the one whose state arrived last.
+ * remotes moving one node resolve to whichever awareness lists later — its
+ * table is keyed by client id in first-seen order, so the tie-break is which
+ * client joined later, and it holds still for as long as both are connected.
  * @param states - The awareness states, as `getStates()` hands them over.
  * @param selfClientId - This client's id, whose own gesture is left out.
  * @returns Node id to the geometry a remote gesture is showing it at.

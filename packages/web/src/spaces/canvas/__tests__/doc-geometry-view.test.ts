@@ -33,14 +33,20 @@ function node(id: string, x: number, y: number, extra: Partial<Node> = {}): Node
 }
 
 /**
- * Build the document's idea of where a node sits.
+ * Build the document's idea of a node, as `toFlowNode` hands it over.
  * @param id - Its id.
  * @param x - Its x in the document.
  * @param y - Its y in the document.
- * @returns The document place.
+ * @param size - Its stored size, which only a Group carries.
+ * @returns The document node.
  */
-function doc(id: string, x: number, y: number): DocumentPlace {
-  return { id, position: { x, y } };
+function doc(
+  id: string,
+  x: number,
+  y: number,
+  size?: { width: number; height: number },
+): DocumentPlace {
+  return { id, type: 'image', position: { x, y }, data: {}, ...(size ?? {}) };
 }
 
 /**
@@ -73,11 +79,17 @@ describe('docGeometryView', () => {
     expect(seen?.measured).toEqual(measured);
   });
 
-  it('keeps a Group stored size while putting its position back', () => {
+  it('puts a Group size back to what the document stores', () => {
+    // A remote resize is showing this Group at 800x600; the document still says
+    // 400x300, and that is what a write is allowed to be built from.
     const buffer = [
-      node('g1', 500, 500, { type: 'group', width: 400, height: 300 }),
+      node('g1', 500, 500, { type: 'group', width: 800, height: 600 }),
     ];
-    const [seen] = docGeometryView(buffer, [doc('g1', 10, 20)], moving('g1'));
+    const [seen] = docGeometryView(
+      buffer,
+      [doc('g1', 10, 20, { width: 400, height: 300 })],
+      moving('g1'),
+    );
     expect(seen?.position).toEqual({ x: 10, y: 20 });
     expect(seen?.width).toBe(400);
     expect(seen?.height).toBe(300);

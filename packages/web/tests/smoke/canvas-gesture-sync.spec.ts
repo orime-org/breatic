@@ -344,13 +344,20 @@ test('both sides agree once the drag ends, with no second jump', async () => {
 
   await dragAndSample(nodeId, { dx: 200, dy: 0 });
 
-  // Acceptance 5: what the watcher draws right after the release is where it
-  // stays. A handover that let the document write land before the final
-  // awareness value would show up as a move between these two reads.
-  const justAfter = await drawnAt(watcher, nodeId);
-  await watcher.waitForTimeout(SETTLE_MS);
-  const later = await drawnAt(watcher, nodeId);
-  expect(later).toEqual(justAfter);
+  // Acceptance 5: the watcher's node stops in one place. Sampled continuously
+  // across the handover rather than at two moments — a jump between the
+  // document write and the awareness clearing lasts a frame or two, and two
+  // reads a second apart sit on either side of it.
+  const settling: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < 25; i += 1) {
+    const at = await drawnAt(watcher, nodeId);
+    if (at !== null) settling.push(at);
+    await watcher.waitForTimeout(80);
+  }
+  const [first] = settling;
+  expect(settling.length).toBeGreaterThan(20);
+  for (const at of settling) expect(at).toEqual(first);
+  const later = settling[settling.length - 1];
 
   // And the document carries the same place both are drawing.
   const stored = await documentPosition(watcher, nodeId);

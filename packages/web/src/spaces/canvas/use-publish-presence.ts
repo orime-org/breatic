@@ -6,6 +6,7 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
 import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
+import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { createPublishThrottle } from '@web/spaces/canvas/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
@@ -111,14 +112,7 @@ function sameBatch(a: GestureBatch | null, b: GestureBatch | null): boolean {
   return keys.every((id) => {
     const one = a[id];
     const other = b[id];
-    return (
-      other !== undefined &&
-      one !== undefined &&
-      one.x === other.x &&
-      one.y === other.y &&
-      one.width === other.width &&
-      one.height === other.height
-    );
+    return one !== undefined && other !== undefined && sameGeometry(one, other);
   });
 }
 

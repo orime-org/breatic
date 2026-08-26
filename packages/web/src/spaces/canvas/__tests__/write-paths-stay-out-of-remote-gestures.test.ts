@@ -1,0 +1,172 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * What each write path computes once a remote gesture is in the buffer (#2010,
+ * invariant 7).
+ *
+ * `doc-geometry-view.test.ts` checks the door itself. These cases go one step
+ * further and run the planners the door feeds — the ones whose output goes
+ * straight into a document write — against a buffer carrying a collaborator's
+ * in-flight coordinates, so a call site that stopped using the door shows up as
+ * a wrong rect rather than as a passing suite.
+ */
+
+import { describe, expect, it } from 'vitest';
+import type { Node } from '@xyflow/react';
+
+import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
+import type { GestureTable } from '@web/spaces/canvas/gesture-table';
+import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import type { DragNode } from '@web/spaces/canvas/group-drag';
+import { planGroupDrag } from '@web/spaces/canvas/group-drag';
+import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
+import { captureClipboard } from '@web/spaces/canvas/node-clipboard';
+
+const GROUP_ID = 'g1';
+const MEMBER_ID = 'm1';
+const FLYING_ID = 'flying';
+
+/** Where the document has the node a remote is dragging. */
+const DOC_AT = { x: 40, y: 40 };
+/** Where that remote's gesture is currently showing it — far outside the Group. */
+const FLYING_AT = { x: 4_000, y: 4_000 };
+
+/**
+ * Build a render-buffer node.
+ * @param id - Its id.
+ * @param x - Its x.
+ * @param y - Its y.
+ * @param extra - Anything else to put on it.
+ * @returns The node.
+ */
+function node(id: string, x: number, y: number, extra: Partial<Node> = {}): Node {
+  return {
+    id,
+    type: 'image',
+    position: { x, y },
+    data: {},
+    measured: { width: 100, height: 100 },
+    ...extra,
+  };
+}
+
+/**
+ * The buffer as it stands mid-remote-gesture: a Group, a member of it, and a
+ * loose node the remote has dragged far away.
+ * @returns The buffer.
+ */
+function bufferMidGesture(): Node[] {
+  return [
+    node(GROUP_ID, 0, 0, { type: 'group', width: 400, height: 300 }),
+    node(MEMBER_ID, 20, 20, { parentId: GROUP_ID }),
+    node(FLYING_ID, FLYING_AT.x, FLYING_AT.y),
+  ];
+}
+
+/** The same nodes as the document has them: the flying one has not moved. */
+function documentNodes(): Node[] {
+  return [
+    node(GROUP_ID, 0, 0, { type: 'group', width: 400, height: 300 }),
+    node(MEMBER_ID, 20, 20, { parentId: GROUP_ID }),
+    node(FLYING_ID, DOC_AT.x, DOC_AT.y),
+  ];
+}
+
+/** The remote is moving the loose node. */
+const REMOTE: GestureTable = new Map([[FLYING_ID, { ...FLYING_AT }]]);
+
+/**
+ * Turn a buffer node into the absolute form the drag planner hit-tests with.
+ * @param all - The whole buffer, for resolving a member's parent.
+ * @returns A mapper from node to drag node.
+ */
+function toDragNodes(all: ReadonlyArray<Node>): DragNode[] {
+  const byId = new Map(all.map((n) => [n.id, n]));
+  return all.map((item): DragNode => {
+    const parent = item.parentId !== undefined ? byId.get(item.parentId) : undefined;
+    return {
+      id: item.id,
+      type: item.type ?? 'image',
+      parentId: item.parentId,
+      absPos: parent
+        ? {
+          x: parent.position.x + item.position.x,
+          y: parent.position.y + item.position.y,
+        }
+        : { x: item.position.x, y: item.position.y },
+      size: {
+        width: item.measured?.width ?? item.width ?? 288,
+        height: item.measured?.height ?? item.height ?? 192,
+      },
+      locked: false,
+    };
+  });
+}
+
+describe('every write path reads the buffer through the door', () => {
+  it('a Group expansion sizes itself to the document, not to what is in flight', () => {
+    // The drag planner grows a Group around its members; handed the raw buffer
+    // it would grow this one out to 4000,4000 and write that.
+    const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
+    const dragged = toDragNodes(view).filter((n) => n.id === MEMBER_ID);
+    const ops = planGroupDrag(dragged, toDragNodes(view));
+    for (const expansion of ops.expansions) {
+      expect(expansion.width).toBeLessThan(1_000);
+      expect(expansion.height).toBeLessThan(1_000);
+    }
+  });
+
+  it('a resize join takes in only what the document says is inside the new rect', () => {
+    const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
+    const loose = view
+      .filter((n) => n.parentId === undefined && n.type !== 'group')
+      .map((n) => ({
+        id: n.id,
+        rect: {
+          x: n.position.x,
+          y: n.position.y,
+          width: n.measured?.width ?? 288,
+          height: n.measured?.height ?? 192,
+        },
+      }));
+    // The Group grows to cover where the document has the flying node. Reading
+    // the raw buffer would put that node at 4000,4000 and leave it out.
+    const joins = planResizeJoin(
+      GROUP_ID,
+      { x: 0, y: 0, width: 400, height: 400 },
+      loose,
+    );
+    expect(joins.map((j) => j.id)).toContain(FLYING_ID);
+  });
+
+  it('a new Group sizes itself to the document positions of its members', () => {
+    const anchored = node('anchored', 0, 0);
+    const view = docGeometryView(
+      [...bufferMidGesture(), anchored],
+      [...documentNodes(), anchored],
+      REMOTE,
+    );
+    const plan = planGroupCreation(view, [FLYING_ID, 'anchored'], 'new-group');
+    expect(plan).not.toBeNull();
+    // Built off the raw buffer the box would span 4000px to reach the flying
+    // node; the document has the two of them 40px apart.
+    expect(plan?.width).toBeLessThan(1_000);
+    expect(plan?.height).toBeLessThan(1_000);
+  });
+
+  it('the clipboard records the document position, not the one in flight', () => {
+    const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
+    const captured = captureClipboard([FLYING_ID], view, new Map());
+    expect(captured[0]?.position).toEqual(DOC_AT);
+  });
+
+  it('a duplicate places its clone at the document position', () => {
+    // `planDuplicateGroupGrowth` reads the same array the clipboard capture
+    // does, so the capture standing in for it is the same read.
+    const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
+    const captured = captureClipboard([GROUP_ID, FLYING_ID], view, new Map());
+    const flying = captured.find((n) => n.position.x === DOC_AT.x);
+    expect(flying).toBeDefined();
+  });
+});

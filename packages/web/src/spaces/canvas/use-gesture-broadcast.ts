@@ -11,27 +11,34 @@ import type { GestureBatch, GesturePublisher } from '@web/spaces/canvas/use-publ
 export interface GestureBroadcast {
   /**
    * A gesture has taken hold: work out everything it moves and publish where
-   * those nodes start.
-   * @param seedIds - What the gesture grabbed: the dragged nodes, or the resized Group.
+   * those nodes start. What it holds and which Group it resizes stay fixed for
+   * the rest of the gesture, so neither is asked for again.
+   * @param anchorId - The node the pointer grabbed: the dragged node, or the resized Group.
+   * @param seedIds - What the gesture moves at the top level.
    * @param resizedGroupId - The Group being resized, or null during a drag.
    */
-  begin: (seedIds: ReadonlyArray<string>, resizedGroupId: string | null) => void;
-  /**
-   * The gesture moved: publish the whole batch again.
-   * @param resizedGroupId - The Group being resized, or null during a drag.
-   */
-  update: (resizedGroupId: string | null) => void;
+  begin: (
+    anchorId: string,
+    seedIds: ReadonlyArray<string>,
+    resizedGroupId: string | null,
+  ) => void;
+  /** The gesture moved: publish the whole batch again. */
+  update: () => void;
   /**
    * The gesture was released. Publishes the final geometry, runs the document
    * write, then takes the field down — in that order (design §5.6).
-   * @param resizedGroupId - The Group being resized, or null during a drag.
    * @param writeDocument - Commits the final geometry to the document.
    */
-  end: (resizedGroupId: string | null, writeDocument: () => void) => void;
+  end: (writeDocument: () => void) => void;
   /** The gesture was cut short: drop the whole batch, with no final value. */
   abandon: () => void;
-  /** Whether a gesture is running right now. */
-  isRunning: () => boolean;
+  /**
+   * The node the pointer grabbed, or null while no gesture runs. xyflow aborts
+   * a drag when THIS node leaves its lookup and then fires no stop for any node
+   * in the batch (`@xyflow/system:2237` and `:2264`), so its disappearance is
+   * the one that ends a gesture.
+   */
+  anchorId: () => string | null;
 }
 
 /**
@@ -51,29 +58,37 @@ export function useGestureBroadcast(
   bufferRef: React.RefObject<ReadonlyArray<GeometryNode>>,
   activeIds: React.RefObject<ReadonlySet<string>>,
 ): GestureBroadcast {
+  // What the gesture grabbed, and which Group it is resizing. Both are settled
+  // when it starts and read back on every later call.
+  const anchor = React.useRef<{ id: string; resizedGroupId: string | null } | null>(null);
   return React.useMemo((): GestureBroadcast => {
     /**
      * The geometry to publish for whatever the gesture currently holds.
-     * @param resizedGroupId - The Group being resized, or null during a drag.
      * @returns The batch, read off the buffer as it stands right now.
      */
-    const batch = (resizedGroupId: string | null): GestureBatch =>
-      gestureGeometry(activeIds.current, bufferRef.current ?? [], resizedGroupId);
+    const batch = (): GestureBatch =>
+      gestureGeometry(
+        activeIds.current,
+        bufferRef.current ?? [],
+        anchor.current?.resizedGroupId ?? null,
+      );
     /** Forget the gesture and take its field down. */
     const drop = (): void => {
       activeIds.current = new Set();
+      anchor.current = null;
       publisher.clearGesture();
     };
     return {
-      begin: (seedIds, resizedGroupId): void => {
+      begin: (anchorId, seedIds, resizedGroupId): void => {
+        anchor.current = { id: anchorId, resizedGroupId };
         activeIds.current = gestureNodeIds(seedIds, bufferRef.current ?? []);
-        publisher.publishGesture(batch(resizedGroupId));
+        publisher.publishGesture(batch());
       },
-      update: (resizedGroupId): void => {
-        publisher.publishGesture(batch(resizedGroupId));
+      update: (): void => {
+        publisher.publishGesture(batch());
       },
-      end: (resizedGroupId, writeDocument): void => {
-        publisher.publishGestureNow(batch(resizedGroupId));
+      end: (writeDocument): void => {
+        publisher.publishGestureNow(batch());
         // The field comes down whatever the write does. Leaving it standing
         // would freeze these nodes on every other screen for as long as this
         // client stays connected.
@@ -87,7 +102,7 @@ export function useGestureBroadcast(
         if (activeIds.current.size === 0) return;
         drop();
       },
-      isRunning: () => activeIds.current.size > 0,
+      anchorId: () => anchor.current?.id ?? null,
     };
   }, [publisher, bufferRef, activeIds]);
 }
