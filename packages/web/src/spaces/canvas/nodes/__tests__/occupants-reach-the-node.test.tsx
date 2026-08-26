@@ -34,6 +34,7 @@ const ACTIONS = {
   deleteEdge: () => undefined,
   activateNodeUpload: () => undefined,
   commitGroupResize: () => undefined,
+  reportGroupResize: () => undefined,
   retryNodeUpload: vi.fn(),
   hasUploadRetryFile: () => false,
 };

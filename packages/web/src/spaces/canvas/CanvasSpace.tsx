@@ -181,6 +181,8 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-canvas-gesture';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
+import type { GestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
+import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
   CanvasContext,
@@ -1271,6 +1273,7 @@ function CanvasSpaceInner({
   // on — the buffer already holds what ReactFlow is drawing when it starts, and
   // the write on release moves the document, which runs this again.
   const gestureIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  const gestureRef = React.useRef<GestureBroadcast | null>(null);
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeCanvasNodes(prev, nodes.map(toFlowNode), {
@@ -1280,6 +1283,23 @@ function CanvasSpaceInner({
       }),
     );
   }, [nodes, occupants, remoteGesture, setFlowNodes]);
+
+  // A gesture whose nodes leave the document is over, and xyflow says so by
+  // saying nothing: when the grabbed node is gone from its lookup it aborts the
+  // whole drag and fires no stop for any node in the batch
+  // (`@xyflow/system:2237` and `:2264`). So the batch is dropped here, as one —
+  // leaving the rest of it published would freeze those nodes on every other
+  // screen.
+  React.useEffect(() => {
+    if (!gestureRef.current?.isRunning()) return;
+    const present = new Set(nodes.map((node) => node.id));
+    for (const id of gestureIdsRef.current) {
+      if (!present.has(id)) {
+        gestureRef.current.abandon();
+        return;
+      }
+    }
+  }, [nodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -1394,72 +1414,6 @@ function CanvasSpaceInner({
     };
   }, [t, readOnly]);
 
-  // Group drag carries its members natively (ReactFlow `parentId` positions
-  // children relative to their Group), so there is no manual member-carry ref or
-  // drag-start snapshot — onNodeDragStop alone resolves the whole result
-  // (reparent + position + Group auto-expand). See planGroupDrag.
-  // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
-  // parameters out. The hand-written version named `React.MouseEvent`, which
-  // was never what arrives: the callback is handed d3's `sourceEvent`, a
-  // native one, and it always was — 12.10 and 12.11 dispatch identical code.
-  // What 12.11 changed is the TYPE, from `React.MouseEvent` to
-  // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
-  // finally fail to compile.
-  const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
-    (_event, _node, dragged): void => {
-      if (readOnly) return;
-      const writable = writableNodes();
-      const byId = new Map(writable.map((item) => [item.id, item]));
-      /**
-       * Resolve a node to absolute canvas coordinates (a member's stored
-       * position is relative to its Group) + its rendered size — the form
-       * planGroupDrag hit-tests against the Group rects.
-       * @param item - The ReactFlow node.
-       * @returns The node in the absolute DragNode form.
-       */
-      const toDragNode = (item: Node): DragNode => {
-        const parent =
-          item.parentId !== undefined ? byId.get(item.parentId) : undefined;
-        const absPos = parent
-          ? {
-            x: parent.position.x + item.position.x,
-            y: parent.position.y + item.position.y,
-          }
-          : item.position;
-        return {
-          id: item.id,
-          type: item.type ?? '',
-          parentId: item.parentId,
-          absPos,
-          size: {
-            width: item.measured?.width ?? item.width ?? GROUP_DRAG_FALLBACK_W,
-            height: item.measured?.height ?? item.height ?? GROUP_DRAG_FALLBACK_H,
-          },
-          // A locked Group never accepts a dragged-in node (planGroupDragStop
-          // skips it); carry its lock state through so the planner can see it.
-          locked: Boolean((item.data as { locked?: unknown }).locked),
-        };
-      };
-      const ops = planGroupDrag(dragged.map(toDragNode), writable.map(toDragNode));
-      // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
-      // parent change AND a position change, plus any Group expansion — without
-      // batching, captureTimeout:0 would split them so undo restored a
-      // half-applied state. Apply reparents + positions BEFORE expansions, since
-      // expandGroup reanchors members off their just-written positions.
-      runCanvasUndoBatch(projectId, spaceId, () => {
-        for (const r of ops.reparents) {
-          setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
-        }
-        for (const p of ops.positions) {
-          setNodePosition(projectId, spaceId, p.id, p.position);
-        }
-        for (const e of ops.expansions) {
-          expandGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
-        }
-      });
-    },
-    [readOnly, projectId, spaceId, writableNodes],
-  );
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
   // geometry / structure is frozen, so the group node and its members are
@@ -2743,13 +2697,102 @@ function CanvasSpaceInner({
 
   // Presence out: which nodes this client holds, and where its pointer is.
   // One writer for both fields — awareness resends the whole state per field.
-  usePublishPresence({
+  const publisher = usePublishPresence({
     awareness,
     sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
     synced,
     containerRef,
     toFlowPosition: publishedPoint,
   });
+  const gesture = useGestureBroadcast(publisher, flowNodesRef, gestureIdsRef);
+  gestureRef.current = gesture;
+
+  // Say where a gesture starts, and keep saying where it is. The buffer is
+  // already carrying what ReactFlow drew for this frame by the time either of
+  // these runs, so both read it as it stands.
+  const onNodeDragStart = React.useCallback<OnNodeDrag<Node>>(
+    (_event, _node, dragged): void => {
+      if (readOnly) return;
+      gesture.begin(
+        dragged.map((item) => item.id),
+        null,
+      );
+    },
+    [readOnly, gesture],
+  );
+  const onNodeDrag = React.useCallback<OnNodeDrag<Node>>((): void => {
+    if (readOnly) return;
+    gesture.update(null);
+  }, [readOnly, gesture]);
+
+  // Group drag carries its members natively (ReactFlow `parentId` positions
+  // children relative to their Group), so there is no manual member-carry ref or
+  // drag-start snapshot — onNodeDragStop alone resolves the whole result
+  // (reparent + position + Group auto-expand). See planGroupDrag.
+  // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
+  // parameters out. The hand-written version named `React.MouseEvent`, which
+  // was never what arrives: the callback is handed d3's `sourceEvent`, a
+  // native one, and it always was — 12.10 and 12.11 dispatch identical code.
+  // What 12.11 changed is the TYPE, from `React.MouseEvent` to
+  // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
+  // finally fail to compile.
+  const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
+    (_event, _node, dragged): void => {
+      if (readOnly) return;
+      const writable = writableNodes();
+      const byId = new Map(writable.map((item) => [item.id, item]));
+      /**
+       * Resolve a node to absolute canvas coordinates (a member's stored
+       * position is relative to its Group) + its rendered size — the form
+       * planGroupDrag hit-tests against the Group rects.
+       * @param item - The ReactFlow node.
+       * @returns The node in the absolute DragNode form.
+       */
+      const toDragNode = (item: Node): DragNode => {
+        const parent =
+          item.parentId !== undefined ? byId.get(item.parentId) : undefined;
+        const absPos = parent
+          ? {
+            x: parent.position.x + item.position.x,
+            y: parent.position.y + item.position.y,
+          }
+          : item.position;
+        return {
+          id: item.id,
+          type: item.type ?? '',
+          parentId: item.parentId,
+          absPos,
+          size: {
+            width: item.measured?.width ?? item.width ?? GROUP_DRAG_FALLBACK_W,
+            height: item.measured?.height ?? item.height ?? GROUP_DRAG_FALLBACK_H,
+          },
+          // A locked Group never accepts a dragged-in node (planGroupDragStop
+          // skips it); carry its lock state through so the planner can see it.
+          locked: Boolean((item.data as { locked?: unknown }).locked),
+        };
+      };
+      const ops = planGroupDrag(dragged.map(toDragNode), writable.map(toDragNode));
+      // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
+      // parent change AND a position change, plus any Group expansion — without
+      // batching, captureTimeout:0 would split them so undo restored a
+      // half-applied state. Apply reparents + positions BEFORE expansions, since
+      // expandGroup reanchors members off their just-written positions.
+      gesture.end(null, () => {
+        runCanvasUndoBatch(projectId, spaceId, () => {
+          for (const r of ops.reparents) {
+            setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
+          }
+          for (const p of ops.positions) {
+            setNodePosition(projectId, spaceId, p.id, p.position);
+          }
+          for (const e of ops.expansions) {
+            expandGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
+          }
+        });
+      });
+    },
+    [readOnly, projectId, spaceId, writableNodes, gesture],
+  );
 
   // Wrap the loose selection in a new Group (group redesign). The Group
   // stores its own width/height (the members' padded bounding box); members bind
@@ -3347,6 +3390,14 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
+      reportGroupResize: (groupId): void => {
+        if (readOnly) return;
+        if (gesture.isRunning()) {
+          gesture.update(groupId);
+          return;
+        }
+        gesture.begin([groupId], groupId);
+      },
       commitGroupResize: (groupId, rect): void => {
         if (readOnly) return;
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
@@ -3386,23 +3437,25 @@ function CanvasSpaceInner({
         // render buffer); persist those so the next Yjs mirror keeps them. One
         // atomic undo entry: the Group's new size/position, its members, PLUS any
         // newly absorbed loose nodes.
-        runCanvasUndoBatch(projectId, spaceId, () => {
-          resizeGroup(
-            projectId,
-            spaceId,
-            groupId,
-            { x: rect.x, y: rect.y },
-            rect.width,
-            rect.height,
-          );
-          for (const child of writable) {
-            if (child.parentId === groupId) {
-              setNodePosition(projectId, spaceId, child.id, child.position);
+        gesture.end(groupId, () => {
+          runCanvasUndoBatch(projectId, spaceId, () => {
+            resizeGroup(
+              projectId,
+              spaceId,
+              groupId,
+              { x: rect.x, y: rect.y },
+              rect.width,
+              rect.height,
+            );
+            for (const child of writable) {
+              if (child.parentId === groupId) {
+                setNodePosition(projectId, spaceId, child.id, child.position);
+              }
             }
-          }
-          for (const join of joins) {
-            setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
-          }
+            for (const join of joins) {
+              setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
+            }
+          });
         });
       },
       activateNodeUpload,
@@ -3410,7 +3463,15 @@ function CanvasSpaceInner({
       hasUploadRetryFile: (nodeId: string): boolean =>
         hasRetryFile(projectId, spaceId, nodeId),
     }),
-    [projectId, spaceId, readOnly, activateNodeUpload, retryNodeUpload, writableNodes],
+    [
+      projectId,
+      spaceId,
+      readOnly,
+      activateNodeUpload,
+      retryNodeUpload,
+      writableNodes,
+      gesture,
+    ],
   );
 
   // A Group carries its own authoritative width/height (stored in Yjs, fed via
@@ -3700,6 +3761,8 @@ function CanvasSpaceInner({
           elementsSelectable={pickForNodeId == null}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onDelete={onDelete}
           onBeforeDelete={onBeforeDelete}

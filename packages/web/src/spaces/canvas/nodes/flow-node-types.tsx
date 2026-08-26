@@ -92,6 +92,7 @@ function makeFlowNode(
       renameNode,
       activateNodeUpload,
       commitGroupResize,
+      reportGroupResize,
       retryNodeUpload,
       hasUploadRetryFile,
     } = useCanvasActions();
@@ -148,6 +149,14 @@ function makeFlowNode(
       ): void => commitGroupResize(props.id, params),
       [commitGroupResize, props.id],
     );
+    // Report the resize while it runs so collaborators see the frame move.
+    // ReactFlow raises this only once a size change actually happened, which is
+    // the same condition it gates `onResizeEnd` on — so a press that produced
+    // no change reports nothing and ends nothing.
+    const onResize = React.useCallback(
+      (): void => reportGroupResize(props.id),
+      [reportGroupResize, props.id],
+    );
     // During a reference pick the pick owns node interaction: a double-click
     // must NOT enter inline edit / open the upload picker (user 2026-07-12 P2b —
     // a text empty node still entered edit, the upload placeholder still fired).
@@ -176,7 +185,11 @@ function makeFlowNode(
             Boolean(props.selected) &&
             !data.locked &&
             resizeBounds.length > 0 ? (
-                  <GroupResizer bounds={resizeBounds} onResizeEnd={onResizeEnd} />
+                  <GroupResizer
+                    bounds={resizeBounds}
+                    onResize={onResize}
+                    onResizeEnd={onResizeEnd}
+                  />
                 ) : null}
               <Inner
                 data={data}

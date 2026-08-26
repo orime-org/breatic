@@ -30,6 +30,8 @@ interface GroupResizerProps {
     event: unknown,
     params: { x: number; y: number; width: number; height: number },
   ) => void;
+  /** Report the resize as it runs, so collaborators see the frame move. */
+  onResize: () => void;
 }
 
 /**
@@ -46,11 +48,13 @@ interface GroupResizerProps {
  * @param root0 - Component props.
  * @param root0.bounds - Per-control minimum sizes from `groupResizeBounds`.
  * @param root0.onResizeEnd - Commit handler, pre-bound to the group id by the wrapper.
+ * @param root0.onResize - In-flight report, pre-bound to the group id by the wrapper.
  * @returns The 8 resize controls.
  */
 export function GroupResizer({
   bounds,
   onResizeEnd,
+  onResize,
 }: GroupResizerProps): React.JSX.Element {
   return (
     <>
@@ -65,6 +69,7 @@ export function GroupResizer({
           }
           minWidth={bound.minWidth}
           minHeight={bound.minHeight}
+          onResize={onResize}
           onResizeEnd={onResizeEnd}
         />
       ))}

@@ -42,6 +42,13 @@ export interface CanvasActions {
     rect: { x: number; y: number; width: number; height: number },
   ) => void;
   /**
+   * Say a Group is being resized right now, so collaborators see the frame move
+   * (#2010). Bound to every resize control's `onResize`, which ReactFlow fires
+   * only once a size change actually happened — the same condition it gates
+   * `onResizeEnd` on, so the two are a pair.
+   */
+  reportGroupResize: (groupId: string) => void;
+  /**
    * Re-run a failed upload from its session-stashed File (#1609 P4). A
    * no-op when nothing is stashed (refresh dropped the reference).
    */
@@ -63,6 +70,7 @@ const NOOP_ACTIONS: CanvasActions = {
   deleteEdge: () => undefined,
   activateNodeUpload: () => undefined,
   commitGroupResize: () => undefined,
+  reportGroupResize: () => undefined,
   retryNodeUpload: () => undefined,
   hasUploadRetryFile: () => false,
 };
