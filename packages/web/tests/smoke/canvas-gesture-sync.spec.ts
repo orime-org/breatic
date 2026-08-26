@@ -536,8 +536,11 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 8 },
   });
+  // The left edge is the one that moves the Group's origin as it widens, so
+  // the member has to be re-anchored for it to stay where it is drawn. The
+  // right edge leaves the origin alone and never exercises that.
   const control = mover
-    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.right`)
+    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.left`)
     .first();
   await expect(control).toBeVisible({ timeout: SETTLE_MS });
 
@@ -553,9 +556,9 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   const widths: number[] = [];
   await mover.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await mover.mouse.down();
-  for (let step = 1; step <= 6; step += 1) {
+  for (let step = 1; step <= 5; step += 1) {
     await mover.mouse.move(
-      handle.x + handle.width / 2 + step * 30,
+      handle.x + handle.width / 2 - step * 30,
       handle.y + handle.height / 2,
     );
     await mover.waitForTimeout(90);
