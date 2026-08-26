@@ -23,7 +23,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useSearchParams } from 'react-router-dom';
 
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 
@@ -60,13 +60,17 @@ let seen: Seen;
  * A probe that renders whatever the hook says.
  * @returns Nothing visible; the state is read from `seen`.
  */
-function Probe(): React.JSX.Element {
-  const state = useCheckoutReturn({ confirmTimeoutMs: 50 });
+function Probe({ timeoutMs = 50 }: { timeoutMs?: number }): React.JSX.Element {
+  const state = useCheckoutReturn({ confirmTimeoutMs: timeoutMs });
+  // The router's own address, not `window.location`: these cases mount under
+  // `MemoryRouter`, which never touches the window, so reading it back would
+  // report the empty string whatever the hook did with the parameters.
+  const [params] = useSearchParams();
   seen = {
     waiting: state.waiting,
     open: state.overlayOpen,
     section: state.initialSection,
-    search: window.location.search,
+    search: params.toString(),
   };
   return <div data-testid='probe' />;
 }
@@ -194,6 +198,40 @@ describe('the address afterwards', () => {
     await waitFor(() => {
       expect(confirm).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/**
+ * The wait is the server's value, and on a return it is not in hand yet: the
+ * pack list carries it and the page has only just started reading. Taking
+ * whatever was there on the first render freezes the placeholder in and the
+ * configured value never applies to the one screen it exists for.
+ */
+describe('how long the cover stays up', () => {
+  it('uses the wait once the server has said what it is', async () => {
+    confirm.mockReturnValue(new Promise(() => {}));
+    const view = render(
+      <MemoryRouter initialEntries={['/s/mine?credits=1&session_id=cs_test_1']}>
+        <Probe timeoutMs={50_000} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(seen.waiting).toBe(true);
+    });
+
+    // The answer arrives a tick later, as it does when the pack list lands.
+    view.rerender(
+      <MemoryRouter initialEntries={['/s/mine?credits=1&session_id=cs_test_1']}>
+        <Probe timeoutMs={40} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(
+      () => {
+        expect(seen.waiting).toBe(false);
+      },
+      { timeout: 2000 },
+    );
   });
 });
 

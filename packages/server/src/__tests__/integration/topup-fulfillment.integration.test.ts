@@ -291,6 +291,17 @@ describe("the two guards cover different things", () => {
       const counts = await countsFor(userId);
       expect(counts.lots).toBe(1);
       expect(counts.ledger).toBe(1);
+
+      // Asserted on the claim itself. The CAS alone would produce the same
+      // three figures above, so without this the case would stay green with
+      // the claim removed — and the claim is also what carries the event's
+      // type into the audit table.
+      const [claim] = await sql<{ n: number; type: string }[]>`
+        SELECT count(*)::int AS n, max(type) AS type
+        FROM stripe_webhook_events WHERE event_id = ${eventId}
+      `;
+      expect(claim!.n).toBe(1);
+      expect(claim!.type).toBe("checkout.session.completed");
     } finally {
       await dropUser(userId);
     }
@@ -483,6 +494,45 @@ describe("what a purchase agreed to is read off our own row", () => {
         SELECT locale FROM purchase_mail_outbox WHERE payment_id = ${paymentId}
       `;
       expect(mail!.locale).toBe("ja");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("writes no consent when the session carries none", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // A session from before the consent control shipped, or one Stripe
+      // reports without an answer. The credits are still owed — the card was
+      // charged — but a record of an agreement nobody made would be invented.
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, { consent: null }),
+      );
+
+      const outcome = await fulfillPayment(sessionId, null);
+
+      expect(outcome.status).toBe("granted");
+      expect(outcome).toMatchObject({ consentRecorded: false });
+      const counts = await countsFor(userId);
+      expect(counts.lots).toBe(1);
+      expect(counts.consents).toBe(0);
+      const [row] = await sql<{ status: string }[]>`
+        SELECT status FROM payments WHERE id = ${paymentId}
+      `;
+      expect(row!.status).toBe("completed");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("reports on the outcome that a consent was recorded", async () => {
+    const { userId, sessionId } = await seedPending();
+    try {
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId),
+      );
+      const outcome = await fulfillPayment(sessionId, null);
+      expect(outcome).toMatchObject({ consentRecorded: true });
     } finally {
       await dropUser(userId);
     }

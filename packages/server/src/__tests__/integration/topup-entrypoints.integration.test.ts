@@ -560,3 +560,79 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     }
   });
 });
+
+/**
+ * The three guards on the endpoint that starts a purchase.
+ *
+ * Everything else about this endpoint is exercised through the service, which
+ * is where the session parameters are decided. What only the route can answer
+ * for is who may reach it and under what conditions, and each of the three is
+ * a different refusal a buyer can hit.
+ */
+describe("POST /payment/checkout — who may start a purchase", () => {
+  /**
+   * Ask the endpoint to start a checkout.
+   * @param cookie - The session cookie, or none for a signed-out caller.
+   * @param priceCents - Which pack, by face value.
+   * @returns The response.
+   */
+  async function checkout(
+    cookie: string | null,
+    priceCents = 1000,
+  ): Promise<Response> {
+    return app.request("/api/v1/payment/checkout", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie === null ? {} : { cookie }),
+      },
+      body: JSON.stringify({
+        price_cents: priceCents,
+        return_url: "https://app.example.test/studio",
+        time_zone: "UTC",
+      }),
+    });
+  }
+
+  it("turns a signed-out caller away", async () => {
+    expect((await checkout(null)).status).toBe(401);
+  });
+
+  it("refuses a pack this deployment does not sell", async () => {
+    const buyer = await seedBuyer();
+    try {
+      // 1234 is not a face value in the price table. The request named
+      // something that does not exist, which is the caller's mistake, so it
+      // comes back 400 rather than as a missing resource.
+      const res = await checkout(buyer.cookie, 1234);
+      expect(res.status).toBe(400);
+      expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("answers 404 where this deployment sells nothing", async () => {
+    const buyer = await seedBuyer();
+    initCore({
+      ...process.env,
+      PAYMENT_ENABLED: "false",
+      STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    });
+    try {
+      // Not 403: an install that sells nothing has no such endpoint, and
+      // saying "forbidden" would say it exists.
+      expect((await checkout(buyer.cookie)).status).toBe(404);
+      expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    } finally {
+      initCore({
+        ...process.env,
+        PAYMENT_ENABLED: "true",
+        STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+        STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+      });
+      await dropBuyer(buyer.userId);
+    }
+  });
+});

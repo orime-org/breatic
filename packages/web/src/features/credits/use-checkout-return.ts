@@ -63,6 +63,8 @@ export function useCheckoutReturn(
   // second time, and the parameters are still in hand until the URL is
   // rewritten a tick later.
   const handled = React.useRef(false);
+  // The wait comes down once, by whichever of the two gets there first.
+  const landedRef = React.useRef(false);
 
   const asked = params.get('credits') === '1';
   const sessionId = params.get('session_id');
@@ -70,28 +72,38 @@ export function useCheckoutReturn(
   const paymentId = params.get('payment_id');
   const { confirmTimeoutMs } = options;
 
+  /** Take the return parameters back out of the address. */
+  const clearParams = React.useCallback((): void => {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        for (const key of ['credits', 'session_id', 'cancelled', 'payment_id']) {
+          next.delete(key);
+        }
+        return next;
+      },
+      // Through the router rather than `history.replaceState`: this app
+      // routes with `createBrowserRouter`, which keeps its own bookkeeping in
+      // the history state and works out navigation deltas from it. Replacing
+      // that state wholesale makes the guard that watches for leaving a
+      // project fail silently.
+      { replace: true },
+    );
+  }, [setParams]);
+
+  /** Come out from behind the wait, once, and land in the purchase history. */
+  const land = React.useCallback((): void => {
+    if (landedRef.current) return;
+    landedRef.current = true;
+    setWaiting(false);
+    setOpen(true);
+    setSection('lots');
+    clearParams();
+  }, [clearParams]);
+
   React.useEffect(() => {
     if (!asked || handled.current) return;
     handled.current = true;
-
-    /** Take the return parameters back out of the address. */
-    const clearParams = (): void => {
-      setParams(
-        (current) => {
-          const next = new URLSearchParams(current);
-          for (const key of ['credits', 'session_id', 'cancelled', 'payment_id']) {
-            next.delete(key);
-          }
-          return next;
-        },
-        // Through the router rather than `history.replaceState`: this app
-        // routes with `createBrowserRouter`, which keeps its own bookkeeping in
-        // the history state and works out navigation deltas from it. Replacing
-        // that state wholesale makes the guard that watches for leaving a
-        // project fail silently.
-        { replace: true },
-      );
-    };
 
     if (cancelled && paymentId !== null) {
       // Nothing to wait for: the buyer said they were done, and the answer
@@ -105,31 +117,29 @@ export function useCheckoutReturn(
 
     if (sessionId !== null) {
       setWaiting(true);
-      let landed = false;
-      /** Come out from behind the wait, once. */
-      const land = (): void => {
-        if (landed) return;
-        landed = true;
-        setWaiting(false);
-        setOpen(true);
-        setSection('lots');
-        clearParams();
-      };
-      const timer = setTimeout(land, confirmTimeoutMs);
       void paymentApi
         .confirm(sessionId)
         .catch(() => undefined)
-        .finally(() => {
-          clearTimeout(timer);
-          land();
-        });
+        .finally(land);
       return;
     }
 
     // `?credits=1` on its own: somebody was sent to their credits, with
     // nothing to settle.
     setOpen(true);
-  }, [asked, cancelled, paymentId, sessionId, confirmTimeoutMs, setParams]);
+  }, [asked, cancelled, paymentId, sessionId, land, setParams]);
+
+  // The timer is its own effect because its length arrives late: the wait goes
+  // up the moment the buyer lands, and the server's value comes with the pack
+  // list a moment later. Read once at the top, it would always be whatever
+  // stood in for it, and the configured value would never apply.
+  React.useEffect(() => {
+    if (!waiting) return undefined;
+    const timer = setTimeout(land, confirmTimeoutMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [waiting, confirmTimeoutMs, land]);
 
   const close = React.useCallback(() => {
     setOpen(false);

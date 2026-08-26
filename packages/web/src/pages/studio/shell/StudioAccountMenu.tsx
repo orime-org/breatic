@@ -27,10 +27,15 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 /**
- * What to wait before the server has said. Fifteen seconds is the configured
- * value; this stands in only for the moment before the pack list arrives.
+ * The backstop for a wait the server never named.
+ *
+ * The configured value arrives with the pack list, and the wait is re-armed
+ * with it the moment it does. This governs only the case where that list
+ * never answers, and is deliberately longer than any wait anybody would
+ * configure so that it never becomes the effective one — a copy of the
+ * configured number here would drift the day somebody changed the file.
  */
-const DEFAULT_CONFIRM_WAIT_MS = 15000;
+const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
@@ -70,7 +75,7 @@ export function StudioAccountMenu(): React.JSX.Element {
     staleTime: 5 * 60 * 1000,
   });
   const back = useCheckoutReturn({
-    confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? DEFAULT_CONFIRM_WAIT_MS,
+    confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? CONFIRM_WAIT_BACKSTOP_MS,
   });
 
   // Two things open this overlay — the menu entry and coming back from a
