@@ -320,6 +320,8 @@
       "focusSourceFailed": "素材處理失敗。",
       "focusSourceDeletedByPeer": "協作者刪除了素材。",
       "focusSourceReplacedByPeer": "協作者更換了素材。",
+      "pickEnded": "已退出選擇。",
+      "pickEndedByPeer": "協作者結束了選擇。",
       "focusSourceBusyByPeer": "協作者正在處理素材。",
       "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。",
       "duration": "生成時長",

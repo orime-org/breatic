@@ -176,9 +176,17 @@ import {
   resolveReleaseElement,
   resolveConnectCreateIntent,
 } from '@web/spaces/canvas/lib/connect-create';
+import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
+import {
+  applyOccupants,
+  attachOccupants,
+} from '@web/spaces/canvas/attach-occupants';
+import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
+import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
   CanvasContext,
   type CanvasContextValue,
+  useCanvasContext,
 } from '@web/spaces/canvas/canvas-context';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -218,6 +226,7 @@ import {
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { useCanvasStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -600,15 +609,29 @@ function toFlowEdge(edge: CanvasEdge): Edge {
  * @param root0.projectId - Owning project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.readOnly - Viewer read-only mode; blocks node creation.
+ * @param root0.synced - Whether the socket has finished syncing this document.
+ * Closing the socket moves neither side's clock, so a re-send carrying the old
+ * one is discarded as already seen and the peers never get this client's
+ * presence back; reconnecting has to push a fresh write, and this is the edge
+ * that says when.
  * @returns The ReactFlow canvas surface.
  */
 function CanvasSpaceInner({
   projectId,
   spaceId,
   readOnly = false,
-}: SpaceBodyProps): React.JSX.Element {
+  synced,
+}: SpaceBodyProps & { synced: boolean }): React.JSX.Element {
   const t = useTranslation();
-  const { nodes, edges, undo, redo, canUndo, canRedo, lastWriteWasLocal } =
+  const {
+    nodes,
+    edges,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    getLastWriteWasLocal,
+  } =
     useCanvasSpace(
       projectId,
       spaceId,
@@ -634,6 +657,10 @@ function CanvasSpaceInner({
     return () => useCanvasGraphStore.getState().reset();
   }, []);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  // Presence: one awareness for the space, shared with the carets.
+  const { caretProvider } = useCanvasContext();
+  const awareness = caretProvider?.awareness ?? null;
+  const occupants = useCanvasOccupants(awareness);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -764,10 +791,10 @@ function CanvasSpaceInner({
     }
     // Who wrote it decides which column speaks: a peer's delete is news, a
     // local undo is the user's own keystroke coming back to him.
-    const author = lastWriteWasLocal ? 'local' : 'peer';
+    const author = getLastWriteWasLocal() ? 'local' : 'peer';
     toast.warning(t(FOCUS_EXIT_TOAST_KEY[author][focusTargetVerdict]));
     setFocusTarget(null);
-  }, [focusTargetVerdict, lastWriteWasLocal, t]);
+  }, [focusTargetVerdict, getLastWriteWasLocal, t]);
   // Esc during a focus session with NO crop target yet (round-4): the
   // overlay owns the two-stage Esc but is unmounted until the first image
   // is clicked, leaving Esc silently dead in the banner-only state. Same
@@ -1215,9 +1242,25 @@ function CanvasSpaceInner({
   // selection / drag state is per-user (not in Yjs), so carry it forward by
   // id — otherwise any collaborator / backend write would wipe the current
   // user's selection (including a just-created node's auto-selection).
+  // Read inside the mirror rather than depending on it: a change of holders
+  // has its own effect below, and running this one for it would take the
+  // node's position from Yjs — which is where it was before the drag that is
+  // still in progress.
+  const occupantsRef = React.useRef(occupants);
+  occupantsRef.current = occupants;
   React.useEffect(() => {
-    setFlowNodes((prev) => mergeMirroredSelection(prev, nodes.map(toFlowNode)));
+    setFlowNodes((prev) =>
+      mergeMirroredSelection(
+        prev,
+        nodes.map((node) => attachOccupants(toFlowNode(node), occupantsRef.current)),
+      ),
+    );
   }, [nodes, setFlowNodes]);
+
+  // Presence arriving on its own: rewrite who holds what and nothing else.
+  React.useEffect(() => {
+    setFlowNodes((prev) => applyOccupants(prev, occupants));
+  }, [occupants, setFlowNodes]);
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
   // as nodes — a LOCAL edges array + onEdgesChange. Without a local buffer,
@@ -2677,6 +2720,22 @@ function CanvasSpaceInner({
     [selectedIds, groupInfos],
   );
 
+  const publishedPoint = React.useCallback(
+    (screen: { x: number; y: number }): { x: number; y: number } =>
+      toCanvasPoint(screenToFlowPosition, screen),
+    [screenToFlowPosition],
+  );
+
+  // Presence out: which nodes this client holds, and where its pointer is.
+  // One writer for both fields — awareness resends the whole state per field.
+  usePublishPresence({
+    awareness,
+    sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
+    synced,
+    containerRef,
+    toFlowPosition: publishedPoint,
+  });
+
   // Wrap the loose selection in a new Group (group redesign). The Group
   // stores its own width/height (the members' padded bounding box); members bind
   // back via `parentId` with positions relative to the Group. The new Group is
@@ -3517,8 +3576,19 @@ function CanvasSpaceInner({
     [],
   );
   const onNodeMenuRename = React.useMemo(
-    () => (nodeMenu.locked ? undefined : () => requestRename(nodeMenu.nodeId)),
-    [nodeMenu.locked, nodeMenu.nodeId, requestRename],
+    () =>
+      nodeMenu.locked
+        ? undefined
+        : () => {
+          // Select first: renaming from the menu used to leave the selection
+          // untouched, so the whole rename went unseen by everyone else,
+          // while renaming by double-click selected as a side effect of the
+          // click. Both entries now say the same thing about who is busy
+          // with this node.
+          selectOnlyNode(nodeMenu.nodeId);
+          requestRename(nodeMenu.nodeId);
+        },
+    [nodeMenu.locked, nodeMenu.nodeId, requestRename, selectOnlyNode],
   );
   const onNodeMenuCopy = React.useCallback(
     () => writeNodesToClipboard(nodeMenuClipboard()),
@@ -3664,6 +3734,9 @@ function CanvasSpaceInner({
           // ctrl-wheel / pinch — ReactFlow's default zoomOnDoubleClick is true.
           zoomOnDoubleClick={false}
         >
+          {/* Everyone else's pointer. Inside ReactFlow because it portals into
+              the viewport, so pan and zoom carry it with the nodes. */}
+          <CanvasCursorLayer awareness={awareness} />
           <Background
             variant={BackgroundVariant.Dots}
             gap={DOT_GAP_PX}
@@ -3705,6 +3778,7 @@ function CanvasSpaceInner({
             edges={edges}
             projectId={projectId}
             spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
           />
           {/* Video Generate panel: its own panel kind, so only one of the two
               is ever open on a node — a video node opens this one. */}
@@ -3713,6 +3787,7 @@ function CanvasSpaceInner({
             edges={edges}
             projectId={projectId}
             spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
           />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
@@ -3995,7 +4070,7 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
   // the shared provider the space's tab already holds, so this opens no second
   // connection; what it buys is a single answer to "whose caret is this",
   // instead of one per editor that could drift apart.
-  const { provider: caretProvider } = useSocket({
+  const { provider: caretProvider, synced } = useSocket({
     name: canvasDocName,
     doc: canvasDoc,
   });
@@ -4005,13 +4080,14 @@ export function CanvasSpace(props: SpaceBodyProps): React.JSX.Element {
       spaceId: props.spaceId,
       readOnly: props.readOnly ?? false,
       caretProvider,
+      synced,
     }),
-    [props.projectId, props.spaceId, props.readOnly, caretProvider],
+    [props.projectId, props.spaceId, props.readOnly, caretProvider, synced],
   );
   return (
     <CanvasContext.Provider value={canvas}>
       <ReactFlowProvider>
-        <CanvasSpaceInner {...props} />
+        <CanvasSpaceInner {...props} synced={synced} />
       </ReactFlowProvider>
     </CanvasContext.Provider>
   );

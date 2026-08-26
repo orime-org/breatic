@@ -320,6 +320,8 @@
       "focusSourceFailed": "素材の処理に失敗しました。",
       "focusSourceDeletedByPeer": "コラボレーターが素材を削除しました。",
       "focusSourceReplacedByPeer": "コラボレーターが素材を差し替えました。",
+      "pickEnded": "選択を終了しました。",
+      "pickEndedByPeer": "コラボレーターが選択を終了しました。",
       "focusSourceBusyByPeer": "コラボレーターが素材を処理しています。",
       "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。",
       "duration": "長さ",

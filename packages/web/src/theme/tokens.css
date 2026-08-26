@@ -135,6 +135,13 @@ html[data-theme='light'] {
   --color-palette-violet: #6550b9;
   --color-palette-pink: #c2298a;
   --color-palette-teal: #008573;
+  /* Text sitting ON a palette colour, for the few places that use an identity
+     hue as a solid fill (collaborator name tags). The palette values above are
+     tuned as coloured TEXT, which makes them dark here and light in the dark
+     theme — so the text colour that clears 4.5:1 is the opposite one in each
+     theme. Measured 2026-08-25 across all seven hues: 4.51:1 (orange) to
+     6.17:1 here, 8.06:1 to 9.34:1 in the dark theme. */
+  --color-on-palette: #ffffff;
   --color-palette-red-bg: color-mix(in srgb, var(--color-palette-red) 14%, transparent);
   --color-palette-red-border: color-mix(in srgb, var(--color-palette-red) 40%, transparent);
   --color-palette-orange-bg: color-mix(in srgb, var(--color-palette-orange) 14%, transparent);
@@ -458,6 +465,8 @@ html[data-theme='dark'] {
   --color-palette-violet: #baa7ff;
   --color-palette-pink: #ff8dcc;
   --color-palette-teal: #0bd8b6;
+  /* The hues are light here, so text on top of them is dark. */
+  --color-on-palette: #1c1c1c;
 
   /* Annotation note · dark variant (muted warm tone, readable foreground). */
   --color-note: #3a3214;

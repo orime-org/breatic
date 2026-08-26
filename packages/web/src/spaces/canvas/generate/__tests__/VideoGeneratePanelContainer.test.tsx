@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/** The canvas hands the panels a getter; these trees answer 'this client'. */
+const LAST_WRITE_LOCAL = (): boolean => true;
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -49,6 +52,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 
 import * as Y from 'yjs';
 import { toast } from 'sonner';
+import en from '@locales/en.json';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
@@ -229,12 +233,15 @@ interface BoardOverrides {
  * @param reactNodeData - Extra data on the target's REACT view (which a case
  *   can deliberately let disagree with Yjs).
  * @param board - Extra reference-source nodes and the edges wiring them in.
+ * @param author - Reads whether this client made the newest document write;
+ *   defaults to "this client did".
  * @returns The element tree.
  */
 function panelTree(
   kind: 'video' | 'image' = 'video',
   reactNodeData?: Record<string, unknown>,
   board: BoardOverrides = {},
+  author: () => boolean = LAST_WRITE_LOCAL,
 ): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -274,6 +281,7 @@ function panelTree(
               { id: 'other', data: { kind: 'video', status: 'idle' } },
               ...(board.nodes ?? []),
             ]}
+            getLastWriteWasLocal={author}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -288,14 +296,16 @@ function panelTree(
  * @param kind - The target node's modality.
  * @param reactNodeData - Extra fields on the target node's view data.
  * @param board - Extra board nodes and edges.
+ * @param author - Reads whether this client made the newest document write.
  * @returns The render result, whose `rerender` takes another `panelTree`.
  */
 function mountContainer(
   kind: 'video' | 'image' = 'video',
   reactNodeData?: Record<string, unknown>,
   board: BoardOverrides = {},
+  author: () => boolean = LAST_WRITE_LOCAL,
 ): ReturnType<typeof render> {
-  return render(panelTree(kind, reactNodeData, board));
+  return render(panelTree(kind, reactNodeData, board, author));
 }
 
 /**
@@ -310,6 +320,7 @@ function mountContainer(
  * @param model - The model name to store on the node.
  * @param stored - Extra node fields (slot picks, and the like).
  * @param board - Extra board nodes and edges.
+ * @param author - Reads whether this client made the newest document write.
  * @returns The render result, for a case that switches mode by rerendering.
  */
 async function openPanelInMode(
@@ -317,11 +328,12 @@ async function openPanelInMode(
   model: string,
   stored: Record<string, unknown> = {},
   board: BoardOverrides = {},
+  author: () => boolean = LAST_WRITE_LOCAL,
 ): Promise<ReturnType<typeof render>> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   const data = { mode, model, ...stored };
   seedVideoNode(data);
-  const view = mountContainer('video', data, board);
+  const view = mountContainer('video', data, board, author);
   act(() => {
     useCanvasStore.getState().openGeneratePanel('target', 'video');
   });
@@ -486,6 +498,7 @@ describe('VideoGeneratePanelContainer', () => {
               spaceId='s'
               nodes={[]}
               edges={[]}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
           </CanvasContext.Provider>
         </ReactFlow>
@@ -923,6 +936,51 @@ describe('VideoGeneratePanelContainer', () => {
       await screen.findByTestId('generate-video-execute');
       await screen.findByTestId('generate-video-tool-end-frame');
     }
+
+    it('ends a pick whose slot the mode took away, and says so', async () => {
+      // The slot list comes from the mode, and a collaborator can write the
+      // mode. Without this the canvas keeps dimming candidates for a slot that
+      // no longer renders, and the banner's Exit is the only way out.
+      const view = await openPanelInMode('first_last', 'kling-i2v');
+      fireEvent.click(await screen.findByTestId('generate-video-tool-end-frame'));
+      expect(useCanvasStore.getState().pickSession?.purpose).toBe('endFrame');
+      vi.mocked(toast.warning).mockClear();
+
+      // The mode moves to one with no end-frame slot — a plain image-to-video.
+      const moved = { mode: 'i2v', model: 'kling-i2v' };
+      seedVideoNode(moved);
+      view.rerender(panelTree('video', moved));
+
+      await waitFor(() =>
+        expect(useCanvasStore.getState().pickSession).toBeNull(),
+      );
+      expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+        en.canvas.generatePanel.pickEnded,
+      );
+    });
+
+    it('names the collaborator when the mode change that took the slot was theirs', async () => {
+      // Same ending, other author. A mode change reaching this client through
+      // the document is either its own write coming back or news from someone
+      // else, and only the first wording was ever asserted — the call site
+      // could have passed a constant and stayed green.
+      const byPeer = (): boolean => false;
+      const view = await openPanelInMode('first_last', 'kling-i2v', {}, {}, byPeer);
+      fireEvent.click(await screen.findByTestId('generate-video-tool-end-frame'));
+      expect(useCanvasStore.getState().pickSession?.purpose).toBe('endFrame');
+      vi.mocked(toast.warning).mockClear();
+
+      const moved = { mode: 'i2v', model: 'kling-i2v' };
+      seedVideoNode(moved);
+      view.rerender(panelTree('video', moved, {}, byPeer));
+
+      await waitFor(() =>
+        expect(useCanvasStore.getState().pickSession).toBeNull(),
+      );
+      expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+        en.canvas.generatePanel.pickEndedByPeer,
+      );
+    });
 
     it('offers both slots, and only in this mode', async () => {
       await openFirstLastPanel();

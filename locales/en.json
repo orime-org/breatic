@@ -329,6 +329,8 @@
       "focusSourceFailed": "Source processing failed.",
       "focusSourceDeletedByPeer": "A collaborator deleted the source.",
       "focusSourceReplacedByPeer": "A collaborator replaced the source.",
+      "pickEnded": "Selection ended.",
+      "pickEndedByPeer": "Ended by a collaborator.",
       "focusSourceBusyByPeer": "A collaborator is processing the source.",
       "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
       "duration": "Duration",

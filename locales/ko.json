@@ -320,6 +320,8 @@
       "focusSourceFailed": "소재 처리에 실패했습니다.",
       "focusSourceDeletedByPeer": "공동 작업자가 소재를 삭제했습니다.",
       "focusSourceReplacedByPeer": "공동 작업자가 소재를 교체했습니다.",
+      "pickEnded": "선택이 종료되었습니다.",
+      "pickEndedByPeer": "공동 작업자가 선택을 종료했습니다.",
       "focusSourceBusyByPeer": "공동 작업자가 소재를 처리하고 있습니다.",
       "focusCropDiscarded": "노드가 삭제되어 포커스 이미지가 삭제되었습니다.",
       "duration": "길이",
