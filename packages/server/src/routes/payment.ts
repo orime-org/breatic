@@ -13,10 +13,12 @@ import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import {
   checkoutSchema,
-  paginationSchema,
   paymentConfirmSchema,
   paymentCancelSchema,
+  paymentHistoryQuerySchema,
 } from "@server/routes/schemas.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { requirePayments } from "@server/middleware/require-payments.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
@@ -27,11 +29,12 @@ import { handleSubscriptionEvent } from "@server/modules/subscription/subscripti
 const payment = new Hono<{ Variables: AuthVariables }>();
 
 /**
- * `GET /payment/tiers` - list available credit purchase tiers.
+ * `GET /payment/tiers` — the credit packs on offer.
  *
- * Public pricing info for the frontend (no auth required).
+ * Behind auth: the buy screen is inside the account.
+ * @returns `200` with the packs.
  */
-payment.get("/tiers", async (c) => {
+payment.get("/tiers", requireAuth, async (c) => {
   const tiers = paymentService.listTiers();
   return c.json({ data: tiers });
 });
@@ -40,6 +43,8 @@ payment.get("/tiers", async (c) => {
 payment.post(
   "/checkout",
   requireAuth,
+  requirePayments,
+  rateLimitFor("payment-checkout", "user"),
   validate("json", checkoutSchema),
   async (c) => {
     const user = c.get("user");
@@ -73,6 +78,8 @@ payment.post(
 payment.post(
   "/confirm",
   requireAuth,
+  requirePayments,
+  rateLimitFor("payment-confirm", "user"),
   validate("json", paymentConfirmSchema),
   async (c) => {
     const user = c.get("user");
@@ -98,6 +105,8 @@ payment.post(
 payment.post(
   "/cancel",
   requireAuth,
+  requirePayments,
+  rateLimitFor("payment-cancel", "user"),
   validate("json", paymentCancelSchema),
   async (c) => {
     const user = c.get("user");
@@ -201,16 +210,48 @@ payment.post("/webhook", async (c) => {
   return c.json({ received: true });
 });
 
-/** `GET /payment/history` - list the authenticated user's payments. */
+/**
+ * `GET /payment/history` — every purchase this account has made.
+ *
+ * Includes the ones that have not landed and the ones the buyer abandoned:
+ * this is the screen that answers "what happened to my money", and a purchase
+ * with no credits behind it yet is exactly the case that needs answering.
+ *
+ * No deployment gate. An install that sells nothing still opens this screen
+ * and shows an empty state, which is a thing to render rather than a 404.
+ * @returns `200` with one keyset page.
+ */
 payment.get(
   "/history",
   requireAuth,
-  validate("query", paginationSchema),
+  validate("query", paymentHistoryQuerySchema),
   async (c) => {
     const user = c.get("user");
-    const { limit, offset } = c.req.valid("query");
-    const list = await paymentService.listPayments(user.id, limit, offset);
-    return c.json({ data: list });
+    const { limit, cursor } = c.req.valid("query");
+    const data = await paymentService.getPurchaseHistory(user.id, limit, cursor);
+    return c.json({ data });
+  },
+);
+
+/**
+ * `POST /payment/:id/resend-confirmation` — send that letter again.
+ *
+ * Offered from the purchase history when the first send did not go out. The
+ * outbox claim is what makes five taps one letter.
+ * @returns `200` with whether a letter went out; `404` when the purchase is
+ *   not theirs.
+ */
+payment.post(
+  "/:id/resend-confirmation",
+  requireAuth,
+  requirePayments,
+  rateLimitFor("payment-resend", "user"),
+  async (c) => {
+    const user = c.get("user");
+    const paymentId = c.req.param("id");
+    const sent = await paymentService.resendConfirmation(user.id, paymentId);
+    logger.info({ userId: user.id, paymentId, sent }, "purchase_mail_resent");
+    return c.json({ data: { sent } });
   },
 );
 

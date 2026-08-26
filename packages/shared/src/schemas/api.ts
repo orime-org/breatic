@@ -374,6 +374,20 @@ export const paymentCancelSchema = z.object({
 export type PaymentCancelInput = z.infer<typeof paymentCancelSchema>;
 
 /**
+ * One page of the purchase history.
+ *
+ * Its own schema rather than the shared `paginationSchema`, which is
+ * `{limit, offset}` and is read by other routes: this screen pages by cursor,
+ * because a purchase landing between two reads would otherwise shift every
+ * row after it.
+ */
+export const paymentHistoryQuerySchema = z.object({
+  limit: z.string().optional(),
+  cursor: z.string().optional(),
+});
+export type PaymentHistoryQuery = z.infer<typeof paymentHistoryQuerySchema>;
+
+/**
  * Starting or changing a membership subscription (#106).
  *
  * Separate from {@link checkoutSchema}, which sells credit packs: that one

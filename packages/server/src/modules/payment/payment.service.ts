@@ -15,11 +15,13 @@ import {
   findTierByPriceCents,
   getPricingTiers,
   getReconcileBounds,
+  getStaleSendingMinutes,
 } from "@server/config/pricing.js";
-import type { PaymentEntity } from "@breatic/shared";
+import { getCreditPageLimits } from "@server/config/limits.js";
+import type { PaymentEntity, CreditPage, PurchaseRow } from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";
-import { db, env } from "@breatic/core";
+import { db, env, encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
@@ -518,17 +520,6 @@ export async function getPayment(paymentId: string, userId: string): Promise<Pay
 }
 
 /**
- * List payments for a user.
- * @param userId - User whose payments to list
- * @param limit - Page size (capped at 100 by the repo)
- * @param offset - Pagination offset
- * @returns The user's payment entities, newest first
- */
-export async function listPayments(userId: string, limit = 20, offset = 0): Promise<PaymentEntity[]> {
-  return paymentRepo.listPaymentsByUser(userId, limit, offset);
-}
-
-/**
  * Get available pricing tiers for frontend display.
  *
  * Strips Stripe Price IDs — frontend doesn't need them.
@@ -694,4 +685,130 @@ export async function reconcilePayments(userId: string): Promise<number> {
   } finally {
     await paymentRepo.touchReconciled(due.map((p) => p.id));
   }
+}
+
+
+/**
+ * The mail states a resend may start from, once a send is not in flight.
+ *
+ * `pending` belongs here: a process replaced between the fulfillment
+ * transaction committing and the first send claiming `sending` leaves the row
+ * there with nothing to free it. `skipped` belongs here too — it is what every
+ * purchase lands on while no mail backend is configured, the default in both
+ * env templates.
+ */
+const RESENDABLE_MAIL = new Set(["pending", "failed", "skipped"]);
+
+/**
+ * Whether this purchase's confirmation can be sent again.
+ *
+ * Decided here rather than in the browser. The `sending` timeout lives in
+ * `config/pricing.yaml`, which only this process can read; a copy in the
+ * frontend would drift the moment somebody changed it, and a buyer would tap a
+ * button the server then refused.
+ * @param mailStatus - Where the outbox row stands, or null when the purchase
+ *   has not landed and has no row.
+ * @param mailUpdatedAt - When that row last moved.
+ * @returns Whether to offer the control.
+ */
+function canResend(
+  mailStatus: string | null,
+  mailUpdatedAt: Date | null,
+): boolean {
+  if (mailStatus === null) return false;
+  if (RESENDABLE_MAIL.has(mailStatus)) return true;
+  if (mailStatus !== "sending") return false;
+  // A send that claimed the row and never wrote back. Nothing sweeps these:
+  // this screen is the only reader, so this is where they are freed.
+  const staleAfterMs = getStaleSendingMinutes() * 60 * 1000;
+  return (
+    mailUpdatedAt !== null && Date.now() - mailUpdatedAt.getTime() > staleAfterMs
+  );
+}
+
+/**
+ * One page of this account's purchases, newest first.
+ * @param userId - The signed-in account.
+ * @param rawLimit - The client's `?limit`, clamped against `config/limits.yaml`.
+ * @param rawCursor - The client's `?cursor`; anything unreadable starts over.
+ * @returns The page and its next cursor.
+ */
+export async function getPurchaseHistory(
+  userId: string,
+  rawLimit: string | undefined,
+  rawCursor: string | undefined,
+): Promise<CreditPage<PurchaseRow>> {
+  const bounds = getCreditPageLimits();
+  const asked = rawLimit === undefined ? Number.NaN : Number.parseInt(rawLimit, 10);
+  const size =
+    !Number.isFinite(asked) || asked <= 0
+      ? bounds.default
+      : Math.min(asked, bounds.max);
+  const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
+
+  const rows = await paymentRepo.listPurchaseHistory(
+    userId,
+    size,
+    cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
+  );
+  const hasMore = rows.length > size;
+  const page = hasMore ? rows.slice(0, size) : rows;
+  const last = page[page.length - 1];
+
+  return {
+    items: page.map((row) => ({
+      paymentId: row.paymentId,
+      amountCents: row.amountCents,
+      totalCents: row.totalCents,
+      taxCents: row.taxCents,
+      currency: row.currency,
+      creditsGranted: row.creditsGranted,
+      remainingCredits:
+        row.remainingCredits === null ? null : Number(row.remainingCredits),
+      lifecycle: row.lifecycle,
+      designatedStudioId: row.designatedStudioId,
+      designatedStudioName: row.designatedStudioName,
+      status: row.status,
+      createdAt: row.createdAt.toISOString(),
+      mailStatus: row.mailStatus,
+      canResend: canResend(row.mailStatus, row.mailUpdatedAt),
+    })),
+    nextCursor:
+      hasMore && last ? encodeActivityCursor(last.cursorAt, last.paymentId) : null,
+  };
+}
+
+/**
+ * Send one purchase's confirmation again.
+ *
+ * The buyer asks for this from their purchase history, so ownership is checked
+ * before anything else. Whether the send actually goes out is the sender's
+ * answer; claiming the outbox row is what keeps five taps to one letter.
+ * @param userId - The signed-in account.
+ * @param paymentId - The purchase to confirm again.
+ * @returns Whether a letter went out.
+ * @throws {NotFoundError} When that purchase is not theirs.
+ */
+export async function resendConfirmation(
+  userId: string,
+  paymentId: string,
+): Promise<boolean> {
+  const payment = await paymentRepo.getPaymentById(paymentId);
+  if (!payment || payment.userId !== userId) {
+    throw new NotFoundError(t("server.payment.not_found"));
+  }
+  const view = await paymentRepo.getConfirmationView(paymentId);
+  if (!view) return false;
+  const letter = renderPurchaseConfirmation(
+    view,
+    view.timeZone,
+    env.SUPPORT_EMAIL,
+  );
+  return sendPurchaseConfirmation({
+    paymentId,
+    to: view.email,
+    subject: letter.subject,
+    html: letter.html,
+    text: letter.text,
+  });
 }

@@ -76,3 +76,9 @@ reconcile:
   # the buyer is most likely still on the Stripe page filling in a card, where
   # the answer is certainly `unpaid` and the round trip buys nothing.
   min_age_seconds: 120
+
+# How long a confirmation email may sit in `sending` before the resend control
+# offers it again. A process replaced between claiming the send and writing the
+# result strands the row there, and nothing sweeps it: this screen is its only
+# reader, so this is the timeout that frees it.
+stale_sending_minutes: 10

@@ -5,10 +5,17 @@
  * Payment repository — data access for the payments table.
  */
 
-import { eq, and, desc, inArray, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { payments, users, creditLots, purchaseConsents } from "@breatic/core";
+import {
+  payments,
+  users,
+  creditLots,
+  purchaseConsents,
+  purchaseMailOutbox,
+  studios,
+} from "@breatic/core";
 import type { PaymentEntity } from "@breatic/shared";
 
 /**
@@ -156,28 +163,6 @@ export async function updatePaymentStatusCAS(
 }
 
 /**
- * List payments for a user, ordered by most recent.
- * @param userId - User whose payments to list
- * @param limit - Page size (capped at 100)
- * @param offset - Pagination offset
- * @returns The user's payment entities, newest first
- */
-export async function listPaymentsByUser(
-  userId: string,
-  limit = 20,
-  offset = 0,
-): Promise<PaymentEntity[]> {
-  const rows = await db
-    .select()
-    .from(payments)
-    .where(eq(payments.userId, userId))
-    .orderBy(desc(payments.createdAt))
-    .limit(Math.min(limit, 100))
-    .offset(offset);
-  return rows.map(toEntity);
-}
-
-/**
  * The payments one reconcile pass should ask Stripe about.
  *
  * Three bounds, each answering a different way this could go wrong.
@@ -240,6 +225,100 @@ export async function touchReconciled(ids: readonly string[]): Promise<void> {
     .update(payments)
     .set({ updatedAt: new Date() })
     .where(inArray(payments.id, [...ids]));
+}
+
+/** One row of the purchase history, straight off the join. */
+export interface PurchaseHistoryRow {
+  paymentId: string;
+  amountCents: number;
+  taxCents: number | null;
+  totalCents: number | null;
+  currency: string;
+  creditsGranted: number;
+  status: string;
+  createdAt: Date;
+  cursorAt: string;
+  remainingCredits: string | null;
+  lifecycle: string | null;
+  designatedStudioId: string | null;
+  designatedStudioName: string | null;
+  mailStatus: string | null;
+  mailUpdatedAt: Date | null;
+}
+
+/**
+ * One keyset page of this account's purchases, newest first.
+ *
+ * Built from `payments` and joined outward, because a purchase that has not
+ * landed has no lot: one still processing, one the buyer abandoned. Those are
+ * the rows this screen exists to show, and starting from the lots would leave
+ * them out entirely.
+ *
+ * The cursor is keyed on `payments` for the same reason. The lot's timestamp
+ * and id are null on exactly those rows, so keying there would collapse the
+ * ordering and the cursor together — paging to the end would hand back an
+ * empty cursor and the older payments would become unreachable.
+ *
+ * The studio a purchase points at is read through a "not deleted" test, the
+ * same one the overview applies. Without it one purchase counts as unassigned
+ * in the overview and reads "assigned to X" here with X gone.
+ * @param userId - Whose purchases.
+ * @param limit - How many to take; one more is fetched to detect a next page.
+ * @param cursor - The `(created_at, id)` of the previous page's last row.
+ * @returns Those rows, one over the page size when more exist.
+ */
+export async function listPurchaseHistory(
+  userId: string,
+  limit: number,
+  cursor: { createdAt: string; id: string } | null,
+): Promise<PurchaseHistoryRow[]> {
+  const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
+  const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
+  return db
+    .select({
+      paymentId: payments.id,
+      amountCents: payments.amountCents,
+      taxCents: payments.taxCents,
+      totalCents: payments.totalCents,
+      currency: payments.currency,
+      creditsGranted: payments.creditsGranted,
+      status: payments.status,
+      createdAt: payments.createdAt,
+      // Full precision, carried as text: a cursor that went through `Date`
+      // would lose the microseconds Postgres stores, and two purchases inside
+      // one millisecond would straddle a page boundary and one would vanish.
+      cursorAt: sql<string>`${payments.createdAt}::text`,
+      remainingCredits: creditLots.remainingCredits,
+      lifecycle: creditLots.lifecycle,
+      designatedStudioId: sql<
+        string | null
+      >`${liveStudio} ${studios.id} ELSE NULL END`,
+      designatedStudioName: sql<
+        string | null
+      >`${liveStudio} ${studios.name} ELSE NULL END`,
+      mailStatus: purchaseMailOutbox.status,
+      mailUpdatedAt: purchaseMailOutbox.updatedAt,
+    })
+    .from(payments)
+    .leftJoin(
+      creditLots,
+      and(eq(creditLots.paymentId, payments.id), isNull(creditLots.deletedAt)),
+    )
+    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .leftJoin(purchaseMailOutbox, eq(purchaseMailOutbox.paymentId, payments.id))
+    .where(
+      and(
+        eq(payments.userId, userId),
+        at === null
+          ? undefined
+          : or(
+              lt(payments.createdAt, at),
+              and(eq(payments.createdAt, at), lt(payments.id, cursor!.id)),
+            ),
+      ),
+    )
+    .orderBy(desc(payments.createdAt), desc(payments.id))
+    .limit(limit + 1);
 }
 
 /** Everything one purchase's confirmation email states. */

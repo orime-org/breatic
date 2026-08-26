@@ -21,6 +21,7 @@ export {
   checkoutSchema,
   paymentConfirmSchema,
   paymentCancelSchema,
+  paymentHistoryQuerySchema,
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,

@@ -34,6 +34,7 @@ const reconcileSchema = z.object({
 const pricingSchema = z.object({
   tiers: z.array(tierSchema),
   reconcile: reconcileSchema.default({ batch_size: 3, min_age_seconds: 120 }),
+  stale_sending_minutes: z.number().int().positive().default(10),
 });
 
 /** Resolved pricing tier with the correct Stripe Price ID for this environment. */
@@ -123,6 +124,17 @@ export function getReconcileBounds(): ReconcileBounds {
     minAgeSeconds: parsed.reconcile.min_age_seconds,
   };
   return _cachedReconcile;
+}
+
+/**
+ * How long a confirmation may sit in `sending` before a resend is offered.
+ * @returns That wait in minutes.
+ * @throws {Error} When the file is missing or malformed.
+ */
+export function getStaleSendingMinutes(): number {
+  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
+  return pricingSchema.parse(parse(readFileSync(configPath, "utf-8")))
+    .stale_sending_minutes;
 }
 
 /** Reset cached tiers (for testing). */

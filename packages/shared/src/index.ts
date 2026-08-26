@@ -172,6 +172,7 @@ export {
 
 export type {
   CreditPage,
+  PurchaseRow,
   CreditLotView,
   StudioLotView,
   CreditLedgerKind,
@@ -207,6 +208,7 @@ export {
   checkoutSchema,
   paymentConfirmSchema,
   paymentCancelSchema,
+  paymentHistoryQuerySchema,
   subscriptionPlanSchema,
   subscriptionChangeSchema,
   paginationSchema,
@@ -233,6 +235,7 @@ export type {
   CheckoutInput,
   PaymentConfirmInput,
   PaymentCancelInput,
+  PaymentHistoryQuery,
   PaginationInput,
   ChatConversationsQueryInput,
   ChatCreateConversationInput,

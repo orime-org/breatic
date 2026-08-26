@@ -24,6 +24,48 @@ export interface CreditPage<T> {
   nextCursor: string | null;
 }
 
+/**
+ * One row of the purchase history.
+ *
+ * Built from `payments` rather than from the lots, because a purchase that has
+ * not landed yet — one still processing, one the buyer abandoned — has no lot
+ * and is exactly what this screen exists to show. Everything the lot carries
+ * is therefore nullable here, and a row with nulls is a row that has not
+ * landed rather than a row with something missing.
+ */
+export interface PurchaseRow {
+  paymentId: string;
+  /** The listed price, before tax. Always known: it is what we charged for. */
+  amountCents: number;
+  /**
+   * What the buyer actually paid, tax included. Null until the purchase lands,
+   * because it is read off the Checkout Session in the same statement that
+   * settles the payment.
+   */
+  totalCents: number | null;
+  taxCents: number | null;
+  currency: string;
+  /** How many credits this purchase buys. */
+  creditsGranted: number;
+  /** How many are left. Null until it lands. */
+  remainingCredits: number | null;
+  /** Where the lot stands. Null until it lands. */
+  lifecycle: string | null;
+  /**
+   * The studio these credits were pointed at, and its name. Both read through
+   * the same "not deleted" predicate the overview uses, so one purchase cannot
+   * count as unassigned in one place and read "assigned to X" here with X gone.
+   */
+  designatedStudioId: string | null;
+  designatedStudioName: string | null;
+  status: string;
+  createdAt: string;
+  /** Where the confirmation email stands. Null until the purchase lands. */
+  mailStatus: string | null;
+  /** Whether the resend control is offered, decided on the server. */
+  canResend: boolean;
+}
+
 /** One purchase of this account's, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
