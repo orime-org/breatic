@@ -218,6 +218,15 @@ for (const scheme of ['light', 'dark'] as const) {
       document.body.appendChild(probe);
       const tokenBackground = getComputedStyle(probe).backgroundColor;
       probe.remove();
+      // #912 的 A 档给了四个数：按钮 28×28 · 图标 16 · 间距 2 · 整条 38 高。
+      // 按钮那个下面的 `buttons` 已经在量，其余三个在这里取。图标按每个按钮
+      // 里的那个 `svg` 量——条上每一格都是一个图标按钮，图标是它唯一的子元素。
+      const barHeight = Math.round(b.height);
+      const controlGap = cs.gap;
+      const icons = Array.from(el.querySelectorAll('button > svg')).map((n) => {
+        const r = n.getBoundingClientRect();
+        return `${Math.round(r.width)}×${Math.round(r.height)}`;
+      });
       const buttons = Array.from(
         el.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
       ).map((n) => {
@@ -281,6 +290,9 @@ for (const scheme of ['light', 'dark'] as const) {
         buttons,
         separators,
         coming,
+        barHeight,
+        controlGap,
+        icons,
         hitInsideBar: !!hit?.closest('[data-testid="doc-selection-bubble-bar"]'),
         insideScroller: !!el.closest('.doc-body-scroller'),
         aboveWindowTop: b.top < 0,
@@ -295,12 +307,20 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.borderWidth).toBe('1px');
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
-    // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 26 高、
+    // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 28 高、
     // 28 宽。九个：#902 的八个命令，加上 #903 的链接。最后那个交给 Radix 当浮层
     // 触发器、不是按下就跑命令的那种，尺寸仍旧跟其余八个一样。
     expect(geo.buttons).toHaveLength(9);
     for (const b of geo.buttons) {
-      expect(b).toEqual({ width: 28, height: 26 });
+      expect(b).toEqual({ width: 28, height: 28 });
+    }
+    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1；条上
+    // 每一格都是图标按钮，所以图标那一项应当是 11 个（九个命令加评论、AI）。
+    expect(geo.barHeight).toBe(38);
+    expect(geo.controlGap).toBe('2px');
+    expect(geo.icons).toHaveLength(11);
+    for (const icon of geo.icons) {
+      expect(icon).toBe('16×16');
     }
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
@@ -318,7 +338,7 @@ for (const scheme of ['light', 'dark'] as const) {
     // 宽度跟着文字走），评论是图标按钮（`.bubble-btn`，28 宽）。
     expect(geo.coming).toHaveLength(2);
     for (const entry of geo.coming) {
-      expect(entry.height).toBe(26);
+      expect(entry.height).toBe(28);
       expect(entry.opacity).toBe('0.5');
       expect(entry.cursor).toBe('not-allowed');
       expect(entry.ariaDisabled).toBe('true');
@@ -360,10 +380,10 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  // 首段：它上方到正文可见区顶只有约 30px，而浮出条要 36 高加 8 间距。
+  // 首段：它上方到正文可见区顶只有约 30px，而浮出条要 38 高加 8 间距。
   await selectParagraph(page, 0);
   const first = await readGeometry(page);
-  expect(first.lineTop - (await bodyViewportTop(page))).toBeLessThan(44);
+  expect(first.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
   expect(first.below).toBe(true);
   expect(first.gap).toBe(8);
   // 不量「有没有越出裁切盒」：上面已经断言了它在选区下方且间距 8，而选区必在
@@ -374,7 +394,7 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   // 中间某段：上方空间充足，照旧在上方。
   await selectParagraph(page, 8);
   const middle = await readGeometry(page);
-  expect(middle.lineTop - (await bodyViewportTop(page))).toBeGreaterThan(44);
+  expect(middle.lineTop - (await bodyViewportTop(page))).toBeGreaterThan(46);
   expect(middle.below).toBe(false);
   expect(middle.gap).toBe(8);
 
@@ -388,14 +408,14 @@ test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不�
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 6);
 
-  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 44。
+  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 46。
   // 滚动量按量到的位置算，不写死——写死的数字随字号和行距一起漂，而漂到
   // 「整段滚出视野」时测的就完全是另一件事了（那种情形不在本次范围内）。
   const before = await readGeometry(page);
   await scrollBodyTo(page, before.lineTop - (await bodyViewportTop(page)) - 10);
 
   const m = await readGeometry(page);
-  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(44);
+  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
   // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉（实测条顶 76、
   // 裁切盒顶 80）。现在它该翻到选区下方。
   expect(m.below).toBe(true);
@@ -815,7 +835,7 @@ test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', as
 
   const bar = await readBar(page);
   expect(bar.shown).toBe(true);
-  // 锚点上方只剩 4px，而条要 36px（按钮 26 + 上下内距各 4 + 边框各 1）再加
+  // 锚点上方只剩 4px，而条要 38px（按钮 28 + 上下内距各 4 + 边框各 1）再加
   // 8px 间距——放不下，`flip` 该把它翻到锚点下方去，而不是让它压在正文区域
   // 上面那条属于顶部横条的带子里。
   expect(bar.top).toBeGreaterThanOrEqual(spot.top);
