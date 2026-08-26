@@ -673,7 +673,11 @@ function CanvasSpaceInner({
   const flowNodesRef = React.useRef<Node[]>([]);
   const docNodesRef = React.useRef<ReadonlyArray<CanvasNodeView>>([]);
   const remoteGestureRef = React.useRef(remoteGesture);
-  React.useEffect(() => {
+  // Updated in the commit phase, not after paint: a pointer event can land
+  // between a passive effect being scheduled and it running, and a gesture
+  // callback that read a stale buffer there would broadcast one frame's
+  // geometry while writing another's to the document.
+  React.useLayoutEffect(() => {
     flowNodesRef.current = flowNodes;
     docNodesRef.current = nodes;
     remoteGestureRef.current = remoteGesture;
@@ -1276,6 +1280,10 @@ function CanvasSpaceInner({
   // on — the buffer already holds what ReactFlow is drawing when it starts, and
   // the write on release moves the document, which runs this again.
   const gestureIdsRef = React.useRef<ReadonlySet<string>>(new Set());
+  const [gestureGeneration, markGestureChanged] = React.useReducer(
+    (count: number): number => count + 1,
+    0,
+  );
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeCanvasNodes(prev, nodes.map(toFlowNode), {
@@ -1284,7 +1292,10 @@ function CanvasSpaceInner({
         localGestureIds: gestureIdsRef.current,
       }),
     );
-  }, [nodes, occupants, remoteGesture, setFlowNodes]);
+    // `gestureGeneration` is what makes the ref above visible to React: it
+    // counts every change to the held set, so a gesture ending without a
+    // document write still re-runs the merge.
+  }, [nodes, occupants, remoteGesture, gestureGeneration, setFlowNodes]);
 
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
@@ -2689,18 +2700,35 @@ function CanvasSpaceInner({
     containerRef,
     toFlowPosition: publishedPoint,
   });
-  const gesture = useGestureBroadcast(publisher, flowNodesRef, gestureIdsRef);
+  const gesture = useGestureBroadcast(
+    publisher,
+    flowNodesRef,
+    gestureIdsRef,
+    markGestureChanged,
+  );
 
-  // xyflow aborts a drag when the GRABBED node leaves its lookup and then fires
-  // no stop for any node in the batch (`@xyflow/system:2237` and `:2264`), so
-  // that node leaving the document is what ends the gesture. Deleting any OTHER
-  // node of the batch leaves the drag running, and the gesture with it.
+  // The pointer coming up is what ends a gesture that never reported a stop.
+  // xyflow drops a drag without firing a stop for ANY node of the batch when
+  // the grabbed node leaves its lookup (`@xyflow/system:2237` and `:2264`), and
+  // a marquee drag has no grabbed node to watch in the first place — it hands
+  // the callbacks the batch's first node instead (`:2044`). The pointer covers
+  // both, and every other case has already ended the gesture synchronously
+  // inside the same pointerup, which is why this checks on the next task.
   React.useEffect(() => {
-    const anchorId = gesture.anchorId();
-    if (anchorId === null) return;
-    if (nodes.some((node) => node.id === anchorId)) return;
-    gesture.abandon();
-  }, [nodes, gesture]);
+    /** Drop a gesture that the pointer release left standing. */
+    const onPointerRelease = (): void => {
+      window.setTimeout(() => {
+        if (gesture.anchorId() === null) return;
+        gesture.abandon();
+      }, 0);
+    };
+    window.addEventListener('pointerup', onPointerRelease);
+    window.addEventListener('pointercancel', onPointerRelease);
+    return (): void => {
+      window.removeEventListener('pointerup', onPointerRelease);
+      window.removeEventListener('pointercancel', onPointerRelease);
+    };
+  }, [gesture]);
 
   // Say where a gesture starts, and keep saying where it is. The buffer is
   // already carrying what ReactFlow drew for this frame by the time either of
@@ -2734,7 +2762,15 @@ function CanvasSpaceInner({
   // finally fail to compile.
   const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
     (_event, _node, dragged): void => {
-      if (readOnly) return;
+      // Read-only can turn on mid-gesture (a role change lands over the wire).
+      // The field still has to come down — leaving it standing would freeze
+      // these nodes on every other screen — but nothing gets written, so drop
+      // it with no final value rather than broadcasting a position the
+      // document never took.
+      if (readOnly) {
+        gesture.abandon();
+        return;
+      }
       const writable = writableNodes();
       const byId = new Map(writable.map((item) => [item.id, item]));
       /**
@@ -3392,7 +3428,12 @@ function CanvasSpaceInner({
         gesture.begin(groupId, [groupId], groupId);
       },
       commitGroupResize: (groupId, rect): void => {
-        if (readOnly) return;
+        // Same as the drag stop: read-only can arrive mid-gesture, and the
+        // field comes down without a final value.
+        if (readOnly) {
+          gesture.abandon();
+          return;
+        }
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
         // now lands inside the Group absorbs it — the same center-in membership
         // rule the drag path uses, extended to resize. Only loose nodes join;

@@ -47,13 +47,22 @@ function mount(buffer: { current: GeometryNode[] }): {
   broadcast: ReturnType<typeof useGestureBroadcast>;
   activeIds: { current: ReadonlySet<string> };
   log: Step[];
+  heldChanges: () => number;
 } {
   const log: Step[] = [];
   const activeIds: { current: ReadonlySet<string> } = { current: new Set() };
+  let changes = 0;
   const { result } = renderHook(() =>
-    useGestureBroadcast(recorder(log), buffer, activeIds),
+    useGestureBroadcast(recorder(log), buffer, activeIds, () => {
+      changes += 1;
+    }),
   );
-  return { broadcast: result.current, activeIds, log };
+  return {
+    broadcast: result.current,
+    activeIds,
+    log,
+    heldChanges: () => changes,
+  };
 }
 
 /**
@@ -261,5 +270,35 @@ describe('useGestureBroadcast, a gesture cut short', () => {
     broadcast.abandon();
 
     expect(log).toEqual([]);
+  });
+});
+
+describe('useGestureBroadcast tells the caller when the held set changes', () => {
+  it('reports the set taking hold and the set being dropped', () => {
+    const buffer = { current: [loose('a', 0, 0)] };
+    const { broadcast, heldChanges } = mount(buffer);
+    expect(heldChanges()).toBe(0);
+    broadcast.begin('a', ['a'], null);
+    expect(heldChanges()).toBe(1);
+    // An update moves the geometry, not the set — nothing to re-merge.
+    broadcast.update();
+    expect(heldChanges()).toBe(1);
+    broadcast.end(() => undefined);
+    expect(heldChanges()).toBe(2);
+  });
+
+  it('reports an abandon, which is the case with no document write behind it', () => {
+    const buffer = { current: [loose('a', 0, 0)] };
+    const { broadcast, heldChanges } = mount(buffer);
+    broadcast.begin('a', ['a'], null);
+    broadcast.abandon();
+    expect(heldChanges()).toBe(2);
+  });
+
+  it('stays quiet on an abandon with no gesture running', () => {
+    const buffer = { current: [loose('a', 0, 0)] };
+    const { broadcast, heldChanges } = mount(buffer);
+    broadcast.abandon();
+    expect(heldChanges()).toBe(0);
   });
 });

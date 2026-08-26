@@ -51,12 +51,18 @@ export interface GestureBroadcast {
  * @param bufferRef - The render buffer the geometry is read out of.
  * @param activeIds - Holds the nodes this gesture moves; the merge stage reads
  *   the same ref, which is what makes it one set computed in one place.
+ * @param onHeldChange - Called whenever `activeIds` changes. That set lives in
+ *   a ref, so changing it moves nothing React watches; this is what lets the
+ *   merge stage re-run against the new one. Without it a gesture that ends with
+ *   no document write — an abandon — would leave its nodes frozen in the buffer
+ *   until some unrelated change happened to come along.
  * @returns The commands the canvas callbacks drive it with.
  */
 export function useGestureBroadcast(
   publisher: GesturePublisher,
   bufferRef: React.RefObject<ReadonlyArray<GeometryNode>>,
   activeIds: React.RefObject<ReadonlySet<string>>,
+  onHeldChange: () => void,
 ): GestureBroadcast {
   // What the gesture grabbed, and which Group it is resizing. Both are settled
   // when it starts and read back on every later call.
@@ -77,12 +83,14 @@ export function useGestureBroadcast(
       activeIds.current = new Set();
       anchor.current = null;
       publisher.clearGesture();
+      onHeldChange();
     };
     return {
       begin: (anchorId, seedIds, resizedGroupId): void => {
         anchor.current = { id: anchorId, resizedGroupId };
         activeIds.current = gestureNodeIds(seedIds, bufferRef.current ?? []);
         publisher.publishGesture(batch());
+        onHeldChange();
       },
       update: (): void => {
         publisher.publishGesture(batch());
@@ -104,5 +112,5 @@ export function useGestureBroadcast(
       },
       anchorId: () => anchor.current?.id ?? null,
     };
-  }, [publisher, bufferRef, activeIds]);
+  }, [publisher, bufferRef, activeIds, onHeldChange]);
 }
