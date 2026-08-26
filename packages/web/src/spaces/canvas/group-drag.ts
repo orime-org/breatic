@@ -92,21 +92,30 @@ function rectOf(node: DragNode): Rect {
  * whose body overflows.
  * @param dragged - Every node ReactFlow moved in this drag (absolute coordinates).
  * @param allNodes - All current nodes (absolute), for Group hit-testing + membership.
+ * @param heldByRemote - Nodes a remote gesture is moving. They still answer which
+ *   Group a node belongs to; they take no part in a landing decision, and no
+ *   Group is sized around them.
  * @returns The reparents, positions, and Group expansions to apply.
  */
 export function planGroupDrag(
   dragged: ReadonlyArray<DragNode>,
   allNodes: ReadonlyArray<DragNode>,
+  heldByRemote: ReadonlySet<string> = new Set(),
 ): GroupDragOps {
   const groups = allNodes.filter((node) => node.type === 'group');
   const groupById = new Map(groups.map((group) => [group.id, group]));
 
   const draggedMembers = dragged.filter((node) => node.type !== 'group');
-  const groupRefs: GroupRef[] = groups.map((group) => ({
-    id: group.id,
-    rect: rectOf(group),
-    locked: group.locked,
-  }));
+  // A Group somebody else is dragging is not offered as a landing target: its
+  // rect right now is one the document has never held. It stays in `allNodes`,
+  // so it still answers which Group a node currently belongs to.
+  const groupRefs: GroupRef[] = groups
+    .filter((group) => !heldByRemote.has(group.id))
+    .map((group) => ({
+      id: group.id,
+      rect: rectOf(group),
+      locked: group.locked,
+    }));
   const decisions = planGroupDragStop(
     draggedMembers.map((node) => ({
       id: node.id,
@@ -168,8 +177,15 @@ export function planGroupDrag(
 
   const expansions: ExpansionOp[] = [];
   for (const group of groups) {
+    if (heldByRemote.has(group.id)) continue;
+    // A member somebody else is dragging is drawn at coordinates that are
+    // about to change, and `expandGroupToWrap` only ever grows — sizing a
+    // Group around such a member writes a rect that never shrinks back.
     const members = allNodes.filter(
-      (node) => node.type !== 'group' && newParentOf(node) === group.id,
+      (node) =>
+        node.type !== 'group' &&
+        !heldByRemote.has(node.id) &&
+        newParentOf(node) === group.id,
     );
     if (members.length === 0) continue;
     const groupRect = rectOf(group);

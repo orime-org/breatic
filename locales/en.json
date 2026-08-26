@@ -248,7 +248,8 @@
     },
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",
-      "handling": "This item is busy — wait for the current task to finish."
+      "handling": "This item is busy — wait for the current task to finish.",
+      "remote": "Someone else is moving this."
     },
     "nodeMenu": {
       "generate": "Generate",

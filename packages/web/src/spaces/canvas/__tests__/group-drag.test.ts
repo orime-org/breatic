@@ -99,3 +99,68 @@ describe('planGroupDrag', () => {
     expect(exp!.position.y + exp!.height).toBeGreaterThanOrEqual(240);
   });
 });
+
+describe('planGroupDrag while a remote gesture holds part of the canvas', () => {
+  /**
+   * A node in the form the planner takes.
+   * @param id - Its id.
+   * @param type - Its type.
+   * @param x - Absolute x.
+   * @param y - Absolute y.
+   * @param w - Width.
+   * @param h - Height.
+   * @param parentId - Its Group, if any.
+   * @returns The drag node.
+   */
+  function at(
+    id: string,
+    type: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    parentId?: string,
+  ): DragNode {
+    return {
+      id,
+      type,
+      parentId,
+      absPos: { x, y },
+      size: { width: w, height: h },
+      locked: false,
+    };
+  }
+
+  it('leaves a member in its Group while a remote drags that Group', () => {
+    // The Group still answers "which Group is this node in" — it is only kept
+    // out of the decisions that would write.
+    const all = [
+      at('g1', 'group', 0, 0, 400, 300),
+      at('m1', 'image', 20, 20, 100, 100, 'g1'),
+    ];
+    const ops = planGroupDrag([all[1]], all, new Set(['g1', 'm1']));
+    expect(ops.reparents).toEqual([]);
+  });
+
+  it('sizes a Group off its settled members only', () => {
+    // m1 is being dragged by somebody else and is currently drawn far outside
+    // the Group; growing g1 around it would write a rect the document has
+    // never held, and expandGroupToWrap never shrinks back.
+    const all = [
+      at('g1', 'group', 0, 0, 400, 300),
+      at('m1', 'image', 600, 20, 100, 100, 'g1'),
+      at('x1', 'image', 900, 900, 100, 100),
+    ];
+    const ops = planGroupDrag([all[2]], all, new Set(['m1']));
+    expect(ops.expansions).toEqual([]);
+  });
+
+  it('does not offer a Group a remote is holding as a landing target', () => {
+    const all = [
+      at('g1', 'group', 0, 0, 400, 300),
+      at('loose', 'image', 100, 100, 100, 100),
+    ];
+    const ops = planGroupDrag([all[1]], all, new Set(['g1']));
+    expect(ops.reparents).toEqual([]);
+  });
+});

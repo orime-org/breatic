@@ -1638,8 +1638,9 @@ export function setNodeParent(
 
 /**
  * Resize a Group — frontend-owned (group redesign). Writes the Group's new
- * top-left position and authoritative `data.width`/`data.height` in one
- * transaction (members are not rescaled). No-op when the group does not exist.
+ * top-left position, its authoritative `data.width`/`data.height`, and the
+ * matching reanchor of every member, in one transaction (members are not
+ * rescaled). No-op when the group does not exist.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the Group.
  * @param groupId - Id of the Group to resize.
@@ -1663,10 +1664,24 @@ export function resizeGroup(
   if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
   const data = group.get('data');
   if (!(data instanceof Y.Map)) return;
+  const oldPos = group.get('position') as { x: number; y: number } | undefined;
+  const dx = oldPos ? oldPos.x - position.x : 0;
+  const dy = oldPos ? oldPos.y - position.y : 0;
   doc.transact(() => {
     group.set('position', position);
     data.set('width', width);
     data.set('height', height);
+    // Moving the origin moves every member with it, so their stored positions
+    // absorb the same delta and their absolute places stay put. This belongs to
+    // the same write: a caller that reanchored separately could skip a member
+    // and leave it offset by the whole move.
+    if (dx !== 0 || dy !== 0) {
+      nodesMap.forEach((node) => {
+        if (!(node instanceof Y.Map) || node.get('parentId') !== groupId) return;
+        const p = node.get('position') as { x: number; y: number } | undefined;
+        if (p) node.set('position', { x: p.x + dx, y: p.y + dy });
+      });
+    }
   }, CANVAS_UNDO);
 }
 

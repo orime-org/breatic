@@ -64,6 +64,16 @@ export function planGroupDragStop(
   groups: ReadonlyArray<GroupRef>,
 ): ReparentDecision[] {
   return dragged.map((node) => {
+    const currentParent = node.parentId ?? null;
+    // Not finding a receiving Group means "this node landed nowhere" only when
+    // every Group was up for consideration. A node whose own Group was left out
+    // of the candidates cannot be judged at all, so its membership stands.
+    if (
+      currentParent !== null &&
+      !groups.some((group) => group.id === currentParent)
+    ) {
+      return { nodeId: node.id, targetGroupId: currentParent, changed: false };
+    }
     const target = groups.find(
       (group) =>
         group.id !== node.id &&
@@ -72,7 +82,6 @@ export function planGroupDragStop(
         groupContainsMemberCenter(group.rect, node.rect),
     );
     const targetGroupId = target?.id ?? null;
-    const currentParent = node.parentId ?? null;
     return { nodeId: node.id, targetGroupId, changed: targetGroupId !== currentParent };
   });
 }

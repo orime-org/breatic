@@ -18,7 +18,6 @@ import type { Node } from '@xyflow/react';
 import {
   docGeometryView,
   landingCandidates,
-  writableDragOps,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
@@ -121,7 +120,11 @@ describe('every write path reads the buffer through the door', () => {
     // its Group", and the stop writes it out to the top level.
     const buffer = bufferMidGesture();
     const dragged = toDragNodes(buffer).filter((n) => n.id === MEMBER_ID);
-    const ops = planGroupDrag(dragged, toDragNodes(buffer));
+    const ops = planGroupDrag(
+      dragged,
+      toDragNodes(buffer),
+      new Set(HELD_BY_REMOTE.keys()),
+    );
     expect(ops.reparents).toEqual([]);
   });
 
@@ -129,9 +132,10 @@ describe('every write path reads the buffer through the door', () => {
     // Growing it would write geometry the document has never held.
     const buffer = bufferMidGesture();
     const dragged = toDragNodes(buffer).filter((n) => n.id === MEMBER_ID);
-    const ops = writableDragOps(
-      planGroupDrag(dragged, toDragNodes(buffer)),
-      HELD_BY_REMOTE,
+    const ops = planGroupDrag(
+      dragged,
+      toDragNodes(buffer),
+      new Set(HELD_BY_REMOTE.keys()),
     );
     expect(ops.expansions.map((e) => e.groupId)).not.toContain(GROUP_ID);
   });

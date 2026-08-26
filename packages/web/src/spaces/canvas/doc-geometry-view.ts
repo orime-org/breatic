@@ -4,7 +4,6 @@
 import type { Node } from '@xyflow/react';
 
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
-import type { GroupDragOps } from '@web/spaces/canvas/group-drag';
 
 /** A node as the document has it, mapped the way the render buffer expects. */
 export type DocumentPlace = Node;
@@ -31,30 +30,6 @@ export function landingCandidates(
 ): Node[] {
   if (remoteGesture.size === 0) return nodes as Node[];
   return nodes.filter((node) => !remoteGesture.has(node.id));
-}
-
-/**
- * A drag stop's plan with the parts this end must not commit taken out.
- *
- * The plan is worked out from the whole buffer, so a Group a remote is dragging
- * still answers "which Group is this node in" correctly. Growing that Group is
- * the part that would write: its rect right now is one the document has never
- * held. Reparents and positions stay — they say where the nodes this end just
- * dragged ended up, which is this end's to write.
- * @param ops - The plan as the drag planner worked it out.
- * @param remoteGesture - The nodes remote gestures are currently moving.
- * @returns The plan without the expansions of Groups a remote is holding.
- */
-export function writableDragOps(
-  ops: GroupDragOps,
-  remoteGesture: GestureTable,
-): GroupDragOps {
-  if (remoteGesture.size === 0) return ops;
-  const expansions = ops.expansions.filter(
-    (expansion) => !remoteGesture.has(expansion.groupId),
-  );
-  if (expansions.length === ops.expansions.length) return ops;
-  return { ...ops, expansions };
 }
 
 /**
