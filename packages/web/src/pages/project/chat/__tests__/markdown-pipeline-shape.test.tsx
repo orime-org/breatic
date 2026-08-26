@@ -96,13 +96,16 @@ describe('markdown pipeline — completion switches (R2, R3)', () => {
       // KaTeX's own default is a hard-coded #cc0000, which owns no place in
       // either theme. The grey is what @streamdown/math ships.
       errorColor: 'var(--color-muted-foreground)',
-      // `true` lets `\href` produce an anchor carrying neither target nor
-      // rel, which is every link in a reply except the ones MarkdownLink
-      // draws.
+      // Seven commands ask this before they run: `\href`, `\url`, the four
+      // `\html*` ones and `\includegraphics`. The `\html*` four write a class,
+      // an id, a style or a data attribute of the model's choosing into our
+      // DOM, and `\includegraphics` sends the browser after a URL of its
+      // choosing.
       trust: false,
-      // The rest are KaTeX's documented defaults, written out because a later
-      // version could change what a default is. @streamdown/math, the complete
-      // implementation this pipeline borrows from, runs on all of them.
+      // The rest are the values KaTeX runs on with nothing passed, written out
+      // because a later version could change what running on nothing means.
+      // @streamdown/math sets only errorColor and runs on every one of these:
+      // https://github.com/vercel/streamdown/tree/main/packages/streamdown-math
       // `macros`, `minRuleThickness` and `colorIsTextColor` are absent because
       // they are not switches: KaTeX documents no default for any of the
       // three, and it writes into `macros` — one object shared by every render
@@ -142,7 +145,8 @@ describe('markdown pipeline — nodes survive an update (R9, R12)', () => {
     // React decides whether it can keep a DOM node by comparing component
     // identity. Build the components map inside the render and every mapped
     // element is torn down and rebuilt — a table losing its scroll position
-    // every 50ms, an image re-fetched at the same rate.
+    // every 50ms. The image is drawn from the tag name, so it stands for the
+    // rest of the tree: whatever the map does, an update leaves it alone.
     const prose = '| a | b |\n|---|---|\n| 1 | 2 |\n\n![x](https://example.com/a.png)';
     const { rerender, container } = render(
       <MarkdownMessage content={prose} streaming />,

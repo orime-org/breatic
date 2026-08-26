@@ -14,8 +14,8 @@ interface ThinkingFoldProps {
 /**
  * Foldable "thinking" block shown inside an assistant bubble. Collapsed
  * by default; expansion is a per-bubble UI affordance — the thinking
- * payload is never sent back to the LLM (see CLAUDE.md turn compression
- * notes).
+ * payload is never sent back to the LLM (see docs/ARCHITECTURE.md, "Three-layer
+ * memory + Turn compression").
  * @param root0 - The component props.
  * @param root0.thinking - The assistant's thinking text to show when expanded.
  * @returns The collapsible thinking block.

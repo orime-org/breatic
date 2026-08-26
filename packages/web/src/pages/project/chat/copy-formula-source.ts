@@ -29,12 +29,16 @@ const FORMULA_CLASS = 'katex';
 /**
  * What a paste target cannot read outside the element it came from.
  *
- * The table family is dropped tag and all, leaving behind what was inside it.
- * A list item survives and loses the numbering its list carried. Measured in
- * Chromium over every parent-dependent element in HTML: those are the two ways
- * one can arrive broken, and the tags below are the whole of what this
- * pipeline emits — remark-gfm brings the tables and the lists, and nothing in
- * remark-math, rehype-katex or rehype-highlight is parent-dependent at all.
+ * Measured in Chromium over every parent-dependent element in HTML: there are
+ * two ways one arrives broken, and this set is all of both. The table family
+ * is dropped tag and all, leaving behind what was inside it. A list item
+ * survives and loses the numbering its list carried. Everything else HTML
+ * calls parent-dependent — `dt`, `dd`, `option`, `figcaption`, `summary`,
+ * `rt` — a parser hands back whole.
+ *
+ * Six of these are reachable from a reply: `LI` from the CommonMark parser,
+ * and `TR TD TH THEAD TBODY` from remark-gfm's tables. The last four cover
+ * the rest of the table family, which nothing in this pipeline emits today.
  */
 const NEEDS_ITS_PARENT = new Set([
   'LI',

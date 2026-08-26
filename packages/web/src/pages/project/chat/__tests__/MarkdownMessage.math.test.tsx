@@ -208,10 +208,9 @@ describe('MarkdownMessage — maths', () => {
   });
 
   it('copies a formula selected on its own as one on its own line (A8)', () => {
-    // The most direct way to copy a formula is to drag across it, and both
-    // ends of that drag are inside it. What is cloned is the formula, not the
-    // block it sits in — so whether it stands on its own has to be read off
-    // the formula.
+    // A selection holding the formula and nothing else. What is cloned is the
+    // formula, not the block it sits in — so whether it stands on its own has
+    // to be read off the formula.
     const body = draw('$$\nE = mc^2\n$$').querySelector('[data-testid="markdown-body"]');
     const formula = body?.querySelector('.katex') as Element;
     const range = document.createRange();
