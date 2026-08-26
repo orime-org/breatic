@@ -9,7 +9,7 @@
  * it into `sending` and writes back where it landed.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, lt, ne, or, sql } from "drizzle-orm";
 import { db, purchaseMailOutbox } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
@@ -33,23 +33,39 @@ export async function openOutbox(
 /**
  * Take the right to send this purchase's confirmation.
  *
- * Compare-and-set from any of `from` to `sending`. Two callers racing — the
- * first send and a buyer tapping resend — leave exactly one holding it.
+ * One rule decides it, and it is stated as a condition on the row rather than
+ * a list of states: everything except `sent` may be sent, and a row already
+ * `sending` may be sent only once that send has been in flight too long to
+ * still be one. The two together are what makes five taps one letter — a
+ * claim that accepted `sending` unconditionally would succeed every time and
+ * gate nothing.
+ *
+ * `staleSendingBefore` is passed in because the timeout is a configured value
+ * and this file reads no configuration.
  * @param paymentId - The purchase whose confirmation is being sent.
- * @param from - The states a send may start from.
+ * @param staleSendingBefore - A `sending` row untouched since this instant is
+ *   treated as abandoned.
  * @returns Whether this caller may send.
  */
 export async function claimSend(
   paymentId: string,
-  from: readonly string[],
+  staleSendingBefore: Date,
 ): Promise<boolean> {
   const taken = await db
     .update(purchaseMailOutbox)
-    .set({ status: "sending", updatedAt: new Date() })
+    .set({
+      status: "sending",
+      attempts: sql`${purchaseMailOutbox.attempts} + 1`,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(purchaseMailOutbox.paymentId, paymentId),
-        inArray(purchaseMailOutbox.status, [...from]),
+        ne(purchaseMailOutbox.status, "sent"),
+        or(
+          ne(purchaseMailOutbox.status, "sending"),
+          lt(purchaseMailOutbox.updatedAt, staleSendingBefore),
+        ),
       ),
     )
     .returning({ id: purchaseMailOutbox.id });

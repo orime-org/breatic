@@ -48,6 +48,35 @@ import {
 const REFUND_WINDOW_DAYS = 30;
 
 /**
+ * Where the stored legal wording marks its emphasis.
+ *
+ * One string serves two readers. Stripe's hosted checkout renders markdown, so
+ * the wording carries `**` around the sentence it stresses and the buyer sees
+ * it in bold there. This letter renders nothing, so the markers reach it as
+ * characters unless they are turned into what they mean.
+ */
+const EMPHASIS = /\*\*(.+?)\*\*/g;
+
+/**
+ * The stored wording as a plain-text reader should see it.
+ * @param text - The stored wording.
+ * @returns The same words, without the markers.
+ */
+function asPlainText(text: string): string {
+  return text.replace(EMPHASIS, "$1");
+}
+
+/**
+ * The stored wording as an HTML reader should see it.
+ * @param text - The stored wording. It is ours, from the locale files, so it
+ *   carries no markup of its own to escape.
+ * @returns The same words, with the emphasis as `<strong>`.
+ */
+function asHtml(text: string): string {
+  return text.replace(EMPHASIS, "<strong>$1</strong>");
+}
+
+/**
  * Money as the buyer's receipt shows it.
  * @param cents - The amount.
  * @param currency - Its ISO code.
@@ -157,10 +186,10 @@ export function renderPurchaseConfirmation(
       ...facts,
       "",
       consentHeading,
-      consent,
+      asPlainText(consent),
       "",
       refundHeading,
-      ...refundLines,
+      ...refundLines.map(asPlainText),
       ...(support === null ? [] : ["", support]),
     ].join("\n");
 
@@ -170,10 +199,10 @@ export function renderPurchaseConfirmation(
       ...facts.map((line) => `<li>${line}</li>`),
       "</ul>",
       `<h3>${consentHeading}</h3>`,
-      `<p>${consent}</p>`,
+      `<p>${asHtml(consent)}</p>`,
       `<h3>${refundHeading}</h3>`,
       "<ul>",
-      ...refundLines.map((line) => `<li>${line}</li>`),
+      ...refundLines.map((line) => `<li>${asHtml(line)}</li>`),
       "</ul>",
       ...(support === null ? [] : [`<p>${support}</p>`]),
     ].join("\n");

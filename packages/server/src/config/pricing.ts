@@ -52,8 +52,25 @@ export interface ReconcileBounds {
   minAgeSeconds: number;
 }
 
+let _cachedFile: z.infer<typeof pricingSchema> | null = null;
 let _cachedTiers: PricingTier[] | null = null;
-let _cachedReconcile: ReconcileBounds | null = null;
+
+/**
+ * The parsed file, read once.
+ *
+ * Four accessors ask this file different questions, and one of them is asked
+ * per row of a page of purchases. Reading and parsing it per question would
+ * put a synchronous file read and a full YAML parse on the event loop for
+ * each of them.
+ * @returns The parsed file.
+ * @throws {Error} When the file is missing or malformed.
+ */
+function loadPricingFile(): z.infer<typeof pricingSchema> {
+  if (_cachedFile) return _cachedFile;
+  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
+  _cachedFile = pricingSchema.parse(parse(readFileSync(configPath, "utf-8")));
+  return _cachedFile;
+}
 
 /**
  * Load and resolve pricing tiers from YAML config.
@@ -66,13 +83,9 @@ let _cachedReconcile: ReconcileBounds | null = null;
 export function getPricingTiers(): PricingTier[] {
   if (_cachedTiers) return _cachedTiers;
 
-  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
-  const raw = readFileSync(configPath, "utf-8");
-  const parsed = pricingSchema.parse(parse(raw));
-
   const isLive = env.ENV === "prod";
 
-  _cachedTiers = parsed.tiers.map((t) => ({
+  _cachedTiers = loadPricingFile().tiers.map((t) => ({
     name: t.name,
     credits: t.credits,
     priceCents: t.price_cents,
@@ -114,14 +127,11 @@ export function findTierByPriceId(priceId: string): PricingTier | undefined {
  * @throws {Error} When the file is missing or malformed.
  */
 export function getReconcileBounds(): ReconcileBounds {
-  if (_cachedReconcile) return _cachedReconcile;
-  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
-  const parsed = pricingSchema.parse(parse(readFileSync(configPath, "utf-8")));
-  _cachedReconcile = {
-    batchSize: parsed.reconcile.batch_size,
-    minAgeSeconds: parsed.reconcile.min_age_seconds,
+  const { reconcile } = loadPricingFile();
+  return {
+    batchSize: reconcile.batch_size,
+    minAgeSeconds: reconcile.min_age_seconds,
   };
-  return _cachedReconcile;
 }
 
 /**
@@ -130,9 +140,7 @@ export function getReconcileBounds(): ReconcileBounds {
  * @throws {Error} When the file is missing or malformed.
  */
 export function getConfirmTimeoutMs(): number {
-  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
-  return pricingSchema.parse(parse(readFileSync(configPath, "utf-8")))
-    .confirm_timeout_ms;
+  return loadPricingFile().confirm_timeout_ms;
 }
 
 /**
@@ -141,13 +149,11 @@ export function getConfirmTimeoutMs(): number {
  * @throws {Error} When the file is missing or malformed.
  */
 export function getStaleSendingMinutes(): number {
-  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
-  return pricingSchema.parse(parse(readFileSync(configPath, "utf-8")))
-    .stale_sending_minutes;
+  return loadPricingFile().stale_sending_minutes;
 }
 
 /** Reset cached tiers (for testing). */
 export function resetPricingCache(): void {
+  _cachedFile = null;
   _cachedTiers = null;
-  _cachedReconcile = null;
 }

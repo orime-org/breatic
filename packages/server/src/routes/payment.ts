@@ -22,11 +22,78 @@ import { requirePayments } from "@server/middleware/require-payments.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
+import type { FulfillOutcome } from "@server/modules/payment/payment.service.js";
 import { verifyWebhookSignature } from "@server/infra/stripe.js";
 import { logger } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 
 const payment = new Hono<{ Variables: AuthVariables }>();
+
+/**
+ * Write down what one fulfillment pass did, at the level it deserves.
+ *
+ * Four of the six outcomes are ordinary traffic, and `replay` is the most
+ * ordinary of all: the confirmation endpoint settles a purchase and Stripe's
+ * own event arrives seconds later to find the work done, so every purchase
+ * where the buyer came back promptly produces one. The two that mean money
+ * moved without credits following it have to stand out from that, or nobody
+ * will ever see them.
+ *
+ * Written as separate calls per level rather than one through a variable
+ * holding the method: pino's level methods live on the prototype and use
+ * `this`, so a detached reference throws the moment it is called.
+ * @param outcome - What the pass did.
+ * @param ctx - The session it was about, and which caller asked.
+ * @param ctx.stripeSessionId - The Checkout Session.
+ * @param ctx.from - Which of the four callers this was.
+ * @param ctx.userId - The account, where the caller knows it.
+ */
+function logFulfillment(
+  outcome: FulfillOutcome,
+  ctx: { stripeSessionId: string; from: string; userId?: string },
+): void {
+  switch (outcome.status) {
+    case "granted":
+      logger.info(
+        {
+          ...ctx,
+          userId: outcome.userId,
+          credits: outcome.creditsGranted,
+          lotId: outcome.lotId,
+        },
+        "payment_credits_granted",
+      );
+      // Credits are granted either way: a paid session is paid. But this
+      // purchase now has no record of what its buyer agreed to, which is what
+      // a chargeback would be answered with.
+      if (!outcome.consentRecorded) {
+        logger.warn({ ...ctx }, "payment_consent_not_recorded");
+      }
+      return;
+    case "mismatch":
+      // The card was charged and the credits are withheld. Both figures go in
+      // the line so the price table can be compared against Stripe without
+      // opening either.
+      logger.error(
+        {
+          ...ctx,
+          expectedCents: outcome.expectedCents,
+          chargedCents: outcome.chargedCents,
+          expectedCurrency: outcome.expectedCurrency,
+          chargedCurrency: outcome.chargedCurrency,
+        },
+        "payment_amount_mismatch",
+      );
+      return;
+    case "unknown":
+      // A paid session this deployment has no row for. With the membership
+      // leg claiming its own events, nothing legitimate reaches here.
+      logger.warn({ ...ctx }, "payment_session_not_ours");
+      return;
+    default:
+      logger.info({ ...ctx, outcome: outcome.status }, "payment_no_grant");
+  }
+}
 
 /**
  * `GET /payment/tiers` — the credit packs on offer.
@@ -85,10 +152,11 @@ payment.post(
     const user = c.get("user");
     const { session_id: sessionId } = c.req.valid("json");
     const outcome = await paymentService.confirmCheckout(user.id, sessionId);
-    logger.info(
-      { userId: user.id, sessionId, outcome: outcome.status },
-      "payment_confirm_handled",
-    );
+    logFulfillment(outcome, {
+      stripeSessionId: sessionId,
+      from: "confirm",
+      userId: user.id,
+    });
     return c.json({ data: { status: outcome.status } });
   },
 );
@@ -177,26 +245,11 @@ payment.post("/webhook", async (c) => {
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded":
     case "checkout.session.expired": {
-      const outcome = await paymentService.fulfillPayment(session.id, event.id);
-      // Audit log moved from payment.service.ts (17B mandate).
-      // The discriminated outcome distinguishes the at-most-once
-      // CAS replay path from the real credit grant.
-      if (outcome.status !== "granted") {
-        logger.info(
-          { stripeSessionId: session.id, outcome: outcome.status },
-          "payment_webhook_no_grant",
-        );
-      } else {
-        logger.info(
-          {
-            userId: outcome.userId,
-            credits: outcome.creditsGranted,
-            lotId: outcome.lotId,
-            stripeSessionId: session.id,
-          },
-          "payment_credits_granted",
-        );
-      }
+      const outcome = await paymentService.fulfillPayment(session.id, {
+        id: event.id,
+        type: event.type,
+      });
+      logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
       break;
     }
     case "checkout.session.async_payment_failed":

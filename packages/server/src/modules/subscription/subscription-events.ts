@@ -90,21 +90,36 @@ const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The Checkout Session events both legs receive.
+ *
+ * Every one of these arrives for a membership checkout and for a credit-pack
+ * checkout alike, and nothing but the session's `mode` separates them. A
+ * membership event that falls through to the credit leg looks up a `payments`
+ * row that was never written: the failure branch answers the webhook 404, and
+ * Stripe redelivers a 404 for three days.
+ */
+const SHARED_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
+  "checkout.session.expired",
+]);
+
+/**
  * Whether an event belongs to the membership leg at all.
  *
- * The webhook endpoint is shared with credit packs, and the two legs share one
- * event type: `checkout.session.completed` arrives for both, and only the
- * session's `mode` tells them apart. Deciding by type alone sent every
- * subscription checkout into the credit-pack handler.
+ * Two questions, in order. Some types are this leg's alone. The rest are the
+ * shared Checkout Session ones, where the session's `mode` decides.
  * @param event - The verified Stripe event.
  * @returns Whether this leg is the one that should answer for it.
  */
 function claimsEvent(event: Stripe.Event): boolean {
   if (SUBSCRIPTION_EVENT_TYPES.has(event.type)) return true;
-  if (event.type !== "checkout.session.completed") return false;
-  // Narrowed by the check above: on this event type the SDK already types the
+  if (!SHARED_SESSION_EVENT_TYPES.has(event.type)) return false;
+  // Narrowed by the check above: on all four of those types the SDK types the
   // object as a Checkout Session.
-  return event.data.object.mode === "subscription";
+  const session = event.data.object as Stripe.Checkout.Session;
+  return session.mode === "subscription";
 }
 
 /**
@@ -230,12 +245,14 @@ export async function handleSubscriptionEvent(
   if (!claimsEvent(event)) return { status: "notMine" };
 
   if (!SUBSCRIPTION_EVENT_TYPES.has(event.type)) {
-    // A subscription checkout finishing. Claimed so the credit-pack handler
-    // never sees it, and answered with nothing to do: what the subscription
-    // then becomes arrives as `customer.subscription.created`.
+    // One of the shared Checkout Session events, on a subscription session:
+    // it finished, its delayed payment landed or failed, or it was abandoned.
+    // Claimed so the credit-pack handler never sees it, and answered with
+    // nothing to do — what the subscription becomes arrives separately as
+    // `customer.subscription.*`, and an abandoned checkout leaves none.
     return {
       status: "acknowledged",
-      reason: "a subscription checkout finished; its state arrives separately",
+      reason: "a subscription checkout event; its state arrives separately",
     };
   }
 

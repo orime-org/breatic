@@ -20,30 +20,21 @@ import { sendMail } from "@breatic/core";
 import * as outbox from "@server/modules/payment/purchase-mail.repo.js";
 
 /**
- * The mail states a resend may start from.
- *
- * `pending` belongs here: a process replaced between the fulfillment
- * transaction committing and the first send claiming `sending` leaves the row
- * there, with no background sweep to free it, and this screen is the only
- * reader. `skipped` belongs here too — it is what every purchase lands on
- * while no mail backend is configured, which is the default in both env
- * templates.
- */
-const RESENDABLE = ["pending", "sending", "failed", "skipped"] as const;
-
-/**
  * Send the confirmation for one purchase, and record the outcome.
  *
  * Never throws: the credits are already granted, and a purchase does not
  * become undone because a letter did not leave. What the caller gets back is
  * whether it went out, and the row says the same thing for the screen that
  * offers the resend.
- * @param input - Which purchase, and where to write.
+ * @param input - Which purchase, where to write, and when a send in flight
+ *   stops counting as one.
  * @param input.paymentId - The purchase this confirmation is about.
  * @param input.to - The buyer's address.
  * @param input.subject - The subject line, already in the buyer's language.
  * @param input.html - The HTML body.
  * @param input.text - The plain-text body.
+ * @param input.staleSendingBefore - A send claimed before this instant is
+ *   treated as abandoned, so its row can be claimed again.
  * @returns Whether the letter went out.
  */
 export async function sendPurchaseConfirmation(input: {
@@ -52,8 +43,11 @@ export async function sendPurchaseConfirmation(input: {
   subject: string;
   html: string;
   text: string;
+  staleSendingBefore: Date;
 }): Promise<boolean> {
-  if (!(await outbox.claimSend(input.paymentId, RESENDABLE))) return false;
+  if (!(await outbox.claimSend(input.paymentId, input.staleSendingBefore))) {
+    return false;
+  }
   try {
     const result = await sendMail({
       to: input.to,

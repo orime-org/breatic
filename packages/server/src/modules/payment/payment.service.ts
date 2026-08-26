@@ -22,7 +22,13 @@ import { getCreditPageLimits } from "@server/config/limits.js";
 import type { PaymentEntity, CreditPage, PurchaseRow } from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";
-import { db, env, encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
+import {
+  db,
+  env,
+  logger,
+  encodeActivityCursor,
+  decodeActivityCursor,
+} from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
@@ -83,20 +89,24 @@ function storedAtCheckout(
  * control shipped says nothing about what its buyer agreed to, and writing a
  * record anyway would invent it. `payment_id` being unique makes the second
  * and later callers no-ops.
+ *
+ * The instant recorded is this one. Hosted Checkout reports when the session
+ * was created and when it may expire, and those are two hours apart, so
+ * neither of them is when the box was ticked; this is the first instant at
+ * which we have observed that it was.
  * @param payment - The payment this consent belongs to, and the row the
  *   language and both wording versions were stored on at checkout.
  * @param session - The Checkout Session carrying the answer.
  * @param tx - The fulfillment transaction.
+ * @returns Whether the session carried a consent to record.
  */
 async function writeConsentIfGiven(
   payment: PaymentEntity,
   session: Stripe.Checkout.Session,
   tx: DbTx,
-): Promise<void> {
-  if (session.consent?.terms_of_service !== "accepted") return;
-  const consentedAt = session.created
-    ? new Date(session.created * 1000)
-    : new Date();
+): Promise<boolean> {
+  if (session.consent?.terms_of_service !== "accepted") return false;
+  const consentedAt = new Date();
   await consentRepo.insertConsent(tx, {
     paymentId: payment.id,
     userId: payment.userId,
@@ -117,6 +127,7 @@ async function writeConsentIfGiven(
         ? session.payment_intent
         : null,
   });
+  return true;
 }
 
 /**
@@ -145,11 +156,33 @@ async function openMailOutbox(
  * found the work already done.
  */
 export type FulfillOutcome =
-  | { status: "granted"; userId: string; creditsGranted: number; lotId: string }
+  | {
+      status: "granted";
+      userId: string;
+      creditsGranted: number;
+      lotId: string;
+      /**
+       * Whether the session carried a consent to record. A paid session
+       * without one is not a reason to withhold credits, and it is a reason
+       * for somebody to look: the record is what a chargeback is answered
+       * with, and this purchase now has none.
+       */
+      consentRecorded: boolean;
+    }
   | { status: "replay" }
   | { status: "noop" }
   | { status: "expired" }
-  | { status: "mismatch" }
+  | {
+      status: "mismatch";
+      /** What our own price table says this tier costs. */
+      expectedCents: number;
+      /** What Stripe says it charged, before tax. */
+      chargedCents: number | null;
+      /** The currency we recorded. */
+      expectedCurrency: string;
+      /** The currency Stripe charged in. */
+      chargedCurrency: string | null;
+    }
   | { status: "unknown" };
 
 /**
@@ -169,15 +202,19 @@ export type FulfillOutcome =
  * leave the event marked as handled, and redelivery is the only automatic
  * recovery Stripe offers.
  * @param stripeSessionId - The Checkout Session to fulfill.
- * @param eventId - The Stripe event that brought us here, or null for the
- *   callers that hold none.
+ * @param event - The Stripe event that brought us here, or null for the three
+ *   callers that hold none. Its id and its type travel together because the
+ *   claim records both, and a claim that records the wrong type leaves the
+ *   audit table saying every delivery was the same kind of event.
+ * @param event.id - The event's own id, which the claim is keyed on.
+ * @param event.type - What kind of event it was.
  * @returns What this pass did.
  * @throws {Error} If a write inside the transaction fails; the claim rolls
  *   back with it so redelivery can try again.
  */
 export async function fulfillPayment(
   stripeSessionId: string,
-  eventId: string | null,
+  event: { id: string; type: string } | null,
 ): Promise<FulfillOutcome> {
   const payment =
     await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
@@ -208,12 +245,18 @@ export async function fulfillPayment(
     session.amount_subtotal !== payment.amountCents ||
     session.currency !== payment.currency
   ) {
-    return { status: "mismatch" };
+    return {
+      status: "mismatch",
+      expectedCents: payment.amountCents,
+      chargedCents: session.amount_subtotal,
+      expectedCurrency: payment.currency,
+      chargedCurrency: session.currency,
+    };
   }
 
   const outcome = await db.transaction(async (tx) => {
-    if (eventId !== null) {
-      const claimed = await claimWebhookEvent(eventId, "checkout.session", tx);
+    if (event !== null) {
+      const claimed = await claimWebhookEvent(event.id, event.type, tx);
       // Nothing has been written yet, so letting this empty transaction
       // commit is the same as rolling it back — and it keeps the answer a
       // replay rather than an exception the webhook route would answer 500 to.
@@ -245,7 +288,7 @@ export async function fulfillPayment(
       tx,
     );
 
-    await writeConsentIfGiven(payment, session, tx);
+    const consentRecorded = await writeConsentIfGiven(payment, session, tx);
     await openMailOutbox(
       payment.id,
       storedAtCheckout(payment, "locale", "en"),
@@ -257,6 +300,7 @@ export async function fulfillPayment(
       userId: payment.userId,
       creditsGranted: payment.creditsGranted,
       lotId: lot.id,
+      consentRecorded,
     } as const;
   });
 
@@ -284,21 +328,23 @@ export async function fulfillPayment(
  * is the exception the consent spec asks for: it is what the account holds
  * now, and a resend says so.
  * @param paymentId - The purchase to confirm.
+ * @returns Whether the letter went out.
  */
-async function sendConfirmationFor(paymentId: string): Promise<void> {
+async function sendConfirmationFor(paymentId: string): Promise<boolean> {
   const view = await paymentRepo.getConfirmationView(paymentId);
-  if (!view) return;
+  if (!view) return false;
   const letter = renderPurchaseConfirmation(
     view,
     view.timeZone,
     env.SUPPORT_EMAIL,
   );
-  await sendPurchaseConfirmation({
+  return sendPurchaseConfirmation({
     paymentId,
     to: view.email,
     subject: letter.subject,
     html: letter.html,
     text: letter.text,
+    staleSendingBefore: staleSendingBefore(),
   });
 }
 
@@ -312,10 +358,13 @@ async function sendConfirmationFor(paymentId: string): Promise<void> {
 async function startConfirmationMail(paymentId: string): Promise<void> {
   try {
     await sendConfirmationFor(paymentId);
-  } catch {
-    // `sendPurchaseConfirmation` records its own failures; anything reaching
-    // here failed before it, and the row still reads as unsent, so the buyer
-    // keeps the resend.
+  } catch (err) {
+    // Logged here rather than by a caller: this runs detached from the
+    // request that started it, so there is no route left to answer for it.
+    // `sendPurchaseConfirmation` records its own failures on the row, so
+    // anything reaching this line failed before it — reading the purchase or
+    // rendering the letter — and would otherwise leave no trace at all.
+    logger.error({ err, paymentId }, "purchase_confirmation_mail_failed");
   }
 }
 
@@ -476,22 +525,6 @@ export async function createCheckout(input: {
   // the returned paymentId + sessionId.
   return { paymentId: payment.id, url: session.url ?? "" };
 }
-
-/**
- * Handle Stripe `checkout.session.completed` webhook.
- *
- * Idempotent: skips if payment is already completed.
- * Atomically grants credits and records the transaction.
- */
-export type CheckoutCompletedOutcome =
-  | { status: "replay" }
-  | {
-      status: "completed";
-      userId: string;
-      creditsGranted: number;
-      /** The lot the purchase opened. Unassigned, so not yet spendable. */
-      lotId: string;
-    };
 
 /**
  * Handle Stripe payment failure. Only transitions pending → failed.
@@ -697,23 +730,25 @@ export async function reconcilePayments(userId: string): Promise<number> {
 
 
 /**
- * The mail states a resend may start from, once a send is not in flight.
+ * The instant before which a send still in flight has been in flight too long.
  *
- * `pending` belongs here: a process replaced between the fulfillment
- * transaction committing and the first send claiming `sending` leaves the row
- * there with nothing to free it. `skipped` belongs here too — it is what every
- * purchase lands on while no mail backend is configured, the default in both
- * env templates.
+ * A send that claimed a row and never wrote back leaves it in `sending` with
+ * nothing to sweep it: the purchase history is the only reader, so this is
+ * where such rows are freed.
+ * @returns That instant.
  */
-const RESENDABLE_MAIL = new Set(["pending", "failed", "skipped"]);
+function staleSendingBefore(): Date {
+  return new Date(Date.now() - getStaleSendingMinutes() * 60 * 1000);
+}
 
 /**
  * Whether this purchase's confirmation can be sent again.
  *
- * Decided here rather than in the browser. The `sending` timeout lives in
- * `config/pricing.yaml`, which only this process can read; a copy in the
- * frontend would drift the moment somebody changed it, and a buyer would tap a
- * button the server then refused.
+ * The same rule the claim enforces, asked of a row already in hand: anything
+ * but `sent` may be sent, and a row already `sending` only once that send has
+ * gone stale. Deciding it here rather than in the browser keeps the timeout in
+ * `config/pricing.yaml`, which only this process reads; a copy in the frontend
+ * would drift and offer a button the server then refused.
  * @param mailStatus - Where the outbox row stands, or null when the purchase
  *   has not landed and has no row.
  * @param mailUpdatedAt - When that row last moved.
@@ -723,14 +758,11 @@ function canResend(
   mailStatus: string | null,
   mailUpdatedAt: Date | null,
 ): boolean {
-  if (mailStatus === null) return false;
-  if (RESENDABLE_MAIL.has(mailStatus)) return true;
-  if (mailStatus !== "sending") return false;
-  // A send that claimed the row and never wrote back. Nothing sweeps these:
-  // this screen is the only reader, so this is where they are freed.
-  const staleAfterMs = getStaleSendingMinutes() * 60 * 1000;
+  if (mailStatus === null || mailStatus === "sent") return false;
+  if (mailStatus !== "sending") return true;
   return (
-    mailUpdatedAt !== null && Date.now() - mailUpdatedAt.getTime() > staleAfterMs
+    mailUpdatedAt !== null &&
+    mailUpdatedAt.getTime() < staleSendingBefore().getTime()
   );
 }
 
@@ -805,18 +837,5 @@ export async function resendConfirmation(
   if (!payment || payment.userId !== userId) {
     throw new NotFoundError(t("server.payment.not_found"));
   }
-  const view = await paymentRepo.getConfirmationView(paymentId);
-  if (!view) return false;
-  const letter = renderPurchaseConfirmation(
-    view,
-    view.timeZone,
-    env.SUPPORT_EMAIL,
-  );
-  return sendPurchaseConfirmation({
-    paymentId,
-    to: view.email,
-    subject: letter.subject,
-    html: letter.html,
-    text: letter.text,
-  });
+  return sendConfirmationFor(paymentId);
 }

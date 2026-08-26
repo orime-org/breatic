@@ -5,7 +5,6 @@ import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
-import { Badge } from '@web/components/ui/badge';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -359,34 +358,6 @@ export function formatMoney(cents: number, currency: string): string {
 export function formatRefundable(credits: number, currency: string): string {
   const US_CENTS_PER_CREDIT = 1;
   return formatMoney(credits * US_CENTS_PER_CREDIT, currency);
-}
-
-/** The lifecycle to name. */
-interface LotBadgeProps {
-  /** The purchase's lifecycle. */
-  lifecycle: string;
-}
-
-/**
- * What state a purchase is in, when that is worth saying.
- *
- * An active purchase with credits left carries no badge: that is the ordinary
- * case, and a badge on every row says nothing.
- * @param props - The lifecycle.
- * @param props.lifecycle - The purchase's lifecycle.
- * @returns The badge, or nothing.
- */
-export function LotBadge({ lifecycle }: LotBadgeProps): React.JSX.Element | null {
-  const t = useTranslation();
-  if (lifecycle === 'active') return null;
-  return (
-    <Badge
-      variant={lifecycle === 'refunded' ? 'destructive' : 'secondary'}
-      className='ml-2 align-middle'
-    >
-      {t(`credits.lifecycle.${lifecycle}`)}
-    </Badge>
-  );
 }
 
 /** Where a list ends, and whether more is coming. */
