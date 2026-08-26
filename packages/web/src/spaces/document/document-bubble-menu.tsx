@@ -35,6 +35,20 @@ import {
  */
 const CLOSE_GRACE_MS = 120;
 
+/**
+ * How far below the bar the menu sits.
+ *
+ * A panel that hangs off a surface keeps a visible gap from that surface's
+ * edge, and the width of it is 8px everywhere the product already does this —
+ * the language and theme menus in the header among them
+ * (`components/ui/popover.tsx`). User 2026-08-26 asked for the same gap here.
+ *
+ * `sideOffset` measures from the TRIGGER, and this trigger is a slot that sits
+ * inside the bar's own 4px padding and 1px border. Those 5px come out of the
+ * gap, so plain 8 leaves 3px between menu and bar; 13 puts the visible gap at 8.
+ */
+const MENU_SIDE_OFFSET = 8 + 5;
+
 interface DocumentBubbleMenuProps {
   /** Stable id, used to build the test ids. */
   id: string;
@@ -159,6 +173,7 @@ export function DocumentBubbleMenu({
           container={container}
           data-testid={`${id}-menu`}
           align='start'
+          sideOffset={MENU_SIDE_OFFSET}
           onPointerEnter={enter}
           // Closing does not hand focus back to the trigger. Radix does by
           // default (`@radix-ui/react-dropdown-menu:114-115`), and the trigger
