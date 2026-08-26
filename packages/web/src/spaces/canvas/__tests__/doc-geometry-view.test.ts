@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
 
 import type { DocumentPlace } from '@web/spaces/canvas/doc-geometry-view';
-import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
+import { docGeometryView, landingCandidates } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 
 /** No remote is moving anything. */
@@ -146,5 +146,28 @@ describe('docGeometryView', () => {
       { x: 1, y: 2 },
       { x: 3, y: 4 },
     ]);
+  });
+});
+
+describe('landingCandidates', () => {
+  /**
+   * A node the way the planners take it.
+   * @param id - Its id.
+   * @param type - Its type.
+   * @returns The node.
+   */
+  function plain(id: string, type = 'image'): Node {
+    return { id, type, position: { x: 0, y: 0 }, data: {} };
+  }
+
+  it('leaves out whatever a remote gesture is currently moving', () => {
+    const nodes = [plain('g1', 'group'), plain('a'), plain('b')];
+    const remote: GestureTable = new Map([['g1', { x: 9, y: 9 }]]);
+    expect(landingCandidates(nodes, remote).map((n) => n.id)).toEqual(['a', 'b']);
+  });
+
+  it('hands the array straight back when no remote gesture is running', () => {
+    const nodes = [plain('g1', 'group'), plain('a')];
+    expect(landingCandidates(nodes, new Map())).toBe(nodes);
   });
 });

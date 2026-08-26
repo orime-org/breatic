@@ -22,6 +22,9 @@ export interface GestureGeometry {
 /** Node id to the geometry a gesture is showing it at. */
 export type GestureTable = ReadonlyMap<string, GestureGeometry>;
 
+/** The same table on the wire, where awareness carries plain objects. */
+export type GestureBatch = Record<string, GestureGeometry>;
+
 /**
  * Whether a value is a finite number, which every coordinate has to be.
  *

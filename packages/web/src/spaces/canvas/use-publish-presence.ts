@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
-import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
+import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
 import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { createPublishThrottle } from '@web/spaces/canvas/publish-throttle';
@@ -50,7 +50,6 @@ export interface PublishPresenceInput {
 }
 
 /** The geometry a gesture is showing, keyed by node id. */
-export type GestureBatch = Record<string, GestureGeometry>;
 
 /** The shape this client writes into awareness. */
 interface Presence {

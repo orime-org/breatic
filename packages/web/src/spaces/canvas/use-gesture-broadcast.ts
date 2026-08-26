@@ -5,7 +5,8 @@ import * as React from 'react';
 
 import type { GeometryNode } from '@web/spaces/canvas/local-gesture';
 import { gestureGeometry, gestureNodeIds } from '@web/spaces/canvas/local-gesture';
-import type { GestureBatch, GesturePublisher } from '@web/spaces/canvas/use-publish-presence';
+import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
+import type { GesturePublisher } from '@web/spaces/canvas/use-publish-presence';
 
 /** What a gesture tells the canvas as it runs. */
 export interface GestureBroadcast {
@@ -13,15 +14,10 @@ export interface GestureBroadcast {
    * A gesture has taken hold: work out everything it moves and publish where
    * those nodes start. What it holds and which Group it resizes stay fixed for
    * the rest of the gesture, so neither is asked for again.
-   * @param anchorId - The node the pointer grabbed: the dragged node, or the resized Group.
    * @param seedIds - What the gesture moves at the top level.
    * @param resizedGroupId - The Group being resized, or null during a drag.
    */
-  begin: (
-    anchorId: string,
-    seedIds: ReadonlyArray<string>,
-    resizedGroupId: string | null,
-  ) => void;
+  begin: (seedIds: ReadonlyArray<string>, resizedGroupId: string | null) => void;
   /** The gesture moved: publish the whole batch again. */
   update: () => void;
   /**
@@ -32,13 +28,8 @@ export interface GestureBroadcast {
   end: (writeDocument: () => void) => void;
   /** The gesture was cut short: drop the whole batch, with no final value. */
   abandon: () => void;
-  /**
-   * The node the pointer grabbed, or null while no gesture runs. xyflow aborts
-   * a drag when THIS node leaves its lookup and then fires no stop for any node
-   * in the batch (`@xyflow/system:2237` and `:2264`), so its disappearance is
-   * the one that ends a gesture.
-   */
-  anchorId: () => string | null;
+  /** Whether a gesture is currently held. */
+  isRunning: () => boolean;
 }
 
 /**
@@ -49,24 +40,23 @@ export interface GestureBroadcast {
  * ids is what the merge stage keeps off the document.
  * @param publisher - The awareness publisher's gesture commands.
  * @param bufferRef - The render buffer the geometry is read out of.
- * @param activeIds - Holds the nodes this gesture moves; the merge stage reads
- *   the same ref, which is what makes it one set computed in one place.
- * @param onHeldChange - Called whenever `activeIds` changes. That set lives in
- *   a ref, so changing it moves nothing React watches; this is what lets the
- *   merge stage re-run against the new one. Without it a gesture that ends with
- *   no document write — an abandon — would leave its nodes frozen in the buffer
- *   until some unrelated change happened to come along.
+ * @param onHeldChange - Hands out the nodes this gesture moves, every time that
+ *   set changes. The commands need it synchronously, so it lives in a ref here;
+ *   the merge stage needs React to see it change, which is what this is for.
+ *   Without it a gesture that ends with no document write — an abandon — would
+ *   leave its nodes frozen in the buffer until some unrelated change happened
+ *   to come along.
  * @returns The commands the canvas callbacks drive it with.
  */
 export function useGestureBroadcast(
   publisher: GesturePublisher,
   bufferRef: React.RefObject<ReadonlyArray<GeometryNode>>,
-  activeIds: React.RefObject<ReadonlySet<string>>,
-  onHeldChange: () => void,
+  onHeldChange: (ids: ReadonlySet<string>) => void,
 ): GestureBroadcast {
-  // What the gesture grabbed, and which Group it is resizing. Both are settled
-  // when it starts and read back on every later call.
-  const anchor = React.useRef<{ id: string; resizedGroupId: string | null } | null>(null);
+  // Which Group the gesture is resizing, settled when it starts and read back
+  // on every later call.
+  const resizedGroup = React.useRef<string | null>(null);
+  const activeIds = React.useRef<ReadonlySet<string>>(new Set());
   return React.useMemo((): GestureBroadcast => {
     /**
      * The geometry to publish for whatever the gesture currently holds.
@@ -76,23 +66,27 @@ export function useGestureBroadcast(
       gestureGeometry(
         activeIds.current,
         bufferRef.current ?? [],
-        anchor.current?.resizedGroupId ?? null,
+        resizedGroup.current,
       );
     /** Forget the gesture and take its field down. */
     const drop = (): void => {
       activeIds.current = new Set();
-      anchor.current = null;
+      resizedGroup.current = null;
       publisher.clearGesture();
-      onHeldChange();
+      onHeldChange(activeIds.current);
     };
     return {
-      begin: (anchorId, seedIds, resizedGroupId): void => {
-        anchor.current = { id: anchorId, resizedGroupId };
+      begin: (seedIds, resizedGroupId): void => {
+        resizedGroup.current = resizedGroupId;
         activeIds.current = gestureNodeIds(seedIds, bufferRef.current ?? []);
         publisher.publishGesture(batch());
-        onHeldChange();
+        onHeldChange(activeIds.current);
       },
       update: (): void => {
+        // xyflow keeps its auto-pan frame loop alive through an aborted drag
+        // (`@xyflow/system:2263-2272` returns before cancelling it), so this
+        // keeps arriving after the gesture is gone.
+        if (activeIds.current.size === 0) return;
         publisher.publishGesture(batch());
       },
       end: (writeDocument): void => {
@@ -110,7 +104,7 @@ export function useGestureBroadcast(
         if (activeIds.current.size === 0) return;
         drop();
       },
-      anchorId: () => anchor.current?.id ?? null,
+      isRunning: () => activeIds.current.size > 0,
     };
-  }, [publisher, bufferRef, activeIds, onHeldChange]);
+  }, [publisher, bufferRef, onHeldChange]);
 }

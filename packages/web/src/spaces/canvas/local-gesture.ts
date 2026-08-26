@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
+import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
 
 /** What this module needs off a render-buffer node to place it. */
 export interface GeometryNode {
@@ -54,9 +54,9 @@ export function gestureGeometry(
   ids: ReadonlySet<string>,
   allNodes: ReadonlyArray<GeometryNode>,
   resizedGroupId: string | null,
-): Record<string, GestureGeometry> {
+): GestureBatch {
   const byId = new Map(allNodes.map((node) => [node.id, node]));
-  const published: Record<string, GestureGeometry> = {};
+  const published: GestureBatch = {};
   for (const id of ids) {
     const node = byId.get(id);
     if (node === undefined) continue;

@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
 import type { GeometryNode } from '@web/spaces/canvas/local-gesture';
-import type { GestureBatch, GesturePublisher } from '@web/spaces/canvas/use-publish-presence';
+import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
+import type { GesturePublisher } from '@web/spaces/canvas/use-publish-presence';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
 
 /** One thing the broadcast did, in the order it did it. */
@@ -53,7 +54,8 @@ function mount(buffer: { current: GeometryNode[] }): {
   const activeIds: { current: ReadonlySet<string> } = { current: new Set() };
   let changes = 0;
   const { result } = renderHook(() =>
-    useGestureBroadcast(recorder(log), buffer, activeIds, () => {
+    useGestureBroadcast(recorder(log), buffer, (ids) => {
+      activeIds.current = ids;
       changes += 1;
     }),
   );
@@ -81,7 +83,7 @@ describe('useGestureBroadcast, a drag', () => {
     const buffer = { current: [loose('n1', 10, 20), loose('n2', 30, 40)] };
     const { broadcast, log } = mount(buffer);
 
-    broadcast.begin('n1', ['n1'], null);
+    broadcast.begin(['n1'], null);
 
     expect(log).toEqual([{ kind: 'publish', batch: { n1: { x: 10, y: 20 } } }]);
   });
@@ -89,7 +91,7 @@ describe('useGestureBroadcast, a drag', () => {
   it('publishes the whole batch again as it moves', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin('n1', ['n1'], null);
+    broadcast.begin(['n1'], null);
 
     buffer.current = [loose('n1', 11, 21)];
     broadcast.update();
@@ -106,23 +108,23 @@ describe('useGestureBroadcast, a drag', () => {
     };
     const { broadcast, activeIds } = mount(buffer);
 
-    broadcast.begin('g1', ['g1'], null);
+    broadcast.begin(['g1'], null);
 
     expect([...activeIds.current].sort()).toEqual(['g1', 'm1']);
-    expect(broadcast.anchorId()).toBe('g1');
+    expect(broadcast.isRunning()).toBe(true);
   });
 
   it('holds nothing before a gesture and after one', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, activeIds } = mount(buffer);
     expect(activeIds.current.size).toBe(0);
-    expect(broadcast.anchorId()).toBeNull();
+    expect(broadcast.isRunning()).toBe(false);
 
-    broadcast.begin('n1', ['n1'], null);
+    broadcast.begin(['n1'], null);
     broadcast.end(() => undefined);
 
     expect(activeIds.current.size).toBe(0);
-    expect(broadcast.anchorId()).toBeNull();
+    expect(broadcast.isRunning()).toBe(false);
   });
 });
 
@@ -134,7 +136,7 @@ describe('useGestureBroadcast, the release', () => {
     // same geometry (design §5.6, invariant 8).
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin('n1', ['n1'], null);
+    broadcast.begin(['n1'], null);
     log.length = 0;
 
     buffer.current = [loose('n1', 99, 99)];
@@ -150,7 +152,7 @@ describe('useGestureBroadcast, the release', () => {
   it('reads the final geometry off the buffer, not off the last frame published', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin('n1', ['n1'], null);
+    broadcast.begin(['n1'], null);
 
     // The limiter can have parked the last stretch of a fast gesture, so the
     // release has to look at where the node actually ended up.
@@ -163,7 +165,7 @@ describe('useGestureBroadcast, the release', () => {
   it('takes the field down even when the document write throws', () => {
     const buffer = { current: [loose('n1', 10, 20)] };
     const { broadcast, activeIds, log } = mount(buffer);
-    broadcast.begin('n1', ['n1'], null);
+    broadcast.begin(['n1'], null);
     log.length = 0;
 
     expect(() =>
@@ -189,7 +191,7 @@ describe('useGestureBroadcast, a resize', () => {
     };
     const { broadcast, log } = mount(buffer);
 
-    broadcast.begin('g1', ['g1'], 'g1');
+    broadcast.begin(['g1'], 'g1');
 
     expect(log[0]).toEqual({
       kind: 'publish',
@@ -205,7 +207,7 @@ describe('useGestureBroadcast, a resize', () => {
       current: [{ id: 'g1', position: { x: 0, y: 0 }, width: 400, height: 300 }] as GeometryNode[],
     };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin('g1', ['g1'], 'g1');
+    broadcast.begin(['g1'], 'g1');
 
     buffer.current = [{ id: 'g1', position: { x: 0, y: 0 }, width: 800, height: 300 }];
     broadcast.update();
@@ -221,7 +223,7 @@ describe('useGestureBroadcast, a resize', () => {
       current: [{ id: 'g1', position: { x: 0, y: 0 }, width: 400, height: 300 }] as GeometryNode[],
     };
     const { broadcast, log } = mount(buffer);
-    broadcast.begin('g1', ['g1'], 'g1');
+    broadcast.begin(['g1'], 'g1');
     log.length = 0;
 
     buffer.current = [{ id: 'g1', position: { x: 0, y: 0 }, width: 900, height: 700 }];
@@ -240,7 +242,7 @@ describe('useGestureBroadcast, a gesture cut short', () => {
     // fires no stop for any node in the batch, so the batch has to go as one.
     const buffer = { current: [loose('n1', 10, 20), loose('n2', 30, 40)] };
     const { broadcast, activeIds, log } = mount(buffer);
-    broadcast.begin('n1', ['n1', 'n2'], null);
+    broadcast.begin(['n1', 'n2'], null);
     log.length = 0;
 
     broadcast.abandon();
@@ -256,11 +258,11 @@ describe('useGestureBroadcast, a gesture cut short', () => {
     const buffer = { current: [loose('n1', 10, 20), loose('n2', 30, 40)] };
     const { broadcast } = mount(buffer);
 
-    broadcast.begin('n1', ['n1', 'n2'], null);
+    broadcast.begin(['n1', 'n2'], null);
 
-    expect(broadcast.anchorId()).toBe('n1');
+    expect(broadcast.isRunning()).toBe(true);
     broadcast.abandon();
-    expect(broadcast.anchorId()).toBeNull();
+    expect(broadcast.isRunning()).toBe(false);
   });
 
   it('says nothing when there was no gesture to drop', () => {
@@ -278,7 +280,7 @@ describe('useGestureBroadcast tells the caller when the held set changes', () =>
     const buffer = { current: [loose('a', 0, 0)] };
     const { broadcast, heldChanges } = mount(buffer);
     expect(heldChanges()).toBe(0);
-    broadcast.begin('a', ['a'], null);
+    broadcast.begin(['a'], null);
     expect(heldChanges()).toBe(1);
     // An update moves the geometry, not the set — nothing to re-merge.
     broadcast.update();
@@ -290,7 +292,7 @@ describe('useGestureBroadcast tells the caller when the held set changes', () =>
   it('reports an abandon, which is the case with no document write behind it', () => {
     const buffer = { current: [loose('a', 0, 0)] };
     const { broadcast, heldChanges } = mount(buffer);
-    broadcast.begin('a', ['a'], null);
+    broadcast.begin(['a'], null);
     broadcast.abandon();
     expect(heldChanges()).toBe(2);
   });
@@ -300,5 +302,30 @@ describe('useGestureBroadcast tells the caller when the held set changes', () =>
     const { broadcast, heldChanges } = mount(buffer);
     broadcast.abandon();
     expect(heldChanges()).toBe(0);
+  });
+});
+
+describe('useGestureBroadcast with no gesture running', () => {
+  it('publishes nothing on an update', () => {
+    // xyflow keeps its auto-pan frame loop alive through an aborted drag
+    // (`@xyflow/system:2263-2272` returns before cancelling it), so onNodeDrag
+    // keeps arriving after the gesture is gone.
+    const buffer = { current: [loose('a', 0, 0)] };
+    const { broadcast, log } = mount(buffer);
+    broadcast.begin(['a'], null);
+    broadcast.abandon();
+    const after = log.length;
+    broadcast.update();
+    expect(log.length).toBe(after);
+  });
+
+  it('reports itself as not running', () => {
+    const buffer = { current: [loose('a', 0, 0)] };
+    const { broadcast } = mount(buffer);
+    expect(broadcast.isRunning()).toBe(false);
+    broadcast.begin(['a'], null);
+    expect(broadcast.isRunning()).toBe(true);
+    broadcast.abandon();
+    expect(broadcast.isRunning()).toBe(false);
   });
 });

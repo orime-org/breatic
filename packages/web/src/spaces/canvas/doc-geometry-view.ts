@@ -9,6 +9,33 @@ import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 export type DocumentPlace = Node;
 
 /**
+ * The nodes a landing decision is allowed to consider.
+ *
+ * Dropping a node decides two things off the geometry around it: which Group it
+ * lands in, and how far that Group has to grow. Both are aimed by eye, so they
+ * have to be decided from what is on screen — and what a remote gesture is
+ * moving is on screen at coordinates that are about to change and that the
+ * document has never held. Whichever geometry such a node were judged by, the
+ * answer could disagree with what the user was aiming at.
+ *
+ * So it takes no part: a Group somebody else is dragging neither receives a
+ * node nor grows around one, and a node somebody else is dragging is not
+ * absorbed by a resize. It goes back to being a landing target the moment that
+ * gesture ends.
+ * @param nodes - The nodes to choose from.
+ * @param remoteGesture - The nodes remote gestures are currently moving.
+ * @returns Those of them no remote gesture is holding, or the array itself when
+ *   no remote gesture is running.
+ */
+export function landingCandidates(
+  nodes: ReadonlyArray<Node>,
+  remoteGesture: GestureTable,
+): Node[] {
+  if (remoteGesture.size === 0) return nodes as Node[];
+  return nodes.filter((node) => !remoteGesture.has(node.id));
+}
+
+/**
  * The render buffer with every remote gesture taken back out of it.
  *
  * The buffer is what the canvas draws, and while a collaborator drags something
