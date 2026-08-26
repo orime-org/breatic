@@ -17,7 +17,18 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
+import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
+
+/** The three fields this client writes into awareness. */
+interface Published {
+  /** The nodes it is holding. */
+  activeNodeIds: readonly string[] | null;
+  /** Where its pointer is. */
+  pointer: { x: number; y: number } | null;
+  /** The geometry its gesture is showing. */
+  gesture: Record<string, GestureGeometry> | null;
+}
 
 const open: Array<{ doc: Y.Doc; awareness: Awareness }> = [];
 const mounted: HTMLElement[] = [];
@@ -87,15 +98,17 @@ function resizeContainer(target: Element): void {
  * @param awareness - The awareness to read.
  * @returns The two published fields.
  */
-function published(awareness: Awareness): {
-  activeNodeIds: readonly string[] | null;
-  pointer: { x: number; y: number } | null;
-} {
+function published(awareness: Awareness): Published {
   const state = awareness.getLocalState() as {
     activeNodeIds?: string[] | null;
     pointer?: { x: number; y: number } | null;
+    gesture?: Record<string, GestureGeometry> | null;
   } | null;
-  return { activeNodeIds: state?.activeNodeIds ?? null, pointer: state?.pointer ?? null };
+  return {
+    activeNodeIds: state?.activeNodeIds ?? null,
+    pointer: state?.pointer ?? null,
+    gesture: state?.gesture ?? null,
+  };
 }
 
 /**
@@ -112,10 +125,7 @@ function published(awareness: Awareness): {
  */
 function untilPublished(
   awareness: Awareness,
-  assert: (published: {
-    activeNodeIds: readonly string[] | null;
-    pointer: { x: number; y: number } | null;
-  }) => void,
+  assert: (published: Published) => void,
 ): Promise<void> {
   return vi.waitFor(() => assert(published(awareness)), { timeout: 2_000 });
 }
@@ -605,7 +615,11 @@ describe('usePublishPresence, the pointer', () => {
 
     rendered.unmount();
 
-    expect(published(awareness)).toEqual({ activeNodeIds: null, pointer: null });
+    expect(published(awareness)).toEqual({
+      activeNodeIds: null,
+      pointer: null,
+      gesture: null,
+    });
     expect(stillListed(awareness)).toBe(true);
   });
 
@@ -629,7 +643,7 @@ describe('usePublishPresence, the pointer', () => {
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
     rendered.unmount();
     await untilPublished(awareness, (p) => {
-      expect(p).toEqual({ activeNodeIds: null, pointer: null });
+      expect(p).toEqual({ activeNodeIds: null, pointer: null, gesture: null });
     });
     expect(stillListed(awareness)).toBe(true);
   });
@@ -687,5 +701,276 @@ describe('usePublishPresence, the write rate', () => {
 
     expect(writes).toBeGreaterThan(0);
     expect(writes).toBeLessThanOrEqual(8);
+  });
+});
+
+describe('usePublishPresence, the gesture geometry', () => {
+  /**
+   * Mount the publisher and hand back its gesture commands.
+   * @param awareness - The awareness to publish into.
+   * @returns The commands, and the container the pointer is sent to.
+   */
+  function mountPublisher(awareness: Awareness): {
+    publisher: ReturnType<typeof usePublishPresence>;
+    container: HTMLElement;
+  } {
+    const { container } = makeCanvas();
+    const containerRef = { current: container };
+    const { result } = renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef,
+        toFlowPosition: SHIFTED,
+      }),
+    );
+    return { publisher: result.current, container };
+  }
+
+  it('publishes the batch a gesture hands it', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+    await settled();
+
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).toEqual({ n1: { x: 10, y: 20 } });
+    });
+  });
+
+  it('publishes a whole batch of nodes in one write', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+    await settled();
+
+    publisher.publishGesture({
+      g1: { x: 0, y: 0, width: 400, height: 300 },
+      m1: { x: 10, y: 20 },
+    });
+
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).toEqual({
+        g1: { x: 0, y: 0, width: 400, height: 300 },
+        m1: { x: 10, y: 20 },
+      });
+    });
+  });
+
+  it('keeps publishing while only the geometry moves', async () => {
+    // A drag moves the geometry on every frame while the holding and the
+    // pointer stand still, so a de-duplication that compares only those two
+    // reads every one of those writes as unchanged and drops it — the whole
+    // gesture would reach the peers as its first frame and nothing more.
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+    await settled();
+
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).toEqual({ n1: { x: 10, y: 20 } });
+    });
+
+    publisher.publishGesture({ n1: { x: 11, y: 21 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).toEqual({ n1: { x: 11, y: 21 } });
+    });
+  });
+
+  it('leaves a gesture frame that moved nothing off the wire', async () => {
+    // The other half of the same gate: a frame in which the pointer travelled
+    // without the geometry changing (the drag threshold, an axis lock) is the
+    // same state the peers already have.
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+    await settled();
+
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).not.toBeNull();
+    });
+    await settled();
+
+    let writes = 0;
+    awareness.on('update', () => {
+      writes += 1;
+    });
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    await settled();
+    expect(writes).toBe(0);
+  });
+
+  it('caps a streaming gesture at the interval floor', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+    await settled();
+
+    let writes = 0;
+    awareness.on('update', () => {
+      writes += 1;
+    });
+    for (let i = 0; i < 20; i += 1) publisher.publishGesture({ n1: { x: i, y: i } });
+    await settled();
+
+    // Twenty moves in one burst are one write, whatever the machine's speed:
+    // the frame folds them and the interval caps what is left.
+    expect(writes).toBeLessThanOrEqual(2);
+  });
+
+  it('sends the final geometry past the rate limit', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+
+    publisher.publishGesture({ n1: { x: 1, y: 1 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).toEqual({ n1: { x: 1, y: 1 } });
+    });
+    // Straight after a write, the limiter would park anything else until its
+    // floor has passed — and the release is exactly when that happens.
+    publisher.publishGestureNow({ n1: { x: 999, y: 999 } });
+    expect(published(awareness).gesture).toEqual({ n1: { x: 999, y: 999 } });
+  });
+
+  it('sends the final geometry even when it is what was already published', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+
+    publisher.publishGesture({ n1: { x: 5, y: 5 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).toEqual({ n1: { x: 5, y: 5 } });
+    });
+    let writes = 0;
+    awareness.on('update', () => {
+      writes += 1;
+    });
+    publisher.publishGestureNow({ n1: { x: 5, y: 5 } });
+    expect(writes).toBe(1);
+  });
+
+  it('takes the field back down when the gesture ends', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).not.toBeNull();
+    });
+    publisher.clearGesture();
+    expect(published(awareness).gesture).toBeNull();
+  });
+
+  it('gets the clearing out even though neither other field moved', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).not.toBeNull();
+    });
+    let writes = 0;
+    awareness.on('update', () => {
+      writes += 1;
+    });
+    publisher.clearGesture();
+    // The holding and the pointer are both untouched across a release, so a
+    // compared write would read as unchanged and never leave.
+    expect(writes).toBe(1);
+    expect(published(awareness).gesture).toBeNull();
+  });
+
+  it('clears a batch whole, so an aborted gesture leaves nothing behind', async () => {
+    const awareness = makeAwareness();
+    const { publisher } = mountPublisher(awareness);
+
+    publisher.publishGesture({ n1: { x: 1, y: 1 }, n2: { x: 2, y: 2 } });
+    await untilPublished(awareness, (p) => {
+      expect(Object.keys(p.gesture ?? {})).toHaveLength(2);
+    });
+    publisher.clearGesture();
+    expect(published(awareness).gesture).toBeNull();
+  });
+
+  it('leaves the field null while no gesture is running', async () => {
+    const awareness = makeAwareness();
+    mountPublisher(awareness);
+    await settled();
+    expect(published(awareness).gesture).toBeNull();
+  });
+
+  it('keeps the geometry when the window loses focus mid-gesture', async () => {
+    const awareness = makeAwareness();
+    const { container, publisher } = mountPublisher(awareness);
+    sendPointer(container, 'pointermove', { clientX: 4, clientY: 6 });
+    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).not.toBeNull();
+      expect(p.pointer).not.toBeNull();
+    });
+
+    window.dispatchEvent(new Event('blur'));
+
+    // Holding the mouse button down and switching windows does not end the
+    // gesture; the pointer is withdrawn because nobody is looking at it.
+    await settled();
+    expect(published(awareness).pointer).toBeNull();
+    expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20 } });
+  });
+
+  it('clears the geometry when it unmounts mid-gesture', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    const containerRef = { current: container };
+    const { result, unmount } = renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef,
+        toFlowPosition: SHIFTED,
+      }),
+    );
+    result.current.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).not.toBeNull();
+    });
+
+    unmount();
+
+    expect(published(awareness).gesture).toBeNull();
+    expect(stillListed(awareness)).toBe(true);
+  });
+
+  it('republishes the running gesture on reconnect', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    const containerRef = { current: container };
+    const { result, rerender } = renderHook(
+      ({ synced }: { synced: boolean }) =>
+        usePublishPresence({
+          awareness,
+          sources: NOTHING,
+          synced,
+          containerRef,
+          toFlowPosition: SHIFTED,
+        }),
+      { initialProps: { synced: true } },
+    );
+    result.current.publishGesture({ n1: { x: 10, y: 20 } });
+    await untilPublished(awareness, (p) => {
+      expect(p.gesture).not.toBeNull();
+    });
+
+    // The peers dropped the state while the socket was closed; nothing local
+    // differs, so only an unconditional re-send puts it back.
+    rerender({ synced: false });
+    let writes = 0;
+    awareness.on('update', () => {
+      writes += 1;
+    });
+    rerender({ synced: true });
+
+    await vi.waitFor(() => expect(writes).toBeGreaterThan(0));
+    expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20 } });
   });
 });
