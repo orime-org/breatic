@@ -90,6 +90,11 @@ function logFulfillment(
       // leg claiming its own events, nothing legitimate reaches here.
       logger.warn({ ...ctx }, "payment_session_not_ours");
       return;
+    case "failed":
+      // The card was refused after the fact. The buyer is told by their bank,
+      // and the row now says so; nothing here has to be repaired.
+      logger.info({ ...ctx }, "payment_failed");
+      return;
     default:
       logger.info({ ...ctx, outcome: outcome.status }, "payment_no_grant");
   }
@@ -252,10 +257,11 @@ payment.post("/webhook", async (c) => {
       logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
       break;
     }
-    case "checkout.session.async_payment_failed":
-      await paymentService.handlePaymentFailed(session.id);
-      logger.info({ stripeSessionId: session.id }, "payment_failed");
+    case "checkout.session.async_payment_failed": {
+      const outcome = await paymentService.handlePaymentFailed(session.id);
+      logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
       break;
+    }
     default:
       break;
   }

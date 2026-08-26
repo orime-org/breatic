@@ -138,7 +138,6 @@ async function writeConsentIfGiven(
  * unreachable and the resend control always has something to render — which
  * is what makes a send that never started recoverable by the buyer.
  * @param paymentId - The payment the email is about.
- * @param locale - The language it will be written in.
  * @param tx - The fulfillment transaction.
  */
 async function openMailOutbox(paymentId: string, tx: DbTx): Promise<void> {
@@ -169,6 +168,8 @@ export type FulfillOutcome =
   | { status: "replay" }
   | { status: "noop" }
   | { status: "expired" }
+  /** A delayed payment Stripe reports as failed; the row now says so. */
+  | { status: "failed" }
   | {
       status: "mismatch";
       /** What our own price table says this tier costs. */
@@ -520,15 +521,23 @@ export async function createCheckout(input: {
 }
 
 /**
- * Handle Stripe payment failure. Only transitions pending → failed.
- * @param stripeSessionId - Stripe Checkout session ID from the webhook event
- * @throws {NotFoundError} if no payment matches the Stripe session ID
+ * Mark a purchase whose delayed payment Stripe reports as failed.
+ *
+ * The fourth of the four Checkout Session events the webhook receives, and it
+ * answers the same way as the other three about a session this deployment has
+ * no row for: with an outcome the route logs, not an exception. Throwing here
+ * would answer the webhook 404, and Stripe redelivers a 404 for three days.
+ * @param stripeSessionId - Stripe Checkout session ID from the webhook event.
+ * @returns What this pass did.
  */
-export async function handlePaymentFailed(stripeSessionId: string): Promise<void> {
+export async function handlePaymentFailed(
+  stripeSessionId: string,
+): Promise<FulfillOutcome> {
   const payment = await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
-  if (!payment) throw new NotFoundError(t("server.error.not_found"));
-  if (payment.status !== "pending") return;
+  if (!payment) return { status: "unknown" };
+  if (payment.status !== "pending") return { status: "replay" };
   await paymentRepo.updatePaymentStatus(payment.id, "failed");
+  return { status: "failed" };
 }
 
 /**

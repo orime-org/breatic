@@ -82,7 +82,10 @@ vi.mock("@server/modules/payment/purchase-mail.js", () => ({
 
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
-import { fulfillPayment } from "@server/modules/payment/payment.service.js";
+import {
+  fulfillPayment,
+  handlePaymentFailed,
+} from "@server/modules/payment/payment.service.js";
 
 try {
   initCore(process.env);
@@ -454,6 +457,16 @@ describe("what the session says decides", () => {
     );
 
     const outcome = await fulfillPayment("cs_test_stranger", evt("evt_stranger"));
+
+    expect(outcome.status).toBe("unknown");
+  });
+
+  it("says the same about a session it is told the payment for failed", async () => {
+    // The fourth of the four Checkout Session events the webhook receives.
+    // Three of them come through here and answer for a session we have no row
+    // for; if this one throws, the endpoint replies 404 and Stripe redelivers
+    // that 404 for three days.
+    const outcome = await handlePaymentFailed("cs_test_stranger_failed");
 
     expect(outcome.status).toBe("unknown");
   });

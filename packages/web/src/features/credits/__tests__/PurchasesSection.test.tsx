@@ -138,6 +138,8 @@ describe('the purchase history', () => {
           totalCents: null,
           remainingCredits: null,
           lifecycle: null,
+          designatedStudioId: null,
+          designatedStudioName: null,
         }),
       ],
       nextCursor: null,
@@ -152,6 +154,9 @@ describe('the purchase history', () => {
     expect(first.textContent).toContain('Not charged');
     expect(first.textContent).not.toContain('Charged at checkout');
     expect(first.textContent).not.toContain('Shown once it lands');
+    // Nor may the third cell offer to point it somewhere: an abandoned
+    // purchase has nothing to point.
+    expect(first.textContent).not.toContain('Unassigned');
   });
 
   it('says the same about a purchase that failed', async () => {
@@ -162,6 +167,8 @@ describe('the purchase history', () => {
           totalCents: null,
           remainingCredits: null,
           lifecycle: null,
+          designatedStudioId: null,
+          designatedStudioName: null,
         }),
       ],
       nextCursor: null,
@@ -290,6 +297,29 @@ describe('sending the confirmation again', () => {
     });
     await waitFor(() => {
       expect(toastSuccess).toHaveBeenCalled();
+    });
+  });
+
+  it('stops offering it once the letter has gone, without another tap', async () => {
+    const user = userEvent.setup();
+    resendConfirmation.mockResolvedValue({ sent: true });
+    history
+      .mockResolvedValueOnce({
+        items: [row({ canResend: true })],
+        nextCursor: null,
+      })
+      .mockResolvedValue({ items: [row({ canResend: false })], nextCursor: null });
+    renderHistory();
+
+    await user.click(await screen.findByTestId('resend-confirmation'));
+    await waitFor(() => {
+      expect(resendConfirmation).toHaveBeenCalledTimes(1);
+    });
+    // The row is read again, so the control goes with the letter. Left as it
+    // was, a second tap would be refused by the server and the buyer would be
+    // told the letter did not go out.
+    await waitFor(() => {
+      expect(screen.queryByTestId('resend-confirmation')).toBeNull();
     });
   });
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { PurchaseRow } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
@@ -93,7 +94,11 @@ export function PurchasesSection({
           <Card>
             <Rows>
               {paging.rows.map((purchase) => (
-                <PurchaseLine key={purchase.paymentId} purchase={purchase} />
+                <PurchaseLine
+                  key={purchase.paymentId}
+                  purchase={purchase}
+                  userId={userId}
+                />
               ))}
             </Rows>
           </Card>
@@ -138,10 +143,12 @@ const STATUS_LABEL: Record<string, string> = {
  */
 const OVER: ReadonlySet<string> = new Set(['expired', 'failed']);
 
-/** The purchase to draw. */
+/** The purchase to draw, and whose list it sits in. */
 interface PurchaseLineProps {
   /** The purchase. */
   purchase: PurchaseRow;
+  /** The signed-in account, for reading the list again after a resend. */
+  userId: string | null;
 }
 
 /**
@@ -151,14 +158,17 @@ interface PurchaseLineProps {
  * say depends on whether anything is still on its way: a purchase in flight
  * has both a charge and its credits coming, one that landed has both, and one
  * that was abandoned or failed has neither and never will.
- * @param props - The purchase.
+ * @param props - The purchase and the account.
  * @param props.purchase - The purchase.
+ * @param props.userId - The signed-in account.
  * @returns The row.
  */
 const PurchaseLine = React.memo(function PurchaseLine({
   purchase,
+  userId,
 }: PurchaseLineProps): React.JSX.Element {
   const t = useTranslation();
+  const client = useQueryClient();
   const [sending, setSending] = React.useState(false);
   const landed = purchase.totalCents !== null;
   const over = OVER.has(purchase.status);
@@ -174,8 +184,12 @@ const PurchaseLine = React.memo(function PurchaseLine({
       toast.error(t('credits.purchase.resendFailed'));
     } finally {
       setSending(false);
+      // Whether the control is still offered is decided from the row, and the
+      // row just moved. Left as it was, the next tap would be refused by the
+      // server and the buyer would be told a letter that did go out did not.
+      void client.invalidateQueries({ queryKey: ['payment', 'history', userId] });
     }
-  }, [purchase.paymentId, t]);
+  }, [client, purchase.paymentId, t, userId]);
 
   return (
     <div data-testid='purchase-row'>
@@ -204,9 +218,16 @@ const PurchaseLine = React.memo(function PurchaseLine({
           </>
         }
         sub={
-          purchase.designatedStudioName === null
-            ? t('credits.unassigned')
-            : t('credits.assignedTo', { studio: purchase.designatedStudioName })
+          // Where it points is a question about credits, and one of these has
+          // none coming. "Unassigned" on a purchase that can never be
+          // assigned reads as something left to do.
+          over
+            ? undefined
+            : purchase.designatedStudioName === null
+              ? t('credits.unassigned')
+              : t('credits.assignedTo', {
+                studio: purchase.designatedStudioName,
+              })
         }
         right={
           <>
