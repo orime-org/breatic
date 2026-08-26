@@ -200,6 +200,8 @@ interface RowProps {
   sub?: React.ReactNode;
   /** What sits at the right end: a figure, a control, or nothing. */
   right?: React.ReactNode;
+  /** A hook for tests to name this particular row. */
+  'data-testid'?: string;
 }
 
 /**
@@ -211,11 +213,20 @@ interface RowProps {
  * @param props.main - The row's first line.
  * @param props.sub - Its second, quieter line.
  * @param props.right - What sits at the right end.
+ * @param props.'data-testid' - A hook for tests to name this particular row.
  * @returns The row.
  */
-export function Row({ main, sub, right }: RowProps): React.JSX.Element {
+export function Row({
+  main,
+  sub,
+  right,
+  'data-testid': testId,
+}: RowProps): React.JSX.Element {
   return (
-    <li className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0'>
+    <li
+      data-testid={testId}
+      className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0'
+    >
       <span className='min-w-0'>
         <span className='text-sm'>{main}</span>
         {sub === undefined ? null : (

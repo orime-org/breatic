@@ -450,9 +450,11 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
     // that screen's only source. The wording is versioned on the server, so
     // the browser cannot hold a copy.
     const listed = listTiers();
-    expect(listed.refundLines).toEqual(
-      refundLinesAt(REFUND_CREDITS_VERSION, "en"),
-    );
+    // The version is named here as a literal. Comparing against the same
+    // constant the implementation reads would agree with itself even if the
+    // constant pointed at wording no locale file has.
+    expect(listed.refundLines).toEqual(refundLinesAt("refund-credits-v1", "en"));
+    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v1");
     expect(listed.refundLines).toHaveLength(3);
     for (const line of listed.refundLines) {
       expect(line.length).toBeGreaterThan(0);
@@ -461,11 +463,9 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
 
   it("gives that rule in whatever language the buyer is reading in", () => {
     const japanese = runWithLocale("ja", () => listTiers());
-    expect(japanese.refundLines).toEqual(
-      refundLinesAt(REFUND_CREDITS_VERSION, "ja"),
-    );
+    expect(japanese.refundLines).toEqual(refundLinesAt("refund-credits-v1", "ja"));
     expect(japanese.refundLines).not.toEqual(
-      refundLinesAt(REFUND_CREDITS_VERSION, "en"),
+      refundLinesAt("refund-credits-v1", "en"),
     );
   });
 });

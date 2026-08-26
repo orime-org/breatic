@@ -237,8 +237,12 @@ describe('the purchase history', () => {
     });
     renderHistory();
     await screen.findAllByTestId('purchase-row');
-    // One active-and-unassigned; the pending row has no lot and is not one.
-    expect(await screen.findByTestId('unassigned-notice')).toBeInTheDocument();
+    // One active-and-unassigned. The pending row is unassigned too, and has no
+    // lot, so it is not one of these — asserting the figure is what tells the
+    // two apart; the notice exists either way.
+    const notice = await screen.findByTestId('unassigned-notice');
+    expect(notice.textContent).toContain('1');
+    expect(notice.textContent).not.toContain('2');
   });
 
   it('says nothing about assigning while another page is still coming', async () => {

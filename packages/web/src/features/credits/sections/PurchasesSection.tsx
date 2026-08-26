@@ -192,83 +192,82 @@ const PurchaseLine = React.memo(function PurchaseLine({
   }, [client, purchase.paymentId, t, userId]);
 
   return (
-    <div data-testid='purchase-row'>
-      <Row
-        main={
-          <>
-            {/* What the card was charged, tax included: this is the figure a
+    <Row
+      data-testid='purchase-row'
+      main={
+        <>
+          {/* What the card was charged, tax included: this is the figure a
                 buyer matches against a statement. A purchase that has not
                 landed has no such figure, and printing the pre-tax price as
                 though it were one would misstate what they paid. */}
-            {landed
-              ? formatMoney(purchase.totalCents!, purchase.currency)
-              : over
-                ? t('credits.purchase.notCharged')
-                : t('credits.purchase.pendingAmount')}{' '}
+          {landed
+            ? formatMoney(purchase.totalCents!, purchase.currency)
+            : over
+              ? t('credits.purchase.notCharged')
+              : t('credits.purchase.pendingAmount')}{' '}
             · {formatLocalDay(purchase.createdAt)}
-            {statusKey === undefined ? null : (
-              <Badge
-                data-testid='purchase-status'
-                variant='secondary'
-                className='ml-2 align-middle'
+          {statusKey === undefined ? null : (
+            <Badge
+              data-testid='purchase-status'
+              variant='secondary'
+              className='ml-2 align-middle'
+            >
+              {t(statusKey)}
+            </Badge>
+          )}
+        </>
+      }
+      sub={
+        // Where it points is a question about credits, and one of these has
+        // none coming. "Unassigned" on a purchase that can never be
+        // assigned reads as something left to do.
+        over
+          ? undefined
+          : purchase.designatedStudioName === null
+            ? t('credits.unassigned')
+            : t('credits.assignedTo', {
+              studio: purchase.designatedStudioName,
+            })
+      }
+      right={
+        <>
+          {purchase.remainingCredits === null ? (
+          // Nothing is coming to an abandoned or failed purchase, so this
+          // cell stays empty rather than promising a figure.
+            over ? null : (
+              <span className='block text-xs text-muted-foreground'>
+                {t('credits.purchase.creditsOnArrival')}
+              </span>
+            )
+          ) : (
+            <>
+              <span
+                data-testid='purchase-remaining'
+                className='block text-sm font-semibold'
               >
-                {t(statusKey)}
-              </Badge>
-            )}
-          </>
-        }
-        sub={
-          // Where it points is a question about credits, and one of these has
-          // none coming. "Unassigned" on a purchase that can never be
-          // assigned reads as something left to do.
-          over
-            ? undefined
-            : purchase.designatedStudioName === null
-              ? t('credits.unassigned')
-              : t('credits.assignedTo', {
-                studio: purchase.designatedStudioName,
-              })
-        }
-        right={
-          <>
-            {purchase.remainingCredits === null ? (
-              // Nothing is coming to an abandoned or failed purchase, so this
-              // cell stays empty rather than promising a figure.
-              over ? null : (
-                <span className='block text-xs text-muted-foreground'>
-                  {t('credits.purchase.creditsOnArrival')}
-                </span>
-              )
-            ) : (
-              <>
-                <span
-                  data-testid='purchase-remaining'
-                  className='block text-sm font-semibold'
-                >
-                  {formatCreditAmount(purchase.remainingCredits)}
-                </span>
-                <span className='block text-xs text-muted-foreground'>
-                  {t('credits.ofPurchased', {
-                    amount: formatCreditAmount(purchase.creditsGranted),
-                  })}
-                </span>
-              </>
-            )}
-            {purchase.canResend ? (
-              <Button
-                data-testid='resend-confirmation'
-                variant='outline'
-                size='sm'
-                className='mt-1'
-                disabled={sending}
-                onClick={resend}
-              >
-                {t('credits.purchase.resend')}
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-    </div>
+                {formatCreditAmount(purchase.remainingCredits)}
+              </span>
+              <span className='block text-xs text-muted-foreground'>
+                {t('credits.ofPurchased', {
+                  amount: formatCreditAmount(purchase.creditsGranted),
+                })}
+              </span>
+            </>
+          )}
+          {purchase.canResend ? (
+            <Button
+              data-testid='resend-confirmation'
+              variant='outline'
+              size='sm'
+              className='mt-1'
+              disabled={sending}
+              onClick={resend}
+            >
+              {t('credits.purchase.resend')}
+            </Button>
+          ) : null}
+        </>
+      }
+    />
   );
 });
