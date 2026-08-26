@@ -27,29 +27,41 @@ const DELIMITER = '$$';
 const FORMULA_CLASS = 'katex';
 
 /**
- * What a parser keeps where it found it, yet strips of its meaning.
+ * What a paste target cannot read outside the element it came from.
  *
- * A row or a cell outside a table is dropped tag and all, which the check
- * below sees. A list item is kept, and loses the numbering its list carried.
+ * The table family is dropped tag and all, leaving behind what was inside it.
+ * A list item survives and loses the numbering its list carried. Measured in
+ * Chromium over every parent-dependent element in HTML: those are the two ways
+ * one can arrive broken, and the tags below are the whole of what this
+ * pipeline emits — remark-gfm brings the tables and the lists, and nothing in
+ * remark-math, rehype-katex or rehype-highlight is parent-dependent at all.
  */
-const NEEDS_ITS_PARENT = new Set(['LI']);
+const NEEDS_ITS_PARENT = new Set([
+  'LI',
+  'TR',
+  'TD',
+  'TH',
+  'THEAD',
+  'TBODY',
+  'TFOOT',
+  'CAPTION',
+  'COL',
+  'COLGROUP',
+]);
 
 /**
  * Whether this is something a paste target can read on its own.
+ *
+ * Whatever the climb below has wrapped so far sits at the top of `held`:
+ * `Range.cloneContents` rebuilds every partially selected ancestor under the
+ * common one, and each turn of the climb wraps in a shallow clone.
  * @param node - What was taken out of the document.
  * @returns Whether a parser gives it back whole.
  */
 function standsAlone(node: Node): boolean {
   const held = document.createElement('div');
   held.append(node.cloneNode(true));
-  if ([...held.children].some((child) => NEEDS_ITS_PARENT.has(child.tagName))) return false;
-
-  // Asked of the parser rather than of a count of what came back: a row the
-  // parser drops leaves what was inside it behind, so counting top-level
-  // children says one went in and one came out.
-  const reparsed = document.createElement('div');
-  reparsed.innerHTML = held.innerHTML;
-  return reparsed.innerHTML === held.innerHTML;
+  return ![...held.children].some((child) => NEEDS_ITS_PARENT.has(child.tagName));
 }
 
 /**
