@@ -40,9 +40,20 @@ const PACKS = [
   { name: '43,660 Credits', credits: 43660, priceCents: 50000, currency: 'usd' },
 ];
 
+/** The refund rule, as the server hands it over. */
+const REFUND_LINES = [
+  'Bought within 30 days and spent nothing? Refunded in full to the card.',
+  'Spend any one of them and this purchase can no longer be refunded.',
+  'Past 30 days, no refund.',
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchTiers.mockResolvedValue({ packs: PACKS, confirmTimeoutMs: 15000 });
+  fetchTiers.mockResolvedValue({
+    packs: PACKS,
+    confirmTimeoutMs: 15000,
+    refundLines: REFUND_LINES,
+  });
   startCheckout.mockResolvedValue({ url: 'https://checkout.stripe.test/x' });
 });
 
@@ -98,6 +109,17 @@ describe('the buy screen', () => {
     await screen.findAllByTestId('credit-pack');
     expect(screen.getByTestId('buy-tax-notice')).toBeInTheDocument();
     expect(screen.getByTestId('buy-assign-notice')).toBeInTheDocument();
+  });
+
+  it('shows the refund rule in full before anything is bought', async () => {
+    // The confirmation dialog asks the buyer to agree to it, so it has to be
+    // readable on the screen that leads there.
+    renderBuy();
+    await screen.findAllByTestId('credit-pack');
+    const rule = screen.getByTestId('buy-refund-rule');
+    for (const line of REFUND_LINES) {
+      expect(rule.textContent).toContain(line);
+    }
   });
 
   it('shows nothing about a payment in flight', async () => {
@@ -162,6 +184,36 @@ describe('the confirmation before paying', () => {
       });
       await waitFor(() => {
         expect(assign).toHaveBeenCalledWith('https://checkout.stripe.test/x');
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('lets the buyer try again when starting the checkout failed', async () => {
+    const user = userEvent.setup();
+    startCheckout.mockRejectedValue(new Error('offline'));
+    vi.stubGlobal('location', { assign: vi.fn(), href: 'https://app.test/s/mine' });
+    try {
+      renderBuy();
+      const packs = await screen.findAllByTestId('credit-pack');
+      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(await screen.findByTestId('confirm-consent'));
+      const pay = screen.getByTestId('confirm-pay');
+      await user.click(pay);
+
+      await waitFor(() => {
+        expect(startCheckout).toHaveBeenCalledTimes(1);
+      });
+      // The dialog is still the only place this purchase can be started
+      // from, so the button has to come back rather than leaving the buyer
+      // to work out that closing and reopening frees it.
+      await waitFor(() => {
+        expect(pay).toBeEnabled();
+      });
+      await user.click(pay);
+      await waitFor(() => {
+        expect(startCheckout).toHaveBeenCalledTimes(2);
       });
     } finally {
       vi.unstubAllGlobals();

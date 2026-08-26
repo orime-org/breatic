@@ -190,6 +190,12 @@ function AssignRow({
       void client.invalidateQueries({
         queryKey: ['credits', 'ledger', userId],
       });
+      // The purchase history reads payments under a key of its own, and every
+      // row of it names where its purchase points. Left out, that screen goes
+      // on saying "unassigned" about the one just assigned.
+      void client.invalidateQueries({
+        queryKey: ['payment', 'history', userId],
+      });
     },
     onError: () => {
       toast.error(t('credits.designateFailed'));

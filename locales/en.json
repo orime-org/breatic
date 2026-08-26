@@ -1372,6 +1372,7 @@
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
       "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
+      "refundTitle": "Refund rule",
       "action": "Buy",
       "confirmTitle": "Confirm your purchase",
       "confirmPack": "Pack",
@@ -1389,6 +1390,8 @@
       "processing": "Processing",
       "expired": "Expired",
       "failed": "Failed",
+      "landed": "Landed",
+      "notCharged": "Not charged",
       "pendingAmount": "Charged at checkout",
       "creditsOnArrival": "Shown once it lands",
       "resend": "Send again",

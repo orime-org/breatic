@@ -1372,6 +1372,7 @@
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
       "assignNotice": "积分需要指定给某个 Studio 才能使用。",
+      "refundTitle": "退款规则",
       "action": "购买",
       "confirmTitle": "确认购买",
       "confirmPack": "积分包",
@@ -1389,6 +1390,8 @@
       "processing": "处理中",
       "expired": "已失效",
       "failed": "未成功",
+      "landed": "已到账",
+      "notCharged": "未付款",
       "pendingAmount": "结账时收取",
       "creditsOnArrival": "到账后显示",
       "resend": "重发",

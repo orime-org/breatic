@@ -1372,6 +1372,7 @@
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
       "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",
+      "refundTitle": "返金ルール",
       "action": "購入",
       "confirmTitle": "購入の確認",
       "confirmPack": "クレジットパック",
@@ -1389,6 +1390,8 @@
       "processing": "処理中",
       "expired": "期限切れ",
       "failed": "失敗",
+      "landed": "受取済み",
+      "notCharged": "請求なし",
       "pendingAmount": "決済時に請求",
       "creditsOnArrival": "付与後に表示",
       "resend": "再送信",

@@ -119,12 +119,24 @@ export function PurchasesSection({
   );
 }
 
-/** Which badge a purchase carries, if any. */
+/** Which badge each state carries. */
 const STATUS_LABEL: Record<string, string> = {
+  completed: 'credits.purchase.landed',
   pending: 'credits.purchase.processing',
   expired: 'credits.purchase.expired',
   failed: 'credits.purchase.failed',
 };
+
+/**
+ * The states from which nothing further arrives.
+ *
+ * The two figures a purchase gains on landing are absent on every row that
+ * has not landed, and until now that absence was read one way: "coming". It
+ * is only coming while the purchase is still in flight. On an abandoned or
+ * failed one, "charged at checkout" and "shown once it lands" both describe a
+ * future that will not happen.
+ */
+const OVER: ReadonlySet<string> = new Set(['expired', 'failed']);
 
 /** The purchase to draw. */
 interface PurchaseLineProps {
@@ -135,8 +147,10 @@ interface PurchaseLineProps {
 /**
  * One purchase: what it cost, when, where it stands, and what is left of it.
  *
- * A purchase that has landed carries no badge — that is the ordinary case, and
- * a badge on every row says nothing. The other three each say what happened.
+ * Every row says which of the four states it is in. What the other two cells
+ * say depends on whether anything is still on its way: a purchase in flight
+ * has both a charge and its credits coming, one that landed has both, and one
+ * that was abandoned or failed has neither and never will.
  * @param props - The purchase.
  * @param props.purchase - The purchase.
  * @returns The row.
@@ -147,6 +161,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
   const t = useTranslation();
   const [sending, setSending] = React.useState(false);
   const landed = purchase.totalCents !== null;
+  const over = OVER.has(purchase.status);
   const statusKey = STATUS_LABEL[purchase.status];
 
   const resend = React.useCallback(async (): Promise<void> => {
@@ -173,7 +188,9 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 though it were one would misstate what they paid. */}
             {landed
               ? formatMoney(purchase.totalCents!, purchase.currency)
-              : t('credits.purchase.pendingAmount')}{' '}
+              : over
+                ? t('credits.purchase.notCharged')
+                : t('credits.purchase.pendingAmount')}{' '}
             · {formatLocalDay(purchase.createdAt)}
             {statusKey === undefined ? null : (
               <Badge
@@ -194,9 +211,13 @@ const PurchaseLine = React.memo(function PurchaseLine({
         right={
           <>
             {purchase.remainingCredits === null ? (
-              <span className='block text-xs text-muted-foreground'>
-                {t('credits.purchase.creditsOnArrival')}
-              </span>
+              // Nothing is coming to an abandoned or failed purchase, so this
+              // cell stays empty rather than promising a figure.
+              over ? null : (
+                <span className='block text-xs text-muted-foreground'>
+                  {t('credits.purchase.creditsOnArrival')}
+                </span>
+              )
             ) : (
               <>
                 <span

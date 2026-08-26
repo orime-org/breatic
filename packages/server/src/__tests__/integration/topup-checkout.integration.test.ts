@@ -73,7 +73,11 @@ import {
   createCheckout,
   listTiers,
 } from "@server/modules/payment/payment.service.js";
-import { CONSENT_CREDITS_VERSION } from "@server/modules/payment/legal-text.js";
+import {
+  CONSENT_CREDITS_VERSION,
+  REFUND_CREDITS_VERSION,
+  refundLinesAt,
+} from "@server/modules/payment/legal-text.js";
 
 /**
  * The credits consent wording for a locale, read straight from the locale file.
@@ -439,5 +443,29 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
     expect(listed.confirmTimeoutMs).toBeGreaterThan(0);
     expect(listed.packs).toHaveLength(5);
     expect(listed.packs[0]).toMatchObject({ priceCents: 1000, credits: 830 });
+  });
+
+  it("carries the refund rule in full, in the language of the request", () => {
+    // The buy screen has to show it before a buyer agrees to it, and this is
+    // that screen's only source. The wording is versioned on the server, so
+    // the browser cannot hold a copy.
+    const listed = listTiers();
+    expect(listed.refundLines).toEqual(
+      refundLinesAt(REFUND_CREDITS_VERSION, "en"),
+    );
+    expect(listed.refundLines).toHaveLength(3);
+    for (const line of listed.refundLines) {
+      expect(line.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives that rule in whatever language the buyer is reading in", () => {
+    const japanese = runWithLocale("ja", () => listTiers());
+    expect(japanese.refundLines).toEqual(
+      refundLinesAt(REFUND_CREDITS_VERSION, "ja"),
+    );
+    expect(japanese.refundLines).not.toEqual(
+      refundLinesAt(REFUND_CREDITS_VERSION, "en"),
+    );
   });
 });

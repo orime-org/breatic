@@ -10,9 +10,12 @@ import { paymentApi } from '@web/data/api/payment';
 import type { CreditPack } from '@web/data/api/payment';
 import { BuyConfirmDialog } from '@web/features/credits/sections/BuyConfirmDialog';
 import {
+  Card,
   Figure,
   Footnote,
   Notice,
+  Row,
+  Rows,
   Section,
   SectionError,
   SectionSkeleton,
@@ -54,7 +57,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
     staleTime: 5 * 60 * 1000,
   });
 
-  const start = React.useCallback(async (pack: CreditPack): Promise<void> => {
+  const start = React.useCallback(async (pack: CreditPack): Promise<boolean> => {
     try {
       const { url } = await paymentApi.checkout({
         price_cents: pack.priceCents,
@@ -67,8 +70,10 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       window.location.assign(url);
+      return true;
     } catch {
       toast.error(t('credits.buy.failed'));
+      return false;
     }
   }, [t]);
 
@@ -113,6 +118,19 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
       <Footnote data-testid='buy-assign-notice'>
         {t('credits.buy.assignNotice')}
       </Footnote>
+      {/* The confirmation dialog asks the buyer to agree to this rule, so it
+          has to be readable on the screen that leads there. */}
+      {packs.isSuccess ? (
+        <div data-testid='buy-refund-rule'>
+          <Card title={t('credits.buy.refundTitle')}>
+            <Rows>
+              {packs.data.refundLines.map((line) => (
+                <Row key={line} main={line} />
+              ))}
+            </Rows>
+          </Card>
+        </div>
+      ) : null}
       <BuyConfirmDialog pack={chosen} onOpenChange={close} onConfirm={start} />
     </Section>
   );

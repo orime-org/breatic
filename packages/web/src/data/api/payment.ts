@@ -26,10 +26,16 @@ export interface CreditPack {
   currency: string;
 }
 
-/** The packs, and the wait that belongs with them. */
+/** Everything the buy screen shows before a purchase starts. */
 export interface PackList {
   /** The packs, in the order they are shown. */
   packs: CreditPack[];
+  /**
+   * The refund rule in full, in the reader's language. Versioned on the
+   * server, so a purchase made last year can still be shown what it agreed
+   * to; the browser holds no copy.
+   */
+  refundLines: string[];
   /**
    * How long the return page may keep a buyer behind the full-screen wait.
    * Decided on the server, where the value lives; the timer runs here.

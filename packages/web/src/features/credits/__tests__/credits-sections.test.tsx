@@ -41,6 +41,7 @@ vi.mock('@web/data/api/payment', () => ({
           { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
           { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
         ],
+        refundLines: ['unused', 'used', 'expired'],
         confirmTimeoutMs: 15000,
       }),
     checkout: vi.fn(),
@@ -188,14 +189,22 @@ function entry(over: Partial<CreditLedgerView> = {}): CreditLedgerView {
 /**
  * Open the overlay on one section.
  * @param section - Which section to show.
+ * @param likeTheApp - Use the app's own caching (`QueryClientProvider.tsx`)
+ *   instead of throwing every answer away. Only the cases about what makes a
+ *   screen read again need it; the rest start clean.
  * @returns The userEvent session, for the tests that go on interacting.
  */
 async function openOn(
   section: CreditsSectionId,
+  likeTheApp = false,
 ): Promise<ReturnType<typeof userEvent.setup>> {
   const user = userEvent.setup();
   const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    defaultOptions: {
+      queries: likeTheApp
+        ? { retry: false, gcTime: 5 * 60 * 1000, staleTime: 30_000 }
+        : { retry: false, gcTime: 0 },
+    },
   });
   render(
     <QueryClientProvider client={qc}>
@@ -872,6 +881,39 @@ describe('the credits overlay, section by section', () => {
 
       await waitFor(() => {
         expect(designateCreditLot).toHaveBeenCalledWith('l1', 's1');
+      });
+    });
+
+    it('makes the purchase history read again once a purchase is repointed', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+        nextCursor: null,
+      });
+      // Open the history once so its query is in the cache, then repoint from
+      // the assign screen. Where a purchase points is on every row of that
+      // list, so it has to be read again — the two screens are backed by
+      // different keys and nothing else connects them.
+      const user = await openOn('lots', true);
+      await panel();
+      await waitFor(() => {
+        expect(paymentHistory).toHaveBeenCalledTimes(1);
+      });
+
+      await user.click(document.getElementById('credits-tab-assign')!);
+      await panel();
+      await user.click(screen.getByRole('combobox'));
+      await user.click(await screen.findByRole('option', { name: 'Orime Studio' }));
+      await waitFor(() => {
+        expect(designateCreditLot).toHaveBeenCalled();
+      });
+
+      // Back to the list the buyer would go and check. Its answer is thirty
+      // seconds fresh, so it reads again only because repointing marked it
+      // stale — without that it would still be saying "unassigned".
+      await user.click(document.getElementById('credits-tab-lots')!);
+      await panel();
+      await waitFor(() => {
+        expect(paymentHistory.mock.calls.length).toBeGreaterThan(1);
       });
     });
 

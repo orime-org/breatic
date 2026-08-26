@@ -1372,6 +1372,7 @@
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",
+      "refundTitle": "退款規則",
       "action": "購買",
       "confirmTitle": "確認購買",
       "confirmPack": "點數包",
@@ -1389,6 +1390,8 @@
       "processing": "處理中",
       "expired": "已失效",
       "failed": "未成功",
+      "landed": "已到帳",
+      "notCharged": "未付款",
       "pendingAmount": "結帳時收取",
       "creditsOnArrival": "入帳後顯示",
       "resend": "重新寄送",

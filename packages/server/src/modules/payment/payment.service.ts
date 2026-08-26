@@ -37,6 +37,7 @@ import {
   CONSENT_CREDITS_VERSION,
   REFUND_CREDITS_VERSION,
   consentTextAt,
+  refundLinesAt,
 } from "@server/modules/payment/legal-text.js";
 import * as consentRepo from "@server/modules/payment/purchase-consent.repo.js";
 import * as mailRepo from "@server/modules/payment/purchase-mail.repo.js";
@@ -554,11 +555,11 @@ export async function getPayment(paymentId: string, userId: string): Promise<Pay
 }
 
 /**
- * The packs on offer, and how long the return page may wait.
+ * Everything the buy screen shows before a purchase starts.
  *
  * Stripe Price IDs stay here: they name the same packs and the browser has no
  * use for them.
- * @returns The packs and the confirmation wait.
+ * @returns The packs, the refund rule, and the confirmation wait.
  */
 export function listTiers(): {
   packs: Array<{
@@ -567,6 +568,7 @@ export function listTiers(): {
     priceCents: number;
     currency: string;
   }>;
+  refundLines: readonly string[];
   confirmTimeoutMs: number;
 } {
   return {
@@ -576,6 +578,11 @@ export function listTiers(): {
       priceCents: tier.priceCents,
       currency: tier.currency,
     })),
+    // The buy screen leads to a dialog that asks the buyer to agree to this,
+    // so it has to be readable before they get there. The wording is
+    // versioned and lives on the server, which is why it rides along here
+    // rather than sitting in the locale files the browser holds.
+    refundLines: refundLinesAt(REFUND_CREDITS_VERSION, getActiveLocale()),
     // The page keeps a buyer behind a full-screen wait for at most this long.
     // The value is here and the timer is in the browser, so it rides along
     // with the list the buy screen already reads.

@@ -146,12 +146,60 @@ describe('the purchase history', () => {
       nextCursor: null,
     });
     renderHistory();
-    const badge = await screen.findByTestId('purchase-status');
-    expect(badge.textContent).toBeTruthy();
-    expect(badge.textContent).not.toBe('');
+    const first = await screen.findByTestId('purchase-row');
+    expect(within(first).getByTestId('purchase-status').textContent).toBe(
+      'Expired',
+    );
+    // Nothing about this purchase is still coming, so neither cell may say it
+    // is. The card was never charged and no credits will arrive.
+    expect(first.textContent).toContain('Not charged');
+    expect(first.textContent).not.toContain('Charged at checkout');
+    expect(first.textContent).not.toContain('Shown once it lands');
   });
 
-  it('puts all four states in the one list', async () => {
+  it('says the same about a purchase that failed', async () => {
+    history.mockResolvedValue({
+      items: [
+        row({
+          status: 'failed',
+          totalCents: null,
+          remainingCredits: null,
+          lifecycle: null,
+          mailStatus: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const first = await screen.findByTestId('purchase-row');
+    expect(within(first).getByTestId('purchase-status').textContent).toBe(
+      'Failed',
+    );
+    expect(first.textContent).toContain('Not charged');
+    expect(first.textContent).not.toContain('Shown once it lands');
+  });
+
+  it('still says a purchase in flight has both of those coming', async () => {
+    history.mockResolvedValue({
+      items: [
+        row({
+          status: 'pending',
+          totalCents: null,
+          remainingCredits: null,
+          lifecycle: null,
+          mailStatus: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const first = await screen.findByTestId('purchase-row');
+    expect(first.textContent).toContain('Charged at checkout');
+    expect(first.textContent).toContain('Shown once it lands');
+    expect(first.textContent).not.toContain('Not charged');
+  });
+
+  it('puts all four states in the one list, each saying which it is', async () => {
     history.mockResolvedValue({
       items: [
         row({ paymentId: 'a', status: 'completed' }),
@@ -165,6 +213,16 @@ describe('the purchase history', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('purchase-row')).toHaveLength(4);
     });
+    // Every row carries a badge, including the one that landed: a reader
+    // scanning the column should not have to work out that a blank means it
+    // went through.
+    const badges = screen.getAllByTestId('purchase-status');
+    expect(badges.map((b) => b.textContent)).toEqual([
+      'Landed',
+      'Processing',
+      'Expired',
+      'Failed',
+    ]);
   });
 
   it('counts what still needs assigning, and only once the list is read through', async () => {

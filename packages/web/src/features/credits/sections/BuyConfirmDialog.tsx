@@ -24,8 +24,12 @@ interface BuyConfirmDialogProps {
   pack: CreditPack | null;
   /** Called when the dialog closes itself. */
   onOpenChange: (open: boolean) => void;
-  /** Called with the pack once the buyer confirms. */
-  onConfirm: (pack: CreditPack) => void | Promise<void>;
+  /**
+   * Called with the pack once the buyer confirms. Answers whether the buyer
+   * is on their way to Stripe; a false answer leaves the dialog open and
+   * usable, because there is nothing else for them to do here but try again.
+   */
+  onConfirm: (pack: CreditPack) => Promise<boolean>;
 }
 
 /**
@@ -66,7 +70,10 @@ export function BuyConfirmDialog({
   const confirm = React.useCallback(async (): Promise<void> => {
     if (pack === null) return;
     setStarting(true);
-    await onConfirm(pack);
+    // Left disabled on success: the browser is leaving for Stripe, and a
+    // button that comes back to life during that moment is one a second tap
+    // can reach.
+    if (!(await onConfirm(pack))) setStarting(false);
   }, [onConfirm, pack]);
 
   const cancel = React.useCallback(() => {
