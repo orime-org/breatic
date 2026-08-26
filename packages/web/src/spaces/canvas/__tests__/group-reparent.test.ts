@@ -106,3 +106,45 @@ describe('planResizeJoin — a Group resize absorbs loose nodes whose center it 
     expect(out).toEqual([{ id: 'n', parentId: 'f', position: { x: 50, y: 70 } }]);
   });
 });
+
+describe('planGroupDragStop when a Group takes no part in the decision', () => {
+  it('keeps a member of a locked Group in it', () => {
+    // A locked Group's structure is frozen, which cuts both ways: it accepts
+    // nobody, and nobody is judged to have left it.
+    const decisions = planGroupDragStop(
+      [{ id: 'm', parentId: 'g', rect: { x: 50, y: 50, width: 40, height: 40 } }],
+      [{ id: 'g', rect: { x: 0, y: 0, width: 200, height: 200 }, locked: true }],
+    );
+    expect(decisions).toEqual([
+      { nodeId: 'm', targetGroupId: 'g', changed: false },
+    ]);
+  });
+
+  it('keeps a member of a Group a remote gesture is holding', () => {
+    const decisions = planGroupDragStop(
+      [{ id: 'm', parentId: 'g', rect: { x: 50, y: 50, width: 40, height: 40 } }],
+      [
+        {
+          id: 'g',
+          rect: { x: 0, y: 0, width: 200, height: 200 },
+          heldByRemote: true,
+        },
+      ],
+    );
+    expect(decisions).toEqual([
+      { nodeId: 'm', targetGroupId: 'g', changed: false },
+    ]);
+  });
+
+  it('frees a node whose Group is no longer on the canvas', () => {
+    // A parent that does not exist says nothing, so the node is judged like any
+    // other — here it lands nowhere and goes back to the top level.
+    const decisions = planGroupDragStop(
+      [{ id: 'm', parentId: 'gone', rect: { x: 900, y: 900, width: 40, height: 40 } }],
+      [{ id: 'g', rect: { x: 0, y: 0, width: 200, height: 200 } }],
+    );
+    expect(decisions).toEqual([
+      { nodeId: 'm', targetGroupId: null, changed: true },
+    ]);
+  });
+});

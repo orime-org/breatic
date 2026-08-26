@@ -14,11 +14,10 @@ export type DocumentPlace = Node;
  *
  * A node a remote gesture is holding is on screen at coordinates that are about
  * to change and that the document has never held, so this end does not commit
- * anything about it — the gesture's own release will. What it does NOT mean is
- * that the node has stopped existing: a decision about where something lands is
- * read off the whole buffer, because that is what the user is aiming at, and
- * because a planner reading a set with nodes missing draws conclusions from
- * their absence.
+ * anything about it — the gesture's own release will. Use this only where the
+ * set exists to produce writes, one per entry: a planner that draws conclusions
+ * from a node's absence needs the whole buffer and is told separately which of
+ * those nodes may take part.
  * @param nodes - The candidates a write would be produced for.
  * @param remoteGesture - The nodes remote gestures are currently moving.
  * @returns Those of them no remote gesture is holding, or the array itself when

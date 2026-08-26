@@ -2692,21 +2692,25 @@ function CanvasSpaceInner({
     (info) =>
       `${info.id}:${info.isGroup ? 1 : 0}:${info.parentId ?? ''}:${info.locked ? 1 : 0}`,
   );
-  // What a grouping offer is made of. A node a remote gesture is holding is
-  // left out: taking it into a new Group would write its parent and its
-  // position relative to an origin that did not exist a moment ago, while its
-  // coordinates are still moving. The offer and the action read this same
-  // list, so what the toolbar shows is what pressing it does.
+  const groupOffer = React.useMemo(
+    () => computeGroupToolbar(selectedIds, groupInfos),
+    [selectedIds, groupInfos],
+  );
+  // Who would go into a new Group. A node a remote gesture is holding is left
+  // out: taking it in would write its parent and its position relative to an
+  // origin that did not exist a moment ago, while its coordinates are still
+  // moving. This says nothing about ungrouping or about a Group's background —
+  // neither writes geometry, so both stay available on a Group somebody else
+  // happens to be dragging.
   const groupableIds = useStableList(
     React.useMemo(
       () => selectedIds.filter((id) => !remoteGesture.has(id)),
       [selectedIds, remoteGesture],
     ),
   );
-  const groupOffer = React.useMemo(
-    () => computeGroupToolbar(groupableIds, groupInfos),
-    [groupableIds, groupInfos],
-  );
+  // Offering to group means it can be done: the toolbar, the menu and the
+  // shortcut all read this, and so does the action.
+  const canGroup = groupOffer.kind === 'group' && groupableIds.length >= 2;
 
   const publishedPoint = React.useCallback(
     (screen: { x: number; y: number }): { x: number; y: number } =>
@@ -2836,7 +2840,7 @@ function CanvasSpaceInner({
   // back via `parentId` with positions relative to the Group. The new Group is
   // selected once it mirrors back so its toolbar is immediately usable.
   const groupSelection = React.useCallback((): void => {
-    if (readOnly || groupOffer.kind !== 'group') return;
+    if (readOnly || !canGroup) return;
     const groupId = newId();
     // The box is drawn around what is on screen, which is what the user
     // selected, minus whatever a remote gesture is holding.
@@ -2863,7 +2867,7 @@ function CanvasSpaceInner({
     setSelectAfterCreate([groupId]);
   }, [
     readOnly,
-    groupOffer,
+    canGroup,
     groupableIds,
     selectedIds,
     t,
@@ -2912,14 +2916,17 @@ function CanvasSpaceInner({
       // Always swallow a group / ungroup chord on the canvas so the browser's
       // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
       // current selection (group mixed with loose nodes → no-op, B decision).
-      const plan = planGroupShortcut(matchGroupShortcut(event), groupOffer.kind);
+      const plan = planGroupShortcut(
+        matchGroupShortcut(event),
+        groupOffer.kind === 'group' && !canGroup ? 'none' : groupOffer.kind,
+      );
       if (plan.preventDefault) event.preventDefault();
       if (plan.run === 'group') groupSelection();
       else if (plan.run === 'ungroup') ungroupSelection();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, groupOffer, groupSelection, ungroupSelection]);
+  }, [readOnly, groupOffer, canGroup, groupSelection, ungroupSelection]);
 
   // ---- Right-click menu actions (context-menu slice) ----
   const requestRename = useCanvasStore((s) => s.requestRename);
@@ -3478,8 +3485,11 @@ function CanvasSpaceInner({
         const joins = planResizeJoin(groupId, newRect, loose);
         // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
         // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
-        // the rect VERBATIM (no post-commit repair). `resizeGroup` reanchors the
-        // members against the origin it moves, so their absolute places hold. One
+        // the rect VERBATIM (no post-commit repair). Where each member ends up is
+        // read straight off the buffer, which is the only place that knows: for
+        // most of them ReactFlow reanchored against the moving origin, and for one
+        // a collaborator is dragging it is wherever that gesture has it — the same
+        // place every screen is drawing it, so nothing jumps when this lands. One
         // atomic undo entry: the Group's new size/position, its members, PLUS any
         // newly absorbed loose nodes.
         gesture.end(() => {
@@ -3492,6 +3502,10 @@ function CanvasSpaceInner({
               rect.width,
               rect.height,
             );
+            for (const child of flowNodesRef.current) {
+              if (child.parentId !== groupId) continue;
+              setNodePosition(projectId, spaceId, child.id, child.position);
+            }
             for (const join of joins) {
               setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
             }
@@ -3874,7 +3888,7 @@ function CanvasSpaceInner({
             // group/ungroup actions mutate mid-session — same concealment
             // rule as the left menu / viewport toolbar (item 13).
             isVisible={
-              groupOffer.kind !== 'none' &&
+              (groupOffer.kind === 'ungroup' || canGroup) &&
               !readOnly &&
               pickForNodeId == null
             }
@@ -4107,7 +4121,7 @@ function CanvasSpaceInner({
           onOpenChange={onSelectionMenuOpenChange}
           // Group is offered only for an all-loose 2+ selection (same rule as
           // the floating toolbar + Cmd/Ctrl+G).
-          onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
+          onGroup={canGroup ? groupSelection : undefined}
           onCopy={copySelection}
           onDuplicate={duplicateSelection}
           onDelete={deleteSelection}

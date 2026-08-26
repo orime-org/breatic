@@ -106,16 +106,15 @@ export function planGroupDrag(
   const groupById = new Map(groups.map((group) => [group.id, group]));
 
   const draggedMembers = dragged.filter((node) => node.type !== 'group');
-  // A Group somebody else is dragging is not offered as a landing target: its
-  // rect right now is one the document has never held. It stays in `allNodes`,
-  // so it still answers which Group a node currently belongs to.
-  const groupRefs: GroupRef[] = groups
-    .filter((group) => !heldByRemote.has(group.id))
-    .map((group) => ({
-      id: group.id,
-      rect: rectOf(group),
-      locked: group.locked,
-    }));
+  // A Group somebody else is dragging stays in the list and is marked instead:
+  // its rect right now is one the document has never held, so it neither
+  // receives a node nor is judged to have lost one.
+  const groupRefs: GroupRef[] = groups.map((group) => ({
+    id: group.id,
+    rect: rectOf(group),
+    locked: group.locked,
+    heldByRemote: heldByRemote.has(group.id),
+  }));
   const decisions = planGroupDragStop(
     draggedMembers.map((node) => ({
       id: node.id,

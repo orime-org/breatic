@@ -35,6 +35,11 @@ export interface GroupRef {
   /** The Group's absolute rect. */
   rect: Rect;
   /**
+   * Whether a gesture on another screen is moving this Group. Its rect right
+   * now is one the document has never held, so it decides nothing.
+   */
+  heldByRemote?: boolean;
+  /**
    * Whether the Group is locked — a locked Group's membership is frozen, so it
    * never accepts a dragged-in node (excluded as a reparent target).
    */
@@ -59,26 +64,46 @@ export interface ReparentDecision {
  * @param groups - The candidate Groups with their absolute rects.
  * @returns One reparent decision per dragged node.
  */
+/**
+ * Whether a Group takes part in deciding where a dragged node lands.
+ * @param group - The Group to judge.
+ * @returns True when it can both receive a node and be judged to have lost one.
+ */
+function accepts(group: GroupRef): boolean {
+  return group.locked !== true && group.heldByRemote !== true;
+}
+
+/**
+ * Decide, per dragged node, which Group (if any) it now belongs to — the Group
+ * whose rect contains the node's center. A node never reparents into itself (a
+ * Group dragged over another is excluded by id), so dragging a Group yields no
+ * membership change here.
+ * @param dragged - Every dropped node with its current parent + absolute rect.
+ * @param groups - Every Group on the canvas with its absolute rect, whether or
+ *   not it takes part in the decision.
+ * @returns One reparent decision per dragged node.
+ */
 export function planGroupDragStop(
   dragged: ReadonlyArray<DraggedNode>,
   groups: ReadonlyArray<GroupRef>,
 ): ReparentDecision[] {
   return dragged.map((node) => {
     const currentParent = node.parentId ?? null;
-    // Not finding a receiving Group means "this node landed nowhere" only when
-    // every Group was up for consideration. A node whose own Group was left out
-    // of the candidates cannot be judged at all, so its membership stands.
-    if (
-      currentParent !== null &&
-      !groups.some((group) => group.id === currentParent)
-    ) {
+    const parent =
+      currentParent === null
+        ? undefined
+        : groups.find((group) => group.id === currentParent);
+    // A Group that takes no part in this decision cannot be judged to have lost
+    // a member either, so its members' memberships stand. A parent that is not
+    // on the canvas at all is a different case: it has nothing to say, and the
+    // node is judged like any other.
+    if (parent !== undefined && !accepts(parent)) {
       return { nodeId: node.id, targetGroupId: currentParent, changed: false };
     }
     const target = groups.find(
       (group) =>
         group.id !== node.id &&
-        // A locked Group's structure is frozen — never accept a dragged-in node.
-        group.locked !== true &&
+        accepts(group) &&
         groupContainsMemberCenter(group.rect, node.rect),
     );
     const targetGroupId = target?.id ?? null;

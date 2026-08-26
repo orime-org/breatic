@@ -162,19 +162,20 @@ describe('every write path reads the buffer through the door', () => {
     expect(joins.map((j) => j.id)).not.toContain(FLYING_ID);
   });
 
-  it('a new Group sizes itself to the document positions of its members', () => {
+  it('a new Group leaves out a member a remote gesture is holding', () => {
     const anchored = node('anchored', 0, 0);
-    const view = docGeometryView(
-      [...bufferMidGesture(), anchored],
-      [...documentNodes(), anchored],
-      REMOTE,
+    const another = node('another', 120, 0);
+    const buffer = [...bufferMidGesture(), anchored, another];
+    // Production reads the raw buffer and hands the planner the ids that
+    // survive the filter, which is what this mirrors.
+    const picked = [FLYING_ID, 'anchored', 'another'].filter(
+      (id) => !REMOTE.has(id),
     );
-    const plan = planGroupCreation(view, [FLYING_ID, 'anchored'], 'new-group');
+    const plan = planGroupCreation(buffer, picked, 'new-group');
     expect(plan).not.toBeNull();
-    // Built off the raw buffer the box would span 4000px to reach the flying
-    // node; the document has the two of them 40px apart.
+    expect(plan?.members.map((m) => m.id).sort()).toEqual(['anchored', 'another']);
+    // The box wraps those two, nowhere near the flying node at 4000,4000.
     expect(plan?.width).toBeLessThan(1_000);
-    expect(plan?.height).toBeLessThan(1_000);
   });
 
   it('the clipboard records the document position, not the one in flight', () => {
