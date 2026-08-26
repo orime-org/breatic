@@ -202,13 +202,13 @@ describe("purchase_mail_outbox", () => {
     const { userId, paymentId } = await seedUserWithPayment();
     try {
       await sql`
-        INSERT INTO purchase_mail_outbox (payment_id, kind, locale, status)
-        VALUES (${paymentId}, 'purchase_confirmation', 'en', 'pending')
+        INSERT INTO purchase_mail_outbox (payment_id, status)
+        VALUES (${paymentId}, 'pending')
       `;
       await expect(
         sql`
-          INSERT INTO purchase_mail_outbox (payment_id, kind, locale, status)
-          VALUES (${paymentId}, 'purchase_confirmation', 'en', 'pending')
+          INSERT INTO purchase_mail_outbox (payment_id, status)
+          VALUES (${paymentId}, 'pending')
         `,
       ).rejects.toThrow(/duplicate key|unique/i);
     } finally {
@@ -220,8 +220,8 @@ describe("purchase_mail_outbox", () => {
     const { userId, paymentId } = await seedUserWithPayment();
     try {
       const [before] = await sql<{ updated_at: Date }[]>`
-        INSERT INTO purchase_mail_outbox (payment_id, kind, locale, status)
-        VALUES (${paymentId}, 'purchase_confirmation', 'en', 'pending')
+        INSERT INTO purchase_mail_outbox (payment_id, status)
+        VALUES (${paymentId}, 'pending')
         RETURNING updated_at
       `;
       const [after] = await sql<{ updated_at: Date }[]>`
@@ -241,8 +241,6 @@ describe("purchase_mail_outbox", () => {
     const columns = await columnsOf("purchase_mail_outbox");
     for (const name of [
       "payment_id",
-      "kind",
-      "locale",
       "status",
       "attempts",
       "last_error",

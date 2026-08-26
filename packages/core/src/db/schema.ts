@@ -748,10 +748,6 @@ export const purchaseMailOutbox = pgTable("purchase_mail_outbox", {
     .notNull()
     .unique()
     .references(() => payments.id, { onDelete: "restrict" }),
-  kind: varchar("kind", { length: 40 })
-    .default("purchase_confirmation")
-    .notNull(),
-  locale: varchar("locale", { length: 10 }).notNull(),
   status: varchar("status", { length: 20 }).default("pending").notNull(),
   attempts: integer("attempts").default(0).notNull(),
   lastError: text("last_error"),

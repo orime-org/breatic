@@ -198,8 +198,8 @@ async function seedLanded(
     `;
   }
   await sql`
-    INSERT INTO purchase_mail_outbox (payment_id, locale, status)
-    VALUES (${paymentId}, 'en', 'sent')
+    INSERT INTO purchase_mail_outbox (payment_id, status)
+    VALUES (${paymentId}, 'sent')
   `;
   return paymentId;
 }
@@ -271,7 +271,9 @@ describe("GET /payment/history — every purchase, landed or not", () => {
       expect(row!.remainingCredits).toBeNull();
       expect(row!.lifecycle).toBeNull();
       expect(row!.designatedStudioId).toBeNull();
-      expect(row!.mailStatus).toBeNull();
+      // No confirmation has been opened for it either, so there is nothing to
+      // send again.
+      expect(row!.canResend).toBe(false);
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -288,7 +290,6 @@ describe("GET /payment/history — every purchase, landed or not", () => {
       expect(row!.lifecycle).toBe("active");
       expect(row!.designatedStudioId).toBe(buyer.studioId);
       expect(row!.designatedStudioName).not.toBeNull();
-      expect(row!.mailStatus).toBe("sent");
     } finally {
       await dropBuyer(buyer.userId);
     }

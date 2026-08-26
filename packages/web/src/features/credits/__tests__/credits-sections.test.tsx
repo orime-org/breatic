@@ -157,7 +157,6 @@ function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
     designatedStudioName: 'Orime Studio',
     status: 'completed',
     createdAt: '2026-08-21T10:00:00.000Z',
-    mailStatus: 'sent',
     canResend: false,
     ...over,
   };

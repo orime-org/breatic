@@ -490,10 +490,13 @@ describe("what a purchase agreed to is read off our own row", () => {
       expect(consent!.consent_text_version).toBe("consent-credits-v1");
       expect(consent!.refund_text_version).toBe("refund-credits-v1");
 
-      const [mail] = await sql<{ locale: string }[]>`
-        SELECT locale FROM purchase_mail_outbox WHERE payment_id = ${paymentId}
+      // The letter is written in the language stored on the payment, which
+      // this record already pins; the outbox row keeps no second copy of it.
+      const [mail] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM purchase_mail_outbox
+        WHERE payment_id = ${paymentId}
       `;
-      expect(mail!.locale).toBe("ja");
+      expect(mail!.n).toBe(1);
     } finally {
       await dropUser(userId);
     }

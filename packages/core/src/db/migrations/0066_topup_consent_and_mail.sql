@@ -54,8 +54,6 @@ CREATE INDEX "purchase_consents_user_id_idx" ON "purchase_consents" ("user_id");
 CREATE TABLE "purchase_mail_outbox" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "payment_id" uuid NOT NULL,
-  "kind" varchar(40) DEFAULT 'purchase_confirmation' NOT NULL,
-  "locale" varchar(10) NOT NULL,
   "status" varchar(20) DEFAULT 'pending' NOT NULL,
   "attempts" integer DEFAULT 0 NOT NULL,
   "last_error" text,

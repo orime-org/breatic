@@ -141,12 +141,8 @@ async function writeConsentIfGiven(
  * @param locale - The language it will be written in.
  * @param tx - The fulfillment transaction.
  */
-async function openMailOutbox(
-  paymentId: string,
-  locale: string,
-  tx: DbTx,
-): Promise<void> {
-  await mailRepo.openOutbox(tx, paymentId, locale);
+async function openMailOutbox(paymentId: string, tx: DbTx): Promise<void> {
+  await mailRepo.openOutbox(tx, paymentId);
 }
 
 /**
@@ -290,11 +286,7 @@ export async function fulfillPayment(
     );
 
     const consentRecorded = await writeConsentIfGiven(payment, session, tx);
-    await openMailOutbox(
-      payment.id,
-      storedAtCheckout(payment, "locale", "en"),
-      tx,
-    );
+    await openMailOutbox(payment.id, tx);
 
     return {
       status: "granted",
@@ -817,7 +809,6 @@ export async function getPurchaseHistory(
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      mailStatus: row.mailStatus,
       canResend: canResend(row.mailStatus, row.mailUpdatedAt),
     })),
     nextCursor:

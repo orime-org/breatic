@@ -67,7 +67,6 @@ function row(over: Partial<PurchaseRow> = {}): PurchaseRow {
     designatedStudioName: 'Orime Studio',
     status: 'completed',
     createdAt: '2026-08-25T10:00:00.000Z',
-    mailStatus: 'sent',
     canResend: false,
     ...over,
   };
@@ -117,7 +116,6 @@ describe('the purchase history', () => {
           lifecycle: null,
           designatedStudioId: null,
           designatedStudioName: null,
-          mailStatus: null,
         }),
       ],
       nextCursor: null,
@@ -140,7 +138,6 @@ describe('the purchase history', () => {
           totalCents: null,
           remainingCredits: null,
           lifecycle: null,
-          mailStatus: null,
         }),
       ],
       nextCursor: null,
@@ -165,7 +162,6 @@ describe('the purchase history', () => {
           totalCents: null,
           remainingCredits: null,
           lifecycle: null,
-          mailStatus: null,
         }),
       ],
       nextCursor: null,
@@ -187,7 +183,6 @@ describe('the purchase history', () => {
           totalCents: null,
           remainingCredits: null,
           lifecycle: null,
-          mailStatus: null,
         }),
       ],
       nextCursor: null,
@@ -269,8 +264,8 @@ describe('sending the confirmation again', () => {
   it('offers it only where the server says the letter did not go out', async () => {
     history.mockResolvedValue({
       items: [
-        row({ paymentId: 'a', mailStatus: 'sent', canResend: false }),
-        row({ paymentId: 'b', mailStatus: 'failed', canResend: true }),
+        row({ paymentId: 'a', canResend: false }),
+        row({ paymentId: 'b', canResend: true }),
       ],
       nextCursor: null,
     });
@@ -284,7 +279,7 @@ describe('sending the confirmation again', () => {
   it('sends it for the row it was tapped on', async () => {
     const user = userEvent.setup();
     history.mockResolvedValue({
-      items: [row({ paymentId: 'b', mailStatus: 'failed', canResend: true })],
+      items: [row({ paymentId: 'b', canResend: true })],
       nextCursor: null,
     });
     renderHistory();
@@ -302,7 +297,7 @@ describe('sending the confirmation again', () => {
     const user = userEvent.setup();
     resendConfirmation.mockResolvedValue({ sent: false });
     history.mockResolvedValue({
-      items: [row({ paymentId: 'b', mailStatus: 'skipped', canResend: true })],
+      items: [row({ paymentId: 'b', canResend: true })],
       nextCursor: null,
     });
     renderHistory();

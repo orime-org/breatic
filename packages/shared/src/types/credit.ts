@@ -60,8 +60,6 @@ export interface PurchaseRow {
   designatedStudioName: string | null;
   status: string;
   createdAt: string;
-  /** Where the confirmation email stands. Null until the purchase lands. */
-  mailStatus: string | null;
   /** Whether the resend control is offered, decided on the server. */
   canResend: boolean;
 }

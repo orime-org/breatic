@@ -45,9 +45,11 @@ export async function sendPurchaseConfirmation(input: {
   text: string;
   staleSendingBefore: Date;
 }): Promise<boolean> {
-  if (!(await outbox.claimSend(input.paymentId, input.staleSendingBefore))) {
-    return false;
-  }
+  const claim = await outbox.claimSend(
+    input.paymentId,
+    input.staleSendingBefore,
+  );
+  if (claim === null) return false;
   try {
     const result = await sendMail({
       to: input.to,
@@ -56,16 +58,17 @@ export async function sendPurchaseConfirmation(input: {
       text: input.text,
     });
     if (result.status === "sent") {
-      await outbox.recordSend(input.paymentId, "sent");
+      await outbox.recordSend(input.paymentId, claim, "sent");
       return true;
     }
     // Console and disabled backends never put a letter on the wire, so the
     // row says so and keeps offering the resend for once one is configured.
-    await outbox.recordSend(input.paymentId, "skipped");
+    await outbox.recordSend(input.paymentId, claim, "skipped");
     return false;
   } catch (err) {
     await outbox.recordSend(
       input.paymentId,
+      claim,
       "failed",
       err instanceof Error ? err.message : String(err),
     );
