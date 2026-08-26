@@ -219,14 +219,32 @@ for (const scheme of ['light', 'dark'] as const) {
       const tokenBackground = getComputedStyle(probe).backgroundColor;
       probe.remove();
       // #912 的 A 档给了四个数：按钮 28×28 · 图标 16 · 间距 2 · 整条 38 高。
-      // 按钮那个下面的 `buttons` 已经在量，其余三个在这里取。图标按每个按钮
-      // 里的那个 `svg` 量——条上每一格都是一个图标按钮，图标是它唯一的子元素。
+      // 按钮那个下面的 `buttons` 已经在量，其余三个在这里取。
       const barHeight = Math.round(b.height);
       const controlGap = cs.gap;
-      const icons = Array.from(el.querySelectorAll('button > svg')).map((n) => {
+      /**
+       * 一个元素的尺寸，四舍五入成 `宽×高`。
+       * @param n - 要量的元素。
+       * @returns 那个字符串。
+       */
+      const size = (n: Element): string => {
         const r = n.getBoundingClientRect();
         return `${Math.round(r.width)}×${Math.round(r.height)}`;
-      });
+      };
+      // 图标取每一格里的**第一个** `svg`。AI 那格是下拉形态（图标、文字、
+      // 箭头），所以它有两个 svg，而箭头不是图标——按 `button > svg` 一把抓
+      // 会把 13px 的箭头混进 16px 的图标里。
+      const icons = Array.from(el.querySelectorAll('button')).map((n) =>
+        size(n.querySelector('svg') as Element),
+      );
+      // 那个箭头单独量，免得它跟着图标一起被改掉没人发现。
+      const aiChevron = size(
+        [
+          ...(el
+            .querySelector('[data-testid="doc-bubble-coming-ai"]')
+            ?.querySelectorAll('svg') ?? []),
+        ].pop() as Element,
+      );
       const buttons = Array.from(
         el.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
       ).map((n) => {
@@ -293,6 +311,7 @@ for (const scheme of ['light', 'dark'] as const) {
         barHeight,
         controlGap,
         icons,
+        aiChevron,
         hitInsideBar: !!hit?.closest('[data-testid="doc-selection-bubble-bar"]'),
         insideScroller: !!el.closest('.doc-body-scroller'),
         aboveWindowTop: b.top < 0,
@@ -314,14 +333,16 @@ for (const scheme of ['light', 'dark'] as const) {
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 28 });
     }
-    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1；条上
-    // 每一格都是图标按钮，所以图标那一项应当是 11 个（九个命令加评论、AI）。
+    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。图标
+    // 十一个：九个命令加评论、AI。AI 那格的箭头 13 不在 A 档改动之列，单独
+    // 钉住它没被顺手动过。
     expect(geo.barHeight).toBe(38);
     expect(geo.controlGap).toBe('2px');
     expect(geo.icons).toHaveLength(11);
     for (const icon of geo.icons) {
       expect(icon).toBe('16×16');
     }
+    expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
     // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
