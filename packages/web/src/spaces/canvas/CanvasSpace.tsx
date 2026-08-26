@@ -2670,6 +2670,12 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
+      // TODO(#168): this takes the copy away from a text selection. Dragging
+      // across words anywhere on the page leaves `document.activeElement` on
+      // `body`, so the editable-target check lets it through, and a reader who
+      // highlighted a reply in the chat panel gets the selected node's JSON.
+      // Text selections belong to the browser; the node goes on the clipboard
+      // only when there is none.
       if (readOnly || isEditableTarget(document.activeElement)) return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
