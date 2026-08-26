@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 浮出条上四个悬停展开的格位：块类型 · 对齐 · 颜色 · AI。
+ * The bar's four hover-opened slots: block type, alignment, colour, AI.
  *
- * 四个共用 {@link DocumentBubbleMenu} 那层外壳（开合规则、焦点、滚轮、滚动即
- * 关全在那儿），这里只管每一格自己长什么样、菜单里装什么。
+ * All four share the shell in {@link DocumentBubbleMenu} — open and close,
+ * focus, the wheel, scroll-closes-it all live there. This file is only about
+ * what each slot looks like and what its menu holds.
  *
- * 这一轮只有块类型菜单里的三项接得上命令（无序列表 · 有序列表 · 引用，它们
- * 今天就在条上），其余按「还没开放」的既有表示画 —— user 2026-08-23 的规则，
- * 原话在 `document-coming-tool.tsx` 的模块注释里，user 2026-08-26 确认沿用。
+ * Three rows in the block type menu reach a command this time round (bulleted
+ * list, numbered list, quote — the three that sit on the bar today); everything
+ * else carries the not-open-yet treatment `document-coming-tool.tsx` defines
+ * (user 2026-08-23's rule, which user 2026-08-26 confirmed still stands).
  */
 
 import * as React from 'react';
@@ -32,29 +34,29 @@ import {
 } from '@web/spaces/document/document-block-type';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 
-/** 一格的公共形态：`.bubble-drop` —— 28 高，左右 6px，三样东西之间 3px。 */
+/** The shape every slot shares: `.bubble-drop` — 28 tall, 6px either side. */
 const SLOT = `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5`;
 
-/** 每一格都从条那里拿到的几样。 */
+/** What every slot receives from the bar. */
 interface SlotProps {
   editor: Editor;
-  /** 菜单挂进哪个元素，传浮出条自己。 */
+  /** Which element the menu mounts inside; the bar passes itself. */
   container: HTMLElement | null;
-  /** 正文的滚动容器。 */
+  /** The body's scroller. */
   scroller: HTMLElement | null;
-  /** 现在开着的是哪一格，一次只开一个。 */
+  /** Which slot is open; only one is at a time. */
   openId: string | null;
-  /** 要开或要关某一格。 */
+  /** Open or close one slot. */
   onOpenChange: (id: string, open: boolean) => void;
 }
 
 /**
- * 块类型那一格。
+ * The block type slot.
  *
- * 图标跟着当前块变（user 2026-08-26），菜单九项照 demo:560-588，其中七项带
- * 快捷键列。
- * @param props - 见 {@link SlotProps}。
- * @returns 这一格。
+ * Its icon tracks the current block (user 2026-08-26); the menu's nine rows
+ * follow demo:560-588, seven of them carrying a shortcut column.
+ * @param props - See {@link SlotProps}.
+ * @returns The slot.
  */
 export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   editor,
@@ -128,7 +130,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   );
 });
 
-/** 对齐菜单三项，照 demo:590-596。 */
+/** The alignment menu's three rows, from demo:590-596. */
 const ALIGN_ITEMS = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft' },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter' },
@@ -136,11 +138,12 @@ const ALIGN_ITEMS = [
 ];
 
 /**
- * 对齐那一格。
+ * The alignment slot.
  *
- * 这一格连同它的三项这一轮都不接命令 —— 对齐要新的 schema 属性，归 #905。
- * @param props - 见 {@link SlotProps}。
- * @returns 这一格。
+ * Neither the slot nor its three rows reach a command this time round:
+ * alignment needs a new schema attribute, which is task #905.
+ * @param props - See {@link SlotProps}.
+ * @returns The slot.
  */
 export const AlignSlot = React.memo(function AlignSlot({
   container,
@@ -195,16 +198,17 @@ export const AlignSlot = React.memo(function AlignSlot({
   );
 });
 
-/** 颜色面板的七色，照 demo 3.5 和 palette。 */
+/** The colour panel's seven hues, from demo 3.5 and the palette. */
 const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
 
 /**
- * 颜色那一格。
+ * The colour slot.
  *
- * 触发按钮是一个字母 A 加箭头（demo:506-509）。面板两行各七色：字体颜色那行
- * 把 A 着色，背景颜色那行是色块（demo 3.5）。这一轮不接命令，归 #905。
- * @param props - 见 {@link SlotProps}。
- * @returns 这一格。
+ * Its opener is the letter A and a chevron (demo:506-509). The panel holds two
+ * rows of seven: the text row colours the A, the background row is a swatch
+ * (demo 3.5). No command behind it this time round — task #905.
+ * @param props - See {@link SlotProps}.
+ * @returns The slot.
  */
 export const ColorSlot = React.memo(function ColorSlot({
   container,
@@ -276,29 +280,42 @@ export const ColorSlot = React.memo(function ColorSlot({
   );
 });
 
-/** AI 菜单的三组八条，照菜单体系定稿 §3.2.1。 */
+/** The AI menu's eight commands in three groups, from the ruling §3.2.1. */
 const AI_GROUPS = [
   {
     labelKey: 'spaces.document.commands.aiRewriteGroup',
-    items: ['refine', 'expand', 'shorten', 'translate', 'tone'],
+    // Each row spells its key out. A template built from the id would read the
+    // same at runtime and vanish from the scan that finds dead catalog entries,
+    // so every one of these eight would look unused.
+    items: [
+      { id: 'refine', labelKey: 'spaces.document.commands.ai_refine' },
+      { id: 'expand', labelKey: 'spaces.document.commands.ai_expand' },
+      { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten' },
+      { id: 'translate', labelKey: 'spaces.document.commands.ai_translate' },
+      { id: 'tone', labelKey: 'spaces.document.commands.ai_tone' },
+    ],
   },
   {
     labelKey: 'spaces.document.commands.aiProduceGroup',
-    items: ['storyboard', 'illustrate'],
+    items: [
+      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard' },
+      { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate' },
+    ],
   },
   {
     labelKey: 'spaces.document.commands.aiOtherGroup',
-    items: ['custom'],
+    items: [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom' }],
   },
 ];
 
 /**
- * AI 那一格。
+ * The AI slot.
  *
- * 形态是定稿 §3.2.1 定的：图标加「AI」加箭头，悬上去在下方展开一列命令。
- * 八条命令这一轮都不接，各自归它们自己的任务（定稿 §3.3 的分流）。
- * @param props - 见 {@link SlotProps}。
- * @returns 这一格。
+ * Its shape is the ruling's (§3.2.1): icon, the word AI, chevron, and hovering
+ * it opens a list of commands below. None of the eight reach anything this time
+ * round; each arrives with its own task (the ruling §3.3 routes them).
+ * @param props - See {@link SlotProps}.
+ * @returns The slot.
  */
 export const AiSlot = React.memo(function AiSlot({
   container,
@@ -342,15 +359,15 @@ export const AiSlot = React.memo(function AiSlot({
           <DropdownMenuLabel>{t(group.labelKey)}</DropdownMenuLabel>
           {group.items.map((item) => (
             <DropdownMenuItem
-              key={item}
-              data-testid={`doc-bubble-ai-item-${item}`}
+              key={item.id}
+              data-testid={`doc-bubble-ai-item-${item.id}`}
               aria-disabled='true'
               className={UNAVAILABLE}
               onSelect={(event) => {
                 event.preventDefault();
               }}
             >
-              {t(`spaces.document.commands.ai_${item}`)}
+              {t(item.labelKey)}
             </DropdownMenuItem>
           ))}
         </React.Fragment>

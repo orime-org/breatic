@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 浮出条上一个下拉的外壳：悬停展开，点击也能开。
+ * The shell around one dropdown on the bubble bar: opens on hover, and on click.
  *
- * 条上四个格位（块类型 · 对齐 · 颜色 · AI）共用它，装什么由 children 决定。
- * 形态出自菜单体系定稿 §3.2.1（「形态照飞书：选中文字浮出一条，右侧那几个
- * 图标悬上去就在下方出一个下拉列表」），user 2026-08-26 把它铺到四格并定了
- * 五条规则：悬停打开 · 指针能从格子挪到菜单上去点 · 离开整片区域才关、格子
- * 还在 · 指针停在菜单上时正文滚不动 · 正文一旦真滚了菜单必须消失。
+ * The bar's four slots (block type, alignment, colour, AI) share it; what goes
+ * inside is the caller's business. The shape comes from the menu-system ruling
+ * §3.2.1 ("hover one of those icons and a list opens below it"), which defined
+ * it for the AI slot; user 2026-08-26 spread it to all four and set five rules:
+ * hover opens · the pointer can travel from the slot onto the menu and press a
+ * row · only leaving the whole area closes it, and the slot stays · the body
+ * does not scroll while the pointer rests on the menu · once the body really
+ * scrolls, the menu goes.
  *
- * 键盘不参与（user 2026-08-26）。焦点也不参与，见下。
+ * The keyboard takes no part (user 2026-08-26). Neither does focus — see below.
  */
 
 import * as React from 'react';
@@ -22,48 +25,51 @@ import {
 } from '@web/components/ui/dropdown-menu';
 
 /**
- * 指针离开之后，菜单还留多久。
+ * How long the menu stands after the pointer leaves.
  *
- * WCAG 2.1 SC 1.4.13 的 Hoverable 要求指针从格子挪到菜单的途中菜单不能消失，
- * 而两者之间隔着 `sideOffset` 那道缝，穿过它的那一刻指针两边都不在。留一段
- * 时间让指针走完这段路，进了菜单就取消。Radix 自己的子菜单用同一个量级的
- * 数（`@radix-ui/react-menu` 的 `MenuSubTrigger` 里 100ms 开）。
+ * WCAG 2.1 SC 1.4.13's Hoverable clause asks that the menu survive the trip
+ * from the slot onto it, and `sideOffset` puts a gap between the two: crossing
+ * it, the pointer is inside neither. This gives the trip time to finish, and
+ * entering the menu cancels it. Radix's own submenus work at the same order of
+ * magnitude (`MenuSubTrigger` opens after 100ms).
  */
 const CLOSE_GRACE_MS = 120;
 
 interface DocumentBubbleMenuProps {
-  /** 稳定 id，用来拼 test id。 */
+  /** Stable id, used to build the test ids. */
   id: string;
-  /** 格子本身长什么样。 */
+  /** What the slot itself looks like. */
   trigger: React.ReactNode;
-  /** 菜单里装什么。 */
+  /** What the menu holds. */
   children: React.ReactNode;
   /**
-   * 菜单挂在哪个元素里。
+   * Which element the menu mounts inside.
    *
-   * 传浮出条自己。菜单 portal 到 `body` 的话，条判断自己该不该留在屏幕上时
-   * 会发现焦点跑到了别处，于是把自己收走、菜单跟着消失（定稿 §5.1 第二条）。
+   * The bar itself. Portalled to `body`, the menu would take focus somewhere
+   * the bar does not recognise as its own, and the bar — which decides whether
+   * to stay on screen by asking where focus is — would take itself away and
+   * the menu with it (ruling §5.1, second point).
    */
   container: HTMLElement | null;
-  /** 正文的滚动容器，用来在它真的滚动时关掉菜单。 */
+  /** The body's scroller, watched so that a real scroll closes the menu. */
   scroller: HTMLElement | null;
-  /** 这一格现在开着吗。开合由条统一持有，一次只开一个。 */
+  /** Is this slot open? The bar holds the state so only one opens at a time. */
   open: boolean;
-  /** 要开或要关。 */
+  /** Open or close. */
   onOpenChange: (open: boolean) => void;
 }
 
 /**
- * 一个悬停展开的下拉。
- * @param props - 见 {@link DocumentBubbleMenuProps}。
- * @param props.id - 稳定 id，用来拼 test id。
- * @param props.trigger - 格子本身长什么样。
- * @param props.children - 菜单里装什么。
- * @param props.container - 菜单挂在哪个元素里。
- * @param props.scroller - 正文的滚动容器。
- * @param props.open - 这一格现在开着吗。
- * @param props.onOpenChange - 要开或要关。
- * @returns 格子加它的菜单。
+ * One dropdown that opens on hover.
+ * @param props - See {@link DocumentBubbleMenuProps}.
+ * @param props.id - Stable id, used to build the test ids.
+ * @param props.trigger - What the slot itself looks like.
+ * @param props.children - What the menu holds.
+ * @param props.container - Which element the menu mounts inside.
+ * @param props.scroller - The body's scroller.
+ * @param props.open - Is this slot open?
+ * @param props.onOpenChange - Open or close.
+ * @returns The slot and its menu.
  */
 export function DocumentBubbleMenu({
   id,
@@ -77,20 +83,20 @@ export function DocumentBubbleMenu({
   const closeTimer = React.useRef<number | null>(null);
   const [content, setContent] = React.useState<HTMLDivElement | null>(null);
 
-  /** 取消正在跑的关闭计时。 */
+  /** Cancels a close that is counting down. */
   const cancelClose = React.useCallback((): void => {
     if (closeTimer.current === null) return;
     window.clearTimeout(closeTimer.current);
     closeTimer.current = null;
   }, []);
 
-  /** 指针进了格子或菜单：开着就留着，没开就开。 */
+  /** The pointer entered the slot or the menu: keep it open, or open it. */
   const enter = React.useCallback((): void => {
     cancelClose();
     onOpenChange(true);
   }, [cancelClose, onOpenChange]);
 
-  /** 指针离开：留一段时间给它走完格子和菜单之间那道缝。 */
+  /** The pointer left: leave time for the trip across the gap. */
   const leave = React.useCallback((): void => {
     cancelClose();
     closeTimer.current = window.setTimeout(() => {
@@ -101,12 +107,13 @@ export function DocumentBubbleMenu({
 
   React.useEffect(() => cancelClose, [cancelClose]);
 
-  // 正文一旦真的滚动，菜单必须消失（user 2026-08-26 的第五条）。指针停在菜单
-  // 上时滚轮被下面那个监听吃掉，正文不会滚，所以这两条不打架：它们作用在指针
-  // 的不同位置上。
+  // Once the body really scrolls, the menu goes (user 2026-08-26's fifth rule).
+  // With the pointer on the menu the wheel is swallowed below and the body does
+  // not move, so the two rules never contradict: they act on different pointer
+  // positions.
   React.useEffect(() => {
     if (!open || !scroller) return undefined;
-    /** 正文滚了，收掉菜单。 */
+    /** The body scrolled; take the menu away. */
     const close = (): void => {
       cancelClose();
       onOpenChange(false);
@@ -117,15 +124,16 @@ export function DocumentBubbleMenu({
     };
   }, [open, scroller, cancelClose, onOpenChange]);
 
-  // 指针停在菜单上时，滚轮不许滚正文。
+  // While the pointer rests on the menu, the wheel does not scroll the body.
   //
-  // 走 ref 加原生监听、不走 React 的 `onWheel`：React 把 wheel 挂成 passive
-  // 监听器，passive 监听器里 `preventDefault()` 是空操作（DOM 规范）。
+  // A native listener rather than React's `onWheel`: React attaches wheel as a
+  // passive listener, and `preventDefault()` inside a passive listener does
+  // nothing (DOM standard).
   React.useEffect(() => {
     if (!content) return undefined;
     /**
-     * 吃掉滚轮。
-     * @param event - 滚轮事件。
+     * Swallows the wheel.
+     * @param event - The wheel event.
      */
     const swallow = (event: WheelEvent): void => {
       event.preventDefault();
@@ -152,11 +160,11 @@ export function DocumentBubbleMenu({
           data-testid={`${id}-menu`}
           align='start'
           onPointerEnter={enter}
-          // 关闭时焦点不还给 trigger。Radix 默认把它还回去
-          // （`@radix-ui/react-dropdown-menu:114-115`），而 trigger 就在条
-          // 上，条上的东西一律不取焦点（定稿 R4 / §5.2）。`composeEventHandlers`
-          // 默认带 `checkForDefaultPrevented`，这里 `preventDefault` 之后
-          // Radix 内部那次 `focus()` 就不跑。
+          // Closing does not hand focus back to the trigger. Radix does by
+          // default (`@radix-ui/react-dropdown-menu:114-115`), and the trigger
+          // sits on the bar, where nothing takes focus (ruling R4 / §5.2).
+          // `composeEventHandlers` carries `checkForDefaultPrevented`, so the
+          // `preventDefault` here keeps Radix's own `focus()` from running.
           onCloseAutoFocus={(event) => {
             event.preventDefault();
           }}

@@ -151,8 +151,8 @@ interface BubbleGroup {
  * The controls this carrier shows, grouped the way the demo draws them.
  *
  * Five groups split by four separators, the order the demo's own caption gives
- * (`2026-08-21-editor-command-surface.html:521`): block type ｜ alignment ｜
- * bold italic strike underline ｜ link inline-code colour comment ｜ AI.
+ * (`2026-08-21-editor-command-surface.html:521`): block type | alignment |
+ * bold italic strike underline | link inline-code colour comment | AI.
  *
  * Three of the five hold a slot that opens a menu on hover; the three block
  * commands that used to sit flat in the first group now live inside the block
@@ -512,12 +512,14 @@ function BubbleBar({
     // Focus first, then the text. Both answer in constant time now —
     // `hasTextIn` stops at the first text node — so this order is no longer
     // about cost; it is just the cheapest question asked first.
-    // 焦点落在条自己这棵子树里也算数。四个下拉的菜单 portal 进条内部
-    // （`DropdownMenuContent` 的 `container`），而 Radix 打开菜单时会把焦点
-    // 移进菜单内容 —— 拦那次移动的 prop（`onOpenAutoFocus`）住在
-    // `MenuContentImplPrivateProps` 里、被公开类型 `Omit` 掉了，Radix 明说
-    // 它不对外。所以判据跟着放宽，这也正是 bubble-menu 插件自己的语义
-    // （`dist/index.js:71-72` 的 `isChildOfMenu`）。
+    // Focus inside the bar's own subtree counts too. The four dropdowns mount
+    // their menus inside the bar (`DropdownMenuContent`'s `container`), and
+    // Radix moves focus into the menu content when one opens — the prop that
+    // would stop that move (`onOpenAutoFocus`) lives in
+    // `MenuContentImplPrivateProps` and the public type `Omit`s it away, which
+    // is Radix saying it is not ours to pass. So the test widens instead, and
+    // this is the bubble-menu plugin's own reading of the question
+    // (`dist/index.js:71-72`, `isChildOfMenu`).
     const focusInBar = bar !== null && bar.contains(bar.ownerDocument.activeElement);
     if (!view.hasFocus() && !focusInBar) return false;
     return hasTextIn(doc, selection.from, selection.to);
@@ -827,50 +829,57 @@ function BubbleBar({
    */
   const [panelOpen, setPanelOpen] = React.useState(false);
 
-  // 一次只开一个菜单（§5.3 的 I-7）。开合由条持有，每一格拿到「现在开着的是
-  // 谁」和这个 setter 自己比对 —— 各格自己存一份的话，指针从一格挪到另一格
-  // 时旧的那个收不到任何信号。
+  // One menu open at a time (§5.3, I-7). The bar holds it and hands every slot
+  // the id that is open plus this setter, each comparing for itself — with the
+  // state on each slot, the one being left would hear nothing as the pointer
+  // moves to the next.
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
   const setMenuOpen = React.useCallback((id: string, open: boolean): void => {
     setOpenMenu((current) => {
       if (open) return id;
-      // 关的信号只对当前开着的那一格作数：指针从 A 挪到 B 时，A 的关和 B 的
-      // 开先后到达，晚到的那个关会把 B 也收掉。
+      // A close only counts for the slot that is open: moving from A to B,
+      // A's close and B's open arrive one after the other, and a close landing
+      // second would take B away with it.
       return current === id ? null : current;
     });
   }, []);
 
-  // 鼠标按着的时候不显示条（D1）。
+  // The bar stays away while the pointer is down (D1).
   //
-  // 插件对选区变化有 250ms 防抖，判据是「选区静止 250ms」—— 拖拽中手一停就
-  // 满足，条冒出来，继续拖又跟着跳。它判的是「选区不动了」，不是「选择这个
-  // 动作结束了」。业界解法是门控不是延迟：BlockNote 的 `FormattingToolbar`
-  // 按下时收起、松开时再判（注释里写明照抄 Notion，`setTimeout` 零命中），
-  // Plate 的 `useFloatingToolbar` 同理。
-  // 指针按着的时候条不出现（D1）。
+  // Same route the link panel takes — `invisible!` on the bar, rather than
+  // asking the plugin to re-run `shouldShow`: its `update` returns early when
+  // neither the selection nor the document changed
+  // (`bubble-menu-plugin.ts`, `handleDebouncedUpdate`), so a transaction that
+  // alters nothing buys no second look.
   //
-  // 走跟链接面板同一条路径 —— 给条挂上 `invisible!`，而不是让插件重问
-  // `shouldShow`：插件的 `update` 在选区和文档都没变时直接 return
-  // （`bubble-menu-plugin.ts` 的 `handleDebouncedUpdate`），一次不改内容的
-  // 事务换不回一次重问。
+  // The plugin debounces selection changes by 250ms and asks "has the
+  // selection held still that long", which a pause mid-drag satisfies — the
+  // bar appears, the drag goes on, and it jumps after. What it judges is "the
+  // selection stopped moving", not "the act of selecting ended". The industry
+  // answer is a pointer gate rather than a delay: BlockNote's
+  // `FormattingToolbar` takes the bar away on `pointerdown` and asks again on
+  // `pointerup` (its comment names Notion as the source; `setTimeout` appears
+  // nowhere in the file), and Plate's `useFloatingToolbar` does the same.
   const [pointerDown, setPointerDown] = React.useState(false);
   React.useEffect(() => {
     const { view } = editor;
-    /** 按下了：条让开，菜单收掉。 */
+    /** Pressed: the bar steps aside and any menu closes. */
     const down = (): void => {
       setPointerDown(true);
       setOpenMenu(null);
     };
-    /** 松开了：门开，条按当前选区自己决定出不出来。 */
+    /** Released: the gate opens and the bar decides on the selection alone. */
     const up = (): void => {
       setPointerDown(false);
     };
     view.dom.addEventListener('pointerdown', down);
-    // 挂在 root 上并捕获：用户常把指针拖出编辑器之外才松手，挂 `view.dom` 会
-    // 漏掉那一次，门就永远关着了。
+    // On the root, capturing: readers often drag past the editor before
+    // letting go, and a listener on `view.dom` would miss that release and
+    // leave the gate shut for good.
     const root = view.root as Document | ShadowRoot;
     root.addEventListener('pointerup', up, true);
-    // 指针被系统取消（拖出窗口、切走应用）同样要开门，否则卡在永不显示。
+    // A cancelled pointer (dragged out of the window, the app switched away)
+    // opens the gate too; without it the bar would never come back.
     root.addEventListener('pointercancel', up, true);
     return () => {
       view.dom.removeEventListener('pointerdown', down);
