@@ -94,7 +94,7 @@ describe('markdown pipeline — completion switches (R2, R3)', () => {
     expect(katexCalls).toHaveLength(1);
     expect(katexCalls[0]).toEqual({
       // KaTeX's own default is a hard-coded #cc0000, which owns no place in
-      // either theme. The grey is what @streamdown/math runs on.
+      // either theme. The grey is what @streamdown/math ships.
       errorColor: 'var(--color-muted-foreground)',
       // `true` lets `\href` produce an anchor carrying neither target nor
       // rel, which is every link in a reply except the ones MarkdownLink

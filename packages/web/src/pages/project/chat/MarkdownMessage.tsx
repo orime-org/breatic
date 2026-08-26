@@ -122,14 +122,16 @@ const KATEX = {
   // KaTeX's own default is a hard-coded #cc0000, which belongs to neither
   // theme. A formula that failed to parse is shown as the LaTeX the model
   // wrote, and there is nothing the reader can do about it, so it is said
-  // quietly. The grey is what @streamdown/math runs on.
+  // quietly. The grey is what @streamdown/math ships, the package Vercel's
+  // Streamdown renders maths with:
+  // https://github.com/vercel/streamdown/tree/main/packages/streamdown-math
   errorColor: 'var(--color-muted-foreground)',
   // `true` lets `\href` produce an anchor carrying neither target nor rel,
   // which every other link in a reply gets from `MarkdownLink` below.
   trust: false,
   // The rest are KaTeX's documented defaults, written out because a later
-  // version could change what a default is. @streamdown/math, the complete
-  // implementation this pipeline borrows from, runs on all of them.
+  // version could change what a default is. @streamdown/math sets only
+  // errorColor and runs on every one of these.
   // `macros`, `minRuleThickness` and `colorIsTextColor` are absent because
   // they are not switches: KaTeX documents no default for any of the three,
   // and it writes into `macros` — one object shared by every render would
