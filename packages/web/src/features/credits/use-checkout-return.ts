@@ -127,7 +127,7 @@ export function useCheckoutReturn(
     // `?credits=1` on its own: somebody was sent to their credits, with
     // nothing to settle.
     setOpen(true);
-  }, [asked, cancelled, paymentId, sessionId, land, setParams]);
+  }, [asked, cancelled, paymentId, sessionId, land, clearParams]);
 
   // The timer is its own effect because its length arrives late: the wait goes
   // up the moment the buyer lands, and the server's value comes with the pack
