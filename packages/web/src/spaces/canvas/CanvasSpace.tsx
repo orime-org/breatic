@@ -183,6 +183,7 @@ import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import {
   docGeometryView,
   landingCandidates,
+  writableDragOps,
 } from '@web/spaces/canvas/doc-geometry-view';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
@@ -699,12 +700,10 @@ function CanvasSpaceInner({
       ),
     [],
   );
-  // What a landing decision is allowed to consider: the buffer, which is what
-  // the user is aiming at, minus whatever a remote gesture is holding. Those
-  // nodes are on screen at coordinates that are about to change and that the
-  // document has never held, so they take no part in deciding where a drop
-  // lands (#2010, design §5.7).
-  const landingNodes = React.useCallback(
+  // The nodes a resize is allowed to absorb: what is on screen, minus whatever
+  // a remote gesture is holding. Absorbing one of those would write its parent
+  // and position while its coordinates are still moving (#2010, design §5.7).
+  const absorbableNodes = React.useCallback(
     (): Node[] =>
       landingCandidates(flowNodesRef.current, remoteGestureRef.current),
     [],
@@ -2758,8 +2757,12 @@ function CanvasSpaceInner({
         gesture.abandon();
         return;
       }
-      const writable = writableNodes();
-      const byId = new Map(writable.map((item) => [item.id, item]));
+      // Every read here answers "where is this, on screen, right now" — which
+      // Group a node sits in and where that Group is drawn. That is what the
+      // user aimed at, and it keeps one coordinate system across the whole
+      // decision. What must not be committed is taken out of the plan below.
+      const onScreen = flowNodesRef.current;
+      const byId = new Map(onScreen.map((item) => [item.id, item]));
       /**
        * Resolve a node to absolute canvas coordinates (a member's stored
        * position is relative to its Group) + its rendered size — the form
@@ -2790,9 +2793,9 @@ function CanvasSpaceInner({
           locked: Boolean((item.data as { locked?: unknown }).locked),
         };
       };
-      const ops = planGroupDrag(
-        dragged.map(toDragNode),
-        landingNodes().map(toDragNode),
+      const ops = writableDragOps(
+        planGroupDrag(dragged.map(toDragNode), onScreen.map(toDragNode)),
+        remoteGestureRef.current,
       );
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
       // parent change AND a position change, plus any Group expansion — without
@@ -2813,7 +2816,7 @@ function CanvasSpaceInner({
         });
       });
     },
-    [readOnly, projectId, spaceId, writableNodes, landingNodes, gesture],
+    [readOnly, projectId, spaceId, gesture],
   );
 
   // Wrap the loose selection in a new Group (group redesign). The Group
@@ -3436,7 +3439,7 @@ function CanvasSpaceInner({
           height: rect.height,
         };
         const writable = writableNodes();
-        const loose = landingNodes()
+        const loose = absorbableNodes()
           .filter(
             (node) =>
               node.parentId === undefined &&
@@ -3472,6 +3475,10 @@ function CanvasSpaceInner({
               rect.height,
             );
             for (const child of writable) {
+              // A member a remote is dragging keeps whatever that gesture
+              // commits on release; writing its stored position here would put
+              // it back at an origin this resize has just moved.
+              if (remoteGestureRef.current.has(child.id)) continue;
               if (child.parentId === groupId) {
                 setNodePosition(projectId, spaceId, child.id, child.position);
               }
@@ -3494,7 +3501,7 @@ function CanvasSpaceInner({
       activateNodeUpload,
       retryNodeUpload,
       writableNodes,
-      landingNodes,
+      absorbableNodes,
       gesture,
     ],
   );

@@ -4,25 +4,23 @@
 import type { Node } from '@xyflow/react';
 
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
+import type { GroupDragOps } from '@web/spaces/canvas/group-drag';
 
 /** A node as the document has it, mapped the way the render buffer expects. */
 export type DocumentPlace = Node;
 
 /**
- * The nodes a landing decision is allowed to consider.
+ * Nodes this end is allowed to write, out of a set it might otherwise write all
+ * of.
  *
- * Dropping a node decides two things off the geometry around it: which Group it
- * lands in, and how far that Group has to grow. Both are aimed by eye, so they
- * have to be decided from what is on screen — and what a remote gesture is
- * moving is on screen at coordinates that are about to change and that the
- * document has never held. Whichever geometry such a node were judged by, the
- * answer could disagree with what the user was aiming at.
- *
- * So it takes no part: a Group somebody else is dragging neither receives a
- * node nor grows around one, and a node somebody else is dragging is not
- * absorbed by a resize. It goes back to being a landing target the moment that
- * gesture ends.
- * @param nodes - The nodes to choose from.
+ * A node a remote gesture is holding is on screen at coordinates that are about
+ * to change and that the document has never held, so this end does not commit
+ * anything about it — the gesture's own release will. What it does NOT mean is
+ * that the node has stopped existing: a decision about where something lands is
+ * read off the whole buffer, because that is what the user is aiming at, and
+ * because a planner reading a set with nodes missing draws conclusions from
+ * their absence.
+ * @param nodes - The candidates a write would be produced for.
  * @param remoteGesture - The nodes remote gestures are currently moving.
  * @returns Those of them no remote gesture is holding, or the array itself when
  *   no remote gesture is running.
@@ -33,6 +31,30 @@ export function landingCandidates(
 ): Node[] {
   if (remoteGesture.size === 0) return nodes as Node[];
   return nodes.filter((node) => !remoteGesture.has(node.id));
+}
+
+/**
+ * A drag stop's plan with the parts this end must not commit taken out.
+ *
+ * The plan is worked out from the whole buffer, so a Group a remote is dragging
+ * still answers "which Group is this node in" correctly. Growing that Group is
+ * the part that would write: its rect right now is one the document has never
+ * held. Reparents and positions stay — they say where the nodes this end just
+ * dragged ended up, which is this end's to write.
+ * @param ops - The plan as the drag planner worked it out.
+ * @param remoteGesture - The nodes remote gestures are currently moving.
+ * @returns The plan without the expansions of Groups a remote is holding.
+ */
+export function writableDragOps(
+  ops: GroupDragOps,
+  remoteGesture: GestureTable,
+): GroupDragOps {
+  if (remoteGesture.size === 0) return ops;
+  const expansions = ops.expansions.filter(
+    (expansion) => !remoteGesture.has(expansion.groupId),
+  );
+  if (expansions.length === ops.expansions.length) return ops;
+  return { ...ops, expansions };
 }
 
 /**

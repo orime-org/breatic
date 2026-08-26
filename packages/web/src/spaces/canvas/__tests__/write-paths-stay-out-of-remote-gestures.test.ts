@@ -15,7 +15,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
 
-import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
+import {
+  docGeometryView,
+  landingCandidates,
+  writableDragOps,
+} from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import type { DragNode } from '@web/spaces/canvas/group-drag';
@@ -76,6 +80,12 @@ function documentNodes(): Node[] {
 /** The remote is moving the loose node. */
 const REMOTE: GestureTable = new Map([[FLYING_ID, { ...FLYING_AT }]]);
 
+/** The remote is dragging the Group, which carries its member along. */
+const HELD_BY_REMOTE: GestureTable = new Map([
+  [GROUP_ID, { x: 0, y: 0 }],
+  [MEMBER_ID, { x: 20, y: 20 }],
+]);
+
 /**
  * Turn a buffer node into the absolute form the drag planner hit-tests with.
  * @param all - The whole buffer, for resolving a member's parent.
@@ -105,21 +115,29 @@ function toDragNodes(all: ReadonlyArray<Node>): DragNode[] {
 }
 
 describe('every write path reads the buffer through the door', () => {
-  it('a Group expansion sizes itself to the document, not to what is in flight', () => {
-    // The drag planner grows a Group around its members; handed the raw buffer
-    // it would grow this one out to 4000,4000 and write that.
-    const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
-    const dragged = toDragNodes(view).filter((n) => n.id === MEMBER_ID);
-    const ops = planGroupDrag(dragged, toDragNodes(view));
-    for (const expansion of ops.expansions) {
-      expect(expansion.width).toBeLessThan(1_000);
-      expect(expansion.height).toBeLessThan(1_000);
-    }
+  it('a member keeps its Group while a remote drags that Group', () => {
+    // The drag planner reads the buffer to find which Group a dragged node is
+    // currently in. A Group missing from that array reads as "this node left
+    // its Group", and the stop writes it out to the top level.
+    const buffer = bufferMidGesture();
+    const dragged = toDragNodes(buffer).filter((n) => n.id === MEMBER_ID);
+    const ops = planGroupDrag(dragged, toDragNodes(buffer));
+    expect(ops.reparents).toEqual([]);
+  });
+
+  it('a Group a remote is holding is not grown by this end', () => {
+    // Growing it would write geometry the document has never held.
+    const buffer = bufferMidGesture();
+    const dragged = toDragNodes(buffer).filter((n) => n.id === MEMBER_ID);
+    const ops = writableDragOps(
+      planGroupDrag(dragged, toDragNodes(buffer)),
+      HELD_BY_REMOTE,
+    );
+    expect(ops.expansions.map((e) => e.groupId)).not.toContain(GROUP_ID);
   });
 
   it('a resize join takes in only what the document says is inside the new rect', () => {
-    const view = docGeometryView(bufferMidGesture(), documentNodes(), REMOTE);
-    const loose = view
+    const loose = landingCandidates(bufferMidGesture(), REMOTE)
       .filter((n) => n.parentId === undefined && n.type !== 'group')
       .map((n) => ({
         id: n.id,
@@ -130,14 +148,14 @@ describe('every write path reads the buffer through the door', () => {
           height: n.measured?.height ?? 192,
         },
       }));
-    // The Group grows to cover where the document has the flying node. Reading
-    // the raw buffer would put that node at 4000,4000 and leave it out.
+    // A node somebody else is dragging is not absorbed: its coordinates are
+    // about to change and the document has never held them.
     const joins = planResizeJoin(
       GROUP_ID,
-      { x: 0, y: 0, width: 400, height: 400 },
+      { x: 0, y: 0, width: 4_400, height: 4_400 },
       loose,
     );
-    expect(joins.map((j) => j.id)).toContain(FLYING_ID);
+    expect(joins.map((j) => j.id)).not.toContain(FLYING_ID);
   });
 
   it('a new Group sizes itself to the document positions of its members', () => {

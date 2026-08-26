@@ -21,12 +21,15 @@ export interface ReleasableGesture {
  * freezes those nodes on every other screen for as long as this client stays
  * connected, so something has to notice the pointer is no longer down.
  *
- * Two signals, because neither covers the other. The release is the prompt one,
- * checked on the next task so a stop fired synchronously inside the same
- * pointerup has already run. A move with no button held is the one that closes
- * the class: a mouse released outside the window delivers no pointerup to the
- * page, and xyflow's drag runs on d3-drag, which takes no pointer capture — the
- * same reasoning the lock-drag detector in `CanvasSpace.tsx` already runs on.
+ * Two signals, because neither covers the other. The release is the prompt one.
+ * xyflow's drag runs on d3-drag, which listens for `mouseup` (`d3-drag/src/
+ * drag.js:56`) — the compatibility event the browser fires right after
+ * `pointerup`, in the same task. Checking on the next task lets that stop run
+ * first, so a gesture that ended normally is already gone by the time this
+ * looks. A move with no button held is the one that closes the class: a mouse
+ * released outside the window delivers neither event to the page, and d3-drag
+ * takes no pointer capture — the same reasoning the lock-drag detector in
+ * `CanvasSpace.tsx` already runs on.
  * @param gesture - The gesture to watch.
  */
 export function useGestureRelease(gesture: ReleasableGesture): void {
