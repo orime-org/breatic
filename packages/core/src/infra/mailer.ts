@@ -52,8 +52,10 @@ export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;
-  /** Plain-text alternative. Some clients show it, and some spam filters
-   * treat its absence as a signal. */
+  /**
+   * Plain-text alternative. Some clients show it, and some spam filters
+   * treat its absence as a signal.
+   */
   text?: string;
 }
 

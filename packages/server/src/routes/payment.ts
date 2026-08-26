@@ -39,20 +39,20 @@ payment.post(
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
-    const result = await paymentService.createCheckout(
-      user.id,
-      body.tier,
-      body.success_url,
-      body.cancel_url,
-    );
+    const result = await paymentService.createCheckout({
+      userId: user.id,
+      priceCents: body.price_cents,
+      returnUrl: body.return_url,
+      timeZone: body.time_zone,
+    });
     // Audit log moved from payment.service.ts per CLAUDE.md
     // "core and shared must not log" mandate (2026-05-27 PR
     // `feat/2026-05-27-collab-infra-resilience`).
     logger.info(
-      { userId: user.id, tier: body.tier, paymentId: result.paymentId },
+      { userId: user.id, priceCents: body.price_cents, paymentId: result.paymentId },
       "payment_checkout_session_created",
     );
-    return c.json({ data: result }, 201);
+    return c.json({ data: { url: result.url } }, 201);
   },
 );
 

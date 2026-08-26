@@ -65,7 +65,8 @@
     },
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
-      "price_not_configured": "Price not configured for tier: {tier}"
+      "price_not_configured": "Price not configured for tier: {tier}",
+      "consent-credits-v1": "I ask for the credits to be delivered right away, and I understand that **once I use any of them I can no longer get this purchase refunded**. Unused credits can be refunded in full within 30 days."
     },
     "skill": {
       "not_found": "Skill not found",

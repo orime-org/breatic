@@ -65,7 +65,8 @@
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
-      "price_not_configured": "套餐 {tier} 的价格未配置"
+      "price_not_configured": "套餐 {tier} 的价格未配置",
+      "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。"
     },
     "skill": {
       "not_found": "找不到这个 Skill",

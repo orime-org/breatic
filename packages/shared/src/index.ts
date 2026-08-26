@@ -239,6 +239,7 @@ export {
   t,
   setLocale,
   getLocale,
+  getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
   setLocaleResolver,

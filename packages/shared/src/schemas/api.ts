@@ -334,10 +334,20 @@ export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 
 // ── Payment ──────────────────────────────────────────────────────────
 
+/**
+ * Buying a credit pack.
+ *
+ * A pack is named by its face value: the name is what a buyer reads and is
+ * free to be reworded, the face value is the pack. `return_url` is where the
+ * buyer came from — the server derives both ways back from it, so that the
+ * two only ever differ in the parameters that say which way it was.
+ * `time_zone` is what the browser reports; the confirmation email prints the
+ * purchase time in it, and the server checks it before storing it.
+ */
 export const checkoutSchema = z.object({
-  tier: z.string().min(1),
-  success_url: z.string().url(),
-  cancel_url: z.string().url(),
+  price_cents: z.number().int().positive(),
+  return_url: z.string().url(),
+  time_zone: z.string().min(1).max(64),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 

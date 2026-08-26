@@ -62,7 +62,8 @@
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
-      "price_not_configured": "方案 {tier} 的價格未設定"
+      "price_not_configured": "方案 {tier} 的價格未設定",
+      "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。"
     },
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"

@@ -72,14 +72,17 @@ export function getPricingTiers(): PricingTier[] {
 }
 
 /**
- * Find a tier by name (case-insensitive).
- * @param name - Tier name (e.g. "Pro")
+ * Find a pack by its face value in cents.
+ *
+ * The face value is what a checkout request names a pack by. The name is what
+ * a buyer reads, and it is free to be reworded; the face value is the pack.
+ * @param priceCents - The listed price, before tax.
  * @returns The matching tier, or undefined
  */
-export function findTierByName(name: string): PricingTier | undefined {
-  return getPricingTiers().find(
-    (t) => t.name.toLowerCase() === name.toLowerCase(),
-  );
+export function findTierByPriceCents(
+  priceCents: number,
+): PricingTier | undefined {
+  return getPricingTiers().find((t) => t.priceCents === priceCents);
 }
 
 /**

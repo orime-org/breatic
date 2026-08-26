@@ -16,8 +16,8 @@
  * from the current state to `sending` is what makes five taps send one letter.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
-import { db, purchaseMailOutbox, sendMail } from "@breatic/core";
+import { sendMail } from "@breatic/core";
+import * as outbox from "@server/modules/payment/purchase-mail.repo.js";
 
 /**
  * The mail states a resend may start from.
@@ -30,50 +30,6 @@ import { db, purchaseMailOutbox, sendMail } from "@breatic/core";
  * templates.
  */
 const RESENDABLE = ["pending", "sending", "failed", "skipped"] as const;
-
-/**
- * Take the right to send this purchase's confirmation.
- *
- * Compare-and-set from whatever the row says now to `sending`. Two callers
- * racing — the first send and a buyer tapping resend — leave exactly one
- * holding the claim.
- * @param paymentId - The purchase whose confirmation is being sent.
- * @returns Whether this caller may send.
- */
-async function claimSend(paymentId: string): Promise<boolean> {
-  const taken = await db
-    .update(purchaseMailOutbox)
-    .set({ status: "sending", updatedAt: new Date() })
-    .where(
-      and(
-        eq(purchaseMailOutbox.paymentId, paymentId),
-        inArray(purchaseMailOutbox.status, [...RESENDABLE]),
-      ),
-    )
-    .returning({ id: purchaseMailOutbox.id });
-  return taken.length > 0;
-}
-
-/**
- * Write back what the send did.
- * @param paymentId - The purchase whose confirmation was sent.
- * @param status - Where the row lands.
- * @param lastError - The failure, when there was one.
- */
-async function recordSend(
-  paymentId: string,
-  status: "sent" | "failed" | "skipped",
-  lastError?: string,
-): Promise<void> {
-  await db
-    .update(purchaseMailOutbox)
-    .set({
-      status,
-      lastError: lastError ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(purchaseMailOutbox.paymentId, paymentId));
-}
 
 /**
  * Send the confirmation for one purchase, and record the outcome.
@@ -97,7 +53,7 @@ export async function sendPurchaseConfirmation(input: {
   html: string;
   text: string;
 }): Promise<boolean> {
-  if (!(await claimSend(input.paymentId))) return false;
+  if (!(await outbox.claimSend(input.paymentId, RESENDABLE))) return false;
   try {
     const result = await sendMail({
       to: input.to,
@@ -106,15 +62,15 @@ export async function sendPurchaseConfirmation(input: {
       text: input.text,
     });
     if (result.status === "sent") {
-      await recordSend(input.paymentId, "sent");
+      await outbox.recordSend(input.paymentId, "sent");
       return true;
     }
     // Console and disabled backends never put a letter on the wire, so the
     // row says so and keeps offering the resend for once one is configured.
-    await recordSend(input.paymentId, "skipped");
+    await outbox.recordSend(input.paymentId, "skipped");
     return false;
   } catch (err) {
-    await recordSend(
+    await outbox.recordSend(
       input.paymentId,
       "failed",
       err instanceof Error ? err.message : String(err),

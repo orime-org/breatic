@@ -62,7 +62,8 @@
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
-      "price_not_configured": "プラン {tier} の価格が設定されていません"
+      "price_not_configured": "プラン {tier} の価格が設定されていません",
+      "consent-credits-v1": "クレジットの即時提供を希望します。**いずれか 1 つでも使用した時点で、この購入は返金できなくなる**ことを承知しています。未使用のクレジットは 30 日以内であれば全額返金されます。"
     },
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"

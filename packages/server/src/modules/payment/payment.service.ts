@@ -11,15 +11,23 @@
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import { creditLotService } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
-import { findTierByName, getPricingTiers } from "@server/config/pricing.js";
+import { findTierByPriceCents, getPricingTiers } from "@server/config/pricing.js";
 import type { PaymentEntity } from "@breatic/shared";
-import { t } from "@breatic/shared";
+import { t, getActiveLocale } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";
-import { db, purchaseConsents, purchaseMailOutbox } from "@breatic/core";
+import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
+import {
+  CONSENT_CREDITS_VERSION,
+  REFUND_CREDITS_VERSION,
+  creditsConsentText,
+} from "@server/modules/payment/legal-text.js";
+import * as consentRepo from "@server/modules/payment/purchase-consent.repo.js";
+import * as mailRepo from "@server/modules/payment/purchase-mail.repo.js";
+import { randomUUID } from "node:crypto";
 import type Stripe from "stripe";
 
 /**
@@ -74,23 +82,20 @@ async function writeConsentIfGiven(
   const consentedAt = session.created
     ? new Date(session.created * 1000)
     : new Date();
-  await tx
-    .insert(purchaseConsents)
-    .values({
-      paymentId,
-      userId,
-      locale: sessionLocale(session),
-      consentTextVersion: String(
-        session.metadata?.["consent_text_version"] ?? "v1",
-      ),
-      refundTextVersion: session.metadata?.["refund_text_version"] ?? null,
-      consentedAt,
-      stripePaymentIntentId:
-        typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : null,
-    })
-    .onConflictDoNothing();
+  await consentRepo.insertConsent(tx, {
+    paymentId,
+    userId,
+    locale: sessionLocale(session),
+    consentTextVersion: String(
+      session.metadata?.["consent_text_version"] ?? "v1",
+    ),
+    refundTextVersion: session.metadata?.["refund_text_version"] ?? null,
+    consentedAt,
+    stripePaymentIntentId:
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : null,
+  });
 }
 
 /**
@@ -108,10 +113,7 @@ async function openMailOutbox(
   locale: string,
   tx: DbTx,
 ): Promise<void> {
-  await tx
-    .insert(purchaseMailOutbox)
-    .values({ paymentId, locale, status: "pending" })
-    .onConflictDoNothing();
+  await mailRepo.openOutbox(tx, paymentId, locale);
 }
 
 /**
@@ -289,24 +291,110 @@ async function startConfirmationMail(paymentId: string): Promise<void> {
 }
 
 /**
- * Create a Stripe Checkout session for purchasing credits.
- * @param userId - Authenticated user ID
- * @param tierName - Tier name from pricing.yaml (e.g. "Pro")
- * @param successUrl - Redirect URL after successful payment
- * @param cancelUrl - Redirect URL if user cancels
- * @returns Payment ID and Stripe Checkout URL
+ * How long a checkout session stays open, in seconds.
+ *
+ * Stripe's own example uses two hours; the parameter takes thirty minutes to
+ * twenty-four, and defaults to twenty-four. This is a backstop for the buyer
+ * who closes the tab, loses signal, or runs out of battery — the one who
+ * clicks Back is expired on the spot by `cancelCheckout`. Thirty minutes is
+ * the floor Stripe offers for event tickets held for minutes at a time, and
+ * taking it here would trade a real buyer's second card attempt for showing
+ * an abandoned checkout as expired a little sooner.
  */
-export async function createCheckout(
-  userId: string,
-  tierName: string,
-  successUrl: string,
-  cancelUrl: string,
-): Promise<{ paymentId: string; checkoutUrl: string }> {
-  const tier = findTierByName(tierName);
+const SESSION_LIFETIME_SECONDS = 2 * 60 * 60;
+
+/** What Stripe's Checkout page can be rendered in, by our locale. */
+const STRIPE_LOCALES: Record<string, string> = {
+  en: "en",
+  "zh-CN": "zh",
+  "zh-TW": "zh-TW",
+  ja: "ja",
+  ko: "ko",
+};
+
+/**
+ * The two URLs a buyer can come back on.
+ *
+ * They come off one `return_url` and land on one route, so each carries the
+ * parameters that say which way it was: `session_id` on the way back from a
+ * payment, `cancelled` and `payment_id` on the way back from the Back button.
+ *
+ * `{CHECKOUT_SESSION_ID}` has to reach Stripe with its braces intact, which
+ * is why it is appended as text after `URL` has done the rest: `searchParams`
+ * percent-encodes them, Stripe then substitutes nothing, and the confirmation
+ * endpoint looks up a literal and finds no row. Nothing about that failure is
+ * visible in testing — the webhook still grants the credits.
+ * @param returnUrl - Where the buyer started from.
+ * @param paymentId - The row the Back button should point at.
+ * @returns Both URLs.
+ */
+function returnUrls(
+  returnUrl: string,
+  paymentId: string,
+): { successUrl: string; cancelUrl: string } {
+  const success = new URL(returnUrl);
+  success.searchParams.set("credits", "1");
+
+  const cancel = new URL(returnUrl);
+  cancel.searchParams.set("credits", "1");
+  cancel.searchParams.set("cancelled", "1");
+  cancel.searchParams.set("payment_id", paymentId);
+
+  return {
+    successUrl: `${success.toString()}&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: cancel.toString(),
+  };
+}
+
+/**
+ * The buyer's time zone, or UTC when it is not one we recognise.
+ *
+ * It is reported by their browser and reaches us in a request body, so it is
+ * checked against the zones this runtime knows before it is stored. The
+ * confirmation email prints a purchase time in it.
+ * @param timeZone - What the client said.
+ * @returns An IANA zone name.
+ */
+function knownTimeZone(timeZone: string): string {
+  return Intl.supportedValuesOf("timeZone").includes(timeZone)
+    ? timeZone
+    : "UTC";
+}
+
+/**
+ * Create a Stripe Checkout session for purchasing credits.
+ *
+ * The row's id is generated before the session, because the Back button URL
+ * has to carry it. Doing it the other way round — insert first, fill in the
+ * session id after — leaves a `pending` row with no session id behind every
+ * failed `sessions.create`: all three paths to `expired` need that id, and
+ * reconciling would keep picking the row up and retrieving nothing. The buyer
+ * would watch a purchase stay "processing" forever.
+ * @param input - Who is buying, what, and where they came from.
+ * @param input.userId - The buyer.
+ * @param input.priceCents - The pack's face value, which is how a pack is named.
+ * @param input.returnUrl - The page the buyer started from.
+ * @param input.timeZone - The buyer's IANA zone, as their browser reports it.
+ * @returns The row's id and the Checkout URL to send the buyer to.
+ * @throws {AppError} 400 when no pack carries that face value; 503 when the
+ *   pack has no Stripe Price configured for this environment.
+ */
+export async function createCheckout(input: {
+  userId: string;
+  priceCents: number;
+  returnUrl: string;
+  timeZone: string;
+}): Promise<{ paymentId: string; url: string }> {
+  const tier = findTierByPriceCents(input.priceCents);
   if (!tier) {
     throw new AppError(
       400,
-      t("server.payment.tier_not_found", { tier: tierName, available: getPricingTiers().map((p) => p.name).join(", ") }),
+      t("server.payment.tier_not_found", {
+        tier: String(input.priceCents),
+        available: getPricingTiers()
+          .map((p) => String(p.priceCents))
+          .join(", "),
+      }),
     );
   }
 
@@ -317,32 +405,47 @@ export async function createCheckout(
     );
   }
 
-  const stripe = getStripeClient();
+  const paymentId = randomUUID();
+  const locale = getActiveLocale();
+  const { successUrl, cancelUrl } = returnUrls(input.returnUrl, paymentId);
 
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripeClient().checkout.sessions.create({
     mode: "payment",
     line_items: [{ price: tier.stripePriceId, quantity: 1 }],
     success_url: successUrl,
     cancel_url: cancelUrl,
-    metadata: {
-      userId,
-      tierName: tier.name,
-      credits: String(tier.credits),
+    locale: (STRIPE_LOCALES[locale] ?? "auto") as Stripe.Checkout.
+      SessionCreateParams.Locale,
+    consent_collection: { terms_of_service: "required" },
+    custom_text: {
+      terms_of_service_acceptance: { message: creditsConsentText(locale) },
     },
+    automatic_tax: { enabled: true },
+    expires_at: Math.floor(Date.now() / 1000) + SESSION_LIFETIME_SECONDS,
+    metadata: { userId: input.userId, credits: String(tier.credits) },
   });
 
   const payment = await paymentRepo.createPayment({
-    userId,
+    id: paymentId,
+    userId: input.userId,
     stripeSessionId: session.id,
     amountCents: tier.priceCents,
     creditsGranted: tier.credits,
     currency: tier.currency,
-    metadata: { tierName: tier.name, successUrl, cancelUrl },
+    // These four cannot be worked out later. A webhook carries no
+    // `Accept-Language` and no hint of a time zone, and the versions say what
+    // wording this purchase was made under.
+    metadata: {
+      locale,
+      timeZone: knownTimeZone(input.timeZone),
+      consentTextVersion: CONSENT_CREDITS_VERSION,
+      refundTextVersion: REFUND_CREDITS_VERSION,
+    },
   });
 
   // Caller logs `payment_checkout_session_created` audit line with
   // the returned paymentId + sessionId.
-  return { paymentId: payment.id, checkoutUrl: session.url ?? "" };
+  return { paymentId: payment.id, url: session.url ?? "" };
 }
 
 /**
