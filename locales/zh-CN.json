@@ -1348,10 +1348,6 @@
     "noLotsHere": "还没有指定给它的积分",
     "debtAndSpent": "欠账 {debt} · 已消耗 {spent}",
     "spentOnly": "已消耗 {spent}",
-    "buySoon": {
-      "title": "充值即将开放",
-      "body": "开放后可以在这里直接购买，标价不含税，实付金额是标价加上你所在地的税额。买到的积分需要指定给某个 Studio 才能用。"
-    },
     "assignEmpty": "没有可以指定的积分。",
     "assignEmptyNotice": {
       "title": "买了积分之后在这里分给 Studio",
@@ -1372,6 +1368,22 @@
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
-    "refundsNote": "只退没用掉的部分，按原路退回，需要审核。"
+    "refundsNote": "只退没用掉的部分，按原路退回，需要审核。",
+    "buy": {
+      "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
+      "assignNotice": "积分需要指定给某个 Studio 才能使用。",
+      "action": "购买",
+      "confirmTitle": "确认购买",
+      "confirmPack": "积分包",
+      "confirmCredits": "到账积分",
+      "confirmTax": "标价不含税。结账页会显示加上当地税额后的最终金额。",
+      "consentPrefix": "我已阅读并同意",
+      "consentTerms": "服务条款",
+      "consentAnd": "与",
+      "consentRefund": "退款规则",
+      "cancel": "取消",
+      "pay": "去支付",
+      "failed": "这笔购买没能发起，请再试一次。"
+    }
   }
 }

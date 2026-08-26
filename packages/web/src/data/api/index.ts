@@ -35,6 +35,6 @@ export { miniToolsApi } from '@web/data/api/mini-tools';
 export { textToolsApi, type TextStreamEvent } from '@web/data/api/text-tools';
 export { tasksApi } from '@web/data/api/tasks';
 export { skillsApi, type Skill } from '@web/data/api/skills';
-export { paymentApi, type CreditTier, type PaymentRecord } from '@web/data/api/payment';
+export { paymentApi, type CreditPack } from '@web/data/api/payment';
 export { assetsApi, type PresignResult } from '@web/data/api/assets';
 export { modelsApi } from '@web/data/api/models';

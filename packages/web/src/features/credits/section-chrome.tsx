@@ -91,6 +91,8 @@ export function SectionEmpty({
 interface FootnoteProps {
   /** The explanation. */
   children: React.ReactNode;
+  /** A hook for tests to name this particular line. */
+  'data-testid'?: string;
 }
 
 /**
@@ -101,10 +103,18 @@ interface FootnoteProps {
  * reader of this code should not have to work out which is meant.
  * @param props - The explanation.
  * @param props.children - The explanation.
+ * @param props.'data-testid' - A hook for tests to name this particular line.
  * @returns The line.
  */
-export function Footnote({ children }: FootnoteProps): React.JSX.Element {
-  return <p className='text-sm text-muted-foreground'>{children}</p>;
+export function Footnote({
+  children,
+  'data-testid': testId,
+}: FootnoteProps): React.JSX.Element {
+  return (
+    <p className='text-sm text-muted-foreground' data-testid={testId}>
+      {children}
+    </p>
+  );
 }
 
 /** A bordered block, and what is in it. */

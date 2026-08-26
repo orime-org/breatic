@@ -1348,10 +1348,6 @@
     "noLotsHere": "割り当てられたクレジットはありません",
     "debtAndSpent": "未払い {debt} · 消費 {spent}",
     "spentOnly": "消費 {spent}",
-    "buySoon": {
-      "title": "購入はまもなく開始します",
-      "body": "開始後はここから直接購入できます。表示価格は税別で、実際のお支払いは表示価格にお住まいの地域の税額を加えた金額です。購入したクレジットは Studio に割り当てて使います。"
-    },
     "assignEmpty": "割り当てられるクレジットがありません。",
     "assignEmptyNotice": {
       "title": "購入したクレジットはここで Studio に渡します",
@@ -1372,6 +1368,22 @@
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundedHint": "{credits} クレジット · 返金済みのため Studio に割り当てられません",
-    "refundsNote": "未使用分のみを元の支払い方法へ返金します。審査があります。"
+    "refundsNote": "未使用分のみを元の支払い方法へ返金します。審査があります。",
+    "buy": {
+      "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
+      "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",
+      "action": "購入",
+      "confirmTitle": "購入の確認",
+      "confirmPack": "クレジットパック",
+      "confirmCredits": "付与クレジット",
+      "confirmTax": "表示価格は税抜きです。決済ページに税込みの最終金額が表示されます。",
+      "consentPrefix": "以下に同意します：",
+      "consentTerms": "利用規約",
+      "consentAnd": "および",
+      "consentRefund": "返金規定",
+      "cancel": "キャンセル",
+      "pay": "支払いに進む",
+      "failed": "この購入を開始できませんでした。もう一度お試しください。"
+    }
   }
 }

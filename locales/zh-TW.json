@@ -1348,10 +1348,6 @@
     "noLotsHere": "還沒有指定給它的點數",
     "debtAndSpent": "欠帳 {debt} · 已消耗 {spent}",
     "spentOnly": "已消耗 {spent}",
-    "buySoon": {
-      "title": "儲值即將開放",
-      "body": "開放後可以在這裡直接購買，標價不含稅，實付金額是標價加上你所在地的稅額。買到的點數需要指定給某個 Studio 才能用。"
-    },
     "assignEmpty": "沒有可以指定的點數。",
     "assignEmptyNotice": {
       "title": "買了點數之後在這裡分給 Studio",
@@ -1372,6 +1368,22 @@
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
     "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
-    "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。"
+    "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。",
+    "buy": {
+      "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
+      "assignNotice": "點數需要指定給某個 Studio 才能使用。",
+      "action": "購買",
+      "confirmTitle": "確認購買",
+      "confirmPack": "點數包",
+      "confirmCredits": "入帳點數",
+      "confirmTax": "標價不含稅。結帳頁會顯示加上當地稅額後的最終金額。",
+      "consentPrefix": "我已閱讀並同意",
+      "consentTerms": "服務條款",
+      "consentAnd": "與",
+      "consentRefund": "退款規則",
+      "cancel": "取消",
+      "pay": "前往付款",
+      "failed": "這筆購買沒能發起，請再試一次。"
+    }
   }
 }

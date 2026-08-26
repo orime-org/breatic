@@ -31,6 +31,17 @@ vi.mock('@web/data/api/credits', () => ({
 }));
 
 const listUserStudios = vi.fn();
+vi.mock('@web/data/api/payment', () => ({
+  paymentApi: {
+    tiers: () =>
+      Promise.resolve([
+        { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
+        { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
+      ]),
+    checkout: vi.fn(),
+  },
+}));
+
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => listUserStudios() },
 }));
@@ -733,14 +744,15 @@ describe('the credits overlay, section by section', () => {
   });
 
   describe('buying credits', () => {
-    it('gives the balance and how credits are priced, and no packs or button', async () => {
+    it('gives the balance, how credits are priced, and the packs on offer', async () => {
       await openOn('buy');
       const body = await panel();
 
       expect(body).toHaveTextContent('5,430');
       expect(body).toHaveTextContent('1 credit = 1 US cent');
-      expect(body).toHaveTextContent(/opens soon/i);
-      expect(body.querySelectorAll('button')).toHaveLength(0);
+      await waitFor(() => {
+        expect(body.querySelectorAll('[data-testid="credit-pack"]')).toHaveLength(2);
+      });
     });
 
     it('names the figure what the overview names it', async () => {

@@ -1348,10 +1348,6 @@
     "noLotsHere": "Nothing assigned to it yet",
     "debtAndSpent": "owes {debt} · spent {spent}",
     "spentOnly": "spent {spent}",
-    "buySoon": {
-      "title": "Buying opens soon",
-      "body": "You will be able to buy here. Prices exclude tax; what you pay is the price plus the tax where you are. Credits bought have to be assigned to a Studio before they can be spent."
-    },
     "assignEmpty": "Nothing to assign.",
     "assignEmptyNotice": {
       "title": "Give purchases to Studios here",
@@ -1372,6 +1368,22 @@
     "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
     "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
     "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
-    "refundsNote": "Only what is unspent is refunded, to the original payment method, after review."
+    "refundsNote": "Only what is unspent is refunded, to the original payment method, after review.",
+    "buy": {
+      "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
+      "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
+      "action": "Buy",
+      "confirmTitle": "Confirm your purchase",
+      "confirmPack": "Pack",
+      "confirmCredits": "Credits",
+      "confirmTax": "The price excludes tax. The checkout page shows the final amount with the tax where you are.",
+      "consentPrefix": "I have read and agree to the",
+      "consentTerms": "Terms of Service",
+      "consentAnd": "and the",
+      "consentRefund": "refund rules",
+      "cancel": "Cancel",
+      "pay": "Continue to payment",
+      "failed": "That purchase could not be started. Try again."
+    }
   }
 }
