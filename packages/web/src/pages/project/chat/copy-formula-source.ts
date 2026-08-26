@@ -103,7 +103,18 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
         taken.add(end);
       }
     }
-    host.append(range.cloneContents());
+    const contents = range.cloneContents();
+    if (selection.rangeCount > 1) {
+      // What a drag hands over is the words inside a block, not the block —
+      // so two of them appended one after the other would read as one line.
+      // Several ranges are several places in the document, and the browser's
+      // own copy keeps them apart.
+      const part = document.createElement('div');
+      part.append(contents);
+      host.append(part);
+    } else {
+      host.append(contents);
+    }
   }
 
   if (!host.querySelector(`.${FORMULA_CLASS}`)) return;

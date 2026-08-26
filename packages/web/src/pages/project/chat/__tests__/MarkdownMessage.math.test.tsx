@@ -234,6 +234,24 @@ describe('MarkdownMessage — maths', () => {
     expect(html, 'and the formula').toContain('x = 1');
   });
 
+  it('keeps two ranges the reader picked apart apart (A8)', () => {
+    // What a drag hands over is the words inside a paragraph, not the
+    // paragraph — so two of them appended one after the other read as one
+    // run-on line, and the browser's own copy puts them on separate lines.
+    const body = draw('first para with $$x=1$$ inside\n\nsecond para\n\nthird para').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const paragraphs = [...body.querySelectorAll('p')];
+
+    const html = copy(around(paragraphs[0] as Node), around(paragraphs[2] as Node)).written.get(
+      'text/html',
+    ) ?? '';
+
+    expect(html, 'the first is there').toContain('first para');
+    expect(html, 'and the third').toContain('third para');
+    expect(html, 'and they are not run together').not.toContain('insidethird');
+  });
+
   it('copies a formula two ranges both reach into only once (A8)', () => {
     // Two ctrl-drags that cut through the same formula leave two ranges the
     // reader drew as disjoint. Each is widened to the whole formula, and the
