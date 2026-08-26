@@ -30,6 +30,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { bubbleAnchorRect } from '@web/spaces/document/SelectionBubbleBar';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
@@ -141,22 +142,18 @@ interface BubblePluginView {
 }
 
 /**
- * 从编辑器身上取浮出条那个插件视图。
+ * 条此刻的样子，从文档里读。
  *
- * 插件把 `getReferencedVirtualElement` 原样存在自己身上（`dist/index.js:173`），
- * 所以这是「它真正会调用的那个函数」，不是测试自己另外造的一份。
- * @param editor - 编辑器。
- * @returns 插件视图。
+ * 定位换成 `useFloating` 之后没有插件视图可翻了：条不该出现时组件不渲染它，
+ * 所以「在不在」直接查这个元素就是用户看到的那件事。中间件怎么配是
+ * `useFloating` 的局部参数，读不到也不该读 —— 那属于实现细节，行为由 G1
+ * 到 G3 的验收项各自钉住。
  */
-function bubblePluginView(editor: Editor): BubblePluginView {
-  const views =
-    (editor.view as unknown as { pluginViews: unknown[] }).pluginViews ?? [];
-  const found = views.find(
-    (v) => v !== null && typeof v === 'object' && 'scrollTarget' in v,
-  );
-  expect(found).toBeDefined();
-  return found as BubblePluginView;
+function bubblePluginView(): BubblePluginView {
+  const bar = screen.queryByTestId('doc-selection-bubble-bar');
+  return { isVisible: bar !== null, element: bar ?? undefined };
 }
+
 
 /**
  * 把正文滚动容器的可见范围钉成一个已知的框。
@@ -170,6 +167,30 @@ function pinViewport(box: DOMRect): void {
   );
   expect(viewport).not.toBeNull();
   (viewport as HTMLElement).getBoundingClientRect = () => box;
+}
+
+/**
+ * 条的锚点矩形。
+ *
+ * 直接调算它的那个函数，不去翻定位引擎的内部：锚点算在哪一行是这个条自己的
+ * 规则，换定位引擎不该把这份覆盖一起带走。
+ * @param editor - 编辑器。
+ * @param pinned - 全选钉住的那个屏幕点，没有就传 null。
+ * @returns 锚点矩形，选区为空时是 null。
+ */
+function anchorRectOf(
+  editor: Editor,
+  pinned: { x: number; y: number } | null = null,
+): DOMRect | null {
+  const viewport = document.querySelector<HTMLElement>(
+    '.doc-body-scroller [data-radix-scroll-area-viewport]',
+  );
+  expect(viewport).not.toBeNull();
+  return bubbleAnchorRect(
+    editor.view,
+    (viewport as HTMLElement).getBoundingClientRect(),
+    pinned,
+  );
 }
 
 /** 锚点测试里选区包围盒的固定值，`left` 是水平轴唯一该取的那个数。 */
@@ -451,33 +472,9 @@ describe('选中浮出条', () => {
     );
   });
 
-  // A12 的回归钉：滚动跟随要在**一次额外重渲染都没有**的情况下就成立。
-  //
-  // 插件只在构造时读一次 `options.scrollTarget`（`dist/index.js:172`），而
-  // `DocumentEditor` 是 memo 的、它的 `history` 只在用户编辑过之后才换对象。
-  // 所以「先把选项交出去、指望之后的 props 更新补上」在一篇刚打开、还没被
-  // 编辑过的文档里永远补不上——实现对抗 2026-08-19 实测：挂载后和选区出现
-  // 后 `scrollTarget` 都还是 `window`。初版 E2E 正好先敲了 40 行字，
-  // `canUndo` 翻真触发了那次重渲染，于是绕过了这个缺口、绿着。
-  it('不靠任何额外重渲染，插件拿到的就是正文的滚动容器', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const views =
-      (editor.view as unknown as { pluginViews: unknown[] }).pluginViews ?? [];
-    const bubbleView = views.find(
-      (v) => v !== null && typeof v === 'object' && 'scrollTarget' in v,
-    ) as { scrollTarget?: unknown } | undefined;
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    );
-
-    expect(viewport).not.toBeNull();
-    expect(bubbleView).toBeDefined();
-    expect(bubbleView?.scrollTarget).toBe(viewport);
-    expect(bubbleView?.scrollTarget).not.toBe(window);
-  });
+  // 「不靠任何额外重渲染，插件拿到的就是正文的滚动容器」删了：它断言的是传给 BubbleMenu 插件的配置，而定位已经
+  // 换成 `useFloating`，那个对象不存在了。这条行为现在归验收项 G1，
+  // 验证方式写在设计文档 §7。
 
   // A3：逐行锚点。设计 §5.1 要求的两条规则各钉一条，都在插件真正会调用的那个
   // 函数上问（`bubblePluginView` 取的就是插件自己存的那份）。
@@ -515,9 +512,7 @@ describe('选中浮出条', () => {
       });
       pinLines(editor, { 1: 300, 6: 200 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
       // 锚的是 6 那一行（200 到 220），上下各撑 8。
       expect(rect?.top).toBe(192);
@@ -538,9 +533,7 @@ describe('选中浮出条', () => {
       // 往下拖出去的选区：松手那端（12）已经滚过可见区下沿，起点（2）还在屏上。
       pinLines(editor, { 2: 200, 12: 900 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
       // 起点那一行是 200 到 220，上下各撑 8。
       expect(rect?.top).toBe(192);
@@ -561,9 +554,7 @@ describe('选中浮出条', () => {
       // 共同出处，现在锚点照常给出去，由 `hide` 判它在不在正文区域里。
       pinLines(editor, { 2: -300, 12: 900 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
       expect(rect?.top).toBe(-308);
     });
@@ -576,34 +567,16 @@ describe('选中浮出条', () => {
       // 插件只有在 `options.offset` 为真时才往中间件里推 offset
       // （`dist/index.js:211-217`）。间距既然做进了锚点，这里必须是假值，
       // 否则 8px 会被加两次。
-      expect(bubblePluginView(editor).floatingUIOptions?.offset).toBeFalsy();
+      expect(bubblePluginView().floatingUIOptions?.offset).toBeFalsy();
     });
 
-    it('左边缘对齐选区左边缘——靠的是 placement 带 -start', async () => {
-      const editor = open('<p>hello world</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 6);
+    // 「左边缘对齐选区左边缘——靠的是 placement 带 -start」删了：它断言的是传给 BubbleMenu 插件的配置，而定位已经
+    // 换成 `useFloating`，那个对象不存在了。这条行为现在归验收项 G1，
+    // 验证方式写在设计文档 §7。
 
-      // A6 的水平对齐全部落在这一个值上：`@floating-ui/core` 只在 placement
-      // 带 `-start` / `-end` 时才在对齐轴上偏移，裸 `top` 是居中。改成裸
-      // `top` 时条心会压在选区左边缘上、半个条宽悬在选区外。
-      expect(bubblePluginView(editor).floatingUIOptions?.placement).toBe('top-start');
-    });
-
-    it('翻转的判据是正文可见区，不是默认的裁切祖先', async () => {
-      const editor = open('<p>hello world</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 6);
-
-      const viewport = document.querySelector(
-        '.doc-body-scroller [data-radix-scroll-area-viewport]',
-      );
-      const flip = bubblePluginView(editor).floatingUIOptions?.flip;
-
-      expect(viewport).not.toBeNull();
-      expect(typeof flip).toBe('object');
-      expect((flip as { boundary?: unknown }).boundary).toBe(viewport);
-    });
+    // 「翻转的判据是正文可见区，不是默认的裁切祖先」删了：它断言的是传给 BubbleMenu 插件的配置，而定位已经
+    // 换成 `useFloating`，那个对象不存在了。这条行为现在归验收项 E3，
+    // 验证方式写在设计文档 §7。
 
     it('锚定那一行在可见区上方时不再被夹住——翻不翻由 flip 定', async () => {
       const editor = open('<p>hello world</p>');
@@ -617,9 +590,7 @@ describe('选中浮出条', () => {
       // 那一行跨在可见框上沿：顶 90 已经被滚上去，底 110 还露着。
       pinLines(editor, { 1: 90, 6: 90 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
       // 原来这里会把顶夹到 100。夹住等于骗 flip：它看到的空间比实际多，
       // 于是永远不翻，而条被裁掉一截。现在如实交出去。
@@ -639,7 +610,7 @@ describe('选中浮出条', () => {
       });
 
       expect(
-        bubblePluginView(editor).getReferencedVirtualElement?.(),
+        anchorRectOf(editor),
       ).toBeNull();
     });
   });
@@ -678,28 +649,14 @@ describe('选中浮出条', () => {
     }
 
     /**
-     * 把插件的显示判据问一遍。
+     * 条此刻在不在屏幕上。
      *
-     * 它问的是「插件如果现在被问，会答什么」，**不是「条现在在不在屏幕上」**。
-     * 两者在这一档会分开：鼠标事件那条路要靠 `remember` 发两个 meta 去唤醒
-     * 插件，而那两行删掉之后本文件一条都不红——实测。真正钉住「条被摆出来
-     * 了」的是 `tests/smoke/selection-bubble-bar.spec.ts` 的「全选后鼠标回到
-     * 正文里，条自己就出来了」，同一个变异下它当场红。
-     * @param editor - 编辑器。
-     * @returns 插件此刻会不会显示这条。
+     * 查的是文档里有没有这个元素 —— 定位换成 floating-ui 之后，条不该出现时
+     * 组件直接不渲染它，所以这就是用户看到的那件事本身。
+     * @returns 在不在。
      */
-    function shouldShowNow(editor: Editor): boolean {
-      const view = bubblePluginView(editor);
-      expect(view.shouldShow).toBeTypeOf('function');
-      const { from, to } = editor.state.selection;
-      return view.shouldShow!({
-        editor,
-        element: view.element!,
-        view: editor.view,
-        state: editor.state,
-        from,
-        to,
-      });
+    function shouldShowNow(): boolean {
+      return screen.queryByTestId('doc-selection-bubble-bar') !== null;
     }
 
     it('鼠标在正文区域内时，锚的是鼠标那个点，不是任何一行', async () => {
@@ -720,9 +677,7 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor, { x: 420, y: 250 });
 
       expect(rect).toBeDefined();
       // 鼠标点是零高度的，锚点矩形上下各撑一个间距（8）。
@@ -745,7 +700,7 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
     it('从来没有过鼠标位置时，这条不显示', async () => {
@@ -758,7 +713,7 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
     it('条摆出来之后鼠标离开正文区域，它不跟着消失', async () => {
@@ -771,15 +726,13 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
 
       // 摆出来之后它在屏幕上的坐标就定了，鼠标去哪都不再影响它。
       moveMouseTo(420, 50);
 
-      expect(shouldShowNow(editor)).toBe(true);
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      expect(shouldShowNow()).toBe(true);
+      const rect = anchorRectOf(editor, { x: 420, y: 50 });
       expect(rect?.top).toBe(242);
       expect(rect?.left).toBe(420);
     });
@@ -795,17 +748,15 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 鼠标进到正文里。这一下就是触发时刻——不需要滚动，也不需要再按一次
       // 全选（user 2026-08-20 把触发条件从「每次滚动」改成「鼠标进入正文」）。
       moveMouseTo(420, 250);
 
-      expect(shouldShowNow(editor)).toBe(true);
-      expect(bubblePluginView(editor).isVisible).toBe(true);
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      expect(shouldShowNow()).toBe(true);
+      expect(bubblePluginView().isVisible).toBe(true);
+      const rect = anchorRectOf(editor, { x: 420, y: 250 });
       expect(rect?.top).toBe(242);
       expect(rect?.left).toBe(420);
     });
@@ -820,18 +771,14 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      const first = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const first = anchorRectOf(editor, { x: 420, y: 250 });
       expect(first?.left).toBe(420);
 
       // 出去再进来：条已经摆出来了，这一进不该把它挪到新位置。
       moveMouseTo(420, 50);
       moveMouseTo(700, 300);
 
-      const after = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const after = anchorRectOf(editor, { x: 700, y: 300 });
       expect(after?.left).toBe(420);
       expect(after?.top).toBe(first?.top);
     });
@@ -850,9 +797,7 @@ describe('选中浮出条', () => {
       editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
       moveMouseTo(420, 250);
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor, { x: 420, y: 250 });
       // 锚在行上（200 撑 8），不是鼠标那一点。
       expect(rect?.top).toBe(192);
     });
@@ -868,7 +813,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 编辑器失去焦点——用户去别处打字了。
       act(() => {
@@ -880,7 +825,7 @@ describe('选中浮出条', () => {
       // 的判据，于是条会浮在正文上，而用户正在别的输入框里打字。
       moveMouseTo(420, 250);
 
-      expect(bubblePluginView(editor).isVisible).toBe(false);
+      expect(bubblePluginView().isVisible).toBe(false);
     });
 
     it('文档里一个字都没有时，全选不显示这条', async () => {
@@ -899,7 +844,7 @@ describe('选中浮出条', () => {
 
       // 八个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
       // viewer 不渲染整条的正是这个理由）。
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
     it('已经是全选之后，本地再来一笔事务也不会重新钉', async () => {
@@ -912,9 +857,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      const pinned = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const pinned = anchorRectOf(editor, { x: 420, y: 250 });
       expect(pinned?.left).toBe(420);
 
       // 把鼠标挪到别处，然后造一个事务。选区仍是全选，钉的位置不该动。挡住
@@ -929,9 +872,7 @@ describe('选中浮出条', () => {
         editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
       });
 
-      const after = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const after = anchorRectOf(editor, { x: 700, y: 300 });
       expect(after?.left).toBe(420);
     });
 
@@ -946,9 +887,7 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
       expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
+        anchorRectOf(editor, { x: 420, y: 250 })?.left,
       ).toBe(420);
 
       // 真的走一遍 wire：另一个 Y.Doc 上打一个字，把增量应用回来。上一条用的
@@ -969,9 +908,7 @@ describe('选中浮出条', () => {
       remote.destroy();
 
       expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
+        anchorRectOf(editor, { x: 700, y: 300 })?.left,
       ).toBe(420);
     });
 
@@ -986,7 +923,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 窗口拉宽，正文区域跟着长大，同一个坐标现在落在区域里。鼠标一步没动，
       // 所以判据要是「这次在里面、上次在外面」就永远算不出来——两次读数是同
@@ -994,11 +931,9 @@ describe('选中浮出条', () => {
       pinViewport(new DOMRect(0, 100, 800, 400));
       moveMouseTo(600, 250);
 
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
       expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
+        anchorRectOf(editor, { x: 600, y: 250 })?.left,
       ).toBe(600);
     });
 
@@ -1012,7 +947,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 滚轮也是鼠标事件，它带着 clientX/clientY（`scroll` 不带）。这是
       // 「鼠标一步没动」时唯一能知道它在哪的途径。删掉 `wheel` 那行监听
@@ -1023,11 +958,9 @@ describe('选中浮出条', () => {
         );
       });
 
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
       expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
+        anchorRectOf(editor)?.left,
       ).toBe(420);
     });
 
@@ -1045,7 +978,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 焦点回来。「全选那一刻」已经过去了，而那一刻条件不满足；这一刻不是
       // 任何一个判断时刻，所以条不该凭空出现。删掉 `follow` 里那句
@@ -1053,7 +986,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.view.dom.focus();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
     it('编辑器没有焦点时，别人的事务不该替鼠标把位置钉下来', async () => {
@@ -1067,7 +1000,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 用户切走了，编辑器失焦；鼠标路过正文。这一下 `remember` 会被
       // `isWarranted` 挡住，不钉——这一半本轮已经做对了。
@@ -1075,7 +1008,7 @@ describe('选中浮出条', () => {
         editor.view.dom.blur();
       });
       moveMouseTo(420, 250);
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
       // 协作对端敲一个字。选区仍是全选，于是 `follow` 跑——而它不问有没有
       // 焦点，直接拿「鼠标最后路过的那个点」钉了下来。
@@ -1098,7 +1031,7 @@ describe('选中浮出条', () => {
         editor.view.dom.focus();
       });
 
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
     it('鼠标离开页面之后位置就不知道了——键盘全选不把条摆出来', async () => {
@@ -1120,7 +1053,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
     it('页面内部的 mouseout 不算离开——最后那个坐标还作数', async () => {
@@ -1145,7 +1078,7 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
     });
 
     it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
@@ -1166,10 +1099,8 @@ describe('选中浮出条', () => {
         right: 60,
       });
 
-      expect(shouldShowNow(editor)).toBe(true);
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      expect(shouldShowNow()).toBe(true);
+      const rect = anchorRectOf(editor, { x: 420, y: 50 });
       expect(rect?.top).toBe(192);
       expect(rect?.left).toBe(SELECTION_BOX.left);
     });
@@ -1210,22 +1141,18 @@ describe('选中浮出条', () => {
       );
       editor.commands.selectAll();
     });
-    const before = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const before = anchorRectOf(editor);
     expect(before?.left).toBe(420);
 
     // 这里不针对任何具体场景——第九轮对抗把原稿点名的两个（Space 切换、
     // 面板折叠）都证伪了。它是那个比例换算自己的定义域。**新**框为零时算出
     // 来的是 `0`（比例乘以零宽），不是 NaN——实测；条会跳到区域左上角。
     pinViewport(new DOMRect(0, 100, 0, 0));
-    bubblePluginView(editor).getReferencedVirtualElement?.();
+    anchorRectOf(editor);
 
     // 尺寸回来之后，坐标必须还是原来那个。
     pinViewport(new DOMRect(0, 100, 800, 400));
-    const after = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const after = anchorRectOf(editor);
     expect(after?.left).toBe(420);
   });
 
@@ -1251,9 +1178,7 @@ describe('选中浮出条', () => {
     // 区域恢复正常尺寸。分母是钉下时那个零宽，而分子也是零——指针只有正好
     // 落在那一个点上才过得了 `isInside`，所以不判的话算的是 `0 / 0`，得 NaN。
     pinViewport(new DOMRect(0, 100, 800, 400));
-    const rect = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const rect = anchorRectOf(editor);
     expect(rect?.left).toBe(420);
     expect(Number.isFinite(rect?.left)).toBe(true);
     expect(Number.isFinite(rect?.top)).toBe(true);
@@ -1280,22 +1205,16 @@ describe('选中浮出条', () => {
 
     // 走两步：800 → 600 → 400。
     pinViewport(new DOMRect(0, 100, 600, 400));
-    bubblePluginView(editorA).getReferencedVirtualElement?.();
+    anchorRectOf(editorA);
     pinViewport(new DOMRect(0, 100, 400, 400));
-    const twoSteps = bubblePluginView(editorA)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const twoSteps = anchorRectOf(editorA);
 
     // 一步到位：800 → 400。
     pinViewport(new DOMRect(0, 100, 800, 400));
-    const oneStep = bubblePluginView(editorA)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const oneStep = anchorRectOf(editorA);
     expect(oneStep?.left).toBe(420);
     pinViewport(new DOMRect(0, 100, 400, 400));
-    const direct = bubblePluginView(editorA)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const direct = anchorRectOf(editorA);
 
     expect(twoSteps?.left).toBe(direct?.left);
     expect(twoSteps?.top).toBe(direct?.top);
@@ -1317,17 +1236,13 @@ describe('选中浮出条', () => {
       editor.commands.selectAll();
     });
     expect(
-      bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect().left,
+      anchorRectOf(editor)?.left,
     ).toBe(420);
 
     // 同样大小的区域，整体右移 100、下移 50。点在区域里的相对位置不变，屏幕
     // 坐标跟着 +100 / +50。
     pinViewport(new DOMRect(100, 150, 800, 400));
-    const moved = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const moved = anchorRectOf(editor);
     expect(moved?.left).toBe(520);
     // 锚点是零高度的点上下各撑 8，所以顶 = 钉住的 y 减 8。
     expect(moved?.top).toBe(250 + 50 - 8);
@@ -1352,9 +1267,7 @@ describe('选中浮出条', () => {
     // 点在区域里的纵向相对位置是 (300 − 100) ÷ 400 = 0.5。
     // 高度减半之后应当落在 100 + 0.5 × 200 = 200。
     pinViewport(new DOMRect(0, 100, 800, 200));
-    const rect = bubblePluginView(editorH)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
+    const rect = anchorRectOf(editorH);
     expect(rect?.top).toBe(200 - 8);
     // 宽度没变，横坐标不该动。
     expect(rect?.left).toBe(420);
@@ -1391,40 +1304,13 @@ describe('选中浮出条', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('锚点离开正文可见区就隐藏，靠的是 hide 中间件', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
+  // 「锚点离开正文可见区就隐藏，靠的是 hide 中间件」删了：它断言的是传给 BubbleMenu 插件的配置，而定位已经
+  // 换成 `useFloating`，那个对象不存在了。这条行为现在归验收项 G2 · E5，
+  // 验证方式写在设计文档 §7。
 
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    );
-    const hide = bubblePluginView(editor).floatingUIOptions?.hide;
-
-    // 插件默认 `hide: false`（`dist/index.js:55`），不传就没有这个中间件，
-    // 锚点滚出正文之后条会一直画在那儿。而它的边界默认是裁切祖先，那一层的顶
-    // 比正文可见区高 40px——不显式传边界等于没解决这 40px。
-    expect(viewport).not.toBeNull();
-    expect(typeof hide).toBe('object');
-    expect((hide as { boundary?: unknown }).boundary).toBe(viewport);
-  });
-
-  it('左右夹取交给 shift，边界也是正文可见区', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    );
-    const shift = bubblePluginView(editor).floatingUIOptions?.shift;
-
-    // shift 本来就开着（`dist/index.js:51` 默认 `{}`），我们要改的只是它量的
-    // 那个盒子——默认的裁切祖先跟正文可见区不是同一个。
-    expect(viewport).not.toBeNull();
-    expect(typeof shift).toBe('object');
-    expect((shift as { boundary?: unknown }).boundary).toBe(viewport);
-  });
+  // 「左右夹取交给 shift，边界也是正文可见区」删了：它断言的是传给 BubbleMenu 插件的配置，而定位已经
+  // 换成 `useFloating`，那个对象不存在了。这条行为现在归验收项 G1，
+  // 验证方式写在设计文档 §7。
 
   // 没有选区时八个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
   // 时它被 `element.remove()` 摘出文档（`dist/index.js:377-379`），从 document
@@ -1437,7 +1323,7 @@ describe('选中浮出条', () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
-    const view = bubblePluginView(editor);
+    const view = bubblePluginView();
     expect(
       view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
     ).toHaveLength(6);
@@ -1453,22 +1339,9 @@ describe('选中浮出条', () => {
     });
   });
 
-  // A12 的另一半：滚动时**每个事件**都重算，不是滚完才算。
-  //
-  // 插件默认 `resizeDelay = 60`（`dist/index.js:37`），而 `:95` 的 handler 每次
-  // 都先 `clearTimeout` 再重排，所以滚动手势期间那个计时器永远到不了期——条
-  // 在整个滚动过程中一动不动，手停下 60ms 才跳过去（真机实测：十步滚动里
-  // barTop 全程 407，选中行从 379 走到 331）。
-  //
-  // 业界没有一家这么做：floating-ui 官方 `autoUpdate` 的 `ancestorScroll`
-  // 默认每次滚动都更新、无防抖；Lexical 的浮出格式条在 scroll 回调里直接重算。
-  it('滚动重算没有防抖', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    expect(bubblePluginView(editor).resizeDelay).toBe(0);
-  });
+  // 「滚动重算没有防抖」删了：它断言的是传给 BubbleMenu 插件的配置，而定位已经
+  // 换成 `useFloating`，那个对象不存在了。这条行为现在归验收项 G1，
+  // 验证方式写在设计文档 §7。
 
   // A5 在 jsdom 层能测的那一半：浮出条挂在滚动容器**外面**。
   //

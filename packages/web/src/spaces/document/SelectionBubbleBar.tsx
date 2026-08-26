@@ -86,8 +86,16 @@ import { useEditorState, type Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { AllSelection, PluginKey } from '@tiptap/pm/state';
-import { BubbleMenu } from '@tiptap/react/menus';
+import { AllSelection } from '@tiptap/pm/state';
+import { createPortal } from 'react-dom';
+import {
+  useFloating,
+  autoUpdate,
+  flip,
+  shift,
+  hide,
+  type VirtualElement,
+} from '@floating-ui/react';
 
 import { MessageSquareText } from 'lucide-react';
 
@@ -313,6 +321,90 @@ function anchorRect(left: number, line: { top: number; bottom: number }): DOMRec
   return new DOMRect(left, top, 0, bottom - top);
 }
 
+/** A pin: the point, plus the body area it was measured in. */
+export interface BubblePin {
+  x: number;
+  y: number;
+  area: DOMRect;
+}
+
+/**
+ * Where a pin sits on screen now, given the body area's current box.
+ *
+ * Exported because the whole of the remapping rule lives here: a pin made in
+ * one area and read in another is rescaled by the ratio between them, and two
+ * degenerate cases refuse to divide.
+ * @param pin - The pin, or null when nothing is pinned.
+ * @param area - The body area's box right now.
+ * @returns The screen point, or null when there is no pin.
+ */
+export function pinnedScreenPoint(
+  pin: BubblePin | null,
+  area: DOMRect,
+): { x: number; y: number } | null {
+  if (!pin) return null;
+  // All four numbers, not just the two sizes: the ratio below reads `left`
+  // and `top` as well, so an area that moved without resizing has to be
+  // rescaled too or the bar stays behind where the body used to be.
+  const unchanged =
+    area.left === pin.area.left
+    && area.top === pin.area.top
+    && area.width === pin.area.width
+    && area.height === pin.area.height;
+  // Two operands, two different failures.
+  //
+  // The divisor is the OLD area — the box the point was placed in. It can be
+  // degenerate: `isInside` accepts a rectangle collapsed to a single point,
+  // and a pointer can only pass that test by sitting exactly on it, so the
+  // numerator is zero too: `0 / 0` is NaN. A pin is never rewritten once made,
+  // so that one is permanent.
+  //
+  // The NEW area is tested for a different reason. A zero there makes the
+  // product zero, not NaN, and the bar would sit at the area's own corner for
+  // that one frame — the next reading of a real size is correct again, because
+  // this always maps from the original point. Momentary, not permanent, and
+  // still worth not doing.
+  const measurable =
+    pin.area.width > 0 && pin.area.height > 0
+    && area.width > 0 && area.height > 0;
+  if (unchanged || !measurable) return { x: pin.x, y: pin.y };
+  return {
+    x: area.left + ((pin.x - pin.area.left) / pin.area.width) * area.width,
+    y: area.top + ((pin.y - pin.area.top) / pin.area.height) * area.height,
+  };
+}
+
+/**
+ * Where the bar's anchor sits, as one rectangle.
+ *
+ * Exported because this is the whole anchoring decision in one place: which
+ * line the bar hangs against, where its left edge goes, and the gap above it.
+ * Tests call it rather than reaching into whatever positions the bar, so
+ * changing the positioning engine does not take the anchoring coverage with it.
+ * @param view - The editor view to measure against.
+ * @param viewportBox - The body scroller's visible box.
+ * @param pinned - The screen point a select-all is pinned to, or null.
+ * @returns The anchor rectangle, or null while the selection is empty.
+ */
+export function bubbleAnchorRect(
+  view: EditorView,
+  viewportBox: DOMRect,
+  pinned: { x: number; y: number } | null,
+): DOMRect | null {
+  if (view.state.selection.empty) return null;
+  // A pinned point has no extent, so both edges of its "line" are the same
+  // coordinate; the gap then gives it the shape a real line would have.
+  if (pinned) return anchorRect(pinned.x, { top: pinned.y, bottom: pinned.y });
+  // The two axes come from different places, and they have to. Vertically the
+  // bar belongs to ONE line — the anchor. Horizontally the ruling asks for the
+  // selection's left edge, which is the left of the box it occupies: the
+  // anchor's own x is no such thing, and neither is `posToDOMRect`, which
+  // samples only the two endpoints and so misses the block edge a middle line
+  // starts at.
+  const line = pickAnchorLine(view, viewportBox);
+  return anchorRect(selectionBox(view).left, line);
+}
+
 /**
  * Whether a range of the document holds any text at all.
  *
@@ -439,7 +531,7 @@ function BubbleBar({
 }: {
   editor: Editor;
   viewport: HTMLElement;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   // Walked up from the viewport already in hand rather than looked up again:
   // this is the scroller the bar is judged against, so its parent is the box
   // the bar must hang outside of. A second document-wide lookup would be a
@@ -451,11 +543,22 @@ function BubbleBar({
     [viewport],
   );
 
+  // The bar element, as state rather than only a ref: the four slots mount
+  // their menus INSIDE it (`container`), and a ref is still null on the render
+  // that creates the element. A menu that mounted with null went to `body`
+  // instead, which put focus outside the bar's subtree, which took the bar off
+  // the screen — measured, hovering a slot removed the whole bar.
+  const [barEl, setBarEl] = React.useState<HTMLDivElement | null>(null);
   const barRef = React.useRef<HTMLDivElement | null>(null);
+  // Whether any of the four menus is open. Read by `isWarranted`, written just
+  // below where the open one is tracked.
+  const menuOpenRef = React.useRef(false);
+  // Whether the bar belongs on screen at all. Two paths write it: every
+  // transaction (plus focus and blur), and the mouse-event path that pins a
+  // select-all to the pointer — the latter carries no transaction of its own.
+  const [warranted, setWarranted] = React.useState(false);
   const pointerRef = React.useRef<{ x: number; y: number } | null>(null);
-  const pinnedRef = React.useRef<{ x: number; y: number; area: DOMRect } | null>(
-    null,
-  );
+  const pinnedRef = React.useRef<BubblePin | null>(null);
   // Whether the last transaction found a select-all, so the next one can tell
   // "the selection just became one" from "it already was". See `follow`.
   //
@@ -470,23 +573,12 @@ function BubbleBar({
     editor.state.selection instanceof AllSelection,
   );
 
-  // A ref, not `useMemo`: this key IS the plugin's identity, and `useMemo` is
-  // a cache React is allowed to drop and recompute. A new key mid-life would
-  // leave the metas we send addressed to a plugin nobody is listening for.
-  // `@tiptap/react`'s own menu wrapper holds its key the same way — a
-  // `useRef(...).current` (`dist/menus/index.js:306-308`).
-  const pluginKeyRef = React.useRef<PluginKey | null>(null);
-  pluginKeyRef.current ??= new PluginKey('selectionBubbleBar');
-  const pluginKey = pluginKeyRef.current;
-
   /**
    * The conditions that hold whichever path is asking.
    *
-   * The plugin's own `shouldShow` (`dist/index.js:62-77`) is REPLACED rather
-   * than extended when we pass ours, so its conditions live here: focus
-   * somewhere that counts, a selection that is not empty, text inside it, and
-   * an editable editor. Both askers go through this — the plugin's own
-   * question and the mouse-event path below. That path used to carry its own
+   * Focus somewhere that counts, a selection that is not empty, text inside
+   * it, and an editable editor. Both askers go through this — the transaction
+   * path and the mouse-event path below. That path used to carry its own
    * shorter list and so put the bar up over an editor the reader had already
    * left.
    *
@@ -506,22 +598,22 @@ function BubbleBar({
    * @returns True when a bar is warranted at all.
    */
   const isWarranted = React.useCallback((view: EditorView): boolean => {
-    const bar = barRef.current;
     const { doc, selection } = view.state;
     if (selection.empty || !editor.isEditable) return false;
     // Focus first, then the text. Both answer in constant time now —
     // `hasTextIn` stops at the first text node — so this order is no longer
     // about cost; it is just the cheapest question asked first.
-    // Focus inside the bar's own subtree counts too. The four dropdowns mount
-    // their menus inside the bar (`DropdownMenuContent`'s `container`), and
-    // Radix moves focus into the menu content when one opens — the prop that
-    // would stop that move (`onOpenAutoFocus`) lives in
-    // `MenuContentImplPrivateProps` and the public type `Omit`s it away, which
-    // is Radix saying it is not ours to pass. So the test widens instead, and
-    // this is the bubble-menu plugin's own reading of the question
-    // (`dist/index.js:71-72`, `isChildOfMenu`).
-    const focusInBar = bar !== null && bar.contains(bar.ownerDocument.activeElement);
-    if (!view.hasFocus() && !focusInBar) return false;
+    //
+    // An open menu counts as the focus being where it should. Radix moves
+    // focus into the menu content when one opens, and the prop that would stop
+    // that move (`onOpenAutoFocus`) is `Omit`ted from the public type — Radix
+    // saying it is not ours to pass. The reading is OUR OWN STATE rather than
+    // the DOM's active element: during a focus change the active element is
+    // `<body>` for the length of the `blur`, and in a test environment with no
+    // layout the menu is not focusable at all, so it stays `<body>` — measured
+    // both ways, reading the DOM took the bar off screen the moment a slot was
+    // hovered.
+    if (!view.hasFocus() && !menuOpenRef.current) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 
@@ -551,41 +643,7 @@ function BubbleBar({
    */
   const pinnedPoint = React.useCallback((): { x: number; y: number } | null => {
     if (!(editor.state.selection instanceof AllSelection)) return null;
-    const pin = pinnedRef.current;
-    if (!pin) return null;
-    const area = viewport.getBoundingClientRect();
-    // All four numbers, not just the two sizes: the ratio below reads `left`
-    // and `top` as well, so an area that moved without resizing has to be
-    // rescaled too or the bar stays behind where the body used to be.
-    const unchanged =
-      area.left === pin.area.left
-      && area.top === pin.area.top
-      && area.width === pin.area.width
-      && area.height === pin.area.height;
-    // Two operands, two different failures.
-    //
-    // The divisor is the OLD area — `pin.area`, the box the point was placed
-    // in. It can be degenerate: `isInside` accepts a rectangle collapsed to a
-    // single point (`x >= left && x <= right` both hold when they are equal),
-    // and a pointer can only pass that test by sitting exactly on it, so the
-    // numerator is zero too: `0 / 0` is NaN. A pin is never rewritten once
-    // made, so that one is permanent.
-    //
-    // The NEW area is tested for a different reason. A zero there makes the
-    // product zero, not NaN, and the bar would sit at the area's own corner
-    // for that one frame — the next reading of a real size is correct again,
-    // because this function always maps from the original point. Momentary,
-    // not permanent, and still worth not doing.
-    const measurable =
-      pin.area.width > 0 && pin.area.height > 0
-      && area.width > 0 && area.height > 0;
-    if (unchanged || !measurable) {
-      return { x: pin.x, y: pin.y };
-    }
-    return {
-      x: area.left + ((pin.x - pin.area.left) / pin.area.width) * area.width,
-      y: area.top + ((pin.y - pin.area.top) / pin.area.height) * area.height,
-    };
+    return pinnedScreenPoint(pinnedRef.current, viewport.getBoundingClientRect());
   }, [editor, viewport]);
 
   /**
@@ -727,8 +785,10 @@ function BubbleBar({
       // reader would then get the bar at a place the pointer passed through
       // while they were typing somewhere else entirely.
       if (!isWarranted(view) || !pinToPointer()) return;
-      view.dispatch(view.state.tr.setMeta(pluginKey, 'show'));
-      view.dispatch(view.state.tr.setMeta(pluginKey, 'updatePosition'));
+      // Straight to the state. This path carries no transaction of its own —
+      // the reader moved the pointer, they did not edit — so there is nothing
+      // for the transaction listener to hear.
+      setWarranted(true);
     };
     /**
      * Forget the pointer once it leaves the document.
@@ -768,46 +828,17 @@ function BubbleBar({
       document.removeEventListener('wheel', remember);
       document.removeEventListener('mouseout', forget);
     };
-  }, [editor, viewport, isWarranted, pinToPointer, pluginKey]);
+  }, [editor, viewport, isWarranted, pinToPointer]);
 
   /**
-   * The one line this bar sits against, in viewport coordinates and with no
-   * gap added.
-   *
-   * A pinned point has no extent, so both edges of the "line" are the same
-   * coordinate; growing it into the gap (below) then gives it the same shape a
-   * real line gets, which is what keeps the flip behaviour identical across the
-   * two modes.
-   *
-   * Its x comes from the pointer too, not from the selection's box: over a
-   * select-all that box is the whole body column and its left edge says nothing
-   * about where the reader is looking.
-   * @returns The line, or null while the selection is empty.
+   * This bar's anchor rectangle, read fresh.
+   * @returns The rectangle, or null while the selection is empty.
    */
-  const anchorLine = React.useCallback((): {
-    left: number;
-    top: number;
-    bottom: number;
-  } | null => {
-    const { view } = editor;
-    if (view.state.selection.empty) return null;
-    const pinned = pinnedPoint();
-    if (pinned) return { left: pinned.x, top: pinned.y, bottom: pinned.y };
-    // The two axes come from different places here, and they have to.
-    // Vertically the bar belongs to ONE line — the anchor. Horizontally the
-    // ruling asks for the selection's left edge, which is the left of the
-    // box it occupies: the anchor's own x is no such thing (it is usually
-    // the head, and measured, taking x from there put the bar 314px right of
-    // where the ruling wants it), and neither is `posToDOMRect`, which
-    // samples only the two endpoints and so misses the block edge that a
-    // middle line starts at.
-    const line = pickAnchorLine(view, viewport.getBoundingClientRect());
-    return {
-      left: selectionBox(view).left,
-      top: line.top,
-      bottom: line.bottom,
-    };
-  }, [editor, viewport, pinnedPoint]);
+  const anchorLine = React.useCallback(
+    (): DOMRect | null =>
+      bubbleAnchorRect(editor.view, viewport.getBoundingClientRect(), pinnedPoint()),
+    [editor, viewport, pinnedPoint],
+  );
 
   /**
    * Step aside while a panel is up.
@@ -834,6 +865,10 @@ function BubbleBar({
   // state on each slot, the one being left would hear nothing as the pointer
   // moves to the next.
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
+  // Mirrored into a ref so `isWarranted` can read it without listing it as a
+  // dependency: that callback is handed to listeners registered once, and a new
+  // identity on every menu open would re-register all of them.
+  menuOpenRef.current = openMenu !== null;
   const setMenuOpen = React.useCallback((id: string, open: boolean): void => {
     setOpenMenu((current) => {
       if (open) return id;
@@ -888,39 +923,69 @@ function BubbleBar({
     };
   }, [editor]);
 
-  const getReferencedVirtualElement = React.useCallback(() => {
-    const line = anchorLine();
-    if (!line) return null;
-    const rect = anchorRect(line.left, line);
-    return {
-      getBoundingClientRect: () => rect,
-      getClientRects: () => [rect] as unknown as DOMRectList,
-    };
-  }, [anchorLine]);
-
-  const options = React.useMemo(
+  /**
+   * The anchor, as floating-ui wants it.
+   *
+   * `getBoundingClientRect` reads the selection AT CALL TIME rather than
+   * closing over a rectangle measured once. `autoUpdate` answers a scroll by
+   * calling `computePosition` again, and `computePosition` asks the reference
+   * where it is — a captured rectangle would send the bar back to where the
+   * text used to be (E1).
+   *
+   * `contextElement` is load-bearing, not decoration. `autoUpdate` runs
+   * `unwrapElement(reference)`, which for a virtual element reads exactly this
+   * field, and the whole `getOverflowAncestors` walk is skipped when it comes
+   * back undefined — with no context element, not one scroll listener is
+   * attached to the body's scroller and the bar never follows anything.
+   */
+  const anchor = React.useMemo<VirtualElement>(
     () => ({
-      placement: 'top-start' as const,
-      // Off, not absent: the plugin's own default is `offset: 8`
-      // (`dist/index.js:49`) and our options are spread over the defaults, so
-      // leaving it out keeps it. The gap is part of the anchor already (see
-      // `anchorRect`); letting the middleware add it too would double it.
-      offset: false as const,
-      flip: { boundary: viewport },
-      // Already on by default (`:51`). The boundary is named for the same
-      // reason as flip's: judge against the body's visible area, not against
-      // whichever ancestor happens to clip. This one keeps the whole bar
-      // inside the body's left and right edges.
-      shift: { boundary: viewport },
-      // Off by default (`:55`) — passing it at all is what turns it on. This is
-      // what takes the bar away once its anchor has left the body area: the
-      // plugin reads the middleware's verdict and sets `visibility: hidden`
-      // (`:316-319`). Clipping alone would not, since the bar hangs outside the
-      // scroller.
-      hide: { boundary: viewport },
-      scrollTarget: viewport,
+      getBoundingClientRect: () => anchorLine() ?? new DOMRect(0, 0, 0, 0),
+      contextElement: editor.view.dom,
     }),
-    [viewport],
+    [anchorLine, editor],
+  );
+
+  const { refs, floatingStyles, middlewareData } = useFloating({
+    // The bar hangs OUTSIDE the scroller (see `appendTo`), in a positioned
+    // ancestor of it, so the coordinates are that box's own.
+    strategy: 'absolute',
+    placement: 'top-start',
+    middleware: [
+      // No `offset`: the gap is already part of the anchor rectangle
+      // (`anchorRect`), and a middleware adding it again would double it.
+      //
+      // All three boundaries name the body's visible area rather than letting
+      // each middleware find whichever ancestor happens to clip. `flip` and
+      // `shift` keep the bar inside it; `hide` is what takes the bar away once
+      // the anchor has left, which clipping cannot do for something mounted
+      // outside the scroller.
+      flip({ boundary: viewport }),
+      shift({ boundary: viewport }),
+      hide({ boundary: viewport }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+
+  React.useEffect(() => {
+    refs.setPositionReference(anchor);
+  }, [anchor, refs]);
+
+  /**
+   * Take the bar element three ways at once.
+   *
+   * Stable, not written inline: React detaches an inline ref callback and
+   * re-attaches it on every render, calling it with null in between, and that
+   * null reaches the slots as their menu container.
+   * @param node - The bar, or null as it unmounts.
+   */
+  const takeBarNode = React.useCallback(
+    (node: HTMLDivElement | null): void => {
+      barRef.current = node;
+      setBarEl(node);
+      refs.setFloating(node);
+    },
+    [refs],
   );
   // The last word on the bar's focusability. The plugin assigns `tabIndex = 0`
   // in its constructor (`dist/index.js:178`), which the React wrapper runs in a
@@ -967,6 +1032,44 @@ function BubbleBar({
     };
   });
 
+  // The question is asked on every transaction, and on focus and blur — the
+  // three moments that can change any of `shouldShow`'s terms. Focus and blur
+  // carry no transaction of their own, so a bar left up after the reader
+  // clicked away would have nothing to take it down.
+  React.useEffect(() => {
+    /** Re-ask whether the bar belongs on screen. */
+    const ask = (): void => {
+      setWarranted(shouldShow({ view: editor.view }));
+    };
+    /**
+     * The editor lost focus — ask again, unless the focus is on its way into
+     * the bar.
+     *
+     * `relatedTarget` rather than `document.activeElement`: during a focus
+     * change the active element is `<body>` for the length of the `blur`, and
+     * a check reading it there judges every menu opening as focus leaving for
+     * nowhere. `relatedTarget` names the element about to receive it. The
+     * bubble-menu plugin reads the same field for the same reason.
+     * @param payload - What tiptap passes its `blur` event.
+     * @param payload.event - The DOM focus event.
+     */
+    const askOnBlur = ({ event }: { event: FocusEvent }): void => {
+      const next = event.relatedTarget;
+      const bar = barRef.current;
+      if (bar && next instanceof Node && bar.contains(next)) return;
+      ask();
+    };
+    editor.on('transaction', ask);
+    editor.on('focus', ask);
+    editor.on('blur', askOnBlur);
+    ask();
+    return () => {
+      editor.off('transaction', ask);
+      editor.off('focus', ask);
+      editor.off('blur', askOnBlur);
+    };
+  }, [editor, shouldShow]);
+
   // Whether there is a selection at all, subscribed rather than read during
   // render — a co-editor's change arrives with no React render behind it. The
   // buttons are built only while it is true: each of them runs its command's
@@ -978,24 +1081,18 @@ function BubbleBar({
     selector: ({ editor: e }) => (e ? !e.state.selection.empty : false),
   });
 
-  return (
-    <BubbleMenu
-      editor={editor}
-      appendTo={appendTo}
-      pluginKey={pluginKey}
-      shouldShow={shouldShow}
-      getReferencedVirtualElement={getReferencedVirtualElement}
-      ref={barRef}
-      // No debounce on the scroll recompute. The plugin's default is 60ms and
-      // its handler clears the timer on every event (`dist/index.js:37/95`), so
-      // through a scrolling gesture the timer never fires — measured, the bar
-      // stood still for the whole gesture while the text moved under it, the
-      // gap running 8 to -152, and only snapped back once scrolling stopped.
-      // Both references do it per event with no debounce: floating-ui's
-      // `autoUpdate` (`ancestorScroll`, on by default) and Lexical's floating
-      // toolbar, which recomputes straight inside its scroll handler.
-      resizeDelay={0}
-      options={options}
+  if (!warranted) return null;
+
+  return createPortal(
+    <div
+      ref={takeBarNode}
+      style={{
+        ...floatingStyles,
+        // `hide` reports its verdict; acting on it is ours. This is what takes
+        // the bar away once the anchor has scrolled out of the body area — the
+        // bar hangs outside the scroller, so no overflow clips it (E5).
+        visibility: middlewareData.hide?.referenceHidden ? 'hidden' : undefined,
+      }}
       data-testid='doc-selection-bubble-bar'
       // Above the whole-document entry. The bar is the transient one, summoned
       // by a selection the reader just made, and its horizontal position
@@ -1004,12 +1101,7 @@ function BubbleBar({
       // entry's and nothing else on the page.
       className={cn(
         'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
-        // `invisible!` rather than `invisible`: the plugin writes
-        // `visibility` as an inline style when it shows the bar
-        // (`extension-bubble-menu`), and an inline declaration beats a plain
-        // class. Measured — with the plain one the classes were on the element
-        // and the bar was still on screen.
-        (panelOpen || pointerDown) && 'invisible! pointer-events-none',
+        (panelOpen || pointerDown) && 'invisible pointer-events-none',
       )}
     >
       {hasSelection
@@ -1038,7 +1130,7 @@ function BubbleBar({
               <Slot
                 key={slotIndex}
                 editor={editor}
-                container={barRef.current}
+                container={barEl}
                 scroller={viewport}
                 openId={openMenu}
                 onOpenChange={setMenuOpen}
@@ -1050,6 +1142,7 @@ function BubbleBar({
           </React.Fragment>
         ))
         : null}
-    </BubbleMenu>
+    </div>,
+    appendTo(),
   );
 }

@@ -500,5 +500,37 @@ describe('浮出条的壳子', () => {
       await selectWithFocus(editor, 1, 10);
       expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeNull();
     });
+
+    it('shows the bar the moment the pointer lifts, with nothing to wait out', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      // 真实的框选是从「没有选区」开始的：按下那一刻选区塌成一个光标，
+      // 条不在文档里。这跟上面几条不一样，它们都从一段现成的选区开始，
+      // 于是条从头到尾没消失过，任何「什么时候重新出现」都测不到。
+      act(() => {
+        editor.view.dom.focus();
+        editor.commands.setTextSelection({ from: 1, to: 1 });
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
+      });
+
+      act(() => {
+        fireEvent.pointerDown(editor.view.dom);
+      });
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 10 });
+      });
+      act(() => {
+        fireEvent.pointerUp(editor.view.root as unknown as Element);
+      });
+
+      // 同步断言，不经 `waitFor`：user 2026-08-26 的原话是「松手之后不用缓了，
+      // 直接出来」，所以松手那一刻条就该在，没有任何计时器要等完。用
+      // `waitFor` 会把这条要求整个吃掉——它最多等一秒，而任何几百毫秒的
+      // 延迟都在那一秒里。
+      const bar = screen.getByTestId('doc-selection-bubble-bar');
+      expect(bar.className).not.toContain('invisible');
+    });
   });
 });
