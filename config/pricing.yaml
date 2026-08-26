@@ -27,7 +27,7 @@ tiers:
     currency: usd
     description: ""
     stripe_price_id:
-      test: ""
+      test: "price_1U8aBUGeRYMxofheEfpNDked"
       live: ""
 
   - name: "1,700 Credits"
@@ -36,7 +36,7 @@ tiers:
     currency: usd
     description: ""
     stripe_price_id:
-      test: ""
+      test: "price_1U8aC0GeRYMxofhevMFDox6Z"
       live: ""
 
   - name: "4,320 Credits"
@@ -45,7 +45,7 @@ tiers:
     currency: usd
     description: ""
     stripe_price_id:
-      test: ""
+      test: "price_1U8aCuGeRYMxofhe2WVbQEso"
       live: ""
 
   - name: "8,690 Credits"
@@ -54,7 +54,7 @@ tiers:
     currency: usd
     description: ""
     stripe_price_id:
-      test: ""
+      test: "price_1U8aDGGeRYMxofheU2u9PGh8"
       live: ""
 
   - name: "43,660 Credits"
@@ -63,5 +63,5 @@ tiers:
     currency: usd
     description: ""
     stripe_price_id:
-      test: ""
+      test: "price_1U8aDcGeRYMxofheekj677zO"
       live: ""
