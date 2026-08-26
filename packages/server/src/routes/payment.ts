@@ -108,18 +108,17 @@ payment.post("/webhook", async (c) => {
   const session = event.data.object as { id: string; payment_intent?: string };
 
   switch (event.type) {
-    case "checkout.session.completed": {
-      const outcome = await paymentService.handleCheckoutCompleted(
-        session.id,
-        typeof session.payment_intent === "string" ? session.payment_intent : undefined,
-      );
+    case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded":
+    case "checkout.session.expired": {
+      const outcome = await paymentService.fulfillPayment(session.id, event.id);
       // Audit log moved from payment.service.ts (17B mandate).
       // The discriminated outcome distinguishes the at-most-once
       // CAS replay path from the real credit grant.
-      if (outcome.status === "replay") {
+      if (outcome.status !== "granted") {
         logger.info(
-          { stripeSessionId: session.id },
-          "payment_webhook_replay",
+          { stripeSessionId: session.id, outcome: outcome.status },
+          "payment_webhook_no_grant",
         );
       } else {
         logger.info(

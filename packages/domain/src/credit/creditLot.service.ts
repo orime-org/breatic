@@ -118,13 +118,16 @@ export interface ChargeOutcome {
  * @returns The new lot.
  * @throws {Error} If a lot already exists for this payment — the unique constraint rejects the insert.
  */
-export async function grantFromPayment(input: {
-  paymentId: string;
-  userId: string;
-  purchasedCredits: number;
-}): Promise<CreditLotEntity> {
+export async function grantFromPayment(
+  input: {
+    paymentId: string;
+    userId: string;
+    purchasedCredits: number;
+  },
+  outer?: DbTx,
+): Promise<CreditLotEntity> {
   const amount = fromMicroCredits(toMicroCredits(input.purchasedCredits));
-  return db.transaction(async (tx) => {
+  const run = async (tx: DbTx): Promise<CreditLotEntity> => {
     const lot = await creditLotRepo.createLot(
       {
         paymentId: input.paymentId,
@@ -144,7 +147,11 @@ export async function grantFromPayment(input: {
       tx,
     );
     return lot;
-  });
+  };
+  // The caller may already hold the transaction that decided this payment is
+  // ours to grant. Opening a second one here would let the grant commit
+  // while the decision rolls back.
+  return outer ? run(outer) : db.transaction(run);
 }
 
 /**

@@ -23,7 +23,7 @@ const { verifyWebhookSignature, handleSubscriptionEvent, paymentService } =
   vi.hoisted(() => ({
     verifyWebhookSignature: vi.fn(),
     handleSubscriptionEvent: vi.fn(),
-    paymentService: { handleCheckoutCompleted: vi.fn() },
+    paymentService: { fulfillPayment: vi.fn() },
   }));
 
 vi.mock("@server/infra/stripe.js", () => ({ verifyWebhookSignature }));
@@ -88,7 +88,7 @@ describe("POST /payment/webhook — 分流与状态码", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(paymentService.handleCheckoutCompleted).not.toHaveBeenCalled();
+    expect(paymentService.fulfillPayment).not.toHaveBeenCalled();
   });
 
   it("档位真被改动的事件答 200", async () => {
@@ -126,8 +126,8 @@ describe("POST /payment/webhook — 分流与状态码", () => {
 
   it("不是订阅腿的事件才交给积分那条腿", async () => {
     handleSubscriptionEvent.mockResolvedValue({ status: "notMine" });
-    paymentService.handleCheckoutCompleted.mockResolvedValue({
-      status: "completed",
+    paymentService.fulfillPayment.mockResolvedValue({
+      status: "granted",
       credits: 500,
       userId: "u-1",
     });
@@ -139,10 +139,8 @@ describe("POST /payment/webhook — 分流与状态码", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(paymentService.handleCheckoutCompleted).toHaveBeenCalledWith(
-      "cs_2",
-      undefined,
-    );
+    // 事件 id 一路传进去：认领就是靠它挡住 Stripe 的重投。
+    expect(paymentService.fulfillPayment).toHaveBeenCalledWith("cs_2", "evt_4");
   });
 
   it("签名不对答 400，且不碰任何一条腿", async () => {
@@ -158,6 +156,6 @@ describe("POST /payment/webhook — 分流与状态码", () => {
 
     expect(res.status).toBe(400);
     expect(handleSubscriptionEvent).not.toHaveBeenCalled();
-    expect(paymentService.handleCheckoutCompleted).not.toHaveBeenCalled();
+    expect(paymentService.fulfillPayment).not.toHaveBeenCalled();
   });
 });

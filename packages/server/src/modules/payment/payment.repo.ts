@@ -5,9 +5,10 @@
  * Payment repository — data access for the payments table.
  */
 
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
-import { payments } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
+import { payments, users, creditLots, purchaseConsents } from "@breatic/core";
 import type { PaymentEntity } from "@breatic/shared";
 
 /**
@@ -117,16 +118,28 @@ export async function updatePaymentStatus(
  */
 export async function updatePaymentStatusCAS(
   id: string,
-  fromStatus: string,
+  fromStatus: readonly string[],
   toStatus: string,
-  stripePaymentIntentId?: string,
+  charged?: {
+    stripePaymentIntentId?: string | undefined;
+    taxCents?: number | undefined;
+    totalCents?: number | undefined;
+  },
+  tx: DbTx | typeof db = db,
 ): Promise<boolean> {
-  const updates: Record<string, unknown> = { status: toStatus, updatedAt: new Date() };
-  if (stripePaymentIntentId) updates.stripePaymentIntentId = stripePaymentIntentId;
-  const result = await db
+  const updates: Record<string, unknown> = {
+    status: toStatus,
+    updatedAt: new Date(),
+  };
+  if (charged?.stripePaymentIntentId !== undefined) {
+    updates.stripePaymentIntentId = charged.stripePaymentIntentId;
+  }
+  if (charged?.taxCents !== undefined) updates.taxCents = charged.taxCents;
+  if (charged?.totalCents !== undefined) updates.totalCents = charged.totalCents;
+  const result = await tx
     .update(payments)
     .set(updates)
-    .where(and(eq(payments.id, id), eq(payments.status, fromStatus)))
+    .where(and(eq(payments.id, id), inArray(payments.status, [...fromStatus])))
     .returning({ id: payments.id });
   return result.length > 0;
 }
@@ -151,4 +164,84 @@ export async function listPaymentsByUser(
     .limit(Math.min(limit, 100))
     .offset(offset);
   return rows.map(toEntity);
+}
+
+/** Everything one purchase's confirmation email states. */
+export interface ConfirmationView {
+  paymentId: string;
+  email: string;
+  locale: string;
+  amountCents: number;
+  taxCents: number | null;
+  totalCents: number | null;
+  currency: string;
+  creditsGranted: number;
+  /** When the lot was opened. The refund window counts from here, and the
+   * letter prints this same instant as the purchase time so the two dates a
+   * buyer subtracts come from one column. */
+  grantedAt: Date | null;
+  consentTextVersion: string | null;
+  refundTextVersion: string | null;
+  /** What the account holds right now. A resend says today's figure, which is
+   * the one question in this letter whose answer moves. */
+  balanceCredits: number;
+}
+
+/**
+ * Read what one purchase's confirmation email needs.
+ * @param paymentId - The purchase.
+ * @returns The view, or null when no such payment exists.
+ */
+export async function getConfirmationView(
+  paymentId: string,
+): Promise<ConfirmationView | null> {
+  const rows = await db
+    .select({
+      paymentId: payments.id,
+      email: users.email,
+      amountCents: payments.amountCents,
+      taxCents: payments.taxCents,
+      totalCents: payments.totalCents,
+      currency: payments.currency,
+      creditsGranted: payments.creditsGranted,
+      metadata: payments.metadata,
+      grantedAt: creditLots.createdAt,
+      consentTextVersion: purchaseConsents.consentTextVersion,
+      refundTextVersion: purchaseConsents.refundTextVersion,
+    })
+    .from(payments)
+    .innerJoin(users, eq(users.id, payments.userId))
+    .leftJoin(creditLots, eq(creditLots.paymentId, payments.id))
+    .leftJoin(purchaseConsents, eq(purchaseConsents.paymentId, payments.id))
+    .where(eq(payments.id, paymentId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+
+  const [held] = await db
+    .select({ total: sql<number>`coalesce(sum(${creditLots.purchasedCredits}), 0)` })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, sql`(SELECT user_id FROM payments WHERE id = ${paymentId})`),
+        isNull(creditLots.deletedAt),
+      ),
+    );
+
+  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+  const locale = metadata["locale"];
+  return {
+    paymentId: row.paymentId,
+    email: row.email,
+    locale: typeof locale === "string" && locale.length > 0 ? locale : "en",
+    amountCents: row.amountCents,
+    taxCents: row.taxCents,
+    totalCents: row.totalCents,
+    currency: row.currency,
+    creditsGranted: row.creditsGranted,
+    grantedAt: row.grantedAt,
+    consentTextVersion: row.consentTextVersion,
+    refundTextVersion: row.refundTextVersion,
+    balanceCredits: Number(held?.total ?? 0),
+  };
 }

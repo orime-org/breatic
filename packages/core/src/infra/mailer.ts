@@ -52,6 +52,9 @@ export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;
+  /** Plain-text alternative. Some clients show it, and some spam filters
+   * treat its absence as a signal. */
+  text?: string;
 }
 
 /**
@@ -106,6 +109,7 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
     to: options.to,
     subject: options.subject,
     html: options.html,
+    ...(options.text === undefined ? {} : { text: options.text }),
   });
 
   return { status: "sent" };
