@@ -82,8 +82,10 @@ const NO_TARGET: LinkTarget = {
  * The height the demo draws the panel's input and buttons at, which is the
  * `--btn-inline` rung.
  *
- * Its own value rather than the bar's `BUBBLE_CONTROL_HEIGHT`: the demo's third
- * section gives this panel 28 and the bar 26, and the two move independently.
+ * Its own value rather than the bar's `BUBBLE_CONTROL_HEIGHT`: the demo gives
+ * the two their heights separately, and they answer to different things — this
+ * one to the form controls it holds, the bar's to the toolbar buttons on it.
+ * They read the same rung today; either can move without the other.
  */
 const LINK_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
 
