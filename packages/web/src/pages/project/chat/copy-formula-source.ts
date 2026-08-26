@@ -14,8 +14,8 @@
  * KaTeX ships this idea as `katex/contrib/copy-tex`, which cannot be used
  * here: it derives the text from `fragment.textContent`, and `textContent`
  * carries elements the browser never renders. Radix gives every ScrollArea a
- * `style` element of its own, and a reply holding a formula holds at least
- * one ScrollArea — so what that handler puts on the clipboard is the model's
+ * `style` element of its own, and a formula on a line of its own is drawn
+ * inside one — so what that handler puts on the clipboard is the model's
  * words with a stylesheet spliced into them. Its delimiters are also fixed at
  * a single `$` for an inline formula, which this product reads as a character.
  */
@@ -74,16 +74,35 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   host.style.cssText = 'position:fixed;top:0;left:-9999px';
 
   // Gecko makes a selection of several ranges out of a ctrl-drag, and all of
-  // them are what the reader asked for.
+  // them are what the reader asked for. Two of them can cut through the same
+  // formula, which the widening below would then hand over twice, so each one
+  // is taken by whichever range reaches it first.
+  const taken = new Set<Element>();
   for (let index = 0; index < selection.rangeCount; index += 1) {
     // A reader who dragged across half a formula meant the formula: half of
     // one is neither readable nor valid source. The widening is done on a
     // copy, so what stays highlighted is what the reader drew.
     const range = selection.getRangeAt(index).cloneRange();
     const start = formulaAround(range.startContainer);
-    if (start) range.setStartBefore(start);
     const end = formulaAround(range.endContainer);
-    if (end) range.setEndAfter(end);
+    // Both ends read before either is recorded: one range can begin and end
+    // inside the same formula, and that formula is its own to take.
+    const startTaken = start !== null && taken.has(start);
+    const endTaken = end !== null && taken.has(end);
+    if (start) {
+      if (startTaken) range.setStartAfter(start);
+      else {
+        range.setStartBefore(start);
+        taken.add(start);
+      }
+    }
+    if (end) {
+      if (endTaken) range.setEndBefore(end);
+      else {
+        range.setEndAfter(end);
+        taken.add(end);
+      }
+    }
     host.append(range.cloneContents());
   }
 

@@ -23,6 +23,54 @@ function draw(content: string): HTMLElement {
   return render(<MarkdownMessage content={content} />).container;
 }
 
+/** What a copy left behind: the flavours written, and the event itself. */
+interface Copied {
+  written: Map<string, string>;
+  event: Event;
+}
+
+/**
+ * Copies what these ranges cover, the way a keystroke would.
+ * @param ranges - What the reader has selected. Several stand in for Gecko,
+ *   which is the one engine that makes more than one out of a ctrl-drag —
+ *   neither jsdom nor Blink will hold a second.
+ * @returns What reached the clipboard, and the event that carried it.
+ */
+function copy(...ranges: Range[]): Copied {
+  const selection = window.getSelection();
+  const held = {
+    isCollapsed: false,
+    rangeCount: ranges.length,
+    getRangeAt: (index: number): Range => ranges[index] as Range,
+  } as unknown as Selection;
+  const realSelection = window.getSelection.bind(window);
+  window.getSelection = (): Selection => held;
+
+  const written = new Map<string, string>();
+  const event = new Event('copy', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      setData: (type: string, data: string): Map<string, string> => written.set(type, data),
+    },
+  });
+  document.dispatchEvent(event);
+
+  window.getSelection = realSelection;
+  selection?.removeAllRanges();
+  return { written, event };
+}
+
+/**
+ * The range covering everything inside this element.
+ * @param node - What to select.
+ * @returns The range.
+ */
+function around(node: Node): Range {
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  return range;
+}
+
 describe('MarkdownMessage — maths', () => {
   it('gives a formula on its own lines a line of its own (A1)', () => {
     draw('$$\nx = 1\n$$');
@@ -87,20 +135,7 @@ describe('MarkdownMessage — maths', () => {
     // scroller around the formula — and Radix gives each scroller a `style`
     // element of its own, which the browser never renders and a reader must
     // never be handed.
-    const range = document.createRange();
-    range.selectNodeContents(body as Element);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    const written = new Map<string, string>();
-    const copy = new Event('copy', { bubbles: true, cancelable: true });
-    Object.defineProperty(copy, 'clipboardData', {
-      value: {
-        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
-      },
-    });
-    document.dispatchEvent(copy);
+    const { written, event } = copy(around(body as Element));
 
     // The browser derives the plain-text flavour from what it has laid out,
     // which jsdom has none of — `innerText` is undefined here. What both
@@ -112,6 +147,23 @@ describe('MarkdownMessage — maths', () => {
     expect(html, 'the copy carries the LaTeX the model wrote').toContain('$$\nE = mc^2\n$$');
     expect(html.match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
     expect(html, 'and carries nothing the reader cannot see').not.toContain('scrollbar-width');
+    // What is written only reaches the clipboard if the browser's own copy is
+    // stopped, and its own is the three-times-over one this replaces.
+    expect(event.defaultPrevented, 'and the browser writes nothing over it').toBe(true);
+  });
+
+  it('leaves a copy with no formula in it to the browser (A8)', () => {
+    // This handler is on the document, so every copy anywhere in the app comes
+    // through it. A reply with no formula has nothing for it to do, and the
+    // browser is what copies the rest of this product.
+    const body = draw('An answer with no formula in it.').querySelector(
+      '[data-testid="markdown-body"]',
+    );
+
+    const { written, event } = copy(around(body as Element));
+
+    expect(written.size, 'nothing is written').toBe(0);
+    expect(event.defaultPrevented, 'and the browser is left to it').toBe(false);
   });
 
   it('leaves markup in a reply inert on the clipboard (A8)', () => {
@@ -127,20 +179,8 @@ describe('MarkdownMessage — maths', () => {
     // text as well as elements.
     range.setStart(paragraph?.firstChild as Node, 2);
     range.setEndAfter(paragraph?.lastChild as Node);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
 
-    const written = new Map<string, string>();
-    const copy = new Event('copy', { bubbles: true, cancelable: true });
-    Object.defineProperty(copy, 'clipboardData', {
-      value: {
-        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
-      },
-    });
-    document.dispatchEvent(copy);
-
-    const html = written.get('text/html') ?? '';
+    const html = copy(range).written.get('text/html') ?? '';
     expect(html, 'the tag is still characters').toContain('&lt;img');
     expect(html, 'and not markup').not.toContain('<img');
   });
@@ -177,58 +217,44 @@ describe('MarkdownMessage — maths', () => {
     const range = document.createRange();
     range.setStartBefore(formula);
     range.setEndAfter(formula);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
 
-    const written = new Map<string, string>();
-    const copy = new Event('copy', { bubbles: true, cancelable: true });
-    Object.defineProperty(copy, 'clipboardData', {
-      value: {
-        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
-      },
-    });
-    document.dispatchEvent(copy);
-
-    expect(written.get('text/html') ?? '').toContain('$$\nE = mc^2\n$$');
+    expect(copy(range).written.get('text/html') ?? '').toContain('$$\nE = mc^2\n$$');
   });
 
   it('copies every part of a selection that holds more than one (A8)', () => {
-    // Gecko makes a selection of several ranges out of a ctrl-drag, and
-    // Firefox is a browser this product is built for. Neither jsdom nor Blink
-    // will hold more than one range, so the selection is the one thing here
-    // that has to be stood in for.
     const body = draw('one\n\ntwo\n\n$$\nx = 1\n$$').querySelector(
       '[data-testid="markdown-body"]',
     ) as Element;
-    const paragraphs = [...body.querySelectorAll('p')];
-    const formula = body.querySelector('.katex') as Element;
-    const ranges = [...paragraphs, formula].map((node) => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      return range;
-    });
-    const many = {
-      isCollapsed: false,
-      rangeCount: ranges.length,
-      getRangeAt: (index: number): Range => ranges[index] as Range,
-    } as unknown as Selection;
-    const realSelection = window.getSelection.bind(window);
-    window.getSelection = (): Selection => many;
+    const parts = [...body.querySelectorAll('p'), body.querySelector('.katex') as Element];
 
-    const written = new Map<string, string>();
-    const copy = new Event('copy', { bubbles: true, cancelable: true });
-    Object.defineProperty(copy, 'clipboardData', {
-      value: {
-        setData: (type: string, data: string): Map<string, string> => written.set(type, data),
-      },
-    });
-    document.dispatchEvent(copy);
-    window.getSelection = realSelection;
+    const html = copy(...parts.map(around)).written.get('text/html') ?? '';
 
-    const html = written.get('text/html') ?? '';
     expect(html, 'the first range is there').toContain('one');
     expect(html, 'and so is the second').toContain('two');
     expect(html, 'and the formula').toContain('x = 1');
+  });
+
+  it('copies a formula two ranges both reach into only once (A8)', () => {
+    // Two ctrl-drags that cut through the same formula leave two ranges the
+    // reader drew as disjoint. Each is widened to the whole formula, and the
+    // widening is what makes them overlap.
+    const body = draw('before $$E = mc^2$$ after').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const paragraph = body.querySelector('p') as Element;
+    const formula = body.querySelector('.katex') as Element;
+    const glyphs = formula.querySelector('.katex-html') as Element;
+
+    const first = document.createRange();
+    first.setStart(paragraph.firstChild as Node, 0);
+    first.setEnd(glyphs, 0);
+    const second = document.createRange();
+    second.setStart(glyphs, glyphs.childNodes.length);
+    second.setEndAfter(paragraph.lastChild as Node);
+
+    const html = copy(first, second).written.get('text/html') ?? '';
+
+    expect(html, 'the formula is there').toContain('$$E = mc^2$$');
+    expect(html.match(/E = mc\^2/g) ?? [], 'once').toHaveLength(1);
   });
 });
