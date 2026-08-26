@@ -63,7 +63,12 @@
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
       "price_not_configured": "プラン {tier} の価格が設定されていません",
-      "consent-credits-v1": "クレジットの即時提供を希望します。**いずれか 1 つでも使用した時点で、この購入は返金できなくなる**ことを承知しています。未使用のクレジットは 30 日以内であれば全額返金されます。"
+      "consent-credits-v1": "クレジットの即時提供を希望します。**いずれか 1 つでも使用した時点で、この購入は返金できなくなる**ことを承知しています。未使用のクレジットは 30 日以内であれば全額返金されます。",
+      "refund-credits-v1": {
+        "unused": "30 日以内のご購入で、クレジットを 1 つも使っていない場合は、元のカードへ全額返金します。",
+        "used": "1 つでも使用した場合、そのパックは返金できません。",
+        "expired": "30 日を過ぎたパックは返金対象外です。"
+      }
     },
     "text_tool": {
       "already_running": "別のテキストツールが実行中です。お待ちください。"
@@ -110,6 +115,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio のストレージがいっぱいです。アップロードできません。",
       "quota_exceeded_generate": "Studio のストレージがいっぱいです。生成できません。"
+    },
+    "purchase_mail": {
+      "subject": "クレジットを追加しました",
+      "intro": "ご購入ありがとうございます。内容は以下のとおりです。控えとして保管してください。",
+      "credits": "今回の追加：{credits} クレジット",
+      "balance": "現在の残高：{credits} クレジット",
+      "subtotal": "価格：{amount}",
+      "tax": "税額：{amount}",
+      "total": "お支払い合計：{amount}",
+      "purchased_at": "購入日時：{when}",
+      "refund_by": "返金可能期限：{when}",
+      "order_ref": "注文番号：{ref}",
+      "consent_heading": "お支払い時に同意いただいた内容",
+      "refund_heading": "クレジットパックの返金規定",
+      "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
     }
   },
   "chat": {

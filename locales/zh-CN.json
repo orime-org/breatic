@@ -66,7 +66,12 @@
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置",
-      "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。"
+      "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
+      "refund-credits-v1": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。"
+      }
     },
     "skill": {
       "not_found": "找不到这个 Skill",
@@ -110,6 +115,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
       "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
+    },
+    "purchase_mail": {
+      "subject": "积分已到账",
+      "intro": "感谢购买。以下是这笔购买的内容，请留存。",
+      "credits": "本次到账：{credits} 积分",
+      "balance": "当前余额：{credits} 积分",
+      "subtotal": "价格：{amount}",
+      "tax": "税额：{amount}",
+      "total": "实付合计：{amount}",
+      "purchased_at": "购买时间：{when}",
+      "refund_by": "可退款截止：{when}",
+      "order_ref": "订单号：{ref}",
+      "consent_heading": "你在结账时同意的内容",
+      "refund_heading": "积分包退款规则",
+      "support": "对这笔购买有疑问，请写信到 {email}。"
     }
   },
   "chat": {

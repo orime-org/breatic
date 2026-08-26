@@ -302,6 +302,10 @@ export const coreConfigSchema = z.object({
   SMTP_PORT: numeric(z.coerce.number().default(587)),
   SMTP_USER: z.string().default(""),
   SMTP_PASSWORD: z.string().default(""),
+  // Where a buyer writes back. It goes into the purchase confirmation, which
+  // has to name a way to reach us, and it belongs beside the SMTP settings
+  // because a self-hosted deployment answers its own mail.
+  SUPPORT_EMAIL: z.string().default(""),
 })
   // Resolve `REDIS_KEY_PREFIX` here rather than at each call site: a
   // fallback repeated at every consumer is a fallback that eventually

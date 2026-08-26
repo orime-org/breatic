@@ -15,7 +15,7 @@ import { findTierByPriceCents, getPricingTiers } from "@server/config/pricing.js
 import type { PaymentEntity } from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";
-import { db } from "@breatic/core";
+import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
@@ -23,7 +23,7 @@ import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mai
 import {
   CONSENT_CREDITS_VERSION,
   REFUND_CREDITS_VERSION,
-  creditsConsentText,
+  consentTextAt,
 } from "@server/modules/payment/legal-text.js";
 import * as consentRepo from "@server/modules/payment/purchase-consent.repo.js";
 import * as mailRepo from "@server/modules/payment/purchase-mail.repo.js";
@@ -47,17 +47,26 @@ async function readCheckoutSession(
 }
 
 /**
- * The locale this purchase was made in, as stored at checkout.
+ * One string a checkout stored on its own payment row.
  *
- * The confirmation email goes out in the language the buyer was using when
- * they paid, which no later request carries — a resend triggered from another
- * device would otherwise switch languages mid-record.
- * @param session - The Checkout Session.
- * @returns The locale, falling back to English when the metadata is absent.
+ * The language, the buyer's time zone and the two wording versions are all
+ * read back from here rather than from the Checkout Session: the session's
+ * metadata is what we told Stripe about the sale, and it holds none of them.
+ * A confirmation resent from another device has to reproduce the language the
+ * purchase was made in, and only this row remembers it.
+ * @param payment - The payment row.
+ * @param key - Which of the four.
+ * @param fallback - What to use when checkout stored nothing, which is what
+ *   every payment made before this shipped looks like.
+ * @returns The stored value, or the fallback.
  */
-function sessionLocale(session: Stripe.Checkout.Session): string {
-  const stored = session.metadata?.["locale"];
-  return typeof stored === "string" && stored.length > 0 ? stored : "en";
+function storedAtCheckout(
+  payment: PaymentEntity,
+  key: string,
+  fallback: string,
+): string {
+  const stored = payment.metadata[key];
+  return typeof stored === "string" && stored.length > 0 ? stored : fallback;
 }
 
 /**
@@ -67,14 +76,13 @@ function sessionLocale(session: Stripe.Checkout.Session): string {
  * control shipped says nothing about what its buyer agreed to, and writing a
  * record anyway would invent it. `payment_id` being unique makes the second
  * and later callers no-ops.
- * @param paymentId - The payment this consent belongs to.
- * @param userId - Who gave it.
+ * @param payment - The payment this consent belongs to, and the row the
+ *   language and both wording versions were stored on at checkout.
  * @param session - The Checkout Session carrying the answer.
  * @param tx - The fulfillment transaction.
  */
 async function writeConsentIfGiven(
-  paymentId: string,
-  userId: string,
+  payment: PaymentEntity,
   session: Stripe.Checkout.Session,
   tx: DbTx,
 ): Promise<void> {
@@ -83,13 +91,19 @@ async function writeConsentIfGiven(
     ? new Date(session.created * 1000)
     : new Date();
   await consentRepo.insertConsent(tx, {
-    paymentId,
-    userId,
-    locale: sessionLocale(session),
-    consentTextVersion: String(
-      session.metadata?.["consent_text_version"] ?? "v1",
+    paymentId: payment.id,
+    userId: payment.userId,
+    locale: storedAtCheckout(payment, "locale", "en"),
+    consentTextVersion: storedAtCheckout(
+      payment,
+      "consentTextVersion",
+      CONSENT_CREDITS_VERSION,
     ),
-    refundTextVersion: session.metadata?.["refund_text_version"] ?? null,
+    refundTextVersion: storedAtCheckout(
+      payment,
+      "refundTextVersion",
+      REFUND_CREDITS_VERSION,
+    ),
     consentedAt,
     stripePaymentIntentId:
       typeof session.payment_intent === "string"
@@ -224,8 +238,12 @@ export async function fulfillPayment(
       tx,
     );
 
-    await writeConsentIfGiven(payment.id, payment.userId, session, tx);
-    await openMailOutbox(payment.id, sessionLocale(session), tx);
+    await writeConsentIfGiven(payment, session, tx);
+    await openMailOutbox(
+      payment.id,
+      storedAtCheckout(payment, "locale", "en"),
+      tx,
+    );
 
     return {
       status: "granted",
@@ -263,7 +281,11 @@ export async function fulfillPayment(
 async function sendConfirmationFor(paymentId: string): Promise<void> {
   const view = await paymentRepo.getConfirmationView(paymentId);
   if (!view) return;
-  const letter = renderPurchaseConfirmation(view);
+  const letter = renderPurchaseConfirmation(
+    view,
+    view.timeZone,
+    env.SUPPORT_EMAIL,
+  );
   await sendPurchaseConfirmation({
     paymentId,
     to: view.email,
@@ -418,7 +440,7 @@ export async function createCheckout(input: {
       SessionCreateParams.Locale,
     consent_collection: { terms_of_service: "required" },
     custom_text: {
-      terms_of_service_acceptance: { message: creditsConsentText(locale) },
+      terms_of_service_acceptance: { message: consentTextAt(CONSENT_CREDITS_VERSION, locale) },
     },
     automatic_tax: { enabled: true },
     expires_at: Math.floor(Date.now() / 1000) + SESSION_LIFETIME_SECONDS,

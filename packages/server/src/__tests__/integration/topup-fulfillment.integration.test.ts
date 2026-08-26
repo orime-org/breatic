@@ -415,3 +415,44 @@ describe("what the session says decides", () => {
     expect(outcome.status).toBe("unknown");
   });
 });
+
+describe("what a purchase agreed to is read off our own row", () => {
+  it("records the language and both wording versions the checkout was made in", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // The four things checkout stored, which only our row holds: a webhook
+      // carries no `Accept-Language` and no hint of a time zone.
+      await sql`
+        UPDATE payments SET metadata = ${sql.json({
+          locale: "ja",
+          timeZone: "Asia/Tokyo",
+          consentTextVersion: "consent-credits-v1",
+          refundTextVersion: "refund-credits-v1",
+        })} WHERE id = ${paymentId}
+      `;
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, { metadata: {} }),
+      );
+
+      const outcome = await fulfillPayment(sessionId, null);
+      expect(outcome.status).toBe("granted");
+
+      const [consent] = await sql<
+        { locale: string; consent_text_version: string; refund_text_version: string }[]
+      >`
+        SELECT locale, consent_text_version, refund_text_version
+        FROM purchase_consents WHERE payment_id = ${paymentId}
+      `;
+      expect(consent!.locale).toBe("ja");
+      expect(consent!.consent_text_version).toBe("consent-credits-v1");
+      expect(consent!.refund_text_version).toBe("refund-credits-v1");
+
+      const [mail] = await sql<{ locale: string }[]>`
+        SELECT locale FROM purchase_mail_outbox WHERE payment_id = ${paymentId}
+      `;
+      expect(mail!.locale).toBe("ja");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+});

@@ -196,6 +196,11 @@ export interface ConfirmationView {
   consentTextVersion: string | null;
   refundTextVersion: string | null;
   /**
+   * The buyer's IANA zone as their browser reported it at checkout. The
+   * purchase time is printed in it, beside the same instant in UTC.
+   */
+  timeZone: string;
+  /**
    * What the account holds right now. A resend says today's figure, which is
    * the one question in this letter whose answer moves.
    */
@@ -245,10 +250,13 @@ export async function getConfirmationView(
 
   const metadata = row.metadata ?? {};
   const locale = metadata["locale"];
+  const timeZone = metadata["timeZone"];
   return {
     paymentId: row.paymentId,
     email: row.email,
     locale: typeof locale === "string" && locale.length > 0 ? locale : "en",
+    timeZone:
+      typeof timeZone === "string" && timeZone.length > 0 ? timeZone : "UTC",
     amountCents: row.amountCents,
     taxCents: row.taxCents,
     totalCents: row.totalCents,

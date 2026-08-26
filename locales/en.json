@@ -66,7 +66,12 @@
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
       "price_not_configured": "Price not configured for tier: {tier}",
-      "consent-credits-v1": "I ask for the credits to be delivered right away, and I understand that **once I use any of them I can no longer get this purchase refunded**. Unused credits can be refunded in full within 30 days."
+      "consent-credits-v1": "I ask for the credits to be delivered right away, and I understand that **once I use any of them I can no longer get this purchase refunded**. Unused credits can be refunded in full within 30 days.",
+      "refund-credits-v1": {
+        "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
+        "used": "Spent any of them, even one? That pack can no longer be refunded.",
+        "expired": "Past 30 days, packs are no longer refundable."
+      }
     },
     "skill": {
       "not_found": "Skill not found",
@@ -110,6 +115,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio storage is full. Uploading is unavailable.",
       "quota_exceeded_generate": "Studio storage is full. Generating is unavailable."
+    },
+    "purchase_mail": {
+      "subject": "Your credits are in",
+      "intro": "Thank you for your purchase. Here is what it was, kept for your records.",
+      "credits": "Credits added: {credits}",
+      "balance": "Balance now: {credits}",
+      "subtotal": "Price: {amount}",
+      "tax": "Tax: {amount}",
+      "total": "Total charged: {amount}",
+      "purchased_at": "Purchased: {when}",
+      "refund_by": "Refundable until: {when}",
+      "order_ref": "Order reference: {ref}",
+      "consent_heading": "What you agreed to at checkout",
+      "refund_heading": "Refund rules for credit packs",
+      "support": "Questions about this purchase? Write to {email}."
     }
   },
   "chat": {
