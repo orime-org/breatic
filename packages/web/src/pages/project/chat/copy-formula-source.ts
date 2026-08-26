@@ -27,6 +27,58 @@ const DELIMITER = '$$';
 const FORMULA_CLASS = 'katex';
 
 /**
+ * What a parser keeps where it found it, yet strips of its meaning.
+ *
+ * A row or a cell outside a table is dropped tag and all, which the check
+ * below sees. A list item is kept, and loses the numbering its list carried.
+ */
+const NEEDS_ITS_PARENT = new Set(['LI']);
+
+/**
+ * Whether this is something a paste target can read on its own.
+ * @param node - What was taken out of the document.
+ * @returns Whether a parser gives it back whole.
+ */
+function standsAlone(node: Node): boolean {
+  const held = document.createElement('div');
+  held.append(node.cloneNode(true));
+  if ([...held.children].some((child) => NEEDS_ITS_PARENT.has(child.tagName))) return false;
+
+  // Asked of the parser rather than of a count of what came back: a row the
+  // parser drops leaves what was inside it behind, so counting top-level
+  // children says one went in and one came out.
+  const reparsed = document.createElement('div');
+  reparsed.innerHTML = held.innerHTML;
+  return reparsed.innerHTML === held.innerHTML;
+}
+
+/**
+ * Put back as much of the chain around this as it needs to be read.
+ *
+ * A copy holds what sits under the two ends' common ancestor, never the
+ * ancestor itself — so a drag across table cells holds rows with no table
+ * around them, and a drag down a numbered list holds items with no list.
+ * @param range - Where the copy came from.
+ * @param contents - What was taken out of it.
+ * @returns The contents, under as much of their own chain as they need.
+ */
+function underTheirOwnChain(range: Range, contents: DocumentFragment): Node {
+  let held: Node = contents;
+  let ancestor =
+    range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+
+  while (ancestor && !standsAlone(held)) {
+    const around = ancestor.cloneNode(false) as Element;
+    around.append(held);
+    held = around;
+    ancestor = ancestor.parentElement;
+  }
+  return held;
+}
+
+/**
  * The formula this node sits in, if it sits in one.
  * @param node - Where an end of the selection landed.
  * @returns The formula's element, or null.
@@ -103,7 +155,7 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
         taken.add(end);
       }
     }
-    const contents = range.cloneContents();
+    const contents = underTheirOwnChain(range, range.cloneContents());
     if (selection.rangeCount > 1) {
       // What a drag hands over is the words inside a block, not the block —
       // so two of them appended one after the other would read as one line.

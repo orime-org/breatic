@@ -234,6 +234,80 @@ describe('MarkdownMessage — maths', () => {
     expect(html, 'and the formula').toContain('x = 1');
   });
 
+  it('keeps a copied table a table (A8)', () => {
+    // What a drag hands over is what sits under the two ends' common
+    // ancestor, never the ancestor — so a drag across cells hands over rows
+    // with no table around them, and every parser drops a row it finds
+    // outside one.
+    const body = draw('| a | b |\n|---|---|\n| $$x^2$$ | beta |\n| gamma | delta |').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const cells = [...body.querySelectorAll('td')];
+    const range = document.createRange();
+    range.setStart(cells[0] as Node, 0);
+    const last = cells[cells.length - 1] as Node;
+    range.setEnd(last, last.childNodes.length);
+
+    const html = copy(range).written.get('text/html') ?? '';
+
+    const reparsed = document.createElement('div');
+    reparsed.innerHTML = html;
+    expect(reparsed.querySelector('table'), 'a paste target still sees a table').not.toBeNull();
+    expect(reparsed.querySelectorAll('td').length, 'with its cells').toBeGreaterThan(1);
+  });
+
+  it('keeps a copied numbered list numbered (A8)', () => {
+    const body = draw('1. first $$x^2$$\n2. second\n3. third').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const items = [...body.querySelectorAll('li')];
+    const range = document.createRange();
+    range.setStart(items[0] as Node, 0);
+    const last = items[items.length - 1] as Node;
+    range.setEnd(last, last.childNodes.length);
+
+    const html = copy(range).written.get('text/html') ?? '';
+
+    const reparsed = document.createElement('div');
+    reparsed.innerHTML = html;
+    expect(reparsed.querySelector('ol'), 'a paste target still sees the numbering').not.toBeNull();
+  });
+
+  it('hands over half a sentence as half a sentence (A8)', () => {
+    // Wrapping this back up would make a block of it, and it is a piece of
+    // one line.
+    const body = draw('before $$x^2$$ after the formula').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const paragraph = body.querySelector('p') as Element;
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild as Node, 3);
+    range.setEndAfter(paragraph.lastChild as Node);
+
+    const html = copy(range).written.get('text/html') ?? '';
+
+    expect(html, 'no block is put around it').not.toContain('<p>');
+    expect(html, 'and the formula is its source').toContain('$$x^2$$');
+  });
+
+  it('gives back the whole formula when a drag starts inside one (A8)', () => {
+    // The start of the drag is a glyph in the middle of the rendered
+    // formula; what the reader meant is the formula.
+    const body = draw('before $$E = mc^2$$ after').querySelector(
+      '[data-testid="markdown-body"]',
+    ) as Element;
+    const glyphs = body.querySelector('.katex-html') as Element;
+    const paragraph = body.querySelector('p') as Element;
+    const range = document.createRange();
+    range.setStart(glyphs, 1);
+    range.setEndAfter(paragraph.lastChild as Node);
+
+    const html = copy(range).written.get('text/html') ?? '';
+
+    expect(html, 'the source is there whole').toContain('$$E = mc^2$$');
+    expect(html, 'not an empty pair of delimiters').not.toContain('$$$$');
+  });
+
   it('keeps two ranges the reader picked apart apart (A8)', () => {
     // What a drag hands over is the words inside a paragraph, not the
     // paragraph — so two of them appended one after the other read as one
