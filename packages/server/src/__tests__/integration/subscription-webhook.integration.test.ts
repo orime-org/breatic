@@ -475,10 +475,14 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
    * @param id - 事件 id。
    * @returns 一个 Stripe 事件。
    */
-  function checkoutEvent(mode: string, id: string): Stripe.Event {
+  function checkoutEvent(
+    mode: string,
+    id: string,
+    type = "checkout.session.completed",
+  ): Stripe.Event {
     return {
       id,
-      type: "checkout.session.completed",
+      type,
       data: { object: { id: `cs_${mode}_${seq}`, mode } },
     } as unknown as Stripe.Event;
   }
@@ -496,6 +500,32 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
     );
     expect(outcome.status).toBe("acknowledged");
     expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "checkout.session.async_payment_succeeded",
+    "checkout.session.async_payment_failed",
+    "checkout.session.expired",
+  ])("认领订阅结账的 %s，不让它掉进积分包那条分支", async (type) => {
+    // 四种 Checkout Session 事件两条腿都会收到，分辨只靠 session 的 mode。
+    // 掉进积分包那条分支的后果跟上面那条一样：那边按 session 去查 payments，
+    // 而订阅结账从不写那张表。
+    const outcome = await handleSubscriptionEvent(
+      checkoutEvent("subscription", `evt_${type}_${Date.now()}`, type),
+    );
+    expect(outcome.status).toBe("acknowledged");
+    expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "checkout.session.async_payment_succeeded",
+    "checkout.session.async_payment_failed",
+    "checkout.session.expired",
+  ])("把积分包那次结账的 %s 留给积分包的处理器", async (type) => {
+    const outcome = await handleSubscriptionEvent(
+      checkoutEvent("payment", `evt_pay_${type}_${Date.now()}`, type),
+    );
+    expect(outcome.status).toBe("notMine");
   });
 
   it("把积分包那次结账留给积分包的处理器", async () => {

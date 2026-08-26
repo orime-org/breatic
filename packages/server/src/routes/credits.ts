@@ -23,6 +23,7 @@ import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { env, logger } from "@breatic/core";
+import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditLotQuerySchema,
   creditLedgerQuerySchema,
@@ -58,7 +59,13 @@ credits.get(
     // tries again.
     if (env.PAYMENT_ENABLED) {
       try {
-        await paymentService.reconcilePayments(user.id);
+        for (const pass of await paymentService.reconcilePayments(user.id)) {
+          logFulfillment(pass.outcome, {
+            stripeSessionId: pass.stripeSessionId,
+            from: "reconcile",
+            userId: user.id,
+          });
+        }
       } catch (err) {
         logger.error({ err, userId: user.id }, "credits_reconcile_failed");
       }

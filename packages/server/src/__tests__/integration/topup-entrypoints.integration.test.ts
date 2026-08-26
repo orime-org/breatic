@@ -72,6 +72,10 @@ vi.mock("@server/modules/payment/purchase-mail.js", () => ({
 }));
 
 import crypto from "node:crypto";
+import {
+  getPricingTiers,
+  resetPricingCache,
+} from "@server/config/pricing.js";
 import type { Hono } from "hono";
 import postgres from "postgres";
 import {
@@ -315,7 +319,14 @@ describe("POST /payment/cancel — the buyer pressed Back", () => {
         body: JSON.stringify({ payment_id: paymentId }),
       });
       expect(res.status).toBe(200);
-      expect(stripe.checkout.sessions.expire).toHaveBeenCalledWith(sessionId);
+      // Bounded and not retried, the same as every other Stripe call on this
+      // leg: a buyer is waiting on the answer and the SDK's default is eighty
+      // seconds twice retried.
+      expect(stripe.checkout.sessions.expire).toHaveBeenCalledWith(
+        sessionId,
+        undefined,
+        expect.objectContaining({ maxNetworkRetries: 0 }),
+      );
       expect(await statusOf(paymentId)).toBe("expired");
     } finally {
       await dropBuyer(buyer.userId);
@@ -607,6 +618,55 @@ describe("POST /payment/checkout — who may start a purchase", () => {
       const res = await checkout(buyer.cookie, 1234);
       expect(res.status).toBe(400);
       expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("refuses and names the pack when its Price ID is not configured", async () => {
+    const original = getPricingTiers();
+    // The `live` ids are blank in the file, so reading it as production is
+    // exactly the shape this guard exists for: a pack on the price list that
+    // Stripe has nothing to charge for. The account is made after the switch
+    // because the session cookie is named from the environment.
+    resetPricingCache();
+    initCore({
+      ...process.env,
+      ENV: "prod",
+      PAYMENT_ENABLED: "true",
+      STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    });
+    const buyer = await seedBuyer();
+    try {
+      const res = await checkout(buyer.cookie, original[0]!.priceCents);
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { error: { message: string } };
+      // Named, so whoever reads it knows which of the five to go and fill in.
+      expect(body.error.message).toContain(original[0]!.name);
+      expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    } finally {
+      await dropBuyer(buyer.userId);
+      resetPricingCache();
+      initCore({
+        ...process.env,
+        PAYMENT_ENABLED: "true",
+        STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+        STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+      });
+    }
+  });
+
+  it("turns a caller away once they are over the limit", async () => {
+    const buyer = await seedBuyer();
+    try {
+      // The window is per account, so one buyer asking too fast is what this
+      // catches. `config/rate-limits.yaml` gives this endpoint ten a minute.
+      const codes: number[] = [];
+      for (let i = 0; i < 12; i += 1) {
+        codes.push((await checkout(buyer.cookie, 1234)).status);
+      }
+      expect(codes).toContain(429);
     } finally {
       await dropBuyer(buyer.userId);
     }

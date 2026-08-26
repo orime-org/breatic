@@ -698,9 +698,10 @@ export const payments = pgTable(
  * `payment_id` being UNIQUE is what makes the later ones no-ops rather than
  * a second, contradicting record.
  *
- * `consented_at` holds when the Session completed. Hosted Checkout does not
- * report the instant the box was ticked, so this is the closest moment we
- * can attest to, and the column comment says so.
+ * `consented_at` holds when we first observed the consent. Hosted Checkout
+ * reports when the session was created and when it may expire, two hours
+ * apart, and neither is when the box was ticked; this is the earliest instant
+ * we can attest to.
  *
  * Append-only: `created_at` and no `deleted_at`. A consent record outlives
  * the statutory retention period and deleting one would destroy the evidence

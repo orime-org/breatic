@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
+import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -30,9 +31,9 @@ import { StudioAvatar } from '@web/ui/StudioAvatar';
  * The backstop for a wait the server never named.
  *
  * The configured value arrives with the pack list, and the wait is re-armed
- * with it the moment it does. This governs only the case where that list
- * never answers, and is deliberately longer than any wait anybody would
- * configure so that it never becomes the effective one — a copy of the
+ * with it the moment it does. This is what governs the wait while that list
+ * has not answered, and what it settles on if it never does — a minute, long
+ * enough that a slow answer still gets to replace it. A copy of the
  * configured number here would drift the day somebody changed the file.
  */
 const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
@@ -70,13 +71,19 @@ export function StudioAccountMenu(): React.JSX.Element {
   // How long the return page may wait comes from the server, on the list the
   // buy screen reads anyway. Until it arrives there is nothing to wait for.
   const packs = useQuery({
-    queryKey: ['payment', 'tiers'],
+    // The refund rule comes back in the reader's language, so the language is
+    // part of what was asked for. Left out of the key, switching language
+    // leaves that block in the previous one until the answer goes stale.
+    queryKey: ['payment', 'tiers', getLocale()],
     queryFn: () => paymentApi.tiers(),
     staleTime: 5 * 60 * 1000,
   });
   const back = useCheckoutReturn({
     confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? CONFIRM_WAIT_BACKSTOP_MS,
   });
+  // Taken out of the object it arrives in: the hook returns a fresh one every
+  // render, so a callback depending on the whole thing is rebuilt every time.
+  const { close: closeReturn } = back;
 
   // Two things open this overlay — the menu entry and coming back from a
   // payment — and closing it has to put both down, or it reopens on the next
@@ -84,9 +91,9 @@ export function StudioAccountMenu(): React.JSX.Element {
   const closeCredits = React.useCallback(
     (next: boolean) => {
       setCreditsOpen(next);
-      if (!next) back.close();
+      if (!next) closeReturn();
     },
-    [back],
+    [closeReturn],
   );
 
   /**

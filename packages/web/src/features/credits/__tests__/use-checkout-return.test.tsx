@@ -235,6 +235,36 @@ describe('how long the cover stays up', () => {
   });
 });
 
+describe('when the answer arrives after the wait already came down', () => {
+  it('lands once, and the late answer changes nothing', async () => {
+    let settle: (value: { status: string }) => void = () => {};
+    confirm.mockReturnValue(
+      new Promise<{ status: string }>((resolve) => {
+        settle = resolve;
+      }),
+    );
+    mountAt('?credits=1&session_id=cs_test_1');
+
+    // The timeout comes down first: 50ms, and nothing has answered.
+    await waitFor(() => {
+      expect(seen.waiting).toBe(false);
+    });
+    expect(seen.section).toBe('lots');
+    const addressAfterLanding = seen.search;
+
+    // The endpoint answers a moment later. It has nothing left to do — the
+    // buyer is already looking at their purchase history — and reopening or
+    // rewriting the address under them would move the page they are reading.
+    settle({ status: 'granted' });
+    await waitFor(() => {
+      expect(confirm).toHaveBeenCalledTimes(1);
+    });
+    expect(seen.waiting).toBe(false);
+    expect(seen.section).toBe('lots');
+    expect(seen.search).toBe(addressAfterLanding);
+  });
+});
+
 describe('an ordinary page load', () => {
   it('does nothing at all without the parameters', async () => {
     mountAt('');

@@ -22,10 +22,12 @@ import * as outbox from "@server/modules/payment/purchase-mail.repo.js";
 /**
  * Send the confirmation for one purchase, and record the outcome.
  *
- * Never throws: the credits are already granted, and a purchase does not
- * become undone because a letter did not leave. What the caller gets back is
- * whether it went out, and the row says the same thing for the screen that
- * offers the resend.
+ * Nothing the mail backend does reaches the caller: the credits are already
+ * granted, and a purchase does not become undone because a letter did not
+ * leave. What comes back is whether it went out, and the row says the same
+ * thing for the screen that offers the resend. The two writes to the outbox
+ * are outside that — a database this cannot reach is the caller's to answer
+ * for.
  * @param input - Which purchase, where to write, and when a send in flight
  *   stops counting as one.
  * @param input.paymentId - The purchase this confirmation is about.

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { getLocale } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -51,7 +52,10 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
   const packs = useQuery({
-    queryKey: ['payment', 'tiers'],
+    // The refund rule comes back in the reader's language, so the language is
+    // part of what was asked for. Left out of the key, switching language
+    // leaves that block in the previous one until the answer goes stale.
+    queryKey: ['payment', 'tiers', getLocale()],
     queryFn: () => paymentApi.tiers(),
     enabled: overview.billing,
     staleTime: 5 * 60 * 1000,
