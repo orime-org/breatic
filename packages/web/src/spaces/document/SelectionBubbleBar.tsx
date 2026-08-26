@@ -12,49 +12,20 @@
  * with no command of its own; #902 started filling it (underline, inline
  * code), and the slices after it each bring their own.
  *
- * ## What the stock component does not do for us
+ * ## How it is positioned
  *
- * Read off the installed `@tiptap/extension-bubble-menu@3.29.2`, whose props
- * `@tiptap/react/menus` passes straight through:
+ * By `@floating-ui/react`'s `useFloating`, the same way the link panel is —
+ * `strategy: 'absolute'`, mounted inside the body's scroller, recomputed by
+ * `autoUpdate`. Four choices in it are ours rather than the library's
+ * defaults:
  *
- * - **The anchor.** `dist/index.js:261` measures `posToDOMRect(view, from, to)`
- *   — the selection's whole bounding box. Over a `Mod-a` selection that box is
- *   the entire document, so the bar would anchor above the first line even when
- *   that line is scrolled far out of view. `getReferencedVirtualElement` is the
- *   official way out (`dist/index.d.ts:66`) and it wins outright: `:254`
- *   returns it before every other branch. What we hand back depends on the
- *   selection: a select-all anchors to the pointer, anything smaller to one of
- *   its own two ends — see {@link pickAnchorLine}.
- * - **Whether to show at all.** The stock `shouldShow` (`:62-77`) asks four
- *   things: focus somewhere that counts, a non-empty selection, a selection
- *   that is not an empty text block, and an editable editor. A select-all with
- *   the pointer outside the body has nowhere to put the bar, and a position
- *   nobody asked for is worse than no bar, so ours adds that condition — and
- *   restates the four, since passing `shouldShow` replaces the stock one
- *   rather than extending it.
- * - **Raising the bar when a mouse event arrives.** The plugin only
- *   reconsiders on an editor transaction; a mouse event is not one, and
- *   `updatePosition` returns immediately while the bar is down (`:300-302`).
- *   Our own listener wakes it.
- * - **Taking the bar away when its anchor leaves.** Clipping does not do it —
- *   the bar hangs outside the scroller, so nothing removes it once the anchor
- *   scrolls out. The `hide` middleware does; it is OFF by default, and passing
- *   it a boundary is what turns it on.
- * - **The alignment.** The default `placement` is `'top'` (`dist/index.js:48`),
- *   and floating-ui only shifts along the alignment axis when the placement
- *   carries `-start` or `-end` (`@floating-ui/core` `:49-51`); bare `top`
- *   centres. The ruling asks for the bar's left edge on the selection's left
- *   edge, so `'top-start'`.
- * - **Where it lives.** Inside the scroller it gets clipped, so `appendTo`
- *   puts it outside — the use the prop's own doc comment names.
- * - **Scrolling.** That last choice creates a need of its own: the plugin
- *   recomputes on two events, `scrollTarget`'s scroll (`:188`) and the
- *   window's resize (`:187`), both through the same handler (`:172` defaults
- *   `scrollTarget` to `window`; `:307` is a one-shot
- *   `computePosition` with no `autoUpdate`, and `:121` returns early when
- *   neither selection nor document changed). Our scrolling happens inside the
- *   ScrollArea viewport, whose scroll events do not reach `window`. Left
- *   unset, the bar would sit still while the text moved under it.
+ * - **The anchor.** Not the selection's bounding box: over a `Mod-a` selection
+ *   that box is the whole document, and the bar would sit above the first line
+ *   however far it has scrolled away. A select-all anchors to the pointer,
+ *   anything smaller to one of its own two ends — see {@link pickAnchorLine}.
+ * - **The alignment.** `'top-start'`, because floating-ui only aligns to an
+ *   edge when the placement carries `-start` or `-end` (`@floating-ui/core`
+ *   `:49-51`) and the ruling asks for the bar's left edge on the selection's.
  * - **Which box decides "it does not fit".** The body's own visible area,
  *   named explicitly. `flip`'s default is the clipping ancestors (floating-ui
  *   `detectOverflow`) — measured 2026-08-22 those come out identical to the
@@ -62,22 +33,23 @@
  *   was the top bar and it is gone. Naming the box anyway keeps this
  *   independent of which ancestor happens to carry `overflow-hidden`, which is
  *   a detail of the workspace shell rather than of this bar.
- * - **The gap.** The plugin builds its middleware in the order flip, shift,
- *   offset (`:195-218`), and floating-ui runs them in array order — so flip
- *   decides before the 8px gap exists. floating-ui's own guidance is the
- *   opposite ("offset() should generally be placed at the beginning of your
- *   middleware array") and the plugin takes no custom middleware array, so the
- *   order cannot be fixed from here. The gap therefore lives in the anchor
- *   rectangle instead — see {@link anchorRect} — and no `offset` is passed.
+ * - **The gap.** Part of the anchor rectangle (see {@link anchorRect}) rather
+ *   than an `offset` middleware, so that `flip` decides with the gap already
+ *   counted rather than before it exists.
  *
- * ## And one thing it does that we undo
+ * Nothing takes the bar away when its anchor scrolls out of the body: it hangs
+ * inside the scroller, so the scroller's own overflow clips it, which is what
+ * the link panel relies on too.
  *
- * `:178` makes the bar itself focusable (`tabIndex = 0`). The ruling (§5.2)
- * keeps the whole bar out of the tab order: it floats ON TOP of the body, and
- * anything floating over the body that takes focus collides with the body's
- * own focus with no way to reconcile them. The keyboard route to these eight
- * commands is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` / `Mod-u`
- * for the marks, `Mod-e` for inline code, `Mod-Shift-8` / `Mod-Shift-7` /
+ * ## The bar takes no focus
+ *
+ * The ruling (§5.2) keeps the whole bar out of the tab order: it floats ON TOP
+ * of the body, and anything floating over the body that takes focus collides
+ * with the body's own focus with no way to reconcile them. A plain div carries
+ * no focusability to begin with, and a press on it is refused its default so
+ * that focus does not move at all. The keyboard route to these eight commands
+ * is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` / `Mod-u` for the
+ * marks, `Mod-e` for inline code, `Mod-Shift-8` / `Mod-Shift-7` /
  * `Mod-Shift-b` for the blocks.
  */
 
@@ -93,7 +65,6 @@ import {
   autoUpdate,
   flip,
   shift,
-  hide,
   type VirtualElement,
 } from '@floating-ui/react';
 
@@ -120,7 +91,6 @@ import {
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
-import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 
 /** One run of controls, drawn between two separators. */
 interface BubbleGroup {
@@ -532,17 +502,6 @@ function BubbleBar({
   editor: Editor;
   viewport: HTMLElement;
 }): React.JSX.Element | null {
-  // Walked up from the viewport already in hand rather than looked up again:
-  // this is the scroller the bar is judged against, so its parent is the box
-  // the bar must hang outside of. A second document-wide lookup would be a
-  // second chance to land on a different editor's scroller.
-  const appendTo = React.useCallback(
-    () =>
-      viewport.closest<HTMLElement>(`.${BODY_SCROLLER_CLASS}`)?.parentElement
-      ?? document.body,
-    [viewport],
-  );
-
   // The bar element, as state rather than only a ref: the four slots mount
   // their menus INSIDE it (`container`), and a ref is still null on the render
   // that creates the element. A menu that mounted with null went to `body`
@@ -952,23 +911,22 @@ function BubbleBar({
     [anchorLine, editor],
   );
 
-  const { refs, floatingStyles, middlewareData, update } = useFloating({
-    // The bar hangs OUTSIDE the scroller (see `appendTo`), in a positioned
-    // ancestor of it, so the coordinates are that box's own.
+  const { refs, floatingStyles, update } = useFloating({
+    // The bar hangs inside the scroller, positioned in the scrolled content's
+    // own coordinates, so it travels with the text.
     strategy: 'absolute',
     placement: 'top-start',
     middleware: [
       // No `offset`: the gap is already part of the anchor rectangle
       // (`anchorRect`), and a middleware adding it again would double it.
       //
-      // All three boundaries name the body's visible area rather than letting
-      // each middleware find whichever ancestor happens to clip. `flip` and
-      // `shift` keep the bar inside it; `hide` is what takes the bar away once
-      // the anchor has left, which clipping cannot do for something mounted
-      // outside the scroller.
+      // Both boundaries name the body's visible area rather than letting each
+      // middleware find whichever ancestor happens to clip, and they keep the
+      // bar inside it. Nothing has to take the bar away when the anchor leaves:
+      // the bar sits inside the scroller, so the scroller's own overflow clips
+      // it, which is how the link panel does it too (E5).
       flip({ boundary: viewport }),
       shift({ boundary: viewport }),
-      hide({ boundary: viewport }),
     ],
     whileElementsMounted: autoUpdate,
   });
@@ -993,38 +951,22 @@ function BubbleBar({
     },
     [refs],
   );
-  // The last word on the bar's focusability. The plugin assigns `tabIndex = 0`
-  // in its constructor (`dist/index.js:178`), which the React wrapper runs in a
-  // passive effect — after the layout effect that writes our props
-  // (`@tiptap/react/dist/menus/index.js:275`), so passing `tabIndex` as a prop
-  // loses. A parent's effects run after its children's, so this one is last;
-  // no dependency array, because the plugin re-registers inside an effect of
-  // its own and every such re-registration is followed by this.
+  // The bar refuses the focus change a press on it would cause.
   //
-  // The attribute is REMOVED, not set to -1. A negative tabindex keeps the
-  // element focusable and only takes it out of the tab order, so clicking the
-  // bar's padding used to move focus into it. A plain div carries no
-  // focusability to take away.
+  // Same move as Slate's official hovering-toolbar example, whose comment reads
+  // "prevent toolbar from taking focus away from editor"
+  // (`site/examples/ts/hovering-toolbar.tsx`). Without it, pressing the bar's
+  // padding took focus out of the body: measured — focus in neither the editor
+  // nor the bar, the body's selection highlight gone. The buttons keep
+  // working, since their commands run on click and the editor never lost focus
+  // to begin with.
   //
-  // That alone was not enough, and the ninth adversarial round caught it:
-  // removing the attribute changes where focus LANDS, not whether it LEAVES the
-  // body. Measured — after clicking the bar's padding, focus was in neither the
-  // editor nor the bar, the body's selection highlight was gone, and the bar
-  // was still there. The plugin sets `preventHide` from a capture-phase
-  // mousedown on the whole bar (`dist/index.js:78-79` defines the handler,
-  // `:182` registers it), and `blurHandler` returns without hiding whenever
-  // that flag is up (`:106-108`, which is also its only reset). With no
-  // transaction to follow, nothing asks again.
-  //
-  // So the bar also refuses the focus change outright. Same move as Slate's
-  // official hovering-toolbar example, whose comment reads "prevent toolbar
-  // from taking focus away from editor"
-  // (`site/examples/ts/hovering-toolbar.tsx`). The buttons keep working: their
-  // commands run on click, and the editor never lost focus to begin with.
+  // As a native listener rather than React's `onMouseDown`, because the same
+  // press must be refused wherever inside the bar it lands, including on the
+  // menus the slots mount in here.
   React.useEffect(() => {
     const bar = barRef.current;
     if (!bar) return undefined;
-    bar.removeAttribute('tabindex');
     /**
      * Refuse the focus change a press would otherwise cause.
      * @param event - The press.
@@ -1098,13 +1040,7 @@ function BubbleBar({
   return createPortal(
     <div
       ref={takeBarNode}
-      style={{
-        ...floatingStyles,
-        // `hide` reports its verdict; acting on it is ours. This is what takes
-        // the bar away once the anchor has scrolled out of the body area — the
-        // bar hangs outside the scroller, so no overflow clips it (E5).
-        visibility: middlewareData.hide?.referenceHidden ? 'hidden' : undefined,
-      }}
+      style={floatingStyles}
       data-testid='doc-selection-bubble-bar'
       // Above the whole-document entry. The bar is the transient one, summoned
       // by a selection the reader just made, and its horizontal position
@@ -1155,6 +1091,6 @@ function BubbleBar({
         ))
         : null}
     </div>,
-    appendTo(),
+    viewport,
   );
 }
