@@ -27,6 +27,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
+import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   evaluateExecute,
@@ -91,6 +92,15 @@ interface GeneratePanelContainerProps {
   projectId: string;
   /** Canvas space id. */
   spaceId: string;
+  /**
+   * Who made the newest document write, read at the moment it is needed.
+   *
+   * A function rather than a value: this panel reacts to a document change
+   * inside an effect, and effects run child-first — a value mirrored by the
+   * canvas above would still be the previous write's author on the very
+   * commit that ends a pick.
+   */
+  getLastWriteWasLocal: () => boolean;
 }
 
 /**
@@ -123,6 +133,7 @@ function asNum(value: unknown): number | undefined {
  * @param root0.edges - Live canvas edges.
  * @param root0.projectId - Project id.
  * @param root0.spaceId - Canvas space id.
+ * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
  * @returns The Generate panel.
  */
 function GeneratePanelBody({
@@ -131,6 +142,7 @@ function GeneratePanelBody({
   edges,
   projectId,
   spaceId,
+  getLastWriteWasLocal,
 }: GeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
@@ -499,8 +511,15 @@ function GeneratePanelBody({
       session.purpose === 'focus'
     ) {
       endPick();
+      // Say so: the canvas stops dimming candidates and the banner goes, and
+      // the write behind it may well have been a collaborator's.
+      toast.warning(
+        t(
+          pickEndToastKey(getLastWriteWasLocal()),
+        ),
+      );
     }
-  }, [vm.mode, nodeId, endPick]);
+  }, [vm.mode, nodeId, endPick, t, getLastWriteWasLocal]);
   // Same zombie guard for the STYLE pick (adversarial 2026-07-16): switching to
   // a model without style capability (locally or via a collaborator's
   // setNodeModel) DISABLES the Style trigger, so a running style pick would
@@ -513,8 +532,13 @@ function GeneratePanelBody({
       session.purpose === 'style'
     ) {
       endPick();
+      toast.warning(
+        t(
+          pickEndToastKey(getLastWriteWasLocal()),
+        ),
+      );
     }
-  }, [vm.styleSupported, nodeId, endPick]);
+  }, [vm.styleSupported, nodeId, endPick, t, getLastWriteWasLocal]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {

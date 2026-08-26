@@ -329,6 +329,8 @@
       "focusSourceFailed": "Source processing failed.",
       "focusSourceDeletedByPeer": "A collaborator deleted the source.",
       "focusSourceReplacedByPeer": "A collaborator replaced the source.",
+      "pickEnded": "Selection ended.",
+      "pickEndedByPeer": "Ended by a collaborator.",
       "focusSourceBusyByPeer": "A collaborator is processing the source.",
       "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
       "duration": "Duration",
@@ -717,7 +719,8 @@
         "code": "Inline code",
         "comment": "Comment",
         "ai": "AI",
-        "comingLabel": "{name} (not open yet)"
+        "comingLabel": "{name} (not open yet)",
+        "link": "Link"
       },
       "schemaOutdated": {
         "headline": "Document editor updated",
@@ -732,6 +735,13 @@
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
         "notOpenYet": "Not open yet"
+      },
+      "link": {
+        "placeholder": "Paste or type a URL",
+        "confirm": "Done",
+        "edit": "Edit",
+        "remove": "Remove link",
+        "invalid": "Not a valid URL"
       }
     },
     "readOnlyReconnect": "Reconnect"

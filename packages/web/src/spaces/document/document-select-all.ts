@@ -106,7 +106,7 @@ export interface DocumentSelectAllOptions {
  * @param state - The editor state to read.
  * @returns True for an `AllSelection`.
  */
-function isWholeDocumentSelection(state: EditorState): boolean {
+export function isWholeDocumentSelection(state: EditorState): boolean {
   return state.selection instanceof AllSelection;
 }
 

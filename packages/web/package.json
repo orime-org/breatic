@@ -52,6 +52,7 @@
     "@tiptap/extension-collaboration-caret": "catalog:",
     "@tiptap/extension-document": "catalog:",
     "@tiptap/extension-heading": "catalog:",
+    "@tiptap/extension-link": "catalog:",
     "@tiptap/extension-paragraph": "catalog:",
     "@tiptap/extension-placeholder": "catalog:",
     "@tiptap/extension-text": "catalog:",

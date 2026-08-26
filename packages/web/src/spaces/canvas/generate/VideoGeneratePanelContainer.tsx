@@ -28,6 +28,7 @@ import {
   evaluateExecute,
   refusalToastKey,
 } from '@web/spaces/canvas/generate/generate-guards';
+import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { referenceCapExceeded } from '@web/spaces/canvas/generate/reference-cap';
 import {
   CatalogGatedFrame,
@@ -94,6 +95,15 @@ interface VideoGeneratePanelContainerProps {
   projectId: string;
   /** Canvas space id. */
   spaceId: string;
+  /**
+   * Who made the newest document write, read at the moment it is needed.
+   *
+   * A function rather than a value: this panel reacts to a document change
+   * inside an effect, and effects run child-first — a value mirrored by the
+   * canvas above would still be the previous write's author on the very
+   * commit that ends a pick.
+   */
+  getLastWriteWasLocal: () => boolean;
 }
 
 /**
@@ -124,6 +134,7 @@ function asNum(value: unknown): number | undefined {
  * @param root0.edges - Live canvas edges.
  * @param root0.projectId - Project id.
  * @param root0.spaceId - Canvas space id.
+ * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
  * @returns The video Generate panel.
  */
 function VideoGeneratePanelBody({
@@ -132,6 +143,7 @@ function VideoGeneratePanelBody({
   edges,
   projectId,
   spaceId,
+  getLastWriteWasLocal,
 }: VideoGeneratePanelContainerProps & {
   nodeId: string;
 }): React.JSX.Element {
@@ -527,8 +539,15 @@ function VideoGeneratePanelBody({
     const running = slotForPurpose(session.purpose);
     if (running && !slotsKey.split(',').includes(running)) {
       endPick();
+      // The slot list comes from the mode, so this is a mode change reaching
+      // the pick — and the write may well have been a collaborator's.
+      toast.warning(
+        t(
+          pickEndToastKey(getLastWriteWasLocal()),
+        ),
+      );
     }
-  }, [slotsKey, nodeId, endPick]);
+  }, [slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
