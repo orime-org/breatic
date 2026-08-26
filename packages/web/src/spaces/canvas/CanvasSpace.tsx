@@ -180,6 +180,7 @@ import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-canvas-gesture';
+import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
   CanvasContext,
@@ -659,6 +660,28 @@ function CanvasSpaceInner({
   const awareness = caretProvider?.awareness ?? null;
   const occupants = useCanvasOccupants(awareness);
   const remoteGesture = useRemoteGesture(awareness);
+
+  // What a document write is allowed to read.
+  //
+  // The render buffer holds what the canvas draws, remote gestures included,
+  // and several paths read geometry out of it on the way to writing the
+  // document. `writableNodes` is the one door they go through: it hands back
+  // the buffer with every remote gesture put back at its document position, so
+  // a collaborator's in-flight coordinates cannot be committed by somebody
+  // else's action (#2010, design §5.7 and invariant 7).
+  const flowNodesRef = React.useRef<Node[]>([]);
+  const docNodesRef = React.useRef<ReadonlyArray<CanvasNodeView>>([]);
+  const remoteGestureRef = React.useRef(remoteGesture);
+  React.useEffect(() => {
+    flowNodesRef.current = flowNodes;
+    docNodesRef.current = nodes;
+    remoteGestureRef.current = remoteGesture;
+  }, [flowNodes, nodes, remoteGesture]);
+  const writableNodes = React.useCallback(
+    (): Node[] =>
+      docGeometryView(flowNodesRef.current, docNodesRef.current, remoteGestureRef.current),
+    [],
+  );
   const {
     screenToFlowPosition,
     zoomIn,
@@ -1383,9 +1406,10 @@ function CanvasSpaceInner({
   // `MouseEvent | TouchEvent`, which is what made a long-wrong annotation
   // finally fail to compile.
   const onNodeDragStop = React.useCallback<OnNodeDrag<Node>>(
-    (_event, _node, nodes): void => {
+    (_event, _node, dragged): void => {
       if (readOnly) return;
-      const byId = new Map(flowNodes.map((item) => [item.id, item]));
+      const writable = writableNodes();
+      const byId = new Map(writable.map((item) => [item.id, item]));
       /**
        * Resolve a node to absolute canvas coordinates (a member's stored
        * position is relative to its Group) + its rendered size — the form
@@ -1416,7 +1440,7 @@ function CanvasSpaceInner({
           locked: Boolean((item.data as { locked?: unknown }).locked),
         };
       };
-      const ops = planGroupDrag(nodes.map(toDragNode), flowNodes.map(toDragNode));
+      const ops = planGroupDrag(dragged.map(toDragNode), writable.map(toDragNode));
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
       // parent change AND a position change, plus any Group expansion — without
       // batching, captureTimeout:0 would split them so undo restored a
@@ -1434,7 +1458,7 @@ function CanvasSpaceInner({
         }
       });
     },
-    [readOnly, projectId, spaceId, flowNodes],
+    [readOnly, projectId, spaceId, writableNodes],
   );
 
   // Veto deletions BEFORE ReactFlow touches the local buffer: a locked group's
@@ -2590,11 +2614,6 @@ function CanvasSpaceInner({
   // field / node body is being edited (browser default) or the viewer is
   // read-only. The copy handler reads the latest selection through a ref so
   // the document listener needn't re-attach on every render.
-  const flowNodesRef = React.useRef<Node[]>([]);
-  React.useEffect(() => {
-    flowNodesRef.current = flowNodes;
-  }, [flowNodes]);
-
   React.useEffect(() => {
     /**
      * Document paste handler: clone a marked node payload, else create a text
@@ -2739,7 +2758,7 @@ function CanvasSpaceInner({
   const groupSelection = React.useCallback((): void => {
     if (readOnly || groupOffer.kind !== 'group') return;
     const groupId = newId();
-    const plan = planGroupCreation(flowNodes, selectedIds, groupId);
+    const plan = planGroupCreation(writableNodes(), selectedIds, groupId);
     if (!plan) return;
     const group = createGroupNode(
       groupId,
@@ -2758,7 +2777,7 @@ function CanvasSpaceInner({
   }, [
     readOnly,
     groupOffer,
-    flowNodes,
+    writableNodes,
     selectedIds,
     userId,
     projectId,
@@ -2889,7 +2908,7 @@ function CanvasSpaceInner({
   const duplicateTargets = React.useCallback(
     (targetIds: ReadonlyArray<string>): void => {
       if (readOnly || targetIds.length === 0) return;
-      const nodes = flowNodesRef.current;
+      const nodes = writableNodes();
       const payload = captureClipboardWithText(targetIds, nodes);
       if (payload.length === 0) return;
       const ext = externalParentAbs(payload, nodes);
@@ -2908,7 +2927,7 @@ function CanvasSpaceInner({
       });
       setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, projectId, spaceId, userId, captureClipboardWithText],
+    [readOnly, projectId, spaceId, userId, captureClipboardWithText, writableNodes],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -3341,7 +3360,8 @@ function CanvasSpaceInner({
           width: rect.width,
           height: rect.height,
         };
-        const loose = flowNodesRef.current
+        const writable = writableNodes();
+        const loose = writable
           .filter(
             (node) =>
               node.parentId === undefined &&
@@ -3375,7 +3395,7 @@ function CanvasSpaceInner({
             rect.width,
             rect.height,
           );
-          for (const child of flowNodesRef.current) {
+          for (const child of writable) {
             if (child.parentId === groupId) {
               setNodePosition(projectId, spaceId, child.id, child.position);
             }
@@ -3390,7 +3410,7 @@ function CanvasSpaceInner({
       hasUploadRetryFile: (nodeId: string): boolean =>
         hasRetryFile(projectId, spaceId, nodeId),
     }),
-    [projectId, spaceId, readOnly, activateNodeUpload, retryNodeUpload],
+    [projectId, spaceId, readOnly, activateNodeUpload, retryNodeUpload, writableNodes],
   );
 
   // A Group carries its own authoritative width/height (stored in Yjs, fed via
