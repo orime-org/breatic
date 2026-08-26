@@ -16,6 +16,7 @@ import {
   getPricingTiers,
   getReconcileBounds,
   getStaleSendingMinutes,
+  getConfirmTimeoutMs,
 } from "@server/config/pricing.js";
 import { getCreditPageLimits } from "@server/config/limits.js";
 import type { PaymentEntity, CreditPage, PurchaseRow } from "@breatic/shared";
@@ -520,26 +521,33 @@ export async function getPayment(paymentId: string, userId: string): Promise<Pay
 }
 
 /**
- * Get available pricing tiers for frontend display.
+ * The packs on offer, and how long the return page may wait.
  *
- * Strips Stripe Price IDs — frontend doesn't need them.
- * @returns The configured pricing tiers (name, credits, priceCents, currency, description)
- *   with Stripe Price IDs omitted
+ * Stripe Price IDs stay here: they name the same packs and the browser has no
+ * use for them.
+ * @returns The packs and the confirmation wait.
  */
-export function listTiers(): Array<{
-  name: string;
-  credits: number;
-  priceCents: number;
-  currency: string;
-  description: string;
-}> {
-  return getPricingTiers().map((tier) => ({
-    name: tier.name,
-    credits: tier.credits,
-    priceCents: tier.priceCents,
-    currency: tier.currency,
-    description: tier.description,
-  }));
+export function listTiers(): {
+  packs: Array<{
+    name: string;
+    credits: number;
+    priceCents: number;
+    currency: string;
+  }>;
+  confirmTimeoutMs: number;
+} {
+  return {
+    packs: getPricingTiers().map((tier) => ({
+      name: tier.name,
+      credits: tier.credits,
+      priceCents: tier.priceCents,
+      currency: tier.currency,
+    })),
+    // The page keeps a buyer behind a full-screen wait for at most this long.
+    // The value is here and the timer is in the browser, so it rides along
+    // with the list the buy screen already reads.
+    confirmTimeoutMs: getConfirmTimeoutMs(),
+  };
 }
 
 /**

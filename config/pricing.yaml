@@ -24,7 +24,6 @@ tiers:
     credits: 830
     price_cents: 1000
     currency: usd
-    description: ""
     stripe_price_id:
       test: "price_1U8aBUGeRYMxofheEfpNDked"
       live: ""
@@ -33,7 +32,6 @@ tiers:
     credits: 1700
     price_cents: 2000
     currency: usd
-    description: ""
     stripe_price_id:
       test: "price_1U8aC0GeRYMxofhevMFDox6Z"
       live: ""
@@ -42,7 +40,6 @@ tiers:
     credits: 4320
     price_cents: 5000
     currency: usd
-    description: ""
     stripe_price_id:
       test: "price_1U8aCuGeRYMxofhe2WVbQEso"
       live: ""
@@ -51,7 +48,6 @@ tiers:
     credits: 8690
     price_cents: 10000
     currency: usd
-    description: ""
     stripe_price_id:
       test: "price_1U8aDGGeRYMxofheU2u9PGh8"
       live: ""
@@ -60,7 +56,6 @@ tiers:
     credits: 43660
     price_cents: 50000
     currency: usd
-    description: ""
     stripe_price_id:
       test: "price_1U8aDcGeRYMxofheekj677zO"
       live: ""
@@ -82,3 +77,10 @@ reconcile:
 # result strands the row there, and nothing sweeps it: this screen is its only
 # reader, so this is the timeout that frees it.
 stale_sending_minutes: 10
+
+# How long the page waits for the confirmation endpoint before it stops
+# waiting. The purchase is unharmed either way — the webhook and reconciling
+# both settle it — so this is only about not holding a buyer behind a spinner
+# that may never stop. The value lives here and the timer runs in the browser,
+# so it is carried on the pack list the buy screen already reads.
+confirm_timeout_ms: 15000

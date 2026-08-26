@@ -1394,6 +1394,10 @@
       "resend": "重发",
       "resendSent": "确认邮件已在发送。",
       "resendFailed": "这封邮件仍然没能发出。"
+    },
+    "checkoutWait": {
+      "title": "正在处理这笔购买",
+      "body": "请不要关闭页面。"
     }
   }
 }

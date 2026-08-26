@@ -39,7 +39,7 @@ const PACKS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fetchTiers.mockResolvedValue(PACKS);
+  fetchTiers.mockResolvedValue({ packs: PACKS, confirmTimeoutMs: 15000 });
   startCheckout.mockResolvedValue({ url: 'https://checkout.stripe.test/x' });
 });
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
 
@@ -15,12 +16,21 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { authApi } from '@web/data/api/auth';
+import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
+import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
+import { paymentApi } from '@web/data/api/payment';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useTranslation } from '@web/i18n/use-translation';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
+
+/**
+ * What to wait before the server has said. Fifteen seconds is the configured
+ * value; this stands in only for the moment before the pack list arrives.
+ */
+const DEFAULT_CONFIRM_WAIT_MS = 15000;
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
@@ -51,6 +61,28 @@ export function StudioAccountMenu(): React.JSX.Element {
   const personalStudio = user?.personalStudio ?? null;
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
+
+  // How long the return page may wait comes from the server, on the list the
+  // buy screen reads anyway. Until it arrives there is nothing to wait for.
+  const packs = useQuery({
+    queryKey: ['payment', 'tiers'],
+    queryFn: () => paymentApi.tiers(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const back = useCheckoutReturn({
+    confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? DEFAULT_CONFIRM_WAIT_MS,
+  });
+
+  // Two things open this overlay — the menu entry and coming back from a
+  // payment — and closing it has to put both down, or it reopens on the next
+  // render from whichever is still set.
+  const closeCredits = React.useCallback(
+    (next: boolean) => {
+      setCreditsOpen(next);
+      if (!next) back.close();
+    },
+    [back],
+  );
 
   /**
    * Sign out: invalidate the server session, then clear the local user so
@@ -197,7 +229,12 @@ export function StudioAccountMenu(): React.JSX.Element {
         </DropdownMenuContent>
       </DropdownMenu>
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
-      <CreditsOverlay open={creditsOpen} onOpenChange={setCreditsOpen} />
+      <CheckoutWaitOverlay open={back.waiting} />
+      <CreditsOverlay
+        open={creditsOpen || back.overlayOpen}
+        onOpenChange={closeCredits}
+        initialSection={back.initialSection}
+      />
     </>
   );
 }

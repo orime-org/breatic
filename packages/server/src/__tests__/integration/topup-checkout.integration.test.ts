@@ -61,7 +61,10 @@ import postgres from "postgres";
 import { initCore, loadLocales, MONOREPO_ROOT, runWithLocale } from "@breatic/core";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { createCheckout } from "@server/modules/payment/payment.service.js";
+import {
+  createCheckout,
+  listTiers,
+} from "@server/modules/payment/payment.service.js";
 import { CONSENT_CREDITS_VERSION } from "@server/modules/payment/legal-text.js";
 
 /**
@@ -412,5 +415,17 @@ describe("createCheckout — what lands in our own table", () => {
     } finally {
       await dropUser(userId);
     }
+  });
+});
+
+describe("GET /payment/tiers — what the buy screen reads", () => {
+  it("carries the wait the page is allowed to keep a buyer behind", () => {
+    // The value is in the server's config and the timer runs in the browser.
+    // A copy in the frontend would drift the day somebody changed it, and the
+    // page would stop waiting at a moment nobody chose.
+    const listed = listTiers();
+    expect(listed.confirmTimeoutMs).toBeGreaterThan(0);
+    expect(listed.packs).toHaveLength(5);
+    expect(listed.packs[0]).toMatchObject({ priceCents: 1000, credits: 830 });
   });
 });

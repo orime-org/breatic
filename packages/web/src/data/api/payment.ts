@@ -26,6 +26,17 @@ export interface CreditPack {
   currency: string;
 }
 
+/** The packs, and the wait that belongs with them. */
+export interface PackList {
+  /** The packs, in the order they are shown. */
+  packs: CreditPack[];
+  /**
+   * How long the return page may keep a buyer behind the full-screen wait.
+   * Decided on the server, where the value lives; the timer runs here.
+   */
+  confirmTimeoutMs: number;
+}
+
 /** What starting a checkout takes. */
 export interface CheckoutRequest {
   /** Which pack, named by its face value. */
@@ -38,11 +49,12 @@ export interface CheckoutRequest {
 
 export const paymentApi = {
   /**
-   * The packs on offer.
-   * @returns Them, in the order they are shown.
+   * The packs on offer, and how long the return page may wait for a
+   * confirmation before it stops waiting.
+   * @returns Both.
    */
-  tiers(): Promise<CreditPack[]> {
-    return apiGet<CreditPack[]>('/payment/tiers');
+  tiers(): Promise<PackList> {
+    return apiGet<PackList>('/payment/tiers');
   },
 
   /**

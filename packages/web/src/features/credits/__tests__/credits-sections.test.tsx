@@ -36,10 +36,13 @@ const paymentHistory = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
   paymentApi: {
     tiers: () =>
-      Promise.resolve([
-        { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
-        { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
-      ]),
+      Promise.resolve({
+        packs: [
+          { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
+          { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
+        ],
+        confirmTimeoutMs: 15000,
+      }),
     checkout: vi.fn(),
     history: (...args: unknown[]) => paymentHistory(...args),
     resendConfirmation: vi.fn(),

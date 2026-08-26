@@ -19,7 +19,6 @@ const tierSchema = z.object({
   credits: z.number().int().positive(),
   price_cents: z.number().int().positive(),
   currency: z.string().default("usd"),
-  description: z.string().default(""),
   stripe_price_id: z.object({
     test: z.string(),
     live: z.string(),
@@ -35,6 +34,7 @@ const pricingSchema = z.object({
   tiers: z.array(tierSchema),
   reconcile: reconcileSchema.default({ batch_size: 3, min_age_seconds: 120 }),
   stale_sending_minutes: z.number().int().positive().default(10),
+  confirm_timeout_ms: z.number().int().positive().default(15000),
 });
 
 /** Resolved pricing tier with the correct Stripe Price ID for this environment. */
@@ -43,7 +43,6 @@ export interface PricingTier {
   credits: number;
   priceCents: number;
   currency: string;
-  description: string;
   stripePriceId: string;
 }
 
@@ -78,7 +77,6 @@ export function getPricingTiers(): PricingTier[] {
     credits: t.credits,
     priceCents: t.price_cents,
     currency: t.currency,
-    description: t.description,
     stripePriceId: isLive ? t.stripe_price_id.live : t.stripe_price_id.test,
   }));
 
@@ -124,6 +122,17 @@ export function getReconcileBounds(): ReconcileBounds {
     minAgeSeconds: parsed.reconcile.min_age_seconds,
   };
   return _cachedReconcile;
+}
+
+/**
+ * How long the page waits for the confirmation endpoint.
+ * @returns That wait in milliseconds.
+ * @throws {Error} When the file is missing or malformed.
+ */
+export function getConfirmTimeoutMs(): number {
+  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
+  return pricingSchema.parse(parse(readFileSync(configPath, "utf-8")))
+    .confirm_timeout_ms;
 }
 
 /**

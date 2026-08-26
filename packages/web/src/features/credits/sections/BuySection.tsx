@@ -102,7 +102,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
         <SectionError />
       ) : (
         <div className='grid grid-cols-5 gap-2'>
-          {packs.data.map((pack) => (
+          {packs.data.packs.map((pack) => (
             <PackCard key={pack.priceCents} pack={pack} onChoose={setChosen} />
           ))}
         </div>

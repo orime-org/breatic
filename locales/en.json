@@ -1394,6 +1394,10 @@
       "resend": "Send again",
       "resendSent": "The confirmation is on its way.",
       "resendFailed": "That letter still could not be sent."
+    },
+    "checkoutWait": {
+      "title": "Processing this purchase",
+      "body": "Please keep this page open."
     }
   }
 }

@@ -1394,6 +1394,10 @@
       "resend": "重新寄送",
       "resendSent": "確認信正在寄送。",
       "resendFailed": "這封信仍然沒能寄出。"
+    },
+    "checkoutWait": {
+      "title": "正在處理這筆購買",
+      "body": "請不要關閉頁面。"
     }
   }
 }
