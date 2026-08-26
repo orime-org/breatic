@@ -5,7 +5,7 @@
  * Payment repository — data access for the payments table.
  */
 
-import { eq, and, desc, inArray, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, isNotNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { payments, users, creditLots, purchaseConsents } from "@breatic/core";
@@ -175,6 +175,71 @@ export async function listPaymentsByUser(
     .limit(Math.min(limit, 100))
     .offset(offset);
   return rows.map(toEntity);
+}
+
+/**
+ * The payments one reconcile pass should ask Stripe about.
+ *
+ * Three bounds, each answering a different way this could go wrong.
+ *
+ * `pending` and `failed` both qualify: a payment that failed and was paid
+ * afterwards reaches us through one webhook that can be lost, and reconciling
+ * is the only other way that correction arrives.
+ *
+ * The age bound skips the buyer who is still on the Stripe page filling in a
+ * card. That session is certainly unpaid, and asking about it spends a round
+ * trip to learn nothing.
+ *
+ * Ordering by `updated_at` rather than by age is what stops the same rows
+ * holding every slot. An abandoned checkout stays `pending` for the two hours
+ * its session lives, and there can be many; taking the oldest first would let
+ * a handful of them occupy all three places pass after pass, while the one
+ * purchase that was actually paid never came up. Every pass touches
+ * `updated_at` on what it looked at, so what it looked at goes to the back.
+ * @param userId - The account whose purchases to repair.
+ * @param batchSize - How many to take.
+ * @param minAgeSeconds - How old they must be.
+ * @returns Those payments, least recently looked at first.
+ */
+export async function listPaymentsToReconcile(
+  userId: string,
+  batchSize: number,
+  minAgeSeconds: number,
+): Promise<PaymentEntity[]> {
+  const rows = await db
+    .select()
+    .from(payments)
+    .where(
+      and(
+        eq(payments.userId, userId),
+        inArray(payments.status, ["pending", "failed"]),
+        // A row with no session is a row Stripe cannot be asked about. The
+        // checkout path cannot produce one — the session exists before the
+        // row does — but the column is nullable and a pass that picked such a
+        // row up would hold a slot to retrieve nothing.
+        isNotNull(payments.stripeSessionId),
+        sql`${payments.createdAt} < now() - make_interval(secs => ${minAgeSeconds})`,
+      ),
+    )
+    .orderBy(payments.updatedAt)
+    .limit(batchSize);
+  return rows.map(toEntity);
+}
+
+/**
+ * Mark these payments as looked at, whatever the look found.
+ *
+ * This is the other half of the ordering above: without it, a pass that
+ * changed nothing would leave the same rows at the front of the queue and
+ * pick them again next time.
+ * @param ids - The payments this pass asked Stripe about.
+ */
+export async function touchReconciled(ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(payments)
+    .set({ updatedAt: new Date() })
+    .where(inArray(payments.id, [...ids]));
 }
 
 /** Everything one purchase's confirmation email states. */

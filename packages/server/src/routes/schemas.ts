@@ -19,6 +19,8 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,

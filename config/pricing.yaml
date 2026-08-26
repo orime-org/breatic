@@ -64,3 +64,15 @@ tiers:
     stripe_price_id:
       test: "price_1U8aDcGeRYMxofheekj677zO"
       live: ""
+
+# Repairing payments that neither the return-side confirmation nor the webhook
+# finished. It runs on every read of the credits overview, so it is bounded on
+# three sides.
+reconcile:
+  # How many payments one pass asks Stripe about. Three round trips fit inside
+  # one page load; the rest wait for the next.
+  batch_size: 3
+  # How old a payment has to be before a pass touches it. Younger than this and
+  # the buyer is most likely still on the Stripe page filling in a card, where
+  # the answer is certainly `unpaid` and the round trip buys nothing.
+  min_age_seconds: 120

@@ -352,6 +352,28 @@ export const checkoutSchema = z.object({
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
 /**
+ * Settling the purchase a buyer just came back from.
+ *
+ * The session id arrives on `success_url`, where Stripe substitutes it for
+ * the `{CHECKOUT_SESSION_ID}` placeholder.
+ */
+export const paymentConfirmSchema = z.object({
+  session_id: z.string().min(1).max(255),
+});
+export type PaymentConfirmInput = z.infer<typeof paymentConfirmSchema>;
+
+/**
+ * Abandoning the purchase a buyer just pressed Back on.
+ *
+ * Named by our own row's id, which `cancel_url` carries: Stripe documents its
+ * session-id placeholder for `success_url` only.
+ */
+export const paymentCancelSchema = z.object({
+  payment_id: z.string().uuid(),
+});
+export type PaymentCancelInput = z.infer<typeof paymentCancelSchema>;
+
+/**
  * Starting or changing a membership subscription (#106).
  *
  * Separate from {@link checkoutSchema}, which sells credit packs: that one

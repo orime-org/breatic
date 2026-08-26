@@ -11,7 +11,11 @@
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import { creditLotService } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
-import { findTierByPriceCents, getPricingTiers } from "@server/config/pricing.js";
+import {
+  findTierByPriceCents,
+  getPricingTiers,
+  getReconcileBounds,
+} from "@server/config/pricing.js";
 import type { PaymentEntity } from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
 import { AppError, NotFoundError, ForbiddenError } from "@breatic/core";
@@ -545,4 +549,149 @@ export function listTiers(): Array<{
     currency: tier.currency,
     description: tier.description,
   }));
+}
+
+/**
+ * Settle the purchase a buyer has just come back from.
+ *
+ * Ownership is checked before Stripe is asked anything: a session id is the
+ * only thing this endpoint takes, and it must name a purchase the caller made.
+ * @param userId - The signed-in account.
+ * @param stripeSessionId - The session they came back from.
+ * @returns What settling it did.
+ * @throws {NotFoundError} When no purchase of theirs has that session.
+ */
+export async function confirmCheckout(
+  userId: string,
+  stripeSessionId: string,
+): Promise<FulfillOutcome> {
+  const payment =
+    await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
+  if (!payment || payment.userId !== userId) {
+    throw new NotFoundError(t("server.payment.not_found"));
+  }
+  return fulfillPayment(stripeSessionId, null);
+}
+
+/**
+ * What Stripe says about a session we could not expire.
+ *
+ * Expiring only works on an open session, and our own `pending` cannot say
+ * whether Stripe still holds it open — a buyer who left the page past its
+ * two-hour life, whose `expired` event was then lost, leaves us `pending`
+ * either way. So a refusal is followed by a question rather than a guess.
+ * @param payment - The purchase.
+ * @param stripeSessionId - Its session, already known to be present.
+ * @throws {Error} If Stripe cannot be reached; the caller degrades.
+ */
+async function reclassifyAfterRefusedExpire(
+  payment: PaymentEntity,
+  stripeSessionId: string,
+): Promise<void> {
+  const session = await readCheckoutSession(stripeSessionId);
+  if (session.payment_status !== "unpaid") {
+    // Paid after all: the buyer got as far as paying, the confirmation never
+    // reached us, and they came back to the still-open tab and pressed Back.
+    // Writing `expired` here would be taking the money and granting nothing.
+    await fulfillPayment(stripeSessionId, null);
+    return;
+  }
+  if (session.status === "expired") {
+    await paymentRepo.updatePaymentStatusCAS(
+      payment.id,
+      ["pending", "failed"],
+      "expired",
+    );
+  }
+  // Still open, and Stripe refused to expire it: leave it where it is rather
+  // than record something we have not been told.
+}
+
+/**
+ * Abandon the purchase a buyer has just pressed Back on.
+ *
+ * The session is expired at Stripe there and then. A purchase left to time out
+ * would sit in the buyer's history as "processing" for two hours with nothing
+ * processing it, and this is the one moment we know for certain they gave up —
+ * they said so.
+ *
+ * Never fails on account of Stripe. The buyer is behind this call and their
+ * purchase is unharmed either way; a session we could not reach is left for
+ * the next reconcile pass.
+ * @param userId - The signed-in account.
+ * @param paymentId - The purchase they abandoned, named in `cancel_url`.
+ * @returns Where the purchase now stands, and whether Stripe answered at all.
+ * @throws {NotFoundError} When that purchase is not theirs.
+ * @throws {Error} Never for a Stripe failure; the caller logs what it caught.
+ */
+export async function cancelCheckout(
+  userId: string,
+  paymentId: string,
+): Promise<{ status: string; stripeReachable: boolean }> {
+  const payment = await paymentRepo.getPaymentById(paymentId);
+  if (!payment || payment.userId !== userId) {
+    throw new NotFoundError(t("server.payment.not_found"));
+  }
+  // A settled purchase has nothing to abandon, and its session is long closed.
+  // Neither has one that never got a session — Stripe holds nothing to expire.
+  if (
+    (payment.status !== "pending" && payment.status !== "failed") ||
+    payment.stripeSessionId === null
+  ) {
+    return { status: payment.status, stripeReachable: true };
+  }
+  const stripeSessionId = payment.stripeSessionId;
+
+  let reachable = true;
+  try {
+    await getStripeClient().checkout.sessions.expire(stripeSessionId);
+    await paymentRepo.updatePaymentStatusCAS(
+      payment.id,
+      ["pending", "failed"],
+      "expired",
+    );
+  } catch {
+    try {
+      await reclassifyAfterRefusedExpire(payment, stripeSessionId);
+    } catch {
+      reachable = false;
+    }
+  }
+
+  const after = await paymentRepo.getPaymentById(paymentId);
+  return { status: after?.status ?? payment.status, stripeReachable: reachable };
+}
+
+/**
+ * Repair the purchases the return-side confirmation and the webhook both
+ * missed.
+ *
+ * Runs on every read of the credits overlay, which is the one query its seven
+ * sections already wait behind. Its three bounds are in `config/pricing.yaml`
+ * and explained where the query is built.
+ *
+ * Every payment it looked at is marked as looked at, whatever came back, so
+ * the next pass reaches different ones.
+ * @param userId - The account whose purchases to repair.
+ * @returns How many were settled by this pass.
+ * @throws {Error} If Stripe cannot be reached; the caller answers with local
+ *   data and logs it.
+ */
+export async function reconcilePayments(userId: string): Promise<number> {
+  const bounds = getReconcileBounds();
+  const due = await paymentRepo.listPaymentsToReconcile(
+    userId,
+    bounds.batchSize,
+    bounds.minAgeSeconds,
+  );
+  if (due.length === 0) return 0;
+
+  try {
+    const outcomes = await Promise.all(
+      due.map((payment) => fulfillPayment(payment.stripeSessionId!, null)),
+    );
+    return outcomes.filter((o) => o.status === "granted").length;
+  } finally {
+    await paymentRepo.touchReconciled(due.map((p) => p.id));
+  }
 }

@@ -11,7 +11,12 @@
 
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
-import { checkoutSchema, paginationSchema } from "@server/routes/schemas.js";
+import {
+  checkoutSchema,
+  paginationSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
+} from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
@@ -53,6 +58,58 @@ payment.post(
       "payment_checkout_session_created",
     );
     return c.json({ data: { url: result.url } }, 201);
+  },
+);
+
+/**
+ * `POST /payment/confirm` — the buyer is back from a payment.
+ *
+ * Settles the purchase there and then rather than waiting for the webhook,
+ * because a buyer standing in front of a full-screen wait should see their
+ * credits, not a spinner. The webhook still arrives and finds the work done.
+ * @returns `200` with what settling it did; `404` when the session names no
+ *   purchase of theirs.
+ */
+payment.post(
+  "/confirm",
+  requireAuth,
+  validate("json", paymentConfirmSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { session_id: sessionId } = c.req.valid("json");
+    const outcome = await paymentService.confirmCheckout(user.id, sessionId);
+    logger.info(
+      { userId: user.id, sessionId, outcome: outcome.status },
+      "payment_confirm_handled",
+    );
+    return c.json({ data: { status: outcome.status } });
+  },
+);
+
+/**
+ * `POST /payment/cancel` — the buyer pressed Back on the Stripe page.
+ *
+ * Expires the session so the purchase stops showing as in flight. Answers 200
+ * even when Stripe could not be reached: nothing the buyer holds is harmed,
+ * and reconciling picks the row up two minutes later.
+ * @returns `200` with where the purchase now stands; `404` when it is not
+ *   theirs.
+ */
+payment.post(
+  "/cancel",
+  requireAuth,
+  validate("json", paymentCancelSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { payment_id: paymentId } = c.req.valid("json");
+    const result = await paymentService.cancelCheckout(user.id, paymentId);
+    if (!result.stripeReachable) {
+      logger.error(
+        { userId: user.id, paymentId },
+        "payment_cancel_stripe_unreachable",
+      );
+    }
+    return c.json({ data: { status: result.status } });
   },
 );
 

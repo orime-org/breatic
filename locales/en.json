@@ -71,7 +71,8 @@
         "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
         "used": "Spent any of them, even one? That pack can no longer be refunded.",
         "expired": "Past 30 days, packs are no longer refundable."
-      }
+      },
+      "not_found": "That purchase could not be found."
     },
     "skill": {
       "not_found": "Skill not found",

@@ -26,8 +26,14 @@ const tierSchema = z.object({
   }),
 });
 
+const reconcileSchema = z.object({
+  batch_size: z.number().int().positive().default(3),
+  min_age_seconds: z.number().int().positive().default(120),
+});
+
 const pricingSchema = z.object({
   tiers: z.array(tierSchema),
+  reconcile: reconcileSchema.default({ batch_size: 3, min_age_seconds: 120 }),
 });
 
 /** Resolved pricing tier with the correct Stripe Price ID for this environment. */
@@ -40,7 +46,14 @@ export interface PricingTier {
   stripePriceId: string;
 }
 
+/** The three bounds one reconcile pass runs inside. */
+export interface ReconcileBounds {
+  batchSize: number;
+  minAgeSeconds: number;
+}
+
 let _cachedTiers: PricingTier[] | null = null;
+let _cachedReconcile: ReconcileBounds | null = null;
 
 /**
  * Load and resolve pricing tiers from YAML config.
@@ -96,7 +109,24 @@ export function findTierByPriceId(priceId: string): PricingTier | undefined {
   return getPricingTiers().find((t) => t.stripePriceId === priceId);
 }
 
+/**
+ * How many payments one reconcile pass takes, and how old they must be.
+ * @returns Both bounds.
+ * @throws {Error} When the file is missing or malformed.
+ */
+export function getReconcileBounds(): ReconcileBounds {
+  if (_cachedReconcile) return _cachedReconcile;
+  const configPath = resolve(MONOREPO_ROOT, "config/pricing.yaml");
+  const parsed = pricingSchema.parse(parse(readFileSync(configPath, "utf-8")));
+  _cachedReconcile = {
+    batchSize: parsed.reconcile.batch_size,
+    minAgeSeconds: parsed.reconcile.min_age_seconds,
+  };
+  return _cachedReconcile;
+}
+
 /** Reset cached tiers (for testing). */
 export function resetPricingCache(): void {
   _cachedTiers = null;
+  _cachedReconcile = null;
 }
