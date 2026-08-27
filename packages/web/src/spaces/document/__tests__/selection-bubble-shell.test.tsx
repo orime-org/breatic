@@ -644,6 +644,22 @@ describe('the bubble bar shell', () => {
       ).toBe('true');
       // demo:695: one full-width button under both rows.
       expect(menu.querySelector('[data-testid="doc-bubble-color-reset"]')).not.toBeNull();
+
+      // demo 3.5 gives each row a heading of its own, and A6 names that as part
+      // of the structure. Counting swatches alone leaves it untested: strip
+      // both headings out and two unlabelled strips still pass.
+      const headings = [...menu.children]
+        .filter(
+          (n) =>
+            !n.matches('[data-testid^="doc-bubble-color-"]')
+            && !n.querySelector('[data-testid^="doc-bubble-color-"]'),
+        )
+        .map((n) => n.textContent?.trim() ?? '')
+        .filter((text) => text.length > 0);
+      expect(headings).toHaveLength(2);
+      for (const text of headings) {
+        expect(text).not.toContain('spaces.document.commands');
+      }
     });
 
     it('lists the eight AI commands the ruling draws', async () => {
@@ -655,6 +671,31 @@ describe('the bubble bar shell', () => {
       expect(
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
       ).toHaveLength(8);
+
+      // A6 asks for "三组八项", and the three come from the ruling's own table
+      // (§3.2.1). Counting the rows alone leaves the grouping untested: strip
+      // every label out and eight ungrouped rows still pass.
+      //
+      // Read as the order the reader meets them in, with the count each one
+      // introduces — five rewrites, two that produce something new, one other.
+      const groups: { label: string; rows: number }[] = [];
+      for (const node of menu.children) {
+        const row = node.getAttribute('data-testid');
+        if (row?.startsWith('doc-bubble-ai-item-')) {
+          if (groups.length > 0) groups[groups.length - 1]!.rows += 1;
+          continue;
+        }
+        if (node.textContent) {
+          groups.push({ label: node.textContent.trim(), rows: 0 });
+        }
+      }
+      expect(groups.map((g) => g.rows)).toEqual([5, 2, 1]);
+      // Each heading resolved to a catalog entry: `t()` hands the key back
+      // when it finds nothing (`shared/src/i18n/index.ts:131`).
+      for (const g of groups) {
+        expect(g.label).not.toContain('spaces.document.commands');
+        expect(g.label.length).toBeGreaterThan(0);
+      }
     });
   });
 
