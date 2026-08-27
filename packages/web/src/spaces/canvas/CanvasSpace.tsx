@@ -142,6 +142,7 @@ import {
   groupResizeBounds,
   planGroupGrowth,
   planGroupResize,
+  toAbsolutePosition,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
@@ -2794,10 +2795,7 @@ function CanvasSpaceInner({
             ? getInternalNode(item.id)?.internals.positionAbsolute
             : undefined) ??
           (parent
-            ? {
-              x: parent.position.x + source.position.x,
-              y: parent.position.y + source.position.y,
-            }
+            ? toAbsolutePosition(source.position, parent.position)
             : source.position);
         return {
           id: item.id,
@@ -3647,7 +3645,7 @@ function CanvasSpaceInner({
       return {
         ...node,
         data: {
-          ...(node.data as Record<string, unknown>),
+          ...node.data,
           // A read-only viewer gets NO resize bounds, so GroupResizer renders
           // no handles — ReactFlow's NodeResizeControl works independently of
           // `nodesDraggable`, so without this a viewer could grab + drag-resize

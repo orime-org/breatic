@@ -56,9 +56,11 @@ export interface ReparentDecision {
 }
 
 /**
- * Whether a Group takes part in deciding where a dragged node lands.
+ * Whether a Group can take a dragged node IN. Losing one is a separate
+ * question, answered at the call site: a locked Group keeps its members, while
+ * a Group a remote is dragging lets one go that the user drags clear of it.
  * @param group - The Group to judge.
- * @returns True when it can both receive a node and be judged to have lost one.
+ * @returns True when a node dropped inside it may join it.
  */
 function accepts(group: GroupRef): boolean {
   return group.locked !== true && group.heldByRemote !== true;
