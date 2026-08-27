@@ -11,7 +11,7 @@
  * 需要 dev 起着 + smoke 账号：
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { test, expect, type Locator, type Page } from 'playwright/test';
 
 import { createSpace, deleteSpace } from './helpers/space';
 
@@ -594,6 +594,114 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
 
   // 这套用例共享同一个 page，而后面几条的前提是「鼠标不在正文里」。上面的悬停
   // 会把指针留在条上，所以离开时把它放回正文外，跟这条开始时一样。
+  await page.mouse.move(8, 8);
+});
+
+/**
+ * Walk the pointer onto one opener and wait for its menu.
+ *
+ * Step-wise, the way the case above does it: `.hover()` teleports, and Radix
+ * decides from pointer events, so a jump delivers none and the menu never
+ * opens.
+ * @param slot - The opener's test id.
+ * @returns The menu element's locator.
+ */
+async function hoverOpenSlot(slot: string): Promise<Locator> {
+  const opener = page.getByTestId(slot);
+  const box = (await opener.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
+    steps: 12,
+  });
+  const menu = page.getByTestId(`${slot}-menu`);
+  await expect(menu).toBeVisible({ timeout: 5_000 });
+  return menu;
+}
+
+// B1 and A5/A6 in a real browser. Every hover menu on the bar had been opened
+// only in jsdom, where no stylesheet loads and Radix's own pointer handling
+// runs against a layout that does not exist — so what a reader sees on
+// hovering one of these four had never been measured.
+test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the quick brown fox jumps');
+  await selectFirstParagraph(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  const rowsOf = async (menu: Locator): Promise<string[]> =>
+    menu.evaluate((el) =>
+      [...el.querySelectorAll('[role="menuitem"]')].map((r) =>
+        (r as HTMLElement).innerText.replace(/\s+/g, ' ').trim()));
+
+  const blockType = await hoverOpenSlot('doc-bubble-block-type');
+  expect(await rowsOf(blockType)).toHaveLength(9);
+  expect(
+    await blockType.locator('[data-testid^="doc-bubble-block-type-shortcut-"]').count(),
+  ).toBe(7);
+
+  const align = await hoverOpenSlot('doc-bubble-align');
+  expect(await rowsOf(align)).toHaveLength(3);
+
+  const colour = await hoverOpenSlot('doc-bubble-color');
+  // Two rows of eight and a reset, and the cell's own measurements: 30 square
+  // with the letter at 15px (demo:241-247).
+  expect(await colour.locator('[data-testid^="doc-bubble-color-text-"]').count()).toBe(8);
+  expect(await colour.locator('[data-testid^="doc-bubble-color-fill-"]').count()).toBe(8);
+  await expect(colour.getByTestId('doc-bubble-color-reset')).toBeVisible();
+  // The computed box rather than the painted one: the bar is placed by a
+  // `transform` whose offsets carry a fraction, so every rect under it lands
+  // on a fraction too and rounds to 29 or 30 depending on where the bar sits.
+  const cell = await colour.getByTestId('doc-bubble-color-text-red').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { w: cs.width, h: cs.height, fontSize: cs.fontSize, box: cs.boxSizing };
+  });
+  expect(cell).toMatchObject({
+    w: '30px',
+    h: '30px',
+    fontSize: '15px',
+    box: 'border-box',
+  });
+
+  // Set up before the menu opens. A menu closes once the pointer has been off
+  // it for its grace period, so anything done between opening and pressing is
+  // time the menu spends on its way out.
+  const lines: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'warning') lines.push(m.text());
+  });
+  const bodyBefore = await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="document-space"] .ProseMirror')
+        ?.innerHTML ?? '',
+  );
+
+  const ai = await hoverOpenSlot('doc-bubble-ai');
+  expect(await rowsOf(ai)).toHaveLength(8);
+
+  // Pressing a row that reaches no command: the console carries it, the
+  // document is untouched, and the menu goes away like any other.
+  //
+  // The pointer walks onto the row and presses there. `click()` teleports and
+  // holds the press until the element reports itself stable, and a menu that
+  // opens with a transition is not stable for a frame or two — long enough for
+  // the pointer, still parked on the opener, to be treated as having left.
+  const row = ai.getByTestId('doc-bubble-ai-item-refine');
+  const rowBox = (await row.boundingBox())!;
+  await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2, {
+    steps: 10,
+  });
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.getByTestId('doc-bubble-ai-menu')).toBeHidden({ timeout: 5_000 });
+  expect(lines.filter((l) => l.includes('not implemented yet'))).toHaveLength(1);
+  expect(
+    await page.evaluate(
+      () =>
+        document.querySelector('[data-testid="document-space"] .ProseMirror')
+          ?.innerHTML ?? '',
+    ),
+  ).toBe(bodyBefore);
+
+  // The pointer goes back outside the body, the way the cases here leave it.
   await page.mouse.move(8, 8);
 });
 

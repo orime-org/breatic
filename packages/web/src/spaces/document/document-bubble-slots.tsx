@@ -298,10 +298,14 @@ export const AlignSlot = React.memo(function AlignSlot({
 /** The colour panel's seven hues, from demo 3.5 and the palette. */
 const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
 
-/** One cell of either colour row: 30 square, 6px apart (demo:241-247). */
+/**
+ * One cell of either colour row: 30 square, 6px apart, the letter at 15px
+ * (demo:241-247). `text-base` is the step that carries 15px
+ * (`theme/tokens.css:364`).
+ */
 const COLOUR_CELL =
   'flex size-[30px] items-center justify-center rounded-content-sm border'
-  + ' border-border cursor-pointer hover:border-active-border';
+  + ' border-border cursor-pointer hover:border-active-border text-base';
 
 /**
  * The colour slot.
