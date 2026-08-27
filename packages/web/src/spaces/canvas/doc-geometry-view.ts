@@ -43,9 +43,11 @@ export function landingCandidates(
  * document, where they stay.
  *
  * Geometry comes back from the document — a Group's size included, because the
- * document stores it and a remote resize is showing a different one. What stays
- * is `measured`: a plain node's dimensions live only there, and no document
- * geometry can put them back.
+ * document stores it and a remote resize is showing a different one. That size
+ * replaces `measured` too, since every call site sizes a node as
+ * `measured?.width ?? width` and would otherwise read the in-flight one. A
+ * plain node keeps the `measured` it has: its dimensions live only there, and
+ * no document geometry can put them back.
  *
  * This is the single door: every call site that turns buffer geometry into a
  * document write goes through here, so a new one is a call that did not use it
@@ -71,11 +73,16 @@ export function docGeometryView(
     // whether it still exists belongs to the caller, not to this view.
     if (inDocument === undefined) return node;
     changed = true;
+    const stored =
+      inDocument.width !== undefined && inDocument.height !== undefined
+        ? { width: inDocument.width, height: inDocument.height }
+        : undefined;
     return {
       ...node,
       position: inDocument.position,
       width: inDocument.width,
       height: inDocument.height,
+      ...(stored === undefined ? {} : { measured: stored }),
     };
   });
   return changed ? view : (flowNodes as Node[]);

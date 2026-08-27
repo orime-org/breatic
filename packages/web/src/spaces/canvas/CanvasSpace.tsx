@@ -423,8 +423,6 @@ function isEditableTarget(el: Element | null): boolean {
 // node's center isn't mis-estimated for the one frame before it measures (the
 // old 160×96 guess shifted the center ~64px and could flip a borderline
 // center-in-group decision).
-/** The held set while no gesture runs, kept stable for the merge effect. */
-const NO_GESTURE_IDS: ReadonlySet<string> = new Set();
 
 const GROUP_DRAG_FALLBACK_W = EMPTY_NODE_SIZE.width;
 const GROUP_DRAG_FALLBACK_H = EMPTY_NODE_SIZE.height;
@@ -1291,14 +1289,13 @@ function CanvasSpaceInner({
   //
   // One effect, so the arbitration between the document, this client's own
   // gesture and the remotes' has a single place it happens in: `mergeCanvasNodes`
-  // decides every node's geometry from all three (#2010, design §5.5). The
-  // gesture this client is running is read through a ref rather than depended
-  // on — the buffer already holds what ReactFlow is drawing when it starts, and
-  // the write on release moves the document, which runs this again.
-  // A stable empty set, so the merge effect's dependency holds still while no
-  // gesture runs.
-  const [localGestureIds, setLocalGestureIds] =
-    React.useState<ReadonlySet<string>>(NO_GESTURE_IDS);
+  // decides every node's geometry from all three (#2010, design §5.5). This
+  // client's own gesture is state and sits in the dependencies below, so the
+  // merge runs once when a gesture takes hold and once when it lets go — the
+  // second of which is what unfreezes those nodes.
+  const [localGestureIds, setLocalGestureIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set());
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeCanvasNodes(prev, nodes.map(toFlowNode), {
@@ -2708,9 +2705,6 @@ function CanvasSpaceInner({
       [selectedIds, remoteGesture],
     ),
   );
-  // Offering to group means it can be done: the toolbar, the menu and the
-  // shortcut all read this, and so does the action.
-  const canGroup = groupOffer.kind === 'group' && groupableIds.length >= 2;
 
   const publishedPoint = React.useCallback(
     (screen: { x: number; y: number }): { x: number; y: number } =>
@@ -2840,17 +2834,20 @@ function CanvasSpaceInner({
   // back via `parentId` with positions relative to the Group. The new Group is
   // selected once it mirrors back so its toolbar is immediately usable.
   const groupSelection = React.useCallback((): void => {
-    if (readOnly || !canGroup) return;
+    if (readOnly || groupOffer.kind !== 'group') return;
+    // Fewer nodes than the user picked is a different result from the one they
+    // asked for, and too few to make a Group is no result at all. Both are said
+    // here, before the gate below, so every entry that runs this — the toolbar,
+    // the menu, the chord — answers the same way instead of doing nothing.
+    if (groupableIds.length < selectedIds.length) {
+      warnNodeGate(t('canvas.gate.remote'));
+    }
+    if (groupableIds.length < 2) return;
     const groupId = newId();
     // The box is drawn around what is on screen, which is what the user
     // selected, minus whatever a remote gesture is holding.
     const plan = planGroupCreation(flowNodesRef.current, groupableIds, groupId);
     if (!plan) return;
-    // Fewer members than the user picked is a different result from the one
-    // they asked for, so say so.
-    if (groupableIds.length < selectedIds.length) {
-      warnNodeGate(t('canvas.gate.remote'));
-    }
     const group = createGroupNode(
       groupId,
       plan.position,
@@ -2867,7 +2864,7 @@ function CanvasSpaceInner({
     setSelectAfterCreate([groupId]);
   }, [
     readOnly,
-    canGroup,
+    groupOffer,
     groupableIds,
     selectedIds,
     t,
@@ -2918,7 +2915,7 @@ function CanvasSpaceInner({
       // current selection (group mixed with loose nodes → no-op, B decision).
       const plan = planGroupShortcut(
         matchGroupShortcut(event),
-        groupOffer.kind === 'group' && !canGroup ? 'none' : groupOffer.kind,
+        groupOffer.kind,
       );
       if (plan.preventDefault) event.preventDefault();
       if (plan.run === 'group') groupSelection();
@@ -2926,7 +2923,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, groupOffer, canGroup, groupSelection, ungroupSelection]);
+  }, [readOnly, groupOffer, groupSelection, ungroupSelection]);
 
   // ---- Right-click menu actions (context-menu slice) ----
   const requestRename = useCanvasStore((s) => s.requestRename);
@@ -3465,7 +3462,8 @@ function CanvasSpaceInner({
           width: rect.width,
           height: rect.height,
         };
-        const loose = absorbableNodes()
+        const writable = absorbableNodes();
+        const loose = writable
           .filter(
             (node) =>
               node.parentId === undefined &&
@@ -3485,13 +3483,15 @@ function CanvasSpaceInner({
         const joins = planResizeJoin(groupId, newRect, loose);
         // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
         // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
-        // the rect VERBATIM (no post-commit repair). Where each member ends up is
-        // read straight off the buffer, which is the only place that knows: for
-        // most of them ReactFlow reanchored against the moving origin, and for one
-        // a collaborator is dragging it is wherever that gesture has it — the same
-        // place every screen is drawing it, so nothing jumps when this lands. One
-        // atomic undo entry: the Group's new size/position, its members, PLUS any
-        // newly absorbed loose nodes.
+        // the rect VERBATIM (no post-commit repair). Each member's new relative
+        // position is read off the buffer, which is the only place that knows it:
+        // ReactFlow reanchored it against the moving origin as the gesture ran
+        // (`@xyflow/system:3484-3492`). A member a remote gesture holds goes
+        // through `writable` like every other write here, so this end commits
+        // nothing about it — that gesture's own release does, measured against
+        // the origin this resize is publishing. One atomic undo entry: the
+        // Group's new size/position, its members, PLUS any newly absorbed loose
+        // nodes.
         gesture.end(() => {
           runCanvasUndoBatch(projectId, spaceId, () => {
             resizeGroup(
@@ -3502,7 +3502,7 @@ function CanvasSpaceInner({
               rect.width,
               rect.height,
             );
-            for (const child of flowNodesRef.current) {
+            for (const child of writable) {
               if (child.parentId !== groupId) continue;
               setNodePosition(projectId, spaceId, child.id, child.position);
             }
@@ -3888,7 +3888,7 @@ function CanvasSpaceInner({
             // group/ungroup actions mutate mid-session — same concealment
             // rule as the left menu / viewport toolbar (item 13).
             isVisible={
-              (groupOffer.kind === 'ungroup' || canGroup) &&
+              groupOffer.kind !== 'none' &&
               !readOnly &&
               pickForNodeId == null
             }
@@ -4121,7 +4121,7 @@ function CanvasSpaceInner({
           onOpenChange={onSelectionMenuOpenChange}
           // Group is offered only for an all-loose 2+ selection (same rule as
           // the floating toolbar + Cmd/Ctrl+G).
-          onGroup={canGroup ? groupSelection : undefined}
+          onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
           onCopy={copySelection}
           onDuplicate={duplicateSelection}
           onDelete={deleteSelection}

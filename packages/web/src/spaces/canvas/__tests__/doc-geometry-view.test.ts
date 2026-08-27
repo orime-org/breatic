@@ -95,6 +95,26 @@ describe('docGeometryView', () => {
     expect(seen?.height).toBe(300);
   });
 
+  it('puts a Group measured size back as well, which is what the writers read', () => {
+    // Every call site sizes a node as `measured?.width ?? width`, so a Group
+    // whose stored size came back while `measured` still held the in-flight one
+    // would hand that in-flight size to the planners regardless.
+    const buffer = [
+      node('g1', 500, 500, {
+        type: 'group',
+        width: 800,
+        height: 600,
+        measured: { width: 800, height: 600 },
+      }),
+    ];
+    const [seen] = docGeometryView(
+      buffer,
+      [doc('g1', 10, 20, { width: 400, height: 300 })],
+      moving('g1'),
+    );
+    expect(seen?.measured).toEqual({ width: 400, height: 300 });
+  });
+
   it('leaves this client own drag alone', () => {
     // The local gesture is exactly what these call sites are committing, so its
     // coordinates are the ones that belong in the document.

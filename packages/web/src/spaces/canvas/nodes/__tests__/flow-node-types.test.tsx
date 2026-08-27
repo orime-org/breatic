@@ -246,6 +246,18 @@ describe('FLOW_NODE_TYPES', () => {
       </ReactFlowProvider>,
     );
     expect(container.querySelectorAll('.react-flow__resize-control').length).toBe(8);
+    // The controls have to paint after the body. An edge line is 1px wide and
+    // centred on the border, and `left` / `top` centre theirs on coordinate 0 —
+    // which the body's own box still covers, so painting them first hands every
+    // press on those two edges to the body and the grab drags the whole Group.
+    const body = container.querySelector('[data-testid="group-node"]');
+    const control = container.querySelector('.react-flow__resize-control');
+    expect(body).not.toBeNull();
+    expect(control).not.toBeNull();
+    expect(
+      (body as Element).compareDocumentPosition(control as Element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeGreaterThan(0);
   });
 
   // The wrapper is the only layer with the ReactFlow store, so it must feed

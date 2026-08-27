@@ -185,6 +185,21 @@ async function seedGroupWithMember(
 }
 
 /**
+ * A Group's stored width, which is where its authoritative size lives.
+ * @param page - A page with the Space open.
+ * @param groupId - The Group to read.
+ * @returns Its width, or null when the document has no such Group.
+ */
+async function groupWidth(page: Page, groupId: string): Promise<number | null> {
+  return withCanvasModule<number | null, string>(
+    page,
+    `const found = canvas.readCanvasGraph(pid, sid).nodes.find((n) => n.id === extra);
+     return found ? found.data.width ?? null : null;`,
+    groupId,
+  );
+}
+
+/**
  * Take a node back out of the document.
  * @param page - A page with the Space open.
  * @param nodeId - The node to remove.
@@ -467,22 +482,33 @@ test('a marquee drag moves the whole batch on the other connection', async () =>
   if (beforeLeft === null || beforeRight === null) throw new Error('nodes missing');
   const gap = beforeRight.x - beforeLeft.x;
 
-  // Drag by the left one; the selection carries the right one with it.
+  // Drag by the left one; the selection carries the right one with it. Both are
+  // read every sample: the distance between them is what acceptance 2 is about,
+  // and reading it only after the release would measure the document write
+  // instead of the gesture.
   const samplesRight: Array<{ x: number; y: number }> = [];
+  const gaps: number[] = [];
   await mover.mouse.move(leftBox.x + 40, leftBox.y + 40);
   await mover.mouse.down();
   for (let step = 1; step <= 6; step += 1) {
     await mover.mouse.move(leftBox.x + 40 + step * 30, leftBox.y + 40);
     await mover.waitForTimeout(90);
-    const seen = await drawnAt(watcher, right);
-    if (seen !== null) samplesRight.push(seen);
+    const [seenLeft, seenRight] = await Promise.all([
+      drawnAt(watcher, left),
+      drawnAt(watcher, right),
+    ]);
+    if (seenLeft === null || seenRight === null) continue;
+    samplesRight.push(seenRight);
+    gaps.push(seenRight.x - seenLeft.x);
   }
   await mover.mouse.up();
 
   // Acceptance 2: the watcher saw the second node move too, and the two kept
-  // the distance they started with.
+  // the distance they started with — throughout, and once it landed.
   const movedRight = samplesRight.filter((s) => s.x > beforeRight.x + 20);
   expect(movedRight.length).toBeGreaterThan(0);
+  expect(gaps.length).toBeGreaterThan(0);
+  for (const seen of gaps) expect(seen).toBeCloseTo(gap, 0);
 
   await mover.waitForTimeout(SETTLE_MS / 2);
   const afterLeft = await drawnAt(watcher, left);
@@ -548,8 +574,17 @@ test('resizing a Group moves its frame while its member stays put', async () => 
     .locator(`.react-flow__node[data-id="${groupId}"]`)
     .boundingBox();
   const memberBefore = await drawnAt(watcher, memberId);
+  // Acceptance 4 is about both screens, so the mover's own reading is taken
+  // against its own viewport rather than assumed equal to the watcher's.
+  const memberBeforeHere = await drawnAt(mover, memberId);
+  const groupDocBefore = await documentPosition(watcher, groupId);
   const handle = await control.boundingBox();
-  if (groupBefore === null || memberBefore === null || handle === null) {
+  if (
+    groupBefore === null ||
+    memberBefore === null ||
+    memberBeforeHere === null ||
+    handle === null
+  ) {
     throw new Error('resize chrome missing');
   }
 
@@ -569,15 +604,127 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   }
   await mover.mouse.up();
 
-  // Acceptance 4: the frame grew live on the watcher, and the member did not
-  // drift while it did.
+  // Acceptance 4: the frame grew live on the watcher, and the member sits in
+  // the same place on both screens once the release has been through the
+  // document. Reading before that round trip would sample the gesture's own
+  // geometry and say nothing about what the write did.
   expect(widths.filter((w) => w > groupBefore.width + 20).length).toBeGreaterThan(0);
+  await expect
+    .poll(async () => documentPosition(watcher, groupId), { timeout: SETTLE_MS })
+    .not.toEqual(groupDocBefore);
   const memberAfter = await drawnAt(watcher, memberId);
   expect(memberAfter?.x).toBeCloseTo(memberBefore.x, 0);
   expect(memberAfter?.y).toBeCloseTo(memberBefore.y, 0);
+  const memberAfterHere = await drawnAt(mover, memberId);
+  expect(memberAfterHere?.x).toBeCloseTo(memberBeforeHere.x, 0);
+  expect(memberAfterHere?.y).toBeCloseTo(memberBeforeHere.y, 0);
 
   await removeNode(mover, memberId);
   await removeNode(mover, groupId);
+});
+
+test('a Group resize leaves a member somebody else is holding alone', async () => {
+  const groupId = `resize-held-${Date.now()}`;
+  const memberId = `held-member-${Date.now()}`;
+  await seedGroupWithMember(mover, groupId, memberId);
+  await expect(
+    watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
+  ).toBeVisible({ timeout: SETTLE_MS });
+  const stored = await documentPosition(mover, memberId);
+
+  // The watcher takes hold of the member and keeps holding it.
+  const held = await drawnAt(watcher, memberId);
+  if (held === null || stored === null) throw new Error('member missing');
+  await watcher.mouse.move(held.x + 40, held.y + 40);
+  await watcher.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await watcher.mouse.move(held.x + 40 + step * 30, held.y + 40);
+    await watcher.waitForTimeout(90);
+  }
+
+  // The mover resizes the Group around it and lets go first. The right edge
+  // leaves the origin where it is, so ReactFlow reanchors nothing and the only
+  // thing that could move the member is this end's own write.
+  // Below the member, whose name header sits above its own box and follows it
+  // as the watcher drags.
+  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+    position: { x: 200, y: 280 },
+  });
+  const control = mover
+    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.right`)
+    .first();
+  await expect(control).toBeVisible({ timeout: SETTLE_MS });
+  const handle = await control.boundingBox();
+  if (handle === null) throw new Error('resize chrome missing');
+  await mover.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await mover.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await mover.mouse.move(
+      handle.x + handle.width / 2 + step * 30,
+      handle.y + handle.height / 2,
+    );
+    await mover.waitForTimeout(90);
+  }
+  await mover.mouse.up();
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // Invariant 7: a resize commits the Group's own geometry and says nothing
+  // about a member the other end still has hold of — those coordinates are in
+  // flight and the document has never held them.
+  expect(await documentPosition(mover, memberId)).toEqual(stored);
+
+  await watcher.mouse.up();
+  await watcher.waitForTimeout(SETTLE_MS / 2);
+  await removeNode(mover, memberId);
+  await removeNode(mover, groupId);
+});
+
+test('asking for a Group says why when the other end holds one of the two', async () => {
+  const left = `gate-left-${Date.now()}`;
+  const right = `gate-right-${Date.now()}`;
+  await seedImageNode(mover, left, SEED_AT);
+  await seedImageNode(mover, right, { x: SEED_AT.x + 360, y: SEED_AT.y });
+  for (const id of [left, right]) {
+    await expect(
+      watcher.locator(`.react-flow__node[data-id="${id}"]`),
+    ).toBeVisible({ timeout: SETTLE_MS });
+  }
+
+  // Select both while they are still where they were seeded.
+  const leftBox = await drawnAt(mover, left);
+  const rightBox = await drawnAt(mover, right);
+  if (leftBox === null || rightBox === null) throw new Error('nodes missing');
+  await mover.mouse.move(leftBox.x - 60, leftBox.y - 60);
+  await mover.mouse.down();
+  await mover.mouse.move(rightBox.x + 360, rightBox.y + 300, { steps: 10 });
+  await mover.mouse.up();
+  for (const id of [left, right]) {
+    await expect(
+      mover.locator(`.react-flow__node[data-id="${id}"]`),
+    ).toHaveClass(/selected/, { timeout: SETTLE_MS });
+  }
+
+  // The watcher takes hold of one of them, leaving one groupable node.
+  const held = await drawnAt(watcher, left);
+  if (held === null) throw new Error('node missing');
+  await watcher.mouse.move(held.x + 40, held.y + 40);
+  await watcher.mouse.down();
+  for (let step = 1; step <= 3; step += 1) {
+    await watcher.mouse.move(held.x + 40 + step * 30, held.y + 40);
+    await watcher.waitForTimeout(90);
+  }
+
+  await mover.keyboard.press('ControlOrMeta+g');
+
+  // The chord is a command entry, so being turned down says something.
+  await expect(mover.locator('[data-sonner-toast]').first()).toBeVisible({
+    timeout: SETTLE_MS,
+  });
+
+  await watcher.mouse.up();
+  await watcher.waitForTimeout(SETTLE_MS / 2);
+  await removeNode(mover, left);
+  await removeNode(mover, right);
 });
 
 test('one undo puts the whole gesture back', async () => {
@@ -614,6 +761,8 @@ test('a Group grows once, at the end of the drag that fills it', async () => {
     watcher.locator(`.react-flow__node[data-id="${incomingId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
 
+  const widthBefore = await groupWidth(watcher, groupId);
+
   // Count what the document hears about the Group across the whole gesture.
   await withCanvasModule(
     watcher,
@@ -621,7 +770,7 @@ test('a Group grows once, at the end of the drag that fills it', async () => {
      window.__groupWrites = 0;
      window.__groupObserver = (events) => {
        for (const e of events) {
-         if (e.path.length === 1 && e.path[0] === extra) window.__groupWrites += 1;
+         if (e.path[0] === extra) window.__groupWrites += 1;
        }
      };
      doc.getMap('nodesMap').observeDeep(window.__groupObserver);`,
@@ -653,12 +802,18 @@ test('a Group grows once, at the end of the drag that fills it', async () => {
   );
   expect(parentId).toBe(groupId);
 
-  // Acceptance 11: the Group's own geometry moved at the release, and only
-  // there — a mid-gesture expansion would show up as several writes.
+  // Acceptance 11: the Group really did grow, and its geometry moved only at
+  // the release — a mid-gesture expansion would show up as more writes. One
+  // `runCanvasUndoBatch` is one Yjs transaction, and `expandGroup` touches the
+  // Group's own map (`position`) and its `data` map (`width` / `height`), so a
+  // single expansion is exactly two events.
+  const widthAfter = await groupWidth(watcher, groupId);
+  expect(widthBefore).not.toBeNull();
+  expect(widthAfter ?? 0).toBeGreaterThan(widthBefore ?? 0);
   const writes = await watcher.evaluate(
     () => (window as unknown as { __groupWrites: number }).__groupWrites,
   );
-  expect(writes).toBeLessThanOrEqual(1);
+  expect(writes).toBe(2);
 
   await removeNode(mover, incomingId);
   await removeNode(mover, memberId);
