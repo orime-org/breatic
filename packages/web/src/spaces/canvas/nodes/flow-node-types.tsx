@@ -91,6 +91,7 @@ function makeFlowNode(
     const {
       renameNode,
       activateNodeUpload,
+      beginGroupResize,
       commitGroupResize,
       reportGroupResize,
       retryNodeUpload,
@@ -157,6 +158,13 @@ function makeFlowNode(
       (): void => reportGroupResize(props.id),
       [reportGroupResize, props.id],
     );
+    // Open the resize on the press. ReactFlow reads its own starting geometry
+    // in this same frame, so the canvas records its starting point here to have
+    // the two agree.
+    const onResizeStart = React.useCallback(
+      (): void => beginGroupResize(props.id),
+      [beginGroupResize, props.id],
+    );
     // During a reference pick the pick owns node interaction: a double-click
     // must NOT enter inline edit / open the upload picker (user 2026-07-12 P2b —
     // a text empty node still entered edit, the upload placeholder still fired).
@@ -205,6 +213,7 @@ function makeFlowNode(
             resizeBounds.length > 0 ? (
                   <GroupResizer
                     bounds={resizeBounds}
+                    onResizeStart={onResizeStart}
                     onResize={onResize}
                     onResizeEnd={onResizeEnd}
                   />

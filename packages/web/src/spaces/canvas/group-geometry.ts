@@ -309,46 +309,62 @@ export interface AnchoredMember {
   position: { x: number; y: number };
 }
 
+/** Every document write one Group resize implies. */
+export interface GroupResizeWrites {
+  /** The Group's own new geometry. */
+  group: { position: Point; width: number; height: number };
+  /** Each member's new position relative to the Group. */
+  members: Array<{ id: string; position: Point }>;
+}
+
 /**
- * Where each member of a Group has to sit after a resize moved its origin.
+ * What a Group resize writes: the Group's new geometry and each member's.
  *
- * A resize leaves every member exactly where it is, so once the write lands a
- * member's absolute position has to be what it already was: origin plus stored
- * position. Solving that for the new relative number gives the stored one less
- * the distance between the two origins.
+ * The rect ReactFlow hands over is measured from wherever the Group sat when
+ * the pointer went down, so what this resize actually says is a travel — how
+ * far that pointer moved the origin — plus a size. The travel is added to
+ * wherever the document has the Group now, which is what lets a collaborator
+ * move the Group during the resize and keep their move.
  *
- * Both of those come from the document. A stored member position is measured
- * against the document's origin — that is the origin `toDragNode` resolves a
- * member against, so it is the one every client writes relative to — and
- * subtracting a travel measured from anywhere else leaves the member somewhere
- * no one put it.
+ * A member's stored position is measured against the document's origin, so
+ * subtracting the same travel from it leaves the member's absolute position
+ * exactly as the document already had it. That is the whole of what a resize
+ * promises about members: it changes the Group's bounds and moves nothing.
  *
  * Every member is written, including one somebody else has hold of. Their
- * release writes over this, measured against the origin this resize published;
- * and a gesture that ends without writing — a drag xyflow never reported a stop
- * for, a closed tab — leaves this as the only value, which is the right one.
+ * release writes over this; a gesture that ends without writing — a drag
+ * ReactFlow never reported a stop for, a closed tab — leaves this as the only
+ * value, which is the right one.
  * @param docNodes - The nodes as the document has them.
  * @param groupId - The Group being resized.
- * @param origin - The Group's top-left as this resize is committing it.
- * @param origin.x - Its horizontal position.
- * @param origin.y - Its vertical position.
- * @returns One position per member, empty when the origin ends up where the
- *   document already has it, and when the document has no such Group.
+ * @param startOrigin - Where the Group sat when the pointer went down.
+ * @param rect - The rect ReactFlow ended the resize with.
+ * @returns The writes, or null when the document no longer has this Group —
+ *   with no origin to travel from there is nothing this resize can say.
  */
-export function reanchoredMembers(
+export function planGroupResize(
   docNodes: ReadonlyArray<AnchoredMember>,
   groupId: string,
-  origin: { x: number; y: number },
-): Array<{ id: string; position: { x: number; y: number } }> {
+  startOrigin: Point,
+  rect: Rect,
+): GroupResizeWrites | null {
   const stored = docNodes.find((node) => node.id === groupId)?.position;
-  if (stored === undefined) return [];
-  const dx = origin.x - stored.x;
-  const dy = origin.y - stored.y;
-  if (dx === 0 && dy === 0) return [];
-  return docNodes
-    .filter((node) => node.parentId === groupId)
-    .map((node) => ({
-      id: node.id,
-      position: { x: node.position.x - dx, y: node.position.y - dy },
-    }));
+  if (stored === undefined) return null;
+  const dx = rect.x - startOrigin.x;
+  const dy = rect.y - startOrigin.y;
+  const group = {
+    position: { x: stored.x + dx, y: stored.y + dy },
+    width: rect.width,
+    height: rect.height,
+  };
+  if (dx === 0 && dy === 0) return { group, members: [] };
+  return {
+    group,
+    members: docNodes
+      .filter((node) => node.parentId === groupId)
+      .map((node) => ({
+        id: node.id,
+        position: { x: node.position.x - dx, y: node.position.y - dy },
+      })),
+  };
 }

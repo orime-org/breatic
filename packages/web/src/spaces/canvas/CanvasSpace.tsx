@@ -140,11 +140,12 @@ import {
   GROUP_PADDING,
   groupResizeBounds,
   planGroupGrowth,
-  reanchoredMembers,
+  planGroupResize,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
+import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
@@ -672,6 +673,10 @@ function CanvasSpaceInner({
   // itself lives inside the hook, so no path can reach the raw array on its way
   // to a document write (#2010, design §5.7 and invariant 7).
   const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
+  // Where the document had the Group when the pointer went down on a resize
+  // control, which is the point ReactFlow measures its rect from. Null while
+  // no resize this end may write is open.
+  const resizeStartRef = React.useRef<{ x: number; y: number } | null>(null);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -3409,18 +3414,23 @@ function CanvasSpaceInner({
         if (readOnly) return;
         removeEdge(projectId, spaceId, edgeId);
       },
-      reportGroupResize: (groupId): void => {
+      beginGroupResize: (groupId): void => {
         if (readOnly) return;
-        if (gesture.isRunning()) {
-          gesture.update();
-          return;
-        }
-        // ReactFlow measures the rect off the render buffer, which holds a
-        // collaborator's in-flight origin while they drag this Group — a rect
-        // built on it commits coordinates the document has never had, and their
-        // drag may end without writing anything to overwrite it.
+        // ReactFlow takes its starting geometry off the render buffer in this
+        // same frame, and while a collaborator drags this Group that buffer
+        // holds their in-flight origin — every rect built on it would be
+        // measured from a place the document has never had, and their drag can
+        // end without writing anything over it. Deciding once here is what
+        // makes the answer the same for the whole resize.
         if (buffer.heldByRemote().has(groupId)) return;
+        resizeStartRef.current =
+          buffer.documentPlaces().find((node) => node.id === groupId)?.position ?? null;
+        if (resizeStartRef.current === null) return;
         gesture.begin([groupId], groupId);
+      },
+      reportGroupResize: (): void => {
+        if (readOnly) return;
+        if (gesture.isRunning()) gesture.update();
       },
       commitGroupResize: (groupId, rect): void => {
         // Same as the drag stop: read-only can arrive mid-gesture, and the
@@ -3429,23 +3439,38 @@ function CanvasSpaceInner({
           gesture.abandon();
           return;
         }
-        // ReactFlow resizes locally whether or not this end took the gesture, so
-        // the decision `reportGroupResize` made — a Group a collaborator is
-        // dragging gets no gesture — has to hold all the way to the write. That
-        // decision stands for the whole resize even if their drag ends midway,
-        // since the rect being offered is still measured off the origin their
-        // drag was showing.
-        if (!gesture.isRunning()) return;
+        // ReactFlow resizes locally whether or not this end took the gesture,
+        // so the decision `beginGroupResize` made carries to the write through
+        // the gesture itself.
+        const startOrigin = resizeStartRef.current;
+        if (!gesture.isRunning() || startOrigin === null) return;
+        resizeStartRef.current = null;
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
         // now lands inside the Group absorbs it — the same center-in membership
         // rule the drag path uses, extended to resize. Only loose nodes join;
         // existing members are never expelled (the native clamp keeps them ≥
         // padding inside).
+        // What this resize actually writes. Everything downstream is anchored
+        // on the origin it decides, so the Group, its members, and anything it
+        // absorbs all land in one coordinate system.
+        const writes = planGroupResize(
+          buffer.documentPlaces(),
+          groupId,
+          startOrigin,
+          rect,
+        );
+        // The document dropped this Group mid-resize: with it gone there is no
+        // origin to travel from, so this resize has nothing left to say — about
+        // its size, its members, or anything it was about to absorb.
+        if (writes === null) {
+          gesture.abandon();
+          return;
+        }
         const newRect = {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
+          x: writes.group.position.x,
+          y: writes.group.position.y,
+          width: writes.group.width,
+          height: writes.group.height,
         };
         const loose = buffer
           .landing()
@@ -3467,11 +3492,8 @@ function CanvasSpaceInner({
           }));
         const joins = planResizeJoin(groupId, newRect, loose);
         // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
-        // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
-        // the rect VERBATIM (no post-commit repair). `reanchoredMembers` takes
-        // the committed origin and works each member's new relative position out
-        // against the document, which is the copy every client writes those
-        // numbers relative to. One atomic undo entry: the Group's new
+        // every member ≥ GROUP_PADDING inside — even on a fast release — so the
+        // size goes in as measured. One atomic undo entry: the Group's new
         // size/position, its members, PLUS any newly absorbed loose nodes.
         gesture.end(() => {
           runCanvasUndoBatch(projectId, spaceId, () => {
@@ -3479,15 +3501,11 @@ function CanvasSpaceInner({
               projectId,
               spaceId,
               groupId,
-              { x: rect.x, y: rect.y },
-              rect.width,
-              rect.height,
+              writes.group.position,
+              writes.group.width,
+              writes.group.height,
             );
-            for (const member of reanchoredMembers(
-              buffer.documentPlaces(),
-              groupId,
-              rect,
-            )) {
+            for (const member of writes.members) {
               setNodePosition(projectId, spaceId, member.id, member.position);
             }
             for (const join of joins) {
@@ -3525,6 +3543,14 @@ function CanvasSpaceInner({
     const ordered = topoSortByParent(flowNodes);
     const groups = ordered.filter((node) => node.type === 'group');
     const rest = ordered.filter((node) => node.type !== 'group');
+    // Where the members sit for the purpose of bounding a resize. The clamp
+    // these bounds drive decides a rect that gets committed, so it reads the
+    // document rather than the frame: a member a collaborator is dragging is on
+    // screen at coordinates that would push this end's minimum out and leave it
+    // there once the resize lands.
+    const settledOrder = topoSortByParent(
+      docGeometryView(flowNodes, docPlaces, remoteGesture),
+    );
     // Locked nodes are frozen in place: any locked node (incl. a locked Group as
     // a whole) and the members of a locked Group render non-draggable. Groups
     // sit at zIndex 0 so members paint above them.
@@ -3534,7 +3560,7 @@ function CanvasSpaceInner({
       // gets a member-derived min so ReactFlow's NATIVE clamp hard-stops it at
       // "members + GROUP_PADDING" (see GroupResizer). Attached to data for the
       // node wrapper to read.
-      const { box, allMeasured } = groupMembersLocalBox(node.id, ordered);
+      const { box, allMeasured } = groupMembersLocalBox(node.id, settledOrder);
       const width = node.width ?? node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
       const height =
           node.height ?? node.measured?.height ?? GROUP_DRAG_FALLBACK_H;
@@ -3593,7 +3619,7 @@ function CanvasSpaceInner({
         };
       }),
     ];
-  }, [flowNodes, readOnly, focusCropTargetId]);
+  }, [flowNodes, docPlaces, remoteGesture, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
   // + any node ineligible for the active purpose are dimmed + non-pickable;

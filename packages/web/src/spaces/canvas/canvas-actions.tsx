@@ -49,6 +49,13 @@ export interface CanvasActions {
    */
   reportGroupResize: (groupId: string) => void;
   /**
+   * Open a Group resize (#2010). Bound to every resize control's
+   * `onResizeStart`, which fires on the press — the frame ReactFlow reads its
+   * own starting geometry in. This end decides here whether the resize may
+   * write at all, and that decision then stands for the whole gesture.
+   */
+  beginGroupResize: (groupId: string) => void;
+  /**
    * Re-run a failed upload from its session-stashed File (#1609 P4). A
    * no-op when nothing is stashed (refresh dropped the reference).
    */
@@ -71,6 +78,7 @@ const NOOP_ACTIONS: CanvasActions = {
   activateNodeUpload: () => undefined,
   commitGroupResize: () => undefined,
   reportGroupResize: () => undefined,
+  beginGroupResize: () => undefined,
   retryNodeUpload: () => undefined,
   hasUploadRetryFile: () => false,
 };
