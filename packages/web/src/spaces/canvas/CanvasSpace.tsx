@@ -208,6 +208,7 @@ import { SelectionContextMenu } from '@web/spaces/canvas/SelectionContextMenu';
 import {
   mergeMirroredEdgeSelection,
   reconcileGroupNodes,
+  reconcilePlainNodes,
   reconcileSelection,
 } from '@web/spaces/canvas/mirror-selection';
 import {
@@ -2668,9 +2669,10 @@ function CanvasSpaceInner({
   // Who would go into a new Group. A node a remote gesture is holding is left
   // out: taking it in would write its parent and its position relative to an
   // origin that did not exist a moment ago, while its coordinates are still
-  // moving. This says nothing about ungrouping or about a Group's background —
-  // neither writes geometry, so both stay available on a Group somebody else
-  // happens to be dragging.
+  // moving. Ungrouping rewrites each member's position too, from relative to
+  // absolute; it stays available on a Group somebody else is dragging because
+  // it reads that Group's stored origin, which is the number every client
+  // agrees on. A Group's background writes no geometry at all.
   const groupableIds = useStableList(
     React.useMemo(
       () => selectedIds.filter((id) => !remoteGesture.has(id)),
@@ -2782,8 +2784,9 @@ function CanvasSpaceInner({
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
       // parent change AND a position change, plus any Group expansion — without
       // batching, captureTimeout:0 would split them so undo restored a
-      // half-applied state. Apply reparents + positions BEFORE expansions, since
-      // expandGroup reanchors members off their just-written positions.
+      // half-applied state. Every member position already reads against the
+      // origin an expansion is moving its Group to, so each node takes one
+      // write and the Group's own geometry is all the expansion writes.
       gesture.end(() => {
         runCanvasUndoBatch(projectId, spaceId, () => {
           for (const r of ops.reparents) {
@@ -2793,7 +2796,7 @@ function CanvasSpaceInner({
             setNodePosition(projectId, spaceId, p.id, p.position);
           }
           for (const e of ops.expansions) {
-            expandGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
+            resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
           }
         });
       });
@@ -3422,7 +3425,12 @@ function CanvasSpaceInner({
         // measured from a place the document has never had, and their drag can
         // end without writing anything over it. Deciding once here is what
         // makes the answer the same for the whole resize.
-        if (buffer.heldByRemote().has(groupId)) return;
+        if (buffer.heldByRemote().has(groupId)) {
+          // ReactFlow still moves the frame under the pointer, so without this
+          // the whole drag looks like it worked and then leaves nothing behind.
+          warnNodeGate(t('canvas.gate.remote'));
+          return;
+        }
         resizeStartRef.current =
           buffer.documentPlaces().find((node) => node.id === groupId)?.position ?? null;
         if (resizeStartRef.current === null) return;
@@ -3527,6 +3535,7 @@ function CanvasSpaceInner({
       retryNodeUpload,
       buffer,
       gesture,
+      t,
     ],
   );
 
@@ -3535,6 +3544,7 @@ function CanvasSpaceInner({
   // topo-sorts (parent before child) and applies the lock-freeze. Groups paint
   // at zIndex 0 so their members render above them.
   const prevGroupsRef = React.useRef<Node[]>([]);
+  const prevRestRef = React.useRef<Node[]>([]);
   const renderNodes = React.useMemo<Node[]>(() => {
     // ReactFlow requires a Group (parent) to precede its members in the array;
     // topo-sort enforces that. A Group carries its own authoritative width/height
@@ -3601,24 +3611,27 @@ function CanvasSpaceInner({
       freshGroups,
     );
     prevGroupsRef.current = reconciledGroups;
-    return [
-      ...reconciledGroups,
-      ...rest.map((node) => {
-        // The two flags are independent: a locked node can be the focus
-        // target (isFocusCandidate never reads data.locked), and it must come
-        // out lifted AND undraggable. A non-group node's `draggable` is
-        // derived here and nowhere else (groups get theirs in the branch
-        // above), so an either/or branch would drop the lock for that node.
-        const lifted = node.id === focusCropTargetId;
-        const locked = frozen.has(node.id);
-        if (!lifted && !locked) return node;
-        return {
-          ...node,
-          ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
-          ...(locked ? { draggable: false } : {}),
-        };
-      }),
-    ];
+    const freshRest = rest.map((node) => {
+      // The two flags are independent: a locked node can be the focus
+      // target (isFocusCandidate never reads data.locked), and it must come
+      // out lifted AND undraggable. A non-group node's `draggable` is
+      // derived here and nowhere else (groups get theirs in the branch
+      // above), so an either/or branch would drop the lock for that node.
+      const lifted = node.id === focusCropTargetId;
+      const locked = frozen.has(node.id);
+      if (!lifted && !locked) return node;
+      return {
+        ...node,
+        ...(lifted ? { zIndex: FOCUS_TARGET_Z } : {}),
+        ...(locked ? { draggable: false } : {}),
+      };
+    });
+    // A flagged node is a fresh object every pass, and a gesture runs this pass
+    // every frame — reuse the previous one when nothing about it changed so its
+    // `React.memo` still bails.
+    const reconciledRest = reconcilePlainNodes(prevRestRef.current, freshRest);
+    prevRestRef.current = reconciledRest;
+    return [...reconciledGroups, ...reconciledRest];
   }, [flowNodes, docPlaces, remoteGesture, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking

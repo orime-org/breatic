@@ -7,6 +7,7 @@ import type { Edge, Node } from '@xyflow/react';
 import {
   mergeMirroredEdgeSelection,
   reconcileGroupNodes,
+  reconcilePlainNodes,
   reconcileSelection,
   sameGroupResizeBounds,
 } from '@web/spaces/canvas/mirror-selection';
@@ -133,6 +134,50 @@ describe('sameGroupResizeBounds (#1783)', () => {
     ).toBe(false);
     expect(sameGroupResizeBounds([{ a: 1 }], [{ a: 1 }, { a: 2 }])).toBe(false);
     expect(sameGroupResizeBounds([{ a: 1 }], undefined)).toBe(false);
+  });
+});
+
+/** One data object shared across a pass, the way the merge hands it down. */
+const DATA = { kind: 'image' };
+
+describe('reconcilePlainNodes reference stability (#2010 — 30 frames a second)', () => {
+  // A locked node and the focus target come out of `renderNodes` as fresh
+  // objects carrying a flag. During a gesture that pass runs every frame, so
+  // without reuse those nodes get a new reference 30 times a second while
+  // nothing about them changed.
+  const plain = (over: Partial<Node> = {}): Node =>
+    ({
+      id: 'n1',
+      type: 'image',
+      position: { x: 10, y: 20 },
+      draggable: false,
+      zIndex: 5,
+      data: DATA,
+      ...over,
+    }) as Node;
+
+  it('reuses the previous reference when nothing render-relevant changed', () => {
+    const prev = [plain()];
+    expect(reconcilePlainNodes(prev, [plain()])[0]).toBe(prev[0]);
+  });
+
+  it('returns a new reference when the flag itself changed', () => {
+    const prev = [plain()];
+    expect(reconcilePlainNodes(prev, [plain({ zIndex: 9 })])[0]).not.toBe(prev[0]);
+  });
+
+  it('returns a new reference when the node moved', () => {
+    const prev = [plain()];
+    const moved = plain({ position: { x: 11, y: 20 } });
+    expect(reconcilePlainNodes(prev, [moved])[0]).toBe(moved);
+  });
+
+  it('returns a new reference when the data object changed', () => {
+    // A plain node's data is handed down whole, so a new object means new
+    // content — the merge already reuses it when nothing changed.
+    const prev = [plain()];
+    const fresh = plain({ data: { ...DATA } });
+    expect(reconcilePlainNodes(prev, [fresh])[0]).toBe(fresh);
   });
 });
 

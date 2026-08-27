@@ -68,6 +68,21 @@ describe('mergeCanvasNodes, this client gesturing (LOCAL)', () => {
     expect(merged?.position).toEqual({ x: 500, y: 500 });
   });
 
+  it('gives up the held geometry when the node changed Group', () => {
+    // A member's position is measured against its Group; a top-level node's is
+    // absolute. A collaborator ungrouping mid-drag moves this node between
+    // those two, and the number ReactFlow is holding was measured in the one it
+    // just left — drawing it would put the node somewhere nobody placed it, and
+    // the drag stop would then write that.
+    const prev = [node('m1', 24, 24, { parentId: 'g1' })];
+    const ungrouped = [node('m1', 224, 224)];
+    const [merged] = mergeCanvasNodes(prev, ungrouped, {
+      ...QUIET,
+      localGestureIds: new Set(['m1']),
+    });
+    expect(merged?.position).toEqual({ x: 224, y: 224 });
+  });
+
   it('holds a dragged node still when a remote reaches for the same node', () => {
     const prev = [node('n1', 500, 500)];
     const fresh = [node('n1', 0, 0)];

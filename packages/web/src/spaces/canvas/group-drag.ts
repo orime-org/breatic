@@ -201,6 +201,18 @@ export function planGroupDrag(
         width: grown.width,
         height: grown.height,
       });
+      // The expansion moves the origin every member of this Group is measured
+      // against, so their positions are stated against where it is going. This
+      // is what keeps the whole drag-stop to one position write per node
+      // (#2010, acceptance 9) — the member absolute places are unchanged.
+      const dx = grown.x - groupRect.x;
+      const dy = grown.y - groupRect.y;
+      if (dx === 0 && dy === 0) continue;
+      for (const op of [...reparents, ...positions]) {
+        const node = allNodes.find((n) => n.id === op.id);
+        if (node === undefined || newParentOf(node) !== group.id) continue;
+        op.position = { x: op.position.x - dx, y: op.position.y - dy };
+      }
     }
   }
 

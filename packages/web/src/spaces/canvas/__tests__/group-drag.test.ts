@@ -66,6 +66,11 @@ describe('planGroupDrag', () => {
     expect(ops.expansions).toEqual([
       { groupId: 'f', position: { x: -34, y: 0 }, width: 234, height: 200 },
     ]);
+    // The member position is measured against the origin the expansion is
+    // moving the Group to, so the whole drag takes one write per node and the
+    // member lands at the absolute place the pointer left it (#2010,
+    // acceptance 9): -34 + 24 = -10.
+    expect(ops.positions).toEqual([{ id: 'm', position: { x: 24, y: 90 } }]);
   });
 
   it('D: dragging a Group persists its absolute position; members are not rewritten (native carry)', () => {

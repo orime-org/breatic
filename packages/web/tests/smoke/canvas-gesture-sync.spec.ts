@@ -738,6 +738,14 @@ test('a Group somebody else is dragging cannot be resized from this end', async 
   await mover.mouse.up();
   await mover.waitForTimeout(SETTLE_MS / 2);
 
+  // Saying so is the whole difference between turned down and broken, and it
+  // doubles as the witness that the press landed on the handle at all: without
+  // it every assertion below would hold just as well for a pointer that
+  // grabbed empty canvas.
+  await expect(mover.locator('[data-sonner-toast]').first()).toContainText(
+    REMOTE_GATE_TEXT,
+    { timeout: SETTLE_MS },
+  );
   // The rect this end would commit is measured off the in-flight origin, which
   // the document has never had, so nothing goes in until the drag lands.
   // ReactFlow still resizes the frame locally; that frame is replaced by the

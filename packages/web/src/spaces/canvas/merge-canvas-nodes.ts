@@ -131,9 +131,12 @@ export function mergeCanvasNodes(
    */
   const resolve = (node: Node, held: Node | undefined): ResolvedGeometry | null => {
     if (localGestureIds.has(node.id)) {
-      return held === undefined
-        ? null
-        : { position: held.position, width: held.width, height: held.height };
+      // The held position was measured against the parent the node had at the
+      // time. A collaborator moving it between a Group and the top level
+      // changes which origin that number is relative to, so it stops meaning
+      // anything and the document's own geometry is what is left.
+      if (held === undefined || held.parentId !== node.parentId) return null;
+      return { position: held.position, width: held.width, height: held.height };
     }
     const gesture = remoteGesture.get(node.id);
     if (gesture === undefined) return null;

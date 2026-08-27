@@ -220,13 +220,19 @@ function sameGroupData(a: unknown, b: unknown): boolean {
 /**
  * Whether two group render nodes have identical render inputs. Like the node
  * merge's own comparison (`merge-canvas-nodes.ts`) but adds the derived
- * `draggable` / `zIndex` `renderNodes` sets on a group and compares `data` with
- * the bounds-aware {@link sameGroupData}.
- * @param a - The previous group render node.
- * @param b - The freshly built group render node.
+ * `draggable` / `zIndex` `renderNodes` sets, and leaves the `data` comparison
+ * to the caller: a group's carries a rebuilt bounds array, a plain node's is
+ * handed down whole.
+ * @param a - The previous render node.
+ * @param b - The freshly built render node.
+ * @param sameData - How to compare the two nodes' data records.
  * @returns True when nothing that affects rendering changed.
  */
-function sameGroupRenderInputs(a: Node, b: Node): boolean {
+function sameRenderInputs(
+  a: Node,
+  b: Node,
+  sameData: (x: unknown, y: unknown) => boolean,
+): boolean {
   return (
     a.parentId === b.parentId &&
     a.position.x === b.position.x &&
@@ -238,7 +244,7 @@ function sameGroupRenderInputs(a: Node, b: Node): boolean {
     a.hidden === b.hidden &&
     a.draggable === b.draggable &&
     a.zIndex === b.zIndex &&
-    sameGroupData(a.data, b.data)
+    sameData(a.data, b.data)
   );
 }
 
@@ -260,6 +266,32 @@ export function reconcileGroupNodes(
   const prevById = new Map(prev.map((node) => [node.id, node]));
   return fresh.map((node) => {
     const p = prevById.get(node.id);
-    return p && sameGroupRenderInputs(p, node) ? p : node;
+    return p && sameRenderInputs(p, node, sameGroupData) ? p : node;
+  });
+}
+
+/**
+ * Reference-reconcile freshly-flagged plain render nodes against the previous
+ * pass. `renderNodes` builds a new object for a locked node and for the focus
+ * target on every run, and during a gesture that run happens every frame — so
+ * without reuse those nodes hand their `React.memo` a new reference 30 times a
+ * second while nothing about them changed (#2010, acceptance 10).
+ *
+ * A plain node's `data` is passed down whole rather than rebuilt, so identity
+ * is the right comparison: the merge stage already reuses that object when its
+ * content is unchanged.
+ * @param prev - Last pass's flagged nodes.
+ * @param fresh - This pass's flagged nodes.
+ * @returns The fresh array with unchanged entries swapped for their previous
+ *   object.
+ */
+export function reconcilePlainNodes(
+  prev: ReadonlyArray<Node>,
+  fresh: ReadonlyArray<Node>,
+): Node[] {
+  const prevById = new Map(prev.map((node) => [node.id, node]));
+  return fresh.map((node) => {
+    const p = prevById.get(node.id);
+    return p && sameRenderInputs(p, node, Object.is) ? p : node;
   });
 }

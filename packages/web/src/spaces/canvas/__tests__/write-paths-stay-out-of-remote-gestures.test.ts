@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What each write path computes once a remote gesture is in the buffer (#2010,
- * invariant 7).
+ * What each planner computes from a buffer carrying a collaborator's in-flight
+ * coordinates (#2010, invariant 7).
  *
- * `doc-geometry-view.test.ts` checks the door itself. These cases go one step
- * further and run the planners the door feeds — the ones whose output goes
- * straight into a document write — against a buffer carrying a collaborator's
- * in-flight coordinates, so a call site that stopped using the door shows up as
- * a wrong rect rather than as a passing suite.
+ * `doc-geometry-view.test.ts` checks the door itself. These cases feed the
+ * planners on the other side of it — the ones whose output goes straight into a
+ * document write — both views of the same buffer, and pin what each of them
+ * says about a node somebody else is moving.
+ *
+ * Which view a call site actually passes is decided in `CanvasSpace.tsx` and
+ * covered by the two-browser cases in `tests/smoke/canvas-gesture-sync.spec.ts`;
+ * nothing here can see that choice.
  */
 
 import { describe, expect, it } from 'vitest';

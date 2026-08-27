@@ -76,11 +76,23 @@ describe('useGestureRelease', () => {
     expect(gesture.abandons()).toBe(0);
   });
 
+  it('drops a gesture when the window loses focus', () => {
+    // Releasing outside the window and then going to another application
+    // delivers neither a release nor a move to this page, so without this the
+    // gesture stands and freezes those nodes on every other screen for as long
+    // as this client stays connected.
+    const gesture = watched(true);
+    renderHook(() => useGestureRelease(gesture));
+    window.dispatchEvent(new Event('blur'));
+    expect(gesture.abandons()).toBe(1);
+  });
+
   it('stops listening once unmounted', () => {
     const gesture = watched(true);
     const { unmount } = renderHook(() => useGestureRelease(gesture));
     unmount();
     window.dispatchEvent(new PointerEvent('pointermove', { buttons: 0 }));
+    window.dispatchEvent(new Event('blur'));
     expect(gesture.abandons()).toBe(0);
   });
 });
