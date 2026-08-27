@@ -137,7 +137,13 @@ function keyTarget(): Element {
  */
 function dispatchKeyDown(
   key: string,
-  mods: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
+  mods: {
+    meta?: boolean;
+    ctrl?: boolean;
+    shift?: boolean;
+    alt?: boolean;
+    repeat?: boolean;
+  } = {},
 ): void {
   act(() => {
     // At the focused element, which is where a browser aims a key event —
@@ -150,6 +156,8 @@ function dispatchKeyDown(
         metaKey: mods.meta ?? false,
         ctrlKey: mods.ctrl ?? false,
         shiftKey: mods.shift ?? false,
+        altKey: mods.alt ?? false,
+        repeat: mods.repeat ?? false,
         bubbles: true,
         cancelable: true,
       }),
@@ -3514,6 +3522,43 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
 
     describe('the space region holds it', () => {
+      // The library matched a single key against the whole pressed set, so a
+      // modifier meant no match at all. Taking the key over keeps that: these
+      // three delete nothing today.
+      it.each([
+        ['Cmd+Backspace', 'Backspace', { meta: true }],
+        ['Shift+Delete', 'Delete', { shift: true }],
+        ['Option+Backspace', 'Backspace', { alt: true }],
+      ])('%s deletes nothing', async (_name, key, mods) => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown(key, mods);
+        await new Promise((r) => setTimeout(r, 30));
+        expect(removeElements).not.toHaveBeenCalled();
+      });
+
+      // A held key repeated ~30 times a second; the library's boolean meant one
+      // delete per press.
+      it('a repeat of the delete key deletes nothing', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Backspace', { repeat: true });
+        await new Promise((r) => setTimeout(r, 30));
+        expect(removeElements).not.toHaveBeenCalled();
+      });
+
+      it('the delete key leaves the event default-prevented', () => {
+        mountWithSelection();
+        let prevented: boolean | null = null;
+        const probe = (e: Event): void => {
+          prevented = e.defaultPrevented;
+        };
+        document.addEventListener('keydown', probe);
+        dispatchKeyDown('Backspace');
+        document.removeEventListener('keydown', probe);
+        expect(prevented).toBe(true);
+      });
+
       it('the delete key removes the selected node', async () => {
         mountWithSelection();
         const { removeElements } = spyWrites();

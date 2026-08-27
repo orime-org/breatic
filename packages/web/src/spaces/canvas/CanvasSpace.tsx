@@ -654,6 +654,7 @@ function CanvasSpaceInner({
     zoomTo,
     setCenter,
     getInternalNode,
+    deleteElements,
   } = useReactFlow();
 
   // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
@@ -2935,6 +2936,43 @@ function CanvasSpaceInner({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, duplicateSelection]);
 
+  // The delete key, taken off the library and answered here so the region gate
+  // gets a say (#168). `deleteKeyCode={null}` registers no listener at all
+  // (useKeyPress wraps its whole effect body in `if (keyCode !== null)`), so
+  // this is the only listener on Backspace / Delete.
+  //
+  // The three guards below carry over what the library did:
+  //   - a modifier means this is not a plain delete. `isMatchingKey` filters
+  //     on `keys.length === pressedKeys.size`, so Cmd+Backspace never matched
+  //     the single-key `['Backspace']`.
+  //   - `keyPressed` was a boolean, so holding the key deleted once.
+  //   - the IME guards match the pick-session Escape handler above.
+  // The library also called preventDefault on a match, and two handlers here
+  // read `defaultPrevented` to decide whether to yield.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: delete the current selection.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!DELETE_KEYS.includes(event.key)) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      if (event.repeat || event.isComposing || event.keyCode === 229) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      event.preventDefault();
+      const { nodes, edges } = rfStoreApi.getState();
+      void deleteElements({
+        nodes: nodes.filter((node) => node.selected),
+        edges: edges.filter((edge) => edge.selected),
+      });
+      rfStoreApi.setState({ nodesSelectionActive: false });
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, deleteElements, rfStoreApi]);
+
   // Selection-menu delete: cascade each selected Group to the WHOLE group (frame
   // + every member, via selectionDeletionIds) — the same cascade the single-node
   // menu uses — so deleting a selection that includes a Group removes its
@@ -3688,7 +3726,9 @@ function CanvasSpaceInner({
           onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
-          deleteKeyCode={DELETE_KEYS}
+          // The delete key is handled below, in a listener the region gate
+          // gets a say in. `null` registers no listener in the library at all.
+          deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
           fitView
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
