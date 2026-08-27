@@ -38,9 +38,10 @@ interface BuySectionProps {
  * the purchase history, and answering it in two places would give a buyer two
  * things to believe.
  *
- * The two notices under the packs are the ones a buyer has to have read before
- * they reach Stripe: the price on the card is not what their card is charged,
- * and credits do nothing until they are pointed at a Studio.
+ * Three blocks sit under the packs, all of them things a buyer has to have
+ * read before they reach Stripe: the price on the card is not what their card
+ * is charged, credits do nothing until they are pointed at a Studio, and the
+ * refund rule in full — the one the confirmation dialog asks them to tick.
  * @param props - The overview.
  * @param props.overview - What the account holds, and where.
  * @returns The section.

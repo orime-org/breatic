@@ -123,9 +123,10 @@ describe("whether a purchase is still inside the window", () => {
     ).toBe(true);
   });
 
-  // The comparison is between two `YYYY-MM-DD` strings, which orders like a
-  // date only while both are padded. Unpadded, "2026-09-5" sorts after
-  // "2026-09-19" and a purchase inside its window reads as past it.
+  // The day is padded before it goes into the ISO string the closing instant
+  // is built from. Left bare, "2026-09-5T23:59:59.999Z" is a string `Date`
+  // refuses outright: `getTime()` is NaN, every comparison against it is
+  // false, and a purchase inside its window reads as past it.
   it("closes on the right day when the day is a single digit", () => {
     const bought = "2026-08-05T10:00:00.000Z";
     expect(withinRefundWindow(bought, new Date("2026-09-04T23:00:00.000Z"))).toBe(

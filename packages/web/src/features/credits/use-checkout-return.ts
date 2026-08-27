@@ -68,7 +68,8 @@ export function useCheckoutReturn(
   // second time, and the parameters are still in hand until the URL is
   // rewritten a tick later.
   const handled = React.useRef(false);
-  // The wait comes down once, by whichever of the two gets there first.
+  // The wait comes down once, by whichever gets there first: the answer, the
+  // timeout, or the buyer pressing the cover's one control.
   const landedRef = React.useRef(false);
 
   const asked = params.get('credits') === '1';

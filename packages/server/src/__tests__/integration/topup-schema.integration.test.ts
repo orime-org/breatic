@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two tables the top-up flow adds, plus the three new `payments` columns
+ * The two tables the top-up flow adds, plus the two new `payments` columns
  * (task #13) — against a real Postgres.
  *
  * These are the structural promises only a real database can prove. Each one

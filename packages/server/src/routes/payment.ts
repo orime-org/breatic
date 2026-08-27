@@ -155,9 +155,9 @@ payment.post("/webhook", async (c) => {
 
   // Subscriptions first: the membership leg has its own event types, its own
   // idempotency, and its own identification chain. It answers `notMine` only
-  // for events that are genuinely the credit-pack leg's — including the
-  // `checkout.session.completed` of a credit-pack session, which is the one
-  // type both legs receive.
+  // for events that are genuinely the credit-pack leg's — including the four
+  // Checkout Session types both legs receive, which nothing but the session's
+  // `mode` separates (`SHARED_SESSION_EVENT_TYPES`).
   const subscriptionOutcome = await handleSubscriptionEvent(event);
   if (subscriptionOutcome.status !== "notMine") {
     // A `noop` is logged at warn, not info: the two ways to reach it are an

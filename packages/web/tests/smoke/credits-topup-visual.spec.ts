@@ -61,8 +61,9 @@ async function signIn(page: Page): Promise<void> {
  */
 async function openCredits(page: Page, section: string): Promise<void> {
   await page.goto('/studio');
-  // The trigger is the header's account button; the avatar inside it carries
-  // the testid but the button is what takes the click.
+  // Located by role and name: neither the header's account button nor the
+  // avatar inside it carries a testid. `account-menu-avatar` is a different
+  // element — the one inside the menu, which exists only once it is open.
   await page.getByRole('button', { name: 'Account' }).click();
   const menu = page.locator('[data-testid="account-menu"]');
   await expect(menu).toBeVisible({ timeout: 10_000 });

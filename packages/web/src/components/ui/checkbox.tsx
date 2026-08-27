@@ -7,7 +7,8 @@ import { cn } from '@web/lib/utils';
 /**
  * Checkbox — 16px square (chrome radius). Checked = pure-black `bg-primary`
  * (mirrors the primary button); unchecked = a `border-muted-foreground` box
- * that darkens to the neutral ring on hover. Neutral 1px focus ring (no glow).
+ * that swaps to the neutral ring on hover — a step darker in light, a step
+ * lighter in dark. Neutral 1px focus ring (no glow).
  * Built on Radix so keyboard / form semantics are handled for us.
  *
  * Unchecked, that border is the whole of what says the control is there — the

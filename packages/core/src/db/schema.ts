@@ -734,10 +734,11 @@ export const purchaseConsents = pgTable("purchase_consents", {
 /**
  * One purchase-confirmation email per payment (0066, #13).
  *
- * The row is born `pending` inside the fulfillment transaction, so "no row"
- * is unreachable and the resend button always has something to render. Every
- * state except `sent` offers a resend, because the question that decides it
- * is whether the letter went out, and only `sent` says it did.
+ * The row is born `pending` inside the fulfillment transaction, so a purchase
+ * that landed always has one. A purchase that has not landed has none, and
+ * the purchase history reaches this table through a left join. A resend is
+ * offered from every state but `sent`, and from `sending` only once that send
+ * has gone stale.
  *
  * `updated_at` carries `$onUpdate`, which the `sending` timeout depends on:
  * a process replaced between claiming `sending` and writing the result would

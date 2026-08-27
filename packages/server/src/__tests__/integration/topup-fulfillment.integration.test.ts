@@ -17,8 +17,8 @@
  * 1. **The claim stops the same event being delivered twice.** Stripe
  *    delivers at least once, so redelivery is routine. The claim and the
  *    grant share one transaction — the same shape the membership leg uses
- *    (`subscription-events.ts:286`) and what the note in `schema.ts` says to
- *    do. Committing the claim first and granting in a separate transaction is
+ *    (`handleSubscriptionEvent` in `subscription-events.ts`) and what the note
+ *    in `schema.ts` says to do. Committing the claim first and granting in a separate transaction is
  *    wrong: once the grant fails, the event is already marked handled, every
  *    redelivery over the next three days short-circuits, and the money is in
  *    while the credits never arrive.

@@ -53,7 +53,7 @@ export interface PricingTier {
   stripePriceId: string;
 }
 
-/** The three bounds one reconcile pass runs inside. */
+/** The two bounds one reconcile pass runs inside. */
 export interface ReconcileBounds {
   batchSize: number;
   minAgeSeconds: number;

@@ -12,9 +12,10 @@
  * person in every case. The send is started and the answer goes out; the
  * outbox row records what happened.
  *
- * Every state except `sent` offers a resend, because the question that decides
- * it is whether the letter went out, and only `sent` says it did. The claim
- * from the current state to `sending` is what makes five taps send one letter.
+ * A resend is offered from every state but `sent`, and from `sending` only
+ * once that send has gone stale; a purchase that never landed has no row and
+ * is offered nothing. The claim from the current state to `sending` is what
+ * makes five taps send one letter.
  */
 
 import { sendMail } from "@breatic/core";

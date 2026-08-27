@@ -47,7 +47,7 @@ interface BuyConfirmDialogProps {
  * things a buyer would otherwise first learn on somebody else's page.
  *
  * The rule itself is here as well as on the screen behind, because a modal
- * dialog covers that screen twice over: an opaque scrim goes across it and
+ * dialog covers that screen twice over: an 80%-black scrim goes across it and
  * `aria-hidden` takes it out of the accessibility tree. Ticking that the rule
  * has been read, with the rule neither visible nor readable, is being asked to
  * take our word for it.

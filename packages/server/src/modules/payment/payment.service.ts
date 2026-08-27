@@ -161,9 +161,11 @@ async function writeConsentIfGiven(
 /**
  * What one pass of {@link fulfillPayment} did.
  *
- * `granted` is the only outcome that wrote anything, and the only one that
+ * `granted` is the only outcome that opened a lot, and the only one that
  * mails: every caller commits its transaction, including the passes that
- * found the work already done.
+ * found the work already done. Two others write outside that transaction —
+ * `expired` is returned only when its CAS moved the row, and the `noop` for a
+ * delayed method that Stripe has already priced records the tax and total.
  */
 export type FulfillOutcome =
   | {
@@ -817,8 +819,8 @@ export async function cancelCheckout(
  * missed.
  *
  * Runs on every read of the credits overlay, which is the one query its seven
- * sections already wait behind. Its three bounds are in `config/pricing.yaml`
- * and explained where the query is built.
+ * sections already wait behind. Both bounds are in `config/pricing.yaml`; the
+ * states it looks at and the order it takes them in are in the query.
  *
  * Every payment it looked at is marked as looked at, whatever came back, so
  * the next pass reaches different ones.
