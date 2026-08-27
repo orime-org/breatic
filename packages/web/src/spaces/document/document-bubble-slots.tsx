@@ -237,6 +237,15 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 });
 
 /** The alignment menu's three rows, from demo:590-596. */
+/**
+ * The blocks alignment reaches (demo:606): paragraphs and the three headings.
+ *
+ * Everywhere else — a quote, either list, a code block — the slot is drawn
+ * unavailable (A7). Read off {@link currentBlockType}, which already answers
+ * this for the block type slot beside it.
+ */
+const ALIGNABLE = new Set(['paragraph', 'heading-1', 'heading-2', 'heading-3']);
+
 const ALIGN_ITEMS = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
@@ -263,17 +272,36 @@ export const AlignSlot = React.memo(function AlignSlot({
   const label = t('spaces.document.commands.comingLabel', {
     name: t('spaces.document.commands.align'),
   });
+  const appliesHere = useEditorState({
+    editor,
+    selector: ({ editor: e }) => (e ? ALIGNABLE.has(currentBlockType(e)) : true),
+  });
+  const askOpen = React.useCallback(
+    (slotId: string, open: boolean): void => {
+      // A slot drawn as unavailable does not open. The demo's treatment for a
+      // control that cannot act cancels the hover as well as the press
+      // (demo:463), so a grey cell that still dropped a live menu would be
+      // saying two things at once.
+      if (open && !appliesHere) return;
+      onOpenChange(slotId, open);
+    },
+    [appliesHere, onOpenChange],
+  );
 
   return (
     <SlotShell
       id={id}
       label={label}
       face={<TextAlignStart className='h-4 w-4' />}
+      openerProps={{
+        'aria-disabled': appliesHere ? undefined : 'true',
+        className: cn(SLOT, !appliesHere && UNAVAILABLE),
+      }}
       editor={editor}
       container={container}
       scroller={scroller}
       openId={openId}
-      onOpenChange={onOpenChange}
+      onOpenChange={askOpen}
     >
       {ALIGN_ITEMS.map((item) => (
         <DropdownMenuItem

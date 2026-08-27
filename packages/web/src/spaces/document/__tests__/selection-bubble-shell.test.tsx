@@ -187,6 +187,31 @@ describe('the bubble bar shell', () => {
       });
     });
 
+    // A7's second half, from the demo's own note (demo:606): "对齐只作用在段落
+    // 和 H1 / H2 / H3 上。选区落在引用、列表、代码块里时，这个下拉整个变灰。"
+    // The first half — the greyed task list row — is `greys the task list row,
+    // and only that one` further down.
+    it.each([
+      ['<p>the quick brown fox</p>', false],
+      ['<h1>the quick brown fox</h1>', false],
+      ['<h2>the quick brown fox</h2>', false],
+      ['<h3>the quick brown fox</h3>', false],
+      ['<blockquote><p>the quick brown fox</p></blockquote>', true],
+      ['<ul><li><p>the quick brown fox</p></li></ul>', true],
+      ['<ol><li><p>the quick brown fox</p></li></ol>', true],
+      ['<pre><code>the quick brown fox</code></pre>', true],
+    ])('greys the alignment slot in %s: %s', async (body, greyed) => {
+      const editor = open(body);
+      mount(editor);
+      await selectWithFocus(editor, 3, 8);
+
+      const slot = screen.getByTestId('doc-bubble-align');
+      const classes = slot.className.split(/\s+/);
+      expect(slot.getAttribute('aria-disabled')).toBe(greyed ? 'true' : null);
+      expect(classes.includes('opacity-50')).toBe(greyed);
+      expect(classes.includes('cursor-not-allowed')).toBe(greyed);
+    });
+
     it('falls back to the paragraph icon when the selection spans two block types', async () => {
       const editor = open('<h1>a heading</h1><p>a paragraph</p>');
       mount(editor);
