@@ -84,17 +84,20 @@ export function planGroupDragStop(
       currentParent === null
         ? undefined
         : groups.find((group) => group.id === currentParent);
-    // A Group that takes no part in this decision cannot be judged to have lost
-    // a member either, so its members' memberships stand. A parent that is not
-    // on the canvas at all is a different case: it has nothing to say, and the
-    // node is judged like any other.
-    if (parent !== undefined && !accepts(parent)) {
+    // A locked Group's structure is frozen both ways: it takes nobody in and
+    // loses nobody.
+    if (parent?.locked === true) {
       return { nodeId: node.id, targetGroupId: currentParent, changed: false };
     }
+    // A Group a remote is dragging answers only the first half of that. Its
+    // members stay draggable on this end, so one dragged clear of it has left —
+    // writing "still a member" for a node the user put outside leaves the Group
+    // to grow over that gap on the next drag-stop. It stays a candidate for the
+    // member it already has, which is what keeps a nudge inside it a no-op.
     const target = groups.find(
       (group) =>
         group.id !== node.id &&
-        accepts(group) &&
+        (group.id === currentParent || accepts(group)) &&
         groupContainsMemberCenter(group.rect, node.rect),
     );
     const targetGroupId = target?.id ?? null;

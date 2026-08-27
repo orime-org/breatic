@@ -107,7 +107,7 @@ describe('planResizeJoin — a Group resize absorbs loose nodes whose center it 
   });
 });
 
-describe('planGroupDragStop when a Group takes no part in the decision', () => {
+describe('planGroupDragStop when a Group cannot take a node in', () => {
   it('keeps a member of a locked Group in it', () => {
     // A locked Group's structure is frozen, which cuts both ways: it accepts
     // nobody, and nobody is judged to have left it.
@@ -120,7 +120,7 @@ describe('planGroupDragStop when a Group takes no part in the decision', () => {
     ]);
   });
 
-  it('keeps a member of a Group a remote gesture is holding', () => {
+  it('keeps a member whose centre is still inside a Group a remote is holding', () => {
     const decisions = planGroupDragStop(
       [{ id: 'm', parentId: 'g', rect: { x: 50, y: 50, width: 40, height: 40 } }],
       [
@@ -130,6 +130,54 @@ describe('planGroupDragStop when a Group takes no part in the decision', () => {
           heldByRemote: true,
         },
       ],
+    );
+    expect(decisions).toEqual([
+      { nodeId: 'm', targetGroupId: 'g', changed: false },
+    ]);
+  });
+
+  it('lets a member leave a Group a remote is holding', () => {
+    // Not taking a node in and not letting one go are different questions. The
+    // members of such a Group stay draggable on this end, so one dragged clear
+    // of it has left — writing "still a member" for a node the user put outside
+    // leaves the Group to grow over that gap on the next drag-stop.
+    const decisions = planGroupDragStop(
+      [{ id: 'm', parentId: 'g', rect: { x: 900, y: 900, width: 40, height: 40 } }],
+      [
+        {
+          id: 'g',
+          rect: { x: 0, y: 0, width: 200, height: 200 },
+          heldByRemote: true,
+        },
+      ],
+    );
+    expect(decisions).toEqual([
+      { nodeId: 'm', targetGroupId: null, changed: true },
+    ]);
+  });
+
+  it('still refuses a loose node dropped into a Group a remote is holding', () => {
+    const decisions = planGroupDragStop(
+      [{ id: 'loose', rect: { x: 80, y: 80, width: 40, height: 40 } }],
+      [
+        {
+          id: 'g',
+          rect: { x: 0, y: 0, width: 200, height: 200 },
+          heldByRemote: true,
+        },
+      ],
+    );
+    expect(decisions).toEqual([
+      { nodeId: 'loose', targetGroupId: null, changed: false },
+    ]);
+  });
+
+  it('keeps a member of a locked Group in it even when dragged clear', () => {
+    // A locked Group's structure is frozen both ways (packages/web/CLAUDE.md:
+    // the lock freezes membership — reparent-in, paste-into, ungroup, removal).
+    const decisions = planGroupDragStop(
+      [{ id: 'm', parentId: 'g', rect: { x: 900, y: 900, width: 40, height: 40 } }],
+      [{ id: 'g', rect: { x: 0, y: 0, width: 200, height: 200 }, locked: true }],
     );
     expect(decisions).toEqual([
       { nodeId: 'm', targetGroupId: 'g', changed: false },
