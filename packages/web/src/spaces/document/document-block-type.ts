@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 
 import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
 
@@ -175,48 +176,65 @@ function blockTypeOf(
   return null;
 }
 
+/** The wrappers that stand for a block type of their own. */
+const WRAPPERS = new Map<string, BlockTypeId>([
+  ['bulletList', 'bullet-list'],
+  ['orderedList', 'ordered-list'],
+  ['blockquote', 'quote'],
+]);
+
+/**
+ * Which block a position counts as.
+ *
+ * Lists and quotes wrap other blocks, so a position inside one counts as that
+ * wrapper and the paragraph holding the text is its content. The innermost
+ * wrapper wins, which is the one a list command would act on.
+ *
+ * Asked of a POSITION rather than of the selection as a whole. Asking
+ * `editor.isActive('bulletList')` answers only while the list covers the
+ * whole selection (`@tiptap/core`'s `isNodeActive` compares `range >=
+ * selectionRange`), so a selection running out of a list reported the
+ * paragraph inside it — and no reachable answer named a list at all.
+ * @param doc - The document.
+ * @param pos - A position inside a text block.
+ * @returns That block's type, or null when it is none of the nine.
+ */
+function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
+  const at = doc.resolve(pos);
+  for (let depth = at.depth; depth > 0; depth -= 1) {
+    const wrapper = WRAPPERS.get(at.node(depth).type.name);
+    if (wrapper !== undefined) return wrapper;
+  }
+  // A position resting on a block boundary rather than inside a text block —
+  // between two paragraphs, say — has no type of its own to report.
+  if (!at.parent.isTextblock) return null;
+  return blockTypeOf(at.parent.type.name, at.parent.attrs);
+}
+
 /**
  * Which block the current selection counts as.
  *
  * Walks every block the selection covers and collects their types. Where they
  * all agree it names that type; where they do not it names the type of the end
- * the reader anchored the selection on.
- *
- * Not `editor.isActive()`: that answers "does this type appear anywhere in the
- * selection", which is true of both types across a spanning selection and
- * cannot tell "this whole run is a heading" from "the selection touched one".
+ * the reader anchored the selection on, so the face answers "what am I in"
+ * rather than going blank (user 2026-08-27). The anchor is that end — `head`
+ * is where the drag has reached, `anchor` where it began.
  * @param editor - The editor.
  * @returns The current block type.
  */
 export function currentBlockType(editor: Editor): BlockTypeId {
-  const { from, to } = editor.state.selection;
+  const { doc, selection } = editor.state;
   const seen = new Set<BlockTypeId | null>();
-  const wrapping = wrappingBlockType(editor);
-  if (wrapping !== null) return wrapping;
-  editor.state.doc.nodesBetween(from, to, (node) => {
+  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
     if (!node.isTextblock) return true;
-    seen.add(blockTypeOf(node.type.name, node.attrs));
+    seen.add(blockTypeAt(doc, pos + 1));
     return false;
   });
-  if (seen.size !== 1) return blockTypeAtAnchor(editor);
-  const [only] = [...seen];
-  return only ?? 'paragraph';
-}
-
-/**
- * The list or quote holding the selection, if one does.
- *
- * Lists and quotes wrap other blocks, so they are asked about first: when one
- * of them holds the selection, that IS the type, and the paragraphs inside are
- * its content rather than the answer.
- * @param editor - The editor.
- * @returns That type, or null when no wrapper holds the selection.
- */
-function wrappingBlockType(editor: Editor): BlockTypeId | null {
-  if (editor.isActive('bulletList')) return 'bullet-list';
-  if (editor.isActive('orderedList')) return 'ordered-list';
-  if (editor.isActive('blockquote')) return 'quote';
-  return null;
+  if (seen.size === 1) {
+    const [only] = [...seen];
+    return only ?? 'paragraph';
+  }
+  return blockTypeAt(doc, selection.anchor) ?? 'paragraph';
 }
 
 /** The block types alignment has anything to say about. */
@@ -238,35 +256,16 @@ const ALIGNABLE = new Set<BlockTypeId>([
  * @returns Whether the selection holds at least one alignable block.
  */
 export function selectionCanAlign(editor: Editor): boolean {
-  const wrapping = wrappingBlockType(editor);
-  if (wrapping !== null) return ALIGNABLE.has(wrapping);
-  const { from, to } = editor.state.selection;
+  const { doc, selection } = editor.state;
   let found = false;
-  editor.state.doc.nodesBetween(from, to, (node) => {
-    if (found || !node.isTextblock) return !found;
-    const type = blockTypeOf(node.type.name, node.attrs);
+  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+    if (found) return false;
+    if (!node.isTextblock) return true;
+    const type = blockTypeAt(doc, pos + 1);
     if (type !== null && ALIGNABLE.has(type)) found = true;
     return false;
   });
   return found;
-}
-
-/**
- * The block type of the end the reader started the selection from.
- *
- * Over a run of one type the face names that type; over two it names the end
- * the reader is standing on, so the face answers "what am I in" rather than
- * going blank (user 2026-08-27). The anchor is that end — `head` is where the
- * drag has reached, `anchor` where it began.
- * @param editor - The editor.
- * @returns That block's type.
- */
-function blockTypeAtAnchor(editor: Editor): BlockTypeId {
-  const at = editor.state.doc.resolve(editor.state.selection.anchor);
-  // An anchor resting on a block boundary rather than inside a text block —
-  // between two paragraphs, say — has no type of its own to report.
-  if (!at.parent.isTextblock) return 'paragraph';
-  return blockTypeOf(at.parent.type.name, at.parent.attrs) ?? 'paragraph';
 }
 
 /**

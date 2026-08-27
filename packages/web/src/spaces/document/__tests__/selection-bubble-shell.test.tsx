@@ -251,6 +251,44 @@ describe('the bubble bar shell', () => {
         screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
       ).toBe('heading-1');
     });
+
+    // A list item holds a paragraph, and the list is what the reader is in.
+    // The face has to say so wherever the other end of the selection reaches:
+    // pressing the bullet list row here turns that list OFF, and a face
+    // reading "text" would have just said the reader was not in one.
+    it.each([
+      ['bullet-list', '<h1>a heading</h1><ul><li><p>an item</p></li></ul>', 16],
+      ['ordered-list', '<h1>a heading</h1><ol><li><p>an item</p></li></ol>', 16],
+      ['quote', '<h1>a heading</h1><blockquote><p>a line</p></blockquote>', 15],
+    ])('shows %s at the anchor end when the selection leaves it', async (
+      blockType,
+      body,
+      anchor,
+    ) => {
+      const editor = open(body);
+      mount(editor);
+      // Anchored inside the wrapper, reaching back into the heading.
+      await selectWithFocus(editor, anchor, 3);
+
+      expect(
+        screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
+      ).toBe(blockType);
+    });
+
+    // A7 greys the slot over a list or a quote. Two of them side by side is
+    // still every block wrapped, so the answer cannot turn on whether one
+    // wrapper happens to cover the whole selection.
+    it('greys the alignment slot when the selection spans two wrappers', async () => {
+      const editor = open(
+        '<ul><li><p>an item</p></li></ul><blockquote><p>a line</p></blockquote>',
+      );
+      mount(editor);
+      await selectWithFocus(editor, 5, 17);
+
+      expect(
+        screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
+      ).toBe('true');
+    });
   });
 
   // None of these menus take the keyboard (user 2026-08-26), so none of them
@@ -390,8 +428,8 @@ describe('the bubble bar shell', () => {
     /**
      * The second half of ruling R4 (user 2026-08-19): the whole bar stays out
      * of the tab order. The four new dropdowns open from Radix's
-     * `DropdownMenuTrigger`, which carries no `tabIndex={-1}` of its own
-     * (`tabIndex` has zero hits in `components/ui/dropdown-menu.tsx`).
+     * `PopoverTrigger`, which carries no `tabIndex={-1}` of its own
+     * (`tabIndex` has zero hits in `components/ui/popover.tsx`).
      */
     it('keeps the four new openers out of the tab order', async () => {
       const editor = open('<p>the quick brown fox</p>');
@@ -447,6 +485,11 @@ describe('the bubble bar shell', () => {
       await hoverOpen('doc-bubble-block-type');
 
       act(() => {
+        // Both events a real press produces. Radix has two routes that would
+        // shut the menu — the trigger's own toggle, and the dismissable
+        // layer's document-level `pointerdown` — and only one of them reads
+        // the click.
+        fireEvent.pointerDown(screen.getByTestId('doc-bubble-block-type'));
         fireEvent.click(screen.getByTestId('doc-bubble-block-type'));
       });
       await new Promise((resolve) => {
@@ -532,11 +575,11 @@ describe('the bubble bar shell', () => {
       const before = editor.state.selection;
       await hoverOpen('doc-bubble-block-type');
 
-      // Radix moves focus into the menu content when it opens
-      // (`@radix-ui/react-menu:266-268`), and one of the bar's conditions is
-      // that the editor holds the focus. An open menu counts as the focus
-      // being where it should, so the bar stays on screen and the selection is
-      // untouched.
+      // One of the bar's conditions is that the editor holds the focus, and
+      // the menu refuses it in both directions so that stays true. An open
+      // overlay also counts as the focus being where it should, which is what
+      // the link panel needs — so the bar stays on screen either way, and the
+      // selection is untouched.
       expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
       expect(editor.state.selection.eq(before)).toBe(true);
 

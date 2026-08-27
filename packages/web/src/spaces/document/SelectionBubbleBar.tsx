@@ -184,17 +184,14 @@ const GAP_FROM_SELECTION_PX = 8;
  * (`prosemirror-state@1.4.4/dist/index.js:41`/`:45`), so dragging upward or
  * extending with Shift+Up gives `head === from` and the fallback re-measures
  * the same line. That is not a gap being papered over: when the anchored line
- * has left the body area the bar is meant to go away, and `hide` takes it —
- * hunting for a third line the reader can currently see is exactly the branch
- * this replaced.
+ * has left the body area the bar is meant to go away, and the scroller's own
+ * overflow clips it there (see `middleware` below).
  *
- * Neither end being on screen is not this function's problem: the `hide`
- * middleware takes the anchor it returns and hides the bar when that anchor
- * has left the body area (see the options below). Hunting for some third line
- * the reader can currently see is exactly what this used to do, and that
- * branch was the common source of the in-scope defects found in five of the
- * six implementation-adversarial rounds. None of Lexical, Slate, ProseMirror's
- * own example, or this plugin does it either.
+ * Neither end being on screen is not this function's problem either. Hunting
+ * for some third line the reader can currently see is exactly what this used
+ * to do, and that branch was the common source of the in-scope defects found
+ * in five of the six implementation-adversarial rounds. None of Lexical,
+ * Slate, ProseMirror's own example, or this plugin does it either.
  *
  * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
@@ -278,11 +275,10 @@ function selectionBox(view: EditorView): DOMRect {
  * Zero width is not a shortcut: under `top-start` the floating x works out to
  * the reference's own left edge — the width terms cancel
  * (`@floating-ui/core@1.8.0` `computeCoordsFromPlacement`) — so a right edge
- * would change no position. It would change two other things: `flip` compares
- * reference and floating widths when picking which side to try first, and
- * `hide` measures the reference itself, so a wider rectangle would be judged
- * visible for longer. `shift` reads neither — it only clamps the floating
- * element, and its implementation never touches `rects.reference`.
+ * would change no position. It would change one other thing: `flip` compares
+ * reference and floating widths when picking which side to try first. `shift`
+ * reads neither — it only clamps the floating element, and its implementation
+ * never touches `rects.reference`.
  * @param left - Left edge of the selection, in viewport coordinates.
  * @param line - The anchored line's vertical extent, in viewport coordinates.
  * @param line.top - Its top edge.
@@ -572,15 +568,16 @@ function BubbleBar({
     // `hasTextIn` stops at the first text node — so this order is no longer
     // about cost; it is just the cheapest question asked first.
     //
-    // An open overlay counts as the focus being where it should. Radix moves
-    // focus into the menu content when one opens, and the prop that would stop
-    // that move (`onOpenAutoFocus`) is `Omit`ted from the public type — Radix
-    // saying it is not ours to pass. The reading is OUR OWN STATE rather than
-    // the DOM's active element: during a focus change the active element is
-    // `<body>` for the length of the `blur`, and in a test environment with no
-    // layout the menu is not focusable at all, so it stays `<body>` — measured
-    // both ways, reading the DOM took the bar off screen the moment a slot was
-    // hovered.
+    // An open overlay counts as the focus being where it should. The one that
+    // needs this is the link panel: it holds an input and really does take the
+    // focus. The menus refuse it in both directions
+    // (`document-bubble-menu.tsx`), so the body keeps it while one is down.
+    //
+    // The reading is OUR OWN STATE rather than the DOM's active element:
+    // during a focus change the active element is `<body>` for the length of
+    // the `blur`, and in a test environment with no layout the panel is not
+    // focusable at all, so it stays `<body>` — measured both ways, reading the
+    // DOM took the bar off screen the moment an overlay opened.
     if (!view.hasFocus() && !overlayOpenRef.current) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
@@ -605,8 +602,8 @@ function BubbleBar({
    * A pin survives a resize by moving with the body area rather than by
    * staying at fixed coordinates. Staying put is a rule about SCROLLING (user
    * 2026-08-20); a narrower window is a different event, and there the pin
-   * keeps its relative place in the area. Fixed coordinates would either leave
-   * the bar outside the area or let the hide middleware take it away for good.
+   * keeps its relative place in the area. Fixed coordinates would leave the
+   * bar outside the area, where the scroller's overflow clips it for good.
    * @returns The point the bar sits at, or null.
    */
   const pinnedPoint = React.useCallback((): { x: number; y: number } | null => {

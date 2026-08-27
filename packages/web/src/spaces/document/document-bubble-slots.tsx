@@ -86,13 +86,16 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
   /**
    * Extra attributes for the opener, for the slots that carry any.
    *
+   * Added to the slot shape rather than replacing it: these are spread FIRST,
+   * so the shape's own attributes — its label, its test id, its place outside
+   * the tab order (R4) — stand whatever a slot passes, and `className` is
+   * appended to the shape's classes.
+   *
    * `data-*` is spelled out: TypeScript accepts those on a JSX element without
    * being told, and refuses them in an object literal typed by the component's
    * own props.
    */
-  openerProps?: Omit<React.ComponentProps<typeof Button>, 'className'> & {
-    /** Added to the slot shape rather than replacing it. */
-    className?: string;
+  openerProps?: React.ComponentProps<typeof Button> & {
     [key: `data-${string}`]: string | undefined;
   };
   /** The menu's rows. */
@@ -147,8 +150,6 @@ function SlotShell({
     [id, onOpenChange],
   );
 
-  const { className: openerClassName, ...opener } = openerProps ?? {};
-
   return (
     <DocumentBubbleMenu
       id={id}
@@ -159,13 +160,13 @@ function SlotShell({
       onOpenChange={change}
       trigger={
         <Button
+          {...openerProps}
           variant='ghost'
           size={null}
           aria-label={label}
           data-testid={id}
           tabIndex={-1}
-          className={cn(SLOT, openerClassName)}
-          {...opener}
+          className={cn(SLOT, openerProps?.className)}
         >
           {face}
           {/* Radix stamps `data-state` on the trigger, so the arrow turns
@@ -233,9 +234,13 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               // the mark away.
               data-active={item.id === current ? 'true' : undefined}
               aria-disabled={item.greyed || !runnable ? 'true' : undefined}
+              // The mark goes last: `UNAVAILABLE` cancels the hover fill, and
+              // a row can be both at once — the selection anchored in a list
+              // that reaches out into a heading is in the bullet list AND the
+              // dry run for that command says no there (#85).
               className={cn(
-                item.id === current && 'bg-active-fill hover:bg-active-fill',
                 (item.greyed || !runnable) && UNAVAILABLE,
+                item.id === current && 'bg-active-fill hover:bg-active-fill',
               )}
               onSelect={() => {
                 if (item.run) {
@@ -382,10 +387,9 @@ export const ColorSlot = React.memo(function ColorSlot({
   const label = t('spaces.document.commands.comingLabel', {
     name: t('spaces.document.commands.color'),
   });
-  // The panel's cells are buttons laid out in rows rather than menu rows, so
-  // the close is theirs to ask for: Radix dismisses on selecting a
-  // `DropdownMenuItem` and leaves every other press alone. C2 ends "菜单照常
-  // 关闭" and says it for every row alike.
+  // The panel's cells are buttons laid out in a grid rather than rows built
+  // on `BubbleMenuRow`, so closing is theirs to ask for. Ruling C2 has the
+  // menu close on every press alike, command behind the cell or not.
   const pick = React.useCallback(
     (what: string): void => {
       pressedWithNothingBehindIt(what);
