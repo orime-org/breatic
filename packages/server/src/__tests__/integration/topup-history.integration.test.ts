@@ -137,7 +137,8 @@ async function seedBuyer(): Promise<Buyer> {
  * @param over - What to set.
  * @param over.status - Where the payment stands.
  * @param over.createdAgoSeconds - How long ago it was made.
- * @param over.totalCents - What was actually charged, once known.
+ * @param over.totalCents - What Stripe worked this purchase out to be, once
+ *   it has.
  * @param over.taxCents - The tax within that.
  * @returns Its id.
  */

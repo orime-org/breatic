@@ -188,11 +188,15 @@ export type FulfillOutcome =
       status: "mismatch";
       /** What our own price table says this tier costs. */
       expectedCents: number;
-      /** What Stripe says it charged, before tax. */
+      /**
+       * What Stripe is running for this session, before tax. The money has
+       * not necessarily moved: a delayed payment method reaches this check
+       * while it is still clearing.
+       */
       chargedCents: number | null;
       /** The currency we recorded. */
       expectedCurrency: string;
-      /** The currency Stripe charged in. */
+      /** The currency Stripe is running it in. */
       chargedCurrency: string | null;
     }
   | { status: "unknown" };

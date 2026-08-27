@@ -128,8 +128,9 @@ export async function updatePaymentStatus(
  * @param charged.stripePaymentIntentId - The PaymentIntent behind the charge,
  *   which a refund needs.
  * @param charged.taxCents - The tax Stripe worked out.
- * @param charged.totalCents - Face value plus that tax: what the buyer paid,
- *   and what a refund pays back.
+ * @param charged.totalCents - Face value plus that tax. On this call the money
+ *   has landed, so it is also what the buyer paid and what a refund pays
+ *   back.
  * @param tx - The fulfillment transaction, when the caller has one.
  * @returns True if this call performed the transition (row was in `fromStatus`);
  *   false if another concurrent call already transitioned it

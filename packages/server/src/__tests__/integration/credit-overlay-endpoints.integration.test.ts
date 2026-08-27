@@ -489,6 +489,32 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     expect(lot!['currency']).toBe("usd");
   });
 
+  it("carries the figure with the tax in it, the same one the history prints", async () => {
+    const fx = await seedFixture();
+    // A purchase in a taxed region: face value 1000, Stripe took 1120.
+    // `automatic_tax` is on for every checkout, so this is the ordinary case
+    // wherever there is tax, not an edge one.
+    const [payment] = await sql<{ id: string }[]>`
+      INSERT INTO payments (
+        user_id, amount_cents, tax_cents, total_cents, status, credits_granted
+      )
+      VALUES (${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
+    `;
+    await creditLotService.grantFromPayment({
+      paymentId: payment!.id,
+      userId: fx.userId,
+      purchasedCredits: 880,
+    });
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    // The purchase history prints `total_cents` for this row. A buyer who
+    // opens the assign or refund screen and reads a different number has no
+    // way to tell which one is on their statement.
+    expect(Number(lot!['paidCents'])).toBe(1120);
+  });
+
   it("names the studio a purchase points at", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 500, 1000, fx.studioId);

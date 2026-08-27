@@ -602,7 +602,10 @@ export async function setDesignation(
 
 /** What a lot's row carries beyond the lot itself. */
 export interface LotContext {
-  /** What was paid for it, in the smallest unit of `currency`. */
+  /**
+   * What the buyer paid for it, tax included, in the smallest unit of
+   * `currency`. The same figure the purchase history prints.
+   */
   paidCents: number;
   currency: string;
   /** The studio it points at, named. Null when it points at none. */
@@ -631,11 +634,18 @@ export async function listLotsByUser(
   const rows = await db
     .select({
       lot: creditLots,
-      // What was really paid for it, which lives on the payment rather than the
-      // lot. Working it back from the credit count would not do: the price
-      // table gets replaced, and an old lot was bought at the price of its own
-      // day.
-      paidCents: payments.amountCents,
+      // What the buyer paid for it, tax included, which lives on the payment
+      // rather than the lot. Working it back from the credit count would not
+      // do: the price table gets replaced, and an old lot was bought at the
+      // price of its own day.
+      //
+      // `total_cents` is what Stripe worked out and is the figure the purchase
+      // history prints; a lot only exists on a purchase that landed, so it is
+      // set by the same statement that settled the payment. The face value
+      // stands in for the rare session Stripe gave no total for — and reading
+      // the face value everywhere is what made the same purchase show one
+      // figure here and another in the history.
+      paidCents: sql<number>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
       currency: payments.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed

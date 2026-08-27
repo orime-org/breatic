@@ -87,7 +87,10 @@ export interface CreditLotView {
   designatedStudioId: string | null;
   /** That studio, named. Null whenever `designatedStudioId` is. */
   designatedStudioName: string | null;
-  /** What was paid for it, in the smallest unit of `currency`. */
+  /**
+   * What the buyer paid for it, tax included, in the smallest unit of
+   * `currency`. The same figure the purchase history prints for this purchase.
+   */
   paidCents: number;
   currency: string;
   lifecycle: CreditLotLifecycle;

@@ -660,12 +660,14 @@ export const payments = pgTable(
     currency: varchar("currency", { length: 10 }).default("usd").notNull(),
     status: varchar("status", { length: 20 }).default("pending").notNull(),
     creditsGranted: doublePrecision("credits_granted").default(0).notNull(),
-    // What the buyer was actually charged, read back off the Checkout Session
-    // in the same transaction as the CAS (0066, #13). Both stay NULL until
-    // then: the row is created when checkout starts, and at that moment
-    // nothing has been charged. `amount_cents` beside them is the pre-tax
-    // face value taken from our own price table, which is why a refund pays
-    // back `total_cents` instead.
+    // What Stripe worked out this purchase comes to, tax included, read back
+    // off the Checkout Session (0066, #13). They appear the moment the buyer
+    // gives Stripe an address, which on a delayed payment method is days
+    // before the money moves — present does not mean paid, `status` is what
+    // answers that. NULL until then: Stripe cannot work out the tax without
+    // knowing where the buyer is, and `amount_cents` beside them is the
+    // pre-tax face value from our own price table, which is why a refund of a
+    // landed purchase pays back `total_cents` instead.
     taxCents: integer("tax_cents"),
     totalCents: integer("total_cents"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),

@@ -266,7 +266,6 @@ describe("POST /payment/confirm — the buyer came back from a payment", () => {
 
       const lots = await sql`SELECT id FROM credit_lots WHERE user_id = ${buyer.userId}`;
       expect(lots).toHaveLength(1);
-
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -656,43 +655,6 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
  * for is who may reach it and under what conditions, and each of the three is
  * a different refusal a buyer can hit.
  */
-describe("GET /payment/tiers — what the buy screen reads", () => {
-  it("answers with the packs, the wait and the refund rule", async () => {
-    const buyer = await seedBuyer();
-    try {
-      const res = await app.request("/api/v1/payment/tiers", {
-        headers: { cookie: buyer.cookie },
-      });
-
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        data: {
-          packs: Record<string, unknown>[];
-          confirmTimeoutMs: number;
-          refundLines: string[];
-        };
-      };
-      // `toEqual` on the pack, not a subset match: this is the wire the buy
-      // screen reads, and a field added or dropped on either side of it should
-      // redden here.
-      expect(body.data.packs[0]).toEqual({
-        priceCents: 1000,
-        credits: 830,
-        currency: "usd",
-      });
-      expect(body.data.confirmTimeoutMs).toBeGreaterThan(0);
-      expect(body.data.refundLines).toHaveLength(3);
-    } finally {
-      await dropBuyer(buyer.userId);
-    }
-  });
-
-  it("turns a signed-out caller away", async () => {
-    const res = await app.request("/api/v1/payment/tiers");
-    expect(res.status).toBe(401);
-  });
-});
-
 describe("POST /payment/checkout — who may start a purchase", () => {
   /**
    * Ask the endpoint to start a checkout.
@@ -807,5 +769,42 @@ describe("POST /payment/checkout — who may start a purchase", () => {
       });
       await dropBuyer(buyer.userId);
     }
+  });
+});
+
+describe("GET /payment/tiers — what the buy screen reads", () => {
+  it("answers with the packs, the wait and the refund rule", async () => {
+    const buyer = await seedBuyer();
+    try {
+      const res = await app.request("/api/v1/payment/tiers", {
+        headers: { cookie: buyer.cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          packs: Record<string, unknown>[];
+          confirmTimeoutMs: number;
+          refundLines: string[];
+        };
+      };
+      // `toEqual` on the pack, not a subset match: this is the wire the buy
+      // screen reads, and a field added or dropped on either side of it should
+      // redden here.
+      expect(body.data.packs[0]).toEqual({
+        priceCents: 1000,
+        credits: 830,
+        currency: "usd",
+      });
+      expect(body.data.confirmTimeoutMs).toBeGreaterThan(0);
+      expect(body.data.refundLines).toHaveLength(3);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("turns a signed-out caller away", async () => {
+    const res = await app.request("/api/v1/payment/tiers");
+    expect(res.status).toBe(401);
   });
 });

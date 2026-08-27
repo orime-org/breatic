@@ -431,17 +431,14 @@ describe("what the session says decides", () => {
     const { userId, paymentId, sessionId } = await seedPending();
     try {
       // A price id pasted into the yaml against the wrong tier: Stripe is
-      // running a different amount in a different currency from the one our
-      // row was written for. Recording that figure would put a number on the
-      // screen that is neither what we sell nor, with our own currency beside
-      // it, what the bank will take.
+      // running an amount our row was not written for. Recording that figure
+      // would put a number on the screen that is not what we sell.
       stripe.checkout.sessions.retrieve.mockResolvedValue(
         paidSession(sessionId, {
           payment_status: "unpaid",
           status: "complete",
           amount_subtotal: 4700,
           amount_total: 4700,
-          currency: "eur",
         }),
       );
 
@@ -452,6 +449,30 @@ describe("what the session says decides", () => {
         SELECT total_cents FROM payments WHERE id = ${paymentId}
       `;
       expect(row!.total_cents).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("refuses a session running the right amount in the wrong currency", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // The amount agrees and only the currency does not — the shape a price
+      // id pasted from another region's tier takes. Asserted on its own
+      // because a case that changes both is red on the amount alone, and the
+      // currency half of the gate then has nothing holding it.
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, { currency: "eur" }),
+      );
+
+      const outcome = await fulfillPayment(sessionId, null);
+
+      expect(outcome.status).toBe("mismatch");
+      expect((await countsFor(userId)).lots).toBe(0);
+      const [row] = await sql<{ status: string }[]>`
+        SELECT status FROM payments WHERE id = ${paymentId}
+      `;
+      expect(row!.status).toBe("pending");
     } finally {
       await dropUser(userId);
     }

@@ -184,6 +184,15 @@ describe("which states a send may be claimed from", () => {
     try {
       await outbox.claimSend(paymentId, longAgo());
       expect((await rowOf(paymentId)).attempts).toBe(1);
+      // Aged the same way the other take-over cases do it. Passing `now()`
+      // here instead would make the assertion depend on the two `new Date()`
+      // calls landing in different milliseconds — the claim stamps
+      // `updated_at` from JS, whose clock stops at that resolution, and the
+      // comparison is strictly less-than.
+      await sql`
+        UPDATE purchase_mail_outbox SET updated_at = now() - interval '30 minutes'
+        WHERE payment_id = ${paymentId}
+      `;
       await outbox.claimSend(paymentId, justNow());
       expect((await rowOf(paymentId)).attempts).toBe(2);
     } finally {

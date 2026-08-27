@@ -28,10 +28,10 @@
  * mandate, and it also has to go into the `NO_SOFT_DELETE` list of the
  * `schema-timestamps` guard.
  *
- * 4. `payments.tax_cents` and `payments.total_cents` are nullable. A row that
- * has not been paid yet has neither value (both are written in the same
- * transaction as the CAS), so NOT NULL would make the row impossible to create
- * at checkout time.
+ * 4. `payments.tax_cents` and `payments.total_cents` are nullable. Stripe
+ * cannot work the tax out before the buyer gives it an address, so at the
+ * moment checkout writes the row neither figure exists and NOT NULL would make
+ * the row impossible to create.
  *
  * 5. `payments.status` has a CHECK over four values: `pending / completed /
  * failed / expired`. `expired` is the terminal state added here — it is how an
@@ -260,7 +260,7 @@ describe("purchase_mail_outbox", () => {
 });
 
 describe("payments gains what the tax-inclusive total needs", () => {
-  it("takes tax_cents and total_cents as nullable, since a pending row has neither", async () => {
+  it("takes tax_cents and total_cents as nullable, since checkout has neither yet", async () => {
     const columns = await columnsOf("payments");
     for (const name of ["tax_cents", "total_cents"]) {
       const column = columns.get(name);

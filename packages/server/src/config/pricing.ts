@@ -18,7 +18,13 @@ const tierSchema = z.object({
   name: z.string(),
   credits: z.number().int().positive(),
   price_cents: z.number().int().positive(),
-  currency: z.string().default("usd"),
+  // Lower-cased where the file enters the system. Stripe answers in lower
+  // case and `fulfillPayment` compares the two, so a tier written `USD` —
+  // which is how ISO 4217 is normally written — would disagree with Stripe on
+  // every purchase: the money is taken and no credits are granted. Normalising
+  // here rather than at the comparison keeps what is stored on the payment
+  // comparable for a refund too.
+  currency: z.string().toLowerCase().default("usd"),
   stripe_price_id: z.object({
     test: z.string(),
     live: z.string(),
@@ -30,7 +36,8 @@ const reconcileSchema = z.object({
   min_age_seconds: z.number().int().positive().default(120),
 });
 
-const pricingSchema = z.object({
+/** The price file's shape, exported so its normalisation can be asserted. */
+export const pricingSchema = z.object({
   tiers: z.array(tierSchema),
   reconcile: reconcileSchema.default({ batch_size: 3, min_age_seconds: 120 }),
   stale_sending_minutes: z.number().int().positive().default(10),

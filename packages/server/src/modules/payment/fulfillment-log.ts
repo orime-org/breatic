@@ -59,9 +59,11 @@ export function logFulfillment(
       }
       return;
     case "mismatch":
-      // The card was charged and the credits are withheld. Both figures go in
-      // the line so the price table can be compared against Stripe without
-      // opening either.
+      // What Stripe is running disagrees with our price table, so no credits
+      // are granted. Whether the money moved is a separate question that
+      // `payments.status` answers — a delayed payment method reaches this
+      // while it is still clearing. Both figures go in the line so the price
+      // table can be compared against Stripe without opening either.
       logger.error(
         {
           ...ctx,

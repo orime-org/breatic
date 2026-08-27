@@ -135,10 +135,11 @@ const STATUS_LABEL: Record<string, string> = {
 /**
  * The states from which nothing further arrives.
  *
- * The figures a purchase gains on landing are absent on every row that has not
- * landed, and until now that absence was read one way: "coming". It is only
- * coming while the purchase is still in flight. On an abandoned or failed one,
- * "shown once it lands" describes a future that will not happen.
+ * A purchase in one of these was never charged and will never grant credits,
+ * whatever figures its row carries — Stripe works a total out the moment the
+ * buyer gives it an address, and a bank can refuse days later. So both cells
+ * ask this first: "shown once it lands" describes a future that will not
+ * happen, and a figure would name a sum nobody was charged.
  */
 const OVER: ReadonlySet<string> = new Set(['expired', 'failed']);
 
@@ -153,10 +154,10 @@ interface PurchaseLineProps {
 /**
  * One purchase: what it cost, when, where it stands, and what is left of it.
  *
- * Every row says which of the four states it is in. The other two cells each
- * ask their own question rather than reading the state: the amount asks
- * whether Stripe has worked out a final figure, and where the credits point
- * asks whether there is a lot behind this purchase at all.
+ * Every row says which of the four states it is in. The amount cell asks
+ * whether this purchase ended without being charged before asking whether
+ * Stripe has worked a figure out; where the credits point asks whether there
+ * is a lot behind this purchase at all.
  * @param props - The purchase and the account.
  * @param props.purchase - The purchase.
  * @param props.userId - The signed-in account.
@@ -171,8 +172,8 @@ const PurchaseLine = React.memo(function PurchaseLine({
   const [sending, setSending] = React.useState(false);
   // What Stripe worked out, once it has. A purchase that landed has it, and so
   // does one whose delayed payment is still clearing — Stripe holds the final
-  // figure from the moment the buyer typed their address. Absent, we have only
-  // our own pre-tax price, which is printed as exactly that.
+  // figure from the moment the buyer typed their address. Carrying one says
+  // nothing about whether the money moved, which is why `over` is asked first.
   const charged = purchase.totalCents;
   const over = OVER.has(purchase.status);
   const statusKey = STATUS_LABEL[purchase.status];
