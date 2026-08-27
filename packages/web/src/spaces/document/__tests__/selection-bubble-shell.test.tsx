@@ -210,7 +210,7 @@ describe('the bubble bar shell', () => {
     it.each([
       ['doc-bubble-align'],
       ['doc-bubble-color'],
-      ['doc-bubble-coming-ai'],
+      ['doc-bubble-ai'],
     ])('draws %s as an ordinary control', async (id) => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
@@ -229,7 +229,7 @@ describe('the bubble bar shell', () => {
       ['doc-bubble-align', 'doc-bubble-align-item-center'],
       ['doc-bubble-color', 'doc-bubble-color-text-red'],
       ['doc-bubble-color', 'doc-bubble-color-reset'],
-      ['doc-bubble-coming-ai', 'doc-bubble-ai-item-translate'],
+      ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
       ['doc-bubble-block-type', 'doc-bubble-block-type-item-heading-1'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -285,7 +285,7 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type',
         'doc-bubble-align',
         'doc-bubble-color',
-        'doc-bubble-coming-ai',
+        'doc-bubble-ai',
       ]) {
         expect(screen.getByTestId(id).getAttribute('tabindex')).toBe('-1');
       }
@@ -614,7 +614,7 @@ describe('the bubble bar shell', () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-coming-ai');
+      const menu = await hoverOpen('doc-bubble-ai');
 
       expect(
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),

@@ -241,7 +241,7 @@ for (const scheme of ['light', 'dark'] as const) {
       const aiChevron = size(
         [
           ...(el
-            .querySelector('[data-testid="doc-bubble-coming-ai"]')
+            .querySelector('[data-testid="doc-bubble-ai"]')
             ?.querySelectorAll('svg') ?? []),
         ].pop() as Element,
       );
@@ -295,7 +295,7 @@ for (const scheme of ['light', 'dark'] as const) {
         };
       };
       const comment = control('doc-bubble-coming-comment');
-      const ai = control('doc-bubble-coming-ai');
+      const ai = control('doc-bubble-ai');
       // A5：最上层命中的真的是浮出条自己——比「它在 DOM 里」强，能同时排除
       // 被裁掉一半和被别的东西盖住。
       const hit = document.elementFromPoint(
@@ -589,7 +589,7 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
   // 可操作性检查会一直等下去。真人的鼠标不走那道检查。
   const before = await html();
   await entry.click({ force: true });
-  await page.getByTestId('doc-bubble-coming-ai').click({ force: true });
+  await page.getByTestId('doc-bubble-ai').click({ force: true });
   expect(await html()).toBe(before);
 
   // 这套用例共享同一个 page，而后面几条的前提是「鼠标不在正文里」。上面的悬停

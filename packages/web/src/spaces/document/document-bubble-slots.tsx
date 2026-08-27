@@ -480,7 +480,7 @@ export const AiSlot = React.memo(function AiSlot({
   onOpenChange,
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
-  const id = 'doc-bubble-coming-ai';
+  const id = 'doc-bubble-ai';
   const label = t('spaces.document.commands.comingLabel', {
     name: t('spaces.document.commands.ai'),
   });

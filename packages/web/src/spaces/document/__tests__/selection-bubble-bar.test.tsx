@@ -323,7 +323,7 @@ describe('the selection bubble bar', () => {
       'doc-bubble-color',
       'doc-bubble-coming-comment',
       'doc-bubble-sep-ai',
-      'doc-bubble-coming-ai',
+      'doc-bubble-ai',
     ]);
   });
 
@@ -380,19 +380,17 @@ describe('the selection bubble bar', () => {
     expect(markupOf()).toBe(before);
   });
 
-  // A11: the whole bar stays out of the tab order (ruling R4), so these two
-  // follow the command buttons beside them. What they do carry is
-  // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
-  // accessibility tree to be read, the second drops them out of it.
-  it.each([
-    ['comment'],
-    ['ai'],
-  ])('keeps %s out of the tab order, the way the bar does', async (id) => {
+  // A11: the whole bar stays out of the tab order (ruling R4), so the comment
+  // entry follows the command buttons beside it. What it carries is
+  // `aria-disabled` rather than HTML `disabled`: the first leaves it in the
+  // accessibility tree to be read, the second drops it out of it. The four
+  // dropdowns are held to the same rule by `selection-bubble-shell.test.tsx`.
+  it('keeps comment out of the tab order, the way the bar does', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
-    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    const entry = screen.getByTestId('doc-bubble-coming-comment');
     expect(entry.getAttribute('tabindex')).toBe('-1');
     expect(entry.hasAttribute('disabled')).toBe(false);
   });
@@ -445,7 +443,7 @@ describe('the selection bubble bar', () => {
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
-    const ai = screen.getByTestId('doc-bubble-coming-ai');
+    const ai = screen.getByTestId('doc-bubble-ai');
     const comment = screen.getByTestId('doc-bubble-coming-comment');
 
     expect(ai).toHaveTextContent('AI');
@@ -470,7 +468,7 @@ describe('the selection bubble bar', () => {
     ['tool-underline', 'spaces.document.commands.underline'],
     ['tool-code', 'spaces.document.commands.code'],
     ['coming-comment', 'spaces.document.commands.comment'],
-    ['coming-ai', 'spaces.document.commands.ai'],
+    ['ai', 'spaces.document.commands.ai'],
   ])('gives %s a name that can be read out', async (id, key) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
