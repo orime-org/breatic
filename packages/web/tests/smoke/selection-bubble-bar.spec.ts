@@ -42,6 +42,16 @@ async function bodyViewportTop(p: Page): Promise<number> {
 /** 条跟它锚定那一行之间的间距，跟实现里的 `GAP_FROM_SELECTION_PX` 同一个数。 */
 const GAP_FROM_SELECTION_PX = 8;
 
+/**
+ * How long a `Button` takes to change colour under the pointer.
+ *
+ * Its base class carries `transition-colors` (`components/ui/button.tsx:19`),
+ * which Tailwind gives 150ms. Any assertion about the background a pointer
+ * produced has to outlast that, or it reads the value from before the
+ * transition started.
+ */
+const HOVER_TRANSITION_MS = 150;
+
 // 一次登录，全文件共用一个页面。登录限流是 5 次每分钟，而这里有 17 个 test
 // 声明、跑出来 18 条（视觉规格那条在明暗两套上各跑一遍）——每条各登一次必然
 // 从第六条起全部超时在登录页上（实测）。串行加共用页面既避开限流，也避开
@@ -208,6 +218,33 @@ for (const scheme of ['light', 'dark'] as const) {
       document.body.appendChild(probe);
       const tokenBackground = getComputedStyle(probe).backgroundColor;
       probe.remove();
+      // #912 的 A 档给了四个数：按钮 28×28 · 图标 16 · 间距 2 · 整条 38 高。
+      // 按钮那个下面的 `buttons` 已经在量，其余三个在这里取。
+      const barHeight = Math.round(b.height);
+      const controlGap = cs.gap;
+      /**
+       * 一个元素的尺寸，四舍五入成 `宽×高`。
+       * @param n - 要量的元素。
+       * @returns 那个字符串。
+       */
+      const size = (n: Element): string => {
+        const r = n.getBoundingClientRect();
+        return `${Math.round(r.width)}×${Math.round(r.height)}`;
+      };
+      // 图标取每一格里的**第一个** `svg`。AI 那格是下拉形态（图标、文字、
+      // 箭头），所以它有两个 svg，而箭头不是图标——按 `button > svg` 一把抓
+      // 会把 13px 的箭头混进 16px 的图标里。
+      const icons = Array.from(el.querySelectorAll('button')).map((n) =>
+        size(n.querySelector('svg') as Element),
+      );
+      // 那个箭头单独量，免得它跟着图标一起被改掉没人发现。
+      const aiChevron = size(
+        [
+          ...(el
+            .querySelector('[data-testid="doc-bubble-coming-ai"]')
+            ?.querySelectorAll('svg') ?? []),
+        ].pop() as Element,
+      );
       const buttons = Array.from(
         el.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
       ).map((n) => {
@@ -271,6 +308,10 @@ for (const scheme of ['light', 'dark'] as const) {
         buttons,
         separators,
         coming,
+        barHeight,
+        controlGap,
+        icons,
+        aiChevron,
         hitInsideBar: !!hit?.closest('[data-testid="doc-selection-bubble-bar"]'),
         insideScroller: !!el.closest('.doc-body-scroller'),
         aboveWindowTop: b.top < 0,
@@ -285,12 +326,23 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.borderWidth).toBe('1px');
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
-    // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 26 高、
-    // 28 宽。
-    expect(geo.buttons).toHaveLength(8);
+    // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 28 高、
+    // 28 宽。九个：#902 的八个命令，加上 #903 的链接。最后那个交给 Radix 当浮层
+    // 触发器、不是按下就跑命令的那种，尺寸仍旧跟其余八个一样。
+    expect(geo.buttons).toHaveLength(9);
     for (const b of geo.buttons) {
-      expect(b).toEqual({ width: 28, height: 26 });
+      expect(b).toEqual({ width: 28, height: 28 });
     }
+    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。图标
+    // 十一个：九个命令加评论、AI。AI 那格的箭头 13 不在 A 档改动之列，单独
+    // 钉住它没被顺手动过。
+    expect(geo.barHeight).toBe(38);
+    expect(geo.controlGap).toBe('2px');
+    expect(geo.icons).toHaveLength(11);
+    for (const icon of geo.icons) {
+      expect(icon).toBe('16×16');
+    }
+    expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
     // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
@@ -307,7 +359,7 @@ for (const scheme of ['light', 'dark'] as const) {
     // 宽度跟着文字走），评论是图标按钮（`.bubble-btn`，28 宽）。
     expect(geo.coming).toHaveLength(2);
     for (const entry of geo.coming) {
-      expect(entry.height).toBe(26);
+      expect(entry.height).toBe(28);
       expect(entry.opacity).toBe('0.5');
       expect(entry.cursor).toBe('not-allowed');
       expect(entry.ariaDisabled).toBe('true');
@@ -349,10 +401,10 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
 
-  // 首段：它上方到正文可见区顶只有约 30px，而浮出条要 36 高加 8 间距。
+  // 首段：它上方到正文可见区顶只有约 30px，而浮出条要 38 高加 8 间距。
   await selectParagraph(page, 0);
   const first = await readGeometry(page);
-  expect(first.lineTop - (await bodyViewportTop(page))).toBeLessThan(44);
+  expect(first.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
   expect(first.below).toBe(true);
   expect(first.gap).toBe(8);
   // 不量「有没有越出裁切盒」：上面已经断言了它在选区下方且间距 8，而选区必在
@@ -363,7 +415,7 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   // 中间某段：上方空间充足，照旧在上方。
   await selectParagraph(page, 8);
   const middle = await readGeometry(page);
-  expect(middle.lineTop - (await bodyViewportTop(page))).toBeGreaterThan(44);
+  expect(middle.lineTop - (await bodyViewportTop(page))).toBeGreaterThan(46);
   expect(middle.below).toBe(false);
   expect(middle.gap).toBe(8);
 
@@ -377,14 +429,14 @@ test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不�
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 6);
 
-  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 44。
+  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 46。
   // 滚动量按量到的位置算，不写死——写死的数字随字号和行距一起漂，而漂到
   // 「整段滚出视野」时测的就完全是另一件事了（那种情形不在本次范围内）。
   const before = await readGeometry(page);
   await scrollBodyTo(page, before.lineTop - (await bodyViewportTop(page)) - 10);
 
   const m = await readGeometry(page);
-  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(44);
+  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
   // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉（实测条顶 76、
   // 裁切盒顶 80）。现在它该翻到选区下方。
   expect(m.below).toBe(true);
@@ -471,6 +523,18 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
 
   // 指针就停在入口上，顺带验它没有亮起来。ghost 变体自带的悬停高亮被两个
   // `hover:` 类关掉了，而那两个类只有真引擎跑得出效果——jsdom 不套 CSS。
+  //
+  // Both assertions here have to outlast {@link HOVER_TRANSITION_MS}: a
+  // computed background only leaves its starting value once a frame has
+  // rendered, and `DEBUG=pw:api` measured 4 to 6 milliseconds between a
+  // pointer move returning and the style being read — inside one frame, which
+  // reads the colour from before the hover. This case went red four times in
+  // five before the wait (measured 2026-08-24; it does the same on main).
+  //
+  // The positive assertion below polls for the settled colour. This one can
+  // only wait: it expects the background NOT to change, and a transition that
+  // never happens fires no `transitionend` and offers nothing to poll for.
+  await page.waitForTimeout(HOVER_TRANSITION_MS * 2);
   expect(
     await entry.evaluate((n) => getComputedStyle(n).backgroundColor),
   ).toBe('rgba(0, 0, 0, 0)');
@@ -481,9 +545,11 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
   });
   // 对照：同一条上能按的按钮，同样的指针动作下底色确实变了。没有这一半，上面
   // 那条断言对一个根本没收到悬停的元素也成立。
-  expect(await lit.evaluate((n) => getComputedStyle(n).backgroundColor)).not.toBe(
-    'rgba(0, 0, 0, 0)',
-  );
+  await expect
+    .poll(() => lit.evaluate((n) => getComputedStyle(n).backgroundColor), {
+      timeout: 5_000,
+    })
+    .not.toBe('rgba(0, 0, 0, 0)');
 
   // 按下去什么都不该发生。`aria-disabled` 不拦点击——那正是它跟 HTML
   // `disabled` 的区别：入口留在可访问性树里，读得出来，也点得到。它什么都不做
@@ -790,7 +856,7 @@ test('全选时鼠标贴着正文区域上沿，条也不画到区域外面', as
 
   const bar = await readBar(page);
   expect(bar.shown).toBe(true);
-  // 锚点上方只剩 4px，而条要 36px（按钮 26 + 上下内距各 4 + 边框各 1）再加
+  // 锚点上方只剩 4px，而条要 38px（按钮 28 + 上下内距各 4 + 边框各 1）再加
   // 8px 间距——放不下，`flip` 该把它翻到锚点下方去，而不是让它压在正文区域
   // 上面那条属于顶部横条的带子里。
   expect(bar.top).toBeGreaterThanOrEqual(spot.top);
@@ -1100,4 +1166,821 @@ test('条的左右不伸出正文显示区——选了一部分和全选各量�
   const all = await edges();
   expect(all.barRight).toBeLessThanOrEqual(all.viewRight);
   expect(all.barLeft).toBeGreaterThanOrEqual(all.viewLeft);
+});
+
+/** Put a link on whatever is selected, through the panel the user would use. */
+async function linkTheSelection(page: Page, url: string): Promise<void> {
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('doc-link-input').fill(url);
+  await page.getByTestId('doc-link-confirm').click();
+}
+
+/**
+ * Reach the `view` state over the body's first link, the way a reader does.
+ *
+ * The selection left over from making the link is collapsed first, and the
+ * press lands on the link's own first line: the bar hangs over the middle of a
+ * link that runs to two lines and swallows a press aimed at the element's box.
+ */
+async function openViewOverFirstLink(page: Page): Promise<void> {
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+  if (await bar.isVisible()) {
+    // Confirming an address closes the panel and hands focus back to the body,
+    // and the hand-back is a frame behind the close. A keypress sent before it
+    // lands goes nowhere and leaves the selection — and the bar — as they were.
+    await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+    await expect(
+      page.locator('[data-testid="document-space"] .ProseMirror'),
+    ).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(bar).not.toBeAttached({ timeout: 5_000 });
+  }
+
+  const spot = await page.evaluate(() => {
+    const line = document.querySelector('.ProseMirror a')!.getClientRects()[0]!;
+    return {
+      x: Math.round(line.left + line.width / 2),
+      y: Math.round(line.top + line.height / 2),
+    };
+  });
+  await page.mouse.click(spot.x, spot.y);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+}
+
+/** The panel against a rectangle: how far its centre is off, and the gap above it. */
+async function panelAgainst(
+  page: Page,
+  rect: { left: number; right: number; bottom: number },
+): Promise<{ centreOffset: number; gapBelow: number }> {
+  return page.evaluate((target) => {
+    const panel = document
+      .querySelector('[data-testid="doc-link-popover"]')!
+      .getBoundingClientRect();
+    return {
+      centreOffset:
+        (panel.left + panel.right) / 2 - (target.left + target.right) / 2,
+      gapBelow: panel.top - target.bottom,
+    };
+  }, rect);
+}
+
+/**
+ * Wait until the panel is placed 8px under `rect`, and report where it landed.
+ *
+ * The panel counts as visible from the frame it mounts on and is placed on a
+ * later one, so the gap is polled rather than read once. It is allowed a pixel
+ * either side of the 8 `offset(8)` asks for: floating-ui snaps its translate to
+ * whole device pixels (`roundByDPR` in `@floating-ui/react-dom`), and a target
+ * whose bottom edge falls on a half pixel — a wrapped line does, measured at
+ * 154.5 — comes out 8.5.
+ */
+async function settlePanelUnder(
+  page: Page,
+  rect: { left: number; right: number; bottom: number },
+): Promise<{ centreOffset: number; gapBelow: number }> {
+  await expect
+    .poll(async () => Math.abs((await panelAgainst(page, rect)).gapBelow - 8))
+    .toBeLessThanOrEqual(1);
+  return panelAgainst(page, rect);
+}
+
+/**
+ * The panel is under `rect` and inside the body column.
+ *
+ * At a narrow width, centring the panel on a short target would hang it off the
+ * column's left edge, so `shift` holds it in and the centres come apart. The
+ * last assertion is what says the gap is `shift`'s doing.
+ */
+async function expectPanelHeldInColumn(
+  page: Page,
+  rect: { left: number; right: number; bottom: number },
+): Promise<void> {
+  await settlePanelUnder(page, rect);
+  const view = await bodyView(page);
+  const panel = await panelBox(page);
+  expect(panel.left).toBeGreaterThanOrEqual(view.left);
+  expect(panel.right).toBeLessThanOrEqual(view.right);
+  expect((rect.left + rect.right) / 2 - panel.width / 2).toBeLessThan(view.left);
+}
+
+/** Where the panel is, and how wide. */
+async function panelBox(
+  page: Page,
+): Promise<{ left: number; right: number; width: number; centre: number }> {
+  return page.evaluate(() => {
+    const r = document
+      .querySelector('[data-testid="doc-link-popover"]')!
+      .getBoundingClientRect();
+    return { left: r.left, right: r.right, width: r.width, centre: (r.left + r.right) / 2 };
+  });
+}
+
+/** The body's visible area. */
+async function bodyView(
+  page: Page,
+): Promise<{ left: number; right: number; top: number; bottom: number }> {
+  return page.evaluate(() => {
+    const r = document
+      .querySelector('[data-testid="document-space"] .ProseMirror')!
+      .closest('[data-radix-scroll-area-viewport]')!
+      .getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  });
+}
+
+test('link: an address with a space in the host leaves confirm dimmed', async () => {
+  // Only a real browser answers this. The check rests on the URL parser, and
+  // the two runtimes treat `https://hello world` in opposite ways: Node's
+  // throws (that is the one jsdom runs), a browser's accepts it and encodes
+  // the space into the host as `hello%20world` — measured in Chromium. So the
+  // unit case of the same name is green for a reason other than what happens
+  // in front of a user.
+  await openFreshDocument(page);
+  await page.keyboard.type('link me');
+  await selectFirstParagraph(page);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  const input = page.getByTestId('doc-link-input');
+  const confirm = page.getByTestId('doc-link-confirm');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+
+  // Light it once first. Without this line the assertion below is green even
+  // against an implementation whose button never lights at all.
+  await input.fill('a.example');
+  await expect(confirm).toBeEnabled();
+
+  await input.fill('hello world');
+  await expect(confirm).toBeDisabled();
+
+  // The press has to state a reason, which is the whole point of the button
+  // carrying `aria-disabled`. Clicked at window coordinates, which is the path
+  // where the browser runs a real hit-test — `confirm.click()` first waits for
+  // the element to become enabled, and enabled is the one thing it never is.
+  const box = await confirm.boundingBox();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await expect(page.getByTestId('doc-link-invalid')).toBeVisible({ timeout: 5_000 });
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+
+  // The red edge the demo's fourth state draws, which `Input` gives the field
+  // from that attribute. Compared against the message's own colour rather than
+  // a literal, since both come from `--color-status-error-foreground` and the
+  // two themes give it different values. Polled: the field carries
+  // `transition-colors`, and on the frame the message appears it is still part
+  // way there — measured at rgb(99, 93, 93) against rgb(206, 44, 49) settled.
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const edge = getComputedStyle(
+          document.querySelector('[data-testid="doc-link-input"]')!,
+        ).borderTopColor;
+        const message = getComputedStyle(
+          document.querySelector('[data-testid="doc-link-invalid"]')!,
+        ).color;
+        return `${edge} | ${message}`;
+      }),
+    )
+    .toMatch(/^(rgba?\([^)]+\)) \| \1$/);
+});
+
+test('link: the panel sits against the link it acts on', async () => {
+  // Nothing has ever measured where this panel lands. The unit suite cannot:
+  // every rectangle in jsdom is zero. Measured before this assertion existed,
+  // the panel was drawn at the top-left corner of the window while its link sat
+  // 616px to the right — its reference was a button the bubble-menu plugin had
+  // already taken out of the document, so every rectangle it offered was zero.
+  await openFreshDocument(page);
+  await page.keyboard.type('one two three four five six seven eight');
+  await selectFirstParagraph(page);
+
+  await linkTheSelection(page, 'a.example/anchored');
+  await openViewOverFirstLink(page);
+
+  // `placement: 'bottom'` puts the two centres on top of each other, 8px apart.
+  // A reference holding a degenerate rectangle lands the panel hundreds of
+  // pixels away, which is what these numbers read.
+  const link = await page.evaluate(() => {
+    const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+    return { left: r.left, right: r.right, bottom: r.bottom };
+  });
+  expect(Math.abs((await settlePanelUnder(page, link)).centreOffset)).toBeLessThan(2);
+});
+
+test('link: the panel travels with its link when the body scrolls', async () => {
+  // The panel is placed in the scrolled content's own coordinates, so the
+  // scroll carries it along with the line it sits under. Measured against an
+  // earlier build that placed it against the window: the link moved 260px and
+  // the panel moved 7. Measured again with `shift` allowed to work vertically:
+  // the link left the visible area and the panel stayed pinned to its top edge,
+  // 142px away from the text it belongs to.
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+  await selectParagraph(page, 0);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  await page.getByTestId('doc-link-input').fill('a.example/scrolls');
+  await page.getByTestId('doc-link-confirm').click();
+
+  // Clicking the link selects the whole of it, which is the shape that opens
+  // `view`. A `Mod-a` here would not: this paragraph holds nothing but the
+  // link, so the first tier is already satisfied and the press promotes
+  // straight to the document tier, where the bar carries no link button.
+  await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+  await page.waitForTimeout(400);
+
+  const gap = () =>
+    page.evaluate(() => {
+      const panel = document
+        .querySelector('[data-testid="doc-link-popover"]')!
+        .getBoundingClientRect();
+      const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      return { gapBelow: panel.top - link.bottom, linkTop: link.top };
+    });
+
+  const before = await gap();
+  await scrollBodyTo(page, 200);
+  const after = await gap();
+
+  // The link really did move under the panel.
+  expect(before.linkTop - after.linkTop).toBeGreaterThan(150);
+  // And the panel kept its place against it.
+  expect(Math.abs(after.gapBelow - before.gapBelow)).toBeLessThan(3);
+});
+
+test('link: scrolling the target away clips the panel and keeps the draft', async () => {
+  // The reason the panel hangs inside the scroller. Being clipped by an
+  // ancestor's overflow is not the same as being hidden: `visibility: hidden`
+  // makes the browser take focus away, and an address half typed into a field
+  // that has lost focus is lost silently. Measured in Chromium: a clipped
+  // field keeps focus and keeps its value, and the caret carries on where it
+  // was when the reader scrolls back.
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
+  await selectParagraph(page, 0);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  const input = page.getByTestId('doc-link-input');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await page.keyboard.type('a.example/half');
+  await expect(input).toBeFocused();
+
+  const placement = () =>
+    page.evaluate(() => {
+      const panel = document
+        .querySelector('[data-testid="doc-link-popover"]')!
+        .getBoundingClientRect();
+      const view = document
+        .querySelector('[data-testid="document-space"] .ProseMirror')!
+        .closest('[data-radix-scroll-area-viewport]')!
+        .getBoundingClientRect();
+      // Where the panel's own centre lands answers the question the rectangle
+      // cannot: a box above the body's box is equally true of a panel plainly
+      // visible over the tab strip, and being clipped rather than merely
+      // elsewhere is the whole reason it is portalled into the scroller.
+      const centre = document.elementFromPoint(
+        Math.round(panel.left + panel.width / 2),
+        Math.round(panel.top + panel.height / 2),
+      );
+      const el = document.querySelector('[data-testid="doc-link-popover"]')!;
+      return {
+        aboveTheBody: panel.bottom < view.top,
+        insideTheBody: panel.top >= view.top && panel.bottom <= view.bottom,
+        reachableAtItsCentre: centre !== null && el.contains(centre),
+      };
+    });
+
+  const onOpen = await placement();
+  expect(onOpen.insideTheBody).toBe(true);
+  expect(onOpen.reachableAtItsCentre).toBe(true);
+
+  await scrollBodyTo(page, 400);
+  const scrolledAway = await placement();
+  expect(scrolledAway.aboveTheBody).toBe(true);
+  // Clipped, so nothing of it is at its own centre any more.
+  expect(scrolledAway.reachableAtItsCentre).toBe(false);
+  // Out of sight, and still holding everything the reader put into it.
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('a.example/half');
+
+  // Typing carries on into the field nobody can see, rather than into the body.
+  await page.keyboard.type('-more');
+  await expect(input).toHaveValue('a.example/half-more');
+
+  await scrollBodyTo(page, 0);
+  expect((await placement()).insideTheBody).toBe(true);
+  await expect(input).toHaveValue('a.example/half-more');
+});
+
+test('link: a select-all carries no link button', async () => {
+  // The whole document is not a thing a link can be put on, and the panel
+  // would have nothing to anchor to: over a select-all the selection's box is
+  // the whole column. The rest of the bar stays — bold over everything is a
+  // sensible thing to ask for.
+  await openFreshDocument(page);
+  await typeLongBody(page);
+
+  // A block's worth of text carries the button, which is what makes the
+  // absence below about the select-all rather than about the bar.
+  await selectParagraph(page, 0);
+  await expect(page.getByTestId('doc-bubble-tool-link')).toBeVisible({
+    timeout: 5_000,
+  });
+
+  // Two presses from there: the first tier takes the block, the second the
+  // document.
+  const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
+  await page.keyboard.press(selectAll);
+  await page.waitForTimeout(200);
+  await page.keyboard.press(selectAll);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(page.getByTestId('doc-bubble-tool-link')).toBeHidden();
+});
+
+test('link: the bar steps aside for the panel and stays away after it', async () => {
+  // Two rules in one pass, because they are one pass for the reader: the bar
+  // goes as the panel opens, and it does not come back when the panel closes,
+  // because closing drops the selection. Held rather than caught mid-flight —
+  // the bar has a 250ms debounce on selection changes, so a bar that is merely
+  // recomputing is also briefly absent.
+  await openFreshDocument(page);
+  await page.keyboard.type('a line to link');
+  await selectFirstParagraph(page);
+
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+  const panel = page.getByTestId('doc-link-popover');
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+  await expect(bar).toBeHidden({ timeout: 5_000 });
+
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden({ timeout: 5_000 });
+  await page.waitForTimeout(400);
+  await expect(bar).toBeHidden();
+  expect(
+    await page.evaluate(() => {
+      const selection = window.getSelection();
+      return selection === null || selection.isCollapsed;
+    }),
+  ).toBe(true);
+});
+
+test('link: the panel is never drawn anywhere but against its target', async () => {
+  // floating-ui computes a position asynchronously, so the first paint puts
+  // the panel at its own origin — measured at viewport top 80, left 320, while
+  // the link sat at 616. What this pins is that no such frame is ever visible:
+  // every frame carrying opacity is already beside the target.
+  await openFreshDocument(page);
+  await page.keyboard.type('a line to link');
+  await selectFirstParagraph(page);
+
+  await page.evaluate(() => {
+    (window as unknown as { __frames: unknown[] }).__frames = [];
+    const frames = (window as unknown as { __frames: unknown[] }).__frames;
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector('[data-testid="doc-link-popover"]');
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      frames.push({
+        top: Math.round(box.top),
+        left: Math.round(box.left),
+        opacity: Number(getComputedStyle(el).opacity),
+      });
+      if (frames.length > 8) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeFocused({ timeout: 5_000 });
+  await page.waitForTimeout(400);
+
+  const measured = await page.evaluate(() => {
+    const frames = (window as unknown as {
+      __frames: { top: number; left: number; opacity: number }[];
+    }).__frames;
+    const line = document
+      .querySelector('[data-testid="document-space"] .ProseMirror p')!
+      .getBoundingClientRect();
+    return { frames, lineBottom: Math.round(line.bottom) };
+  });
+
+  expect(measured.frames.length).toBeGreaterThan(1);
+  // The library's origin was among them, and it was transparent when it was.
+  expect(measured.frames[0]!.opacity).toBe(0);
+  measured.frames
+    .filter((frame) => frame.opacity > 0)
+    .forEach((frame) => {
+      expect(Math.abs(frame.top - measured.lineBottom)).toBeLessThan(20);
+    });
+});
+
+test('link: opening lands in the field, closing hands the caret back', async () => {
+  // §8 puts this row in a browser: jsdom's focus handling is unreliable there.
+  // Opening in `create` rests on `FloatingFocusManager`'s mount autofocus — the
+  // panel has no focus call of its own for that state — and the bar
+  // preventDefaults its own mousedown, so focus is still in the body at the
+  // moment the panel opens. A failed autofocus would put the address the user
+  // types into the document instead of the field. Closing hands focus back to
+  // whatever held it before, which is the body.
+  await openFreshDocument(page);
+  await page.keyboard.type('focus me');
+  await selectFirstParagraph(page);
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  const input = page.getByTestId('doc-link-input');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await expect(input).toBeFocused();
+
+  // Typing without clicking the field first: the characters have to arrive in
+  // the panel, and the body has to be left as it was.
+  await page.keyboard.type('a.example');
+  await expect(input).toHaveValue('a.example');
+  const bodyText = await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="document-space"] .ProseMirror')
+        ?.textContent ?? '',
+  );
+  expect(bodyText).toBe('focus me');
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await expect(
+    page.locator('[data-testid="document-space"] .ProseMirror'),
+  ).toBeFocused();
+});
+
+test('link: pressing a link in the body reaches view without leaving the page', async () => {
+  // `openOnClick` is off and `enableClickSelection` is on (§4.2), which together
+  // make a press on a link select the whole of it instead of navigating. That
+  // press is the only way to reach `view` with a mouse.
+  await openFreshDocument(page);
+  await page.keyboard.type('press this link');
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/reached');
+
+  const before = page.url();
+  const openPages = page.context().pages().length;
+
+  await page.locator('[data-testid="document-space"] .ProseMirror a').first().click();
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
+    timeout: 5_000,
+  });
+  const button = page.getByTestId('doc-bubble-tool-link');
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+
+  await button.click();
+  await expect(page.getByTestId('doc-link-url')).toBeVisible({ timeout: 5_000 });
+
+  expect(page.url()).toBe(before);
+  expect(page.context().pages().length).toBe(openPages);
+});
+
+test('link: with no link under it the panel sits against the selected text', async () => {
+  // The other half of "the panel sits against what it acts on": in `create`
+  // there is no link to measure, and the target is the selection itself.
+  await openFreshDocument(page);
+  await page.keyboard.type('nothing linked here yet');
+  await selectFirstParagraph(page);
+
+  // Read while the selection is still in the document: taking focus into the
+  // panel empties it, which is why the panel holds a Range of its own.
+  const selected = await page.evaluate(() => {
+    const r = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
+    return { left: r.left, right: r.right, bottom: r.bottom };
+  });
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+
+  expect(Math.abs((await settlePanelUnder(page, selected)).centreOffset)).toBeLessThan(2);
+});
+
+test('link: a target that wraps gets the panel under its last line', async () => {
+  // `inline()` reads the target's per-line rectangles. For a bottom placement it
+  // takes the last of them, so a link running over two lines is met under the
+  // line it ends on rather than under a box drawn around both (§4.1.2).
+  //
+  // The width is pinned because where the sentence breaks decides how long its
+  // last line is, and a short last line near the column's left edge has the
+  // panel held in by `shift` instead of centred. Run after a test that left the
+  // window narrow, the centre came out 26px off.
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type(
+    'this sentence is deliberately long enough that the body column has to break it over more than one line before it ends',
+  );
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/wrapped');
+  await openViewOverFirstLink(page);
+
+  const lines = await page.evaluate(() => {
+    const rects = [...document.querySelector('.ProseMirror a')!.getClientRects()];
+    const last = rects[rects.length - 1]!;
+    const first = rects[0]!;
+    return {
+      count: rects.length,
+      first: { left: first.left, right: first.right, bottom: first.bottom },
+      last: { left: last.left, right: last.right, bottom: last.bottom },
+    };
+  });
+
+  // Without this the test would pass on a link that never wrapped.
+  expect(lines.count).toBeGreaterThan(1);
+
+  const placed = await settlePanelUnder(page, lines.last);
+  const view = await bodyView(page);
+  const panelWidth = await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="doc-link-popover"]')!.getBoundingClientRect()
+        .width,
+  );
+  // The premise of the next line: at this width the last line is far enough
+  // from the column's edges for the panel to be centred on it.
+  expect((lines.last.left + lines.last.right) / 2 - panelWidth / 2).toBeGreaterThan(
+    view.left,
+  );
+  expect(Math.abs(placed.centreOffset)).toBeLessThan(2);
+  // And it is the last line specifically: the first one sits a line higher.
+  expect((await panelAgainst(page, lines.first)).gapBelow).toBeGreaterThan(20);
+});
+
+test('link: a target at the bottom edge keeps the panel inside the body column', async () => {
+  // `shift`'s boundary is the body's visible area, so a panel that would hang
+  // off the side of the column is pushed back into it (§4.1.2).
+  //
+  // The link is the tail of its line rather than the whole of it. A link that
+  // covers a line is centred on the column, and a panel centred there stays
+  // inside it whatever `shift` does — measured, dropping `shift` altogether
+  // left every assertion here green.
+  // Narrow enough that the panel cannot fit beside the line's end. The panel
+  // has a maximum width of its own, so widening it is not a way to reach the
+  // boundary — the visible area has to come down to meet it. Measured with
+  // `shift` removed: the panel ran to 865 with the area ending at 760; with it
+  // back, 760 exactly. At 1680 both readings are inside the area and the case
+  // says nothing.
+  await page.setViewportSize({ width: 760, height: 950 });
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+  await selectParagraph(page, 2);
+  await page.keyboard.press('ArrowRight');
+  for (let step = 0; step < 6; step += 1) {
+    await page.keyboard.press('Shift+ArrowLeft');
+  }
+  await linkTheSelection(page, 'a.example/edge');
+  await openViewOverFirstLink(page);
+
+  // Bring that link down to the bottom edge, leaving part of the line showing.
+  const view = await bodyView(page);
+  const scroll = await page.evaluate(
+    ([viewBottom]) => {
+      const el = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      )!;
+      const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      return el.scrollTop + link.top - (viewBottom! - 10);
+    },
+    [view.bottom],
+  );
+  await scrollBodyTo(page, scroll);
+
+  const placed = await page.evaluate(() => {
+    const panel = document
+      .querySelector('[data-testid="doc-link-popover"]')!
+      .getBoundingClientRect();
+    const link = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+    return {
+      panelLeft: Math.round(panel.left),
+      panelRight: Math.round(panel.right),
+      linkLeft: Math.round(link.left),
+      linkRight: Math.round(link.right),
+      linkVisible: link.top >= 0,
+    };
+  });
+
+  // The line really is at the edge rather than gone past it.
+  expect(placed.linkVisible).toBe(true);
+  expect(placed.panelLeft).toBeGreaterThanOrEqual(view.left);
+  expect(placed.panelRight).toBeLessThanOrEqual(view.right);
+  // Pushed, rather than fitting by luck. Every other case in this file has the
+  // panel centred on its target; here it cannot be, and the distance is the
+  // measurement that says `shift` did the work. Measured with `shift` removed:
+  // the two centres were half a pixel apart and the panel ran to 865 past a
+  // boundary ending at 760.
+  const panelCentre = (placed.panelLeft + placed.panelRight) / 2;
+  const linkCentre = (placed.linkLeft + placed.linkRight) / 2;
+  expect(Math.abs(panelCentre - linkCentre)).toBeGreaterThan(20);
+});
+
+test('link: the panel still meets its target after the window changes width', async () => {
+  // A width change reflows the body, and `autoUpdate` watches for resize. The
+  // link moves; the panel has to move with it.
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('resize around me');
+  await selectFirstParagraph(page);
+  await linkTheSelection(page, 'a.example/resized');
+  await openViewOverFirstLink(page);
+
+  const linkBox = () =>
+    page.evaluate(() => {
+      const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      return { left: r.left, right: r.right, bottom: r.bottom };
+    });
+
+  await settlePanelUnder(page, await linkBox());
+  const wide = await linkBox();
+  const panelWide = await panelBox(page);
+
+  await page.setViewportSize({ width: 1100, height: 950 });
+  await page.waitForTimeout(400);
+  const narrow = await linkBox();
+  const panelNarrow = await panelBox(page);
+
+  // The reflow really did move the link, so the assertions below have something
+  // to be wrong about.
+  expect(Math.abs(narrow.left - wide.left)).toBeGreaterThan(50);
+  // And the panel went with it. This is the assertion a reference holding a
+  // rectangle it measured once would fail: the panel would sit where the link
+  // used to be, and every check that reads only the vertical gap would still
+  // pass, since a width change leaves a one-line paragraph at the same height.
+  expect(Math.abs(panelNarrow.centre - panelWide.centre)).toBeGreaterThan(20);
+
+  // Measured 49px to the right of centre at this width.
+  await expectPanelHeldInColumn(page, narrow);
+
+  // The same event in `create`, which reaches the reference by a different
+  // route: a Range over the selection rather than over a link (§5.3.1).
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await openFreshDocument(page);
+  await page.keyboard.type('no link on this one');
+  await selectFirstParagraph(page);
+
+  const selected = () =>
+    page.evaluate(() => {
+      const r = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
+      return { left: r.left, right: r.right, bottom: r.bottom };
+    });
+  const beforeResize = await selected();
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  await settlePanelUnder(page, beforeResize);
+  const panelCreateWide = await panelBox(page);
+
+  await page.setViewportSize({ width: 1100, height: 950 });
+  await page.waitForTimeout(400);
+  // Read from the panel's own Range: the selection is emptied once the field
+  // takes focus, so the live selection has nothing left to measure.
+  const afterResize = await page.evaluate(() => {
+    const p = document.querySelector('[data-testid="document-space"] .ProseMirror p')!;
+    const r = document.createRange();
+    r.selectNodeContents(p);
+    const box = r.getBoundingClientRect();
+    return { left: box.left, right: box.right, bottom: box.bottom };
+  });
+  expect(Math.abs(afterResize.left - beforeResize.left)).toBeGreaterThan(50);
+  expect(Math.abs((await panelBox(page)).centre - panelCreateWide.centre)).toBeGreaterThan(
+    20,
+  );
+  await expectPanelHeldInColumn(page, afterResize);
+
+  await page.setViewportSize({ width: 1680, height: 950 });
+});
+
+test('link: the panel keeps its place while a co-editor types', async ({ browser }) => {
+  // Two contexts, so two sessions and two websocket connections into the same
+  // document. The panel holds a handle on the link rather than a position, and
+  // a Range for its geometry; an edit above the link moves it down the page,
+  // and the panel has to arrive with it.
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('the paragraph a co-editor will grow');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('link me');
+  await selectParagraph(page, 1);
+  await linkTheSelection(page, 'a.example/coedited');
+  await openViewOverFirstLink(page);
+
+  const linkBox = () =>
+    page.evaluate(() => {
+      const r = document.querySelector('.ProseMirror a')!.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    });
+  const before = await linkBox();
+  const settled = await settlePanelUnder(page, before);
+
+  const projectUrl = page.url();
+  const spaceTab = await page.evaluate(
+    () =>
+      document
+        .querySelector('[data-testid^="space-tab-"][aria-selected="true"]')!
+        .getAttribute('data-testid')!,
+  );
+
+  const peer = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  try {
+    const other = await peer.newPage();
+    await other.goto('/login');
+    await other.locator('#login-email').fill(email as string);
+    await other.locator('#login-password').fill(password as string);
+    await other.locator('form button[type="submit"]').click();
+    await other.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+
+    await other.goto(projectUrl);
+    await other.getByTestId(spaceTab).click();
+    const peerEditor = other.locator('[data-testid="document-space"] .ProseMirror');
+    await expect(peerEditor).toBeVisible({ timeout: 15_000 });
+    // The link A made has to have reached B before B edits around it.
+    await expect(
+      other.locator('[data-testid="document-space"] .ProseMirror a'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await other.locator('[data-testid="document-space"] .ProseMirror p').first().click();
+    await other.keyboard.press('End');
+    await other.keyboard.type(
+      ' and here is a good deal more of it, enough that the paragraph has to take a second line and push everything below it down the page',
+    );
+
+    // The peer's text has to be in this document, and the line has to have
+    // moved because of it rather than because a second reader arrived.
+    await expect(
+      page.locator('[data-testid="document-space"] .ProseMirror'),
+    ).toContainText('push everything below it down the page', { timeout: 15_000 });
+    await expect.poll(async () => (await linkBox()).top - before.top).toBeGreaterThan(20);
+  } finally {
+    await peer.close();
+  }
+
+  const after = await linkBox();
+  const moved = await panelAgainst(page, after);
+  expect(Math.abs(moved.gapBelow - settled.gapBelow)).toBeLessThan(1);
+  expect(Math.abs(moved.centreOffset - settled.centreOffset)).toBeLessThan(2);
+  // And the panel is the same one, still in view rather than reopened.
+  await expect(page.getByTestId('doc-link-url')).toBeVisible();
+});
+
+test('link: the panel is built to the demo measurements', async () => {
+  // Every number here is measured off the demo's third section, which is the
+  // spec for this panel: box 42 high, controls 28, the address line 21, and in
+  // the refused state a 67-high box holding a 19-high message. `offsetHeight`
+  // rather than a rectangle, so a transform mid-flight cannot read as a size.
+  //
+  // The box's own font size is left off: the demo sets 14 on it, every piece of
+  // text in the panel carries its own size, and `--text-*` has no 14 rung.
+  await page.setViewportSize({ width: 1680, height: 950 });
+  await openFreshDocument(page);
+  await page.keyboard.type('measure me');
+  await selectFirstParagraph(page);
+
+  const sizes = () =>
+    page.evaluate(() => {
+      const el = (t: string) =>
+        document.querySelector<HTMLElement>(`[data-testid="${t}"]`);
+      const panel = el('doc-link-popover');
+      return {
+        panel: panel ? panel.offsetHeight : null,
+        input: el('doc-link-input')?.offsetHeight ?? null,
+        inputWidth: el('doc-link-input')?.offsetWidth ?? null,
+        url: el('doc-link-url')?.offsetHeight ?? null,
+        message: el('doc-link-invalid')?.offsetHeight ?? null,
+        buttons: [...(panel?.querySelectorAll('button') ?? [])].map(
+          (b) => (b as HTMLElement).offsetHeight,
+        ),
+      };
+    });
+
+  await page.getByTestId('doc-bubble-tool-link').click();
+  await expect(page.getByTestId('doc-link-input')).toBeVisible({ timeout: 5_000 });
+  const create = await sizes();
+  expect(create).toMatchObject({
+    panel: 42,
+    input: 28,
+    inputWidth: 250,
+    buttons: [28],
+  });
+
+  await page.getByTestId('doc-link-input').fill('htp:/breatic');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('doc-link-invalid')).toBeVisible({ timeout: 5_000 });
+  expect(await sizes()).toMatchObject({ panel: 67, input: 28, message: 19 });
+
+  await page.getByTestId('doc-link-input').fill('a.example/measured');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('doc-link-popover')).toBeHidden({ timeout: 5_000 });
+  await openViewOverFirstLink(page);
+  expect(await sizes()).toMatchObject({ panel: 42, url: 21, buttons: [28, 28] });
 });

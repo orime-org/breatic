@@ -212,6 +212,12 @@
       "failedBody": "沒能讀取這個 Project 的對話。",
       "retry": "重新載入",
       "refusedTitle": "打不開這個對話"
+    },
+    "markdown": {
+      "taskDone": "已完成",
+      "taskTodo": "未完成",
+      "footnotes": "腳註",
+      "backToReference": "回到引用 {index}"
     }
   },
   "canvas": {
@@ -336,6 +342,8 @@
       "focusSourceFailed": "素材處理失敗。",
       "focusSourceDeletedByPeer": "協作者刪除了素材。",
       "focusSourceReplacedByPeer": "協作者更換了素材。",
+      "pickEnded": "已退出選擇。",
+      "pickEndedByPeer": "協作者結束了選擇。",
       "focusSourceBusyByPeer": "協作者正在處理素材。",
       "focusCropDiscarded": "節點已被刪除——聚焦圖已丟棄。",
       "duration": "生成時長",
@@ -733,7 +741,8 @@
         "code": "行內程式碼",
         "comment": "評論",
         "ai": "AI",
-        "comingLabel": "{name}（未開放）"
+        "comingLabel": "{name}（未開放）",
+        "link": "連結"
       },
       "schemaOutdated": {
         "headline": "文件編輯器已更新",
@@ -748,6 +757,13 @@
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
         "notOpenYet": "未開放"
+      },
+      "link": {
+        "placeholder": "貼上或輸入網址",
+        "confirm": "確定",
+        "edit": "編輯",
+        "remove": "移除連結",
+        "invalid": "網址格式不對"
       }
     },
     "readOnlyReconnect": "重新連線"

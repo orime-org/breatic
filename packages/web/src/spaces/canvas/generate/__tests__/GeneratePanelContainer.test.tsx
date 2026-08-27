@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/** The canvas hands the panels a getter; these trees answer 'this client'. */
+const LAST_WRITE_LOCAL = (): boolean => true;
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   act,
@@ -59,6 +62,7 @@ vi.mock('@web/data/yjs/use-text-body', async (importActual) => {
 });
 
 import { toast } from 'sonner';
+import en from '@locales/en.json';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
@@ -139,6 +143,7 @@ function mountContainer(graph?: {
               ]
             }
             edges={graph?.edges ?? []}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -219,11 +224,14 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
    * reading the node.
    * @param client - The query client.
    * @param mode - The node's generation sub-mode.
+   * @param author - Reads whether this client made the newest document write;
+   * defaults to "this client did".
    * @returns The render tree.
    */
   const modeTree = (
     client: QueryClient,
     mode: 'i2i' | 't2i',
+    author: () => boolean = LAST_WRITE_LOCAL,
   ): React.JSX.Element => (
     <QueryClientProvider client={client}>
       <ReactFlow
@@ -235,6 +243,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
           spaceId='s'
           nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode } }]}
           edges={[]}
+          getLastWriteWasLocal={author}
         />
       </ReactFlow>
     </QueryClientProvider>
@@ -299,6 +308,46 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pickSession).toBeNull(),
     );
+    // Ending it silently leaves the canvas dimming candidates for a pick the
+    // user never cancelled, with no word about what happened — the whole
+    // point of the mode toggle being writable by a collaborator. The message
+    // is asserted through the catalog so a key that stops resolving is caught
+    // here rather than reaching a user as raw dots.
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEnded,
+    );
+    listSpy.mockRestore();
+  });
+
+  // The same ending, worded for the other author. A mode change reaching this
+  // client through the document is either its own write coming back or news
+  // from a collaborator, and the message differs: one is "you did this", the
+  // other names someone else. Only the local wording was ever asserted, so
+  // both call sites could have passed a constant and stayed green.
+  it('says a collaborator ended the pick when the mode change was theirs', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([T2I_MODEL, I2I_MODEL]));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const byPeer = (): boolean => false;
+    const { rerender } = render(modeTree(client, 'i2i', byPeer));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+      useCanvasStore.getState().startFocusPick('target');
+    });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pickSession?.purpose).toBe('focus'),
+    );
+    rerender(modeTree(client, 't2i', byPeer));
+    await waitFor(() =>
+      expect(useCanvasStore.getState().pickSession).toBeNull(),
+    );
+
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEndedByPeer,
+    );
     listSpy.mockRestore();
   });
 
@@ -306,8 +355,17 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   // switch to one WITHOUT style capability disables the Style trigger, so a
   // running style pick would strand its banner + focus exactly like the t2i
   // reference case. vm.styleSupported drives it, so a collaborator's
-  // setNodeModel ends it too.
-  it('ends a running style pick when the model loses style capability', async () => {
+  // setNodeModel ends it too — which is why the two cases below run the same
+  // sequence and differ only in who the document says made the write.
+  /**
+   * Starts a style pick, then flips the node's model to one without style
+   * capability so the panel ends the pick.
+   * @param author - Reads whether this client made the newest document write.
+   * @returns Nothing; the caller asserts on the toast that came out.
+   */
+  const endStylePickByModelChange = async (
+    author: () => boolean,
+  ): Promise<void> => {
     /**
      * Builds a minimal catalog image model.
      * @param name - Model id.
@@ -370,6 +428,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               },
             ]}
             edges={[]}
+            getLastWriteWasLocal={author}
           />
         </ReactFlow>
       </QueryClientProvider>
@@ -395,6 +454,22 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       expect(useCanvasStore.getState().pickSession).toBeNull(),
     );
     listSpy.mockRestore();
+  };
+
+  it('ends a running style pick when the model loses style capability', async () => {
+    await endStylePickByModelChange(LAST_WRITE_LOCAL);
+
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEnded,
+    );
+  });
+
+  it('says a collaborator ended it when the model change was theirs', async () => {
+    await endStylePickByModelChange(() => false);
+
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEndedByPeer,
+    );
   });
 });
 

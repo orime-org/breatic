@@ -9,11 +9,12 @@ interface BrandMarkProps {
 }
 
 /**
- * Brand mark — the three-tadpole Breatic logo as an inlined SVG, with no
- * link or wordmark so each chrome (project top bar, studio top bar) wraps it
- * in its own home link. Three tadpoles loop clockwise: main brand (rust red
- * #BC4B36) bottom-right, companion sky (#0EA5E9) left, companion lime
- * (#15D45A) top-right.
+ * Brand mark — the Breatic logo as an inlined SVG, with no link or wordmark so
+ * each chrome (project top bar, studio top bar) wraps it in its own home link.
+ * A rust ring (#BC4B36) holds two flattened ellipses stacked vertically: lime
+ * (#15D45A) above, sky (#0EA5E9) below. The two ellipses imply the bowls of a
+ * B without drawing one — spelling the letter would put the mark in the pool
+ * of class-9 letter marks it needs to stay clear of.
  *
  * Single source of the mark, shared by both top bars so neither duplicates
  * the SVG. Lives in `ui/` (the cross-feature atom layer) because both
@@ -22,12 +23,13 @@ interface BrandMarkProps {
  *
  * The logo is the only place the brand raw colors are allowed (ADR 14
  * amended + brand-guard CI); chrome elsewhere uses neutral / primary.
- * Geometry: viewBox `-50 -50 100 100`, `g scale(1,-1)` y-flip; each element
- * sets fill/stroke explicitly (raster backend compatibility). It is scaled by
+ * Geometry: viewBox `-50 -50 100 100`, ring `r=38` with a 5.5 stroke, each
+ * ellipse `rx=18 ry=9` offset 11.5 either side of centre. Every element sets
+ * fill/stroke explicitly (raster backend compatibility). It is scaled by
  * `size` alone (the viewBox is fixed), so it stays crisp at any px.
  * @param props - Brand-mark props.
  * @param props.size - Rendered px size (square); defaults to 28.
- * @returns the inlined three-tadpole brand SVG mark.
+ * @returns the inlined brand SVG mark.
  */
 export function BrandMark({ size = 28 }: BrandMarkProps): React.JSX.Element {
   return (
@@ -39,32 +41,16 @@ export function BrandMark({ size = 28 }: BrandMarkProps): React.JSX.Element {
       focusable='false'
       data-testid='top-bar-logo'
     >
-      <g transform='scale(1, -1)'>
-        <circle cx='25.98' cy='-15' r='10' fill='#BC4B36' />
-        <path
-          d='M 25.98 -15 A 30 30 0 0 0 -25.98 -15'
-          fill='none'
-          stroke='#BC4B36'
-          strokeWidth='8'
-          strokeLinecap='round'
-        />
-        <circle cx='-30' cy='0' r='7' fill='#0EA5E9' />
-        <path
-          d='M -30 0 A 30 30 0 0 0 -7.76 28.98'
-          fill='none'
-          stroke='#0EA5E9'
-          strokeWidth='6'
-          strokeLinecap='round'
-        />
-        <circle cx='7.76' cy='28.98' r='7' fill='#15D45A' />
-        <path
-          d='M 7.76 28.98 A 30 30 0 0 0 30 0'
-          fill='none'
-          stroke='#15D45A'
-          strokeWidth='6'
-          strokeLinecap='round'
-        />
-      </g>
+      <circle
+        cx='0'
+        cy='0'
+        r='38'
+        fill='none'
+        stroke='#BC4B36'
+        strokeWidth='5.5'
+      />
+      <ellipse cx='0' cy='-11.5' rx='18' ry='9' fill='#15D45A' />
+      <ellipse cx='0' cy='11.5' rx='18' ry='9' fill='#0EA5E9' />
     </svg>
   );
 }

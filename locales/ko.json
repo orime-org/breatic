@@ -212,6 +212,12 @@
       "failedBody": "이 Project의 대화를 읽지 못했습니다.",
       "retry": "다시 불러오기",
       "refusedTitle": "이 대화를 열 수 없습니다"
+    },
+    "markdown": {
+      "taskDone": "완료",
+      "taskTodo": "미완료",
+      "footnotes": "각주",
+      "backToReference": "참조 {index}(으)로 돌아가기"
     }
   },
   "canvas": {
@@ -336,6 +342,8 @@
       "focusSourceFailed": "소재 처리에 실패했습니다.",
       "focusSourceDeletedByPeer": "공동 작업자가 소재를 삭제했습니다.",
       "focusSourceReplacedByPeer": "공동 작업자가 소재를 교체했습니다.",
+      "pickEnded": "선택이 종료되었습니다.",
+      "pickEndedByPeer": "공동 작업자가 선택을 종료했습니다.",
       "focusSourceBusyByPeer": "공동 작업자가 소재를 처리하고 있습니다.",
       "focusCropDiscarded": "노드가 삭제되어 포커스 이미지가 삭제되었습니다.",
       "duration": "길이",
@@ -733,7 +741,8 @@
         "code": "인라인 코드",
         "comment": "댓글",
         "ai": "AI",
-        "comingLabel": "{name}(미제공)"
+        "comingLabel": "{name}(미제공)",
+        "link": "링크"
       },
       "schemaOutdated": {
         "headline": "문서 편집기가 업데이트되었습니다",
@@ -748,6 +757,13 @@
         "saveSnapshot": "스냅샷 저장",
         "restoreSnapshot": "스냅샷 복원",
         "notOpenYet": "미제공"
+      },
+      "link": {
+        "placeholder": "URL 붙여넣기 또는 입력",
+        "confirm": "완료",
+        "edit": "편집",
+        "remove": "링크 제거",
+        "invalid": "올바른 URL이 아닙니다"
       }
     },
     "readOnlyReconnect": "다시 연결"

@@ -212,6 +212,12 @@
       "failedBody": "没能读到这个 Project 的对话。",
       "retry": "重新加载",
       "refusedTitle": "打不开这个对话"
+    },
+    "markdown": {
+      "taskDone": "已完成",
+      "taskTodo": "未完成",
+      "footnotes": "脚注",
+      "backToReference": "回到引用 {index}"
     }
   },
   "canvas": {
@@ -336,6 +342,8 @@
       "focusSourceFailed": "素材处理失败。",
       "focusSourceDeletedByPeer": "协作者删除了素材。",
       "focusSourceReplacedByPeer": "协作者更换了素材。",
+      "pickEnded": "已退出选择。",
+      "pickEndedByPeer": "协作者结束了选择。",
       "focusSourceBusyByPeer": "协作者正在处理素材。",
       "focusCropDiscarded": "节点已被删除——聚焦图已丢弃。",
       "duration": "生成时长",
@@ -733,7 +741,8 @@
         "code": "行内代码",
         "comment": "评论",
         "ai": "AI",
-        "comingLabel": "{name}（未开放）"
+        "comingLabel": "{name}（未开放）",
+        "link": "链接"
       },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",
@@ -748,6 +757,13 @@
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
         "notOpenYet": "未开放"
+      },
+      "link": {
+        "placeholder": "粘贴或输入网址",
+        "confirm": "确定",
+        "edit": "编辑",
+        "remove": "去掉链接",
+        "invalid": "网址格式不对"
       }
     },
     "readOnlyReconnect": "重新连接"

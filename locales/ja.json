@@ -212,6 +212,12 @@
       "failedBody": "この Project の会話を読み込めませんでした。",
       "retry": "再読み込み",
       "refusedTitle": "このチャットを開けません"
+    },
+    "markdown": {
+      "taskDone": "完了",
+      "taskTodo": "未完了",
+      "footnotes": "脚注",
+      "backToReference": "参照 {index} に戻る"
     }
   },
   "canvas": {
@@ -336,6 +342,8 @@
       "focusSourceFailed": "素材の処理に失敗しました。",
       "focusSourceDeletedByPeer": "コラボレーターが素材を削除しました。",
       "focusSourceReplacedByPeer": "コラボレーターが素材を差し替えました。",
+      "pickEnded": "選択を終了しました。",
+      "pickEndedByPeer": "コラボレーターが選択を終了しました。",
       "focusSourceBusyByPeer": "コラボレーターが素材を処理しています。",
       "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。",
       "duration": "長さ",
@@ -733,7 +741,8 @@
         "code": "インラインコード",
         "comment": "コメント",
         "ai": "AI",
-        "comingLabel": "{name}（未提供）"
+        "comingLabel": "{name}（未提供）",
+        "link": "リンク"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
@@ -748,6 +757,13 @@
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
         "notOpenYet": "未提供"
+      },
+      "link": {
+        "placeholder": "URL を貼り付けるか入力",
+        "confirm": "完了",
+        "edit": "編集",
+        "remove": "リンクを解除",
+        "invalid": "URL の形式が正しくありません"
       }
     },
     "readOnlyReconnect": "再接続"

@@ -60,3 +60,32 @@ export function CollaboratorNamesProvider({
 export function useCollaboratorNames(): CollaboratorNames | null {
   return React.useContext(CollaboratorNamesContext);
 }
+
+/**
+ * Put a display name on everyone the roster can name, dropping the rest.
+ *
+ * The roster answers null for a member who left and for one whose query has
+ * not landed. Someone unnameable is left out rather than drawn as a bare chip:
+ * a nameless mark answers nothing about who is there.
+ *
+ * The memo keys on the whole roster bundle, not on `resolve`: that reference is
+ * stable for a component's lifetime by design (`useResolverRef`), so keying on
+ * it would freeze the names at whatever the first roster held — every later
+ * rename, and the names that land when the member query resolves, would never
+ * reach the screen.
+ * @param people - Anything carrying a `userId`, in the order to keep.
+ * @returns The same items with a name, minus everyone the roster cannot name.
+ */
+export function useNamed<T extends { userId: string }>(
+  people: readonly T[],
+): Array<T & { name: string }> {
+  const names = useCollaboratorNames();
+  return React.useMemo(() => {
+    const resolve = names?.resolve;
+    if (!resolve) return [];
+    return people.flatMap((person) => {
+      const name = resolve(person.userId);
+      return name ? [{ ...person, name }] : [];
+    });
+  }, [people, names]);
+}

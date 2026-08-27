@@ -24,7 +24,10 @@ import StarterKit from '@tiptap/starter-kit';
 
 import * as Y from 'yjs';
 
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import {
+  buildDocumentExtensions,
+  DEFAULT_LINK_PROTOCOL,
+} from '@web/spaces/document/document-extensions';
 
 /**
  * The switches this slice is allowed to change, and why each qualifies.
@@ -52,6 +55,11 @@ const ALLOWED_STARTERKIT_OVERRIDES: Readonly<Record<string, string>> = {
   // The one entry here that removes a node rather than replacing one. See
   // `REMOVED_NODES` for why the divider goes.
   horizontalRule: 'the divider is not a feature this document offers',
+  // Three switches, one purpose: a click on a link has to reach the link
+  // rather than leave the page, and an address typed without a protocol has to
+  // mean the same thing wherever it was typed. The node itself is untouched —
+  // this entry changes how the extension behaves, not what the schema holds.
+  link: 'an editor reaches a link by clicking it, and stores https',
 };
 
 /**
@@ -173,5 +181,22 @@ describe('the document schema', () => {
       .sort();
 
     expect(changed).toEqual(Object.keys(ALLOWED_STARTERKIT_OVERRIDES).sort());
+  });
+
+  it('gives the link extension the three switches a click and a bare address need', () => {
+    // The switch list above pins WHICH keys differ from stock. These are the
+    // values, and two of them are the only mouse route into the panel's view
+    // state: a click has to reach the link instead of leaving the page, and it
+    // has to select the whole link so the probe finds one.
+    const starterKit = buildDocumentExtensions({ fragment: schemaFragment() }).find(
+      (e) => e.name === 'starterKit',
+    );
+    const options = (starterKit?.options ?? {}) as Record<string, unknown>;
+
+    expect(options.link).toEqual({
+      openOnClick: false,
+      enableClickSelection: true,
+      defaultProtocol: DEFAULT_LINK_PROTOCOL,
+    });
   });
 });

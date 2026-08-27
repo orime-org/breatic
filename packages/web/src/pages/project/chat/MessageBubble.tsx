@@ -6,6 +6,7 @@ import * as React from 'react';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
@@ -63,19 +64,24 @@ export const MessageBubble = React.memo(function MessageBubble({
           <ThinkingFold thinking={message.thinking} />
         ) : null}
         {message.content || message.streaming ? (
-          <div
-            className='whitespace-pre-wrap'
-            data-testid='message-bubble-content'
-          >
-            {message.content}
-            {/* One mark for the whole turn, always at the end of what has
-                been said so far. It starts alone in an empty bubble and stays
-                on the heels of the last character until the turn is over
-                (user 2026-08-20: the dot must not disappear and must not turn
-                into a bar). A caret was drawn here instead once there was
-                text, which took the mark away over the whole stretch where
-                the reader most needs to see that the answer is still
-                coming. */}
+          <div data-testid='message-bubble-content'>
+            {/* What the reader typed means the characters they typed: markdown
+                is what the model writes in, not what the composer accepts. */}
+            {isUser ? (
+              <span className='whitespace-pre-wrap'>{message.content}</span>
+            ) : null}
+            {!isUser && message.content ? (
+              <MarkdownMessage
+                content={message.content}
+                streaming={message.streaming === true}
+              />
+            ) : null}
+            {/* One mark for the whole turn, after everything said so far. It
+                says the answer is still coming, which makes it this turn's
+                state rather than part of the answer — so it goes after the
+                rendering, and what the reply is made of never enters into it
+                (user 2026-08-25). The space between the two is in the
+                stylesheet, beside the mark's own figures. */}
             {message.streaming ? <WaitingDot /> : null}
           </div>
         ) : null}

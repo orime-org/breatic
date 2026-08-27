@@ -81,6 +81,53 @@ describe('mergeMirroredSelection reference stability (#1647 — React.memo needs
     expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
   });
 
+  it('sees a generation changing hands', () => {
+    // The starter's id rides in `data` alongside the derived status, and a
+    // handover keeps that status at `handling` — so the status compare says
+    // nothing changed and only the id itself can catch it. Reuse the previous
+    // reference here and the node keeps naming the wrong person.
+    //
+    // The comparison is by own keys, so a flat field on `data` is covered the
+    // moment it exists; this pins that the projection keeps putting it there.
+    const at = (userId: string): Node[] =>
+      [
+        {
+          id: 'a',
+          type: 'image',
+          position: { x: 0, y: 0 },
+          data: { status: 'handling', handlingByUserId: userId },
+          selected: false,
+        },
+      ] as Node[];
+    const prev = at('alice');
+    expect(mergeMirroredSelection(prev, at('bob'))[0]).not.toBe(prev[0]);
+    expect(mergeMirroredSelection(prev, at('alice'))[0]).toBe(prev[0]);
+  });
+
+  it('carries the holders a re-mirror brings with it', () => {
+    // The canvas re-mirrors on every document change and bakes the current
+    // holders onto each node on the way through, so the merge has to let a
+    // `data` that gained or lost them count as changed. Compared by own keys,
+    // which is what makes the presence field visible here at all.
+    const held = (holders?: readonly string[]): Node[] =>
+      [
+        {
+          id: 'a',
+          type: 'image',
+          position: { x: 0, y: 0 },
+          data: holders === undefined ? { status: 'idle' } : { status: 'idle', occupants: holders },
+          selected: false,
+        },
+      ] as Node[];
+    const unheld = held();
+
+    const nowHeld = mergeMirroredSelection(unheld, held(['alice']));
+    expect(nowHeld[0]).not.toBe(unheld[0]);
+    expect((nowHeld[0]?.data as { occupants?: readonly string[] }).occupants).toEqual(['alice']);
+
+    expect(mergeMirroredSelection(nowHeld, held())[0]).not.toBe(nowHeld[0]);
+  });
+
   it('a fresh-but-equal focusImages array does not defeat reference reuse (Y.Array toJSON freshness)', () => {
     // The Yjs mirror serializes the focusImages Y.Array to a FRESH plain
     // array on every dataMap.toJSON() call (Y.Array.toJSON maps a new
