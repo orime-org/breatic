@@ -180,11 +180,8 @@ import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
-import {
-  docGeometryView,
-  landingCandidates,
-} from '@web/spaces/canvas/doc-geometry-view';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
+import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
 import {
@@ -667,44 +664,13 @@ function CanvasSpaceInner({
   const occupants = useCanvasOccupants(awareness);
   const remoteGesture = useRemoteGesture(awareness);
 
-  // What a document write is allowed to read.
-  //
-  // The render buffer holds what the canvas draws, remote gestures included,
-  // and several paths read geometry out of it on the way to writing the
-  // document. `writableNodes` is the one door they go through: it hands back
-  // the buffer with every remote gesture put back at its document position, so
-  // a collaborator's in-flight coordinates cannot be committed by somebody
-  // else's action (#2010, design §5.7 and invariant 7).
-  const flowNodesRef = React.useRef<Node[]>([]);
-  const docNodesRef = React.useRef<ReadonlyArray<CanvasNodeView>>([]);
-  const remoteGestureRef = React.useRef(remoteGesture);
-  // Written in the commit phase, which is as early as React lets a component
-  // observe its own render. A gesture callback runs inside the pointer event,
-  // before that commit, so mid-gesture these hold the previous frame — what
-  // matters is that broadcast and document write read the same one, and that
-  // the last frame is committed by the time the release lands in a later task.
-  React.useLayoutEffect(() => {
-    flowNodesRef.current = flowNodes;
-    docNodesRef.current = nodes;
-    remoteGestureRef.current = remoteGesture;
-  }, [flowNodes, nodes, remoteGesture]);
-  const writableNodes = React.useCallback(
-    (): Node[] =>
-      docGeometryView(
-        flowNodesRef.current,
-        docNodesRef.current.map(toFlowNode),
-        remoteGestureRef.current,
-      ),
-    [],
-  );
-  // The nodes a resize is allowed to absorb: what is on screen, minus whatever
-  // a remote gesture is holding. Absorbing one of those would write its parent
-  // and position while its coordinates are still moving (#2010, design §5.7).
-  const absorbableNodes = React.useCallback(
-    (): Node[] =>
-      landingCandidates(flowNodesRef.current, remoteGestureRef.current),
-    [],
-  );
+  // The nodes as the document has them, in the shape the buffer works in. The
+  // merge effect and the buffer readings are the two consumers.
+  const docPlaces = React.useMemo(() => nodes.map(toFlowNode), [nodes]);
+  // Reading the render buffer means picking one of these by name: the buffer
+  // itself lives inside the hook, so no path can reach the raw array on its way
+  // to a document write (#2010, design §5.7 and invariant 7).
+  const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -1555,12 +1521,12 @@ function CanvasSpaceInner({
   );
   const reportDeletedAssets = React.useCallback(
     (deletedNodes: Node[]): void => {
-      // flowNodesRef still holds the deleted nodes here (Yjs removal
+      // The buffer still holds the deleted nodes here (Yjs removal
       // propagates async); computeDeletedAssetEntries excludes them and
       // skips URLs still referenced by a surviving node (pasted copies).
       const entries = computeDeletedAssetEntries(
         deletedNodes,
-        flowNodesRef.current,
+        buffer.settled(),
         spaceId,
       );
       if (entries.length === 0) return;
@@ -1569,7 +1535,7 @@ function CanvasSpaceInner({
         // as a failed delete. The feed misses one audit entry at worst.
       });
     },
-    [projectId, spaceId],
+    [projectId, spaceId, buffer],
   );
 
   // Persist the (already lock-filtered, read-only-gated by onBeforeDelete)
@@ -2646,7 +2612,7 @@ function CanvasSpaceInner({
      */
     const onCopy = (event: ClipboardEvent): void => {
       if (readOnly || isEditableTarget(document.activeElement)) return;
-      const writable = writableNodes();
+      const writable = buffer.settled();
       const clipboardNodes = captureClipboardWithText(
         writable.filter((node) => node.selected).map((node) => node.id),
         writable,
@@ -2660,7 +2626,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly, captureClipboardWithText, writableNodes]);
+  }, [readOnly, captureClipboardWithText, buffer]);
 
   // ---- Grouping (selection → group / ungroup) ----
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
@@ -2721,7 +2687,7 @@ function CanvasSpaceInner({
     containerRef,
     toFlowPosition: publishedPoint,
   });
-  const gesture = useGestureBroadcast(publisher, flowNodesRef, setLocalGestureIds);
+  const gesture = useGestureBroadcast(publisher, buffer.onScreen, setLocalGestureIds);
   useGestureRelease(gesture);
 
 
@@ -2770,7 +2736,7 @@ function CanvasSpaceInner({
       // place. So a Group still answers which Group a node sits in, and no
       // in-flight coordinate reaches a decision. Which of those nodes may take
       // part in a landing or a Group's new size is said separately, below.
-      const settled = writableNodes();
+      const settled = buffer.settled();
       const byId = new Map(settled.map((item) => [item.id, item]));
       /**
        * Resolve a node to absolute canvas coordinates (a member's stored
@@ -2805,7 +2771,7 @@ function CanvasSpaceInner({
       const ops = planGroupDrag(
         dragged.map(toDragNode),
         settled.map(toDragNode),
-        new Set(remoteGestureRef.current.keys()),
+        buffer.heldByRemote(),
       );
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
       // parent change AND a position change, plus any Group expansion — without
@@ -2826,7 +2792,7 @@ function CanvasSpaceInner({
         });
       });
     },
-    [readOnly, projectId, spaceId, writableNodes, gesture],
+    [readOnly, projectId, spaceId, buffer, gesture],
   );
 
   // Wrap the loose selection in a new Group (group redesign). The Group
@@ -2846,7 +2812,7 @@ function CanvasSpaceInner({
     const groupId = newId();
     // The box is drawn around what is on screen, which is what the user
     // selected, minus whatever a remote gesture is holding.
-    const plan = planGroupCreation(flowNodesRef.current, groupableIds, groupId);
+    const plan = planGroupCreation(buffer.settled(), groupableIds, groupId);
     if (!plan) return;
     const group = createGroupNode(
       groupId,
@@ -2872,6 +2838,7 @@ function CanvasSpaceInner({
     projectId,
     spaceId,
     setFlowNodes,
+    buffer,
   ]);
 
   // Dissolve the selected group — delete the group node only; its members are
@@ -2940,7 +2907,7 @@ function CanvasSpaceInner({
       const { survivors, blocked, reason } = gateBlockedDeletion(
         nodesToDelete,
         edgesToDelete,
-        flowNodesRef.current,
+        buffer.settled(),
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
@@ -2952,26 +2919,26 @@ function CanvasSpaceInner({
       );
       reportDeletedAssets(survivors.nodes);
     },
-    [readOnly, projectId, spaceId, t, reportDeletedAssets],
+    [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer],
   );
 
   // The clipboard-portable form of the current selection — Group-aware: a
   // selected Group brings its members and a member resolves to absolute (see
   // captureClipboard). Used by the copy paths (Cmd+C / menu copy).
   const collectSelectedClipboard = React.useCallback((): ClipboardNode[] => {
-    const writable = writableNodes();
+    const writable = buffer.settled();
     return captureClipboardWithText(
       writable.filter((node) => node.selected).map((node) => node.id),
       writable,
     );
-  }, [captureClipboardWithText, writableNodes]);
+  }, [captureClipboardWithText, buffer]);
 
   // The clipboard-portable form of the right-clicked node. Used by the node
   // menu's copy.
   const nodeMenuClipboard = React.useCallback(
     (): ClipboardNode[] =>
-      captureClipboardWithText([nodeMenu.nodeId], writableNodes()),
-    [nodeMenu.nodeId, captureClipboardWithText, writableNodes],
+      captureClipboardWithText([nodeMenu.nodeId], buffer.settled()),
+    [nodeMenu.nodeId, captureClipboardWithText, buffer],
   );
 
   // Copy writes to the SYSTEM clipboard (same target as Cmd+C) so it round-trips
@@ -2997,7 +2964,7 @@ function CanvasSpaceInner({
   const duplicateTargets = React.useCallback(
     (targetIds: ReadonlyArray<string>): void => {
       if (readOnly || targetIds.length === 0) return;
-      const nodes = writableNodes();
+      const nodes = buffer.settled();
       const payload = captureClipboardWithText(targetIds, nodes);
       if (payload.length === 0) return;
       const ext = externalParentAbs(payload, nodes);
@@ -3016,7 +2983,7 @@ function CanvasSpaceInner({
       });
       setSelectAfterCreate(clones.map((clone) => clone.id));
     },
-    [readOnly, projectId, spaceId, userId, captureClipboardWithText, writableNodes],
+    [readOnly, projectId, spaceId, userId, captureClipboardWithText, buffer],
   );
 
   const copySelection = React.useCallback((): void => {
@@ -3025,11 +2992,11 @@ function CanvasSpaceInner({
 
   const duplicateSelection = React.useCallback((): void => {
     duplicateTargets(
-      flowNodesRef.current
+      buffer.settled()
         .filter((node) => node.selected)
         .map((node) => node.id),
     );
-  }, [duplicateTargets]);
+  }, [duplicateTargets, buffer]);
 
   // Keyboard duplicate — double-platform (Cmd+D on mac, Ctrl+D on windows; see
   // matchDuplicateShortcut). Backs the menu's ⌘D / Ctrl+D hint so the shortcut
@@ -3056,31 +3023,31 @@ function CanvasSpaceInner({
   // contents, not just the frame. Plus every edge touching any deleted node,
   // routed through the lock guard.
   const deleteSelection = React.useCallback((): void => {
-    const selectedIds = flowNodesRef.current
+    const selectedIds = buffer.settled()
       .filter((node) => node.selected)
       .map((node) => node.id);
     if (selectedIds.length === 0) return;
-    const ids = selectionDeletionIds(selectedIds, flowNodesRef.current);
-    const targets = flowNodesRef.current.filter((node) => ids.has(node.id));
+    const ids = selectionDeletionIds(selectedIds, buffer.settled());
+    const targets = buffer.settled().filter((node) => ids.has(node.id));
     const connected = flowEdges.filter(
       (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
     commitGuardedDelete(targets, connected);
-  }, [flowEdges, commitGuardedDelete]);
+  }, [flowEdges, commitGuardedDelete, buffer]);
 
   // Node menu delete: the node — or, for a group, the WHOLE group (frame + every
   // member, via groupDeletionIds) — plus every edge touching any deleted node,
   // routed through the lock guard. Deleting a group deletes its contents too;
   // ungroup (onUngroup) is the separate action that keeps the members.
   const deleteNodeFromMenu = React.useCallback((): void => {
-    const ids = groupDeletionIds(nodeMenu.nodeId, flowNodesRef.current);
-    const targets = flowNodesRef.current.filter((node) => ids.has(node.id));
+    const ids = groupDeletionIds(nodeMenu.nodeId, buffer.settled());
+    const targets = buffer.settled().filter((node) => ids.has(node.id));
     if (targets.length === 0) return;
     const connected = flowEdges.filter(
       (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
     commitGuardedDelete(targets, connected);
-  }, [nodeMenu.nodeId, flowEdges, commitGuardedDelete]);
+  }, [nodeMenu.nodeId, flowEdges, commitGuardedDelete, buffer]);
 
   const deleteEdgeFromMenu = React.useCallback((): void => {
     const edge = flowEdges.find((item) => item.id === edgeMenu.edgeId);
@@ -3181,11 +3148,11 @@ function CanvasSpaceInner({
   // ...); `activateNodeUpload` no-ops for modalities without a picker (3d / web)
   // and for read-only viewers.
   const uploadNodeFromMenu = React.useCallback((): void => {
-    const node = flowNodesRef.current.find(
+    const node = buffer.settled().find(
       (item) => item.id === nodeMenu.nodeId,
     );
     if (node?.type) activateNodeUpload(node.id, node.type as Modality);
-  }, [nodeMenu.nodeId, activateNodeUpload]);
+  }, [nodeMenu.nodeId, activateNodeUpload, buffer]);
   // Fill an existing node from a File — shared by the picker path
   // (double-click / node-menu Upload) and the error-state Retry (#1609 P4).
   const fillUpload = React.useCallback(
@@ -3462,7 +3429,7 @@ function CanvasSpaceInner({
           width: rect.width,
           height: rect.height,
         };
-        const writable = absorbableNodes();
+        const writable = buffer.landing();
         const loose = writable
           .filter(
             (node) =>
@@ -3523,7 +3490,7 @@ function CanvasSpaceInner({
       readOnly,
       activateNodeUpload,
       retryNodeUpload,
-      absorbableNodes,
+      buffer,
       gesture,
     ],
   );

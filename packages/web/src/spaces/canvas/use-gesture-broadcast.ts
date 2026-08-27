@@ -39,7 +39,7 @@ export interface GestureBroadcast {
  * it holds a batch exactly while a gesture is running, and the same set of node
  * ids is what the merge stage keeps off the document.
  * @param publisher - The awareness publisher's gesture commands.
- * @param bufferRef - The render buffer the geometry is read out of.
+ * @param onScreen - Reads the render buffer as the canvas is drawing it.
  * @param onHeldChange - Hands out the nodes this gesture moves, every time that
  *   set changes. The commands need it synchronously, so it lives in a ref here;
  *   the merge stage needs React to see it change, which is what this is for.
@@ -50,7 +50,7 @@ export interface GestureBroadcast {
  */
 export function useGestureBroadcast(
   publisher: GesturePublisher,
-  bufferRef: React.RefObject<ReadonlyArray<GeometryNode>>,
+  onScreen: () => ReadonlyArray<GeometryNode>,
   onHeldChange: (ids: ReadonlySet<string>) => void,
 ): GestureBroadcast {
   // Which Group the gesture is resizing, settled when it starts and read back
@@ -65,7 +65,7 @@ export function useGestureBroadcast(
     const batch = (): GestureBatch =>
       gestureGeometry(
         activeIds.current,
-        bufferRef.current ?? [],
+        onScreen(),
         resizedGroup.current,
       );
     /** Forget the gesture and take its field down. */
@@ -78,7 +78,7 @@ export function useGestureBroadcast(
     return {
       begin: (seedIds, resizedGroupId): void => {
         resizedGroup.current = resizedGroupId;
-        activeIds.current = gestureNodeIds(seedIds, bufferRef.current ?? []);
+        activeIds.current = gestureNodeIds(seedIds, onScreen());
         publisher.publishGesture(batch());
         onHeldChange(activeIds.current);
       },
@@ -106,5 +106,5 @@ export function useGestureBroadcast(
       },
       isRunning: () => activeIds.current.size > 0,
     };
-  }, [publisher, bufferRef, onHeldChange]);
+  }, [publisher, onScreen, onHeldChange]);
 }

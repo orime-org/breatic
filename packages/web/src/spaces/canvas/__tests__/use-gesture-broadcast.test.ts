@@ -54,7 +54,7 @@ function mount(buffer: { current: GeometryNode[] }): {
   const activeIds: { current: ReadonlySet<string> } = { current: new Set() };
   let changes = 0;
   const { result } = renderHook(() =>
-    useGestureBroadcast(recorder(log), buffer, (ids) => {
+    useGestureBroadcast(recorder(log), () => buffer.current, (ids) => {
       activeIds.current = ids;
       changes += 1;
     }),
