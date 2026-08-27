@@ -288,8 +288,9 @@ export const skillMarketQuerySchema = z.object({
 /**
  * Both ids in the attachment path.
  *
- * `aid` for the reason above -- it goes to a query. `cid` is not read by the
- * handler at all, and is declared here so that the path means what it says:
+ * `aid` for the reason `idParamSchema` gives -- it goes to a query. `cid` is
+ * not read by the handler at all, and is declared here so that the path
+ * means what it says:
  * an attachment named under a conversation that is not one is not a request
  * this route should be answering.
  */

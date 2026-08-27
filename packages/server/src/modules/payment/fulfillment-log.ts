@@ -20,9 +20,10 @@ import type { FulfillOutcome } from "@server/modules/payment/payment.service.js"
  * Five of the seven outcomes are ordinary traffic, and `replay` is the most
  * ordinary of all: the confirmation endpoint settles a purchase and Stripe's
  * own event arrives seconds later to find the work done, so every purchase
- * where the buyer came back promptly produces one. The two that mean money
- * moved without credits following it — `mismatch` and `unknown` — have to
- * stand out from that, or nobody will ever see them.
+ * where the buyer came back promptly produces one. The two somebody has to
+ * look at — `unknown`, a session we hold no row for, and `mismatch`, a
+ * session Stripe ran at a price our table disagrees with — have to stand out
+ * from that, or nobody will ever see them.
  *
  * Written as separate calls per level rather than one through a variable
  * holding the method: pino's level methods live on the prototype and use
