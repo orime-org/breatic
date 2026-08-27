@@ -343,6 +343,30 @@ describe('the bubble bar shell', () => {
     expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
   });
 
+  // And comes back with it. The pointer never left the slot, so nothing else
+  // is going to ask for the menu again: hovering is what opens one, and the
+  // pointer has been resting there the whole time.
+  it('brings the alignment menu back when the slot lights up again', async () => {
+    const editor = open('<pre><code>some code</code></pre><p>a paragraph</p>');
+    mount(editor);
+    await selectWithFocus(editor, 3, 18);
+    await hoverOpen('doc-bubble-align');
+
+    await act(async () => {
+      editor.commands.setTextSelection({ from: 3, to: 8 });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
+    });
+
+    await act(async () => {
+      editor.commands.setTextSelection({ from: 3, to: 18 });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-bubble-align-menu')).not.toBeNull();
+    });
+  });
+
   describe('controls whose command nobody has written yet', () => {
     /**
      * They look and behave the way the demo draws them — the alignment rows,

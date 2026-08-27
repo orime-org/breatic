@@ -73,6 +73,15 @@ export interface BlockTypeItem {
    */
   canRun?: (editor: Editor) => boolean;
   /**
+   * The schema node this row wraps its content in, for the rows that wrap.
+   *
+   * A list holds list items which hold paragraphs, so a position inside one
+   * is in the LIST — the paragraph is its content. Naming that node here
+   * rather than in a table of its own is what keeps the two in step: adding a
+   * row and saying whether it wraps become the same edit.
+   */
+  wrapperNode?: string;
+  /**
    * Drawn greyed out, the way demo:588 draws it.
    *
    * The demo greys one row, and for a reason of its own: the task list has no
@@ -117,6 +126,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     run: (e) => {
       e.chain().focus().toggleBulletList().run();
     },
+    wrapperNode: 'bulletList',
   },
   {
     id: 'ordered-list',
@@ -127,6 +137,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     run: (e) => {
       e.chain().focus().toggleOrderedList().run();
     },
+    wrapperNode: 'orderedList',
   },
   {
     id: 'quote',
@@ -137,6 +148,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     run: (e) => {
       e.chain().focus().toggleBlockquote().run();
     },
+    wrapperNode: 'blockquote',
   },
   {
     id: 'code-block',
@@ -176,12 +188,11 @@ function blockTypeOf(
   return null;
 }
 
-/** The wrappers that stand for a block type of their own. */
-const WRAPPERS = new Map<string, BlockTypeId>([
-  ['bulletList', 'bullet-list'],
-  ['orderedList', 'ordered-list'],
-  ['blockquote', 'quote'],
-]);
+/** The wrapping rows, keyed by the node each one wraps its content in. */
+const WRAPPERS = new Map<string, BlockTypeId>(
+  BLOCK_TYPE_ITEMS.flatMap((item) =>
+    (item.wrapperNode === undefined ? [] : [[item.wrapperNode, item.id] as const])),
+);
 
 /**
  * Which block a position counts as.
@@ -225,16 +236,25 @@ function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
 export function currentBlockType(editor: Editor): BlockTypeId {
   const { doc, selection } = editor.state;
   const seen = new Set<BlockTypeId | null>();
+  let first: BlockTypeId | null = null;
   doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+    // The answer comes from the anchor once two types are in, so the rest of
+    // the walk has nothing left to add.
+    if (seen.size > 1) return false;
     if (!node.isTextblock) return true;
-    seen.add(blockTypeAt(doc, pos + 1));
+    const type = blockTypeAt(doc, pos + 1);
+    first ??= type;
+    seen.add(type);
     return false;
   });
   if (seen.size === 1) {
     const [only] = [...seen];
     return only ?? 'paragraph';
   }
-  return blockTypeAt(doc, selection.anchor) ?? 'paragraph';
+  // A select-all anchors at 0, which resolves to the document node rather
+  // than to any text block. Its anchor end is where the document starts, so
+  // the first block the walk reached is the one standing there.
+  return blockTypeAt(doc, selection.anchor) ?? first ?? 'paragraph';
 }
 
 /** The block types alignment has anything to say about. */

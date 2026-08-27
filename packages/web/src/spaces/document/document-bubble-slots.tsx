@@ -308,14 +308,6 @@ export const AlignSlot = React.memo(function AlignSlot({
     [appliesHere, onOpenChange],
   );
 
-  // The selection can move under an open menu — a keyboard selection reaches
-  // a block alignment does not act on while the pointer rests on the menu —
-  // and the slot greys out where it stands. The menu it dropped goes with it.
-  const open = openId === id;
-  React.useEffect(() => {
-    if (open && !appliesHere) onOpenChange(id, false);
-  }, [open, appliesHere, id, onOpenChange]);
-
   return (
     <SlotShell
       id={id}
@@ -328,7 +320,13 @@ export const AlignSlot = React.memo(function AlignSlot({
       contentClassName={ROWS}
       container={container}
       scroller={scroller}
-      openId={openId}
+      // The selection can move under an open menu — a keyboard selection
+      // reaches a block alignment does not act on while the pointer rests on
+      // the menu — and the slot greys out where it stands. Hiding the open id
+      // rather than clearing it takes the menu with it and brings it back when
+      // alignment applies again: the pointer never left, so nothing else is
+      // going to ask for the menu a second time.
+      openId={appliesHere ? openId : null}
       onOpenChange={askOpen}
     >
       {ALIGN_ITEMS.map((item) => (
