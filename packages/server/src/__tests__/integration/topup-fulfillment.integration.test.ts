@@ -87,6 +87,7 @@ import {
   fulfillPayment,
   handlePaymentFailed,
 } from "@server/modules/payment/payment.service.js";
+import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
 
 try {
   initCore(process.env);
@@ -747,6 +748,68 @@ describe("what a purchase agreed to is read off our own row", () => {
         WHERE payment_id = ${paymentId}
       `;
       expect(mail!.n).toBe(1);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  // Three columns nothing else reads back, each the only place a later step
+  // can find what it needs: #14 refunds to the payment intent, the consent
+  // record has to name the person who gave it, and a purchase is born
+  // pointing at no studio so that designating it stays its own step.
+  it("writes down what the settlement leaves for later steps", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      stripe.checkout.sessions.retrieve.mockResolvedValue(paidSession(sessionId));
+
+      expect((await fulfillPayment(sessionId, null)).status).toBe("granted");
+
+      const [payment] = await sql<{ stripe_payment_intent_id: string | null }[]>`
+        SELECT stripe_payment_intent_id FROM payments WHERE id = ${paymentId}
+      `;
+      expect(payment!.stripe_payment_intent_id).toBe(`pi_${sessionId}`);
+
+      const [consent] = await sql<{ user_id: string }[]>`
+        SELECT user_id FROM purchase_consents WHERE payment_id = ${paymentId}
+      `;
+      expect(consent!.user_id).toBe(userId);
+
+      const [lot] = await sql<{ designated_studio_id: string | null }[]>`
+        SELECT designated_studio_id FROM credit_lots WHERE payment_id = ${paymentId}
+      `;
+      expect(lot!.designated_studio_id).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  // The deadline the letter names is anchored on the lot, and #14 judges
+  // eligibility off the same column. `payments` carries `$onUpdate`, so
+  // writing the tax during settlement moves its `updated_at` — anchoring
+  // there would let the date the buyer was told drift from the one the
+  // refund reads.
+  it("anchors the refund deadline on the lot, not on the payment", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // Old enough that the two rows cannot land on the same UTC day.
+      await sql`
+        UPDATE payments SET created_at = now() - interval '3 days'
+        WHERE id = ${paymentId}
+      `;
+      stripe.checkout.sessions.retrieve.mockResolvedValue(paidSession(sessionId));
+      expect((await fulfillPayment(sessionId, null)).status).toBe("granted");
+
+      const [lot] = await sql<{ created_at: Date }[]>`
+        SELECT created_at FROM credit_lots WHERE payment_id = ${paymentId}
+      `;
+      const before = await getConfirmationView(paymentId);
+      expect(before!.grantedAt?.getTime()).toBe(lot!.created_at.getTime());
+
+      // Anything that touches the payment row moves its `updated_at`.
+      await sql`UPDATE payments SET tax_cents = 999 WHERE id = ${paymentId}`;
+
+      const after = await getConfirmationView(paymentId);
+      expect(after!.grantedAt?.getTime()).toBe(lot!.created_at.getTime());
     } finally {
       await dropUser(userId);
     }

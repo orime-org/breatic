@@ -54,10 +54,19 @@ vi.mock("ai", () => ({
 // Only `sendMail` is replaced; the rest of core is the real thing, because
 // this suite talks to a real database. What the letter says is the point of
 // the resend case below, and there is no other way to read it.
+// The double answers with a member of the real `SendMailResult` union, and
+// the one that means a letter went out: `purchase-mail.ts` reads
+// `result.status === "sent"` and files anything else as skipped, so a shape
+// of its own would have left the sent branch unreachable in this suite.
 const sentMail =
-  vi.fn<(mail: { to: string; subject: string; html: string; text: string }) => Promise<{ ok: true }>>(
-    async () => ({ ok: true }) as const,
-  );
+  vi.fn<
+    (mail: {
+      to: string;
+      subject: string;
+      html: string;
+      text: string;
+    }) => Promise<{ status: "sent" }>
+  >(async () => ({ status: "sent" }) as const);
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof BreaticCore>();
   return {
@@ -523,6 +532,11 @@ describe("POST /payment/:id/resend-confirmation", () => {
       expect(letter.text).not.toContain(
         refundLinesAt(REFUND_CREDITS_VERSION, "en")[0],
       );
+      // The zone travels the same way and fails the same way — read it wrong
+      // and the fall back to UTC is silent, while the language assertions
+      // above stay green.
+      expect(letter.text).toContain("(Asia/Tokyo)");
+      expect(letter.text).toContain("(UTC)");
     } finally {
       await dropBuyer(buyer.userId);
     }

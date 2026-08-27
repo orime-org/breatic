@@ -204,7 +204,7 @@ describe("the confirmation carries all eight things", () => {
     expect(mail.text).toContain("4200");
   });
 
-  it("prints the refund deadline as a date, never as a duration", () => {
+  it("prints the refund deadline as the moment it falls, never as a duration", () => {
     const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
     // Thirty UTC calendar days on from 2026-08-26 is 2026-09-25.
     const deadline = mail.text

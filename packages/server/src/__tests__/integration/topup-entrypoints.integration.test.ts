@@ -507,6 +507,58 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     }
   });
 
+  // Seven sections of the credits overlay hang off this one endpoint, so both
+  // guards on it are load-bearing: the rate limit, and the switch that keeps a
+  // deployment selling nothing from reaching for Stripe on every open.
+  it("turns a caller away once they are over the limit", async () => {
+    const buyer = await seedBuyer();
+    try {
+      // `config/rate-limits.yaml` gives `credits-read` sixty a minute.
+      const codes: number[] = [];
+      for (let i = 0; i < 62; i += 1) {
+        codes.push(
+          (
+            await app.request("/api/v1/credits/overview", {
+              headers: { cookie: buyer.cookie },
+            })
+          ).status,
+        );
+      }
+      expect(codes).toContain(429);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("answers without reaching Stripe where this deployment sells nothing", async () => {
+    const buyer = await seedBuyer();
+    initCore({
+      ...process.env,
+      PAYMENT_ENABLED: "false",
+      STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    });
+    stripe.checkout.sessions.retrieve.mockClear();
+    try {
+      const res = await app.request("/api/v1/credits/overview", {
+        headers: { cookie: buyer.cookie },
+      });
+
+      // The overlay still opens and still shows what the account holds; what
+      // it stops doing is asking Stripe about purchases nobody can make.
+      expect(res.status).toBe(200);
+      expect(stripe.checkout.sessions.retrieve).not.toHaveBeenCalled();
+    } finally {
+      initCore({
+        ...process.env,
+        PAYMENT_ENABLED: "true",
+        STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+        STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+      });
+      await dropBuyer(buyer.userId);
+    }
+  });
+
   it("settles a payment that failed and was paid afterwards", async () => {
     const buyer = await seedBuyer();
     const { paymentId, sessionId } = await seedPending(buyer.userId, {

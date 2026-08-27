@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -235,8 +235,10 @@ describe('the credits overlay, section by section', () => {
     // The fixtures carry fixed dates, so the clock they are read against has
     // to be fixed too. The refunds screen drops a purchase once its thirty
     // days are up, which without this would turn every fixture into a test
-    // that passes until a date and then stops.
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // that passes until a date and then stops. Only `Date` is taken over —
+    // what has to hold still is which day it is, and leaving the timers alone
+    // keeps this file at a fifth of the wall time.
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
     useCurrentUserStore.getState().clear();
     useCurrentUserStore.getState().setUser(ALEX);
@@ -1004,14 +1006,11 @@ describe('the credits overlay, section by section', () => {
     // this screen then reads, and rows with no lot would land under a heading
     // offering to refund them.
     it('reads its own list rather than the one the purchases screen filled', async () => {
-      await openOn('lots', true);
+      const user = await openOn('lots', true);
       await panel();
       fetchCreditLots.mockClear();
 
-      // `fireEvent` rather than `userEvent`: the dialog sets
-      // `pointer-events: none` on the body while it is open, and userEvent
-      // refuses to click through that.
-      fireEvent.click(document.getElementById('credits-tab-refunds')!);
+      await user.click(document.getElementById('credits-tab-refunds')!);
       await panel();
 
       // A shared key would have served this screen from that cache instead.
