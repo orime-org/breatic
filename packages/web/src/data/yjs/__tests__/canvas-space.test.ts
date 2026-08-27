@@ -1054,6 +1054,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
 
     it('setNodeParent sets parentId + relative position (join a Group)', () => {
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 0, y: 0 } }));
       addNode(PID, SID, sampleFields('image', {}, { id: 'n', position: { x: 300, y: 300 } }));
       setNodeParent(PID, SID, 'n', 'f', { x: 20, y: 30 });
       expect(parentOf('n')).toBe('f');
@@ -1073,6 +1074,25 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       expect(posOf('f')).toEqual({ x: -10, y: -20 });
       expect(dataOf('f', 'width')).toBe(320);
       expect(dataOf('f', 'height')).toBe(280);
+    });
+
+    it('resizeGroup says whether it wrote, so a caller can drop the rest of its batch', () => {
+      // A collaborator can drop the Group between the frame this end planned
+      // its resize on and the transaction that applies it. The member positions
+      // and the joins in that batch are all measured against an origin this
+      // call would have written, so the caller has to hear that it did not.
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 0, y: 0 } }));
+      expect(resizeGroup(PID, SID, 'f', { x: -10, y: -20 }, 320, 280)).toBe(true);
+      expect(resizeGroup(PID, SID, 'gone', { x: 0, y: 0 }, 100, 100)).toBe(false);
+    });
+
+    it('setNodeParent refuses a parent the document no longer has', () => {
+      // Writing it would leave the node bound to a Group nobody can see, with a
+      // position measured against an origin that is not there.
+      addNode(PID, SID, sampleFields('image', {}, { id: 'n', position: { x: 300, y: 300 } }));
+      setNodeParent(PID, SID, 'n', 'gone', { x: 20, y: 30 });
+      expect(parentOf('n')).toBeUndefined();
+      expect(posOf('n')).toEqual({ x: 300, y: 300 });
     });
 
     it('expandGroup grows the Group and reanchors members so their absolute position is preserved', () => {

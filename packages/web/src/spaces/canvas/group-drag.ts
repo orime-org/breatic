@@ -206,27 +206,31 @@ export function planGroupDrag(
       // every one of them is stated against where the origin is going, the one
       // the pointer moved along with the ones it never touched. Each still
       // takes a single position write (#2010, acceptance 9), and each keeps the
-      // absolute place it already had.
-      const dx = grown.x - groupRect.x;
-      const dy = grown.y - groupRect.y;
-      if (dx === 0 && dy === 0) continue;
-      const stated = [...reparents, ...positions];
+      // absolute place it already had. A Group that only got bigger keeps its
+      // origin, and with it every member's position.
+      if (grown.x === groupRect.x && grown.y === groupRect.y) continue;
+      const stated = new Map(
+        [...reparents, ...positions].map((op) => [op.id, op]),
+      );
       for (const member of members) {
-        const op = stated.find((o) => o.id === member.id);
-        if (op !== undefined) {
-          op.position = { x: op.position.x - dx, y: op.position.y - dy };
-          continue;
-        }
-        positions.push({
-          id: member.id,
-          position: {
-            x: member.absPos.x - grown.x,
-            y: member.absPos.y - grown.y,
-          },
-        });
+        const position = {
+          x: member.absPos.x - grown.x,
+          y: member.absPos.y - grown.y,
+        };
+        const op = stated.get(member.id);
+        if (op === undefined) positions.push({ id: member.id, position });
+        else op.position = position;
       }
     }
   }
 
-  return { reparents, positions, expansions };
+  // An expansion writes the Group's position along with its size, so a dragged
+  // Group that also grew has already been placed — a second op for it would be
+  // a second write of the one key (#2010, acceptance 9).
+  const grown = new Set(expansions.map((e) => e.groupId));
+  return {
+    reparents,
+    positions: positions.filter((op) => !grown.has(op.id)),
+    expansions,
+  };
 }

@@ -1629,6 +1629,10 @@ export function setNodeParent(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!(node instanceof Y.Map)) return;
+  // The Group can go between the frame a caller planned against and this call.
+  // Binding the node to it anyway leaves a parent nobody can see and a position
+  // measured against an origin that is not there.
+  if (parentId !== null && !(nodesMap.get(parentId) instanceof Y.Map)) return;
   doc.transact(() => {
     if (parentId === null) node.delete('parentId');
     else node.set('parentId', parentId);
@@ -1650,6 +1654,7 @@ export function setNodeParent(
  * @param position.y - New y coordinate.
  * @param width - The Group's new width.
  * @param height - The Group's new height.
+ * @returns Whether the Group was still there to write.
  */
 export function resizeGroup(
   projectId: string,
@@ -1658,18 +1663,19 @@ export function resizeGroup(
   position: { x: number; y: number },
   width: number,
   height: number,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
+  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return false;
   const data = group.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!(data instanceof Y.Map)) return false;
   doc.transact(() => {
     group.set('position', position);
     data.set('width', width);
     data.set('height', height);
   }, CANVAS_UNDO);
+  return true;
 }
 
 /**

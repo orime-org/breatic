@@ -5,7 +5,7 @@ import type { Node } from '@xyflow/react';
 
 import { attachOccupants } from '@web/spaces/canvas/attach-occupants';
 import type { GestureGeometry, GestureTable } from '@web/spaces/canvas/gesture-table';
-import { sameData } from '@web/spaces/canvas/mirror-selection';
+import { sameData, sameRenderInputs } from '@web/spaces/canvas/mirror-selection';
 
 /** The three inputs the merge arbitrates between, besides the document. */
 export interface MergeInput {
@@ -27,31 +27,6 @@ interface ResolvedGeometry {
   height?: number;
 }
 
-/**
- * Whether two ReactFlow nodes have identical render inputs, so the previous
- * object reference can be reused. Compares every field `toFlowNode` sets (type,
- * position, parentId, group width/height) plus the carried local flags
- * (selected / dragging) and `data` (shallow). Reusing the reference for
- * unchanged nodes is what lets `React.memo` bail — otherwise a change to ONE
- * node hands ALL nodes a fresh object and every node re-renders (#1647 R1).
- * @param a - The previous render-buffer node.
- * @param b - The freshly merged node.
- * @returns True when nothing that affects rendering changed.
- */
-function sameRenderInputs(a: Node, b: Node): boolean {
-  return (
-    a.type === b.type &&
-    a.parentId === b.parentId &&
-    a.position.x === b.position.x &&
-    a.position.y === b.position.y &&
-    a.width === b.width &&
-    a.height === b.height &&
-    a.selected === b.selected &&
-    a.dragging === b.dragging &&
-    a.hidden === b.hidden &&
-    sameData(a.data, b.data)
-  );
-}
 
 /**
  * Build the geometry a remote gesture is asking for, in the space ReactFlow
@@ -164,7 +139,7 @@ export function mergeCanvasNodes(
         }),
     };
     const withHolders = attachOccupants(merged, occupants);
-    if (held !== undefined && sameRenderInputs(held, withHolders)) return held;
+    if (held !== undefined && sameRenderInputs(held, withHolders, sameData)) return held;
     changed = true;
     return withHolders;
   });

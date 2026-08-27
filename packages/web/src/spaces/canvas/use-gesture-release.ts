@@ -3,14 +3,6 @@
 
 import * as React from 'react';
 
-/** The part of a running gesture this net needs to see. */
-export interface ReleasableGesture {
-  /** Whether a gesture is currently held. */
-  isRunning: () => boolean;
-  /** Drop the gesture with no final value. */
-  abandon: () => void;
-}
-
 /**
  * End a gesture that xyflow never reported a stop for.
  *
@@ -32,35 +24,33 @@ export interface ReleasableGesture {
  * `CanvasSpace.tsx` already runs on. Losing focus catches the rest of that
  * class: released outside and then away to another window, where no move ever
  * comes back to say the button is up.
- * @param gesture - The gesture to watch.
+ *
+ * This hook says when to drop, and the gesture itself says whether there is
+ * anything to drop — `abandon` is a no-op with none running.
+ * @param abandon - Drop the gesture with no final value.
  */
-export function useGestureRelease(gesture: ReleasableGesture): void {
+export function useGestureRelease(abandon: () => void): void {
   React.useEffect(() => {
-    /** Drop whatever gesture is still standing. */
-    const drop = (): void => {
-      if (!gesture.isRunning()) return;
-      gesture.abandon();
-    };
     /** Give xyflow's own stop the next task to run first, then drop. */
     const onRelease = (): void => {
-      window.setTimeout(drop, 0);
+      window.setTimeout(abandon, 0);
     };
     /**
      * Drop a gesture whose release never reached the page.
      * @param event - The pointer move.
      */
     const onMove = (event: PointerEvent): void => {
-      if (event.buttons === 0) drop();
+      if (event.buttons === 0) abandon();
     };
     window.addEventListener('pointerup', onRelease);
     window.addEventListener('pointercancel', onRelease);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('blur', drop);
+    window.addEventListener('blur', abandon);
     return (): void => {
       window.removeEventListener('pointerup', onRelease);
       window.removeEventListener('pointercancel', onRelease);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('blur', drop);
+      window.removeEventListener('blur', abandon);
     };
-  }, [gesture]);
+  }, [abandon]);
 }

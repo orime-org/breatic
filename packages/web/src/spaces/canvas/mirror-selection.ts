@@ -228,12 +228,13 @@ function sameGroupData(a: unknown, b: unknown): boolean {
  * @param sameData - How to compare the two nodes' data records.
  * @returns True when nothing that affects rendering changed.
  */
-function sameRenderInputs(
+export function sameRenderInputs(
   a: Node,
   b: Node,
   sameData: (x: unknown, y: unknown) => boolean,
 ): boolean {
   return (
+    a.type === b.type &&
     a.parentId === b.parentId &&
     a.position.x === b.position.x &&
     a.position.y === b.position.y &&
@@ -260,7 +261,7 @@ function sameRenderInputs(
  * @param sameData - How to compare the two nodes' data records.
  * @returns The fresh nodes with unchanged entries' previous references reused.
  */
-export function reconcileRenderNodes(
+function reconcileRenderNodes(
   prev: ReadonlyArray<Node>,
   fresh: ReadonlyArray<Node>,
   sameData: (a: unknown, b: unknown) => boolean,

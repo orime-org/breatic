@@ -91,6 +91,17 @@ describe('planGroupDrag', () => {
     expect((origin?.y ?? 0) + (untouched?.position.y ?? 0)).toBe(100);
   });
 
+  it('takes one position write for a dragged Group that also grows', () => {
+    // The expansion writes the Group's position along with its size, so a
+    // second position op for the same Group is a second write of one key
+    // (#2010, acceptance 9).
+    const f = dn('f', 'group', 0, 0, 200, 200);
+    const m = dn('m', 'image', 24, 24, 152, 166, 'f'); // bottom 190 > 200 - 24
+    const ops = planGroupDrag([f, m], [f, m]);
+    expect(ops.expansions.map((e) => e.groupId)).toEqual(['f']);
+    expect(ops.positions.map((p) => p.id)).not.toContain('f');
+  });
+
   it('leaves an untouched member alone when the Group does not move', () => {
     // Growing right and down keeps the origin, so nothing about the members
     // needs restating and the drag stays at one write for the node it moved.
