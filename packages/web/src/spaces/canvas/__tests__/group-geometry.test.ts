@@ -349,7 +349,9 @@ describe('planGroupResize', () => {
       width: 350,
       height: 300,
     });
-    expect(plan?.members).toEqual([{ id: 'm1', position: { x: 74, y: 24 } }]);
+    expect(plan?.members).toEqual([
+      { id: 'm1', position: { x: 74, y: 24 }, parentId: 'g1' },
+    ]);
   });
 
   it('adds the travel to where the document has the Group now', () => {
@@ -366,7 +368,9 @@ describe('planGroupResize', () => {
       height: 300,
     });
     expect(plan?.group.position).toEqual({ x: 450, y: 200 });
-    expect(plan?.members).toEqual([{ id: 'm1', position: { x: 74, y: 24 } }]);
+    expect(plan?.members).toEqual([
+      { id: 'm1', position: { x: 74, y: 24 }, parentId: 'g1' },
+    ]);
     // What the two writes mean together: the member is exactly where the
     // document already had it, and it is still inside the Group.
     const memberAbsolute = 450 + 74;
@@ -393,7 +397,9 @@ describe('planGroupResize', () => {
       width: 100,
       height: 100,
     });
-    expect(plan?.members).toEqual([{ id: 'other', position: { x: 60, y: 10 } }]);
+    expect(plan?.members).toEqual([
+      { id: 'other', position: { x: 60, y: 10 }, parentId: 'g2' },
+    ]);
   });
 
   it('says nothing at all about a Group the document no longer has', () => {
@@ -415,6 +421,8 @@ describe('planGroupResize', () => {
       height: 330,
     });
     expect(plan?.group.position).toEqual({ x: 150, y: 170 });
-    expect(plan?.members).toEqual([{ id: 'm1', position: { x: 74, y: 54 } }]);
+    expect(plan?.members).toEqual([
+      { id: 'm1', position: { x: 74, y: 54 }, parentId: 'g1' },
+    ]);
   });
 });

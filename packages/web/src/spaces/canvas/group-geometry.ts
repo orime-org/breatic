@@ -314,7 +314,7 @@ export interface GroupResizeWrites {
   /** The Group's own new geometry. */
   group: { position: Point; width: number; height: number };
   /** Each member's new position relative to the Group. */
-  members: Array<{ id: string; position: Point }>;
+  members: Array<{ id: string; position: Point; parentId: string }>;
 }
 
 /**
@@ -365,6 +365,7 @@ export function planGroupResize(
       .map((node) => ({
         id: node.id,
         position: { x: node.position.x - dx, y: node.position.y - dy },
+        parentId: groupId,
       })),
   };
 }

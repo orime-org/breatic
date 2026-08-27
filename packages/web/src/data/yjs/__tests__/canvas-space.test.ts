@@ -223,7 +223,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
   it('setNodePosition updates the node position', () => {
     addNode(PID, SID, sampleFields('text', { content: 'hi' }));
-    setNodePosition(PID, SID, 'n1', { x: 99, y: 88 });
+    setNodePosition(PID, SID, 'n1', { x: 99, y: 88 }, null);
     expect(readNodes(doc())[0].position).toEqual({ x: 99, y: 88 });
   });
 
@@ -904,7 +904,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const undo = createCanvasUndoManager(doc());
       addNode(PID, SID, sampleFields('image', {}, { id: 'img1' }));
       const depth = undo.undoStack.length;
-      setNodePosition(PID, SID, 'img1', { x: 99, y: 99 });
+      setNodePosition(PID, SID, 'img1', { x: 99, y: 99 }, null);
       expect(undo.undoStack.length).toBe(depth + 1);
     });
 
@@ -975,8 +975,8 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       const undo = createCanvasUndoManager(doc());
       const depth = undo.undoStack.length;
       runCanvasUndoBatch(PID, SID, () => {
-        setNodePosition(PID, SID, 'a', { x: 10, y: 10 });
-        setNodePosition(PID, SID, 'b', { x: 60, y: 60 });
+        setNodePosition(PID, SID, 'a', { x: 10, y: 10 }, null);
+        setNodePosition(PID, SID, 'b', { x: 60, y: 60 }, null);
       });
       expect(undo.undoStack.length).toBe(depth + 1); // one entry, not two
       undo.undo();
@@ -1084,6 +1084,21 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 0, y: 0 } }));
       expect(resizeGroup(PID, SID, 'f', { x: -10, y: -20 }, 320, 280)).toBe(true);
       expect(resizeGroup(PID, SID, 'gone', { x: 0, y: 0 }, 100, 100)).toBe(false);
+    });
+
+    it('setNodePosition refuses a position measured against a parent the node no longer has', () => {
+      // A drag-stop states a member's position relative to its Group. Ungroup
+      // on another client releases every member — absolute position, no
+      // parentId — and this end can plan against the frame before that arrived.
+      // Writing the relative number onto a node that is now top-level puts it
+      // wherever those two numbers happen to land.
+      addNode(PID, SID, sampleFields('group', { width: 200, height: 200 }, { id: 'f', position: { x: 1000, y: 1000 } }));
+      addNode(PID, SID, sampleFields('image', {}, { id: 'm', position: { x: 1020, y: 1020 } }));
+      setNodePosition(PID, SID, 'm', { x: 30, y: 30 }, 'f');
+      expect(posOf('m')).toEqual({ x: 1020, y: 1020 });
+      // Stated against the parent it actually has, the write goes in.
+      setNodePosition(PID, SID, 'm', { x: 40, y: 40 }, null);
+      expect(posOf('m')).toEqual({ x: 40, y: 40 });
     });
 
     it('setNodeParent refuses a parent the document no longer has', () => {

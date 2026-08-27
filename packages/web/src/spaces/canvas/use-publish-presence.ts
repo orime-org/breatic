@@ -49,8 +49,6 @@ export interface PublishPresenceInput {
   toFlowPosition: (screen: Point) => Point;
 }
 
-/** The geometry a gesture is showing, keyed by node id. */
-
 /** The shape this client writes into awareness. */
 interface Presence {
   /** The nodes this client is holding, or null while it holds none. */

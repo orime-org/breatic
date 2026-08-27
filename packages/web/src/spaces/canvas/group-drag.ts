@@ -54,6 +54,8 @@ interface ReparentOp {
 interface PositionOp {
   id: string;
   position: { x: number; y: number };
+  /** The Group this position is measured against, or null when absolute. */
+  parentId: string | null;
 }
 
 /** A Group expansion: the new rect wrapping an overflowing in-group member. */
@@ -131,7 +133,7 @@ export function planGroupDrag(
   for (const node of dragged) {
     if (node.type === 'group') {
       // a dragged Group persists its absolute position; children follow natively
-      positions.push({ id: node.id, position: node.absPos });
+      positions.push({ id: node.id, position: node.absPos, parentId: null });
       continue;
     }
     const decision = decisionById.get(node.id);
@@ -159,6 +161,7 @@ export function planGroupDrag(
         parent !== undefined
           ? toRelativePosition(node.absPos, parent.absPos)
           : node.absPos,
+      parentId: parent !== undefined ? parent.id : null,
     });
   }
 
@@ -218,7 +221,9 @@ export function planGroupDrag(
           y: member.absPos.y - grown.y,
         };
         const op = stated.get(member.id);
-        if (op === undefined) positions.push({ id: member.id, position });
+        if (op === undefined) {
+          positions.push({ id: member.id, position, parentId: group.id });
+        }
         else op.position = position;
       }
     }

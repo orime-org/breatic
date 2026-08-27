@@ -585,17 +585,22 @@ export function removeNode(
  * @param position - The node's new canvas coordinates.
  * @param position.x - New x coordinate.
  * @param position.y - New y coordinate.
+ * @param parentId - The Group the position is measured against, or null for an
+ *   absolute one. A member's position means nothing without it, and the node
+ *   can leave its Group between the frame a caller planned on and this call.
  */
 export function setNodePosition(
   projectId: string,
   spaceId: string,
   nodeId: string,
   position: { x: number; y: number },
+  parentId: string | null,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!node) return;
+  if ((node.get('parentId') ?? null) !== parentId) return;
   doc.transact(() => node.set('position', position), CANVAS_UNDO);
 }
 

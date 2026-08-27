@@ -218,11 +218,13 @@ function sameGroupData(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Whether two group render nodes have identical render inputs. Like the node
- * merge's own comparison (`merge-canvas-nodes.ts`) but adds the derived
- * `draggable` / `zIndex` `renderNodes` sets, and leaves the `data` comparison
- * to the caller: a group's carries a rebuilt bounds array, a plain node's is
- * handed down whole.
+ * Whether two render nodes have identical render inputs: every field
+ * `toFlowNode` sets, the carried local flags, and the `draggable` / `zIndex`
+ * `renderNodes` derives. The `data` comparison is the caller's to give — a
+ * group's carries a rebuilt bounds array, a plain node's is handed down whole.
+ *
+ * Both the merge stage and the render pass reuse a previous object when this
+ * holds, which is what lets `React.memo` bail.
  * @param a - The previous render node.
  * @param b - The freshly built render node.
  * @param sameData - How to compare the two nodes' data records.

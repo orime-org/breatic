@@ -2809,7 +2809,7 @@ function CanvasSpaceInner({
             setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
           }
           for (const p of ops.positions) {
-            setNodePosition(projectId, spaceId, p.id, p.position);
+            setNodePosition(projectId, spaceId, p.id, p.position, p.parentId);
           }
           for (const e of ops.expansions) {
             resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
@@ -3459,7 +3459,7 @@ function CanvasSpaceInner({
       },
       reportGroupResize: (): void => {
         if (readOnly) return;
-        if (gesture.isRunning()) gesture.update();
+        gesture.update();
       },
       commitGroupResize: (groupId, rect): void => {
         // Taken before anything can return, so the answer this end gave on the
@@ -3545,7 +3545,13 @@ function CanvasSpaceInner({
             );
             if (!placed) return;
             for (const member of writes.members) {
-              setNodePosition(projectId, spaceId, member.id, member.position);
+              setNodePosition(
+                projectId,
+                spaceId,
+                member.id,
+                member.position,
+                member.parentId,
+              );
             }
             for (const join of joins) {
               setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);

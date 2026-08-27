@@ -51,7 +51,9 @@ describe('planGroupDrag', () => {
     const m = dn('m', 'image', 150, 150, 100, 100, 'f'); // center (200,200) edge → in, body to 250
     const ops = planGroupDrag([m], [f, m]);
     expect(ops.reparents).toEqual([]); // membership unchanged
-    expect(ops.positions).toEqual([{ id: 'm', position: { x: 150, y: 150 } }]); // relative
+    expect(ops.positions).toEqual([
+      { id: 'm', position: { x: 150, y: 150 }, parentId: 'f' },
+    ]); // relative
     // body reaches 250 → Group grows to 250 + 24 padding = 274 so the member keeps 24px.
     expect(ops.expansions).toEqual([
       { groupId: 'f', position: { x: 0, y: 0 }, width: 274, height: 274 },
@@ -70,7 +72,9 @@ describe('planGroupDrag', () => {
     // moving the Group to, so the whole drag takes one write per node and the
     // member lands at the absolute place the pointer left it (#2010,
     // acceptance 9): -34 + 24 = -10.
-    expect(ops.positions).toEqual([{ id: 'm', position: { x: 24, y: 90 } }]);
+    expect(ops.positions).toEqual([
+      { id: 'm', position: { x: 24, y: 90 }, parentId: 'f' },
+    ]);
   });
 
   it('C-left: an untouched member of the growing Group stays where it is', () => {
@@ -117,7 +121,9 @@ describe('planGroupDrag', () => {
     const f = dn('f', 'group', 300, 300, 200, 200);
     const m = dn('m', 'image', 350, 350, 40, 40, 'f'); // moved natively with the group
     const ops = planGroupDrag([f], [f, m]);
-    expect(ops.positions).toEqual([{ id: 'f', position: { x: 300, y: 300 } }]);
+    expect(ops.positions).toEqual([
+      { id: 'f', position: { x: 300, y: 300 }, parentId: null },
+    ]);
     expect(ops.reparents).toEqual([]);
     expect(ops.expansions).toEqual([]); // member already inside
   });
@@ -128,7 +134,9 @@ describe('planGroupDrag', () => {
     const ops = planGroupDrag([n], [locked, n]);
     expect(ops.reparents).toEqual([]); // no membership change into a locked group
     // unchanged top-level node persists at its absolute position
-    expect(ops.positions).toEqual([{ id: 'n', position: { x: 50, y: 50 } }]);
+    expect(ops.positions).toEqual([
+      { id: 'n', position: { x: 50, y: 50 }, parentId: null },
+    ]);
     expect(ops.expansions).toEqual([]); // the locked group never grows for it
   });
 

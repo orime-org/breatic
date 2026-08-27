@@ -150,11 +150,6 @@ function makeFlowNode(
       ): void => commitGroupResize(props.id, params),
       [commitGroupResize, props.id],
     );
-    // Report the resize while it runs so collaborators see the frame move.
-    // ReactFlow raises this only once a size change actually happened, which is
-    // the same condition it gates `onResizeEnd` on — so a press that produced
-    // no change reports nothing and ends nothing.
-    const onResize = reportGroupResize;
     // Open the resize on the press. ReactFlow reads its own starting geometry
     // in this same frame, so the canvas records its starting point here to have
     // the two agree.
@@ -211,7 +206,7 @@ function makeFlowNode(
                   <GroupResizer
                     bounds={resizeBounds}
                     onResizeStart={onResizeStart}
-                    onResize={onResize}
+                    onResize={reportGroupResize}
                     onResizeEnd={onResizeEnd}
                   />
                 ) : null}
