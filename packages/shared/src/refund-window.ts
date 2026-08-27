@@ -44,9 +44,27 @@ function utcDay(at: Date | string): string {
  * @param paidAt - When the purchase was paid for.
  * @returns That day, as `YYYY-MM-DD`.
  */
-export function refundDeadlineDay(paidAt: Date | string): string {
+function refundDeadlineDay(paidAt: Date | string): string {
   const at = paidAt instanceof Date ? paidAt : new Date(paidAt);
   return utcDay(new Date(at.getTime() + REFUND_WINDOW_DAYS * MS_PER_DAY));
+}
+
+/**
+ * The instant a purchase's refund window closes.
+ *
+ * The last millisecond of the thirtieth UTC day, which the confirmation email
+ * prints in the buyer's own zone beside UTC — the same way it prints the
+ * purchase time. Read east of UTC it falls on the next morning, read west of
+ * it on the same afternoon, and a buyer who is told only a bare date has no
+ * way to know which of those they were given.
+ *
+ * The purchase's own time of day does not travel with it: two purchases made
+ * on the same UTC day get the same closing instant.
+ * @param paidAt - When the purchase was paid for.
+ * @returns That instant.
+ */
+export function refundWindowCloses(paidAt: Date | string): Date {
+  return new Date(`${refundDeadlineDay(paidAt)}T23:59:59.999Z`);
 }
 
 /**

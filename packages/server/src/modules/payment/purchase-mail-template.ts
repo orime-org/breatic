@@ -14,8 +14,9 @@
  * Two of those are the ones most easily reduced to a summary, and a summary
  * would defeat the point. The consent wording is repeated verbatim rather
  * than as "you agreed to our terms": handing the buyer back the words they
- * ticked is the whole mechanism. The refund deadline is a date rather than
- * "within 30 days": a buyer has to be able to count it on a calendar.
+ * ticked is the whole mechanism. The refund deadline is a moment rather than
+ * "within 30 days": a buyer has to be able to tell whether they still have
+ * time.
  *
  * Written in the buyer's language at the time of purchase rather than the
  * language of whatever request triggers the send: a resend from another device
@@ -24,16 +25,16 @@
  * two wording versions — a rewording must not rewrite what an old purchase
  * agreed to.
  *
- * Two dates sit next to each other and a buyer subtracts them, so both come
- * from the same instant the lot was opened. They are written differently
- * because they answer differently: the purchase time is an instant, printed
- * once in the buyer's own zone and once in UTC, since the zone is their
- * browser's and UTC is what the server recorded; the deadline is a whole UTC
- * calendar day that runs to its own last millisecond, so a clock reading
- * beside it would name a moment hours before the one the rule gives.
+ * Two instants sit next to each other and a buyer subtracts them, so both are
+ * written the same way: once in the buyer's own zone, once in UTC. The zone is
+ * their browser's, stored at checkout; UTC is what the server recorded. The
+ * deadline is the last millisecond of the thirtieth UTC day, which read east
+ * of UTC falls on the following morning and west of it on the same afternoon
+ * — a bare date would leave the buyer guessing which of those they were
+ * given.
  */
 
-import { refundDeadlineDay, t } from "@breatic/shared";
+import { refundWindowCloses, t } from "@breatic/shared";
 import { runWithLocale } from "@breatic/core";
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 import {
@@ -128,7 +129,7 @@ export function renderPurchaseConfirmation(
 ): RenderedMail {
   const locale = view.locale;
   const paidAt = view.grantedAt ?? new Date();
-  const refundBy = refundDeadlineDay(paidAt);
+  const refundBy = refundWindowCloses(paidAt);
 
   const charged = view.totalCents ?? view.amountCents;
   const consent = consentTextAt(
@@ -160,7 +161,9 @@ export function renderPurchaseConfirmation(
       t("server.purchase_mail.purchased_at", {
         when: bothZones(paidAt, timeZone, locale),
       }),
-      t("server.purchase_mail.refund_by", { when: refundBy }),
+      t("server.purchase_mail.refund_by", {
+        when: bothZones(refundBy, timeZone, locale),
+      }),
       t("server.purchase_mail.order_ref", { ref: view.paymentId }),
     ];
 

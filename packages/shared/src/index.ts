@@ -292,10 +292,10 @@ export {
 export type { AdjustValue } from "@shared/adjust-value.js";
 
 // Both readers of the refund rule are outside this package: the confirmation
-// email names the day the window closes, and the refunds screen leaves out
-// the purchases whose window has shut.
+// email names the instant the window closes, in the buyer's zone and in UTC,
+// and the refunds screen leaves out the purchases whose window has shut.
 export {
-  refundDeadlineDay,
+  refundWindowCloses,
   withinRefundWindow,
 } from "@shared/refund-window.js";
 

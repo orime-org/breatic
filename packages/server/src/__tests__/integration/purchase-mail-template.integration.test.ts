@@ -14,9 +14,9 @@
  *    "you agreed to the terms". Handing that exact wording back is what the
  *    consent is.
  *
- * 2. The refund deadline must be printed as the computed date, never as
- *    "within 30 days". What the buyer reads has to be a day they can count to
- *    on a calendar.
+ * 2. The refund deadline must be printed as the computed instant, in the
+ *    buyer's own zone beside UTC, never as "within 30 days". What the buyer
+ *    reads has to say whether they still have time, wherever they are.
  *
  * The language is the one the purchase was made in, not the one of the request
  * that triggered this render — hitting resend from another device must not
@@ -131,21 +131,42 @@ describe("the confirmation carries all eight things", () => {
     expect(mail.text).toMatch(/1:30/);
   });
 
-  // A date, not an instant. The window runs to the end of the thirtieth day,
-  // so printing the purchase's own time of day alongside it names a moment
-  // hours before the one the rule gives — and a buyer counting on a calendar
-  // has no use for a clock reading anyway.
-  it("names the refund deadline as one calendar day", () => {
+  // The same two readings the purchase time gets. The window shuts at the end
+  // of the thirtieth UTC day, which east of UTC falls on the next morning and
+  // west of it on the same afternoon — a bare date leaves the buyer without
+  // the one thing they need to count from.
+  it("gives the refund deadline in the buyer's own zone and in UTC", () => {
     const mail = renderPurchaseConfirmation(view(), "Asia/Shanghai", SUPPORT);
     const line = mail.text
       .split("\n")
       .find((row) => row.includes("Refundable until"));
 
     expect(line).toBeDefined();
-    // Bought 2026-08-26 01:30 UTC, so the window shuts at the end of 09-25.
-    expect(line).toContain("2026-09-25");
-    expect(line).not.toMatch(/\d:\d\d/);
-    expect(line).not.toContain("Asia/Shanghai");
+    // Bought 2026-08-26 01:30 UTC, so the window shuts at 09-25 23:59:59.999
+    // UTC — which in Shanghai is 07:59 on the 26th.
+    expect(line).toContain("Asia/Shanghai");
+    expect(line).toContain("UTC");
+    expect(line).toMatch(/Sep 26, 2026, 7:59/);
+    expect(line).toMatch(/Sep 25, 2026, 11:59/);
+  });
+
+  // The buyer's own time of day plays no part: two purchases on the same UTC
+  // day are refundable up to the same instant.
+  it("gives every purchase on one UTC day the same deadline", () => {
+    const early = renderPurchaseConfirmation(
+      view({ grantedAt: new Date("2026-08-26T00:05:00.000Z") }),
+      "UTC",
+      SUPPORT,
+    );
+    const late = renderPurchaseConfirmation(
+      view({ grantedAt: new Date("2026-08-26T23:55:00.000Z") }),
+      "UTC",
+      SUPPORT,
+    );
+    const deadline = (mail: { text: string }): string | undefined =>
+      mail.text.split("\n").find((row) => row.includes("Refundable until"));
+
+    expect(deadline(early)).toBe(deadline(late));
   });
 
   it("repeats the consent wording itself, not a summary of it", () => {
@@ -189,7 +210,7 @@ describe("the confirmation carries all eight things", () => {
     const deadline = mail.text
       .split("\n")
       .find((line) => line.startsWith("Refundable until:"));
-    expect(deadline).toContain("2026-09-25");
+    expect(deadline).toContain("Sep 25, 2026");
     // Only this line is checked, because "30 days" appears legitimately
     // elsewhere in the letter: both the consent wording and the refund rule
     // are quoted verbatim and both say it.
@@ -284,6 +305,27 @@ describe("both versions name wording that exists", () => {
       expect(line).not.toContain("server.payment.");
       expect(line.length).toBeGreaterThan(10);
     }
+  });
+
+  // The version travels with the purchase, and the renderer has to read that
+  // one rather than whatever is current: a rewording must not rewrite what an
+  // old purchase agreed to, and a resend years later still owes the buyer the
+  // words they ticked. Asserting it needs no second set of copy — a version
+  // nothing was written for comes back as its own key, which is proof enough
+  // that the stored version is what the renderer looked up.
+  it("renders the version the purchase stored, not the current one", () => {
+    const mail = renderPurchaseConfirmation(
+      view({
+        consentTextVersion: "consent-credits-v99",
+        refundTextVersion: "refund-credits-v99",
+      }),
+      "UTC",
+      SUPPORT,
+    );
+
+    expect(mail.text).toContain("server.payment.refund-credits-v99.unused");
+    expect(mail.text).toContain("server.payment.consent-credits-v99");
+    expect(mail.text).not.toContain(plainConsent("en"));
   });
 
   it("says so when a version names wording that is not there", () => {
