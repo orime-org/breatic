@@ -38,7 +38,8 @@ import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
 import {
   BLOCK_TYPE_ITEMS,
-  currentBlockTypeItem,
+  blockTypeItem,
+  currentBlockType,
 } from '@web/spaces/document/document-block-type';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
@@ -72,6 +73,88 @@ interface SlotProps {
   onOpenChange: (id: string, open: boolean) => void;
 }
 
+/** What every slot receives from the bar, plus what makes it that slot. */
+interface SlotShellProps extends SlotProps {
+  /** This slot's id, which is also the stem of every test id under it. */
+  id: string;
+  /** Read out for the opener. */
+  label: string;
+  /** What the opener draws to the left of its chevron. */
+  face: React.ReactNode;
+  /**
+   * Extra attributes for the opener, for the slots that carry any.
+   *
+   * `data-*` is spelled out: TypeScript accepts those on a JSX element without
+   * being told, and refuses them in an object literal typed by the component's
+   * own props.
+   */
+  openerProps?: React.ComponentProps<typeof Button> & {
+    [key: `data-${string}`]: string | undefined;
+  };
+  /** The menu's rows. */
+  children: React.ReactNode;
+}
+
+/**
+ * One slot: an opener that ends in a chevron, and the menu it opens.
+ *
+ * All four are this shape — what differs is the face of the opener and what
+ * the menu holds — so the wiring to {@link DocumentBubbleMenu} lives here once.
+ * @param props - See {@link SlotShellProps}.
+ * @param props.id - This slot's id.
+ * @param props.label - Read out for the opener.
+ * @param props.face - What the opener draws before its chevron.
+ * @param props.openerProps - Extra attributes for the opener.
+ * @param props.children - The menu's rows.
+ * @param props.editor - The editor.
+ * @param props.container - Which element the menu mounts inside.
+ * @param props.scroller - The body's scroller.
+ * @param props.openId - Which slot is open.
+ * @param props.onOpenChange - Open or close one slot.
+ * @returns The slot.
+ */
+function SlotShell({
+  id,
+  label,
+  face,
+  openerProps,
+  children,
+  editor,
+  container,
+  scroller,
+  openId,
+  onOpenChange,
+}: SlotShellProps): React.JSX.Element {
+  return (
+    <DocumentBubbleMenu
+      id={id}
+      editor={editor}
+      container={container}
+      scroller={scroller}
+      open={openId === id}
+      onOpenChange={(open) => {
+        onOpenChange(id, open);
+      }}
+      trigger={
+        <Button
+          variant='ghost'
+          size={null}
+          aria-label={label}
+          data-testid={id}
+          tabIndex={-1}
+          className={SLOT}
+          {...openerProps}
+        >
+          {face}
+          <ChevronDown className='h-[13px] w-[13px]' />
+        </Button>
+      }
+    >
+      {children}
+    </DocumentBubbleMenu>
+  );
+}
+
 /**
  * The block type slot.
  *
@@ -89,38 +172,26 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-block-type';
+  // An id rather than the row itself: `useEditorState` compares what the
+  // selector returns to decide whether to re-render, and a fresh object is
+  // never equal to the last one.
   const current = useEditorState({
     editor,
-    selector: ({ editor: e }) => (e ? currentBlockTypeItem(e).id : 'paragraph'),
+    selector: ({ editor: e }) => (e ? currentBlockType(e) : 'paragraph'),
   });
-  const CurrentIcon =
-    BLOCK_TYPE_ITEMS.find((item) => item.id === current)?.Icon ??
-    BLOCK_TYPE_ITEMS[0].Icon;
+  const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
-    <DocumentBubbleMenu
+    <SlotShell
       id={id}
+      label={t('spaces.document.commands.blockType')}
+      face={<CurrentIcon className='h-4 w-4' />}
+      openerProps={{ 'data-block-type': current }}
       editor={editor}
       container={container}
       scroller={scroller}
-      open={openId === id}
-      onOpenChange={(open) => {
-        onOpenChange(id, open);
-      }}
-      trigger={
-        <Button
-          variant='ghost'
-          size={null}
-          aria-label={t('spaces.document.commands.blockType')}
-          data-testid={id}
-          data-block-type={current}
-          tabIndex={-1}
-          className={SLOT}
-        >
-          <CurrentIcon className='h-4 w-4' />
-          <ChevronDown className='h-[13px] w-[13px]' />
-        </Button>
-      }
+      openId={openId}
+      onOpenChange={onOpenChange}
     >
       {BLOCK_TYPE_ITEMS.map((item) => {
         const Icon = item.Icon;
@@ -158,7 +229,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
           </React.Fragment>
         );
       })}
-    </DocumentBubbleMenu>
+    </SlotShell>
   );
 });
 
@@ -191,28 +262,15 @@ export const AlignSlot = React.memo(function AlignSlot({
   });
 
   return (
-    <DocumentBubbleMenu
+    <SlotShell
       id={id}
+      label={label}
+      face={<TextAlignStart className='h-4 w-4' />}
       editor={editor}
       container={container}
       scroller={scroller}
-      open={openId === id}
-      onOpenChange={(open) => {
-        onOpenChange(id, open);
-      }}
-      trigger={
-        <Button
-          variant='ghost'
-          size={null}
-          aria-label={label}
-          data-testid={id}
-          tabIndex={-1}
-          className={SLOT}
-        >
-          <TextAlignStart className='h-4 w-4' />
-          <ChevronDown className='h-[13px] w-[13px]' />
-        </Button>
-      }
+      openId={openId}
+      onOpenChange={onOpenChange}
     >
       {ALIGN_ITEMS.map((item) => (
         <DropdownMenuItem
@@ -230,7 +288,7 @@ export const AlignSlot = React.memo(function AlignSlot({
           {t(item.labelKey)}
         </DropdownMenuItem>
       ))}
-    </DocumentBubbleMenu>
+    </SlotShell>
   );
 });
 
@@ -267,28 +325,16 @@ export const ColorSlot = React.memo(function ColorSlot({
   });
 
   return (
-    <DocumentBubbleMenu
+    <SlotShell
       id={id}
+      label={label}
+      face='A'
+      openerProps={{ className: `${SLOT} font-semibold` }}
       editor={editor}
       container={container}
       scroller={scroller}
-      open={openId === id}
-      onOpenChange={(open) => {
-        onOpenChange(id, open);
-      }}
-      trigger={
-        <Button
-          variant='ghost'
-          size={null}
-          aria-label={label}
-          data-testid={id}
-          tabIndex={-1}
-          className={`${SLOT} font-semibold`}
-        >
-          A
-          <ChevronDown className='h-[13px] w-[13px]' />
-        </Button>
-      }
+      openId={openId}
+      onOpenChange={onOpenChange}
     >
       <DropdownMenuLabel>
         {t('spaces.document.commands.textColor')}
@@ -382,7 +428,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           {t('spaces.document.commands.colorReset')}
         </Button>
       </div>
-    </DocumentBubbleMenu>
+    </SlotShell>
   );
 });
 
@@ -437,29 +483,20 @@ export const AiSlot = React.memo(function AiSlot({
   });
 
   return (
-    <DocumentBubbleMenu
+    <SlotShell
       id={id}
+      label={label}
+      face={(
+        <>
+          <Sparkles className='h-4 w-4' />
+          {t('spaces.document.commands.ai')}
+        </>
+      )}
       editor={editor}
       container={container}
       scroller={scroller}
-      open={openId === id}
-      onOpenChange={(open) => {
-        onOpenChange(id, open);
-      }}
-      trigger={
-        <Button
-          variant='ghost'
-          size={null}
-          aria-label={label}
-          data-testid={id}
-          tabIndex={-1}
-          className={SLOT}
-        >
-          <Sparkles className='h-4 w-4' />
-          {t('spaces.document.commands.ai')}
-          <ChevronDown className='h-[13px] w-[13px]' />
-        </Button>
-      }
+      openId={openId}
+      onOpenChange={onOpenChange}
     >
       {AI_GROUPS.map((group) => (
         <React.Fragment key={group.labelKey}>
@@ -477,6 +514,6 @@ export const AiSlot = React.memo(function AiSlot({
           ))}
         </React.Fragment>
       ))}
-    </DocumentBubbleMenu>
+    </SlotShell>
   );
 });

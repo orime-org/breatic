@@ -114,19 +114,19 @@ interface BubbleGroup {
     onPanelOpenChange: (open: boolean) => void;
   }>[];
   /**
-   * Slots that open a menu on hover.
+   * The slot that opens a menu on hover, for the groups that carry one.
    *
-   * Their open state lives on the bar rather than on each of them, so that one
-   * is open at a time (§5.3 I-7): the bar hands every slot the id that is open
+   * Its open state lives on the bar rather than on the slot, so that one is
+   * open at a time (§5.3 I-7): the bar hands every slot the id that is open
    * and the setter, each compares.
    */
-  slots: React.ComponentType<{
+  slot?: React.ComponentType<{
     editor: Editor;
     container: HTMLElement | null;
     scroller: HTMLElement | null;
     openId: string | null;
     onOpenChange: (id: string, open: boolean) => void;
-  }>[];
+  }>;
 }
 
 /**
@@ -147,14 +147,14 @@ interface BubbleGroup {
  * available and answers a click with nothing tells the reader it is broken).
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
-  { key: 'blocks', tools: [], coming: [], panels: [], slots: [BlockTypeSlot] },
-  { key: 'align', tools: [], coming: [], panels: [], slots: [AlignSlot] },
-  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [], slots: [] },
+  { key: 'blocks', tools: [], coming: [], panels: [], slot: BlockTypeSlot },
+  { key: 'align', tools: [], coming: [], panels: [], slot: AlignSlot },
+  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [] },
   {
     key: 'inline',
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
-    slots: [ColorSlot],
+    slot: ColorSlot,
     coming: [
       {
         id: 'comment',
@@ -163,7 +163,7 @@ const BUBBLE_GROUPS: BubbleGroup[] = [
       },
     ],
   },
-  { key: 'ai', tools: [], coming: [], panels: [], slots: [AiSlot] },
+  { key: 'ai', tools: [], coming: [], panels: [], slot: AiSlot },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -1114,16 +1114,15 @@ function BubbleBar({
             {group.tools.map((tool) => (
               <ToolButton key={tool.id} tool={tool} editor={editor} />
             ))}
-            {group.slots.map((Slot, slotIndex) => (
-              <Slot
-                key={slotIndex}
+            {group.slot ? (
+              <group.slot
                 editor={editor}
                 container={barEl}
                 scroller={viewport}
                 openId={openMenu}
                 onOpenChange={setMenuOpen}
               />
-            ))}
+            ) : null}
             {group.coming.map((tool) => (
               <ComingTool key={tool.id} tool={tool} />
             ))}

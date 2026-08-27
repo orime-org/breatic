@@ -32,14 +32,11 @@
  * the accessibility tree to be read, the second drops it out.
  */
 
-import { ChevronDown, type LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import {
-  BUBBLE_CONTROL_HEIGHT,
-  BUBBLE_ICON_BUTTON_SIZE,
-} from '@web/spaces/document/document-tool-button';
+import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import {
   Tooltip,
   TooltipContent,
@@ -72,13 +69,6 @@ export interface ComingToolDef {
   labelKey: string;
   /** The icon the demo draws for it. */
   Icon: LucideIcon;
-  /**
-   * Draws the shape the demo gives a menu opener: icon, label, chevron
-   * (`.bubble-drop`), rather than a bare icon button (`.bubble-btn`). The AI
-   * entry is drawn this way — it opens onto a list of commands, and the demo
-   * says so on its face.
-   */
-  drawsAsDropdown?: boolean;
 }
 
 interface ComingToolProps {
@@ -106,28 +96,14 @@ export const ComingTool = React.memo(function ComingTool({
       <TooltipTrigger asChild>
         <Button
           variant='ghost'
-          size={tool.drawsAsDropdown ? null : 'icon'}
+          size='icon'
           aria-disabled='true'
           aria-label={label}
           data-testid={`doc-bubble-coming-${tool.id}`}
           tabIndex={-1}
-          className={
-            tool.drawsAsDropdown
-              // `.bubble-drop`: 28 tall, 6px either side, 3px between the
-              // three things in it. The demo draws 13px text and this takes
-              // the button's own `text-sm`: the demo fixes the shape, not
-              // every value in it.
-              ? `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5 ${UNAVAILABLE}`
-              : `${BUBBLE_ICON_BUTTON_SIZE} ${UNAVAILABLE}`
-          }
+          className={`${BUBBLE_ICON_BUTTON_SIZE} ${UNAVAILABLE}`}
         >
           <Icon className='h-4 w-4' />
-          {tool.drawsAsDropdown ? (
-            <>
-              {t(tool.labelKey)}
-              <ChevronDown className='h-[13px] w-[13px]' />
-            </>
-          ) : null}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>

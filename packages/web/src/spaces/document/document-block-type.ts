@@ -198,10 +198,10 @@ export function currentBlockType(editor: Editor): BlockTypeId {
 }
 
 /**
- * The row for the current block type, which is where the slot's icon comes from.
- * @param editor - The editor.
- * @returns That row.
+ * The row a block type id names.
+ * @param id - The id.
+ * @returns That row, and the paragraph row for an id no longer in the list.
  */
-export function currentBlockTypeItem(editor: Editor): BlockTypeItem {
-  return BY_ID.get(currentBlockType(editor)) ?? BLOCK_TYPE_ITEMS[0];
+export function blockTypeItem(id: BlockTypeId): BlockTypeItem {
+  return BY_ID.get(id) ?? BLOCK_TYPE_ITEMS[0];
 }
