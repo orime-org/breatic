@@ -87,11 +87,11 @@ describe('regionOwnsKeyboard', () => {
     });
   });
 
-  // A target that sits in a region is that region's, whichever region the
-  // store says is active. For a key press the two agree anyway — focus
-  // entering a region writes it — but a copy event's target follows the
-  // SELECTION, and a selection outlives the focus move that left it behind.
-  describe('a target inside a region belongs to that region', () => {
+  // Focus is not a rival answer to the active region — it is one of the
+  // inputs that MOVES it, alongside a pointer press. So a target that sits in
+  // either region only says "this is not an overlay"; which region acts is
+  // still the store's answer.
+  describe('a target inside either region defers to the active region', () => {
     it('is true when the target sits in the asking region and it is active', () => {
       expect(regionOwnsKeyboard(inRegion('space'), 'space')).toBe(true);
     });
@@ -106,29 +106,28 @@ describe('regionOwnsKeyboard', () => {
       expect(regionOwnsKeyboard(inRegion('agent'), 'agent')).toBe(true);
     });
 
-    it('is true when the target sits in the asking region and the other one is active', () => {
+    // Pressing the chat's scrollbar hands the region to the agent without
+    // moving focus, which stays on the canvas node. Delete belongs to the
+    // agent from that moment, so the canvas must not act on a target that
+    // still sits inside it.
+    it('is false when the target sits in the asking region but the other one is active', () => {
       useUIStore.getState().setActiveRegion('agent');
-      expect(regionOwnsKeyboard(inRegion('space'), 'space')).toBe(true);
+      expect(regionOwnsKeyboard(inRegion('space'), 'space')).toBe(false);
     });
 
-    // The case that sends a highlighted chat reply to the clipboard: the
-    // reader drags across a reply (region 'agent'), then right-clicks a canvas
-    // node — the press hands the region to the space, and a right-click does
-    // not collapse the selection. The copy event that follows still targets
-    // the chat, and it is the chat's.
-    it('is false for the space region when the target sits in the agent region', () => {
+    it('is true for the active region when the target sits in the other one', () => {
       useUIStore.getState().setActiveRegion('space');
-      expect(regionOwnsKeyboard(inRegion('agent'), 'space')).toBe(false);
+      expect(regionOwnsKeyboard(inRegion('agent'), 'space')).toBe(true);
     });
 
-    it('is true for the agent region on that same target', () => {
+    it('is false for the idle region on that same target', () => {
       useUIStore.getState().setActiveRegion('space');
-      expect(regionOwnsKeyboard(inRegion('agent'), 'agent')).toBe(true);
+      expect(regionOwnsKeyboard(inRegion('agent'), 'agent')).toBe(false);
     });
 
     it('ignores a data-region value that names no region', () => {
       useUIStore.getState().setActiveRegion('space');
-      // Not a region, and not <body> either: nobody's.
+      // Not a region, and not <body> either: an overlay, so nobody's.
       expect(regionOwnsKeyboard(inRegion('sidebar'), 'space')).toBe(false);
     });
   });

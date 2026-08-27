@@ -2638,9 +2638,10 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      // A copy event's target is the element the selection sits in, so a
-      // reader who highlighted a reply in the chat panel is asking the agent
-      // region for it, not the canvas.
+      // A copy event targets the element the selection sits in, so the gate
+      // reads the selection's own ancestry: words dragged inside an overlay
+      // pass through no region and stay the overlay's, while words dragged in
+      // either region are only that region's while it is the active one.
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current

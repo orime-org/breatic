@@ -19,16 +19,18 @@ export function regionOf(el: Element): ActiveRegion | null {
 }
 
 /**
- * Whether a keyboard or clipboard event belongs to `region`, asked in order:
- * an editable target handles its own keys; a target that sits in a region is
- * that region's; a target in no region at all is inside an overlay and handles
- * its own keys; and `<body>` — the one target with no region that is not an
- * overlay — means no element holds focus, so the active region decides.
+ * Whether a keyboard or clipboard event belongs to `region`.
  *
- * For a key press the middle two answers agree with the stored region anyway,
- * because focus entering a region writes it. They part company on a clipboard
- * event, whose target follows the SELECTION: a selection outlives the focus
- * move that left it behind, and it stays the property of the region it is in.
+ * The active region is the single state this answers from. Focus is not a
+ * rival source for it: moving focus into a region writes the region, exactly
+ * as a pointer press does, so reading focus here would read one of the inputs
+ * instead of the state it feeds — and they disagree whenever the region moved
+ * without focus following, as pressing a scrollbar does.
+ *
+ * So the target only decides one thing: whether an overlay is handling this
+ * event itself. An overlay portals to `<body>` and therefore sits in no
+ * region; a target in either region, and `<body>` itself, both defer to the
+ * store.
  * @param target - The event's target.
  * @param region - The region asking.
  * @returns True when the region should act on this event.
@@ -39,10 +41,7 @@ export function regionOwnsKeyboard(
 ): boolean {
   if (!(target instanceof Element)) return false;
   if (isEditableTarget(target)) return false;
-
-  const targetRegion = regionOf(target);
-  if (targetRegion !== null) return targetRegion === region;
-  if (target !== document.body) return false;
+  if (regionOf(target) === null && target !== document.body) return false;
 
   return useUIStore.getState().activeRegion === region;
 }

@@ -3429,11 +3429,30 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
 
     /**
+     * Attaches an element standing in for where a text selection sits: a copy
+     * event targets the element the selection is in, so dispatching from here
+     * is how the gate sees that selection's ancestry.
+     * @param region - The `data-region` to wrap it in, or null for an overlay,
+     * which portals to `<body>` and so passes through no region.
+     * @returns The element to dispatch the copy event from.
+     */
+    const whereTheSelectionSits = (region: string | null): Element => {
+      const host = document.createElement('div');
+      if (region !== null) host.setAttribute('data-region', region);
+      const span = document.createElement('span');
+      span.textContent = 'a highlighted reply';
+      host.append(span);
+      document.body.append(host);
+      return span;
+    };
+
+    /**
      * Dispatches a copy event carrying a clipboard stub, and reports what the
      * canvas wrote to it.
+     * @param from - The element the event targets; defaults to the key target.
      * @returns Whatever landed on the clipboard, empty when nothing did.
      */
-    const copyAndRead = (): string => {
+    const copyAndRead = (from?: Element): string => {
       let written = '';
       const event = new Event('copy', { bubbles: true }) as Event & {
         clipboardData: { setData: (type: string, data: string) => void };
@@ -3446,7 +3465,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         },
       });
       act(() => {
-        keyTarget().dispatchEvent(event);
+        (from ?? keyTarget()).dispatchEvent(event);
       });
       return written;
     };
@@ -3576,6 +3595,23 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       it('copy puts the selection on the clipboard', () => {
         mountWithSelection();
         expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
+      });
+
+      // Words dragged inside an overlay pass through no region, so the overlay
+      // keeps them: nobody else can answer for a selection made there.
+      it('copy leaves the clipboard alone for a selection inside an overlay', () => {
+        mountWithSelection();
+        expect(copyAndRead(whereTheSelectionSits(null))).toBe('');
+      });
+
+      // A selection in the agent panel is the agent's only while the agent is
+      // the active region. The reader has since acted in the space, so the
+      // copy is the space's.
+      it('copy puts the nodes on the clipboard for a selection left in the agent panel', () => {
+        mountWithSelection();
+        expect(copyAndRead(whereTheSelectionSits('agent'))).toContain(
+          '__breatic_canvas_nodes__:',
+        );
       });
 
       it('undo runs', () => {
