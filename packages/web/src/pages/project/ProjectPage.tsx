@@ -18,6 +18,7 @@ import { CollaboratorNamesProvider } from '@web/features/collab-editor/collabora
 import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
+import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
@@ -164,6 +165,10 @@ function ProjectWorkspace({
   // Follow the user between the two regions, so the canvas keyboard and
   // clipboard gates and the active-state colours read the same value.
   useTrackActiveRegion();
+
+  // Mounted here rather than app-wide, so select-all on the studio routes and
+  // the login page stays as it was.
+  useBlockSelectAll();
 
   // Reset the per-project UI stores when LEAVING or SWITCHING a project (#1771):
   // the canvas / chrome UI stores are module singletons that survive React

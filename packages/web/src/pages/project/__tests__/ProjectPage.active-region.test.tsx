@@ -180,4 +180,21 @@ describe('ProjectPage — active region wiring', () => {
     press(await screen.findByTestId('top-bar'));
     expect(useUIStore.getState().activeRegion).toBe('agent');
   });
+
+  // The gate itself is covered in lib/__tests__/use-block-select-all.test.tsx.
+  // What this pins is that the project page is the one that mounts it, which
+  // is what keeps select-all on the studio routes and the login page as it
+  // was.
+  it('swallows select-all while the project page is on screen', async () => {
+    setup();
+    const column = await screen.findByTestId('agent-column');
+    const event = new KeyboardEvent('keydown', {
+      key: 'a',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    column.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });
