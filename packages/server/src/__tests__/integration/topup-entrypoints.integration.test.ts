@@ -325,7 +325,7 @@ describe("POST /payment/cancel — the buyer pressed Back", () => {
       expect(stripe.checkout.sessions.expire).toHaveBeenCalledWith(
         sessionId,
         undefined,
-        expect.objectContaining({ maxNetworkRetries: 0 }),
+        expect.objectContaining({ timeout: 5000, maxNetworkRetries: 0 }),
       );
       expect(await statusOf(paymentId)).toBe("expired");
     } finally {

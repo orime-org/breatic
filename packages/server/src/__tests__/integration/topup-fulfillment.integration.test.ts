@@ -83,6 +83,7 @@ vi.mock("@server/modules/payment/purchase-mail.js", () => ({
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import {
+  cancelCheckout,
   fulfillPayment,
   handlePaymentFailed,
 } from "@server/modules/payment/payment.service.js";
@@ -450,6 +451,66 @@ describe("what the session says decides", () => {
       `;
       expect(row!.total_cents).toBeNull();
       expect(row!.tax_cents).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("hands back what pressing Back settled, for the route to record", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // Stripe will not expire a session that has been paid, and the answer to
+      // the refusal is that this purchase went through after all. No webhook
+      // and no reconcile pass produces this outcome a second time, so an
+      // outcome dropped here is one nobody ever records.
+      stripe.checkout.sessions.expire.mockRejectedValue(new Error("refused"));
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId),
+      );
+
+      const result = await cancelCheckout(userId, paymentId);
+
+      expect(result.status).toBe("completed");
+      expect(result.settled?.stripeSessionId).toBe(sessionId);
+      expect(result.settled?.outcome.status).toBe("granted");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("hands back nothing where pressing Back settled nothing", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      stripe.checkout.sessions.expire.mockResolvedValue(
+        paidSession(sessionId, { payment_status: "unpaid", status: "expired" }),
+      );
+
+      const result = await cancelCheckout(userId, paymentId);
+
+      expect(result.status).toBe("expired");
+      expect(result.settled).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("bounds the question it asks Stripe, and lets the SDK retry none of it", async () => {
+    const { userId, sessionId } = await seedPending();
+    try {
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId),
+      );
+
+      await fulfillPayment(sessionId, null);
+
+      // The read every caller makes. Unbounded it holds a webhook Stripe has
+      // already written off, or a buyer behind a full-screen wait, for eighty
+      // seconds — and the SDK's own retries make that three of them.
+      expect(stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
+        sessionId,
+        undefined,
+        expect.objectContaining({ timeout: 5000, maxNetworkRetries: 0 }),
+      );
     } finally {
       await dropUser(userId);
     }

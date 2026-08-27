@@ -447,6 +447,31 @@ describe("POST /payment/:id/resend-confirmation", () => {
         { method: "POST", headers: { cookie: buyer.cookie } },
       );
       expect(res.status).toBe(200);
+      // 200 alone says only that the route answered. What says the send was
+      // actually attempted is the row: the claim raises `attempts` and moves
+      // the status off `failed`, and cutting the wiring leaves both as they
+      // were while the endpoint still answers 200.
+      const [row] = await sql<{ status: string; attempts: number }[]>`
+        SELECT status, attempts FROM purchase_mail_outbox
+        WHERE payment_id = ${paymentId}
+      `;
+      expect(row!.attempts).toBe(1);
+      expect(row!.status).not.toBe("failed");
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("refuses an id that is not one", async () => {
+    const buyer = await seedBuyer();
+    try {
+      // Straight to the uuid column, this is a 22P02 from Postgres and a 500
+      // with an unhandled exception behind it.
+      const res = await app.request(
+        "/api/v1/payment/not-a-uuid/resend-confirmation",
+        { method: "POST", headers: { cookie: buyer.cookie } },
+      );
+      expect(res.status).toBe(422);
     } finally {
       await dropBuyer(buyer.userId);
     }

@@ -165,12 +165,22 @@ async function dropUser(userId: string): Promise<void> {
   await sql`DELETE FROM users WHERE id = ${userId}`;
 }
 
-/** The single argument `sessions.create` was called with. */
+/** What the session was asked for. */
 function sessionArg(): Record<string, unknown> {
   const [arg] = stripe.checkout.sessions.create.mock.calls[0] as [
     Record<string, unknown>,
+    unknown,
   ];
   return arg;
+}
+
+/** The bounds that call was made under, which the SDK takes second. */
+function sessionBounds(): { timeout?: number; maxNetworkRetries?: number } {
+  const [, bounds] = stripe.checkout.sessions.create.mock.calls[0] as [
+    unknown,
+    { timeout?: number; maxNetworkRetries?: number },
+  ];
+  return bounds;
 }
 
 describe("createCheckout — what reaches Stripe", () => {
@@ -246,6 +256,29 @@ describe("createCheckout — what reaches Stripe", () => {
       const twoHours = 2 * 60 * 60;
       expect(expiresAt).toBeGreaterThanOrEqual(before + twoHours - 5);
       expect(expiresAt).toBeLessThanOrEqual(before + twoHours + 30);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("bounds the call, and lets the SDK retry none of it", async () => {
+    const userId = await seedUser();
+    try {
+      await checkout({
+        userId,
+        priceCents: 1000,
+        returnUrl: "https://app.example.test/s/mine",
+        timeZone: "UTC",
+        locale: "en",
+      });
+
+      // Both halves, because they answer different failures. Unbounded, the
+      // SDK waits eighty seconds while a buyer looks at a dialog; retried, it
+      // fires twice more about a second apart, which does nothing for a
+      // Stripe that is genuinely slow and triples the wait.
+      const bounds = sessionBounds();
+      expect(bounds.timeout).toBe(5000);
+      expect(bounds.maxNetworkRetries).toBe(0);
     } finally {
       await dropUser(userId);
     }

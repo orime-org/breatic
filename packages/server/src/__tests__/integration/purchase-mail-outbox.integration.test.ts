@@ -160,7 +160,7 @@ describe("which states a send may be claimed from", () => {
     }
   });
 
-  it("answers false for a purchase with no row at all", async () => {
+  it("claims nothing for a purchase with no row at all", async () => {
     expect(
       await outbox.claimSend("9f1c7c2e-0000-4000-8000-0000000000ff", longAgo()),
     ).toBeNull();
