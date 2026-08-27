@@ -272,8 +272,9 @@ describe('the confirmation before paying', () => {
     await user.keyboard('{Escape}');
 
     await user.click(within(packs[1]!).getByRole('button'));
-    // Consent belongs to one purchase. Carrying a tick over to the next would
-    // record an agreement the buyer gave about something else.
+    // The tick belongs to one purchase. Carried over to the next, it would
+    // stand for a rule the buyer read about a different pack, and the pay
+    // button would already be live on a dialog they have not looked at.
     expect(await screen.findByTestId('confirm-pay')).toBeDisabled();
   });
 });

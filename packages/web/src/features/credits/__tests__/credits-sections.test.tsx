@@ -570,8 +570,9 @@ describe('the credits overlay, section by section', () => {
       await openOn('refunds');
       const body = await panel();
 
-      // 退款只有全额，所以屏上只该有一个金额：这一笔实付的那个。按剩余
-      // 积分折算出的 $8.80 是部分退款的数，而部分退款不存在。
+      // A refund is for the whole purchase, so one figure belongs on this
+      // row: what was paid for it. The $8.80 the remaining credits work out
+      // to is a partial refund, and there is no such thing.
       expect(body).toHaveTextContent('$11.20');
       expect(body).not.toHaveTextContent('$8.80');
     });
@@ -998,8 +999,9 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent(/Nothing can be refunded/i);
     });
 
-    // 这一屏声称列出的是「可以退的」，所以成员判据就是退款规则本身：
-    // 30 天内、一积分没花。列出一笔退不了的，等于对着规则许一个不作数的诺。
+    // The card says these are the refundable purchases, so the rule itself is
+    // the membership test: within thirty days, with no credit spent. Listing
+    // one the rule refuses offers the buyer something it will not honour.
     describe('only purchases the rule allows are listed', () => {
       beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });

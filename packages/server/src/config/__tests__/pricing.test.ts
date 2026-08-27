@@ -38,4 +38,13 @@ describe("the price file's currency", () => {
     const parsed = pricingSchema.parse({ tiers: [tier()] });
     expect(parsed.tiers[0]!.currency).toBe("usd");
   });
+
+  // The three cases above all expect `usd`, so on their own they pass just as
+  // well against a schema that writes every currency to `usd` — and that
+  // schema would take a tier priced in euros and hand Stripe dollars. These
+  // are what separates lowercasing from overwriting.
+  it.each(["eur", "jpy"])("leaves %s as the tier wrote it", (written) => {
+    const parsed = pricingSchema.parse({ tiers: [tier(written)] });
+    expect(parsed.tiers[0]!.currency).toBe(written);
+  });
 });

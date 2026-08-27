@@ -5,11 +5,12 @@
 -- `payments` learns what Stripe works this purchase out to be. `amount_cents`
 -- is the pre-tax face value taken from our own price table; `total_cents` and
 -- `tax_cents` are read back off the Checkout Session. They are filled the
--- moment we read a session Stripe has already priced: at settlement alongside
--- the CAS, and once more when a delayed payment method completes its session
--- days before the money moves — carrying them says nothing about whether it
--- did, which `status` answers. Both stay NULL until then, because Stripe
--- cannot work out the tax without knowing where the buyer is. A refund of a landed
+-- first time we read a session Stripe has already priced: for a delayed
+-- payment method that is when its session completes, days before the money
+-- moves; for every other purchase it is settlement itself, written alongside
+-- the CAS. So carrying them says nothing about whether the money moved, which
+-- `status` answers. Both stay NULL until then, because Stripe cannot work out
+-- the tax without knowing where the buyer is. A refund of a landed
 -- purchase pays back `total_cents`, since the confirmation email promises a
 -- full refund while itemising the tax.
 --
