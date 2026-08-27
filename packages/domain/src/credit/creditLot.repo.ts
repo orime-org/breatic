@@ -610,6 +610,15 @@ export interface LotContext {
   currency: string;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
+  /**
+   * Whether anything has ever been drawn from this purchase.
+   *
+   * Read off the ledger, not off the balance: a failed generation gives the
+   * credits back, so a purchase that has been spent from can carry its full
+   * count again. The refund rule turns on this fact rather than on the
+   * balance for that reason.
+   */
+  everSpent: boolean;
 }
 
 /**
@@ -659,6 +668,15 @@ export async function listLotsByUser(
       designatedStudioName: sql<
         string | null
       >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
+      // Whether anything was ever drawn from this purchase. The refund rule
+      // asks the ledger rather than the balance: a failed generation returns
+      // the credits, so a purchase spent from can be back at its full count.
+      // Served by `credit_ledger_lot_idx`.
+      everSpent: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${creditLedger}
+        WHERE ${creditLedger.lotId} = ${creditLots.id}
+          AND ${creditLedger.entryType} = 'spend'
+      )`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -691,6 +709,7 @@ export async function listLotsByUser(
     paidCents: row.paidCents,
     currency: row.currency,
     designatedStudioName: row.designatedStudioName,
+    everSpent: row.everSpent,
     cursorAt: row.cursorAt,
   }));
 }

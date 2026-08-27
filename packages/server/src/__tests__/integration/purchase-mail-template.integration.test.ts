@@ -131,6 +131,23 @@ describe("the confirmation carries all eight things", () => {
     expect(mail.text).toMatch(/1:30/);
   });
 
+  // A date, not an instant. The window runs to the end of the thirtieth day,
+  // so printing the purchase's own time of day alongside it names a moment
+  // hours before the one the rule gives — and a buyer counting on a calendar
+  // has no use for a clock reading anyway.
+  it("names the refund deadline as one calendar day", () => {
+    const mail = renderPurchaseConfirmation(view(), "Asia/Shanghai", SUPPORT);
+    const line = mail.text
+      .split("\n")
+      .find((row) => row.includes("Refundable until"));
+
+    expect(line).toBeDefined();
+    // Bought 2026-08-26 01:30 UTC, so the window shuts at the end of 09-25.
+    expect(line).toContain("2026-09-25");
+    expect(line).not.toMatch(/\d:\d\d/);
+    expect(line).not.toContain("Asia/Shanghai");
+  });
+
   it("repeats the consent wording itself, not a summary of it", () => {
     const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
     expect(mail.text).toContain(plainConsent("en"));
@@ -172,7 +189,7 @@ describe("the confirmation carries all eight things", () => {
     const deadline = mail.text
       .split("\n")
       .find((line) => line.startsWith("Refundable until:"));
-    expect(deadline).toContain("Sep 25, 2026");
+    expect(deadline).toContain("2026-09-25");
     // Only this line is checked, because "30 days" appears legitimately
     // elsewhere in the letter: both the consent wording and the refund rule
     // are quoted verbatim and both say it.

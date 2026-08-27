@@ -291,6 +291,14 @@ export {
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
 
+// Both readers of the refund rule are outside this package: the confirmation
+// email names the day the window closes, and the refunds screen leaves out
+// the purchases whose window has shut.
+export {
+  refundDeadlineDay,
+  withinRefundWindow,
+} from "@shared/refund-window.js";
+
 export { newId, deriveId } from "@shared/ids.js";
 
 // How many beats in a row may go missing before the agent chat stream is

@@ -25,27 +25,21 @@
  * agreed to.
  *
  * Two dates sit next to each other and a buyer subtracts them, so both come
- * from the same instant the lot was opened: the purchase time, and thirty days
- * on from it. Each is printed twice — once in the buyer's own zone, once in
- * UTC — because the zone is the buyer's browser's and UTC is what the server
- * recorded.
+ * from the same instant the lot was opened. They are written differently
+ * because they answer differently: the purchase time is an instant, printed
+ * once in the buyer's own zone and once in UTC, since the zone is their
+ * browser's and UTC is what the server recorded; the deadline is a whole UTC
+ * calendar day that runs to its own last millisecond, so a clock reading
+ * beside it would name a moment hours before the one the rule gives.
  */
 
-import { t } from "@breatic/shared";
+import { refundDeadlineDay, t } from "@breatic/shared";
 import { runWithLocale } from "@breatic/core";
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 import {
   consentTextAt,
   refundLinesAt,
 } from "@server/modules/payment/legal-text.js";
-
-/**
- * The refund window, in whole UTC days from the moment the lot opened.
- *
- * Settled in the credits decision of 2026-07-31: thirty UTC calendar days
- * from payment, the thirtieth included.
- */
-const REFUND_WINDOW_DAYS = 30;
 
 /**
  * Where the stored legal wording marks its emphasis.
@@ -134,8 +128,7 @@ export function renderPurchaseConfirmation(
 ): RenderedMail {
   const locale = view.locale;
   const paidAt = view.grantedAt ?? new Date();
-  const refundBy = new Date(paidAt);
-  refundBy.setUTCDate(refundBy.getUTCDate() + REFUND_WINDOW_DAYS);
+  const refundBy = refundDeadlineDay(paidAt);
 
   const charged = view.totalCents ?? view.amountCents;
   const consent = consentTextAt(
@@ -167,9 +160,7 @@ export function renderPurchaseConfirmation(
       t("server.purchase_mail.purchased_at", {
         when: bothZones(paidAt, timeZone, locale),
       }),
-      t("server.purchase_mail.refund_by", {
-        when: bothZones(refundBy, timeZone, locale),
-      }),
+      t("server.purchase_mail.refund_by", { when: refundBy }),
       t("server.purchase_mail.order_ref", { ref: view.paymentId }),
     ];
 

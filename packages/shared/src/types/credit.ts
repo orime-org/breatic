@@ -96,6 +96,14 @@ export interface CreditLotView {
   lifecycle: CreditLotLifecycle;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;
+  /**
+   * Whether anything has ever been drawn from this purchase.
+   *
+   * Read off the ledger, not off the balance. A failed generation gives the
+   * credits back, so a purchase that has been spent from can be back at its
+   * full count — and the refund rule refuses it either way.
+   */
+  everSpent: boolean;
   createdAt: string;
 }
 

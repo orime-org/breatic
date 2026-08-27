@@ -153,6 +153,27 @@ async function seedLot(
 }
 
 /**
+ * Draw credits from one purchase, the way a generation does.
+ * @param userId - Whose purchase it is.
+ * @param lotId - The purchase drawn from.
+ * @param credits - How many, as a positive count.
+ */
+async function spendFrom(
+  userId: string,
+  lotId: string,
+  credits: number,
+): Promise<void> {
+  await sql`
+    INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, entry_type, amount)
+    VALUES (${userId}, ${userId}, ${lotId}, 'spend', ${-credits})
+  `;
+  await sql`
+    UPDATE credit_lots SET remaining_credits = remaining_credits - ${credits}
+    WHERE id = ${lotId}
+  `;
+}
+
+/**
  * A session cookie.
  * @param userId - Who is signed in.
  * @returns The cookie.
@@ -526,6 +547,50 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     expect(lot).toBeDefined();
     expect(lot!['designatedStudioId']).toBe(fx.studioId);
     expect(lot!['designatedStudioName']).toBe(fx.studioName);
+  });
+});
+
+describe("whether a purchase has ever been spent from", () => {
+  it("says no for one nothing has been drawn from", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 830, 1000);
+
+    const page = await readLots(fx.cookie);
+
+    expect(page.items[0]!['everSpent']).toBe(false);
+  });
+
+  it("says yes once a generation has drawn from it", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 830, 1000);
+    await spendFrom(fx.userId, lotId, 12);
+
+    const page = await readLots(fx.cookie);
+
+    expect(page.items[0]!['everSpent']).toBe(true);
+  });
+
+  // The rule this column answers reads the ledger rather than the balance,
+  // for exactly this case: a failed generation gives the credits back, so the
+  // balance says untouched while the purchase has been spent from. Reading
+  // the balance would offer this purchase a refund the rule does not allow.
+  it("says yes for one whose credits all came back after a failure", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 830, 1000);
+    await spendFrom(fx.userId, lotId, 12);
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, entry_type, amount)
+      VALUES (${fx.userId}, ${fx.userId}, ${lotId}, 'refund', 12)
+    `;
+    await sql`
+      UPDATE credit_lots SET remaining_credits = purchased_credits WHERE id = ${lotId}
+    `;
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    expect(lot!['remainingCredits']).toBe(lot!['purchasedCredits']);
+    expect(lot!['everSpent']).toBe(true);
   });
 });
 

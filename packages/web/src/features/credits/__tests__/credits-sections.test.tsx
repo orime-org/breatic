@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -133,6 +133,7 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
     currency: 'usd',
     lifecycle: 'active',
     refundAttempts: 0,
+    everSpent: false,
     createdAt: '2026-08-21T10:00:00.000Z',
     ...over,
   };
@@ -995,6 +996,76 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(/Nothing can be refunded/i);
+    });
+
+    // 这一屏声称列出的是「可以退的」，所以成员判据就是退款规则本身：
+    // 30 天内、一积分没花。列出一笔退不了的，等于对着规则许一个不作数的诺。
+    describe('only purchases the rule allows are listed', () => {
+      beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('leaves out one that has been spent from', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'spent', remainingCredits: 818, everSpent: true })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      // The one case the balance cannot answer: a failed generation gave the
+      // credits back, so this purchase reads untouched and is not refundable.
+      it('leaves out one whose credits all came back after a failure', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'returned',
+              purchasedCredits: 830,
+              remainingCredits: 830,
+              everSpent: true,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      it('leaves out one bought more than thirty days ago', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({ id: 'stale', createdAt: '2026-07-01T00:00:00.000Z' }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      });
+
+      it('keeps one on the thirtieth day, which counts in full', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({ id: 'lastday', createdAt: '2026-07-26T23:00:00.000Z' }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Refundable purchases/i);
+      });
     });
   });
 });
