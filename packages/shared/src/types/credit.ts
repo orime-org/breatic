@@ -40,11 +40,12 @@ export interface PurchaseRow {
   /**
    * What Stripe worked out this purchase comes to, tax included.
    *
-   * It appears the moment the buyer gives Stripe an address, which on a
-   * delayed payment method is days before the money moves. Present does not
-   * mean paid: `status` is what answers that, and a purchase that ended
-   * without being charged can still carry a figure Stripe computed before the
-   * bank refused it.
+   * Filled the first time a pass reads a session Stripe has already priced:
+   * for a delayed payment method that is when its session completes, days
+   * before the money moves; for every other purchase it is settlement itself.
+   * Present does not mean paid: `status` is what answers that, and a purchase
+   * that ended without being charged can still carry a figure Stripe computed
+   * before the bank refused it.
    *
    * Null until then, because Stripe cannot work out the tax without knowing
    * where the buyer is; `amountCents` is what is known before that.
@@ -101,7 +102,8 @@ export interface CreditLotView {
    *
    * Read off the ledger, not off the balance. A failed generation gives the
    * credits back, so a purchase that has been spent from can be back at its
-   * full count — and the refund rule refuses it either way.
+   * full count — and the refund rule refuses it either way. Being drawn on to
+   * repay a studio's debt counts as much as a generation does.
    */
   everSpent: boolean;
   createdAt: string;

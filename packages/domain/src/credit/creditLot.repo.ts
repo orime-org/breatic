@@ -616,7 +616,8 @@ export interface LotContext {
    * Read off the ledger, not off the balance: a failed generation gives the
    * credits back, so a purchase that has been spent from can carry its full
    * count again. The refund rule turns on this fact rather than on the
-   * balance for that reason.
+   * balance for that reason. Counts both ways of drawing on a purchase, a
+   * generation and the repayment of a studio's debt.
    */
   everSpent: boolean;
 }
@@ -671,11 +672,13 @@ export async function listLotsByUser(
       // Whether anything was ever drawn from this purchase. The refund rule
       // asks the ledger rather than the balance: a failed generation returns
       // the credits, so a purchase spent from can be back at its full count.
+      // Both ways of drawing on it count — a generation and the repayment of
+      // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
       everSpent: sql<boolean>`EXISTS (
         SELECT 1 FROM ${creditLedger}
         WHERE ${creditLedger.lotId} = ${creditLots.id}
-          AND ${creditLedger.entryType} = 'spend'
+          AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
       )`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.

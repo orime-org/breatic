@@ -574,6 +574,27 @@ describe("whether a purchase has ever been spent from", () => {
   // for exactly this case: a failed generation gives the credits back, so the
   // balance says untouched while the purchase has been spent from. Reading
   // the balance would offer this purchase a refund the rule does not allow.
+  // Repaying a studio's debt draws from the purchase just as a generation
+  // does: `designateLot` charges the lot and writes this row. Reading only
+  // `spend` would call such a purchase untouched and offer it a full refund.
+  it("says yes for one drawn on to repay a studio's debt", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 830, 1000);
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, studio_id, entry_type, amount)
+      VALUES (${fx.userId}, ${fx.userId}, ${lotId}, ${fx.studioId}, 'debt_repayment', -40)
+    `;
+    await sql`
+      UPDATE credit_lots SET remaining_credits = remaining_credits - 40 WHERE id = ${lotId}
+    `;
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    expect(lot!['lifecycle']).toBe("active");
+    expect(lot!['everSpent']).toBe(true);
+  });
+
   it("says yes for one whose credits all came back after a failure", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx.userId, 830, 1000);
