@@ -1,0 +1,70 @@
+name: Feature request
+description: Propose a product capability or a change in product behavior.
+title: "Feature: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem before proposing an implementation. A request is ready for review when its boundaries and acceptance criteria are explicit.
+
+  - type: textarea
+    id: user_problem
+    attributes:
+      label: User problem
+      description: Explain who is affected, what they are trying to accomplish, and what prevents them today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: user_scenario
+    attributes:
+      label: User scenario
+      description: Describe a concrete end-to-end situation in which this capability is needed.
+      placeholder: As a ..., when I ..., I need ..., so that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired_outcome
+    attributes:
+      label: Desired product behavior
+      description: Describe the observable behavior and outcome, without assuming a specific implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Scope and boundaries
+      description: State what is included, what is explicitly excluded, and any permissions, collaboration, or data-safety constraints.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current alternatives
+      description: Explain any workaround or alternative considered and why it is insufficient.
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that define completion.
+      placeholder: |
+        - [ ] A user can ...
+        - [ ] The behavior remains correct when ...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and did not find an open duplicate.
+          required: true
+        - label: I described the user problem separately from the proposed implementation.
+          required: true
+        - label: This is not a security vulnerability. I will report security issues privately to the maintainers.
+          required: true

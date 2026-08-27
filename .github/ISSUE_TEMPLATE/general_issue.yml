@@ -1,0 +1,69 @@
+name: General issue
+description: Raise a repository, documentation, process, or other actionable concern.
+title: "Issue: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form only when the report is neither a reproducible product defect nor a feature request. The issue must still describe an actionable outcome and completion criteria.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Documentation
+        - Repository governance or process
+        - Development experience
+        - Testing or quality
+        - Question requiring a tracked decision
+        - Other actionable concern
+    validations:
+      required: true
+
+  - type: textarea
+    id: topic
+    attributes:
+      label: Topic
+      description: State the specific concern or decision that needs to be tracked.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and evidence
+      description: Explain the background, current behavior, and any supporting evidence. Separate confirmed facts from hypotheses.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Requested outcome
+      description: Describe the concrete decision, documentation, or repository change being requested.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Completion criteria
+      description: List observable checks that define when this issue is complete.
+      placeholder: |
+        - [ ] The decision is documented.
+        - [ ] The relevant workflow enforces it.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Submission checks
+      options:
+        - label: I confirmed this report does not fit the Bug report or Feature request forms.
+          required: true
+        - label: I searched existing issues and did not find an open duplicate.
+          required: true
+        - label: This is not a security vulnerability. I will report security issues privately to the maintainers.
+          required: true
