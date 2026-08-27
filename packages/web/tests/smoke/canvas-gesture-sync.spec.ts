@@ -816,6 +816,83 @@ test('a Group somebody else is dragging cannot be resized from this end', async 
   await removeNode(mover, groupId);
 });
 
+test('a press that resized nothing leaves no permission for the next one', async () => {
+  // ReactFlow reports the press on a resize control unconditionally and gates
+  // the end on a size change having happened (`@xyflow/system:3450` against
+  // `:3539`), so pressing a handle and letting go without moving opens a resize
+  // that never commits. What that press recorded must not become the starting
+  // origin of a later resize this end is turned down for.
+  const groupId = `resize-stale-${Date.now()}`;
+  const memberId = `stale-member-${Date.now()}`;
+  await seedGroupWithMember(mover, groupId, memberId);
+  await expect(
+    mover.locator(`.react-flow__node[data-id="${groupId}"]`),
+  ).toBeVisible({ timeout: SETTLE_MS });
+  const storedGroup = await documentPosition(mover, groupId);
+  const storedMember = await documentPosition(mover, memberId);
+  const storedWidth = await groupWidth(mover, groupId);
+  if (storedGroup === null || storedMember === null || storedWidth === null) {
+    throw new Error('seed missing');
+  }
+
+  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+    position: { x: 200, y: 280 },
+  });
+  const control = mover
+    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.left`)
+    .first();
+  await expect(control).toBeVisible({ timeout: SETTLE_MS });
+
+  // Press the handle and let go on the spot: a resize that produced nothing.
+  const idle = await control.boundingBox();
+  if (idle === null) throw new Error('resize chrome missing');
+  await mover.mouse.move(idle.x + idle.width / 2, idle.y + idle.height / 2);
+  await mover.mouse.down();
+  await mover.mouse.up();
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // The watcher now takes the Group and keeps holding it.
+  const held = await drawnAt(watcher, groupId);
+  if (held === null) throw new Error('group missing on the watcher');
+  await watcher.mouse.move(held.x + 200, held.y + 280);
+  await watcher.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await watcher.mouse.move(held.x + 200 + step * 40, held.y + 280);
+    await watcher.waitForTimeout(90);
+  }
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // The mover pulls the left edge; this end is turned down for it.
+  const handle = await control.boundingBox();
+  if (handle === null) throw new Error('resize chrome missing');
+  await mover.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await mover.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await mover.mouse.move(
+      handle.x + handle.width / 2 - step * 30,
+      handle.y + handle.height / 2,
+    );
+    await mover.waitForTimeout(90);
+  }
+  await mover.mouse.up();
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  await expect(mover.locator('[data-sonner-toast]').first()).toContainText(
+    REMOTE_GATE_TEXT,
+    { timeout: SETTLE_MS },
+  );
+  // Nothing of this Group went in: not its origin, not its size, and not the
+  // member position that would have been stated against that origin.
+  expect(await documentPosition(mover, groupId)).toEqual(storedGroup);
+  expect(await groupWidth(mover, groupId)).toBe(storedWidth);
+  expect(await documentPosition(mover, memberId)).toEqual(storedMember);
+
+  await watcher.mouse.up();
+  await watcher.waitForTimeout(SETTLE_MS);
+  await removeNode(mover, memberId);
+  await removeNode(mover, groupId);
+});
+
 test('asking for a Group says why when the other end holds one of the two', async () => {
   const left = `gate-left-${Date.now()}`;
   const right = `gate-right-${Date.now()}`;
