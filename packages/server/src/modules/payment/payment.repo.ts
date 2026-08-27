@@ -163,6 +163,36 @@ export async function updatePaymentStatusCAS(
 }
 
 /**
+ * Record what Stripe worked out, on a purchase that has not landed yet.
+ *
+ * A delayed payment method finishes the checkout — the buyer has typed their
+ * address, so Stripe has worked out the tax and knows the final figure — while
+ * the money itself is still clearing. The row stays `pending` until it lands,
+ * and without this the figure Stripe already holds is thrown away and the
+ * screen keeps showing the pre-tax face value.
+ *
+ * Only rows still awaiting an answer are written, so a landed purchase's
+ * recorded figures cannot be moved by a late look.
+ * @param id - The purchase.
+ * @param charged - What Stripe says it comes to.
+ * @param charged.taxCents - The tax it worked out.
+ * @param charged.totalCents - Face value plus that tax.
+ */
+export async function recordPendingCharge(
+  id: string,
+  charged: { taxCents?: number | undefined; totalCents?: number | undefined },
+): Promise<void> {
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (charged.taxCents !== undefined) updates.taxCents = charged.taxCents;
+  if (charged.totalCents !== undefined) updates.totalCents = charged.totalCents;
+  if (Object.keys(updates).length === 1) return;
+  await db
+    .update(payments)
+    .set(updates)
+    .where(and(eq(payments.id, id), inArray(payments.status, ["pending", "failed"])));
+}
+
+/**
  * The payments one reconcile pass should ask Stripe about.
  *
  * Three bounds, each answering a different way this could go wrong.

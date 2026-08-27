@@ -115,10 +115,11 @@ export function BuyConfirmDialog({
               setAgreed(next === true);
             }}
           />
-          <span>
-            {t('credits.buy.consentPrefix')} {t('credits.buy.consentTerms')}{' '}
-            {t('credits.buy.consentAnd')} {t('credits.buy.consentRefund')}
-          </span>
+          {/* One sentence, one key. Split into its clauses it was joined by
+              spaces written here, and where a clause joins the next is a
+              question about the language, not about this layout — every
+              non-English locale rendered the sentence with English spacing. */}
+          <span>{t('credits.buy.consent')}</span>
         </label>
 
         <DialogFooter>

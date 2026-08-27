@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
@@ -70,6 +70,14 @@ export function StudioAccountMenu(): React.JSX.Element {
 
   // How long the return page may wait comes from the server, on the list the
   // buy screen reads anyway. Until it arrives there is nothing to wait for.
+  //
+  // Asked for only when there is a return to wait through. This menu is
+  // mounted by the studio layout, so every signed-in account reaches it on
+  // every page; without the gate each one spends a request on a list nobody is
+  // about to look at, and the buy screen's own gate is answered from a cache
+  // that was filled whether it asked or not.
+  const [params] = useSearchParams();
+  const returningFromPayment = params.get('session_id') !== null;
   const packs = useQuery({
     // The refund rule comes back in the reader's language, so the language is
     // part of what was asked for. Left out of the key, switching language
@@ -77,6 +85,7 @@ export function StudioAccountMenu(): React.JSX.Element {
     queryKey: ['payment', 'tiers', getLocale()],
     queryFn: () => paymentApi.tiers(),
     staleTime: 5 * 60 * 1000,
+    enabled: returningFromPayment,
   });
   const back = useCheckoutReturn({
     confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? CONFIRM_WAIT_BACKSTOP_MS,

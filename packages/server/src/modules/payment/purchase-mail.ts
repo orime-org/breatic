@@ -6,10 +6,11 @@
  *
  * Sending never holds the request. All four callers of `fulfillPayment` have
  * something waiting behind them — the webhook owes Stripe a prompt 2xx, the
- * confirmation endpoint has a buyer behind a full-screen wait, and reconciling
- * sits on the gate seven sections of the credits overlay share — so a stalled
- * SMTP connection would be felt by a person in every case. The send is started
- * and the answer goes out; the outbox row records what happened.
+ * confirmation endpoint has a buyer behind a full-screen wait, cancelling has
+ * one looking at a dialog, and reconciling sits on the gate seven sections of
+ * the credits overlay share — so a stalled SMTP connection would be felt by a
+ * person in every case. The send is started and the answer goes out; the
+ * outbox row records what happened.
  *
  * Every state except `sent` offers a resend, because the question that decides
  * it is whether the letter went out, and only `sent` says it did. The claim
@@ -52,6 +53,13 @@ export async function sendPurchaseConfirmation(input: {
     input.staleSendingBefore,
   );
   if (claim === null) return false;
+
+  // Only the send is guarded. With the write inside the guard too, a database
+  // that blinks while recording a letter that DID go out sends the failure
+  // down the same path, and the row ends up saying `failed` about a letter the
+  // buyer is holding — which is what puts the resend button back in front of
+  // them.
+  let outcome: { status: "sent" | "skipped" } | { status: "failed"; error: string };
   try {
     const result = await sendMail({
       to: input.to,
@@ -59,21 +67,22 @@ export async function sendPurchaseConfirmation(input: {
       html: input.html,
       text: input.text,
     });
-    if (result.status === "sent") {
-      await outbox.recordSend(input.paymentId, claim, "sent");
-      return true;
-    }
-    // Console and disabled backends never put a letter on the wire, so the
-    // row says so and keeps offering the resend for once one is configured.
-    await outbox.recordSend(input.paymentId, claim, "skipped");
-    return false;
+    // Console and disabled backends never put a letter on the wire, so the row
+    // says so and keeps offering the resend for once one is configured.
+    outcome =
+      result.status === "sent" ? { status: "sent" } : { status: "skipped" };
   } catch (err) {
-    await outbox.recordSend(
-      input.paymentId,
-      claim,
-      "failed",
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
+    outcome = {
+      status: "failed",
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
+
+  await outbox.recordSend(
+    input.paymentId,
+    claim,
+    outcome.status,
+    outcome.status === "failed" ? outcome.error : undefined,
+  );
+  return outcome.status === "sent";
 }

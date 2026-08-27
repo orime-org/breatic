@@ -60,6 +60,17 @@ credits.get(
     if (env.PAYMENT_ENABLED) {
       try {
         for (const pass of await paymentService.reconcilePayments(user.id)) {
+          if ("failure" in pass) {
+            logger.error(
+              {
+                err: pass.failure,
+                userId: user.id,
+                stripeSessionId: pass.stripeSessionId,
+              },
+              "payment_reconcile_pass_failed",
+            );
+            continue;
+          }
           logFulfillment(pass.outcome, {
             stripeSessionId: pass.stripeSessionId,
             from: "reconcile",

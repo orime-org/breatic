@@ -16,8 +16,6 @@ import { apiGet, apiPost } from '@web/data/api/request';
 
 /** One pack on offer. */
 export interface CreditPack {
-  /** What a buyer reads. English in every locale, and never translated. */
-  name: string;
   /** How many credits it grants. */
   credits: number;
   /** Its listed price, before tax. */

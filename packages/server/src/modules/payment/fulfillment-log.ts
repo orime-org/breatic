@@ -4,10 +4,11 @@
 /**
  * What the routing layer writes down about one fulfillment pass.
  *
- * Four callers reach `fulfillPayment` and three of them sit behind a route:
- * the webhook, the confirmation endpoint, and the reconcile pass the credits
- * overview runs. They answer their own callers differently and log the same
- * way, so the levels live here rather than at each of them.
+ * Every path that settles a purchase writes through here: the webhook, the
+ * confirmation endpoint, the reconcile pass the credits overview runs, and the
+ * cancel endpoint's reclassification. They answer their own callers
+ * differently and log the same way, so the levels live here rather than at
+ * each of them.
  */
 
 import { logger } from "@breatic/core";
@@ -16,12 +17,12 @@ import type { FulfillOutcome } from "@server/modules/payment/payment.service.js"
 /**
  * Write down what one fulfillment pass did, at the level it deserves.
  *
- * Four of the six outcomes are ordinary traffic, and `replay` is the most
+ * Five of the seven outcomes are ordinary traffic, and `replay` is the most
  * ordinary of all: the confirmation endpoint settles a purchase and Stripe's
  * own event arrives seconds later to find the work done, so every purchase
  * where the buyer came back promptly produces one. The two that mean money
- * moved without credits following it have to stand out from that, or nobody
- * will ever see them.
+ * moved without credits following it — `mismatch` and `unknown` — have to
+ * stand out from that, or nobody will ever see them.
  *
  * Written as separate calls per level rather than one through a variable
  * holding the method: pino's level methods live on the prototype and use
@@ -29,7 +30,7 @@ import type { FulfillOutcome } from "@server/modules/payment/payment.service.js"
  * @param outcome - What the pass did.
  * @param ctx - The session it was about, and which caller asked.
  * @param ctx.stripeSessionId - The Checkout Session.
- * @param ctx.from - Which of the four callers this was.
+ * @param ctx.from - Which caller this was.
  * @param ctx.userId - The account, where the caller knows it.
  */
 export function logFulfillment(
@@ -51,7 +52,10 @@ export function logFulfillment(
       // purchase now has no record of what its buyer agreed to, which is what
       // a chargeback would be answered with.
       if (!outcome.consentRecorded) {
-        logger.warn({ ...ctx }, "payment_consent_not_recorded");
+        logger.warn(
+          { ...ctx, userId: outcome.userId },
+          "payment_consent_not_recorded",
+        );
       }
       return;
     case "mismatch":

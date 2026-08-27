@@ -1378,13 +1378,10 @@
       "confirmPack": "クレジットパック",
       "confirmCredits": "付与クレジット",
       "confirmTax": "表示価格は税抜きです。決済ページに税込みの最終金額が表示されます。",
-      "consentPrefix": "以下に同意します：",
-      "consentTerms": "利用規約",
-      "consentAnd": "および",
-      "consentRefund": "返金規定",
       "cancel": "キャンセル",
       "pay": "支払いに進む",
-      "failed": "この購入を開始できませんでした。もう一度お試しください。"
+      "failed": "この購入を開始できませんでした。もう一度お試しください。",
+      "consent": "利用規約および返金規定に同意します"
     },
     "purchase": {
       "processing": "処理中",
@@ -1392,11 +1389,11 @@
       "failed": "失敗",
       "landed": "受取済み",
       "notCharged": "請求なし",
-      "pendingAmount": "決済時に請求",
       "creditsOnArrival": "付与後に表示",
       "resend": "再送信",
       "resendSent": "確認メールを送信しています。",
-      "resendFailed": "このメールはまだ送信できていません。"
+      "resendFailed": "このメールはまだ送信できていません。",
+      "beforeTax": "{amount}（税抜）"
     },
     "checkoutWait": {
       "title": "この購入を処理しています",

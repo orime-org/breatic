@@ -99,8 +99,10 @@ export function getPricingTiers(): PricingTier[] {
 /**
  * Find a pack by its face value in cents.
  *
- * The face value is what a checkout request names a pack by. The name is what
- * a buyer reads, and it is free to be reworded; the face value is the pack.
+ * The face value is what a checkout request names a pack by. The `name` in the
+ * price file identifies a tier to whoever edits it and appears in the message
+ * for a tier with no price id; no screen reads it, and it is free to be
+ * reworded.
  * @param priceCents - The listed price, before tax.
  * @returns The matching tier, or undefined
  */

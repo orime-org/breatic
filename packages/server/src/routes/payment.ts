@@ -16,6 +16,7 @@ import {
   paymentConfirmSchema,
   paymentCancelSchema,
   paymentHistoryQuerySchema,
+  paymentIdParamSchema,
 } from "@server/routes/schemas.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
@@ -114,6 +115,15 @@ payment.post(
     const user = c.get("user");
     const { payment_id: paymentId } = c.req.valid("json");
     const result = await paymentService.cancelCheckout(user.id, paymentId);
+    if (result.settled !== null) {
+      // Pressing Back on a session that had in fact been paid settles it here,
+      // and no webhook or reconcile pass produces this outcome a second time.
+      logFulfillment(result.settled.outcome, {
+        stripeSessionId: result.settled.stripeSessionId,
+        from: "cancel",
+        userId: user.id,
+      });
+    }
     if (result.failure !== null) {
       // Answered 200 regardless: nothing the buyer holds is harmed, and
       // reconciling reaches this row two minutes later.
@@ -236,9 +246,10 @@ payment.post(
   requireAuth,
   requirePayments,
   rateLimitFor("payment-resend", "user"),
+  validate("param", paymentIdParamSchema),
   async (c) => {
     const user = c.get("user");
-    const paymentId = c.req.param("id");
+    const { id: paymentId } = c.req.valid("param");
     const sent = await paymentService.resendConfirmation(user.id, paymentId);
     logger.info({ userId: user.id, paymentId, sent }, "purchase_mail_resent");
     return c.json({ data: { sent } });
@@ -246,11 +257,16 @@ payment.post(
 );
 
 /** `GET /payment/:id` - get a single payment by ID. */
-payment.get("/:id", requireAuth, async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  const result = await paymentService.getPayment(id, user.id);
-  return c.json({ data: result });
-});
+payment.get(
+  "/:id",
+  requireAuth,
+  validate("param", paymentIdParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { id } = c.req.valid("param");
+    const result = await paymentService.getPayment(id, user.id);
+    return c.json({ data: result });
+  },
+);
 
 export { payment as paymentRoute };

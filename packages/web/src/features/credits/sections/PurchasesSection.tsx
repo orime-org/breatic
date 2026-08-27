@@ -135,11 +135,10 @@ const STATUS_LABEL: Record<string, string> = {
 /**
  * The states from which nothing further arrives.
  *
- * The two figures a purchase gains on landing are absent on every row that
- * has not landed, and until now that absence was read one way: "coming". It
- * is only coming while the purchase is still in flight. On an abandoned or
- * failed one, "charged at checkout" and "shown once it lands" both describe a
- * future that will not happen.
+ * The figures a purchase gains on landing are absent on every row that has not
+ * landed, and until now that absence was read one way: "coming". It is only
+ * coming while the purchase is still in flight. On an abandoned or failed one,
+ * "shown once it lands" describes a future that will not happen.
  */
 const OVER: ReadonlySet<string> = new Set(['expired', 'failed']);
 
@@ -154,10 +153,10 @@ interface PurchaseLineProps {
 /**
  * One purchase: what it cost, when, where it stands, and what is left of it.
  *
- * Every row says which of the four states it is in. What the other two cells
- * say depends on whether anything is still on its way: a purchase in flight
- * has both a charge and its credits coming, one that landed has both, and one
- * that was abandoned or failed has neither and never will.
+ * Every row says which of the four states it is in. The other two cells each
+ * ask their own question rather than reading the state: the amount asks
+ * whether Stripe has worked out a final figure, and where the credits point
+ * asks whether there is a lot behind this purchase at all.
  * @param props - The purchase and the account.
  * @param props.purchase - The purchase.
  * @param props.userId - The signed-in account.
@@ -170,7 +169,11 @@ const PurchaseLine = React.memo(function PurchaseLine({
   const t = useTranslation();
   const client = useQueryClient();
   const [sending, setSending] = React.useState(false);
-  const landed = purchase.totalCents !== null;
+  // What Stripe worked out, once it has. A purchase that landed has it, and so
+  // does one whose delayed payment is still clearing — Stripe holds the final
+  // figure from the moment the buyer typed their address. Absent, we have only
+  // our own pre-tax price, which is printed as exactly that.
+  const charged = purchase.totalCents;
   const over = OVER.has(purchase.status);
   const statusKey = STATUS_LABEL[purchase.status];
 
@@ -197,14 +200,18 @@ const PurchaseLine = React.memo(function PurchaseLine({
       main={
         <>
           {/* What the card was charged, tax included: this is the figure a
-                buyer matches against a statement. A purchase that has not
-                landed has no such figure, and printing the pre-tax price as
-                though it were one would misstate what they paid. */}
-          {landed
-            ? formatMoney(purchase.totalCents!, purchase.currency)
+                buyer matches against a statement. Absent, the pre-tax price
+                is printed and labelled as pre-tax — Stripe cannot work the tax
+                out until the buyer gives it an address, so on a purchase still
+                being paid for that figure exists nowhere, and the face value
+                said plainly tells them more than nothing does. */}
+          {charged !== null
+            ? formatMoney(charged, purchase.currency)
             : over
               ? t('credits.purchase.notCharged')
-              : t('credits.purchase.pendingAmount')}{' '}
+              : t('credits.purchase.beforeTax', {
+                amount: formatMoney(purchase.amountCents, purchase.currency),
+              })}{' '}
             · {formatLocalDay(purchase.createdAt)}
           {statusKey === undefined ? null : (
             <Badge
@@ -218,10 +225,12 @@ const PurchaseLine = React.memo(function PurchaseLine({
         </>
       }
       sub={
-        // Where it points is a question about credits, and one of these has
-        // none coming. "Unassigned" on a purchase that can never be
-        // assigned reads as something left to do.
-        over
+        // Where it points is a question about credits, and a purchase with no
+        // lot behind it has none to point anywhere. That is the question, not
+        // which states it is in: "Unassigned" on a purchase that cannot be
+        // assigned — abandoned, failed, or still being paid for — reads as
+        // something left to do.
+        purchase.lifecycle === null
           ? undefined
           : purchase.designatedStudioName === null
             ? t('credits.unassigned')

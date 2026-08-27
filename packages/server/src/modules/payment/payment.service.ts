@@ -25,7 +25,7 @@ import {
   AppError,
   NotFoundError,
   ForbiddenError,
-  getStripeReadTimeoutMs,
+  getStripeCallTimeoutMs,
 } from "@breatic/core";
 import {
   db,
@@ -72,17 +72,19 @@ async function readCheckoutSession(
 /**
  * How long one Stripe call may take, and how often the SDK may try it.
  *
- * The SDK's default is eighty seconds twice retried, and every one of these
- * calls has somebody waiting: the webhook owes Stripe an answer before it
+ * The SDK's default is eighty seconds twice retried, and every call on this
+ * leg has somebody waiting: the webhook owes Stripe an answer before it
  * decides the delivery failed, the confirmation endpoint has a buyer behind a
- * full-screen wait, and the checkout endpoint has one looking at a dialog.
+ * full-screen wait, the checkout and cancel endpoints have one looking at a
+ * dialog, and reconciling sits on the query the credits overlay opens behind.
  * The SDK's own retries fire about half a second and a second after the
  * timeout, which does nothing for a Stripe that is genuinely slow; Stripe's
- * three days of webhook redelivery is the recovery that works.
+ * three days of webhook redelivery, and the next read of the overlay, are the
+ * recoveries that work.
  * @returns The bounds, as the SDK takes them.
  */
 function stripeCallBounds(): { timeout: number; maxNetworkRetries: number } {
-  return { timeout: getStripeReadTimeoutMs(), maxNetworkRetries: 0 };
+  return { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 };
 }
 
 /**
@@ -157,19 +159,6 @@ async function writeConsentIfGiven(
 }
 
 /**
- * Open the outbox row for this purchase's confirmation email.
- *
- * Born `pending` inside the fulfillment transaction, so "no row" is
- * unreachable and the resend control always has something to render — which
- * is what makes a send that never started recoverable by the buyer.
- * @param paymentId - The payment the email is about.
- * @param tx - The fulfillment transaction.
- */
-async function openMailOutbox(paymentId: string, tx: DbTx): Promise<void> {
-  await mailRepo.openOutbox(tx, paymentId);
-}
-
-/**
  * What one pass of {@link fulfillPayment} did.
  *
  * `granted` is the only outcome that wrote anything, and the only one that
@@ -207,6 +196,17 @@ export type FulfillOutcome =
       chargedCurrency: string | null;
     }
   | { status: "unknown" };
+
+/**
+ * What one payment in a reconcile batch came to.
+ *
+ * A failure is one entry among the others rather than the end of the batch:
+ * the passes run concurrently, and the finding that matters most — a charge
+ * that disagrees with the price table — is produced by nothing else.
+ */
+export type ReconcilePass =
+  | { stripeSessionId: string; outcome: FulfillOutcome }
+  | { stripeSessionId: string; failure: unknown };
 
 /**
  * Grant the credits one paid Checkout Session bought, exactly once.
@@ -251,7 +251,21 @@ export async function fulfillPayment(
   if (session.mode !== "payment") return { status: "noop" };
 
   if (session.payment_status === "unpaid") {
-    if (session.status !== "expired") return { status: "noop" };
+    if (session.status !== "expired") {
+      // A checkout that COMPLETED while its money is still clearing — a
+      // delayed method such as a bank debit. The buyer typed their address on
+      // Stripe's page, so Stripe has worked out the tax and holds the final
+      // figure; ours is still the pre-tax face value, and this is the only
+      // moment that figure is available before the money lands. The status is
+      // untouched: nothing has been paid.
+      if (session.status === "complete") {
+        await paymentRepo.recordPendingCharge(payment.id, {
+          taxCents: session.total_details?.amount_tax ?? undefined,
+          totalCents: session.amount_total ?? undefined,
+        });
+      }
+      return { status: "noop" };
+    }
     const expired = await paymentRepo.updatePaymentStatusCAS(
       payment.id,
       ["pending", "failed"],
@@ -313,7 +327,10 @@ export async function fulfillPayment(
     );
 
     const consentRecorded = await writeConsentIfGiven(payment, session, tx);
-    await openMailOutbox(payment.id, tx);
+    // The outbox row is born `pending` inside this transaction, so "no row" is
+    // unreachable and the resend control always has something to render —
+    // which is what makes a send that never started recoverable by the buyer.
+    await mailRepo.openOutbox(tx, payment.id);
 
     return {
       status: "granted",
@@ -590,7 +607,6 @@ export async function getPayment(paymentId: string, userId: string): Promise<Pay
  */
 export function listTiers(): {
   packs: Array<{
-    name: string;
     credits: number;
     priceCents: number;
     currency: string;
@@ -599,8 +615,10 @@ export function listTiers(): {
   confirmTimeoutMs: number;
 } {
   return {
+    // The pack's `name` stays behind: it identifies a tier to whoever edits
+    // the price file, and the screen names a pack by what it costs and what it
+    // gives.
     packs: getPricingTiers().map((tier) => ({
-      name: tier.name,
       credits: tier.credits,
       priceCents: tier.priceCents,
       currency: tier.currency,
@@ -648,19 +666,21 @@ export async function confirmCheckout(
  * either way. So a refusal is followed by a question rather than a guess.
  * @param payment - The purchase.
  * @param stripeSessionId - Its session, already known to be present.
+ * @returns What settling it came to, when this path settled one. This is the
+ *   only route to a fulfillment that no webhook and no reconcile pass repeats,
+ *   so an outcome dropped here is one nobody records.
  * @throws {Error} If Stripe cannot be reached; the caller degrades.
  */
 async function reclassifyAfterRefusedExpire(
   payment: PaymentEntity,
   stripeSessionId: string,
-): Promise<void> {
+): Promise<FulfillOutcome | null> {
   const session = await readCheckoutSession(stripeSessionId);
   if (session.payment_status !== "unpaid") {
     // Paid after all: the buyer got as far as paying, the confirmation never
     // reached us, and they came back to the still-open tab and pressed Back.
     // Writing `expired` here would be taking the money and granting nothing.
-    await fulfillPayment(stripeSessionId, null);
-    return;
+    return await fulfillPayment(stripeSessionId, null);
   }
   if (session.status === "expired") {
     await paymentRepo.updatePaymentStatusCAS(
@@ -671,6 +691,7 @@ async function reclassifyAfterRefusedExpire(
   }
   // Still open, and Stripe refused to expire it: leave it where it is rather
   // than record something we have not been told.
+  return null;
 }
 
 /**
@@ -701,6 +722,12 @@ export async function cancelCheckout(
    * it and the buyer is unharmed either way.
    */
   failure: unknown;
+  /**
+   * What settling it came to, when pressing Back turned out to settle one,
+   * and which session that was. Nothing else reaches this pass, so the caller
+   * is the only place it can be recorded.
+   */
+  settled: { stripeSessionId: string; outcome: FulfillOutcome } | null;
 }> {
   const payment = await paymentRepo.getPaymentById(paymentId);
   if (!payment || payment.userId !== userId) {
@@ -712,7 +739,7 @@ export async function cancelCheckout(
     (payment.status !== "pending" && payment.status !== "failed") ||
     payment.stripeSessionId === null
   ) {
-    return { status: payment.status, failure: null };
+    return { status: payment.status, failure: null, settled: null };
   }
   const stripeSessionId = payment.stripeSessionId;
 
@@ -722,6 +749,8 @@ export async function cancelCheckout(
   // carried out rather than dropped — it may have come from Stripe or from
   // the database, and only the line that records it can say which.
   let failure: unknown = null;
+  let settled: { stripeSessionId: string; outcome: FulfillOutcome } | null =
+    null;
   try {
     await getStripeClient().checkout.sessions.expire(
       stripeSessionId,
@@ -735,7 +764,11 @@ export async function cancelCheckout(
     );
   } catch (refused) {
     try {
-      await reclassifyAfterRefusedExpire(payment, stripeSessionId);
+      const outcome = await reclassifyAfterRefusedExpire(
+        payment,
+        stripeSessionId,
+      );
+      if (outcome !== null) settled = { stripeSessionId, outcome };
     } catch (err) {
       failure = err ?? refused;
     }
@@ -745,6 +778,7 @@ export async function cancelCheckout(
   return {
     status: after?.status ?? payment.status,
     failure,
+    settled,
   };
 }
 
@@ -758,16 +792,21 @@ export async function cancelCheckout(
  *
  * Every payment it looked at is marked as looked at, whatever came back, so
  * the next pass reaches different ones.
+ *
+ * One payment failing is reported as that payment failing. The batch runs
+ * concurrently, and joining it on the first rejection would throw away what
+ * the other passes came to — including a `mismatch`, which is the one finding
+ * nothing else in the system will produce a second time.
  * @param userId - The account whose purchases to repair.
  * @returns What each payment it looked at came to, for the caller to log. A
  *   pass that repairs nothing is the ordinary case; one that finds the charge
  *   disagreeing with the price table is not, and only the caller can say so.
- * @throws {Error} If Stripe cannot be reached; the caller answers with local
- *   data and logs it.
+ * @throws {Error} If the batch could not be listed or marked; a single
+ *   payment's failure is carried in its own entry instead.
  */
 export async function reconcilePayments(
   userId: string,
-): Promise<Array<{ stripeSessionId: string; outcome: FulfillOutcome }>> {
+): Promise<ReconcilePass[]> {
   const bounds = getReconcileBounds();
   const due = await paymentRepo.listPaymentsToReconcile(
     userId,
@@ -778,10 +817,17 @@ export async function reconcilePayments(
 
   try {
     return await Promise.all(
-      due.map(async (payment) => ({
-        stripeSessionId: payment.stripeSessionId!,
-        outcome: await fulfillPayment(payment.stripeSessionId!, null),
-      })),
+      due.map(async (payment): Promise<ReconcilePass> => {
+        const stripeSessionId = payment.stripeSessionId!;
+        try {
+          return {
+            stripeSessionId,
+            outcome: await fulfillPayment(stripeSessionId, null),
+          };
+        } catch (failure) {
+          return { stripeSessionId, failure };
+        }
+      }),
     );
   } finally {
     await paymentRepo.touchReconciled(due.map((p) => p.id));

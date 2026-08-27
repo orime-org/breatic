@@ -29,7 +29,7 @@ import type Stripe from "stripe";
 import {
   db,
   findSubscribableTierByPriceId,
-  getStripeReadTimeoutMs,
+  getStripeCallTimeoutMs,
   listSubscriptions,
   lockAccountRow,
   subscriptionSituation,
@@ -282,7 +282,7 @@ export async function handleSubscriptionEvent(
     // after the timeout, which does nothing for a Stripe that is genuinely
     // slow; Stripe's three days of redelivery is the recovery that works.
     {
-      timeout: getStripeReadTimeoutMs(),
+      timeout: getStripeCallTimeoutMs(),
       maxNetworkRetries: 0,
     },
   );

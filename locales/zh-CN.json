@@ -1378,13 +1378,10 @@
       "confirmPack": "积分包",
       "confirmCredits": "到账积分",
       "confirmTax": "标价不含税。结账页会显示加上当地税额后的最终金额。",
-      "consentPrefix": "我已阅读并同意",
-      "consentTerms": "服务条款",
-      "consentAnd": "与",
-      "consentRefund": "退款规则",
       "cancel": "取消",
       "pay": "去支付",
-      "failed": "这笔购买没能发起，请再试一次。"
+      "failed": "这笔购买没能发起，请再试一次。",
+      "consent": "我已阅读并同意服务条款与退款规则"
     },
     "purchase": {
       "processing": "处理中",
@@ -1392,11 +1389,11 @@
       "failed": "未成功",
       "landed": "已到账",
       "notCharged": "未付款",
-      "pendingAmount": "结账时收取",
       "creditsOnArrival": "到账后显示",
       "resend": "重发",
       "resendSent": "确认邮件已在发送。",
-      "resendFailed": "这封邮件仍然没能发出。"
+      "resendFailed": "这封邮件仍然没能发出。",
+      "beforeTax": "{amount}（税前）"
     },
     "checkoutWait": {
       "title": "正在处理这笔购买",

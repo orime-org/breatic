@@ -1378,13 +1378,10 @@
       "confirmPack": "Pack",
       "confirmCredits": "Credits",
       "confirmTax": "The price excludes tax. The checkout page shows the final amount with the tax where you are.",
-      "consentPrefix": "I have read and agree to the",
-      "consentTerms": "Terms of Service",
-      "consentAnd": "and the",
-      "consentRefund": "refund rules",
       "cancel": "Cancel",
       "pay": "Continue to payment",
-      "failed": "That purchase could not be started. Try again."
+      "failed": "That purchase could not be started. Try again.",
+      "consent": "I have read and agree to the Terms of Service and the refund rules"
     },
     "purchase": {
       "processing": "Processing",
@@ -1392,11 +1389,11 @@
       "failed": "Failed",
       "landed": "Landed",
       "notCharged": "Not charged",
-      "pendingAmount": "Charged at checkout",
       "creditsOnArrival": "Shown once it lands",
       "resend": "Send again",
       "resendSent": "The confirmation is on its way.",
-      "resendFailed": "That letter still could not be sent."
+      "resendFailed": "That letter still could not be sent.",
+      "beforeTax": "{amount} before tax"
     },
     "checkoutWait": {
       "title": "Processing this purchase",

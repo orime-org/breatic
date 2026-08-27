@@ -182,7 +182,7 @@ describe('the purchase history', () => {
     expect(first.textContent).not.toContain('Shown once it lands');
   });
 
-  it('still says a purchase in flight has both of those coming', async () => {
+  it('prints the pre-tax price, labelled, while a purchase is in flight', async () => {
     history.mockResolvedValue({
       items: [
         row({
@@ -196,9 +196,56 @@ describe('the purchase history', () => {
     });
     renderHistory();
     const first = await screen.findByTestId('purchase-row');
-    expect(first.textContent).toContain('Charged at checkout');
+    // Stripe cannot work the tax out before the buyer gives it an address, so
+    // the final figure exists nowhere yet. The face value said plainly tells
+    // them more than saying nothing does.
+    expect(first.textContent).toContain('$20.00 before tax');
     expect(first.textContent).toContain('Shown once it lands');
     expect(first.textContent).not.toContain('Not charged');
+  });
+
+  it('prints the final figure once Stripe has one, even before it lands', async () => {
+    history.mockResolvedValue({
+      items: [
+        // A delayed payment method: the buyer typed their address and finished
+        // the checkout, so Stripe has worked out the tax, while the money is
+        // still clearing and no lot exists.
+        row({
+          status: 'pending',
+          amountCents: 2000,
+          totalCents: 2240,
+          taxCents: 240,
+          remainingCredits: null,
+          lifecycle: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const first = await screen.findByTestId('purchase-row');
+    expect(first.textContent).toContain('$22.40');
+    expect(first.textContent).not.toContain('before tax');
+  });
+
+  it('does not offer to assign a purchase that has no lot behind it', async () => {
+    history.mockResolvedValue({
+      items: [
+        row({
+          status: 'pending',
+          totalCents: null,
+          remainingCredits: null,
+          lifecycle: null,
+          designatedStudioId: null,
+          designatedStudioName: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const first = await screen.findByTestId('purchase-row');
+    // "Unassigned" reads as something left to do, and there is nothing here to
+    // do it to: the credits this purchase will grant do not exist yet.
+    expect(first.textContent).not.toContain('Unassigned');
   });
 
   it('puts all four states in the one list, each saying which it is', async () => {

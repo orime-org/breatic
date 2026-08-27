@@ -1378,13 +1378,10 @@
       "confirmPack": "點數包",
       "confirmCredits": "入帳點數",
       "confirmTax": "標價不含稅。結帳頁會顯示加上當地稅額後的最終金額。",
-      "consentPrefix": "我已閱讀並同意",
-      "consentTerms": "服務條款",
-      "consentAnd": "與",
-      "consentRefund": "退款規則",
       "cancel": "取消",
       "pay": "前往付款",
-      "failed": "這筆購買沒能發起，請再試一次。"
+      "failed": "這筆購買沒能發起，請再試一次。",
+      "consent": "我已閱讀並同意服務條款與退款規則"
     },
     "purchase": {
       "processing": "處理中",
@@ -1392,11 +1389,11 @@
       "failed": "未成功",
       "landed": "已到帳",
       "notCharged": "未付款",
-      "pendingAmount": "結帳時收取",
       "creditsOnArrival": "入帳後顯示",
       "resend": "重新寄送",
       "resendSent": "確認信正在寄送。",
-      "resendFailed": "這封信仍然沒能寄出。"
+      "resendFailed": "這封信仍然沒能寄出。",
+      "beforeTax": "{amount}（稅前）"
     },
     "checkoutWait": {
       "title": "正在處理這筆購買",

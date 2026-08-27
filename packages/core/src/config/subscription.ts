@@ -59,16 +59,16 @@ export const subscriptionConfigSchema = z.object({
    */
   stale_after_days: z.number().int().positive().default(14),
   /**
-   * How long to wait when asking Stripe what a subscription looks like now —
-   * the panel's reconciliation, the webhook's fetch, and the check before a
-   * fresh checkout that the stored unpaid one is still unpaid.
+   * How long any one call to Stripe may take, on either leg — memberships and
+   * credit packs alike, reads and writes alike.
    *
-   * One value for all three, because all three ask the same question and none
-   * of them wants to wait: the SDK's unbounded default is 80 seconds twice retried, which
-   * holds a reader in front of a spinner on one path and, on the other, holds
-   * a request Stripe has already written off and queued a redelivery for.
+   * One value for all of them, because what governs it is not what the call
+   * asks but who is waiting behind it, and behind every one of them is either
+   * a person looking at a spinner or a webhook that owes Stripe an answer
+   * before it writes the delivery off. The SDK's unbounded default is 80
+   * seconds twice retried, so an unbounded call sits for around four minutes.
    */
-  stripe_read_timeout_ms: z.number().int().positive().default(5000),
+  stripe_call_timeout_ms: z.number().int().positive().default(5000),
 });
 
 /** The file's contents, before a price id is chosen for this environment. */
@@ -151,12 +151,12 @@ export function getSubscriptionPlans(): SubscriptionPlans {
 }
 
 /**
- * Reads how long to wait when asking Stripe about a subscription.
+ * Reads how long any one call to Stripe may take, on either leg.
  * @returns That wait in milliseconds.
  * @throws {Error} When the file is missing or malformed.
  */
-export function getStripeReadTimeoutMs(): number {
-  return readFile().stripe_read_timeout_ms;
+export function getStripeCallTimeoutMs(): number {
+  return readFile().stripe_call_timeout_ms;
 }
 
 /**
