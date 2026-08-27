@@ -69,7 +69,7 @@ import * as canvasSpace from '@web/data/yjs/canvas-space';
 import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasStore, useUIStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { assetsApi } from '@web/data/api';
@@ -90,6 +90,9 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 // into a dirty start.
 beforeEach(() => {
   useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  // The active region is a module singleton for the same reason, and the
+  // canvas gates read it on every key.
+  useUIStore.setState({ activeRegion: 'space' });
 });
 const mockRunFocusCrop = vi.mocked(runFocusCrop);
 
@@ -118,6 +121,15 @@ function mockSpace(
 }
 
 /**
+ * Where a browser aims a keyboard or clipboard event: the focused element,
+ * falling back to `<body>` when nothing holds focus.
+ * @returns The element to dispatch from.
+ */
+function keyTarget(): Element {
+  return document.activeElement ?? document.body;
+}
+
+/**
  * Dispatch a `keydown` on the document so the canvas history shortcut handler
  * (a document-level listener) sees it.
  * @param key - The `KeyboardEvent.key` value.
@@ -128,7 +140,11 @@ function dispatchKeyDown(
   mods: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
 ): void {
   act(() => {
-    document.dispatchEvent(
+    // At the focused element, which is where a browser aims a key event —
+    // `<body>` when nothing holds focus. Bubbling carries it to the document
+    // listeners; dispatching on `document` itself would leave `event.target`
+    // as the document, a target no real key event ever has.
+    keyTarget().dispatchEvent(
       new KeyboardEvent('keydown', {
         key,
         metaKey: mods.meta ?? false,
@@ -180,7 +196,7 @@ function dispatchPaste(text: string): void {
     },
   });
   act(() => {
-    document.dispatchEvent(event);
+    keyTarget().dispatchEvent(event);
   });
 }
 
@@ -466,7 +482,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         },
       });
       act(() => {
-        document.dispatchEvent(event);
+        keyTarget().dispatchEvent(event);
       });
       expect(written).toContain('notes worth keeping');
     });
@@ -1591,7 +1607,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       useCanvasStore.getState().startReferencePick('target');
     });
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.keyDown(keyTarget(), { key: 'Escape' });
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
@@ -1626,11 +1642,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useCanvasStore.getState().pickSession).not.toBeNull();
     // An auto-repeat Esc is ignored too.
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+      fireEvent.keyDown(keyTarget(), { key: 'Escape', repeat: true });
     });
     expect(useCanvasStore.getState().pickSession).not.toBeNull();
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.keyDown(keyTarget(), { key: 'Escape' });
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
@@ -1674,7 +1690,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect(useCanvasStore.getState().pickSession).not.toBeNull();
       // The next, unconsumed press exits.
       act(() => {
-        fireEvent.keyDown(window, { key: 'Escape' });
+        fireEvent.keyDown(keyTarget(), { key: 'Escape' });
       });
       expect(useCanvasStore.getState().pickSession).toBeNull();
     } finally {
@@ -1707,7 +1723,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     btn.focus();
     try {
       act(() => {
-        fireEvent.keyDown(window, { key: 'Escape' });
+        fireEvent.keyDown(keyTarget(), { key: 'Escape' });
       });
       expect(useCanvasStore.getState().pickSession).not.toBeNull();
     } finally {
@@ -3355,6 +3371,170 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     } finally {
       rect.mockRestore();
     }
+  });
+
+  // Every global keyboard and clipboard outlet on the canvas asks the same
+  // question first: does this event belong to the space region? The seven below
+  // are the ones #168 changes; the modifier-key props ReactFlow owns are scoped
+  // by where the pointer lands, so they are untouched.
+  describe('keyboard and clipboard belong to the active region (#168)', () => {
+    /**
+     * Mounts a space holding `count` text nodes, all selected the way the
+     * canvas reads selection (its ReactFlow mirror, not Yjs). Two of them is
+     * what the group shortcut needs before it offers anything.
+     * @param count - How many nodes to put on the board.
+     */
+    const mountWithSelection = (count = 1): void => {
+      mockUseCanvasSpace.mockReturnValue(
+        mockSpace({
+          nodes: Array.from({ length: count }, (_, i) => ({
+            id: `n${i + 1}`,
+            type: 'text' as const,
+            position: { x: i * 400, y: 0 },
+            data: { kind: 'text' as const, status: 'idle' as const, name: 'N' },
+          })),
+        }),
+      );
+      renderSpace();
+      act(() => {
+        useCanvasGraphStore
+          .getState()
+          .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
+      });
+    };
+
+    /**
+     * Spies on the space's write helpers, which is where every one of these
+     * outlets ends up. The mocked hook feeds the canvas its nodes, so the
+     * document itself never holds them — the write call is the observable.
+     * @returns The spies, restored by `vi.restoreAllMocks` between tests.
+     */
+    const spyWrites = (): {
+      removeElements: ReturnType<typeof vi.spyOn>;
+      addNode: ReturnType<typeof vi.spyOn>;
+      createGroup: ReturnType<typeof vi.spyOn>;
+    } => ({
+      removeElements: vi.spyOn(canvasSpace, 'removeElements'),
+      addNode: vi.spyOn(canvasSpace, 'addNode'),
+      createGroup: vi.spyOn(canvasSpace, 'createGroup'),
+    });
+
+    /**
+     * Dispatches a copy event carrying a clipboard stub, and reports what the
+     * canvas wrote to it.
+     * @returns Whatever landed on the clipboard, empty when nothing did.
+     */
+    const copyAndRead = (): string => {
+      let written = '';
+      const event = new Event('copy', { bubbles: true }) as Event & {
+        clipboardData: { setData: (type: string, data: string) => void };
+      };
+      Object.defineProperty(event, 'clipboardData', {
+        value: {
+          setData: (_type: string, data: string) => {
+            written = data;
+          },
+        },
+      });
+      act(() => {
+        keyTarget().dispatchEvent(event);
+      });
+      return written;
+    };
+
+    describe('the agent panel holds it', () => {
+      beforeEach(() => {
+        useUIStore.setState({ activeRegion: 'agent' });
+      });
+
+      it('undo leaves the document alone', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        dispatchKeyDown('z', { meta: true });
+        expect(undoSpy).not.toHaveBeenCalled();
+      });
+
+      it('redo leaves the document alone', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        dispatchKeyDown('z', { meta: true, shift: true });
+        expect(redoSpy).not.toHaveBeenCalled();
+      });
+
+      it('paste creates no node', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        const { addNode } = spyWrites();
+        dispatchPaste('https://example.com/a.png');
+        expect(addNode).not.toHaveBeenCalled();
+      });
+
+      it('copy leaves the clipboard alone', () => {
+        mountWithSelection();
+        expect(copyAndRead()).toBe('');
+      });
+
+      it('the duplicate shortcut creates no clone', async () => {
+        mountWithSelection();
+        const { addNode } = spyWrites();
+        dispatchKeyDown('d', { meta: true });
+        await new Promise((r) => setTimeout(r, 30));
+        expect(addNode).not.toHaveBeenCalled();
+      });
+
+      it('the group shortcut creates no group', async () => {
+        mountWithSelection(2);
+        const { createGroup } = spyWrites();
+        dispatchKeyDown('g', { meta: true });
+        await new Promise((r) => setTimeout(r, 30));
+        expect(createGroup).not.toHaveBeenCalled();
+      });
+
+      it('the delete key removes nothing', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Backspace');
+        await new Promise((r) => setTimeout(r, 30));
+        expect(removeElements).not.toHaveBeenCalled();
+      });
+
+      it('escape does not end a pick session', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        act(() => {
+          useCanvasStore.getState().startReferencePick('n1');
+        });
+        act(() => {
+          keyTarget().dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+          );
+        });
+        expect(useCanvasStore.getState().pickSession).not.toBeNull();
+      });
+    });
+
+    describe('the space region holds it', () => {
+      it('the delete key removes the selected node', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Backspace');
+        await waitFor(() =>
+          expect(removeElements).toHaveBeenCalledWith('p', 's', ['n1'], []),
+        );
+      });
+
+      it('copy puts the selection on the clipboard', () => {
+        mountWithSelection();
+        expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
+      });
+
+      it('undo runs', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        dispatchKeyDown('z', { meta: true });
+        expect(undoSpy).toHaveBeenCalled();
+      });
+    });
   });
 });
 

@@ -27,6 +27,8 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
+import { isEditableTarget } from '@web/lib/is-editable-target';
+import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
 import { canGenerate, newId } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -397,23 +399,6 @@ const DOT_SIZE_PX = 2;
  * Module-level for a stable array reference across renders.
  */
 const SNAP_GRID: [number, number] = [DOT_GAP_PX, DOT_GAP_PX];
-
-/**
- * Whether a focused element should keep the browser's native paste / copy —
- * so editing a node body or a form field isn't hijacked by the canvas
- * clipboard handlers.
- * @param el - The currently focused element (`document.activeElement`).
- * @returns True for inputs, textareas, and contenteditable elements.
- */
-function isEditableTarget(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    (el as HTMLElement).isContentEditable
-  );
-}
 
 // Footprint assumed for a node ReactFlow has not measured yet (drag hit-test +
 // group geometry). Uses the real empty-node size (288×192) so an unmeasured
@@ -832,6 +817,7 @@ function CanvasSpaceInner({
       ) {
         return;
       }
+      if (!regionOwnsKeyboard(e.target, 'space')) return;
       const active = document.activeElement;
       // Ownership-based yield (round-6, matching the overlay): the
       // defaultPrevented guard covers Esc consumers; a plain focused
@@ -1200,7 +1186,7 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       const action = matchHistoryShortcut(event);
       if (!action) return;
       event.preventDefault();
@@ -2606,7 +2592,7 @@ function CanvasSpaceInner({
      * @param event - The clipboard paste event.
      */
     const onPaste = (event: ClipboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
@@ -2670,13 +2656,10 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      // TODO(#168): this takes the copy away from a text selection. Dragging
-      // across words anywhere on the page leaves `document.activeElement` on
-      // `body`, so the editable-target check lets it through, and a reader who
-      // highlighted a reply in the chat panel gets the selected node's JSON.
-      // Text selections belong to the browser; the node goes on the clipboard
-      // only when there is none.
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      // A copy event's target is the element the selection sits in, so a
+      // reader who highlighted a reply in the chat panel is asking the agent
+      // region for it, not the canvas.
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
@@ -2811,7 +2794,7 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       // Always swallow a group / ungroup chord on the canvas so the browser's
       // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
       // current selection (group mixed with loose nodes → no-op, B decision).
@@ -2943,7 +2926,7 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
       duplicateSelection();
