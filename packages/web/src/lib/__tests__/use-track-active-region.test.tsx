@@ -175,6 +175,57 @@ describe('useTrackActiveRegion', () => {
     });
   });
 
+  // Highlighted words say "these are the ones you are working with", and the
+  // space taking over makes that untrue. Dropping them leaves one answer on
+  // the screen instead of two.
+  describe('taking the space region drops what was highlighted', () => {
+    /**
+     * Highlights the agent button's text, the way a reader dragging across a
+     * reply would.
+     * @returns The live selection.
+     */
+    const highlightInAgent = (): Selection => {
+      page.agentButton.textContent = 'a highlighted reply';
+      const range = document.createRange();
+      range.selectNodeContents(page.agentButton);
+      const selection = window.getSelection() as Selection;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return selection;
+    };
+
+    it('clears it when a press hands the space region over', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      renderHook(() => useTrackActiveRegion());
+      const selection = highlightInAgent();
+      expect(selection.isCollapsed).toBe(false);
+      fire(page.spaceButton, 'pointerdown');
+      expect(window.getSelection()?.isCollapsed).toBe(true);
+    });
+
+    it('clears it when focus hands the space region over', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      renderHook(() => useTrackActiveRegion());
+      highlightInAgent();
+      fire(page.spaceButton, 'focusin');
+      expect(window.getSelection()?.isCollapsed).toBe(true);
+    });
+
+    it('leaves it alone while the space region stays active', () => {
+      renderHook(() => useTrackActiveRegion());
+      const selection = highlightInAgent();
+      fire(page.spaceButton, 'pointerdown');
+      expect(selection.isCollapsed).toBe(false);
+    });
+
+    it('leaves it alone when the agent region takes over', () => {
+      renderHook(() => useTrackActiveRegion());
+      const selection = highlightInAgent();
+      fire(page.agentButton, 'pointerdown');
+      expect(selection.isCollapsed).toBe(false);
+    });
+  });
+
   it('stops tracking once unmounted', () => {
     const { unmount } = renderHook(() => useTrackActiveRegion());
     unmount();

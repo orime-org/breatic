@@ -28,7 +28,16 @@ export function useTrackActiveRegion(): void {
     const claim = (event: Event): void => {
       if (!(event.target instanceof Element)) return;
       const region = regionOf(event.target);
-      if (region) useUIStore.getState().setActiveRegion(region);
+      if (!region) return;
+      const store = useUIStore.getState();
+      // Highlighted words say "these are the ones you are working with", and
+      // the space taking over makes that untrue: the keys are the canvas's
+      // from here on. Dropping the highlight leaves one answer on the screen
+      // rather than two that contradict each other.
+      if (region === 'space' && store.activeRegion !== 'space') {
+        window.getSelection()?.removeAllRanges();
+      }
+      store.setActiveRegion(region);
     };
     document.addEventListener('pointerdown', claim, true);
     document.addEventListener('focusin', claim, true);
