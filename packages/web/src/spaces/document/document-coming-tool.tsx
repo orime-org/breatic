@@ -107,7 +107,7 @@ export const ComingTool = React.memo(function ComingTool({
           tabIndex={-1}
           className={
             tool.drawsAsDropdown
-              // `.bubble-drop`: 26 tall, 6px either side, 3px between the
+              // `.bubble-drop`: 28 tall, 6px either side, 3px between the
               // three things in it. The demo draws 13px text and this takes
               // the button's own `text-sm`: the demo fixes the shape, not
               // every value in it.

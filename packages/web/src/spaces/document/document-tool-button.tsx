@@ -39,9 +39,9 @@ import { useTranslation } from '@web/i18n/use-translation';
  *
  * Sitting over the text, they are a notch shorter than a free-standing
  * button: the demo's `.bubble-btn` (`2026-08-21-editor-command-surface.html`)
- * is 26 tall.
+ * is 28 tall, the `--btn-inline` rung, where a chrome button is 32.
  */
-export const BUBBLE_CONTROL_HEIGHT = 'h-[26px]';
+export const BUBBLE_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
 
 /** The height above plus the 28 the same demo rule gives an icon button. */
 export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
