@@ -11,7 +11,13 @@
  * 需要 dev 起着 + smoke 账号：
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import {
+  test,
+  expect,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from 'playwright/test';
 
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
@@ -19,15 +25,33 @@ const password = process.env.SMOKE_PASSWORD;
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /**
- * Sign in and land on the studio.
+ * The session this file signs in for, once.
+ *
+ * Logging in is rate limited to five a minute, so a file where every test
+ * signs in for itself starts failing at the fifth one — and the failure looks
+ * like a navigation timeout rather than like a refusal.
+ */
+let session: Awaited<ReturnType<BrowserContext['cookies']>> = [];
+
+test.beforeAll(async ({ browser }: { browser: Browser }) => {
+  if (!email || !password) return;
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto('/login');
+  await page.locator('#login-email').fill(email);
+  await page.locator('#login-password').fill(password);
+  await page.locator('form button[type="submit"]').click();
+  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+  session = await context.cookies();
+  await context.close();
+});
+
+/**
+ * Put this file's one session on a fresh page.
  * @param page - The page.
  */
 async function signIn(page: Page): Promise<void> {
-  await page.goto('/login');
-  await page.locator('#login-email').fill(email as string);
-  await page.locator('#login-password').fill(password as string);
-  await page.locator('form button[type="submit"]').click();
-  await page.waitForURL(/\/(studio|project)/, { timeout: 15_000 });
+  await page.context().addCookies(session);
 }
 
 /**
