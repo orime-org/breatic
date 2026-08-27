@@ -1333,6 +1333,46 @@ async function bodyView(
   });
 }
 
+// G2. The bar hangs inside the body's scroller, and the container it hangs in
+// is a direct child of that scroller — the same position `index.css` gives the
+// wrapper Radix puts around the document. Only a real browser answers whether
+// the rule aimed at that wrapper also lands on the portal's container: jsdom
+// loads no stylesheet, so `min-height` is empty there whatever the selector says.
+test('selecting text leaves the document as long as it was', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  const scrollRange = async (): Promise<{ height: number; client: number }> =>
+    page.evaluate(() => {
+      const v = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      return { height: v.scrollHeight, client: v.clientHeight };
+    });
+
+  const before = await scrollRange();
+  await selectParagraph(page, 4);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+  const after = await scrollRange();
+
+  expect(after.height).toBe(before.height);
+
+  // Where the growth came from, so a failure names it rather than only the sum.
+  const portal = await page.evaluate(() => {
+    const el = document.querySelector('[data-floating-ui-portal]') as HTMLElement | null;
+    if (!el) return null;
+    return {
+      insideViewport: !!el.closest('[data-radix-scroll-area-viewport]'),
+      height: Math.round(el.getBoundingClientRect().height),
+      minHeight: getComputedStyle(el).minHeight,
+    };
+  });
+  expect(portal).not.toBeNull();
+  expect(portal!.insideViewport).toBe(true);
+  expect(portal!.minHeight).not.toBe(`${before.client}px`);
+});
+
 test('link: an address with a space in the host leaves confirm dimmed', async () => {
   // Only a real browser answers this. The check rests on the URL parser, and
   // the two runtimes treat `https://hello world` in opposite ways: Node's
