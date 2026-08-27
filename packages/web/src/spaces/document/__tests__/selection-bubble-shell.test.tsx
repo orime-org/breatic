@@ -160,34 +160,73 @@ describe('the bubble bar shell', () => {
     });
   });
 
-  describe('items not open yet', () => {
+  describe('controls whose command nobody has written yet', () => {
     /**
-     * User 2026-08-23's rule, quoted in `document-coming-tool.tsx:4-33`: "even
-     * with no function behind it, leave the shell there", and right after it
-     * "What it must not do is look usable: a control that reads as available
-     * and answers a click with nothing tells the reader it is broken".
+     * They look and behave the way the demo draws them — the alignment rows,
+     * the colour cells, the AI commands all read as available — and a press
+     * reaches the console rather than the reader (user 2026-08-26). The
+     * product is not launched; whoever has the browser open is the one who
+     * needs to know which command they reached.
      */
-    it('marks the two slots with nothing behind them as not open yet', async () => {
+    it.each([
+      ['doc-bubble-align'],
+      ['doc-bubble-color'],
+      ['doc-bubble-coming-ai'],
+    ])('draws %s as an ordinary control', async (id) => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
 
-      for (const id of ['doc-bubble-align', 'doc-bubble-color']) {
-        const slot = screen.getByTestId(id);
-        expect(slot.getAttribute('aria-disabled')).toBe('true');
-        expect(slot.className).toContain('opacity-50');
-        expect(slot.className).toContain('cursor-not-allowed');
-      }
+      const slot = screen.getByTestId(id);
+      expect(slot.getAttribute('aria-disabled')).toBeNull();
+      // The classes are read one by one: `Button`'s own base carries
+      // `disabled:opacity-50`, which a substring test would match.
+      const classes = slot.className.split(/\s+/);
+      expect(classes).not.toContain('opacity-50');
+      expect(classes).not.toContain('cursor-not-allowed');
     });
 
-    it('keeps the treatment the AI slot already carries', async () => {
+    it.each([
+      ['doc-bubble-align', 'doc-bubble-align-item-center'],
+      ['doc-bubble-color', 'doc-bubble-color-text-red'],
+      ['doc-bubble-color', 'doc-bubble-color-reset'],
+      ['doc-bubble-coming-ai', 'doc-bubble-ai-item-translate'],
+      ['doc-bubble-block-type', 'doc-bubble-block-type-item-heading-1'],
+    ])('says on the console that %s / %s reached no command', async (slot, item) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      const before = markupOf();
+
+      const menu = await hoverOpen(slot);
+      act(() => {
+        (menu.querySelector(`[data-testid="${item}"]`) as HTMLElement).click();
+      });
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('not implemented yet');
+      // The document is what it was: the console is the only thing that
+      // happened.
+      expect(markupOf()).toBe(before);
+    });
+
+    // The task list is the one row the demo greys (demo:588), because it has
+    // no schema node to turn a paragraph into. The rest of the block type menu
+    // reads as available.
+    it('greys the task list row, and only that one', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-block-type');
 
-      const ai = screen.getByTestId('doc-bubble-coming-ai');
-      expect(ai.getAttribute('aria-disabled')).toBe('true');
-      expect(ai.className).toContain('opacity-50');
+      const greyed = Array.from(
+        menu.querySelectorAll('[data-testid^="doc-bubble-block-type-item-"]'),
+      ).filter((n) => n.getAttribute('aria-disabled') === 'true');
+
+      expect(greyed.map((n) => n.getAttribute('data-testid'))).toEqual([
+        'doc-bubble-block-type-item-task-list',
+      ]);
     });
   });
 
@@ -433,6 +472,26 @@ describe('the bubble bar shell', () => {
       expect(rows.indexOf(separators[0])).toBe(4);
     });
 
+    // Every row of the demo's alignment menu carries a 16px icon, the way the
+    // block type menu's rows do.
+    it('gives each alignment row an icon', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-align');
+
+      const rows = Array.from(
+        menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]'),
+      );
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row.querySelectorAll('svg')).toHaveLength(1);
+      }
+      // Three different icons, not the same one three times.
+      const shapes = rows.map((r) => r.querySelector('svg')?.innerHTML);
+      expect(new Set(shapes).size).toBe(3);
+    });
+
     it('greys the task list item out, the way the demo draws it', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
@@ -445,25 +504,53 @@ describe('the bubble bar shell', () => {
       expect(taskList.getAttribute('aria-disabled')).toBe('true');
     });
 
-    // Each of these three reaches no command at all this time round, so its
-    // menu says exactly that and holds nothing else (user 2026-08-26). What
-    // the demo draws inside them — three alignments, a colour panel, nine AI
-    // commands — arrives with the task that implements each.
-    it.each([
-      ['doc-bubble-align'],
-      ['doc-bubble-color'],
-      ['doc-bubble-coming-ai'],
-    ])('says %s is not implemented yet, and holds nothing else', async (slot) => {
+    it('lists the three alignments the demo draws', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen(slot);
+      const menu = await hoverOpen('doc-bubble-align');
 
-      const rows = menu.querySelectorAll('[role="menuitem"]');
-      expect(rows).toHaveLength(1);
-      expect(rows[0].getAttribute('data-testid')).toBe('doc-bubble-not-implemented');
-      expect(rows[0].getAttribute('aria-disabled')).toBe('true');
-      expect(rows[0].textContent?.trim()).not.toBe('');
+      expect(
+        Array.from(menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]')).map((n) =>
+          n.getAttribute('data-testid'),
+        ),
+      ).toEqual([
+        'doc-bubble-align-item-left',
+        'doc-bubble-align-item-center',
+        'doc-bubble-align-item-right',
+      ]);
+    });
+
+    it('lays the colour panel out in two rows of eight with a reset, the way the demo draws it', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-color');
+
+      // Eight, not seven: demo:693-694 puts a default in front of the seven
+      // hues on the text row and a "none" in front of them on the background
+      // row, each marked as the one in force.
+      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-text-"]')).toHaveLength(8);
+      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-fill-"]')).toHaveLength(8);
+      expect(
+        menu.querySelector('[data-testid="doc-bubble-color-text-default"]')?.getAttribute('data-selected'),
+      ).toBe('true');
+      expect(
+        menu.querySelector('[data-testid="doc-bubble-color-fill-none"]')?.getAttribute('data-selected'),
+      ).toBe('true');
+      // demo:695: one full-width button under both rows.
+      expect(menu.querySelector('[data-testid="doc-bubble-color-reset"]')).not.toBeNull();
+    });
+
+    it('lists the eight AI commands the ruling draws', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-coming-ai');
+
+      expect(
+        menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
+      ).toHaveLength(8);
     });
   });
 

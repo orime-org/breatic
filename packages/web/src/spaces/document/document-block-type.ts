@@ -60,11 +60,18 @@ export interface BlockTypeItem {
   /**
    * The command behind this row.
    *
-   * Three of the nine reach one today (bulleted list, numbered list, quote);
-   * the rest carry the not-open-yet treatment (user 2026-08-23's rule, which
-   * user 2026-08-26 confirmed still stands).
+   * Three of the nine reach one today: bulleted list, numbered list, quote.
    */
   run?: (editor: Editor) => void;
+  /**
+   * Drawn greyed out, the way demo:588 draws it.
+   *
+   * The demo greys one row, and for a reason of its own: the task list has no
+   * schema node at all yet (#13). It has a place in the menu because a
+   * paragraph could be turned into one; it does not read as available because
+   * there is nothing to turn into.
+   */
+  greyed?: true;
 }
 
 /** The nine, in the demo's order. */
@@ -129,6 +136,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     id: 'task-list',
     labelKey: 'spaces.document.commands.taskList',
     Icon: ListTodo,
+    greyed: true,
   },
 ];
 

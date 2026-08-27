@@ -353,7 +353,6 @@ describe('the selection bubble bar', () => {
   // whole-document menu (task #129).
   it.each([
     ['comment'],
-    ['ai'],
   ])('shows %s as an entry that is not open yet', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
@@ -368,7 +367,6 @@ describe('the selection bubble bar', () => {
   // A10: clicking one leaves the document exactly as it was.
   it.each([
     ['comment'],
-    ['ai'],
   ])('does nothing when %s is clicked', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
