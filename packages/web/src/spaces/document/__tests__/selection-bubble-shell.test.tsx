@@ -129,7 +129,46 @@ async function hoverOpen(slotId: string): Promise<HTMLElement> {
 
 describe('the bubble bar shell', () => {
   describe('slots', () => {
-    it('gives the block type slot the icon of the block the cursor sits in', async () => {
+    // Every block the schema has, one at a time. `task-list` is the ninth row
+    // and has no schema node to put a selection in (#13), so it cannot appear
+    // here.
+    it.each([
+      ['paragraph', '<p>the quick brown fox</p>'],
+      ['heading-1', '<h1>the quick brown fox</h1>'],
+      ['heading-2', '<h2>the quick brown fox</h2>'],
+      ['heading-3', '<h3>the quick brown fox</h3>'],
+      ['bullet-list', '<ul><li><p>the quick brown fox</p></li></ul>'],
+      ['ordered-list', '<ol><li><p>the quick brown fox</p></li></ol>'],
+      ['quote', '<blockquote><p>the quick brown fox</p></blockquote>'],
+      ['code-block', '<pre><code>the quick brown fox</code></pre>'],
+    ])('reads %s off the block the selection sits in', async (blockType, body) => {
+      const editor = open(body);
+      mount(editor);
+      await selectWithFocus(editor, 3, 8);
+
+      const slot = screen.getByTestId('doc-bubble-block-type');
+      expect(slot.getAttribute('data-block-type')).toBe(blockType);
+
+      // The icon, not just the attribute the icon is chosen from: both are
+      // read off the same answer, so the attribute alone says nothing about
+      // what is drawn. The row for this block type is drawn from the same
+      // list, and every other row has a different shape.
+      const menu = await hoverOpen('doc-bubble-block-type');
+      const drawn = slot.querySelector('svg')?.innerHTML;
+      const own = menu
+        .querySelector(`[data-testid="doc-bubble-block-type-item-${blockType}"] svg`)
+        ?.innerHTML;
+      expect(drawn).toBe(own);
+
+      const others = Array.from(
+        menu.querySelectorAll('[data-testid^="doc-bubble-block-type-item-"]'),
+      )
+        .filter((n) => n.getAttribute('data-testid') !== `doc-bubble-block-type-item-${blockType}`)
+        .map((n) => n.querySelector('svg')?.innerHTML);
+      expect(others).not.toContain(drawn);
+    });
+
+    it('switches as the selection moves from one block to another', async () => {
       const editor = open('<h1>a heading</h1><p>a paragraph</p>');
       mount(editor);
 
@@ -282,20 +321,49 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    it('keeps the menu up while the pointer crosses from the slot onto it', async () => {
+    it('keeps the menu up while the pointer crosses the gap onto it', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
       const menu = await hoverOpen('doc-bubble-block-type');
 
-      // The pointer leaves the slot itself and lands on the menu — the gap
-      // between them counts as inside, and the menu must not go (WCAG 2.1 SC
-      // 1.4.13 Hoverable).
+      // Leaving the ZONE is what starts the close: the pointer is in the gap
+      // between slot and menu, inside neither. This used to fire on the slot
+      // itself, where nothing listens — the menu was never going to close, and
+      // the assertion held whatever the code did (proved by mutation: the
+      // whole `cancelClose()` could go and 25 tests stayed green).
       act(() => {
-        fireEvent.pointerLeave(screen.getByTestId('doc-bubble-block-type'));
+        fireEvent.pointerLeave(screen.getByTestId('doc-bubble-block-type-zone'));
+      });
+      // The pointer lands on the menu before the countdown runs out.
+      act(() => {
         fireEvent.pointerEnter(menu);
       });
+
+      // Past the grace period the menu is still there (WCAG 2.1 SC 1.4.13
+      // Hoverable).
+      await new Promise((resolve) => {
+        setTimeout(resolve, 240);
+      });
       expect(screen.queryByTestId('doc-bubble-block-type-menu')).not.toBeNull();
+    });
+
+    it('takes the menu away when the pointer stops in the gap', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      await hoverOpen('doc-bubble-block-type');
+
+      // The other half of the same countdown: nothing cancels it, so it runs
+      // out. Without this, a grace period that never expired would pass the
+      // test above.
+      act(() => {
+        fireEvent.pointerLeave(screen.getByTestId('doc-bubble-block-type-zone'));
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-bubble-block-type-menu')).toBeNull();
+      });
     });
 
     it('hands the open menu over when the pointer moves to another slot', async () => {
@@ -593,6 +661,43 @@ describe('the bubble bar shell', () => {
       });
 
       expect(markupOf()).toBe(before);
+    });
+  });
+
+  describe('what a row can do', () => {
+    // The three block commands moved off the bar and into this menu, and the
+    // judgement of whether each can run where the selection is has to travel
+    // with them: inside a code block a list command reaches nothing, and a row
+    // that reads as available and does nothing tells the reader it is broken.
+    it('dims the block commands where they cannot run', async () => {
+      const editor = open('<pre><code>hello world</code></pre>');
+      mount(editor);
+      await selectWithFocus(editor, 2, 7);
+      const menu = await hoverOpen('doc-bubble-block-type');
+
+      // The two list commands reach nothing inside a code block. Quote does
+      // reach something — it wraps the code block — which
+      // `document-tools-availability.test.ts` measured for each of six
+      // placements.
+      const dimmed = (id: string): string | null | undefined =>
+        menu
+          .querySelector(`[data-testid="doc-bubble-block-type-item-${id}"]`)
+          ?.getAttribute('aria-disabled');
+      expect(dimmed('bullet-list')).toBe('true');
+      expect(dimmed('ordered-list')).toBe('true');
+      expect(dimmed('quote')).toBeNull();
+    });
+
+    it('leaves them available in a plain paragraph', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-block-type');
+
+      for (const id of ['bullet-list', 'ordered-list', 'quote']) {
+        const row = menu.querySelector(`[data-testid="doc-bubble-block-type-item-${id}"]`);
+        expect(`${id}=${row?.getAttribute('aria-disabled')}`).toBe(`${id}=null`);
+      }
     });
   });
 

@@ -64,6 +64,14 @@ export interface BlockTypeItem {
    */
   run?: (editor: Editor) => void;
   /**
+   * Whether that command can run where the selection is.
+   *
+   * A dry run of the same chain. Inside a code block a list command reaches
+   * nothing, and a row that reads as available and does nothing tells the
+   * reader it is broken. Rows with no command carry no judgement to make.
+   */
+  canRun?: (editor: Editor) => boolean;
+  /**
    * Drawn greyed out, the way demo:588 draws it.
    *
    * The demo greys one row, and for a reason of its own: the task list has no
@@ -104,6 +112,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     labelKey: 'spaces.document.commands.bulletList',
     Icon: List,
     shortcut: { mod: true, shift: true, key: '8' },
+    canRun: (e) => e.can().chain().toggleBulletList().run(),
     run: (e) => {
       e.chain().focus().toggleBulletList().run();
     },
@@ -113,6 +122,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     labelKey: 'spaces.document.commands.orderedList',
     Icon: ListOrdered,
     shortcut: { mod: true, shift: true, key: '7' },
+    canRun: (e) => e.can().chain().toggleOrderedList().run(),
     run: (e) => {
       e.chain().focus().toggleOrderedList().run();
     },
@@ -122,6 +132,7 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     labelKey: 'spaces.document.commands.quote',
     Icon: Quote,
     shortcut: { mod: true, shift: true, key: 'B' },
+    canRun: (e) => e.can().chain().toggleBlockquote().run(),
     run: (e) => {
       e.chain().focus().toggleBlockquote().run();
     },

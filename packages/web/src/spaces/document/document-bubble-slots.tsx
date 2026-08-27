@@ -195,6 +195,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     >
       {BLOCK_TYPE_ITEMS.map((item) => {
         const Icon = item.Icon;
+        // A row with a command is dimmed only where that command reaches
+        // nothing; a row with none is never dimmed on this account.
+        const runnable = item.canRun === undefined || item.canRun(editor);
         return (
           <React.Fragment key={item.id}>
             {/* demo:571 rules off the headings from the lists below them. */}
@@ -205,14 +208,14 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               // marks it (`.menu-item[data-active="true"]` takes
               // `--color-muted`).
               data-active={item.id === current ? 'true' : undefined}
-              aria-disabled={item.greyed ? 'true' : undefined}
+              aria-disabled={item.greyed || !runnable ? 'true' : undefined}
               className={cn(
                 item.id === current && 'bg-muted',
-                item.greyed && UNAVAILABLE,
+                (item.greyed || !runnable) && UNAVAILABLE,
               )}
               onSelect={() => {
                 if (item.run) {
-                  item.run(editor);
+                  if (runnable) item.run(editor);
                   return;
                 }
                 pressedWithNothingBehindIt(`block type ${item.id}`);
