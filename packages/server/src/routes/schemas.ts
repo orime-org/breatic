@@ -346,8 +346,5 @@ export const designationSchema = z.object({
   studioId: z.string().uuid().nullable(),
 });
 
-/** A lot named in a path. Checked so a malformed id answers 422 rather than reaching the uuid column. */
-export const lotParamSchema = z.object({ id: z.string().uuid() });
-
-/** A purchase named in a path. Checked for the same reason as the lot above. */
-export const paymentIdParamSchema = z.object({ id: z.string().uuid() });
+/** A uuid named in a path. Checked so a malformed id answers 422 rather than reaching the uuid column. */
+export const idParamSchema = z.object({ id: z.string().uuid() });

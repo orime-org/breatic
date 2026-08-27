@@ -204,6 +204,31 @@ describe('the purchase history', () => {
     expect(first.textContent).not.toContain('Not charged');
   });
 
+  it('says a purchase that ended was not charged, whatever figure it carries', async () => {
+    history.mockResolvedValue({
+      items: [
+        // A delayed payment that was refused. Stripe had worked out a total
+        // before the bank turned it down, so the row carries one — and not a
+        // cent of it was taken.
+        row({
+          status: 'failed',
+          amountCents: 2000,
+          totalCents: 2240,
+          taxCents: 240,
+          remainingCredits: null,
+          lifecycle: null,
+          designatedStudioId: null,
+          designatedStudioName: null,
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const first = await screen.findByTestId('purchase-row');
+    expect(first.textContent).toContain('Not charged');
+    expect(first.textContent).not.toContain('22.40');
+  });
+
   it('prints the final figure once Stripe has one, even before it lands', async () => {
     history.mockResolvedValue({
       items: [

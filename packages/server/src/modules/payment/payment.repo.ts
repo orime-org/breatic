@@ -163,7 +163,7 @@ export async function updatePaymentStatusCAS(
 }
 
 /**
- * Record what Stripe worked out, on a purchase that has not landed yet.
+ * Record what Stripe worked out, on a purchase still waiting for its money.
  *
  * A delayed payment method finishes the checkout — the buyer has typed their
  * address, so Stripe has worked out the tax and knows the final figure — while
@@ -171,8 +171,11 @@ export async function updatePaymentStatusCAS(
  * and without this the figure Stripe already holds is thrown away and the
  * screen keeps showing the pre-tax face value.
  *
- * Only rows still awaiting an answer are written, so a landed purchase's
- * recorded figures cannot be moved by a late look.
+ * Only a `pending` row is written. A purchase that has ended — refused,
+ * abandoned, or landed — is not waiting for anything, and reconciling reaches
+ * `failed` rows too: without this condition a bank's refusal would leave the
+ * figure sitting on a purchase nobody was charged for, and put it back every
+ * time somebody opened the credits panel.
  * @param id - The purchase.
  * @param charged - What Stripe says it comes to.
  * @param charged.taxCents - The tax it worked out.
@@ -189,7 +192,7 @@ export async function recordPendingCharge(
   await db
     .update(payments)
     .set(updates)
-    .where(and(eq(payments.id, id), inArray(payments.status, ["pending", "failed"])));
+    .where(and(eq(payments.id, id), eq(payments.status, "pending")));
 }
 
 /**

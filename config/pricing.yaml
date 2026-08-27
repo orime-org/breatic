@@ -13,11 +13,10 @@
 # Each tier carries a test and a live Stripe Price ID; the backend picks by ENV
 # (dev/staging → test, prod → live). Both stay empty until the Prices exist.
 #
-# `name` is what a buyer reads. It stays English in all five locales and is
-# never translated, so that the pack a buyer picked, the line on the Stripe
-# page, the row in their purchase history and the line in the confirmation
-# email all read the same. Each one has to match the Stripe Product's name
-# character for character. A checkout request names a pack by `price_cents`.
+# `name` identifies a tier to whoever edits this file, and appears in the
+# message for a tier with no Price ID configured. No screen reads it: a buyer
+# picks a pack by its price and what it grants, and a checkout request names
+# one by `price_cents`.
 
 tiers:
   - name: "830 Credits"

@@ -55,6 +55,34 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+/** Every line the routes wrote, for the cases that assert on what was logged. */
+const logged: { line: string; ctx: Record<string, unknown> }[] = [];
+
+vi.mock("@breatic/core", async (io) => {
+  const orig = await io<Record<string, unknown>>();
+  const real = orig.logger as Record<string, (...a: unknown[]) => void>;
+  return {
+    ...orig,
+    // Forwarded through a Proxy rather than spread: pino's level methods live
+    // on the prototype, so `{ ...real }` hands back an object without them.
+    logger: new Proxy(
+      {},
+      {
+        get: (_target, prop: string) => {
+          if (prop === "info" || prop === "warn" || prop === "error") {
+            return (ctx: Record<string, unknown>, line: string) => {
+              logged.push({ line, ctx });
+              real[prop]?.(ctx, line);
+            };
+          }
+          const value = real[prop];
+          return typeof value === "function" ? value.bind(real) : value;
+        },
+      },
+    ),
+  };
+});
+
 const stripe = {
   checkout: {
     sessions: { create: vi.fn(), retrieve: vi.fn(), expire: vi.fn() },
@@ -109,6 +137,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  logged.length = 0;
 });
 
 afterAll(async () => {
@@ -237,6 +266,7 @@ describe("POST /payment/confirm — the buyer came back from a payment", () => {
 
       const lots = await sql`SELECT id FROM credit_lots WHERE user_id = ${buyer.userId}`;
       expect(lots).toHaveLength(1);
+
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -391,6 +421,13 @@ describe("POST /payment/cancel — the buyer pressed Back", () => {
 
       const lots = await sql`SELECT id FROM credit_lots WHERE user_id = ${buyer.userId}`;
       expect(lots).toHaveLength(1);
+
+      // No webhook and no reconcile pass produces this outcome a second time,
+      // so the route recording it is the only trace that pressing Back is
+      // what settled this purchase.
+      const line = logged.find((l) => l.line === "payment_credits_granted");
+      expect(line?.ctx["from"]).toBe("cancel");
+      expect(line?.ctx["stripeSessionId"]).toBe(sessionId);
     } finally {
       await dropBuyer(buyer.userId);
     }
@@ -558,8 +595,7 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     const good = await seedPending(buyer.userId);
     try {
       // The passes run concurrently. Joined on the first rejection, whatever
-      // the others found goes with it — including a charge that disagrees
-      // with the price table, which nothing else in the system produces.
+      // the others found goes with it.
       stripe.checkout.sessions.retrieve.mockImplementation(
         async (id: string) => {
           if (id === bad.sessionId) throw new Error("timeout");
@@ -574,6 +610,18 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
       expect(res.status).toBe(200);
       expect(await statusOf(good.paymentId)).toBe("completed");
       expect(await statusOf(bad.paymentId)).toBe("pending");
+
+      // The route has to tell the two entries apart. Handing the failed one
+      // to the fulfillment logger throws on a missing outcome, the route's
+      // own catch swallows it, and the good pass — which could have been a
+      // charge disagreeing with the price table — is never written down.
+      const failure = logged.find(
+        (l) => l.line === "payment_reconcile_pass_failed",
+      );
+      expect(failure?.ctx["stripeSessionId"]).toBe(bad.sessionId);
+      expect(
+        logged.some((l) => l.line === "payment_credits_granted"),
+      ).toBe(true);
     } finally {
       stripe.checkout.sessions.retrieve.mockReset();
       await dropBuyer(buyer.userId);
@@ -608,6 +656,43 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
  * for is who may reach it and under what conditions, and each of the three is
  * a different refusal a buyer can hit.
  */
+describe("GET /payment/tiers — what the buy screen reads", () => {
+  it("answers with the packs, the wait and the refund rule", async () => {
+    const buyer = await seedBuyer();
+    try {
+      const res = await app.request("/api/v1/payment/tiers", {
+        headers: { cookie: buyer.cookie },
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          packs: Record<string, unknown>[];
+          confirmTimeoutMs: number;
+          refundLines: string[];
+        };
+      };
+      // `toEqual` on the pack, not a subset match: this is the wire the buy
+      // screen reads, and a field added or dropped on either side of it should
+      // redden here.
+      expect(body.data.packs[0]).toEqual({
+        priceCents: 1000,
+        credits: 830,
+        currency: "usd",
+      });
+      expect(body.data.confirmTimeoutMs).toBeGreaterThan(0);
+      expect(body.data.refundLines).toHaveLength(3);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("turns a signed-out caller away", async () => {
+    const res = await app.request("/api/v1/payment/tiers");
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("POST /payment/checkout — who may start a purchase", () => {
   /**
    * Ask the endpoint to start a checkout.

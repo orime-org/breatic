@@ -16,7 +16,7 @@ import {
   paymentConfirmSchema,
   paymentCancelSchema,
   paymentHistoryQuerySchema,
-  paymentIdParamSchema,
+  idParamSchema,
 } from "@server/routes/schemas.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
@@ -246,7 +246,7 @@ payment.post(
   requireAuth,
   requirePayments,
   rateLimitFor("payment-resend", "user"),
-  validate("param", paymentIdParamSchema),
+  validate("param", idParamSchema),
   async (c) => {
     const user = c.get("user");
     const { id: paymentId } = c.req.valid("param");
@@ -260,7 +260,7 @@ payment.post(
 payment.get(
   "/:id",
   requireAuth,
-  validate("param", paymentIdParamSchema),
+  validate("param", idParamSchema),
   async (c) => {
     const user = c.get("user");
     const { id } = c.req.valid("param");

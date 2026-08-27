@@ -201,12 +201,48 @@ export type FulfillOutcome =
  * What one payment in a reconcile batch came to.
  *
  * A failure is one entry among the others rather than the end of the batch:
- * the passes run concurrently, and the finding that matters most — a charge
- * that disagrees with the price table — is produced by nothing else.
+ * the passes run concurrently, and one of them failing should not leave the
+ * rest with nowhere to report what they came to.
  */
 export type ReconcilePass =
   | { stripeSessionId: string; outcome: FulfillOutcome }
   | { stripeSessionId: string; failure: unknown };
+
+/**
+ * What Stripe is running, against what our own price table says this tier
+ * costs.
+ *
+ * The price id is pasted into the yaml by hand and nothing ties it to the
+ * amount behind it, so one wrong paste would otherwise bill one figure,
+ * record another, and grant credits for a third — and the recorded figure is
+ * what a refund pays back.
+ *
+ * Both paths that write money ask this first: the one that grants, and the
+ * one that records what a still-clearing payment comes to. A session Stripe
+ * has completed carries both figures whether or not the money has moved, so
+ * the check is answerable at either point.
+ * @param payment - Our row, holding what we sold.
+ * @param session - The session as Stripe reports it.
+ * @returns The mismatch to answer with, or null when they agree.
+ */
+function chargeDisagreement(
+  payment: PaymentEntity,
+  session: Stripe.Checkout.Session,
+): FulfillOutcome | null {
+  if (
+    session.amount_subtotal === payment.amountCents &&
+    session.currency === payment.currency
+  ) {
+    return null;
+  }
+  return {
+    status: "mismatch",
+    expectedCents: payment.amountCents,
+    chargedCents: session.amount_subtotal,
+    expectedCurrency: payment.currency,
+    chargedCurrency: session.currency,
+  };
+}
 
 /**
  * Grant the credits one paid Checkout Session bought, exactly once.
@@ -259,6 +295,8 @@ export async function fulfillPayment(
       // moment that figure is available before the money lands. The status is
       // untouched: nothing has been paid.
       if (session.status === "complete") {
+        const disagreement = chargeDisagreement(payment, session);
+        if (disagreement) return disagreement;
         await paymentRepo.recordPendingCharge(payment.id, {
           taxCents: session.total_details?.amount_tax ?? undefined,
           totalCents: session.amount_total ?? undefined,
@@ -274,23 +312,8 @@ export async function fulfillPayment(
     return expired ? { status: "expired" } : { status: "replay" };
   }
 
-  // What Stripe charged, against what our own price table says this tier
-  // costs. The price id is pasted into the yaml by hand and nothing ties it
-  // to the amount behind it, so one wrong paste would otherwise bill one
-  // figure, record another, and grant credits for a third — and the recorded
-  // figure is what a refund pays back.
-  if (
-    session.amount_subtotal !== payment.amountCents ||
-    session.currency !== payment.currency
-  ) {
-    return {
-      status: "mismatch",
-      expectedCents: payment.amountCents,
-      chargedCents: session.amount_subtotal,
-      expectedCurrency: payment.currency,
-      chargedCurrency: session.currency,
-    };
-  }
+  const disagreement = chargeDisagreement(payment, session);
+  if (disagreement) return disagreement;
 
   const outcome = await db.transaction(async (tx) => {
     if (event !== null) {
@@ -397,10 +420,8 @@ async function startConfirmationMail(paymentId: string): Promise<void> {
     await sendConfirmationFor(paymentId);
   } catch (err) {
     // Logged here rather than by a caller: this runs detached from the
-    // request that started it, so there is no route left to answer for it.
-    // `sendPurchaseConfirmation` records its own failures on the row, so
-    // anything reaching this line failed before it — reading the purchase or
-    // rendering the letter — and would otherwise leave no trace at all.
+    // request that started it, so there is no route left to answer for it,
+    // and without this line it would leave no trace at all.
     logger.error({ err, paymentId }, "purchase_confirmation_mail_failed");
   }
 }
@@ -795,8 +816,7 @@ export async function cancelCheckout(
  *
  * One payment failing is reported as that payment failing. The batch runs
  * concurrently, and joining it on the first rejection would throw away what
- * the other passes came to — including a `mismatch`, which is the one finding
- * nothing else in the system will produce a second time.
+ * the other passes came to.
  * @param userId - The account whose purchases to repair.
  * @returns What each payment it looked at came to, for the caller to log. A
  *   pass that repairs nothing is the ordinary case; one that finds the charge
@@ -815,23 +835,21 @@ export async function reconcilePayments(
   );
   if (due.length === 0) return [];
 
-  try {
-    return await Promise.all(
-      due.map(async (payment): Promise<ReconcilePass> => {
-        const stripeSessionId = payment.stripeSessionId!;
-        try {
-          return {
-            stripeSessionId,
-            outcome: await fulfillPayment(stripeSessionId, null),
-          };
-        } catch (failure) {
-          return { stripeSessionId, failure };
-        }
-      }),
-    );
-  } finally {
-    await paymentRepo.touchReconciled(due.map((p) => p.id));
-  }
+  const passes = await Promise.all(
+    due.map(async (payment): Promise<ReconcilePass> => {
+      const stripeSessionId = payment.stripeSessionId!;
+      try {
+        return {
+          stripeSessionId,
+          outcome: await fulfillPayment(stripeSessionId, null),
+        };
+      } catch (failure) {
+        return { stripeSessionId, failure };
+      }
+    }),
+  );
+  await paymentRepo.touchReconciled(due.map((p) => p.id));
+  return passes;
 }
 
 

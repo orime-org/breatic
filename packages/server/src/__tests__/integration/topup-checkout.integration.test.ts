@@ -467,7 +467,7 @@ describe("createCheckout — what lands in our own table", () => {
   });
 });
 
-describe("GET /payment/tiers — what the buy screen reads", () => {
+describe("listTiers — what the buy screen is offered", () => {
   it("carries the wait the page is allowed to keep a buyer behind", () => {
     // The value is in the server's config and the timer runs in the browser.
     // A copy in the frontend would drift the day somebody changed it, and the
@@ -475,7 +475,11 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
     const listed = listTiers();
     expect(listed.confirmTimeoutMs).toBeGreaterThan(0);
     expect(listed.packs).toHaveLength(5);
-    expect(listed.packs[0]).toMatchObject({ priceCents: 1000, credits: 830 });
+    expect(listed.packs[0]).toEqual({
+      priceCents: 1000,
+      credits: 830,
+      currency: "usd",
+    });
   });
 
   it("carries the refund rule in full, in the language of the request", () => {

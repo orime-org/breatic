@@ -28,7 +28,7 @@ import {
   creditLotQuerySchema,
   creditLedgerQuerySchema,
   designationSchema,
-  lotParamSchema,
+  idParamSchema,
 } from "@server/routes/schemas.js";
 
 const credits = new Hono<{ Variables: AuthVariables }>();
@@ -124,7 +124,7 @@ credits.get("/ledger", validate("query", creditLedgerQuerySchema), async (c) => 
  */
 credits.patch(
   "/lots/:id/designation",
-  validate("param", lotParamSchema),
+  validate("param", idParamSchema),
   validate("json", designationSchema),
   async (c) => {
     const user = c.get("user");

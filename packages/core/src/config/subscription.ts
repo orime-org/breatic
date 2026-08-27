@@ -59,12 +59,11 @@ export const subscriptionConfigSchema = z.object({
    */
   stale_after_days: z.number().int().positive().default(14),
   /**
-   * How long any one call to Stripe may take, on either leg — memberships and
-   * credit packs alike, reads and writes alike.
+   * The bound a call to Stripe is made under, for callers that pass it.
    *
-   * One value for all of them, because what governs it is not what the call
-   * asks but who is waiting behind it, and behind every one of them is either
-   * a person looking at a spinner or a webhook that owes Stripe an answer
+   * One value rather than one per caller, because what governs it is not what
+   * the call asks but who is waiting behind it, and that is always either a
+   * person looking at a spinner or a webhook that owes Stripe an answer
    * before it writes the delivery off. The SDK's unbounded default is 80
    * seconds twice retried, so an unbounded call sits for around four minutes.
    */

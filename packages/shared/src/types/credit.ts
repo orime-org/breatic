@@ -38,11 +38,19 @@ export interface PurchaseRow {
   /** The listed price, before tax. Always known: it is what we charged for. */
   amountCents: number;
   /**
-   * What the buyer actually paid, tax included. Null until the purchase lands,
-   * because it is read off the Checkout Session in the same statement that
-   * settles the payment.
+   * What Stripe worked out this purchase comes to, tax included.
+   *
+   * It appears the moment the buyer gives Stripe an address, which on a
+   * delayed payment method is days before the money moves. Present does not
+   * mean paid: `status` is what answers that, and a purchase that ended
+   * without being charged can still carry a figure Stripe computed before the
+   * bank refused it.
+   *
+   * Null until then, because Stripe cannot work out the tax without knowing
+   * where the buyer is; `amountCents` is what is known before that.
    */
   totalCents: number | null;
+  /** The tax within that figure, on the same terms. */
   taxCents: number | null;
   currency: string;
   /** How many credits this purchase buys. */

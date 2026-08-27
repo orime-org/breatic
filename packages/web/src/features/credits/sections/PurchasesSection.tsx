@@ -199,16 +199,18 @@ const PurchaseLine = React.memo(function PurchaseLine({
       data-testid='purchase-row'
       main={
         <>
-          {/* What the card was charged, tax included: this is the figure a
-                buyer matches against a statement. Absent, the pre-tax price
-                is printed and labelled as pre-tax — Stripe cannot work the tax
-                out until the buyer gives it an address, so on a purchase still
-                being paid for that figure exists nowhere, and the face value
-                said plainly tells them more than nothing does. */}
-          {charged !== null
-            ? formatMoney(charged, purchase.currency)
-            : over
-              ? t('credits.purchase.notCharged')
+          {/* Whether anything was taken comes first. A purchase that ended
+                can still carry a figure — Stripe works one out the moment the
+                buyer gives it an address, and a bank can refuse days later —
+                and printing it would name a sum nobody was charged.
+                Otherwise: what the card was charged, tax included, which is
+                the figure a buyer matches against a statement; or, before
+                Stripe has one, the pre-tax price said plainly, which tells
+                them more than nothing does. */}
+          {over
+            ? t('credits.purchase.notCharged')
+            : charged !== null
+              ? formatMoney(charged, purchase.currency)
               : t('credits.purchase.beforeTax', {
                 amount: formatMoney(purchase.amountCents, purchase.currency),
               })}{' '}

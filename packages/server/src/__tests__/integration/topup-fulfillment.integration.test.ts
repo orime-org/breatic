@@ -427,6 +427,64 @@ describe("what the session says decides", () => {
     }
   });
 
+  it("checks the price table before recording what a clearing payment comes to", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // A price id pasted into the yaml against the wrong tier: Stripe is
+      // running a different amount in a different currency from the one our
+      // row was written for. Recording that figure would put a number on the
+      // screen that is neither what we sell nor, with our own currency beside
+      // it, what the bank will take.
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, {
+          payment_status: "unpaid",
+          status: "complete",
+          amount_subtotal: 4700,
+          amount_total: 4700,
+          currency: "eur",
+        }),
+      );
+
+      const outcome = await fulfillPayment(sessionId, null);
+
+      expect(outcome.status).toBe("mismatch");
+      const [row] = await sql<{ total_cents: number | null }[]>`
+        SELECT total_cents FROM payments WHERE id = ${paymentId}
+      `;
+      expect(row!.total_cents).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("writes nothing onto a purchase that has already ended", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // Its delayed payment was refused, so the row is `failed` and no money
+      // moved. Stripe still reports the session as complete with a total on
+      // it, and reconciling reaches failed rows — so without a guard the
+      // figure lands on a purchase nobody was charged for, and the history
+      // prints it.
+      await sql`UPDATE payments SET status = 'failed' WHERE id = ${paymentId}`;
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, {
+          payment_status: "unpaid",
+          status: "complete",
+        }),
+      );
+
+      await fulfillPayment(sessionId, null);
+
+      const [row] = await sql<
+        { total_cents: number | null; tax_cents: number | null }[]
+      >`SELECT total_cents, tax_cents FROM payments WHERE id = ${paymentId}`;
+      expect(row!.total_cents).toBeNull();
+      expect(row!.tax_cents).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
   it("leaves the figures alone on a session still being filled in", async () => {
     const { userId, paymentId, sessionId } = await seedPending();
     try {
