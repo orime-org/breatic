@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { regionOf } from '@web/lib/keyboard-scope';
 import { useUIStore } from '@web/stores/ui';
 
 /**
@@ -25,12 +26,9 @@ export function useTrackActiveRegion(): void {
      *   phase.
      */
     const claim = (event: Event): void => {
-      const el = event.target;
-      if (!(el instanceof Element)) return;
-      const region = el.closest('[data-region]')?.getAttribute('data-region');
-      if (region === 'agent' || region === 'space') {
-        useUIStore.getState().setActiveRegion(region);
-      }
+      if (!(event.target instanceof Element)) return;
+      const region = regionOf(event.target);
+      if (region) useUIStore.getState().setActiveRegion(region);
     };
     document.addEventListener('pointerdown', claim, true);
     document.addEventListener('focusin', claim, true);

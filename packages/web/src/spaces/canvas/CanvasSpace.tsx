@@ -689,8 +689,8 @@ function CanvasSpaceInner({
   // mounted together (a node's panel is one kind), so trying the purpose's
   // candidate ids and taking whichever is on screen resolves it without
   // asking the store a second question. Nothing on screen — a pick that
-  // outlived its panel — falls through to the orphan catch-all below, which
-  // returns focus to the canvas container.
+  // outlived its panel — leaves focus where it already is; where focus goes
+  // after a pick ends is #125.
   const onExitPick = React.useCallback((): void => {
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
@@ -2922,14 +2922,12 @@ function CanvasSpaceInner({
   // (useKeyPress wraps its whole effect body in `if (keyCode !== null)`), so
   // this is the only listener on Backspace / Delete.
   //
-  // The three guards below carry over what the library did:
-  //   - a modifier means this is not a plain delete. `isMatchingKey` filters
-  //     on `keys.length === pressedKeys.size`, so Cmd+Backspace never matched
-  //     the single-key `['Backspace']`.
-  //   - `keyPressed` was a boolean, so holding the key deleted once.
-  //   - the IME guards match the pick-session Escape handler above.
-  // The library also called preventDefault on a match, and two handlers here
-  // read `defaultPrevented` to decide whether to yield.
+  // Carried over from the library: a modifier means this is not a plain delete
+  // (`isMatchingKey` filters on `keys.length === pressedKeys.size`, so
+  // Cmd+Backspace never matched the single-key `['Backspace']`), and
+  // `keyPressed` was a boolean, so holding the key deleted once. Auto-repeat
+  // now returns before `preventDefault` where the library prevented every
+  // repeat; nothing in this repo reads `defaultPrevented` on these two keys.
   React.useEffect(() => {
     /**
      * Document keydown handler: delete the current selection.
@@ -2940,7 +2938,7 @@ function CanvasSpaceInner({
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
-      if (event.repeat || event.isComposing || event.keyCode === 229) return;
+      if (event.repeat) return;
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       event.preventDefault();
       const { nodes, edges } = rfStoreApi.getState();
@@ -3622,8 +3620,7 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
-        // Programmatically focusable (not tab-reachable) so the pick-end focus
-        // catch-all can return focus here instead of dropping it on <body>.
+        // Click-focusable, not tab-reachable.
         tabIndex={-1}
         // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
         // NodesSelection rect (see index.css) so a marquee mid-pick cannot

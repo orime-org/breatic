@@ -87,7 +87,11 @@ describe('regionOwnsKeyboard', () => {
     });
   });
 
-  describe('otherwise the active region decides', () => {
+  // A target that sits in a region is that region's, whichever region the
+  // store says is active. For a key press the two agree anyway — focus
+  // entering a region writes it — but a copy event's target follows the
+  // SELECTION, and a selection outlives the focus move that left it behind.
+  describe('a target inside a region belongs to that region', () => {
     it('is true when the target sits in the asking region and it is active', () => {
       expect(regionOwnsKeyboard(inRegion('space'), 'space')).toBe(true);
     });
@@ -102,19 +106,36 @@ describe('regionOwnsKeyboard', () => {
       expect(regionOwnsKeyboard(inRegion('agent'), 'agent')).toBe(true);
     });
 
-    // The stored value decides, not where the target happens to sit: this is
-    // what keeps the two readers (this gate and the active-state colours)
-    // saying the same thing.
-    it('is false when the target sits in the asking region but the other one is active', () => {
+    it('is true when the target sits in the asking region and the other one is active', () => {
       useUIStore.getState().setActiveRegion('agent');
-      expect(regionOwnsKeyboard(inRegion('space'), 'space')).toBe(false);
+      expect(regionOwnsKeyboard(inRegion('space'), 'space')).toBe(true);
+    });
+
+    // The case that sends a highlighted chat reply to the clipboard: the
+    // reader drags across a reply (region 'agent'), then right-clicks a canvas
+    // node — the press hands the region to the space, and a right-click does
+    // not collapse the selection. The copy event that follows still targets
+    // the chat, and it is the chat's.
+    it('is false for the space region when the target sits in the agent region', () => {
+      useUIStore.getState().setActiveRegion('space');
+      expect(regionOwnsKeyboard(inRegion('agent'), 'space')).toBe(false);
+    });
+
+    it('is true for the agent region on that same target', () => {
+      useUIStore.getState().setActiveRegion('space');
+      expect(regionOwnsKeyboard(inRegion('agent'), 'agent')).toBe(true);
+    });
+
+    it('ignores a data-region value that names no region', () => {
+      useUIStore.getState().setActiveRegion('space');
+      // Not a region, and not <body> either: nobody's.
+      expect(regionOwnsKeyboard(inRegion('sidebar'), 'space')).toBe(false);
     });
   });
 
-  it('reads the store at call time, not at import time', () => {
-    const target = inRegion('agent');
-    expect(regionOwnsKeyboard(target, 'agent')).toBe(false);
+  it('reads the store at call time for a <body> target', () => {
+    expect(regionOwnsKeyboard(document.body, 'agent')).toBe(false);
     useUIStore.getState().setActiveRegion('agent');
-    expect(regionOwnsKeyboard(target, 'agent')).toBe(true);
+    expect(regionOwnsKeyboard(document.body, 'agent')).toBe(true);
   });
 });

@@ -28,6 +28,7 @@ describe('resetProjectUiStores (#1771)', () => {
 
     useUIStore.getState().setActiveOverlayId('members-modal');
     useUIStore.getState().setDrawerOpen(true);
+    useUIStore.getState().setActiveRegion('agent');
     useUIStore.getState().setSidebarOpen(false); // preference
     useUIStore.getState().setChatPanelCollapsed(true); // preference
 
@@ -59,6 +60,9 @@ describe('resetProjectUiStores (#1771)', () => {
     const ui = useUIStore.getState();
     expect(ui.activeOverlayId).toBeNull();
     expect(ui.drawerOpen).toBe(false);
+    // Back to the space, so the next project opens with its canvas answering
+    // the keyboard before anything has been clicked (#168, A9).
+    expect(ui.activeRegion).toBe('space');
 
 
     const inpaint = useInpaintStore.getState();

@@ -3528,6 +3528,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       // three delete nothing today.
       it.each([
         ['Cmd+Backspace', 'Backspace', { meta: true }],
+        // Ctrl is the multi-select key on Windows and Linux
+        // (`multiSelectionKeyCode = isMacOs() ? 'Meta' : 'Control'`), so it is
+        // held down during ordinary canvas work there.
+        ['Ctrl+Backspace', 'Backspace', { ctrl: true }],
         ['Shift+Delete', 'Delete', { shift: true }],
         ['Option+Backspace', 'Backspace', { alt: true }],
       ])('%s deletes nothing', async (_name, key, mods) => {

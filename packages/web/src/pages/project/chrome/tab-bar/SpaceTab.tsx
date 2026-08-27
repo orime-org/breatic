@@ -92,7 +92,9 @@ export function SpaceTab({
   onRename,
 }: SpaceTabProps): React.JSX.Element {
   const t = useTranslation();
-  const regionActive = useUIStore((s) => s.activeRegion) === 'space';
+  // The comparison sits inside the selector so an inactive tab subscribes to a
+  // stable `false` and zustand bails out of its re-render.
+  const regionActive = useUIStore((s) => active && s.activeRegion === 'space');
   const Icon = TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
