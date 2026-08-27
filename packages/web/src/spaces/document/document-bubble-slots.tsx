@@ -8,10 +8,15 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * Three rows in the block type menu reach a command this time round (bulleted
- * list, numbered list, quote — the three that sit on the bar today); everything
- * else carries the not-open-yet treatment `document-coming-tool.tsx` defines
- * (user 2026-08-23's rule, which user 2026-08-26 confirmed still stands).
+ * Three rows in the block type menu reach a command this time round: bulleted
+ * list, numbered list, quote — the three that sit on the bar today. The rest
+ * are drawn the way the demo draws them and write a line to the console when
+ * pressed, the menu closing after them either way (user 2026-08-27).
+ *
+ * Two things carry the greyed treatment `document-coming-tool.tsx` defines,
+ * both for a reason of their own: the task list row, which has no schema node
+ * to turn anything into (demo:588, #13), and the alignment slot over a
+ * selection alignment does not reach (A7).
  */
 
 import * as React from 'react';
@@ -308,6 +313,16 @@ export const AlignSlot = React.memo(function AlignSlot({
     [appliesHere, onOpenChange],
   );
 
+  // The selection can move under an open menu — a keyboard selection reaches a
+  // block alignment does not act on while the pointer rests on the menu — and
+  // the slot greys out where it stands. The menu it dropped goes with it, and
+  // the bar's record of which menu is open goes with that: three of its
+  // readers take that record to mean a menu is on screen.
+  const open = openId === id;
+  React.useEffect(() => {
+    if (open && !appliesHere) onOpenChange(id, false);
+  }, [open, appliesHere, id, onOpenChange]);
+
   return (
     <SlotShell
       id={id}
@@ -320,13 +335,7 @@ export const AlignSlot = React.memo(function AlignSlot({
       contentClassName={ROWS}
       container={container}
       scroller={scroller}
-      // The selection can move under an open menu — a keyboard selection
-      // reaches a block alignment does not act on while the pointer rests on
-      // the menu — and the slot greys out where it stands. Hiding the open id
-      // rather than clearing it takes the menu with it and brings it back when
-      // alignment applies again: the pointer never left, so nothing else is
-      // going to ask for the menu a second time.
-      openId={appliesHere ? openId : null}
+      openId={openId}
       onOpenChange={askOpen}
     >
       {ALIGN_ITEMS.map((item) => (

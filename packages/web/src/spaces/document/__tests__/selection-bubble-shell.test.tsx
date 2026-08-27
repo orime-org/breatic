@@ -343,10 +343,11 @@ describe('the bubble bar shell', () => {
     expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
   });
 
-  // And comes back with it. The pointer never left the slot, so nothing else
-  // is going to ask for the menu again: hovering is what opens one, and the
-  // pointer has been resting there the whole time.
-  it('brings the alignment menu back when the slot lights up again', async () => {
+  // And the bar's record of which menu is open goes with it: `overlayOpenRef`
+  // reads that record to decide whether the editor losing the focus should
+  // take the bar away, so a record left standing over no menu keeps the bar on
+  // screen after the reader has gone.
+  it('leaves no menu recorded as open once the alignment slot greys out', async () => {
     const editor = open('<pre><code>some code</code></pre><p>a paragraph</p>');
     mount(editor);
     await selectWithFocus(editor, 3, 18);
@@ -359,11 +360,16 @@ describe('the bubble bar shell', () => {
       expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
     });
 
-    await act(async () => {
-      editor.commands.setTextSelection({ from: 3, to: 18 });
+    act(() => {
+      editor.view.dom.blur();
+      editor.emit('blur', {
+        editor,
+        event: new FocusEvent('blur'),
+        transaction: editor.state.tr,
+      });
     });
     await waitFor(() => {
-      expect(screen.queryByTestId('doc-bubble-align-menu')).not.toBeNull();
+      expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
     });
   });
 

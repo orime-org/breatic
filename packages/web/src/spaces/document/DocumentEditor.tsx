@@ -68,9 +68,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
         />
       </ScrollArea>
-      {/* Rendered as a sibling of the scroller, not inside it: the bar has to
-          escape that clipping context, and the plugin needs somewhere outside
-          it to append to. */}
+      {/* A sibling here, inside the scroller's viewport at runtime: the bar
+          portals itself there so it scrolls with the line it points at, and
+          the viewport's own overflow is what takes it away when that line
+          leaves. */}
       <SelectionBubbleBar editor={editor} readOnly={readOnly} />
     </div>
   );

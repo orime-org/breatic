@@ -77,8 +77,8 @@ export interface BlockTypeItem {
    *
    * A list holds list items which hold paragraphs, so a position inside one
    * is in the LIST — the paragraph is its content. Naming that node here
-   * rather than in a table of its own is what keeps the two in step: adding a
-   * row and saying whether it wraps become the same edit.
+   * keeps a wrapping row and the wrapper it stands for in one edit. The rows
+   * that ARE text blocks are recognised in {@link blockTypeOf} instead.
    */
   wrapperNode?: string;
   /**
@@ -225,36 +225,29 @@ function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
 /**
  * Which block the current selection counts as.
  *
- * Walks every block the selection covers and collects their types. Where they
- * all agree it names that type; where they do not it names the type of the end
- * the reader anchored the selection on, so the face answers "what am I in"
- * rather than going blank (user 2026-08-27). The anchor is that end — `head`
- * is where the drag has reached, `anchor` where it began.
+ * The end the reader anchored on, so the face answers "what am I in" rather
+ * than going blank over a selection spanning two types (user 2026-08-27). The
+ * anchor is that end — `head` is where the drag has reached, `anchor` where it
+ * began.
+ *
+ * A select-all anchors at 0, which resolves to the document node rather than
+ * to any text block. Its anchor end is where the document starts, so the walk
+ * below takes the first block it covers.
  * @param editor - The editor.
  * @returns The current block type.
  */
 export function currentBlockType(editor: Editor): BlockTypeId {
   const { doc, selection } = editor.state;
-  const seen = new Set<BlockTypeId | null>();
+  const anchored = blockTypeAt(doc, selection.anchor);
+  if (anchored !== null) return anchored;
   let first: BlockTypeId | null = null;
   doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    // The answer comes from the anchor once two types are in, so the rest of
-    // the walk has nothing left to add.
-    if (seen.size > 1) return false;
+    if (first !== null) return false;
     if (!node.isTextblock) return true;
-    const type = blockTypeAt(doc, pos + 1);
-    first ??= type;
-    seen.add(type);
+    first = blockTypeAt(doc, pos + 1);
     return false;
   });
-  if (seen.size === 1) {
-    const [only] = [...seen];
-    return only ?? 'paragraph';
-  }
-  // A select-all anchors at 0, which resolves to the document node rather
-  // than to any text block. Its anchor end is where the document starts, so
-  // the first block the walk reached is the one standing there.
-  return blockTypeAt(doc, selection.anchor) ?? first ?? 'paragraph';
+  return first ?? 'paragraph';
 }
 
 /** The block types alignment has anything to say about. */
