@@ -8,6 +8,7 @@ import type { DocumentPlace } from '@web/spaces/canvas/doc-geometry-view';
 import {
   docGeometryView,
   landingCandidates,
+  reanchorable,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 
@@ -26,6 +27,12 @@ export interface BufferAccess {
    * of those nodes may take part.
    */
   landing: () => Node[];
+  /**
+   * Those of `settled`'s nodes whose position relative to their parent no
+   * remote gesture is changing, for a write that says where a node sits inside
+   * a rect this end is committing.
+   */
+  reanchorable: () => Node[];
   /** The ids remote gestures are holding right now. */
   heldByRemote: () => ReadonlySet<string>;
   /**
@@ -86,6 +93,7 @@ export function useBufferAccess(
     return {
       settled,
       landing: (): Node[] => landingCandidates(settled(), gestureRef.current),
+      reanchorable: (): Node[] => reanchorable(settled(), gestureRef.current),
       heldByRemote: (): ReadonlySet<string> => new Set(gestureRef.current.keys()),
       onScreen: (): ReadonlyArray<Node> => nodesRef.current,
     };

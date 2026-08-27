@@ -84,6 +84,22 @@ describe('useBufferAccess', () => {
     expect(access().landing().map((n) => n.id)).toEqual([STILL_ID]);
   });
 
+  it('keeps a member for re-anchoring while its Group is the one being dragged', () => {
+    const member = node('member', { x: 20, y: 20 }, { parentId: 'g1' });
+    const { result } = renderHook(() =>
+      useBufferAccess(
+        [member],
+        [member],
+        new Map([
+          ['g1', { x: 0, y: 0 }],
+          ['member', { x: 20, y: 20 }],
+        ]),
+      ),
+    );
+    expect(result.current.reanchorable().map((n) => n.id)).toEqual(['member']);
+    expect(result.current.landing().map((n) => n.id)).toEqual([]);
+  });
+
   it('names the ids remote gestures are holding', () => {
     expect([...access().heldByRemote()]).toEqual([FLYING_ID]);
   });
@@ -93,6 +109,20 @@ describe('useBufferAccess', () => {
     // the whole point of being separate from `settled`.
     const seen = access().onScreen().find((n) => n.id === FLYING_ID);
     expect(seen?.position).toEqual(FLYING_AT);
+  });
+
+  it('reads the buffer it was handed most recently', () => {
+    // Every reading goes through refs the layout effect writes, so a case that
+    // only ever mounts once would pass with no effect at all — and production
+    // needs the frames after the first one.
+    const { result, rerender } = renderHook(
+      ({ nodes }: { nodes: Node[] }) =>
+        useBufferAccess(nodes, DOCUMENT, new Map()),
+      { initialProps: { nodes: BUFFER } },
+    );
+    rerender({ nodes: [node(STILL_ID, { x: 7, y: 7 })] });
+    expect(result.current.onScreen().map((n) => n.id)).toEqual([STILL_ID]);
+    expect(result.current.settled()[0]?.position).toEqual({ x: 7, y: 7 });
   });
 
   it('hands back one object for the life of the canvas', () => {

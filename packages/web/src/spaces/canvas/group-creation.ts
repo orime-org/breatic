@@ -43,8 +43,6 @@ export interface GroupCreationPlan {
   height: number;
   /** Members bound to the Group, each with its new parent-relative position. */
   members: GroupMemberPlan[];
-  /** The render buffer with every wrapped member deselected (others by reference). */
-  nextNodes: Node[];
 }
 
 /**
@@ -89,15 +87,35 @@ export function planGroupCreation(
     id: member.id,
     position: toRelativePosition(member.position, position),
   }));
-  const nextNodes = flowNodes.map((node) =>
-    ids.has(node.id) && node.selected ? { ...node, selected: false } : node,
-  );
   return {
     groupId,
     position,
     width: rect.width,
     height: rect.height,
     members: memberPlans,
-    nextNodes,
   };
+}
+
+/**
+ * The buffer with every node that just went into a Group deselected (#1477).
+ *
+ * Clearing the selection before the new Group mirrors back keeps the round trip
+ * from holding a stale multi-selection, which ReactFlow would route a
+ * right-click to the SELECTION menu on instead of the Group menu.
+ *
+ * This reads whatever the buffer holds at the moment it runs, so the nodes it
+ * leaves alone keep the coordinates the canvas is drawing them at — a
+ * collaborator's drag included.
+ * @param nodes - The buffer as it stands.
+ * @param memberIds - The nodes that went into the Group.
+ * @returns The buffer with those deselected, others by reference.
+ */
+export function deselectGrouped(
+  nodes: ReadonlyArray<Node>,
+  memberIds: ReadonlyArray<string>,
+): Node[] {
+  const ids = new Set(memberIds);
+  return nodes.map((node) =>
+    ids.has(node.id) && node.selected ? { ...node, selected: false } : node,
+  );
 }

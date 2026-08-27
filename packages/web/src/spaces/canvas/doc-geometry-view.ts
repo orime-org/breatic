@@ -32,6 +32,35 @@ export function landingCandidates(
 }
 
 /**
+ * Those of these nodes whose position relative to their parent no remote
+ * gesture is changing.
+ *
+ * A gesture on a Group carries every member with it (`gestureNodeIds`), and
+ * those members do move across the canvas — their positions relative to the
+ * Group do not. Dragging a Group rewrites the Group's own coordinates and the
+ * members follow through `parentId`, and `planGroupDrag` commits nothing about
+ * them. So a member is off limits only while the gesture has hold of that
+ * member itself, and a resize on this end may write the rest: what it writes
+ * about them is where they sit inside the rect it is committing, which is its
+ * own result rather than a statement about somebody else's.
+ * @param nodes - The candidates a relative-position write would be produced for.
+ * @param remoteGesture - The nodes remote gestures are currently moving.
+ * @returns Those of them held only through their Group, or the array itself
+ *   when no remote gesture is running.
+ */
+export function reanchorable(
+  nodes: ReadonlyArray<Node>,
+  remoteGesture: GestureTable,
+): Node[] {
+  if (remoteGesture.size === 0) return nodes as Node[];
+  return nodes.filter(
+    (node) =>
+      !remoteGesture.has(node.id) ||
+      (node.parentId !== undefined && remoteGesture.has(node.parentId)),
+  );
+}
+
+/**
  * The render buffer with every remote gesture taken back out of it.
  *
  * The buffer is what the canvas draws, and while a collaborator drags something

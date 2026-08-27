@@ -42,6 +42,9 @@ let spaceId = '';
 // wait below polls.
 const SETTLE_MS = 4_000;
 
+/** What `canvas.gate.remote` reads as, which is the gate these cases expect. */
+const REMOTE_GATE_TEXT = 'Someone else is moving this.';
+
 /** A 320x240 solid PNG, inline so it decodes with no network. */
 const SOLID_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAADwCAIAAAD+Tyo8AAACD0lEQVR42u3TQQkAAAgEwUtnCJMY3w7+hIFJsLCpHuCpSAAGBgwMGBgMDBgYMDBgYDAwYGDAwGBgwMCAgQEDg4EBAwMGBgwMBgYMDBgYDAwYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGAysAhgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBAwMGBgMDBgYMDAYGDAwYGDAwGBgwMGBgMDBgYMDAgIHBwICBAQMDBgYDAwYGDAwGBgwMGBgwMBgYMDBgYMDAYGDAwICBwcCAgQEDAwYGAwMGBgwMGBgMDBgYMDAYGDAwYGDAwGBgwMCAgcHAgIEBAwMGBgMDBgYMDBgYDAwYGDAwGBgwMGBgwMBgYMDAgIEBA4OBAQMDBgYDAwYGDAwYGAwMGBgwMBhYBTAwYGDAwGBgwMCAgQEDg4EBAwMGBgMDBgYMDBgYDAwYGDAwYGAwMGBgwMBgYMDAgIEBA4OBAQMDBgYMDAYGDAwYGAwMGBgwMGBgMDBgYMDAYGDAwICBAQODgQEDAwYGDAwGBgwMGBgMDBgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGDAwGBgwMHC3pCIzOUa0Hy8AAAAASUVORK5CYII=';
@@ -589,6 +592,8 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   }
 
   const widths: number[] = [];
+  const lefts: number[] = [];
+  const memberSeen: Array<{ x: number; y: number }> = [];
   await mover.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await mover.mouse.down();
   for (let step = 1; step <= 5; step += 1) {
@@ -597,10 +602,15 @@ test('resizing a Group moves its frame while its member stays put', async () => 
       handle.y + handle.height / 2,
     );
     await mover.waitForTimeout(90);
-    const box = await watcher
-      .locator(`.react-flow__node[data-id="${groupId}"]`)
-      .boundingBox();
-    if (box !== null) widths.push(box.width);
+    const [box, member] = await Promise.all([
+      watcher.locator(`.react-flow__node[data-id="${groupId}"]`).boundingBox(),
+      drawnAt(watcher, memberId),
+    ]);
+    if (box !== null) {
+      widths.push(box.width);
+      lefts.push(box.x);
+    }
+    if (member !== null) memberSeen.push(member);
   }
   await mover.mouse.up();
 
@@ -609,6 +619,14 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   // document. Reading before that round trip would sample the gesture's own
   // geometry and say nothing about what the write did.
   expect(widths.filter((w) => w > groupBefore.width + 20).length).toBeGreaterThan(0);
+  // The bracketed half of acceptance 4: pulling the left edge moves the origin.
+  expect(lefts.filter((x) => x < groupBefore.x - 20).length).toBeGreaterThan(0);
+  // And the member held still on the watcher for every one of those frames.
+  expect(memberSeen.length).toBeGreaterThan(0);
+  for (const seen of memberSeen) {
+    expect(seen.x).toBeCloseTo(memberBefore.x, 0);
+    expect(seen.y).toBeCloseTo(memberBefore.y, 0);
+  }
   await expect
     .poll(async () => documentPosition(watcher, groupId), { timeout: SETTLE_MS })
     .not.toEqual(groupDocBefore);
@@ -716,10 +734,14 @@ test('asking for a Group says why when the other end holds one of the two', asyn
 
   await mover.keyboard.press('ControlOrMeta+g');
 
-  // The chord is a command entry, so being turned down says something.
-  await expect(mover.locator('[data-sonner-toast]').first()).toBeVisible({
-    timeout: SETTLE_MS,
-  });
+  // The chord is a command entry, so being turned down says something, and it
+  // says which thing: the gate it hit, not just any toast the canvas raised.
+  await expect(mover.locator('[data-sonner-toast]').first()).toContainText(
+    REMOTE_GATE_TEXT,
+    { timeout: SETTLE_MS },
+  );
+  // And no Group came out of it.
+  await expect(mover.locator('.react-flow__node-group')).toHaveCount(0);
 
   await watcher.mouse.up();
   await watcher.waitForTimeout(SETTLE_MS / 2);

@@ -177,9 +177,9 @@ export function planGroupDrag(
   const expansions: ExpansionOp[] = [];
   for (const group of groups) {
     if (heldByRemote.has(group.id)) continue;
-    // A member somebody else is dragging is drawn at coordinates that are
-    // about to change, and `expandGroupToWrap` only ever grows — sizing a
-    // Group around such a member writes a rect that never shrinks back.
+    // A member somebody else is dragging is about to land somewhere this end
+    // cannot know, and `expandGroupToWrap` only ever grows — a Group sized to
+    // wrap it now keeps that size after it lands elsewhere.
     const members = allNodes.filter(
       (node) =>
         node.type !== 'group' &&

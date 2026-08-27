@@ -133,7 +133,10 @@ import type {
   DisplayStatus,
   Modality,
 } from '@web/spaces/canvas/types/node-view';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import {
+  deselectGrouped,
+  planGroupCreation,
+} from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
   GROUP_MIN_SIZE,
@@ -1264,13 +1267,13 @@ function CanvasSpaceInner({
   >(() => new Set());
   React.useEffect(() => {
     setFlowNodes((prev) =>
-      mergeCanvasNodes(prev, nodes.map(toFlowNode), {
+      mergeCanvasNodes(prev, docPlaces, {
         occupants,
         remoteGesture,
         localGestureIds,
       }),
     );
-  }, [nodes, occupants, remoteGesture, localGestureIds, setFlowNodes]);
+  }, [docPlaces, occupants, remoteGesture, localGestureIds, setFlowNodes]);
 
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
@@ -2826,7 +2829,7 @@ function CanvasSpaceInner({
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
     // itself is selected once it mirrors back (setSelectAfterCreate).
-    setFlowNodes(() => plan.nextNodes);
+    setFlowNodes((prev) => deselectGrouped(prev, groupableIds));
     setSelectAfterCreate([groupId]);
   }, [
     readOnly,
@@ -3023,12 +3026,13 @@ function CanvasSpaceInner({
   // contents, not just the frame. Plus every edge touching any deleted node,
   // routed through the lock guard.
   const deleteSelection = React.useCallback((): void => {
-    const selectedIds = buffer.settled()
+    const settled = buffer.settled();
+    const selectedIds = settled
       .filter((node) => node.selected)
       .map((node) => node.id);
     if (selectedIds.length === 0) return;
-    const ids = selectionDeletionIds(selectedIds, buffer.settled());
-    const targets = buffer.settled().filter((node) => ids.has(node.id));
+    const ids = selectionDeletionIds(selectedIds, settled);
+    const targets = settled.filter((node) => ids.has(node.id));
     const connected = flowEdges.filter(
       (edge) => ids.has(edge.source) || ids.has(edge.target),
     );
@@ -3040,8 +3044,9 @@ function CanvasSpaceInner({
   // routed through the lock guard. Deleting a group deletes its contents too;
   // ungroup (onUngroup) is the separate action that keeps the members.
   const deleteNodeFromMenu = React.useCallback((): void => {
-    const ids = groupDeletionIds(nodeMenu.nodeId, buffer.settled());
-    const targets = buffer.settled().filter((node) => ids.has(node.id));
+    const settled = buffer.settled();
+    const ids = groupDeletionIds(nodeMenu.nodeId, settled);
+    const targets = settled.filter((node) => ids.has(node.id));
     if (targets.length === 0) return;
     const connected = flowEdges.filter(
       (edge) => ids.has(edge.source) || ids.has(edge.target),
@@ -3429,8 +3434,8 @@ function CanvasSpaceInner({
           width: rect.width,
           height: rect.height,
         };
-        const writable = buffer.landing();
-        const loose = writable
+        const loose = buffer
+          .landing()
           .filter(
             (node) =>
               node.parentId === undefined &&
@@ -3469,7 +3474,7 @@ function CanvasSpaceInner({
               rect.width,
               rect.height,
             );
-            for (const child of writable) {
+            for (const child of buffer.reanchorable()) {
               if (child.parentId !== groupId) continue;
               setNodePosition(projectId, spaceId, child.id, child.position);
             }
