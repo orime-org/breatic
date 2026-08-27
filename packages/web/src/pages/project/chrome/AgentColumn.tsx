@@ -86,6 +86,9 @@ export function AgentColumn({ projectId }: AgentColumnProps): React.JSX.Element 
   return (
     <aside
       data-testid='agent-column'
+      // One of the two regions a keyboard or clipboard event can belong to;
+      // `regionOwnsKeyboard` and `useTrackActiveRegion` both read this.
+      data-region='agent'
       // `relative` so the scrim below covers this column and nothing else.
       // Without it the nearest positioned ancestor is the one wrapping the
       // TopBar and the whole canvas, and an `absolute inset-0` scrim would
