@@ -15,20 +15,13 @@
  */
 
 import * as React from 'react';
-import {
-  ChevronDown,
-  TextAlignStart,
-  TextAlignCenter,
-  TextAlignEnd,
-  Sparkles,
-} from 'lucide-react';
+import { ChevronDown, TextAlignStart, Sparkles } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 
 import { Button } from '@web/components/ui/button';
 import {
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from '@web/components/ui/dropdown-menu';
@@ -146,12 +139,29 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   );
 });
 
-/** The alignment menu's three rows, from demo:590-596. */
-const ALIGN_ITEMS = [
-  { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
-  { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
-  { id: 'right', labelKey: 'spaces.document.commands.alignRight', Icon: TextAlignEnd },
-];
+/**
+ * What a menu holds while its commands are not there yet.
+ *
+ * One line, and nothing else. The demo draws each of these menus filled in —
+ * three alignments, a colour panel, nine AI commands — and each of those
+ * arrives with the task that implements it (#905 for alignment and colour, the
+ * ruling §3.3 routes the AI ones). Until then the menu says so rather than
+ * standing there full of rows that answer a press with nothing (user
+ * 2026-08-26).
+ * @returns The line.
+ */
+function NotImplementedYet(): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <DropdownMenuItem
+      data-testid='doc-bubble-not-implemented'
+      aria-disabled='true'
+      className={UNAVAILABLE}
+    >
+      {t('spaces.document.commands.notImplemented')}
+    </DropdownMenuItem>
+  );
+}
 
 /**
  * The alignment slot.
@@ -199,31 +209,10 @@ export const AlignSlot = React.memo(function AlignSlot({
         </Button>
       }
     >
-      {ALIGN_ITEMS.map((item) => (
-        <DropdownMenuItem
-          key={item.id}
-          data-testid={`${id}-item-${item.id}`}
-          // Left is where every block already is, so it is the row demo:590
-          // draws as active. Alignment reaches no command yet (#905), and this
-          // is the state the menu describes until it does.
-          data-active={item.id === 'left' ? 'true' : undefined}
-          aria-disabled='true'
-          className={cn(item.id === 'left' && 'bg-muted', UNAVAILABLE)}
-        >
-          <item.Icon />
-          {t(item.labelKey)}
-        </DropdownMenuItem>
-      ))}
+      <NotImplementedYet />
     </DocumentBubbleMenu>
   );
 });
-
-/** The colour panel's seven hues, from demo 3.5 and the palette. */
-const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
-
-/** One cell of either colour row: 30 square, 6px apart (demo:241-247). */
-const COLOUR_CELL =
-  'flex size-[30px] items-center justify-center rounded-content-sm border border-border';
 
 /**
  * The colour slot.
@@ -274,104 +263,10 @@ export const ColorSlot = React.memo(function ColorSlot({
         </Button>
       }
     >
-      <DropdownMenuLabel>
-        {t('spaces.document.commands.textColor')}
-      </DropdownMenuLabel>
-      <div className='flex gap-1.5 px-2 pb-3.5'>
-        {/* The default sits first and reads as the one in force, since nothing
-            has coloured the text (demo:665). */}
-        <span
-          data-testid={`${id}-text-default`}
-          data-selected='true'
-          className={cn(COLOUR_CELL, UNAVAILABLE, 'border-palette-blue font-semibold')}
-        >
-          A
-        </span>
-        {PALETTE.map((hue) => (
-          <span
-            key={hue}
-            data-testid={`${id}-text-${hue}`}
-            className={cn(COLOUR_CELL, UNAVAILABLE, 'font-semibold')}
-            style={{ color: `var(--color-palette-${hue})` }}
-          >
-            A
-          </span>
-        ))}
-      </div>
-      <DropdownMenuLabel>
-        {t('spaces.document.commands.fillColor')}
-      </DropdownMenuLabel>
-      <div className='flex gap-1.5 px-2 pb-1'>
-        {/* No background, drawn as the struck-through cell demo:252-260 draws,
-            and likewise the one in force. */}
-        <span
-          data-testid={`${id}-fill-none`}
-          data-selected='true'
-          className={cn(
-            COLOUR_CELL,
-            UNAVAILABLE,
-            'relative overflow-hidden border-palette-blue bg-background',
-            'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
-            + ' after:border-muted-foreground after:[content:""]'
-            + ' after:[transform:rotate(-38deg)]',
-          )}
-        />
-        {PALETTE.map((hue) => (
-          <span
-            key={hue}
-            data-testid={`${id}-fill-${hue}`}
-            className={cn(COLOUR_CELL, UNAVAILABLE)}
-            style={{
-              background: `color-mix(in srgb, var(--color-palette-${hue}) 14%, transparent)`,
-            }}
-          />
-        ))}
-      </div>
-      {/* Takes both marks off the selection, once there are marks to take off
-          (demo:695). */}
-      <div className='px-2 pb-1 pt-0.5'>
-        <Button
-          variant='outline'
-          size={null}
-          aria-disabled='true'
-          data-testid={`${id}-reset`}
-          tabIndex={-1}
-          className={cn('h-8 w-full text-sm', UNAVAILABLE)}
-        >
-          {t('spaces.document.commands.colorReset')}
-        </Button>
-      </div>
+      <NotImplementedYet />
     </DocumentBubbleMenu>
   );
 });
-
-/** The AI menu's eight commands in three groups, from the ruling §3.2.1. */
-const AI_GROUPS = [
-  {
-    labelKey: 'spaces.document.commands.aiRewriteGroup',
-    // Each row spells its key out. A template built from the id would read the
-    // same at runtime and vanish from the scan that finds dead catalog entries,
-    // so every one of these eight would look unused.
-    items: [
-      { id: 'refine', labelKey: 'spaces.document.commands.ai_refine' },
-      { id: 'expand', labelKey: 'spaces.document.commands.ai_expand' },
-      { id: 'shorten', labelKey: 'spaces.document.commands.ai_shorten' },
-      { id: 'translate', labelKey: 'spaces.document.commands.ai_translate' },
-      { id: 'tone', labelKey: 'spaces.document.commands.ai_tone' },
-    ],
-  },
-  {
-    labelKey: 'spaces.document.commands.aiProduceGroup',
-    items: [
-      { id: 'storyboard', labelKey: 'spaces.document.commands.ai_storyboard' },
-      { id: 'illustrate', labelKey: 'spaces.document.commands.ai_illustrate' },
-    ],
-  },
-  {
-    labelKey: 'spaces.document.commands.aiOtherGroup',
-    items: [{ id: 'custom', labelKey: 'spaces.document.commands.ai_custom' }],
-  },
-];
 
 /**
  * The AI slot.
@@ -421,21 +316,7 @@ export const AiSlot = React.memo(function AiSlot({
         </Button>
       }
     >
-      {AI_GROUPS.map((group) => (
-        <React.Fragment key={group.labelKey}>
-          <DropdownMenuLabel>{t(group.labelKey)}</DropdownMenuLabel>
-          {group.items.map((item) => (
-            <DropdownMenuItem
-              key={item.id}
-              data-testid={`doc-bubble-ai-item-${item.id}`}
-              aria-disabled='true'
-              className={UNAVAILABLE}
-            >
-              {t(item.labelKey)}
-            </DropdownMenuItem>
-          ))}
-        </React.Fragment>
-      ))}
+      <NotImplementedYet />
     </DocumentBubbleMenu>
   );
 });

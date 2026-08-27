@@ -433,26 +433,6 @@ describe('the bubble bar shell', () => {
       expect(rows.indexOf(separators[0])).toBe(4);
     });
 
-    // Every row of the demo's alignment menu carries a 16px icon, the way the
-    // block type menu's rows do.
-    it('gives each alignment row an icon', async () => {
-      const editor = open('<p>the quick brown fox</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-align');
-
-      const rows = Array.from(
-        menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]'),
-      );
-      expect(rows).toHaveLength(3);
-      for (const row of rows) {
-        expect(row.querySelectorAll('svg')).toHaveLength(1);
-      }
-      // Three different icons, not the same one three times.
-      const shapes = rows.map((r) => r.querySelector('svg')?.innerHTML);
-      expect(new Set(shapes).size).toBe(3);
-    });
-
     it('greys the task list item out, the way the demo draws it', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
@@ -465,53 +445,25 @@ describe('the bubble bar shell', () => {
       expect(taskList.getAttribute('aria-disabled')).toBe('true');
     });
 
-    it('lists the three alignments the demo draws', async () => {
+    // Each of these three reaches no command at all this time round, so its
+    // menu says exactly that and holds nothing else (user 2026-08-26). What
+    // the demo draws inside them — three alignments, a colour panel, nine AI
+    // commands — arrives with the task that implements each.
+    it.each([
+      ['doc-bubble-align'],
+      ['doc-bubble-color'],
+      ['doc-bubble-coming-ai'],
+    ])('says %s is not implemented yet, and holds nothing else', async (slot) => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-align');
+      const menu = await hoverOpen(slot);
 
-      expect(
-        Array.from(menu.querySelectorAll('[data-testid^="doc-bubble-align-item-"]')).map((n) =>
-          n.getAttribute('data-testid'),
-        ),
-      ).toEqual([
-        'doc-bubble-align-item-left',
-        'doc-bubble-align-item-center',
-        'doc-bubble-align-item-right',
-      ]);
-    });
-
-    it('lays the colour panel out in two rows of eight with a reset, the way the demo draws it', async () => {
-      const editor = open('<p>the quick brown fox</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-color');
-
-      // Eight, not seven: demo:693-694 puts a default in front of the seven
-      // hues on the text row and a "none" in front of them on the background
-      // row, each marked as the one in force.
-      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-text-"]')).toHaveLength(8);
-      expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-fill-"]')).toHaveLength(8);
-      expect(
-        menu.querySelector('[data-testid="doc-bubble-color-text-default"]')?.getAttribute('data-selected'),
-      ).toBe('true');
-      expect(
-        menu.querySelector('[data-testid="doc-bubble-color-fill-none"]')?.getAttribute('data-selected'),
-      ).toBe('true');
-      // demo:695: one full-width button under both rows.
-      expect(menu.querySelector('[data-testid="doc-bubble-color-reset"]')).not.toBeNull();
-    });
-
-    it('lists the eight AI commands the ruling draws', async () => {
-      const editor = open('<p>the quick brown fox</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-coming-ai');
-
-      expect(
-        menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
-      ).toHaveLength(8);
+      const rows = menu.querySelectorAll('[role="menuitem"]');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].getAttribute('data-testid')).toBe('doc-bubble-not-implemented');
+      expect(rows[0].getAttribute('aria-disabled')).toBe('true');
+      expect(rows[0].textContent?.trim()).not.toBe('');
     });
   });
 
