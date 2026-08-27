@@ -150,12 +150,13 @@ describe('ProjectPage — active region wiring', () => {
 
   it('marks the space column as the space region', async () => {
     setup();
-    await screen.findByTestId('agent-column');
-    const space = document.querySelector('[data-region="space"]');
-    expect(space).not.toBeNull();
-    // The tab bar lives inside it, which is what makes the tab bar part of
-    // the space region without a rule of its own.
-    expect(space?.querySelector('[data-testid="space-tab-bar"]')).not.toBeNull();
+    // Walking up from the tab bar keeps the question inside this render: the
+    // tab bar arrives with the space list, and the region it lands in is what
+    // makes it part of the space region without a rule of its own.
+    const tabBar = await screen.findByTestId('space-tab-bar');
+    expect(tabBar.closest('[data-region]')?.getAttribute('data-region')).toBe(
+      'space',
+    );
   });
 
   it('a press in the agent column hands it the region', async () => {
@@ -166,10 +167,9 @@ describe('ProjectPage — active region wiring', () => {
 
   it('a press in the space column hands it back', async () => {
     setup();
-    await screen.findByTestId('agent-column');
+    const tabBar = await screen.findByTestId('space-tab-bar');
     useUIStore.getState().setActiveRegion('agent');
-    const space = document.querySelector('[data-region="space"]');
-    press(space as Element);
+    press(tabBar.closest('[data-region]') as Element);
     expect(useUIStore.getState().activeRegion).toBe('space');
   });
 
