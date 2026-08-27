@@ -125,6 +125,16 @@ function SlotShell({
   openId,
   onOpenChange,
 }: SlotShellProps): React.JSX.Element {
+  // Held rather than written inline. `DocumentBubbleMenu` builds three
+  // callbacks and subscribes the scroller off this prop, so a new identity on
+  // every render rebuilds all four and re-attaches the listener.
+  const change = React.useCallback(
+    (open: boolean): void => {
+      onOpenChange(id, open);
+    },
+    [id, onOpenChange],
+  );
+
   return (
     <DocumentBubbleMenu
       id={id}
@@ -132,9 +142,7 @@ function SlotShell({
       container={container}
       scroller={scroller}
       open={openId === id}
-      onOpenChange={(open) => {
-        onOpenChange(id, open);
-      }}
+      onOpenChange={change}
       trigger={
         <Button
           variant='ghost'

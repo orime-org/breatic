@@ -57,7 +57,7 @@
  */
 
 import * as React from 'react';
-import { useEditorState, type Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/react';
 import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -1032,7 +1032,7 @@ function BubbleBar({
   // press must be refused wherever inside the bar it lands, including on the
   // menus the slots mount in here.
   React.useEffect(() => {
-    const bar = barRef.current;
+    const bar = barEl;
     if (!bar) return undefined;
     /**
      * Refuse the focus change a press would otherwise cause.
@@ -1045,7 +1045,7 @@ function BubbleBar({
     return () => {
       bar.removeEventListener('mousedown', keepFocusInBody);
     };
-  });
+  }, [barEl]);
 
   // The question is asked on every transaction, and on focus and blur — the
   // three moments that can change any of `shouldShow`'s terms. Focus and blur
@@ -1095,17 +1095,9 @@ function BubbleBar({
     };
   }, [editor, shouldShow, pinnedPoint, update]);
 
-  // Whether there is a selection at all, subscribed rather than read during
-  // render — a co-editor's change arrives with no React render behind it. The
-  // buttons are built only while it is true: each of them runs its command's
-  // dry run on every transaction, and the bar spends almost all of its life
-  // hidden, so leaving them mounted doubles that work (eight extra dry runs per
-  // keystroke) for a carrier nobody can see.
-  const hasSelection = useEditorState({
-    editor,
-    selector: ({ editor: e }) => (e ? !e.state.selection.empty : false),
-  });
-
+  // The controls are built only while the bar is on screen, which is what the
+  // early return below makes true: each of them runs its command's dry run on
+  // every transaction, and the bar spends almost all of its life away.
   if (!warranted) return null;
 
   return (
@@ -1139,43 +1131,41 @@ function BubbleBar({
             && 'invisible pointer-events-none',
         )}
       >
-        {hasSelection
-          ? BUBBLE_GROUPS.map((group, index) => (
-            <React.Fragment key={group.key}>
-              {index > 0 ? (
-                <Separator
-                  orientation='vertical'
-                  // Not decorative: the groups this divides are meant to be
-                  // announced apart, which is the case the component's own
-                  // docstring names for this flag.
-                  decorative={false}
-                  data-testid={`doc-bubble-sep-${group.key}`}
-                  // The demo's `.bubble-sep` is 16 tall with 3px either side.
-                  // Its 1px width and its colour come from the component.
-                  className='mx-[3px] h-4 w-px'
-                />
-              ) : null}
-              {group.panels.map((Panel, panelIndex) => (
-                <Panel key={panelIndex} editor={editor} onPanelOpenChange={setPanelOpen} />
-              ))}
-              {group.tools.map((tool) => (
-                <ToolButton key={tool.id} tool={tool} editor={editor} />
-              ))}
-              {group.slot ? (
-                <group.slot
-                  editor={editor}
-                  container={barEl}
-                  scroller={viewport}
-                  openId={openMenu}
-                  onOpenChange={setMenuOpen}
-                />
-              ) : null}
-              {group.coming.map((tool) => (
-                <ComingTool key={tool.id} tool={tool} />
-              ))}
-            </React.Fragment>
-          ))
-          : null}
+        {BUBBLE_GROUPS.map((group, index) => (
+          <React.Fragment key={group.key}>
+            {index > 0 ? (
+              <Separator
+                orientation='vertical'
+                // Not decorative: the groups this divides are meant to be
+                // announced apart, which is the case the component's own
+                // docstring names for this flag.
+                decorative={false}
+                data-testid={`doc-bubble-sep-${group.key}`}
+                // The demo's `.bubble-sep` is 16 tall with 3px either side.
+                // Its 1px width and its colour come from the component.
+                className='mx-[3px] h-4 w-px'
+              />
+            ) : null}
+            {group.panels.map((Panel, panelIndex) => (
+              <Panel key={panelIndex} editor={editor} onPanelOpenChange={setPanelOpen} />
+            ))}
+            {group.tools.map((tool) => (
+              <ToolButton key={tool.id} tool={tool} editor={editor} />
+            ))}
+            {group.slot ? (
+              <group.slot
+                editor={editor}
+                container={barEl}
+                scroller={viewport}
+                openId={openMenu}
+                onOpenChange={setMenuOpen}
+              />
+            ) : null}
+            {group.coming.map((tool) => (
+              <ComingTool key={tool.id} tool={tool} />
+            ))}
+          </React.Fragment>
+        ))}
       </div>
     </FloatingPortal>
   );
