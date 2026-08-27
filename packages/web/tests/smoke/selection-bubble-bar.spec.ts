@@ -1022,71 +1022,84 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   expect(Math.abs(ratioNarrow - ratioWide)).toBeLessThan(0.01);
 });
 
-// A15。每 6px 采样一次（步长写在下面的 `y += 6`，不是逐像素）：锚定那一行跟
-// 正文可见区不相交的采样位置上，条都不能在屏幕上。不能只断言「它被裁掉了」——条挂在滚动容器外面，裁它的那一层比正文
-// 可见区高 40px，只靠裁切它会在那条 40px 的带子里露出来，画在顶部横条上。
-test('选了一部分时，锚定那一行滚出正文显示区，条就不显示', async () => {
+// E5, both halves. The bar travels with its line and the scroller's overflow
+// clips it: measured every 6px on the way out, the bar is on screen only while
+// its anchor is, and scrolling back brings it into view again. The reverse half
+// is the one that used to go unmeasured — a bar that never came back would have
+// passed.
+test('the bar leaves view with its line, and comes back with it', async () => {
   test.setTimeout(240_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 6);
 
-  const start = await readGeometry(page);
   const bad: { scroll: number; barTop: number | null; lineTop: number }[] = [];
-  const stray: { scroll: number; barTop: number; viewTop: number }[] = [];
-  // 从「那一行还在屏上」一路滚到「它早已滚过去」，每 6px 量一次。
+  /**
+   * Where the bar and its line sit against the body's visible area.
+   * @returns The three boxes, rounded.
+   */
+  const measure = async (): Promise<{
+    barTop: number | null;
+    barBottom: number | null;
+    lineTop: number;
+    lineBottom: number;
+    viewTop: number;
+    viewBottom: number;
+  }> => page.evaluate(() => {
+    const el = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement | null;
+    const bar = el?.getBoundingClientRect();
+    const box = window.getSelection()?.rangeCount
+      ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+      : null;
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    return {
+      barTop: bar ? Math.round(bar.top) : null,
+      barBottom: bar ? Math.round(bar.bottom) : null,
+      lineTop: box ? Math.round(box.top) : 0,
+      lineBottom: box ? Math.round(box.bottom) : 0,
+      viewTop: v ? Math.round(v.top) : 0,
+      viewBottom: v ? Math.round(v.bottom) : 0,
+    };
+  });
+
+  const start = await measure();
+
+  // Out: from "the line is still on screen" to well past it, 6px at a time.
   for (let y = 0; y <= start.lineTop + 240; y += 6) {
-    await page.evaluate((top) => {
-      document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-        ?.scrollTo(0, top);
-    }, y);
-    // 滚动重算没有防抖，一帧足够。
+    await scrollBodyTo(page, y);
+    // Repositioning on scroll is not debounced; one frame is enough.
     await page.waitForTimeout(30);
-    const m = await page.evaluate(() => {
-      const el = document.querySelector(
-        '[data-testid="doc-selection-bubble-bar"]',
-      ) as HTMLElement | null;
-      const shown = !!el && el.isConnected
-        && getComputedStyle(el).visibility !== 'hidden';
-      const box = window.getSelection()?.rangeCount
-        ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
-        : null;
-      const v = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-        ?.getBoundingClientRect();
-      return {
-        shown,
-        barTop: el ? Math.round(el.getBoundingClientRect().top) : null,
-        // 锚定的是 head 那一行，看不见才退到 from 那一行。这里选区是一整段，
-        // 两端在同一段里，段落的包围盒够用。
-        lineTop: box ? Math.round(box.top) : 0,
-        lineBottom: box ? Math.round(box.bottom) : 0,
-        viewTop: v ? Math.round(v.top) : 0,
-        viewBottom: v ? Math.round(v.bottom) : 0,
-      };
-    });
-    // 判的是喂给 `hide` 中间件的那个锚点矩形，也就是那一行上下各撑一个间距
-    // ——间距是锚点的一部分（做进锚点是为了让 `flip` 看到条真实需要的空间），
-    // 所以行盒本身刚离开可见区时锚点矩形还差 8px 才算完全离开。拿没撑过的行盒
-    // 去判会比实现严 8px：实测在 6px 的扫描步长下落进两个采样点（滚动位置 276
-    // 和 282），而那两处条顶分别是 127 和 121，都在可见区（顶 120）里面。
+    const m = await measure();
+    // The anchor is the line grown by one gap either side, which is what the
+    // bar is placed against.
     const anchorTop = m.lineTop - GAP_FROM_SELECTION_PX;
     const anchorBottom = m.lineBottom + GAP_FROM_SELECTION_PX;
-    const overlaps = anchorBottom > m.viewTop && anchorTop < m.viewBottom;
-    if (!overlaps && m.shown) {
+    const anchorInView = anchorBottom > m.viewTop && anchorTop < m.viewBottom;
+    const barInView =
+      m.barTop !== null
+      && m.barBottom !== null
+      && m.barBottom > m.viewTop
+      && m.barTop < m.viewBottom;
+    if (!anchorInView && barInView) {
       bad.push({ scroll: y, barTop: m.barTop, lineTop: m.lineTop });
     }
-    // A15 真正要防的后果，单独量一次：条挂在滚动容器外面，裁它的那一层比正文
-    // 可见区高 40px，所以只靠裁切它会在那条带子里露出来、画在顶部横条上。
-    if (m.shown && m.barTop !== null && m.barTop < m.viewTop) {
-      stray.push({ scroll: y, barTop: m.barTop, viewTop: m.viewTop });
-    }
   }
-
   expect(bad).toEqual([]);
-  expect(stray).toEqual([]);
+
+  // Back: the same selection, the same place, and the bar is visible again.
+  await scrollBodyTo(page, 0);
+  await page.waitForTimeout(60);
+  const back = await measure();
+  expect(back.barTop).not.toBeNull();
+  expect(back.barBottom!).toBeGreaterThan(back.viewTop);
+  expect(back.barTop!).toBeLessThan(back.viewBottom);
+  // Where it was before any of this scrolling.
+  expect(Math.abs(back.barTop! - start.barTop)).toBeLessThanOrEqual(1);
 });
 
 // A16。左右都不许伸出正文显示区，两档各量一次。
