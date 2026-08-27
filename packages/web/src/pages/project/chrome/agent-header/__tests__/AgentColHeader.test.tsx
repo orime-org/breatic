@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   render as rtlRender,
   screen,
@@ -12,6 +12,7 @@ import type * as React from 'react';
 
 import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { useUIStore } from '@web/stores';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 import { unexpectedTextIn } from '@web/test-utils/visible-text';
 
@@ -88,5 +89,45 @@ describe('AgentColHeader', () => {
     await user.clear(input);
     await user.type(input, 'New name{Enter}');
     expect(onRenameConversation).toHaveBeenCalledWith('New name');
+  });
+
+  // The conversation name is the one piece of text that stands for this
+  // column, and it carries no colour of its own — it inherits the header's.
+  // Bright says the column is the one the keyboard belongs to (#168).
+  describe('the conversation name follows the active region (#168)', () => {
+    afterEach(() => {
+      useUIStore.getState().reset();
+    });
+
+    it('is bright while the agent column is the active region', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      setup();
+      const header = screen.getByTestId('agent-col-header');
+      expect(header.className).toContain('text-foreground');
+      expect(header.className).not.toContain('text-muted-foreground');
+    });
+
+    it('is dim while the space region is the active one', () => {
+      useUIStore.getState().setActiveRegion('space');
+      setup();
+      const header = screen.getByTestId('agent-col-header');
+      expect(header.className).toContain('text-muted-foreground');
+    });
+
+    // The two icon buttons say their own colour, so the header's says
+    // nothing about them.
+    it.each(['agent', 'space'] as const)(
+      'leaves the two icon buttons alone while the active region is %s',
+      (region) => {
+        useUIStore.getState().setActiveRegion(region);
+        setup();
+        for (const button of [
+          screen.getByLabelText('Conversation history'),
+          screen.getByTestId('new-conversation'),
+        ]) {
+          expect(button.className).toContain('text-muted-foreground');
+        }
+      },
+    );
   });
 });
