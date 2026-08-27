@@ -1438,10 +1438,13 @@ describe('the selection bubble bar', () => {
     expect(bar).not.toBeNull();
     expect(viewport).not.toBeNull();
     expect(bar?.closest('.doc-body-scroller')).not.toBeNull();
-    // On that viewport itself — more specific than "somewhere inside", so
-    // mounting it elsewhere goes red too. The link panel's `FloatingPortal
-    // root` reads the same element.
-    expect(bar?.parentElement).toBe(viewport);
+    // Inside a container of the portal's own, which is a child of that
+    // viewport — the link panel mounts exactly this way. The extra layer is
+    // load-bearing: `index.css:970` makes every direct child div of the
+    // viewport a full-height column flex container, and a bar mounted as a
+    // direct child came out 74 wide and 870 tall with its controls stacked
+    // (measured in a browser).
+    expect(bar?.parentElement?.parentElement).toBe(viewport);
   });
 
   // A9: the whole bar stays out of the tab order (ruling §5.2, user

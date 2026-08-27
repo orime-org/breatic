@@ -62,8 +62,8 @@ import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection } from '@tiptap/pm/state';
-import { createPortal } from 'react-dom';
 import {
+  FloatingPortal,
   useFloating,
   autoUpdate,
   flip,
@@ -1077,59 +1077,67 @@ function BubbleBar({
 
   if (!warranted) return null;
 
-  return createPortal(
-    <div
-      ref={takeBarNode}
-      style={floatingStyles}
-      data-testid='doc-selection-bubble-bar'
-      // Above the whole-document entry. The bar is the transient one, summoned
-      // by a selection the reader just made, and its horizontal position
-      // follows that selection far enough to reach the entry's corner. The
-      // editor shell is `isolate`, so this number is compared against the
-      // entry's and nothing else on the page.
-      className={cn(
-        'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
-        (panelOpen || pointerDown) && 'invisible pointer-events-none',
-      )}
-    >
-      {hasSelection
-        ? BUBBLE_GROUPS.map((group, index) => (
-          <React.Fragment key={group.key}>
-            {index > 0 ? (
-              <Separator
-                orientation='vertical'
-                // Not decorative: the groups this divides are meant to be
-                // announced apart, which is the case the component's own
-                // docstring names for this flag.
-                decorative={false}
-                data-testid={`doc-bubble-sep-${group.key}`}
-                // The demo's `.bubble-sep` is 16 tall with 3px either side.
-                // Its 1px width and its colour come from the component.
-                className='mx-[3px] h-4 w-px'
-              />
-            ) : null}
-            {group.panels.map((Panel, panelIndex) => (
-              <Panel key={panelIndex} editor={editor} onPanelOpenChange={setPanelOpen} />
-            ))}
-            {group.tools.map((tool) => (
-              <ToolButton key={tool.id} tool={tool} editor={editor} />
-            ))}
-            {group.slot ? (
-              <group.slot
-                editor={editor}
-                container={barEl}
-                scroller={viewport}
-                openId={openMenu}
-                onOpenChange={setMenuOpen}
-              />
-            ) : null}
-            {group.coming.map((tool) => (
-              <ComingTool key={tool.id} tool={tool} />
-            ))}
-          </React.Fragment>
-        ))
-        : null}
-    </div>,
-    viewport,
+  return (
+    // `FloatingPortal`, the same one the link panel uses. It mounts a
+    // container of its own inside the root and puts the bar in that, which
+    // matters here: `index.css:970` makes every DIRECT child div of the body's
+    // scroll viewport a full-height column flex container, so a bar mounted as
+    // a direct child came out 74 wide and 870 tall with its controls stacked
+    // vertically (measured in a browser). Inside the portal's container the
+    // bar is a grandchild and that rule does not reach it.
+    <FloatingPortal root={viewport}>
+      <div
+        ref={takeBarNode}
+        style={floatingStyles}
+        data-testid='doc-selection-bubble-bar'
+        // Above the whole-document entry. The bar is the transient one, summoned
+        // by a selection the reader just made, and its horizontal position
+        // follows that selection far enough to reach the entry's corner. The
+        // editor shell is `isolate`, so this number is compared against the
+        // entry's and nothing else on the page.
+        className={cn(
+          'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
+          (panelOpen || pointerDown) && 'invisible pointer-events-none',
+        )}
+      >
+        {hasSelection
+          ? BUBBLE_GROUPS.map((group, index) => (
+            <React.Fragment key={group.key}>
+              {index > 0 ? (
+                <Separator
+                  orientation='vertical'
+                  // Not decorative: the groups this divides are meant to be
+                  // announced apart, which is the case the component's own
+                  // docstring names for this flag.
+                  decorative={false}
+                  data-testid={`doc-bubble-sep-${group.key}`}
+                  // The demo's `.bubble-sep` is 16 tall with 3px either side.
+                  // Its 1px width and its colour come from the component.
+                  className='mx-[3px] h-4 w-px'
+                />
+              ) : null}
+              {group.panels.map((Panel, panelIndex) => (
+                <Panel key={panelIndex} editor={editor} onPanelOpenChange={setPanelOpen} />
+              ))}
+              {group.tools.map((tool) => (
+                <ToolButton key={tool.id} tool={tool} editor={editor} />
+              ))}
+              {group.slot ? (
+                <group.slot
+                  editor={editor}
+                  container={barEl}
+                  scroller={viewport}
+                  openId={openMenu}
+                  onOpenChange={setMenuOpen}
+                />
+              ) : null}
+              {group.coming.map((tool) => (
+                <ComingTool key={tool.id} tool={tool} />
+              ))}
+            </React.Fragment>
+          ))
+          : null}
+      </div>
+    </FloatingPortal>
   );
 }
