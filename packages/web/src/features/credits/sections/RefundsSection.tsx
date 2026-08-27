@@ -19,7 +19,6 @@ import {
   SectionError,
   SectionSkeleton,
   formatMoney,
-  formatRefundable,
 } from '@web/features/credits/section-chrome';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -155,7 +154,6 @@ export function RefundsSection({
                     main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
                     sub={t('credits.refundableHint', {
                       credits: formatCreditAmount(lot.remainingCredits),
-                      money: formatRefundable(lot.remainingCredits, lot.currency),
                     })}
                     right={
                       <Button

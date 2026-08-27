@@ -1359,7 +1359,7 @@
     "designateFailed": "保存できませんでした。もう一度お試しください。",
     "refundsEmpty": "返金できるクレジットはありません。",
     "refundable": "返金できる購入",
-    "refundableHint": "残り {credits} クレジット、{money} 相当",
+    "refundableHint": "残り {credits} クレジット",
     "askRefund": "返金を申請",
     "refundNotOpen": "返金はまだ開始していません",
     "refundsAsked": "申請済み",
@@ -1368,7 +1368,7 @@
     "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
     "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundedHint": "{credits} クレジット · 返金済みのため Studio に割り当てられません",
-    "refundsNote": "未使用分のみを元の支払い方法へ返金します。審査があります。",
+    "refundsNote": "1 クレジットも使っていない購入は、30 日以内であれば全額を元の支払い方法へ返金します。審査があります。",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
       "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",
@@ -1381,7 +1381,7 @@
       "cancel": "キャンセル",
       "pay": "支払いに進む",
       "failed": "この購入を開始できませんでした。もう一度お試しください。",
-      "consent": "利用規約および返金規定に同意します"
+      "consent": "返金規定を読みました"
     },
     "purchase": {
       "processing": "処理中",

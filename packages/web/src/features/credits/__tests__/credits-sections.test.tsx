@@ -559,15 +559,20 @@ describe('the credits overlay, section by section', () => {
       );
     });
 
-    it('values refundable credits at one US cent each', async () => {
+    it('names what was paid, never what the credits would be worth', async () => {
       fetchCreditLots.mockResolvedValue({
-        items: [lot({ remainingCredits: 880, currency: 'usd' })],
+        items: [
+          lot({ remainingCredits: 880, paidCents: 1120, currency: 'usd' }),
+        ],
         nextCursor: null,
       });
       await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent('$8.80');
+      // 退款只有全额，所以屏上只该有一个金额：这一笔实付的那个。按剩余
+      // 积分折算出的 $8.80 是部分退款的数，而部分退款不存在。
+      expect(body).toHaveTextContent('$11.20');
+      expect(body).not.toHaveTextContent('$8.80');
     });
 
     it('waits for both reads before drawing a picker', async () => {

@@ -355,22 +355,6 @@ export function formatMoney(cents: number, currency: string): string {
   });
 }
 
-/**
- * What unspent credits are worth, in the currency they were bought with.
- *
- * A credit is one US cent. The code comes from the payment the purchase was
- * made on, and `payments.currency` defaults to `usd` with no checkout writing
- * anything else, so this rate holds for every row that can reach it. A second
- * currency needs a rate per currency, not this constant applied to it.
- * @param credits - The credits left on the purchase.
- * @param currency - The purchase's ISO 4217 code.
- * @returns What they are worth, formatted.
- */
-export function formatRefundable(credits: number, currency: string): string {
-  const US_CENTS_PER_CREDIT = 1;
-  return formatMoney(credits * US_CENTS_PER_CREDIT, currency);
-}
-
 /** Where a list ends, and whether more is coming. */
 interface ListEndProps {
   /** Goes on the empty element after the last row. */

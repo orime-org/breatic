@@ -1359,7 +1359,7 @@
     "designateFailed": "指定沒能儲存，請重試。",
     "refundsEmpty": "沒有可以退的點數。",
     "refundable": "可以退的點數包",
-    "refundableHint": "還剩 {credits} 點數，可退 {money}",
+    "refundableHint": "還剩 {credits} 點數",
     "askRefund": "申請退款",
     "refundNotOpen": "退款還沒開放",
     "refundsAsked": "已送出的申請",
@@ -1368,7 +1368,7 @@
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
     "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
-    "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。",
+    "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",
@@ -1381,7 +1381,7 @@
       "cancel": "取消",
       "pay": "前往付款",
       "failed": "這筆購買沒能發起，請再試一次。",
-      "consent": "我已閱讀並同意服務條款與退款規則"
+      "consent": "我已閱讀退款規則"
     },
     "purchase": {
       "processing": "處理中",

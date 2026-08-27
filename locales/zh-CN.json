@@ -1359,7 +1359,7 @@
     "designateFailed": "指定没能保存，请重试。",
     "refundsEmpty": "没有可以退的积分。",
     "refundable": "可以退的积分包",
-    "refundableHint": "还剩 {credits} 积分，可退 {money}",
+    "refundableHint": "还剩 {credits} 积分",
     "askRefund": "申请退款",
     "refundNotOpen": "退款还没开放",
     "refundsAsked": "已提交的申请",
@@ -1368,7 +1368,7 @@
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
-    "refundsNote": "只退没用掉的部分，按原路退回，需要审核。",
+    "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
       "assignNotice": "积分需要指定给某个 Studio 才能使用。",
@@ -1381,7 +1381,7 @@
       "cancel": "取消",
       "pay": "去支付",
       "failed": "这笔购买没能发起，请再试一次。",
-      "consent": "我已阅读并同意服务条款与退款规则"
+      "consent": "我已阅读退款规则"
     },
     "purchase": {
       "processing": "处理中",

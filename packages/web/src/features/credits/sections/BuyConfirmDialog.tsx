@@ -35,11 +35,11 @@ interface BuyConfirmDialogProps {
 /**
  * The step between choosing a pack and reaching Stripe.
  *
- * The consent tick lives here rather than under the packs, because it is the
- * confirmation of one purchase: a tick sitting on the screen would be agreed
- * to once and then carried, unnoticed, into every purchase after it. This
- * dialog starts unticked every time it opens, so the agreement belongs to the
- * purchase in front of the buyer.
+ * The refund-rule tick lives here rather than under the packs, because it
+ * belongs to one purchase: a tick sitting on the screen would be set once and
+ * then carried, unnoticed, into every purchase after it. This dialog starts
+ * unticked every time it opens, so it is the purchase in front of the buyer
+ * that gets acknowledged.
  *
  * It states the pack, what lands, and that the price excludes tax — the three
  * things a buyer would otherwise first learn on somebody else's page.
@@ -55,14 +55,15 @@ export function BuyConfirmDialog({
   onConfirm,
 }: BuyConfirmDialogProps): React.JSX.Element {
   const t = useTranslation();
-  const [agreed, setAgreed] = React.useState(false);
+  const [acknowledged, setAcknowledged] = React.useState(false);
   const [starting, setStarting] = React.useState(false);
 
   // Every purchase is confirmed on its own. Reopening on a different pack with
-  // the previous tick still set would carry an agreement across purchases.
+  // the previous tick still set would carry one purchase's acknowledgement
+  // into the next.
   React.useEffect(() => {
     if (pack !== null) {
-      setAgreed(false);
+      setAcknowledged(false);
       setStarting(false);
     }
   }, [pack]);
@@ -109,10 +110,10 @@ export function BuyConfirmDialog({
 
         <label className='flex items-start gap-2 text-sm'>
           <Checkbox
-            data-testid='confirm-consent'
-            checked={agreed}
+            data-testid='confirm-refund-ack'
+            checked={acknowledged}
             onCheckedChange={(next) => {
-              setAgreed(next === true);
+              setAcknowledged(next === true);
             }}
           />
           {/* One sentence, one key. Split into its clauses it was joined by
@@ -128,7 +129,7 @@ export function BuyConfirmDialog({
           </Button>
           <Button
             data-testid='confirm-pay'
-            disabled={!agreed || starting}
+            disabled={!acknowledged || starting}
             onClick={confirm}
           >
             {t('credits.buy.pay')}

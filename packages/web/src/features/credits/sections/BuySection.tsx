@@ -122,8 +122,8 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
       <Footnote data-testid='buy-assign-notice'>
         {t('credits.buy.assignNotice')}
       </Footnote>
-      {/* The confirmation dialog asks the buyer to agree to this rule, so it
-          has to be readable on the screen that leads there. */}
+      {/* The confirmation dialog asks the buyer to tick that they have read
+          this rule, so it has to be on the screen that leads there. */}
       {packs.isSuccess ? (
         <div data-testid='buy-refund-rule'>
           <Card title={t('credits.buy.refundTitle')}>

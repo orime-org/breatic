@@ -1359,7 +1359,7 @@
     "designateFailed": "That did not save. Try again.",
     "refundsEmpty": "Nothing can be refunded.",
     "refundable": "Refundable purchases",
-    "refundableHint": "{credits} credits left, worth {money}",
+    "refundableHint": "{credits} credits left",
     "askRefund": "Ask for a refund",
     "refundNotOpen": "Refunds are not open yet",
     "refundsAsked": "Requests made",
@@ -1368,7 +1368,7 @@
     "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
     "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
     "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
-    "refundsNote": "Only what is unspent is refunded, to the original payment method, after review.",
+    "refundsNote": "A purchase with no credit spent can be refunded in full within 30 days, to the original payment method, after review.",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
       "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
@@ -1381,7 +1381,7 @@
       "cancel": "Cancel",
       "pay": "Continue to payment",
       "failed": "That purchase could not be started. Try again.",
-      "consent": "I have read and agree to the Terms of Service and the refund rules"
+      "consent": "I have read the refund rule"
     },
     "purchase": {
       "processing": "Processing",

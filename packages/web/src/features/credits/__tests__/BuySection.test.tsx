@@ -9,9 +9,9 @@
  * the purchase history, so half of what is asserted here is what is *not* on
  * this screen.
  *
- * The consent tick lives on the confirmation dialog, not at the bottom of the
- * screen: it confirms this one purchase rather than standing as a notice on the
- * page. Until it is ticked, the pay button stays disabled.
+ * The refund-rule tick lives on the confirmation dialog, not at the bottom of
+ * the screen: it belongs to this one purchase rather than standing as a notice
+ * on the page. Until it is ticked, the pay button stays disabled.
  */
 
 import * as React from 'react';
@@ -172,7 +172,7 @@ describe('the confirmation before paying', () => {
     expect(screen.getByTestId('confirm-tax-note')).toBeInTheDocument();
   });
 
-  it('holds the pay button until the consent is ticked', async () => {
+  it('holds the pay button until the refund rule is ticked', async () => {
     const user = userEvent.setup();
     renderBuy();
     const packs = await screen.findAllByTestId('credit-pack');
@@ -181,7 +181,7 @@ describe('the confirmation before paying', () => {
     const pay = await screen.findByTestId('confirm-pay');
     expect(pay).toBeDisabled();
 
-    await user.click(screen.getByTestId('confirm-consent'));
+    await user.click(screen.getByTestId('confirm-refund-ack'));
     expect(pay).toBeEnabled();
   });
 
@@ -193,7 +193,7 @@ describe('the confirmation before paying', () => {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
       await user.click(within(packs[2]!).getByRole('button'));
-      await user.click(await screen.findByTestId('confirm-consent'));
+      await user.click(await screen.findByTestId('confirm-refund-ack'));
       await user.click(screen.getByTestId('confirm-pay'));
 
       await waitFor(() => {
@@ -218,7 +218,7 @@ describe('the confirmation before paying', () => {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
       await user.click(within(packs[0]!).getByRole('button'));
-      await user.click(await screen.findByTestId('confirm-consent'));
+      await user.click(await screen.findByTestId('confirm-refund-ack'));
       const pay = screen.getByTestId('confirm-pay');
       await user.click(pay);
 
@@ -247,7 +247,7 @@ describe('the confirmation before paying', () => {
       renderBuy();
       const packs = await screen.findAllByTestId('credit-pack');
       await user.click(within(packs[0]!).getByRole('button'));
-      await user.click(await screen.findByTestId('confirm-consent'));
+      await user.click(await screen.findByTestId('confirm-refund-ack'));
       await user.click(screen.getByTestId('confirm-pay'));
 
       await waitFor(() => {
@@ -268,7 +268,7 @@ describe('the confirmation before paying', () => {
     const packs = await screen.findAllByTestId('credit-pack');
 
     await user.click(within(packs[0]!).getByRole('button'));
-    await user.click(await screen.findByTestId('confirm-consent'));
+    await user.click(await screen.findByTestId('confirm-refund-ack'));
     await user.keyboard('{Escape}');
 
     await user.click(within(packs[1]!).getByRole('button'));
