@@ -58,7 +58,8 @@ function pressedWithNothingBehindIt(what: string): void {
 }
 
 /** The shape every slot shares: `.bubble-drop` — 28 tall, 6px either side. */
-const SLOT = `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5`;
+// `group` is what lets the chevron inside read the trigger's `data-state`.
+const SLOT = `group flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5`;
 
 /** What every slot receives from the bar. */
 interface SlotProps {
@@ -93,7 +94,15 @@ interface SlotShellProps extends SlotProps {
   };
   /** The menu's rows. */
   children: React.ReactNode;
+  /** Extra classes for the menu panel. */
+  contentClassName?: string;
 }
+
+/**
+ * A menu whose contents are rows keeps a gap between them (user 2026-08-27).
+ * The colour panel is not rows — its spacing comes from the demo.
+ */
+const ROWS = 'flex flex-col gap-1';
 
 /**
  * One slot: an opener that ends in a chevron, and the menu it opens.
@@ -106,6 +115,7 @@ interface SlotShellProps extends SlotProps {
  * @param props.face - What the opener draws before its chevron.
  * @param props.openerProps - Extra attributes for the opener.
  * @param props.children - The menu's rows.
+ * @param props.contentClassName - Extra classes for the menu panel.
  * @param props.editor - The editor.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
@@ -119,6 +129,7 @@ function SlotShell({
   face,
   openerProps,
   children,
+  contentClassName,
   editor,
   container,
   scroller,
@@ -140,6 +151,7 @@ function SlotShell({
       id={id}
       editor={editor}
       container={container}
+      contentClassName={contentClassName}
       scroller={scroller}
       open={openId === id}
       onOpenChange={change}
@@ -154,7 +166,9 @@ function SlotShell({
           {...openerProps}
         >
           {face}
-          <ChevronDown className='h-[13px] w-[13px]' />
+          {/* Radix stamps `data-state` on the trigger, so the arrow turns
+              over with the menu it opens. */}
+          <ChevronDown className='h-[13px] w-[13px] transition-transform group-data-[state=open]:rotate-180' />
         </Button>
       }
     >
@@ -195,6 +209,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       label={t('spaces.document.commands.blockType')}
       face={<CurrentIcon className='h-4 w-4' />}
       openerProps={{ 'data-block-type': current }}
+      contentClassName={ROWS}
       editor={editor}
       container={container}
       scroller={scroller}
@@ -212,13 +227,13 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
             {item.id === 'bullet-list' ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
               data-testid={`${id}-item-${item.id}`}
-              // The row the selection is already in, marked the way demo:560
-              // marks it (`.menu-item[data-active="true"]` takes
-              // `--color-muted`).
+              // The row the selection is already in. Its fill sits one step
+              // past hover in the same direction, so hovering it never washes
+              // the mark away.
               data-active={item.id === current ? 'true' : undefined}
               aria-disabled={item.greyed || !runnable ? 'true' : undefined}
               className={cn(
-                item.id === current && 'bg-muted',
+                item.id === current && 'bg-active-fill focus:bg-active-fill',
                 (item.greyed || !runnable) && UNAVAILABLE,
               )}
               onSelect={() => {
@@ -305,6 +320,7 @@ export const AlignSlot = React.memo(function AlignSlot({
         'aria-disabled': appliesHere ? undefined : 'true',
         className: cn(SLOT, !appliesHere && UNAVAILABLE),
       }}
+      contentClassName={ROWS}
       editor={editor}
       container={container}
       scroller={scroller}
@@ -318,7 +334,9 @@ export const AlignSlot = React.memo(function AlignSlot({
           // Left is where every block already is, so it is the row demo:590
           // draws as active.
           data-active={item.id === 'left' ? 'true' : undefined}
-          className={cn(item.id === 'left' && 'bg-muted')}
+          className={cn(
+            item.id === 'left' && 'bg-active-fill focus:bg-active-fill',
+          )}
           onSelect={() => {
             pressedWithNothingBehindIt(`align ${item.id}`);
           }}
@@ -546,6 +564,7 @@ export const AiSlot = React.memo(function AiSlot({
           {t('spaces.document.commands.ai')}
         </>
       )}
+      contentClassName={ROWS}
       editor={editor}
       container={container}
       scroller={scroller}

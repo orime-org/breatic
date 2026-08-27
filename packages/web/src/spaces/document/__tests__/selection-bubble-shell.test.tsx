@@ -555,7 +555,7 @@ describe('the bubble bar shell', () => {
       expect(active.map((n) => n.getAttribute('data-testid'))).toEqual([
         'doc-bubble-block-type-item-heading-1',
       ]);
-      expect(active[0].className).toContain('bg-muted');
+      expect(active[0].className).toContain('bg-active-fill');
     });
 
     // demo:571 rules the headings off from the lists below them.

@@ -40,15 +40,13 @@ const CLOSE_GRACE_MS = 120;
  * How far below the bar the menu sits.
  *
  * A panel that hangs off a surface keeps a visible gap from that surface's
- * edge, and the width of it is 8px everywhere the product already does this —
- * the language and theme menus in the header among them
- * (`components/ui/popover.tsx`). User 2026-08-26 asked for the same gap here.
+ * edge. User 2026-08-27 put the width of it at 4px here.
  *
  * `sideOffset` measures from the TRIGGER, and this trigger is a slot that sits
  * inside the bar's own 4px padding and 1px border. Those 5px come out of the
- * gap, so plain 8 leaves 3px between menu and bar; 13 puts the visible gap at 8.
+ * gap, so plain 4 leaves none at all; 9 puts the visible gap at 4.
  */
-const MENU_SIDE_OFFSET = 8 + 5;
+const MENU_SIDE_OFFSET = 4 + 5;
 
 interface DocumentBubbleMenuProps {
   /** Stable id, used to build the test ids. */
@@ -59,6 +57,13 @@ interface DocumentBubbleMenuProps {
   trigger: React.ReactNode;
   /** What the menu holds. */
   children: React.ReactNode;
+  /**
+   * Extra classes for the menu panel.
+   *
+   * A menu of rows wants a gap between them; the colour panel is not rows —
+   * its spacing comes from the demo — so it passes nothing.
+   */
+  contentClassName?: string;
   /**
    * Which element the menu mounts inside.
    *
@@ -83,6 +88,7 @@ interface DocumentBubbleMenuProps {
  * @param props.editor - The editor the focus goes back to on close.
  * @param props.trigger - What the slot itself looks like.
  * @param props.children - What the menu holds.
+ * @param props.contentClassName - Extra classes for the menu panel.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
  * @param props.open - Is this slot open?
@@ -94,6 +100,7 @@ export function DocumentBubbleMenu({
   editor,
   trigger,
   children,
+  contentClassName,
   container,
   scroller,
   open,
@@ -177,6 +184,7 @@ export function DocumentBubbleMenu({
           ref={setContent}
           container={container}
           data-testid={`${id}-menu`}
+          className={contentClassName}
           align='start'
           sideOffset={MENU_SIDE_OFFSET}
           onPointerEnter={enter}
