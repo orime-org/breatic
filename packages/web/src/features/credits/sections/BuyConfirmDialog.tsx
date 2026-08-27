@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@web/components/ui/dialog';
 import type { CreditPack } from '@web/data/api/payment';
-import { formatMoney } from '@web/features/credits/section-chrome';
+import { RuleLines, formatMoney } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 
@@ -22,6 +22,8 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 interface BuyConfirmDialogProps {
   /** The chosen pack, or null when the dialog is closed. */
   pack: CreditPack | null;
+  /** The refund rule, in the reader's language, as the server hands it over. */
+  refundLines: readonly string[];
   /** Called when the dialog closes itself. */
   onOpenChange: (open: boolean) => void;
   /**
@@ -43,14 +45,22 @@ interface BuyConfirmDialogProps {
  *
  * It states the pack, what lands, and that the price excludes tax — the three
  * things a buyer would otherwise first learn on somebody else's page.
- * @param props - The pack and the callbacks.
+ *
+ * The rule itself is here as well as on the screen behind, because a modal
+ * dialog covers that screen twice over: an opaque scrim goes across it and
+ * `aria-hidden` takes it out of the accessibility tree. Ticking that the rule
+ * has been read, with the rule neither visible nor readable, is being asked to
+ * take our word for it.
+ * @param props - The pack, the rule and the callbacks.
  * @param props.pack - The chosen pack, or null when closed.
+ * @param props.refundLines - The refund rule, in the reader's language.
  * @param props.onOpenChange - Called when the dialog closes itself.
  * @param props.onConfirm - Called with the pack once confirmed.
  * @returns The dialog.
  */
 export function BuyConfirmDialog({
   pack,
+  refundLines,
   onOpenChange,
   onConfirm,
 }: BuyConfirmDialogProps): React.JSX.Element {
@@ -106,6 +116,18 @@ export function BuyConfirmDialog({
               {formatCreditAmount(pack.credits)} {t('credits.unit')}
             </dd>
           </dl>
+        )}
+
+        {refundLines.length === 0 ? null : (
+          <div className='flex flex-col gap-2'>
+            <h3 className='text-sm font-semibold'>
+              {t('credits.buy.refundTitle')}
+            </h3>
+            <RuleLines
+              data-testid='confirm-refund-rule'
+              lines={refundLines}
+            />
+          </div>
         )}
 
         <label className='flex items-start gap-2 text-sm'>

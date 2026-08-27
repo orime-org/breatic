@@ -15,8 +15,7 @@ import {
   Figure,
   Footnote,
   Notice,
-  Row,
-  Rows,
+  RuleLines,
   Section,
   SectionError,
   SectionSkeleton,
@@ -127,15 +126,16 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
       {packs.isSuccess ? (
         <div data-testid='buy-refund-rule'>
           <Card title={t('credits.buy.refundTitle')}>
-            <Rows>
-              {packs.data.refundLines.map((line) => (
-                <Row key={line} main={line} />
-              ))}
-            </Rows>
+            <RuleLines lines={packs.data.refundLines} />
           </Card>
         </div>
       ) : null}
-      <BuyConfirmDialog pack={chosen} onOpenChange={close} onConfirm={start} />
+      <BuyConfirmDialog
+        pack={chosen}
+        refundLines={packs.data?.refundLines ?? []}
+        onOpenChange={close}
+        onConfirm={start}
+      />
     </Section>
   );
 }

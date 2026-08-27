@@ -172,6 +172,22 @@ describe('the confirmation before paying', () => {
     expect(screen.getByTestId('confirm-tax-note')).toBeInTheDocument();
   });
 
+  it('carries the rule it asks the buyer to have read', async () => {
+    const user = userEvent.setup();
+    renderBuy();
+    const packs = await screen.findAllByTestId('credit-pack');
+    await user.click(within(packs[0]!).getByRole('button'));
+
+    // The tick says the buyer has read this, and a modal dialog covers what is
+    // behind it — the copy on the screen goes under an opaque scrim and out of
+    // the accessibility tree at the same time. Asking someone to confirm a
+    // rule they cannot see or hear is asking them to take our word for it.
+    const rule = await screen.findByTestId('confirm-refund-rule');
+    for (const line of REFUND_LINES) {
+      expect(rule.textContent).toContain(line);
+    }
+  });
+
   it('holds the pay button until the refund rule is ticked', async () => {
     const user = userEvent.setup();
     renderBuy();

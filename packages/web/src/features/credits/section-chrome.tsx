@@ -120,6 +120,40 @@ export function Footnote({
   );
 }
 
+/** The sentences of a rule, and a name for tests to reach them by. */
+interface RuleLinesProps {
+  /** The sentences, in the order they were handed over. */
+  lines: readonly string[];
+  /** A hook for tests to name this particular block. */
+  'data-testid'?: string;
+}
+
+/**
+ * A rule, one sentence per line.
+ *
+ * Its own shape rather than {@link Rows}: those put a label left and a figure
+ * right and rule off between them, which under prose draws a line through the
+ * middle of a paragraph and pulls each sentence toward opposite edges.
+ * @param props - The sentences and the hook.
+ * @param props.lines - The sentences, in order.
+ * @param props.'data-testid' - A hook for tests to name this block.
+ * @returns The lines.
+ */
+export function RuleLines({
+  lines,
+  'data-testid': testId,
+}: RuleLinesProps): React.JSX.Element {
+  return (
+    <ul data-testid={testId} className='flex list-none flex-col gap-1.5'>
+      {lines.map((line) => (
+        <li key={line} className='text-sm text-muted-foreground'>
+          {line}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** A bordered block, and what is in it. */
 interface CardProps {
   /** An optional heading for the block. */
