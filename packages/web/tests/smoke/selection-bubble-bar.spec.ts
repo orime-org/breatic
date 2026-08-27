@@ -1554,6 +1554,40 @@ test('浮出条第一次画出来就在它最终的位置上', async () => {
   expect(shown[0]).toMatchObject({ top: settled.top, left: settled.left });
 });
 
+// E3 says the bar picks its side as it comes up. D1 keeps it off screen for
+// the length of a drag-select, so "as it comes up" is the release — and a side
+// settled from an anchor passed through mid-drag is settled from a place the
+// reader never saw. Dragging upward is where the two differ: there is room
+// above the head where the drag starts and none where it ends.
+test('往上拖着选到正文区顶端，松手后条整个在正文区里', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  // Scrolled into the body, so the line the drag ends on has the top edge just
+  // above it and no room for the bar there.
+  await scrollBodyTo(page, 400);
+
+  const view = await bodyView(page);
+  const paragraphs = page.locator('[data-testid="document-space"] .ProseMirror p');
+  const startBox = (await paragraphs
+    .filter({ hasText: 'line' })
+    .first()
+    .boundingBox())!;
+  const x = startBox.x + 40;
+
+  await page.mouse.move(x, view.top + 320);
+  await page.mouse.down();
+  await page.mouse.move(x, view.top + 20, { steps: 20 });
+  await page.mouse.up();
+
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+  await expect(bar).toBeVisible({ timeout: 5_000 });
+  const box = (await bar.boundingBox())!;
+  // 1px of tolerance: the bar is placed by a transform whose offsets carry a
+  // fraction, so its edges land on fractions too.
+  expect(box.y).toBeGreaterThanOrEqual(view.top - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.bottom + 1);
+});
+
 test('link: an address with a space in the host leaves confirm dimmed', async () => {
   // Only a real browser answers this. The check rests on the URL parser, and
   // the two runtimes treat `https://hello world` in opposite ways: Node's

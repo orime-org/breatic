@@ -967,9 +967,17 @@ function BubbleBar({
       setOpenMenu(null);
       return;
     }
-    if (side !== null || !isPositioned) return;
+    // Not while the pointer is down. E3 settles the side "as the bar comes
+    // up", and D1 keeps the bar off screen for the length of a drag-select, so
+    // coming up IS the release. A side taken mid-drag is taken from a line the
+    // reader never saw the bar against: dragging upward there is room above the
+    // head where the drag starts and none where it ends, and with `flip` gone
+    // by then only `shift` acts — which works on the cross axis and leaves the
+    // bar hanging over the body's top edge. Measured in a browser: 40px of it
+    // outside, clipped by the scroller.
+    if (pointerDown || side !== null || !isPositioned) return;
     setSide(placement);
-  }, [warranted, isPositioned, placement, side]);
+  }, [warranted, isPositioned, placement, side, pointerDown]);
 
   React.useEffect(() => {
     refs.setPositionReference(anchor);
