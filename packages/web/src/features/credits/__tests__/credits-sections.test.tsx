@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -232,6 +232,12 @@ async function panel(): Promise<HTMLElement> {
 
 describe('the credits overlay, section by section', () => {
   beforeEach(() => {
+    // The fixtures carry fixed dates, so the clock they are read against has
+    // to be fixed too. The refunds screen drops a purchase once its thirty
+    // days are up, which without this would turn every fixture into a test
+    // that passes until a date and then stops.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
     useCurrentUserStore.getState().clear();
     useCurrentUserStore.getState().setUser(ALEX);
     fetchCreditOverview.mockReset().mockResolvedValue(overview());
@@ -252,6 +258,10 @@ describe('the credits overlay, section by section', () => {
     toastWarning.mockReset();
     reachEnd = null;
     watcherStopped = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('overview', () => {
@@ -988,6 +998,26 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent(/the money went back/i);
     });
 
+    // Three screens read purchases and each wants a different subset, so each
+    // holds its own react-query key. Sharing one would let the purchases
+    // screen — which lists payments that never became a lot — fill the cache
+    // this screen then reads, and rows with no lot would land under a heading
+    // offering to refund them.
+    it('reads its own list rather than the one the purchases screen filled', async () => {
+      await openOn('lots', true);
+      await panel();
+      fetchCreditLots.mockClear();
+
+      // `fireEvent` rather than `userEvent`: the dialog sets
+      // `pointer-events: none` on the body while it is open, and userEvent
+      // refuses to click through that.
+      fireEvent.click(document.getElementById('credits-tab-refunds')!);
+      await panel();
+
+      // A shared key would have served this screen from that cache instead.
+      expect(fetchCreditLots).toHaveBeenCalled();
+    });
+
     it('says so once when there is nothing to refund and nothing pending', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
@@ -1003,15 +1033,6 @@ describe('the credits overlay, section by section', () => {
     // the membership test: within thirty days, with no credit spent. Listing
     // one the rule refuses offers the buyer something it will not honour.
     describe('only purchases the rule allows are listed', () => {
-      beforeEach(() => {
-        vi.useFakeTimers({ shouldAdvanceTime: true });
-        vi.setSystemTime(new Date('2026-08-25T00:00:00.000Z'));
-      });
-
-      afterEach(() => {
-        vi.useRealTimers();
-      });
-
       it('leaves out one that has been spent from', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [lot({ id: 'spent', remainingCredits: 818, everSpent: true })],

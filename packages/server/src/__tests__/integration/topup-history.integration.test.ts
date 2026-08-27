@@ -35,6 +35,8 @@ import {
   vi,
 } from "vitest";
 
+import type * as BreaticCore from "@breatic/core";
+
 // `ai` is stubbed: the real SDK is replaced with a double that reaches no
 // network, so this suite needs no API key and the SDK stays out of its
 // module graph.
@@ -48,6 +50,22 @@ vi.mock("ai", () => ({
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
 }));
+
+// Only `sendMail` is replaced; the rest of core is the real thing, because
+// this suite talks to a real database. What the letter says is the point of
+// the resend case below, and there is no other way to read it.
+const sentMail =
+  vi.fn<(mail: { to: string; subject: string; html: string; text: string }) => Promise<{ ok: true }>>(
+    async () => ({ ok: true }) as const,
+  );
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof BreaticCore>();
+  return {
+    ...actual,
+    sendMail: (mail: { to: string; subject: string; html: string; text: string }) =>
+      sentMail(mail),
+  };
+});
 
 vi.mock("@server/infra/stripe.js", () => ({
   getStripeClient: () => ({
@@ -68,6 +86,10 @@ import {
 import { creditLotService } from "@breatic/domain";
 import type { CreditPage, PurchaseRow } from "@breatic/shared";
 import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
+import {
+  refundLinesAt,
+  REFUND_CREDITS_VERSION,
+} from "@server/modules/payment/legal-text.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -149,18 +171,20 @@ async function seedPayment(
     createdAgoSeconds?: number;
     totalCents?: number | null;
     taxCents?: number | null;
+    metadata?: Record<string, string>;
   } = {},
 ): Promise<string> {
   seq += 1;
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO payments (
       user_id, stripe_session_id, amount_cents, tax_cents, total_cents,
-      credits_granted, currency, status, created_at, updated_at
+      credits_granted, currency, status, metadata, created_at, updated_at
     )
     VALUES (
       ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
       ${over.taxCents ?? null}, ${over.totalCents ?? null},
       1700, 'usd', ${over.status ?? "pending"},
+      ${sql.json(over.metadata ?? {})},
       now() - make_interval(secs => ${over.createdAgoSeconds ?? 60}),
       now()
     )
@@ -180,12 +204,14 @@ async function seedLanded(
   userId: string,
   designateTo: string | null = null,
   createdAgoSeconds = 60,
+  metadata: Record<string, string> = {},
 ): Promise<string> {
   const paymentId = await seedPayment(userId, {
     status: "completed",
     totalCents: 2240,
     taxCents: 240,
     createdAgoSeconds,
+    metadata,
   });
   const lot = await creditLotService.grantFromPayment({
     paymentId,
@@ -458,6 +484,45 @@ describe("POST /payment/:id/resend-confirmation", () => {
       `;
       expect(row!.attempts).toBe(1);
       expect(row!.status).not.toBe("failed");
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  // The language is the purchase's, not the request's. A buyer who bought in
+  // Japanese and hits resend from a browser set to English is owed the same
+  // letter they were sent the first time — it is the record of what they
+  // agreed to, and a resend that switches language is a different document.
+  it("writes the resent letter in the language of the purchase", async () => {
+    const buyer = await seedBuyer();
+    try {
+      const paymentId = await seedLanded(buyer.userId, null, 60, {
+        locale: "ja",
+        timeZone: "Asia/Tokyo",
+      });
+      await sql`
+        UPDATE purchase_mail_outbox SET status = 'failed'
+        WHERE payment_id = ${paymentId}
+      `;
+      sentMail.mockClear();
+
+      const res = await app.request(
+        `/api/v1/payment/${paymentId}/resend-confirmation`,
+        {
+          method: "POST",
+          headers: { cookie: buyer.cookie, "Accept-Language": "en" },
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(sentMail).toHaveBeenCalledTimes(1);
+      const letter = sentMail.mock.calls[0]![0];
+      for (const line of refundLinesAt(REFUND_CREDITS_VERSION, "ja")) {
+        expect(letter.text).toContain(line);
+      }
+      expect(letter.text).not.toContain(
+        refundLinesAt(REFUND_CREDITS_VERSION, "en")[0],
+      );
     } finally {
       await dropBuyer(buyer.userId);
     }
