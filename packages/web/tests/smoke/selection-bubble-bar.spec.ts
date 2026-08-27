@@ -231,13 +231,13 @@ for (const scheme of ['light', 'dark'] as const) {
         const r = n.getBoundingClientRect();
         return `${Math.round(r.width)}×${Math.round(r.height)}`;
       };
-      // 图标取每一格里的**第一个** `svg`。AI 那格是下拉形态（图标、文字、
-      // 箭头），所以它有两个 svg，而箭头不是图标——按 `button > svg` 一把抓
-      // 会把 13px 的箭头混进 16px 的图标里。
-      const icons = Array.from(el.querySelectorAll('button')).map((n) =>
-        size(n.querySelector('svg') as Element),
-      );
-      // 那个箭头单独量，免得它跟着图标一起被改掉没人发现。
+      // 条上每一个 svg，按尺寸归类。四个下拉各带一个箭头，而颜色那格画的是
+      // 字母 A 加箭头、没有图标——所以「每格第一个 svg」抓不准，得整片抓完
+      // 再按尺寸分。
+      const svgs = Array.from(el.querySelectorAll('svg')).map(size);
+      const icons = svgs.filter((v) => v === '16×16');
+      const chevrons = svgs.filter((v) => v === '13×13');
+      // AI 那格的箭头单独量一次，免得它跟着别的一起被改掉没人发现。
       const aiChevron = size(
         [
           ...(el
@@ -270,9 +270,20 @@ for (const scheme of ['light', 'dark'] as const) {
         };
       });
       // #902 A10：两个未开放的入口，变暗且光标说得出自己不能用。
-      const coming = Array.from(
-        el.querySelectorAll('[data-testid^="doc-bubble-coming-"]'),
-      ).map((n) => {
+      /**
+       * 一个控件的尺寸和它「能不能用」那几样的计算值。
+       * @param testid - 它的 test id。
+       * @returns 量出来的那几个数。
+       */
+      const control = (testid: string): {
+        width: number;
+        height: number;
+        opacity: string;
+        cursor: string;
+        ariaDisabled: string | null;
+      } | null => {
+        const n = el.querySelector(`[data-testid="${testid}"]`);
+        if (!n) return null;
         const ccs = getComputedStyle(n);
         const r = n.getBoundingClientRect();
         return {
@@ -282,7 +293,9 @@ for (const scheme of ['light', 'dark'] as const) {
           cursor: ccs.cursor,
           ariaDisabled: n.getAttribute('aria-disabled'),
         };
-      });
+      };
+      const comment = control('doc-bubble-coming-comment');
+      const ai = control('doc-bubble-coming-ai');
       // A5：最上层命中的真的是浮出条自己——比「它在 DOM 里」强，能同时排除
       // 被裁掉一半和被别的东西盖住。
       const hit = document.elementFromPoint(
@@ -306,8 +319,10 @@ for (const scheme of ['light', 'dark'] as const) {
         tokenBackground,
         hasShadow: cs.boxShadow !== 'none',
         buttons,
+        chevrons,
         separators,
-        coming,
+        comment,
+        ai,
         barHeight,
         controlGap,
         icons,
@@ -327,26 +342,26 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
     // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 28 高、
-    // 28 宽。九个：#902 的八个命令，加上 #903 的链接。最后那个交给 Radix 当浮层
-    // 触发器、不是按下就跑命令的那种，尺寸仍旧跟其余八个一样。
-    expect(geo.buttons).toHaveLength(9);
+    // 28 宽。六个：粗体 斜体 删除线 下划线 行内代码 链接。三个块命令 2026-08-26
+    // 起住在块类型菜单里。
+    expect(geo.buttons).toHaveLength(6);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 28 });
     }
-    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。图标
-    // 十一个：九个命令加评论、AI。AI 那格的箭头 13 不在 A 档改动之列，单独
-    // 钉住它没被顺手动过。
+    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。
     expect(geo.barHeight).toBe(38);
     expect(geo.controlGap).toBe('2px');
-    expect(geo.icons).toHaveLength(11);
-    for (const icon of geo.icons) {
-      expect(icon).toBe('16×16');
-    }
+    // 16px 的图标十个：六个命令、块类型、对齐、AI、评论。颜色那格画的是字母
+    // A，没有图标。
+    expect(geo.icons).toHaveLength(10);
+    // 13px 的箭头四个，四个下拉各一个。
+    expect(geo.chevrons).toHaveLength(4);
     expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
-    // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
-    expect(geo.separators).toHaveLength(3);
+    // 四条，五组之间各一条（demo:521）：块类型 ｜ 对齐 ｜ 粗体 斜体 删除线
+    // 下划线 ｜ 链接 行内代码 颜色 评论 ｜ AI。
+    expect(geo.separators).toHaveLength(4);
     for (const sep of geo.separators) {
       expect(sep.width).toBe(1);
       expect(sep.height).toBe(16);
@@ -354,19 +369,22 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(sep.marginRight).toBe('3px');
       expect(sep.background).toBe(sep.tokenBorder);
     }
-    // #902 A9 / A10：评论和 AI 占位，尺寸跟命令按钮一样，看得出不能用。
-    // 尺寸只核评论那个：AI 按 demo 是带文字和箭头的下拉样子（`.bubble-drop`，
-    // 宽度跟着文字走），评论是图标按钮（`.bubble-btn`，28 宽）。
-    expect(geo.coming).toHaveLength(2);
-    for (const entry of geo.coming) {
-      expect(entry.height).toBe(28);
-      expect(entry.opacity).toBe('0.5');
-      expect(entry.cursor).toBe('not-allowed');
-      expect(entry.ariaDisabled).toBe('true');
-    }
-    expect(geo.coming[0]!.width).toBe(28);
-    // A5：挂在滚动容器外面、最上层可见、没跑出窗口。
-    expect(geo.insideScroller).toBe(false);
+    // 评论那一个照 `ComingTool` 的既有表示画：图标按钮（`.bubble-btn`，28 宽），
+    // 变暗、不可点，看得出它的功能还没做（#18）。
+    expect(geo.comment).toMatchObject({
+      width: 28,
+      height: 28,
+      opacity: '0.5',
+      cursor: 'not-allowed',
+      ariaDisabled: 'true',
+    });
+    // AI 那格是普通控件：hover 就展开菜单，菜单里每一项照 demo 画，按下去在
+    // 控制台留一行（user 2026-08-26）。demo 给它的是带文字和箭头的下拉样子
+    // （`.bubble-drop`，宽度跟着文字走）。
+    expect(geo.ai).toMatchObject({ height: 28, opacity: '1', ariaDisabled: null });
+    expect(geo.ai!.width).toBeGreaterThan(28);
+    // G2：挂在滚动容器里面、最上层可见、没跑出窗口。
+    expect(geo.insideScroller).toBe(true);
     expect(geo.hitInsideBar).toBe(true);
     expect(geo.aboveWindowTop).toBe(false);
   });
@@ -695,8 +713,10 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
 
   // 先确认这个几何真的造出了「放不下」，否则下面的断言测的是另一件事。
   expect(m.roomToTheRight).toBeLessThan(m.barWidth);
-  // 放不下时它不再左对齐，而是把右边缘落在选区左边缘上。
-  expect(m.leftDelta).toBe(-m.barWidth);
+  // 放不下时它不再左对齐，而是把右边缘落在选区左边缘上。左边缘的位置由这两
+  // 个各自 `Math.round` 过的数相减得来，所以容许 1px：和的舍入跟两个舍入的和
+  // 差得出 1。对齐这件事本身由下一句量，那里只有一次舍入。
+  expect(Math.abs((m.leftDelta ?? NaN) + m.barWidth)).toBeLessThanOrEqual(1);
   // 取绝对值：这个差值由两次 `Math.round` 相减得来，落在零上时可能是 `-0`，
   // 而 `toBe` 走 `Object.is`，`-0` 跟 `0` 在那儿不相等。
   expect(Math.abs(m.rightDelta ?? NaN)).toBe(0);
@@ -964,7 +984,10 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
         barRight: Math.round(b.right),
         viewLeft: Math.round(v.left),
         viewRight: Math.round(v.right),
-        inside: b.left >= v.left && b.right <= v.right,
+        // 1px 容差：`shift` 把条推到边界上时两条边重合，而这是浮点数，
+        // 差出来的零点几像素画不出来。量到过 `barRight` 和 `viewRight`
+        // 舍入后都是 1680，精确比较仍判 false。
+        inside: b.left >= v.left - 1 && b.right <= v.right + 1,
       };
     });
 
@@ -983,13 +1006,16 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   // 一个已经在区域外面的位置上。
   await page.setViewportSize({ width: 1680, height: 950 });
   await page.waitForTimeout(600);
-  const far = await page.evaluate(() => {
+  const pin = await page.evaluate(() => {
     const v = document
       .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
       .getBoundingClientRect();
-    return { x: Math.round(v.right) - 40, y: Math.round(v.top) + 300 };
+    // A quarter of the way in. The bar is about 421 wide and fits to the right
+    // of that point at both widths, so `shift` leaves it where the anchor puts
+    // it and `barLeft` below reads the pin itself.
+    return { x: Math.round(v.left + v.width * 0.25), y: Math.round(v.top) + 300 };
   });
-  await page.mouse.move(far.x, far.y);
+  await page.mouse.move(pin.x, pin.y);
   await selectWholeDocument(page);
   const allWide = await geo();
   expect(allWide.shown).toBe(true);
@@ -1000,24 +1026,22 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   const allNarrow = await geo();
   expect(allNarrow.shown).toBe(true);
   expect(allNarrow.inside).toBe(true);
-  // 相对位置守恒：钉住的点在区域宽度里占的比例，缩窄前后一致。容差是比值的
-  // 0.01，窄档正文可见区约 680px 时折合约 7px、宽档约 1360px 时约 14px——不是
-  // 2px，早先这里那个数说错了。
-  //
-  // 量的是 `barRight`，它等于钉住的 x **只在 flip 把对齐轴翻成 `-end` 时**成立
-  // ——鼠标放在离右沿 40px 处、条宽约 192px，放不下才会翻。下面先断言这个几何
-  // 真的成立，否则这两句量的是「钉住点 + 条宽」，那是另一回事。
-  // 宽档：鼠标钉在离右沿 40 的地方，条翻过来之后右边缘就落在那个点上。
-  expect(allWide.viewRight - allWide.barRight).toBe(40);
-  // 窄档：那个点按比例重算过，离右沿的距离跟着区域一起缩，所以严格小于 40。
-  // 这两句同时也是「flip 真的翻了」的证据——没翻的话条的右边缘会是
-  // 「钉住点加条宽」，差值当场变成负数。
-  expect(allNarrow.viewRight - allNarrow.barRight).toBeLessThan(40);
-  expect(allNarrow.viewRight - allNarrow.barRight).toBeGreaterThan(0);
+  // The bar's left edge is the pinned point: `top-start` against a zero-width
+  // anchor puts the floating x on the reference's own left edge, and nothing
+  // moves it from there while it fits. This is what makes the two ratios below
+  // measure the pin rather than a boundary — a bar pushed onto the body's edge
+  // reads that edge at both widths, and the comparison would hold whatever the
+  // pin did. 1px of tolerance for the rounding on either side.
+  expect(Math.abs(allWide.barLeft - pin.x)).toBeLessThanOrEqual(1);
+  // The point is remapped, so it lands somewhere else on screen.
+  expect(allNarrow.barLeft).not.toBe(allWide.barLeft);
+  // Its share of the body's width is what survives the resize. The tolerance is
+  // 0.01 of the ratio: about 7px over the narrow body's ~680, about 14px over
+  // the wide one's ~1360.
   const ratioWide =
-    (allWide.barRight - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
+    (allWide.barLeft - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
   const ratioNarrow =
-    (allNarrow.barRight - allNarrow.viewLeft)
+    (allNarrow.barLeft - allNarrow.viewLeft)
     / (allNarrow.viewRight - allNarrow.viewLeft);
   expect(Math.abs(ratioNarrow - ratioWide)).toBeLessThan(0.01);
 });
