@@ -3428,6 +3428,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       createGroup: vi.spyOn(canvasSpace, 'createGroup'),
     });
 
+    const attached: Element[] = [];
+
+    afterEach(() => {
+      for (const el of attached) el.remove();
+      attached.length = 0;
+    });
+
     /**
      * Attaches an element holding words, standing in for a place the reader
      * can put the caret or drag across.
@@ -3442,7 +3449,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       span.textContent = 'a highlighted reply';
       host.append(span);
       document.body.append(host);
+      attached.push(host);
       return span;
+    };
+
+    /**
+     * Puts focus on a fresh control inside `region`, standing in for where the
+     * reader last clicked. A copy event's target follows the selection rather
+     * than focus, so this is the thing the gate reads.
+     * @param region - The `data-region` to wrap it in, or null for an overlay
+     * or the top bar, both of which pass through no region.
+     * @returns The focused control.
+     */
+    const focusInside = (region: string | null): HTMLElement => {
+      const host = document.createElement('div');
+      if (region !== null) host.setAttribute('data-region', region);
+      const control = document.createElement('button');
+      host.append(control);
+      document.body.append(host);
+      attached.push(host);
+      control.focus();
+      return control;
     };
 
     /**
@@ -3664,16 +3691,33 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
       });
 
-      it('copy leaves the clipboard alone with the caret inside a field', () => {
+      it('copy leaves the clipboard alone with focus inside a field', () => {
         mountWithSelection();
         const field = document.createElement('input');
         document.body.append(field);
-        try {
-          expect(copyAndRead(field)).toBe('');
-        } finally {
-          field.remove();
-        }
+        attached.push(field);
+        field.focus();
+        expect(copyAndRead()).toBe('');
       });
+
+      // Focus is what says whether something else is already handling this
+      // press. An overlay portals to <body> and the top bar sits outside both
+      // columns, so neither passes through a region — the canvas keeps out of
+      // a copy made while focus is in one of them, exactly as it keeps out of
+      // Delete there.
+      it.each([
+        ['an overlay or the top bar', null, ''],
+        ['the space itself', 'space', '__breatic_canvas_nodes__:'],
+      ])(
+        'copy with focus inside %s and nothing highlighted',
+        (_name, region, expected) => {
+          mountWithSelection();
+          focusInside(region);
+          const written = copyAndRead();
+          if (expected === '') expect(written).toBe('');
+          else expect(written).toContain(expected);
+        },
+      );
 
       it('undo runs', () => {
         mockUseCanvasSpace.mockReturnValue(mockSpace());

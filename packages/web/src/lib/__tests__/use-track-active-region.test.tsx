@@ -175,52 +175,67 @@ describe('useTrackActiveRegion', () => {
     });
   });
 
-  // Highlighted words say "these are the ones you are working with", and the
-  // space taking over makes that untrue. Dropping them leaves one answer on
-  // the screen instead of two.
-  describe('taking the space region drops what was highlighted', () => {
+  // Highlighted words say "these are the ones you are working with". The space
+  // being handed the region makes that untrue of any highlight living
+  // elsewhere, so those go; a highlight inside the space itself is still the
+  // reader's current one and stays.
+  describe('taking the space region drops a highlight that lives elsewhere', () => {
     /**
-     * Highlights the agent button's text, the way a reader dragging across a
-     * reply would.
+     * Highlights an element's words, the way a reader dragging across them
+     * would.
+     * @param host - The element whose words get highlighted.
      * @returns The live selection.
      */
-    const highlightInAgent = (): Selection => {
-      page.agentButton.textContent = 'a highlighted reply';
+    const highlight = (host: HTMLElement): Selection => {
+      host.textContent = 'a highlighted reply';
       const range = document.createRange();
-      range.selectNodeContents(page.agentButton);
+      range.selectNodeContents(host);
       const selection = window.getSelection() as Selection;
       selection.removeAllRanges();
       selection.addRange(range);
       return selection;
     };
 
-    it('clears it when a press hands the space region over', () => {
+    it('clears a highlight in the agent panel when a press hands the space over', () => {
       useUIStore.getState().setActiveRegion('agent');
       renderHook(() => useTrackActiveRegion());
-      const selection = highlightInAgent();
+      const selection = highlight(page.agentButton);
       expect(selection.isCollapsed).toBe(false);
       fire(page.spaceButton, 'pointerdown');
       expect(window.getSelection()?.isCollapsed).toBe(true);
     });
 
-    it('clears it when focus hands the space region over', () => {
+    it('clears a highlight in the agent panel when focus hands the space over', () => {
       useUIStore.getState().setActiveRegion('agent');
       renderHook(() => useTrackActiveRegion());
-      highlightInAgent();
+      highlight(page.agentButton);
       fire(page.spaceButton, 'focusin');
       expect(window.getSelection()?.isCollapsed).toBe(true);
     });
 
-    it('leaves it alone while the space region stays active', () => {
+    // A press in the top bar leaves the region where it is, so a highlight
+    // made there outlives every switch. What drops it is the space being
+    // pressed, whether or not the space held the region a moment ago.
+    it('clears a highlight in the top bar while the space is already active', () => {
       renderHook(() => useTrackActiveRegion());
-      const selection = highlightInAgent();
+      highlight(page.topBarButton);
+      fire(page.spaceButton, 'pointerdown');
+      expect(window.getSelection()?.isCollapsed).toBe(true);
+    });
+
+    // Selecting a paragraph in a document space and extending it with a
+    // shift-click needs that first selection as its anchor.
+    it('keeps a highlight that sits in the space itself', () => {
+      renderHook(() => useTrackActiveRegion());
+      const selection = highlight(page.spaceButton);
       fire(page.spaceButton, 'pointerdown');
       expect(selection.isCollapsed).toBe(false);
+      expect(window.getSelection()?.toString()).toBe('a highlighted reply');
     });
 
     it('leaves it alone when the agent region takes over', () => {
       renderHook(() => useTrackActiveRegion());
-      const selection = highlightInAgent();
+      const selection = highlight(page.agentButton);
       fire(page.agentButton, 'pointerdown');
       expect(selection.isCollapsed).toBe(false);
     });

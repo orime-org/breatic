@@ -7,6 +7,29 @@ import { regionOf } from '@web/lib/keyboard-scope';
 import { useUIStore } from '@web/stores/ui';
 
 /**
+ * Drops a live highlight unless it sits inside the space region.
+ *
+ * Highlighted words say "these are the ones you are working with", and the
+ * space being handed the region makes that untrue of a highlight living
+ * anywhere else — in the agent panel, in the top bar, in an overlay — so those
+ * go and leave one answer on the screen. A highlight inside the space itself
+ * is still the reader's current one: extending a document selection with a
+ * shift-click needs it as the anchor.
+ *
+ * The anchor decides, so a drag that started in the agent panel and ended in
+ * the space counts as the agent's.
+ */
+function dropHighlightOutsideSpace(): void {
+  const selection = window.getSelection();
+  if (selection === null || selection.isCollapsed) return;
+  const anchor = selection.anchorNode;
+  const element =
+    anchor instanceof Element ? anchor : (anchor?.parentElement ?? null);
+  if (element !== null && regionOf(element) === 'space') return;
+  selection.removeAllRanges();
+}
+
+/**
  * Keeps the stored active region on whichever region the user is working in:
  * a pointer press inside a region hands it over, and so does focus entering
  * it — the second one is how Tab reaches a region without a press.
@@ -29,15 +52,8 @@ export function useTrackActiveRegion(): void {
       if (!(event.target instanceof Element)) return;
       const region = regionOf(event.target);
       if (!region) return;
-      const store = useUIStore.getState();
-      // Highlighted words say "these are the ones you are working with", and
-      // the space taking over makes that untrue: the keys are the canvas's
-      // from here on. Dropping the highlight leaves one answer on the screen
-      // rather than two that contradict each other.
-      if (region === 'space' && store.activeRegion !== 'space') {
-        window.getSelection()?.removeAllRanges();
-      }
-      store.setActiveRegion(region);
+      if (region === 'space') dropHighlightOutsideSpace();
+      useUIStore.getState().setActiveRegion(region);
     };
     document.addEventListener('pointerdown', claim, true);
     document.addEventListener('focusin', claim, true);

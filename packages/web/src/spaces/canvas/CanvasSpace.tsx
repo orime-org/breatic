@@ -29,7 +29,6 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
-import { useUIStore } from '@web/stores/ui';
 import { canGenerate, newId } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -2644,12 +2643,11 @@ function CanvasSpaceInner({
       // they sit, so the browser copies those and the nodes stay put.
       const selection = window.getSelection();
       if (selection !== null && !selection.isCollapsed) return;
-      // With no text selected the event targets wherever the caret was last
-      // left, which says nothing about this copy — except when that is a
-      // field, whose own keys these are. The active region answers the rest.
-      const target = event.target;
-      if (target instanceof Element && isEditableTarget(target)) return;
-      if (useUIStore.getState().activeRegion !== 'space') return;
+      // With nothing highlighted, the event's target is wherever the caret was
+      // last left and says nothing about this copy. Focus is what the other
+      // outlets read, and it answers the same question here: an overlay or the
+      // top bar is handling this press itself, and otherwise the region does.
+      if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
