@@ -4,10 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
-import {
-  deselectGrouped,
-  planGroupCreation,
-} from '@web/spaces/canvas/group-creation';
+import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
 
 /**
@@ -68,17 +65,4 @@ describe('planGroupCreation', () => {
     expect(byId['b']).toEqual({ x: 200 - top.x, y: 180 - top.y });
   });
 
-  it('deselects every grouped member in the render buffer (the #1477 carry-over)', () => {
-    const nodes = [
-      node('a', 0, 0, 50, 50, true),
-      node('b', 100, 0, 50, 50, true),
-      node('c', 300, 0, 50, 50, true), // not selected into the group
-    ];
-    const sel = Object.fromEntries(
-      deselectGrouped(nodes, ['a', 'b']).map((n) => [n.id, n.selected]),
-    );
-    expect(sel['a']).toBe(false);
-    expect(sel['b']).toBe(false);
-    expect(sel['c']).toBe(true); // untouched
-  });
 });

@@ -166,8 +166,8 @@ describe('every write path reads the buffer through the door', () => {
     const anchored = node('anchored', 0, 0);
     const another = node('another', 120, 0);
     const buffer = [...bufferMidGesture(), anchored, another];
-    // Production reads the raw buffer and hands the planner the ids that
-    // survive the filter, which is what this mirrors.
+    // Production hands the planner the ids that survive the filter, which is
+    // what this mirrors.
     const picked = [FLYING_ID, 'anchored', 'another'].filter(
       (id) => !REMOTE.has(id),
     );

@@ -133,10 +133,7 @@ import type {
   DisplayStatus,
   Modality,
 } from '@web/spaces/canvas/types/node-view';
-import {
-  deselectGrouped,
-  planGroupCreation,
-} from '@web/spaces/canvas/group-creation';
+import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
   GROUP_MIN_SIZE,
@@ -2829,7 +2826,10 @@ function CanvasSpaceInner({
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
     // itself is selected once it mirrors back (setSelectAfterCreate).
-    setFlowNodes((prev) => deselectGrouped(prev, groupableIds));
+    const wrapped = new Set(groupableIds);
+    setFlowNodes((prev) =>
+      reconcileSelection(prev, (n) => n.selected === true && !wrapped.has(n.id)),
+    );
     setSelectAfterCreate([groupId]);
   }, [
     readOnly,

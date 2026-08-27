@@ -5,12 +5,9 @@
  * Pure planner for "wrap the current selection in a Group" (group
  * redesign 2026-06-23). A Group owns an authoritative size, so this computes
  * the Group's stored position + width/height (members' padded bounding box) and
- * each member's position relative to the Group top-left. It also deselects the
- * wrapped members in the render buffer — the #1477 carry-over: clear the marquee
- * selection immediately so the Yjs mirror round-trip can't leave a stale
- * multi-selection that routes a right-click to the selection menu. Kept
- * ReactFlow-agnostic (a plan, not a mutation) so it is unit-tested in isolation;
- * the canvas applies the plan to Yjs + its render buffer.
+ * each member's position relative to the Group top-left. Kept ReactFlow-agnostic
+ * (a plan, not a mutation) so it is unit-tested in isolation; the canvas applies
+ * the plan to Yjs and clears the members' selection in its own buffer.
  */
 
 import type { Node } from '@xyflow/react';
@@ -64,9 +61,8 @@ function flowNodeRect(node: Node): Rect {
 
 /**
  * Plan wrapping the selected nodes in a Group: the Group's stored position +
- * size, each member's parent-relative position, and the render buffer with the
- * wrapped members deselected (the #1477 fix). Returns `null` when fewer than two
- * nodes are selected (nothing to wrap).
+ * size and each member's parent-relative position. Returns `null` when fewer
+ * than two nodes are selected (nothing to wrap).
  * @param flowNodes - The current render buffer.
  * @param selectedIds - Ids of the nodes to wrap (the current selection).
  * @param groupId - Pre-generated id for the new Group node.
@@ -94,28 +90,4 @@ export function planGroupCreation(
     height: rect.height,
     members: memberPlans,
   };
-}
-
-/**
- * The buffer with every node that just went into a Group deselected (#1477).
- *
- * Clearing the selection before the new Group mirrors back keeps the round trip
- * from holding a stale multi-selection, which ReactFlow would route a
- * right-click to the SELECTION menu on instead of the Group menu.
- *
- * This reads whatever the buffer holds at the moment it runs, so the nodes it
- * leaves alone keep the coordinates the canvas is drawing them at — a
- * collaborator's drag included.
- * @param nodes - The buffer as it stands.
- * @param memberIds - The nodes that went into the Group.
- * @returns The buffer with those deselected, others by reference.
- */
-export function deselectGrouped(
-  nodes: ReadonlyArray<Node>,
-  memberIds: ReadonlyArray<string>,
-): Node[] {
-  const ids = new Set(memberIds);
-  return nodes.map((node) =>
-    ids.has(node.id) && node.selected ? { ...node, selected: false } : node,
-  );
 }

@@ -56,15 +56,6 @@ export interface ReparentDecision {
 }
 
 /**
- * Decide, per dragged node, which Group (if any) it now belongs to — the Group
- * whose rect contains the node's center. A node never reparents into itself (a
- * Group dragged over another is excluded by id), so dragging a Group yields no
- * membership change here.
- * @param dragged - Every dropped node with its current parent + absolute rect.
- * @param groups - The candidate Groups with their absolute rects.
- * @returns One reparent decision per dragged node.
- */
-/**
  * Whether a Group takes part in deciding where a dragged node lands.
  * @param group - The Group to judge.
  * @returns True when it can both receive a node and be judged to have lost one.

@@ -28,9 +28,15 @@ export interface BufferAccess {
    */
   landing: () => Node[];
   /**
-   * Those of `settled`'s nodes whose position relative to their parent no
-   * remote gesture is changing, for a write that says where a node sits inside
-   * a rect this end is committing.
+   * Those nodes whose position relative to their parent no remote gesture is
+   * changing, as the canvas is drawing them.
+   *
+   * This one reads the buffer rather than `settled`, because the value it is
+   * after is the one this end's own gesture just produced: resizing a Group
+   * from its top or left edge moves the origin, and ReactFlow re-anchors every
+   * member against it (`@xyflow/system:3484-3492`). `settled` exists to undo a
+   * gesture's geometry, which for these members would hand back the position
+   * they had before the resize.
    */
   reanchorable: () => Node[];
   /** The ids remote gestures are holding right now. */
@@ -93,7 +99,8 @@ export function useBufferAccess(
     return {
       settled,
       landing: (): Node[] => landingCandidates(settled(), gestureRef.current),
-      reanchorable: (): Node[] => reanchorable(settled(), gestureRef.current),
+      reanchorable: (): Node[] =>
+        reanchorable(nodesRef.current, gestureRef.current),
       heldByRemote: (): ReadonlySet<string> => new Set(gestureRef.current.keys()),
       onScreen: (): ReadonlyArray<Node> => nodesRef.current,
     };

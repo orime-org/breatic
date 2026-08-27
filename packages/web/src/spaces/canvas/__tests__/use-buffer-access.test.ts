@@ -116,13 +116,23 @@ describe('useBufferAccess', () => {
     // only ever mounts once would pass with no effect at all — and production
     // needs the frames after the first one.
     const { result, rerender } = renderHook(
-      ({ nodes }: { nodes: Node[] }) =>
-        useBufferAccess(nodes, DOCUMENT, new Map()),
-      { initialProps: { nodes: BUFFER } },
+      ({ nodes, doc, gesture }: {
+        nodes: Node[];
+        doc: DocumentPlace[];
+        gesture: GestureTable;
+      }) => useBufferAccess(nodes, doc, gesture),
+      { initialProps: { nodes: BUFFER, doc: DOCUMENT, gesture: new Map() } },
     );
-    rerender({ nodes: [node(STILL_ID, { x: 7, y: 7 })] });
+    rerender({
+      nodes: [node(STILL_ID, { x: 7, y: 7 })],
+      doc: [node(STILL_ID, { x: 3, y: 3 })],
+      gesture: new Map([[STILL_ID, { x: 7, y: 7 }]]),
+    });
+    // One assertion per ref: the buffer, the gesture table that decides which
+    // nodes get replaced, and the document the replacement reads from.
     expect(result.current.onScreen().map((n) => n.id)).toEqual([STILL_ID]);
-    expect(result.current.settled()[0]?.position).toEqual({ x: 7, y: 7 });
+    expect([...result.current.heldByRemote()]).toEqual([STILL_ID]);
+    expect(result.current.settled()[0]?.position).toEqual({ x: 3, y: 3 });
   });
 
   it('hands back one object for the life of the canvas', () => {
@@ -132,5 +142,27 @@ describe('useBufferAccess', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
+  });
+});
+
+describe('what a resize may commit while a Group is dragged elsewhere', () => {
+  it('hands back the position ReactFlow re-anchored, not the document one', () => {
+    // The remote drags Group g1, which pulls its member into the gesture table.
+    // This end is resizing g1 at the same time, so ReactFlow has already moved
+    // the member's relative position to keep it where it is drawn — that value
+    // is what the commit needs, and it lives in the buffer.
+    const reanchored = node('m1', { x: 144, y: 24 }, { parentId: 'g1' });
+    const stored = node('m1', { x: 24, y: 24 }, { parentId: 'g1' });
+    const { result } = renderHook(() =>
+      useBufferAccess(
+        [reanchored],
+        [stored],
+        new Map([
+          ['g1', { x: 0, y: 0 }],
+          ['m1', { x: 200, y: 200 }],
+        ]),
+      ),
+    );
+    expect(result.current.reanchorable()[0]?.position).toEqual({ x: 144, y: 24 });
   });
 });
