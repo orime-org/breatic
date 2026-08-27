@@ -136,10 +136,10 @@ describe("whether a purchase is still inside the window", () => {
     );
   });
 
-  it("takes the purchase instant as text, keeping the microseconds the column holds", () => {
-    // The API hands this straight out of `credit_lots.created_at`, which keeps
-    // microseconds a `Date` cannot. Only the calendar day matters here, so the
-    // extra digits have to parse rather than throw.
+  it("takes the purchase instant as text, whatever precision it carries", () => {
+    // Callers pass what an API handed them, and nothing here needs it parsed
+    // to the millisecond — only the calendar day is read. Sub-millisecond
+    // digits have to parse rather than throw.
     expect(
       withinRefundWindow(
         "2026-08-01T10:00:00.123456Z",

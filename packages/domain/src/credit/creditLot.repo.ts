@@ -764,11 +764,16 @@ export async function listLotsByStudio(
 
 
 /**
- * The two entry types an account's ledger reports.
+ * The two entry types that take credits out of a purchase.
  *
  * A debt is neither: it names no payer, because at the moment it is recorded
  * nobody has paid it. It is paid later, and that payment is the repayment row
  * below.
+ *
+ * Read twice: an account's ledger reports these two lines, and `everSpent`
+ * asks whether either has ever touched a purchase. Both questions are the
+ * same one — what has been drawn on this account's purchases — so they read
+ * one list.
  */
 const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
   "spend",

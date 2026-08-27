@@ -490,15 +490,20 @@ function returnUrls(
  * The buyer's time zone, or UTC when it is not one we recognise.
  *
  * It is reported by their browser and reaches us in a request body, so it is
- * checked against the zones this runtime knows before it is stored. The
- * confirmation email prints a purchase time in it.
+ * checked before being stored. The check asks the one thing that matters
+ * downstream — whether `Intl` will format a time in it — since that is what
+ * the confirmation email does with it. Asking a list of canonical names
+ * instead would turn away the legacy links `Intl` still accepts.
  * @param timeZone - What the client said.
  * @returns An IANA zone name.
  */
 function knownTimeZone(timeZone: string): string {
-  return Intl.supportedValuesOf("timeZone").includes(timeZone)
-    ? timeZone
-    : "UTC";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone });
+    return timeZone;
+  } catch {
+    return "UTC";
+  }
 }
 
 /**

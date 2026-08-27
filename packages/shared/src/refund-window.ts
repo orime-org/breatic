@@ -25,8 +25,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  *
  * Built from the UTC fields rather than sliced off an ISO string, and
  * comparable with `<=` because `YYYY-MM-DD` sorts the way dates do.
- * @param at - The instant. Text keeps the microseconds a database column
- *   holds, which a `Date` would drop.
+ * @param at - The instant, as a `Date` or as the ISO text an API hands out.
  * @returns That day, as `YYYY-MM-DD`.
  */
 function utcDay(at: Date | string): string {
@@ -70,13 +69,12 @@ export function refundWindowCloses(paidAt: Date | string): Date {
 /**
  * Whether a purchase is still inside its refund window.
  *
- * Compares calendar days rather than instants, so the closing day counts in
- * full: a purchase paid for at 10:00 is still refundable at 23:59 on the
- * thirtieth day.
+ * Asks the same instant the confirmation email names, so the screen cannot
+ * drop a purchase on a different day from the one the buyer was told.
  * @param paidAt - When the purchase was paid for.
  * @param now - The instant to judge against.
  * @returns Whether the window is still open.
  */
 export function withinRefundWindow(paidAt: Date | string, now: Date): boolean {
-  return utcDay(now) <= refundDeadlineDay(paidAt);
+  return now.getTime() <= refundWindowCloses(paidAt).getTime();
 }
