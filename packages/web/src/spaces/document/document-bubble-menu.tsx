@@ -91,10 +91,11 @@ interface DocumentBubbleMenuProps {
   /**
    * Which element the menu mounts inside.
    *
-   * The bar itself. Portalled to `body`, the menu would take focus somewhere
-   * the bar does not recognise as its own, and the bar — which decides whether
-   * to stay on screen by asking where focus is — would take itself away and
-   * the menu with it (ruling §5.1, second point).
+   * The bar itself. The bar keeps the focus in the body by swallowing
+   * `mousedown` on itself (`SelectionBubbleBar.tsx`), and an event only
+   * reaches that listener if it started inside the bar — a menu portalled to
+   * `body` would take the focus out of the document on the first press of a
+   * row, and the selection highlight with it.
    */
   container: HTMLElement | null;
   /** The body's scroller, watched so that a real scroll closes the menu. */
@@ -200,7 +201,21 @@ export function DocumentBubbleMenu({
       onPointerLeave={leave}
     >
       <Popover open={open} onOpenChange={onOpenChange} modal={false}>
-        <PopoverTrigger asChild onPointerEnter={enter}>
+        {/* A pointer cannot rest on the slot with the menu shut — entering it
+            opened the menu — so every click a reader makes lands on an open
+            one. Radix would read that click as a toggle and take the menu
+            away; the slot answers it by opening, which is what it already is
+            (ruling R4 / B2). */}
+        <PopoverTrigger
+          asChild
+          onPointerEnter={enter}
+          onClick={(event) => {
+            // Radix runs its own handler after this one unless the default is
+            // prevented (`composeEventHandlers`).
+            event.preventDefault();
+            enter();
+          }}
+        >
           {trigger}
         </PopoverTrigger>
         <PopoverContent

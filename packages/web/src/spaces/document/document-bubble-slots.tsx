@@ -26,11 +26,11 @@ import type { Editor } from '@tiptap/core';
 import { useEditorState } from '@tiptap/react';
 
 import { Button } from '@web/components/ui/button';
+import { DropdownMenuShortcut } from '@web/components/ui/dropdown-menu';
 import {
   BubbleMenuHeading,
   BubbleMenuRow,
   BubbleMenuRule,
-  BubbleMenuShortcut,
 } from '@web/spaces/document/document-bubble-rows';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -90,7 +90,9 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
    * being told, and refuses them in an object literal typed by the component's
    * own props.
    */
-  openerProps?: React.ComponentProps<typeof Button> & {
+  openerProps?: Omit<React.ComponentProps<typeof Button>, 'className'> & {
+    /** Added to the slot shape rather than replacing it. */
+    className?: string;
     [key: `data-${string}`]: string | undefined;
   };
   /** The menu's rows. */
@@ -145,6 +147,8 @@ function SlotShell({
     [id, onOpenChange],
   );
 
+  const { className: openerClassName, ...opener } = openerProps ?? {};
+
   return (
     <DocumentBubbleMenu
       id={id}
@@ -160,8 +164,8 @@ function SlotShell({
           aria-label={label}
           data-testid={id}
           tabIndex={-1}
-          className={SLOT}
-          {...openerProps}
+          className={cn(SLOT, openerClassName)}
+          {...opener}
         >
           {face}
           {/* Radix stamps `data-state` on the trigger, so the arrow turns
@@ -230,7 +234,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               data-active={item.id === current ? 'true' : undefined}
               aria-disabled={item.greyed || !runnable ? 'true' : undefined}
               className={cn(
-                item.id === current && 'bg-active-fill focus:bg-active-fill',
+                item.id === current && 'bg-active-fill hover:bg-active-fill',
                 (item.greyed || !runnable) && UNAVAILABLE,
               )}
               onSelect={() => {
@@ -244,9 +248,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               <Icon />
               {t(item.labelKey)}
               {item.shortcut ? (
-                <BubbleMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
+                <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
                   {formatShortcut(item.shortcut)}
-                </BubbleMenuShortcut>
+                </DropdownMenuShortcut>
               ) : null}
             </BubbleMenuRow>
           </React.Fragment>
@@ -299,6 +303,14 @@ export const AlignSlot = React.memo(function AlignSlot({
     [appliesHere, onOpenChange],
   );
 
+  // The selection can move under an open menu — a keyboard selection reaches
+  // a block alignment does not act on while the pointer rests on the menu —
+  // and the slot greys out where it stands. The menu it dropped goes with it.
+  const open = openId === id;
+  React.useEffect(() => {
+    if (open && !appliesHere) onOpenChange(id, false);
+  }, [open, appliesHere, id, onOpenChange]);
+
   return (
     <SlotShell
       id={id}
@@ -306,7 +318,7 @@ export const AlignSlot = React.memo(function AlignSlot({
       face={<TextAlignStart className='h-4 w-4' />}
       openerProps={{
         'aria-disabled': appliesHere ? undefined : 'true',
-        className: cn(SLOT, !appliesHere && UNAVAILABLE),
+        className: cn(!appliesHere && UNAVAILABLE),
       }}
       contentClassName={ROWS}
       container={container}
@@ -322,7 +334,7 @@ export const AlignSlot = React.memo(function AlignSlot({
           // draws as active.
           data-active={item.id === 'left' ? 'true' : undefined}
           className={cn(
-            item.id === 'left' && 'bg-active-fill focus:bg-active-fill',
+            item.id === 'left' && 'bg-active-fill hover:bg-active-fill',
           )}
           onSelect={() => {
             pressedWithNothingBehindIt(`align ${item.id}`);
@@ -387,7 +399,7 @@ export const ColorSlot = React.memo(function ColorSlot({
       id={id}
       label={label}
       face='A'
-      openerProps={{ className: `${SLOT} font-semibold` }}
+      openerProps={{ className: 'font-semibold' }}
       container={container}
       scroller={scroller}
       openId={openId}
@@ -405,7 +417,10 @@ export const ColorSlot = React.memo(function ColorSlot({
           tabIndex={-1}
           data-testid={`${id}-text-default`}
           data-selected='true'
-          className={cn(COLOUR_CELL, 'border-palette-blue font-semibold')}
+          className={cn(
+            COLOUR_CELL,
+            'border-palette-blue font-semibold hover:border-palette-blue',
+          )}
           onClick={() => {
             pick('text colour default');
           }}
@@ -447,6 +462,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           className={cn(
             COLOUR_CELL,
             'relative overflow-hidden border-palette-blue bg-background',
+            'hover:border-palette-blue',
             'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
             + ' after:border-muted-foreground after:[content:""]'
             + ' after:[transform:rotate(-38deg)]',

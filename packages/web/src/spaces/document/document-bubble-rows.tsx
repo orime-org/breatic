@@ -103,24 +103,3 @@ export function BubbleMenuRule({
     <div data-testid='doc-bubble-rule' className={cn(RULE, className)} {...rest} />
   );
 }
-
-/**
- * The shortcut a row shows on its right.
- * @param props - Anything a `span` takes.
- * @param props.className - Extra classes.
- * @returns The shortcut.
- */
-export function BubbleMenuShortcut({
-  className,
-  ...rest
-}: React.ComponentProps<'span'>): React.JSX.Element {
-  return (
-    <span
-      className={cn(
-        'ml-auto text-xs tracking-widest text-muted-foreground',
-        className,
-      )}
-      {...rest}
-    />
-  );
-}

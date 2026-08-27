@@ -283,6 +283,28 @@ describe('the bubble bar shell', () => {
     });
   });
 
+  // A slot that has just greyed out cannot be left with a live menu hanging
+  // under it: the selection moved, and what the menu acts on moved with it.
+  it('takes the alignment menu away when the slot greys out under it', async () => {
+    const editor = open('<pre><code>some code</code></pre><p>a paragraph</p>');
+    mount(editor);
+    await selectWithFocus(editor, 3, 18);
+    expect(
+      screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
+    ).toBeNull();
+    await hoverOpen('doc-bubble-align');
+
+    await act(async () => {
+      editor.commands.setTextSelection({ from: 3, to: 8 });
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
+      ).toBe('true');
+    });
+    expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
+  });
+
   describe('controls whose command nobody has written yet', () => {
     /**
      * They look and behave the way the demo draws them — the alignment rows,
@@ -413,6 +435,24 @@ describe('the bubble bar shell', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('doc-bubble-block-type-menu')).not.toBeNull();
       });
+    });
+
+    // A real pointer cannot produce "resting on the slot while the menu is
+    // shut": hovering opened it. So the click a reader makes always lands on
+    // an open menu, and it has to leave the menu standing.
+    it('keeps the menu up when the slot is clicked while already open', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      await hoverOpen('doc-bubble-block-type');
+
+      act(() => {
+        fireEvent.click(screen.getByTestId('doc-bubble-block-type'));
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+      expect(screen.queryByTestId('doc-bubble-block-type-menu')).not.toBeNull();
     });
 
     it('keeps the menu up while the pointer crosses the gap onto it', async () => {
@@ -614,6 +654,9 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-heading-1',
       ]);
       expect(active[0].className).toContain('bg-active-fill');
+      // The rows highlight on hover, so the mark has to restate itself for
+      // that state or the pointer washes it away.
+      expect(active[0].className).toContain('hover:bg-active-fill');
     });
 
     // demo:571 rules the headings off from the lists below them.
