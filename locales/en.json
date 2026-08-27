@@ -1397,7 +1397,8 @@
     },
     "checkoutWait": {
       "title": "Processing this purchase",
-      "body": "Please keep this page open."
+      "body": "Please keep this page open.",
+      "skip": "View purchase history"
     }
   }
 }

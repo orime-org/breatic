@@ -250,7 +250,7 @@ export function StudioAccountMenu(): React.JSX.Element {
         </DropdownMenuContent>
       </DropdownMenu>
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
-      <CheckoutWaitOverlay open={back.waiting} />
+      <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay
         open={creditsOpen || back.overlayOpen}
         onOpenChange={closeCredits}

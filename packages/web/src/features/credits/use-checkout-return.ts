@@ -38,6 +38,11 @@ interface CheckoutReturnState {
   initialSection: CreditsSectionId | null;
   /** Closes the overlay, for the caller to hand to it. */
   close: () => void;
+  /**
+   * Comes out from behind the wait and lands in the purchase history, for the
+   * cover's one control to offer before the timeout gets there.
+   */
+  land: () => void;
 }
 
 /**
@@ -146,5 +151,5 @@ export function useCheckoutReturn(
     setSection(null);
   }, []);
 
-  return { waiting, overlayOpen: open, initialSection: section, close };
+  return { waiting, overlayOpen: open, initialSection: section, close, land };
 }
