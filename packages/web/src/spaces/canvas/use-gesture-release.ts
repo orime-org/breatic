@@ -36,36 +36,31 @@ export interface ReleasableGesture {
  */
 export function useGestureRelease(gesture: ReleasableGesture): void {
   React.useEffect(() => {
-    /** Drop a gesture the pointer release left standing. */
+    /** Drop whatever gesture is still standing. */
+    const drop = (): void => {
+      if (!gesture.isRunning()) return;
+      gesture.abandon();
+    };
+    /** Give xyflow's own stop the next task to run first, then drop. */
     const onRelease = (): void => {
-      window.setTimeout(() => {
-        if (!gesture.isRunning()) return;
-        gesture.abandon();
-      }, 0);
+      window.setTimeout(drop, 0);
     };
     /**
      * Drop a gesture whose release never reached the page.
      * @param event - The pointer move.
      */
     const onMove = (event: PointerEvent): void => {
-      if (event.buttons !== 0) return;
-      if (!gesture.isRunning()) return;
-      gesture.abandon();
-    };
-    /** Drop a gesture left standing by a pointer that never came back. */
-    const onLeave = (): void => {
-      if (!gesture.isRunning()) return;
-      gesture.abandon();
+      if (event.buttons === 0) drop();
     };
     window.addEventListener('pointerup', onRelease);
     window.addEventListener('pointercancel', onRelease);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('blur', onLeave);
+    window.addEventListener('blur', drop);
     return (): void => {
       window.removeEventListener('pointerup', onRelease);
       window.removeEventListener('pointercancel', onRelease);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('blur', onLeave);
+      window.removeEventListener('blur', drop);
     };
   }, [gesture]);
 }

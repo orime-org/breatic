@@ -154,10 +154,7 @@ function makeFlowNode(
     // ReactFlow raises this only once a size change actually happened, which is
     // the same condition it gates `onResizeEnd` on — so a press that produced
     // no change reports nothing and ends nothing.
-    const onResize = React.useCallback(
-      (): void => reportGroupResize(props.id),
-      [reportGroupResize, props.id],
-    );
+    const onResize = reportGroupResize;
     // Open the resize on the press. ReactFlow reads its own starting geometry
     // in this same frame, so the canvas records its starting point here to have
     // the two agree.

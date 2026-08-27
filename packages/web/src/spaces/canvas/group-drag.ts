@@ -10,9 +10,9 @@
  *   - **positions** — dragged Groups (absolute; children follow natively via
  *     ReactFlow `parentId`) and members that just moved within the same parent.
  *   - **expansions** — Groups grown to wrap an in-group member whose body
- *     overflows (only-expand; the Group never auto-shrinks). The expand mutation
- *     reanchors members, so positions here are relative to the pre-expand
- *     top-left and are applied BEFORE the expansion.
+ *     overflows (only-expand; the Group never auto-shrinks). Only the Group's
+ *     own rect is written; every member of it appears in **positions**, stated
+ *     against the origin the expansion is moving it to.
  *
  * Kept ReactFlow-agnostic (absolute rects in, ops out) so the membership +
  * only-expand invariants are unit-tested in isolation; the canvas resolves
@@ -202,16 +202,28 @@ export function planGroupDrag(
         height: grown.height,
       });
       // The expansion moves the origin every member of this Group is measured
-      // against, so their positions are stated against where it is going. This
-      // is what keeps the whole drag-stop to one position write per node
-      // (#2010, acceptance 9) — the member absolute places are unchanged.
+      // against, and the Group's own write says nothing about members — so
+      // every one of them is stated against where the origin is going, the one
+      // the pointer moved along with the ones it never touched. Each still
+      // takes a single position write (#2010, acceptance 9), and each keeps the
+      // absolute place it already had.
       const dx = grown.x - groupRect.x;
       const dy = grown.y - groupRect.y;
       if (dx === 0 && dy === 0) continue;
-      for (const op of [...reparents, ...positions]) {
-        const node = allNodes.find((n) => n.id === op.id);
-        if (node === undefined || newParentOf(node) !== group.id) continue;
-        op.position = { x: op.position.x - dx, y: op.position.y - dy };
+      const stated = [...reparents, ...positions];
+      for (const member of members) {
+        const op = stated.find((o) => o.id === member.id);
+        if (op !== undefined) {
+          op.position = { x: op.position.x - dx, y: op.position.y - dy };
+          continue;
+        }
+        positions.push({
+          id: member.id,
+          position: {
+            x: member.absPos.x - grown.x,
+            y: member.absPos.y - grown.y,
+          },
+        });
       }
     }
   }

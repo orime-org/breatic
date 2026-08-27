@@ -172,6 +172,15 @@ describe('reconcilePlainNodes reference stability (#2010 — 30 frames a second)
     expect(reconcilePlainNodes(prev, [moved])[0]).toBe(moved);
   });
 
+  it('returns a new reference once the node measures', () => {
+    // A plain node carries its rendered size in `measured`, and every consumer
+    // sizes it as `measured?.width ?? width` — reusing the previous object
+    // across that change would drop the size the node just reported.
+    const prev = [plain({ measured: { width: 0, height: 0 } })];
+    const sized = plain({ measured: { width: 288, height: 192 } });
+    expect(reconcilePlainNodes(prev, [sized])[0]).toBe(sized);
+  });
+
   it('returns a new reference when the data object changed', () => {
     // A plain node's data is handed down whole, so a new object means new
     // content — the merge already reuses it when nothing changed.

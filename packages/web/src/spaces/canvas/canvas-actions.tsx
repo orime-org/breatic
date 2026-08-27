@@ -47,7 +47,7 @@ export interface CanvasActions {
    * only once a size change actually happened — the same condition it gates
    * `onResizeEnd` on, so the two are a pair.
    */
-  reportGroupResize: (groupId: string) => void;
+  reportGroupResize: () => void;
   /**
    * Open a Group resize (#2010). Bound to every resize control's
    * `onResizeStart`, which fires on the press — the frame ReactFlow reads its

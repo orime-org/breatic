@@ -244,29 +244,31 @@ function sameRenderInputs(
     a.hidden === b.hidden &&
     a.draggable === b.draggable &&
     a.zIndex === b.zIndex &&
+    a.measured?.width === b.measured?.width &&
+    a.measured?.height === b.measured?.height &&
     sameData(a.data, b.data)
   );
 }
 
 /**
- * Reference-reconcile freshly-built group render nodes against the previous
- * render pass. `renderNodes` rebuilds every group's `data` (with a fresh
- * `groupResizeBounds` array) on every canvas mutation, so without this a change
- * to ANY node hands EVERY group a fresh object and every `GroupNode` re-renders.
- * Reuse the previous object reference for a group whose render inputs are
- * unchanged — the group counterpart of the node merge (#1783).
- * @param prev - The previous pass's group render nodes.
- * @param fresh - The freshly built group render nodes.
- * @returns The fresh groups with unchanged groups' previous references reused.
+ * Reference-reconcile freshly-built render nodes against the previous pass.
+ * `renderNodes` rebuilds every node it flags on every run, so without reuse a
+ * change to ANY node hands EVERY flagged one a fresh object and each of them
+ * re-renders (#1783, #2010 acceptance 10).
+ * @param prev - The previous pass's render nodes.
+ * @param fresh - The freshly built render nodes.
+ * @param sameData - How to compare the two nodes' data records.
+ * @returns The fresh nodes with unchanged entries' previous references reused.
  */
-export function reconcileGroupNodes(
+export function reconcileRenderNodes(
   prev: ReadonlyArray<Node>,
   fresh: ReadonlyArray<Node>,
+  sameData: (a: unknown, b: unknown) => boolean,
 ): Node[] {
   const prevById = new Map(prev.map((node) => [node.id, node]));
   return fresh.map((node) => {
     const p = prevById.get(node.id);
-    return p && sameRenderInputs(p, node, sameGroupData) ? p : node;
+    return p && sameRenderInputs(p, node, sameData) ? p : node;
   });
 }
 
@@ -289,9 +291,20 @@ export function reconcilePlainNodes(
   prev: ReadonlyArray<Node>,
   fresh: ReadonlyArray<Node>,
 ): Node[] {
-  const prevById = new Map(prev.map((node) => [node.id, node]));
-  return fresh.map((node) => {
-    const p = prevById.get(node.id);
-    return p && sameRenderInputs(p, node, Object.is) ? p : node;
-  });
+  return reconcileRenderNodes(prev, fresh, Object.is);
+}
+
+/**
+ * Reference-reconcile freshly-built group render nodes against the previous
+ * render pass, comparing `data` with the bounds-aware {@link sameGroupData}.
+ * @param prev - Last pass's group render nodes.
+ * @param fresh - This pass's group render nodes.
+ * @returns The fresh array with unchanged entries swapped for their previous
+ *   object.
+ */
+export function reconcileGroupNodes(
+  prev: ReadonlyArray<Node>,
+  fresh: ReadonlyArray<Node>,
+): Node[] {
+  return reconcileRenderNodes(prev, fresh, sameGroupData);
 }

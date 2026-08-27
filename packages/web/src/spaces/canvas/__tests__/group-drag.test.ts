@@ -73,6 +73,35 @@ describe('planGroupDrag', () => {
     expect(ops.positions).toEqual([{ id: 'm', position: { x: 24, y: 90 } }]);
   });
 
+  it('C-left: an untouched member of the growing Group stays where it is', () => {
+    // The expansion moves the origin every member is measured against, and the
+    // Group's own write says nothing about members — so a member the pointer
+    // never touched needs its own position stated against the new origin, or
+    // this drag moves it (#2010, acceptance 9 plus "a resize moves nothing").
+    const f = dn('f', 'group', 0, 0, 200, 200);
+    const m = dn('m', 'image', -10, 90, 40, 40, 'f'); // dragged, pushes the left edge out
+    const o = dn('o', 'image', 100, 100, 40, 40, 'f'); // untouched
+    const ops = planGroupDrag([m], [f, m, o]);
+    const origin = ops.expansions[0]?.position;
+    expect(origin).toEqual({ x: -34, y: 0 });
+    const untouched = ops.positions.find((p) => p.id === 'o');
+    expect(untouched).toBeDefined();
+    // Absolute position unchanged: -34 + 134 = 100, the same 100 it started at.
+    expect((origin?.x ?? 0) + (untouched?.position.x ?? 0)).toBe(100);
+    expect((origin?.y ?? 0) + (untouched?.position.y ?? 0)).toBe(100);
+  });
+
+  it('leaves an untouched member alone when the Group does not move', () => {
+    // Growing right and down keeps the origin, so nothing about the members
+    // needs restating and the drag stays at one write for the node it moved.
+    const f = dn('f', 'group', 0, 0, 200, 200);
+    const m = dn('m', 'image', 150, 150, 100, 100, 'f'); // body overflows right/bottom
+    const o = dn('o', 'image', 50, 50, 40, 40, 'f');
+    const ops = planGroupDrag([m], [f, m, o]);
+    expect(ops.expansions[0]?.position).toEqual({ x: 0, y: 0 });
+    expect(ops.positions.map((p) => p.id)).toEqual(['m']);
+  });
+
   it('D: dragging a Group persists its absolute position; members are not rewritten (native carry)', () => {
     const f = dn('f', 'group', 300, 300, 200, 200);
     const m = dn('m', 'image', 350, 350, 40, 40, 'f'); // moved natively with the group

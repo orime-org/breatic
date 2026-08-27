@@ -689,6 +689,64 @@ test('a Group resize that moves the origin leaves its members where they are', a
   await removeNode(mover, groupId);
 });
 
+test('a member somebody else is dragging does not bound this end resize', async () => {
+  const groupId = `resize-bound-${Date.now()}`;
+  const memberId = `bound-member-${Date.now()}`;
+  await seedGroupWithMember(mover, groupId, memberId);
+  await expect(
+    watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
+  ).toBeVisible({ timeout: SETTLE_MS });
+  const before = await groupWidth(mover, groupId);
+  if (before === null) throw new Error('seed missing');
+
+  // The watcher takes hold of the member and drags it far out, then keeps
+  // holding: those coordinates are the ones the mover must not be bounded by.
+  // Downward, so that on the mover's screen it lands clear of the right edge
+  // control this case then reaches for.
+  const held = await drawnAt(watcher, memberId);
+  if (held === null) throw new Error('member missing on the watcher');
+  await watcher.mouse.move(held.x + 40, held.y + 40);
+  await watcher.mouse.down();
+  for (let step = 1; step <= 5; step += 1) {
+    await watcher.mouse.move(held.x + 40, held.y + 40 + step * 60);
+    await watcher.waitForTimeout(90);
+  }
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // The mover pulls the Group's right edge inward.
+  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+    position: { x: 200, y: 280 },
+  });
+  const control = mover
+    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.right`)
+    .first();
+  await expect(control).toBeVisible({ timeout: SETTLE_MS });
+  const handle = await control.boundingBox();
+  if (handle === null) throw new Error('resize chrome missing');
+  await mover.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await mover.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await mover.mouse.move(
+      handle.x + handle.width / 2 - step * 25,
+      handle.y + handle.height / 2,
+    );
+    await mover.waitForTimeout(90);
+  }
+  await mover.mouse.up();
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // The Group got narrower. Bounding it on the in-flight member would have
+  // pinned the minimum out at wherever the drag had reached.
+  const after = await groupWidth(mover, groupId);
+  if (after === null) throw new Error('group missing');
+  expect(after).toBeLessThan(before);
+
+  await watcher.mouse.up();
+  await watcher.waitForTimeout(SETTLE_MS);
+  await removeNode(mover, memberId);
+  await removeNode(mover, groupId);
+});
+
 test('a Group somebody else is dragging cannot be resized from this end', async () => {
   const groupId = `resize-blocked-${Date.now()}`;
   const memberId = `blocked-member-${Date.now()}`;

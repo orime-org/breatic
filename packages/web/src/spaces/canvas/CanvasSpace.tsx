@@ -145,7 +145,6 @@ import {
   type GroupGrowthInput,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
-import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
 import {
@@ -2754,18 +2753,28 @@ function CanvasSpaceInner({
        * @returns The node in the absolute DragNode form.
        */
       const toDragNode = (item: Node): DragNode => {
+        // The parent decides what `item.position` is measured against. A
+        // collaborator moving this node between a Group and the top level while
+        // the drag ran leaves ReactFlow holding a number from the space the
+        // node just left, so the document's own geometry is what is left to
+        // read — the same call the merge stage makes for what to draw.
+        const inDocument = byId.get(item.id);
+        const source =
+          inDocument !== undefined && inDocument.parentId !== item.parentId
+            ? inDocument
+            : item;
         const parent =
-          item.parentId !== undefined ? byId.get(item.parentId) : undefined;
+          source.parentId !== undefined ? byId.get(source.parentId) : undefined;
         const absPos = parent
           ? {
-            x: parent.position.x + item.position.x,
-            y: parent.position.y + item.position.y,
+            x: parent.position.x + source.position.x,
+            y: parent.position.y + source.position.y,
           }
-          : item.position;
+          : source.position;
         return {
           id: item.id,
           type: item.type ?? '',
-          parentId: item.parentId,
+          parentId: source.parentId,
           absPos,
           size: {
             width: item.measured?.width ?? item.width ?? GROUP_DRAG_FALLBACK_W,
@@ -3448,11 +3457,13 @@ function CanvasSpaceInner({
           return;
         }
         // ReactFlow resizes locally whether or not this end took the gesture,
-        // so the decision `beginGroupResize` made carries to the write through
-        // the gesture itself.
+        // so the decision `beginGroupResize` made is what carries to the write.
+        // The gesture field is a separate matter: the safety net drops it when
+        // a release goes missing, and a resize the user did finish still has a
+        // result to record.
         const startOrigin = resizeStartRef.current;
-        if (!gesture.isRunning() || startOrigin === null) return;
         resizeStartRef.current = null;
+        if (startOrigin === null) return;
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
         // now lands inside the Group absorbs it — the same center-in membership
         // rule the drag path uses, extended to resize. Only loose nodes join;
@@ -3503,7 +3514,8 @@ function CanvasSpaceInner({
         // every member ≥ GROUP_PADDING inside — even on a fast release — so the
         // size goes in as measured. One atomic undo entry: the Group's new
         // size/position, its members, PLUS any newly absorbed loose nodes.
-        gesture.end(() => {
+        /** Put this resize into the document as one undo entry. */
+        const writeDocument = (): void => {
           runCanvasUndoBatch(projectId, spaceId, () => {
             resizeGroup(
               projectId,
@@ -3520,7 +3532,9 @@ function CanvasSpaceInner({
               setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);
             }
           });
-        });
+        };
+        if (gesture.isRunning()) gesture.end(writeDocument);
+        else writeDocument();
       },
       activateNodeUpload,
       retryNodeUpload,
@@ -3553,14 +3567,16 @@ function CanvasSpaceInner({
     const ordered = topoSortByParent(flowNodes);
     const groups = ordered.filter((node) => node.type === 'group');
     const rest = ordered.filter((node) => node.type !== 'group');
-    // Where the members sit for the purpose of bounding a resize. The clamp
-    // these bounds drive decides a rect that gets committed, so it reads the
-    // document rather than the frame: a member a collaborator is dragging is on
-    // screen at coordinates that would push this end's minimum out and leave it
-    // there once the resize lands.
-    const settledOrder = topoSortByParent(
-      docGeometryView(flowNodes, docPlaces, remoteGesture),
-    );
+    // Which members bound a resize. The clamp these bounds drive compares them
+    // against the Group's live width, so they are read from the same frame; a
+    // member a collaborator is dragging sits at coordinates that are about to
+    // change and that this end's minimum has no business being pinned to, so it
+    // takes no part — the same answer `planGroupDrag` gives for sizing a Group
+    // around one.
+    const boxable =
+      remoteGesture.size === 0
+        ? ordered
+        : ordered.filter((node) => !remoteGesture.has(node.id));
     // Locked nodes are frozen in place: any locked node (incl. a locked Group as
     // a whole) and the members of a locked Group render non-draggable. Groups
     // sit at zIndex 0 so members paint above them.
@@ -3570,7 +3586,7 @@ function CanvasSpaceInner({
       // gets a member-derived min so ReactFlow's NATIVE clamp hard-stops it at
       // "members + GROUP_PADDING" (see GroupResizer). Attached to data for the
       // node wrapper to read.
-      const { box, allMeasured } = groupMembersLocalBox(node.id, settledOrder);
+      const { box, allMeasured } = groupMembersLocalBox(node.id, boxable);
       const width = node.width ?? node.measured?.width ?? GROUP_DRAG_FALLBACK_W;
       const height =
           node.height ?? node.measured?.height ?? GROUP_DRAG_FALLBACK_H;
@@ -3632,7 +3648,7 @@ function CanvasSpaceInner({
     const reconciledRest = reconcilePlainNodes(prevRestRef.current, freshRest);
     prevRestRef.current = reconciledRest;
     return [...reconciledGroups, ...reconciledRest];
-  }, [flowNodes, docPlaces, remoteGesture, readOnly, focusCropTargetId]);
+  }, [flowNodes, remoteGesture, readOnly, focusCropTargetId]);
 
   // Pick-mode overlay (user 2026-07-10 item 7): the node whose panel is picking
   // + any node ineligible for the active purpose are dimmed + non-pickable;
