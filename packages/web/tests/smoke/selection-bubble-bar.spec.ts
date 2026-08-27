@@ -86,12 +86,26 @@ test.afterEach(async () => {
   }
 });
 
+/**
+ * 这一轮在哪个 project 里跑。
+ *
+ * 不给就走 studio 首页最上面那个。那份列表按最近编辑排序，所以一个跑过很多
+ * 轮的账号会一直落在同一个 project 上，Space 一轮一轮堆进去；堆到几百个之
+ * 后，抽屉里的删除确认按钮就等不出来了，`deleteSpace` 只好放弃，抽屉留在开
+ * 着的状态挡住下一条用例。给一个地址就绕开这条链，指哪跑哪。
+ */
+const projectUrl = process.env.SMOKE_PROJECT_URL;
+
 /** 进到一个新建的 Document Space，光标已在正文里。 */
 async function openFreshDocument(page: Page): Promise<void> {
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
+  if (projectUrl === undefined) {
+    await page.goto('/studio');
+    const firstProject = page.locator('a[href^="/project/"]').first();
+    await expect(firstProject).toBeVisible({ timeout: 15_000 });
+    await firstProject.click();
+  } else {
+    await page.goto(projectUrl);
+  }
   await page.waitForURL(/\/project\//, { timeout: 15_000 });
 
   createdSpaceIds.push(
@@ -627,9 +641,11 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
   await selectFirstParagraph(page);
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
 
+  // 按 testid 而不是 menu 语义：这些菜单不接受键盘输入，所以它们不声明
+  // `role="menu"`——那会向读屏宣告一套并不存在的方向键导航。
   const rowsOf = async (menu: Locator): Promise<string[]> =>
     menu.evaluate((el) =>
-      [...el.querySelectorAll('[role="menuitem"]')].map((r) =>
+      [...el.querySelectorAll('[data-testid*="-item-"]')].map((r) =>
         (r as HTMLElement).innerText.replace(/\s+/g, ' ').trim()));
 
   const blockType = await hoverOpenSlot('doc-bubble-block-type');
