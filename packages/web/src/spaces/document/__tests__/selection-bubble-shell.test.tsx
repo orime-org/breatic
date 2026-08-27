@@ -813,10 +813,14 @@ describe('the bubble bar shell', () => {
         fireEvent.pointerUp(editor.view.root as unknown as Element);
       });
 
-      // Asserted synchronously, without `waitFor`: user 2026-08-26 asked for
-      // the bar the moment the pointer lifts, with no delay to sit through.
-      // `waitFor` would swallow the requirement whole — it waits up to a
-      // second, and any delay of a few hundred milliseconds fits inside that.
+      // Microtasks flushed and nothing else: user 2026-08-26 asked for the bar
+      // the moment the pointer lifts, with no delay to sit through. floating-ui
+      // resolves its first computation in a microtask — before the frame is
+      // painted — and the bar stays invisible until it lands so its entry is
+      // never drawn at the offsets the previous computation left. A timer of
+      // any length outlives this, so the requirement still bites; `waitFor`
+      // would swallow it whole, waiting up to a second.
+      await act(async () => {});
       const bar = screen.getByTestId('doc-selection-bubble-bar');
       expect(bar.className).not.toContain('invisible');
     });

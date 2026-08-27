@@ -1097,7 +1097,15 @@ function BubbleBar({
         // entry's and nothing else on the page.
         className={cn(
           'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
-          (panelOpen || pointerDown) && 'invisible pointer-events-none',
+          // `isPositioned` is the third term, and it is about the bar's first
+          // frame. floating-ui has to have the element in the document before
+          // it can measure it, so the bar enters carrying whatever offsets the
+          // previous computation left — measured in a browser over a keyboard
+          // selection, that is the scroller's own top left corner (320, 80),
+          // one frame before the real place (616, 290). A mouse selection hides
+          // this behind the press gate; the keyboard has no such gate.
+          (panelOpen || pointerDown || !isPositioned)
+            && 'invisible pointer-events-none',
         )}
       >
         {hasSelection

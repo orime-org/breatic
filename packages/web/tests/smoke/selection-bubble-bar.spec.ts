@@ -1481,6 +1481,79 @@ test('selecting text leaves the document as long as it was', async () => {
   expect(portal!.minHeight).not.toBe(`${before.client}px`);
 });
 
+// The bar's first painted frame. floating-ui needs the element in the document
+// before it can measure it, so the bar enters at whatever offsets the last
+// computation left behind and moves once the real ones land. Whether the
+// reader sees that is the question: only a browser paints, and only a browser
+// runs the frames this counts.
+test('浮出条第一次画出来就在它最终的位置上', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  // Recorded from inside the page: a frame is a frame, and reading positions
+  // over the wire samples whatever the driver happens to catch.
+  await page.evaluate(() => {
+    const w = window as unknown as { __barFrames?: unknown[] };
+    w.__barFrames = [];
+    const frames = w.__barFrames as { visible: boolean; top: number; left: number }[];
+    const watch = (bar: HTMLElement): void => {
+      let left = 40;
+      const tick = (): void => {
+        const r = bar.getBoundingClientRect();
+        frames.push({
+          visible: getComputedStyle(bar).visibility !== 'hidden',
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+        });
+        left -= 1;
+        if (left > 0 && bar.isConnected) requestAnimationFrame(tick);
+      };
+      tick();
+    };
+    new MutationObserver((records) => {
+      for (const rec of records) {
+        for (const node of rec.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue;
+          const bar = node.matches('[data-testid="doc-selection-bubble-bar"]')
+            ? node
+            : node.querySelector<HTMLElement>('[data-testid="doc-selection-bubble-bar"]');
+          if (bar && frames.length === 0) watch(bar);
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
+  // Selected from the keyboard. A mouse selection hides the bar for the length
+  // of the press (D1), and the press outlasts the frames this counts — so the
+  // bar's entry would be covered by a gate that has nothing to do with where
+  // it is placed.
+  await page
+    .locator('[data-testid="document-space"] .ProseMirror p')
+    .nth(5)
+    .click();
+  await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached();
+  for (let i = 0; i < 10; i += 1) {
+    await page.keyboard.press('Shift+ArrowRight');
+  }
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+  await page.waitForTimeout(700);
+
+  const frames = await page.evaluate(
+    () =>
+      (window as unknown as { __barFrames: { visible: boolean; top: number; left: number }[] })
+        .__barFrames,
+  );
+  expect(frames.length).toBeGreaterThan(2);
+
+  const shown = frames.filter((f) => f.visible);
+  expect(shown.length).toBeGreaterThan(0);
+  // Every frame the reader sees is the resting one. A bar that enters at a
+  // stale offset and jumps has at least two distinct visible positions.
+  const settled = shown.at(-1)!;
+  expect(shown[0]).toMatchObject({ top: settled.top, left: settled.left });
+});
+
 test('link: an address with a space in the host leaves confirm dimmed', async () => {
   // Only a real browser answers this. The check rests on the URL parser, and
   // the two runtimes treat `https://hello world` in opposite ways: Node's
