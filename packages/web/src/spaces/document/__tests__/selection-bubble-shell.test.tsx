@@ -212,7 +212,24 @@ describe('the bubble bar shell', () => {
       expect(classes.includes('cursor-not-allowed')).toBe(greyed);
     });
 
-    it('falls back to the paragraph icon when the selection spans two block types', async () => {
+    // A7 greys the slot where the command would reach nothing. One alignable
+    // block inside the selection is enough for it to reach something, whatever
+    // the anchor end happens to be sitting in.
+    it('leaves the alignment slot lit when only part of the selection can align', async () => {
+      const editor = open('<h1>a heading</h1><pre><code>some code</code></pre>');
+      mount(editor);
+      // Anchored in the code block, reaching back into the heading.
+      await selectWithFocus(editor, 20, 2);
+
+      expect(
+        screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
+      ).toBeNull();
+    });
+
+    // A selection over two block types shows the type of the end the reader
+    // started from, so the face answers "what am I in" rather than going blank
+    // (user 2026-08-27).
+    it('shows the anchor end block type when the selection spans two', async () => {
       const editor = open('<h1>a heading</h1><p>a paragraph</p>');
       mount(editor);
       // From inside the heading through into the paragraph: two block types.
@@ -220,7 +237,19 @@ describe('the bubble bar shell', () => {
 
       expect(
         screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
-      ).toBe('paragraph');
+      ).toBe('heading-1');
+    });
+
+    it('shows the anchor end block type when the selection runs backwards', async () => {
+      const editor = open('<p>a paragraph</p><h1>a heading</h1>');
+      mount(editor);
+      // Dragged from the heading back up into the paragraph: the anchor is
+      // the heading end.
+      await selectWithFocus(editor, 20, 2);
+
+      expect(
+        screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
+      ).toBe('heading-1');
     });
   });
 

@@ -40,6 +40,7 @@ import {
   BLOCK_TYPE_ITEMS,
   blockTypeItem,
   currentBlockType,
+  selectionCanAlign,
 } from '@web/spaces/document/document-block-type';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
@@ -260,15 +261,6 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 });
 
 /** The alignment menu's three rows, from demo:590-596. */
-/**
- * The blocks alignment reaches (demo:606): paragraphs and the three headings.
- *
- * Everywhere else — a quote, either list, a code block — the slot is drawn
- * unavailable (A7). Read off {@link currentBlockType}, which already answers
- * this for the block type slot beside it.
- */
-const ALIGNABLE = new Set(['paragraph', 'heading-1', 'heading-2', 'heading-3']);
-
 const ALIGN_ITEMS = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
@@ -297,7 +289,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   });
   const appliesHere = useEditorState({
     editor,
-    selector: ({ editor: e }) => (e ? ALIGNABLE.has(currentBlockType(e)) : true),
+    selector: ({ editor: e }) => (e ? selectionCanAlign(e) : true),
   });
   const askOpen = React.useCallback(
     (slotId: string, open: boolean): void => {

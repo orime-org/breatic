@@ -178,10 +178,9 @@ function blockTypeOf(
 /**
  * Which block the current selection counts as.
  *
- * Walks every block the selection covers and collects their types. It names a
- * type ONLY when they all agree; a selection spanning two (a heading and the
- * paragraph under it, which is the common case) answers `paragraph` — the
- * slot's neutral reading, and the one that matches a menu with nothing lit.
+ * Walks every block the selection covers and collects their types. Where they
+ * all agree it names that type; where they do not it names the type of the end
+ * the reader anchored the selection on.
  *
  * Not `editor.isActive()`: that answers "does this type appear anywhere in the
  * selection", which is true of both types across a spanning selection and
@@ -192,20 +191,82 @@ function blockTypeOf(
 export function currentBlockType(editor: Editor): BlockTypeId {
   const { from, to } = editor.state.selection;
   const seen = new Set<BlockTypeId | null>();
-  // Lists and quotes wrap other blocks, so ask about them first: when one of
-  // them holds the selection, that IS the type, and the paragraphs inside are
-  // its content rather than the answer.
-  if (editor.isActive('bulletList')) return 'bullet-list';
-  if (editor.isActive('orderedList')) return 'ordered-list';
-  if (editor.isActive('blockquote')) return 'quote';
+  const wrapping = wrappingBlockType(editor);
+  if (wrapping !== null) return wrapping;
   editor.state.doc.nodesBetween(from, to, (node) => {
     if (!node.isTextblock) return true;
     seen.add(blockTypeOf(node.type.name, node.attrs));
     return false;
   });
-  if (seen.size !== 1) return 'paragraph';
+  if (seen.size !== 1) return blockTypeAtAnchor(editor);
   const [only] = [...seen];
   return only ?? 'paragraph';
+}
+
+/**
+ * The list or quote holding the selection, if one does.
+ *
+ * Lists and quotes wrap other blocks, so they are asked about first: when one
+ * of them holds the selection, that IS the type, and the paragraphs inside are
+ * its content rather than the answer.
+ * @param editor - The editor.
+ * @returns That type, or null when no wrapper holds the selection.
+ */
+function wrappingBlockType(editor: Editor): BlockTypeId | null {
+  if (editor.isActive('bulletList')) return 'bullet-list';
+  if (editor.isActive('orderedList')) return 'ordered-list';
+  if (editor.isActive('blockquote')) return 'quote';
+  return null;
+}
+
+/** The block types alignment has anything to say about. */
+const ALIGNABLE = new Set<BlockTypeId>([
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+]);
+
+/**
+ * Is there anything in the selection alignment would reach?
+ *
+ * One alignable block is enough: aligning a selection that runs from a heading
+ * into a code block still moves the heading, so the control is live. Asking
+ * `currentBlockType` instead would answer for one end alone and grey the
+ * control over a selection its command does reach.
+ * @param editor - The editor.
+ * @returns Whether the selection holds at least one alignable block.
+ */
+export function selectionCanAlign(editor: Editor): boolean {
+  const wrapping = wrappingBlockType(editor);
+  if (wrapping !== null) return ALIGNABLE.has(wrapping);
+  const { from, to } = editor.state.selection;
+  let found = false;
+  editor.state.doc.nodesBetween(from, to, (node) => {
+    if (found || !node.isTextblock) return !found;
+    const type = blockTypeOf(node.type.name, node.attrs);
+    if (type !== null && ALIGNABLE.has(type)) found = true;
+    return false;
+  });
+  return found;
+}
+
+/**
+ * The block type of the end the reader started the selection from.
+ *
+ * Over a run of one type the face names that type; over two it names the end
+ * the reader is standing on, so the face answers "what am I in" rather than
+ * going blank (user 2026-08-27). The anchor is that end — `head` is where the
+ * drag has reached, `anchor` where it began.
+ * @param editor - The editor.
+ * @returns That block's type.
+ */
+function blockTypeAtAnchor(editor: Editor): BlockTypeId {
+  const at = editor.state.doc.resolve(editor.state.selection.anchor);
+  // An anchor resting on a block boundary rather than inside a text block —
+  // between two paragraphs, say — has no type of its own to report.
+  if (!at.parent.isTextblock) return 'paragraph';
+  return blockTypeOf(at.parent.type.name, at.parent.attrs) ?? 'paragraph';
 }
 
 /**
