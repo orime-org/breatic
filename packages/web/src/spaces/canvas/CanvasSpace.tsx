@@ -29,6 +29,7 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
+import { useUIStore } from '@web/stores/ui';
 import { canGenerate, newId } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -2638,11 +2639,17 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      // A copy event targets the element the selection sits in, so the gate
-      // reads the selection's own ancestry: words dragged inside an overlay
-      // pass through no region and stay the overlay's, while words dragged in
-      // either region are only that region's while it is the active one.
-      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      if (readOnly) return;
+      // Words the reader dragged across are the ones they asked for, wherever
+      // they sit, so the browser copies those and the nodes stay put.
+      const selection = window.getSelection();
+      if (selection !== null && !selection.isCollapsed) return;
+      // With no text selected the event targets wherever the caret was last
+      // left, which says nothing about this copy — except when that is a
+      // field, whose own keys these are. The active region answers the rest.
+      const target = event.target;
+      if (target instanceof Element && isEditableTarget(target)) return;
+      if (useUIStore.getState().activeRegion !== 'space') return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)

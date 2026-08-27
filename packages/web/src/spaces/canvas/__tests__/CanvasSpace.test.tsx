@@ -3429,14 +3429,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
 
     /**
-     * Attaches an element standing in for where a text selection sits: a copy
-     * event targets the element the selection is in, so dispatching from here
-     * is how the gate sees that selection's ancestry.
-     * @param region - The `data-region` to wrap it in, or null for an overlay,
-     * which portals to `<body>` and so passes through no region.
-     * @returns The element to dispatch the copy event from.
+     * Attaches an element holding words, standing in for a place the reader
+     * can put the caret or drag across.
+     * @param region - The `data-region` to wrap it in, or null for an overlay
+     * or the top bar, both of which pass through no region.
+     * @returns The element holding the words.
      */
-    const whereTheSelectionSits = (region: string | null): Element => {
+    const wordsIn = (region: string | null): Element => {
       const host = document.createElement('div');
       if (region !== null) host.setAttribute('data-region', region);
       const span = document.createElement('span');
@@ -3444,6 +3443,32 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       host.append(span);
       document.body.append(host);
       return span;
+    };
+
+    /**
+     * Drags across every word in `el`, leaving a live text selection.
+     * @param el - The element whose words get highlighted.
+     */
+    const dragAcross = (el: Element): void => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    /**
+     * Clicks once in `el` without dragging, so the caret collapses there and
+     * no text ends up selected.
+     * @param el - The element the caret lands in.
+     */
+    const clickInto = (el: Element): void => {
+      const caret = document.createRange();
+      caret.setStart(el.firstChild as Node, 1);
+      caret.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(caret);
     };
 
     /**
@@ -3597,21 +3622,57 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
       });
 
-      // Words dragged inside an overlay pass through no region, so the overlay
-      // keeps them: nobody else can answer for a selection made there.
-      it('copy leaves the clipboard alone for a selection inside an overlay', () => {
+      // Words the reader dragged across are the ones they asked for, wherever
+      // they sit — either region, or an overlay and the top bar, which sit in
+      // none. None of those is "copy the nodes".
+      it.each([
+        ['inside the agent panel', 'agent'],
+        ['inside the space itself', 'space'],
+        ['outside both regions', null],
+      ])('copy leaves the clipboard alone for words dragged %s', (_name, region) => {
         mountWithSelection();
-        expect(copyAndRead(whereTheSelectionSits(null))).toBe('');
+        const words = wordsIn(region);
+        dragAcross(words);
+        expect(copyAndRead(words)).toBe('');
       });
 
-      // A selection in the agent panel is the agent's only while the agent is
-      // the active region. The reader has since acted in the space, so the
-      // copy is the space's.
-      it('copy puts the nodes on the clipboard for a selection left in the agent panel', () => {
+      // Dragging across a picture selects something the reader asked for
+      // while `toString()` stays empty, so what counts is whether the
+      // selection is collapsed.
+      it('copy leaves the clipboard alone for a picture dragged across', () => {
         mountWithSelection();
-        expect(copyAndRead(whereTheSelectionSits('agent'))).toContain(
-          '__breatic_canvas_nodes__:',
-        );
+        const host = document.createElement('div');
+        host.append(document.createElement('img'));
+        document.body.append(host);
+        try {
+          dragAcross(host);
+          expect(window.getSelection()?.isCollapsed).toBe(false);
+          expect(window.getSelection()?.toString()).toBe('');
+          expect(copyAndRead(host)).toBe('');
+        } finally {
+          host.remove();
+        }
+      });
+
+      // A click without a drag leaves a caret wherever it landed and selects
+      // no text, so the event's target is a leftover that says nothing about
+      // this copy. What is selected is the nodes.
+      it('copy puts the nodes on the clipboard with a caret left outside both regions', () => {
+        mountWithSelection();
+        const words = wordsIn(null);
+        clickInto(words);
+        expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
+      });
+
+      it('copy leaves the clipboard alone with the caret inside a field', () => {
+        mountWithSelection();
+        const field = document.createElement('input');
+        document.body.append(field);
+        try {
+          expect(copyAndRead(field)).toBe('');
+        } finally {
+          field.remove();
+        }
       });
 
       it('undo runs', () => {
