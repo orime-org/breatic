@@ -2738,12 +2738,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  // ---- Pick-end focus catch-all (adversarial round-2, a11y) ----
-  // The banner Exit hand-off focuses the pick trigger, but when the trigger
-  // is disabled (t2i switch mid-pick) or the pick ends by another path (panel
-  // X, host node deleted) focus dropped to <body>. A catch-all restores focus
-  // to the canvas container whenever a pick ends with focus orphaned.
-  it('restores focus to the canvas container when a pick ends with focus on <body>', () => {
+  // ---- Pick-end focus (#168) ----
+  // A pick used to end by pulling focus into the canvas container whenever
+  // focus was orphaned on <body>. A pick can end without any local action —
+  // a collaborator writing the host node's mode ends it — so that pull moved
+  // the active region with nobody touching anything. Keyboard ownership no
+  // longer reads focus, so the canvas answers the keyboard on the <body>
+  // target anyway and the pull has nothing left to do.
+  it('leaves focus where it is when a pick ends with focus on <body>', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -2766,10 +2768,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       document.body.focus();
       useCanvasStore.setState({ pickSession: null });
     });
-    expect(document.activeElement).toBe(screen.getByTestId('canvas-space'));
+    expect(document.activeElement).toBe(document.body);
   });
 
-  it('does not steal focus when a pick ends with focus already placed (Exit hand-off)', () => {
+  it('leaves focus where it is when a pick ends with focus already placed', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -2793,7 +2795,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         elsewhere.focus();
         useCanvasStore.setState({ pickSession: null });
       });
-      // Focus was NOT on body, so the catch-all leaves it alone.
       expect(document.activeElement).toBe(elsewhere);
     } finally {
       elsewhere.remove();

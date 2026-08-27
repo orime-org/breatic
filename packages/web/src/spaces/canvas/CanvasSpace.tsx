@@ -1033,12 +1033,6 @@ function CanvasSpaceInner({
     },
     [focusCropTargetId, projectId, spaceId, t],
   );
-  // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
-  // only works when the trigger is enabled + mounted. When it is disabled (a
-  // t2i switch mid-pick) or the pick ends by another path (panel X, host node
-  // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
-  // there, return it to the canvas container so keyboard users stay in
-  // context. Focus already placed (the Exit hand-off succeeded) is left alone.
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
   // client fallback constant that could drift from the yaml value); the
@@ -1047,19 +1041,6 @@ function CanvasSpaceInner({
     void canvasApi.fetchLimits().catch(() => undefined);
   }, []);
 
-  const wasPickingRef = React.useRef(false);
-  React.useEffect(() => {
-    const wasPicking = wasPickingRef.current;
-    wasPickingRef.current = pickForNodeId != null;
-    if (
-      wasPicking &&
-      pickForNodeId == null &&
-      (document.activeElement == null ||
-        document.activeElement === document.body)
-    ) {
-      containerRef.current?.focus();
-    }
-  }, [pickForNodeId]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
