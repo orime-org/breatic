@@ -1,0 +1,117 @@
+name: Bug report
+description: Report a reproducible defect in Breatic.
+title: "Bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Complete every required field so the issue can be reproduced and verified.
+        Do not include passwords, tokens, API keys, private user content, or environment-file contents.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem summary
+      description: Describe the user-visible failure in one or two clear paragraphs.
+      placeholder: What went wrong, and where did it happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: State exactly what happened, including visible errors or state changes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: State what Breatic should have done instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment mode
+      options:
+        - Local development
+        - Docker or self-hosted
+        - Hosted production
+        - Other or unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage provider
+      options:
+        - Local
+        - Amazon S3
+        - Aliyun OSS
+        - Other or unknown
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the release, branch, or commit SHA where the problem occurred.
+      placeholder: main at abc1234
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Include browser, operating system, relevant service topology, and whether the behavior is reproducible.
+      placeholder: Browser, OS, device, network layout, and reproducibility
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and diagnostics
+      description: Add sanitized logs, screenshots, request status codes, or a minimal reproduction. Separate confirmed facts from hypotheses.
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable checks that must pass before this issue can be closed.
+      placeholder: |
+        - [ ] The reproduction no longer fails.
+        - [ ] A regression test covers the failure path.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and did not find an open duplicate.
+          required: true
+        - label: I removed passwords, tokens, API keys, private content, and environment-file contents.
+          required: true
+        - label: This is not a security vulnerability. I will report security issues privately to the maintainers.
+          required: true
