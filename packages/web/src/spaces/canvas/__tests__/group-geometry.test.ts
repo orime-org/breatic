@@ -317,38 +317,62 @@ describe('groupResizeBounds — per-control min size so the native clamp keeps m
 });
 
 describe('reanchoredMembers', () => {
-  /** A Group holding one member at 24,24 inside it, plus one in another Group. */
+  /** Two Groups, each holding one member, as the document has them. */
   const doc = [
     { id: 'g1', position: { x: 200, y: 200 } },
     { id: 'm1', parentId: 'g1', position: { x: 24, y: 24 } },
+    { id: 'g2', position: { x: 700, y: 700 } },
     { id: 'other', parentId: 'g2', position: { x: 10, y: 10 } },
   ];
 
-  it('moves a member against the distance this resize moved the origin', () => {
+  it('moves a member against the distance the origin travelled', () => {
     // Pulling the left edge 50 to the left has to put the member 50 further
-    // right inside the Group for it to stay where it is drawn.
-    expect(reanchoredMembers(doc, 'g1', { dx: -50, dy: 0 })).toEqual([
+    // right inside the Group for it to stay where it is.
+    expect(reanchoredMembers(doc, 'g1', { x: 150, y: 200 })).toEqual([
       { id: 'm1', position: { x: 74, y: 24 } },
     ]);
   });
 
-  it('writes nothing when this resize did not move the origin', () => {
-    expect(reanchoredMembers(doc, 'g1', { dx: 0, dy: 0 })).toEqual([]);
+  it('writes nothing when the origin ends up where the document has it', () => {
+    expect(reanchoredMembers(doc, 'g1', { x: 200, y: 200 })).toEqual([]);
   });
 
   it('leaves every other Group alone', () => {
-    expect(reanchoredMembers(doc, 'g2', { dx: -50, dy: 0 })).toEqual([
+    expect(reanchoredMembers(doc, 'g2', { x: 650, y: 700 })).toEqual([
       { id: 'other', position: { x: 60, y: 10 } },
     ]);
   });
 
   it('says nothing about a Group with no members', () => {
-    expect(reanchoredMembers(doc, 'empty', { dx: -50, dy: 0 })).toEqual([]);
+    doc.push({ id: 'empty', position: { x: 0, y: 0 } });
+    expect(reanchoredMembers(doc, 'empty', { x: -50, y: 0 })).toEqual([]);
+    doc.pop();
+  });
+
+  it('says nothing about a Group the document does not have', () => {
+    // Without the Group there is no origin to measure the travel from, so
+    // there is no number this end could write for its members.
+    expect(reanchoredMembers(doc, 'gone', { x: 150, y: 200 })).toEqual([]);
   });
 
   it('moves both axes at once', () => {
-    expect(reanchoredMembers(doc, 'g1', { dx: -50, dy: -30 })).toEqual([
+    expect(reanchoredMembers(doc, 'g1', { x: 150, y: 170 })).toEqual([
       { id: 'm1', position: { x: 74, y: 54 } },
     ]);
+  });
+
+  it('leaves a member where the document has it once the write lands', () => {
+    // The travel is measured against the document, so a collaborator who moved
+    // this Group in the meantime does not shift its members: whatever origin
+    // this resize commits, member absolute = document origin + document
+    // relative, which is where the document says the member is.
+    const moved = [
+      { id: 'g1', position: { x: 300, y: 300 } },
+      { id: 'm1', parentId: 'g1', position: { x: 24, y: 24 } },
+    ];
+    const committedOrigin = { x: 150, y: 300 };
+    const [member] = reanchoredMembers(moved, 'g1', committedOrigin);
+    expect(member).toEqual({ id: 'm1', position: { x: 174, y: 24 } });
+    expect(committedOrigin.x + (member?.position.x ?? 0)).toBe(300 + 24);
   });
 });

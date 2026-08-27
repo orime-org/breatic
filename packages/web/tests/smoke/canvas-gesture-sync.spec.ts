@@ -641,35 +641,25 @@ test('resizing a Group moves its frame while its member stays put', async () => 
   await removeNode(mover, groupId);
 });
 
-test('a Group resize leaves a member somebody else is holding alone', async () => {
-  const groupId = `resize-held-${Date.now()}`;
-  const memberId = `held-member-${Date.now()}`;
+test('a Group resize that moves the origin leaves its members where they are', async () => {
+  const groupId = `resize-left-${Date.now()}`;
+  const memberId = `left-member-${Date.now()}`;
   await seedGroupWithMember(mover, groupId, memberId);
   await expect(
     watcher.locator(`.react-flow__node[data-id="${memberId}"]`),
   ).toBeVisible({ timeout: SETTLE_MS });
-  const stored = await documentPosition(mover, memberId);
+  const storedGroup = await documentPosition(mover, groupId);
+  const storedMember = await documentPosition(mover, memberId);
+  if (storedGroup === null || storedMember === null) throw new Error('seed missing');
 
-  // The watcher takes hold of the member and keeps holding it.
-  const held = await drawnAt(watcher, memberId);
-  if (held === null || stored === null) throw new Error('member missing');
-  await watcher.mouse.move(held.x + 40, held.y + 40);
-  await watcher.mouse.down();
-  for (let step = 1; step <= 4; step += 1) {
-    await watcher.mouse.move(held.x + 40 + step * 30, held.y + 40);
-    await watcher.waitForTimeout(90);
-  }
-
-  // The mover resizes the Group around it and lets go first. The right edge
-  // leaves the origin where it is, so ReactFlow reanchors nothing and the only
-  // thing that could move the member is this end's own write.
-  // Below the member, whose name header sits above its own box and follows it
-  // as the watcher drags.
+  // Below the member, whose name header sits above its own box.
   await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
     position: { x: 200, y: 280 },
   });
+  // The left edge is the one that moves the origin, which is what makes each
+  // member's stored position have to change for the member to stay put.
   const control = mover
-    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.right`)
+    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.left`)
     .first();
   await expect(control).toBeVisible({ timeout: SETTLE_MS });
   const handle = await control.boundingBox();
@@ -678,7 +668,7 @@ test('a Group resize leaves a member somebody else is holding alone', async () =
   await mover.mouse.down();
   for (let step = 1; step <= 4; step += 1) {
     await mover.mouse.move(
-      handle.x + handle.width / 2 + step * 30,
+      handle.x + handle.width / 2 - step * 30,
       handle.y + handle.height / 2,
     );
     await mover.waitForTimeout(90);
@@ -686,13 +676,76 @@ test('a Group resize leaves a member somebody else is holding alone', async () =
   await mover.mouse.up();
   await mover.waitForTimeout(SETTLE_MS / 2);
 
-  // Invariant 7: a resize commits the Group's own geometry and says nothing
-  // about a member the other end still has hold of — those coordinates are in
-  // flight and the document has never held them.
-  expect(await documentPosition(mover, memberId)).toEqual(stored);
+  const movedGroup = await documentPosition(mover, groupId);
+  const movedMember = await documentPosition(mover, memberId);
+  if (movedGroup === null || movedMember === null) throw new Error('node missing');
+  // The origin really travelled, so this run exercised the member write.
+  expect(movedGroup.x).toBeLessThan(storedGroup.x);
+  // Acceptance 4: the member's absolute position is untouched by the resize.
+  expect(movedGroup.x + movedMember.x).toBeCloseTo(storedGroup.x + storedMember.x, 0);
+  expect(movedGroup.y + movedMember.y).toBeCloseTo(storedGroup.y + storedMember.y, 0);
+
+  await removeNode(mover, memberId);
+  await removeNode(mover, groupId);
+});
+
+test('a Group somebody else is dragging cannot be resized from this end', async () => {
+  const groupId = `resize-blocked-${Date.now()}`;
+  const memberId = `blocked-member-${Date.now()}`;
+  await seedGroupWithMember(mover, groupId, memberId);
+  await expect(
+    mover.locator(`.react-flow__node[data-id="${groupId}"]`),
+  ).toBeVisible({ timeout: SETTLE_MS });
+  const storedGroup = await documentPosition(mover, groupId);
+  if (storedGroup === null) throw new Error('seed missing');
+
+  // Select first, so the resize chrome is up before the other end takes hold.
+  await mover.locator(`.react-flow__node[data-id="${groupId}"]`).click({
+    position: { x: 200, y: 280 },
+  });
+  const control = mover
+    .locator(`.react-flow__node[data-id="${groupId}"] .react-flow__resize-control.left`)
+    .first();
+  await expect(control).toBeVisible({ timeout: SETTLE_MS });
+
+  // The watcher drags the Group and keeps holding it.
+  const held = await drawnAt(watcher, groupId);
+  if (held === null) throw new Error('group missing on the watcher');
+  await watcher.mouse.move(held.x + 200, held.y + 280);
+  await watcher.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await watcher.mouse.move(held.x + 200 + step * 40, held.y + 280);
+    await watcher.waitForTimeout(90);
+  }
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // Read the handle only now: the Group has travelled across the mover's screen
+  // with the drag, taking its resize chrome along, so a box measured before the
+  // drag points at empty canvas.
+  const handle = await control.boundingBox();
+  if (handle === null) throw new Error('resize chrome missing');
+
+  // The mover pulls the left edge while the other end still holds the Group.
+  await mover.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await mover.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await mover.mouse.move(
+      handle.x + handle.width / 2 - step * 30,
+      handle.y + handle.height / 2,
+    );
+    await mover.waitForTimeout(90);
+  }
+  await mover.mouse.up();
+  await mover.waitForTimeout(SETTLE_MS / 2);
+
+  // The rect this end would commit is measured off the in-flight origin, which
+  // the document has never had, so nothing goes in until the drag lands.
+  // ReactFlow still resizes the frame locally; that frame is replaced by the
+  // next one the drag publishes, and by the document once the drag ends.
+  expect(await documentPosition(mover, groupId)).toEqual(storedGroup);
 
   await watcher.mouse.up();
-  await watcher.waitForTimeout(SETTLE_MS / 2);
+  await watcher.waitForTimeout(SETTLE_MS);
   await removeNode(mover, memberId);
   await removeNode(mover, groupId);
 });

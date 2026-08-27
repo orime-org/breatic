@@ -672,11 +672,6 @@ function CanvasSpaceInner({
   // itself lives inside the hook, so no path can reach the raw array on its way
   // to a document write (#2010, design §5.7 and invariant 7).
   const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
-  // Where the Group being resized sat when the gesture took hold. The rect
-  // ReactFlow hands back is measured from there, so this is what turns it into
-  // a travel distance — the document's own origin may have moved meanwhile,
-  // and that move is not this resize's to undo.
-  const resizeOriginRef = React.useRef<{ x: number; y: number } | null>(null);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -3420,11 +3415,11 @@ function CanvasSpaceInner({
           gesture.update();
           return;
         }
-        // Where the rect being built starts from. ReactFlow measures the rect
-        // off the render buffer, and the buffer holds this Group still for the
-        // whole gesture, so this is the origin every later rect is relative to.
-        resizeOriginRef.current =
-          buffer.onScreen().find((node) => node.id === groupId)?.position ?? null;
+        // ReactFlow measures the rect off the render buffer, which holds a
+        // collaborator's in-flight origin while they drag this Group — a rect
+        // built on it commits coordinates the document has never had, and their
+        // drag may end without writing anything to overwrite it.
+        if (buffer.heldByRemote().has(groupId)) return;
         gesture.begin([groupId], groupId);
       },
       commitGroupResize: (groupId, rect): void => {
@@ -3434,6 +3429,13 @@ function CanvasSpaceInner({
           gesture.abandon();
           return;
         }
+        // ReactFlow resizes locally whether or not this end took the gesture, so
+        // the decision `reportGroupResize` made — a Group a collaborator is
+        // dragging gets no gesture — has to hold all the way to the write. That
+        // decision stands for the whole resize even if their drag ends midway,
+        // since the rect being offered is still measured off the origin their
+        // drag was showing.
+        if (!gesture.isRunning()) return;
         // Bug 11: a resize that grows over a loose (top-level) node whose CENTER
         // now lands inside the Group absorbs it — the same center-in membership
         // rule the drag path uses, extended to resize. Only loose nodes join;
@@ -3466,14 +3468,11 @@ function CanvasSpaceInner({
         const joins = planResizeJoin(groupId, newRect, loose);
         // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
         // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
-        // the rect VERBATIM (no post-commit repair). Each member's new relative
-        // position is computed from the document: a resize moves the origin and
-        // leaves the members where they are drawn, so the new number is the
-        // stored one plus however far the origin travelled. Reading the document
-        // is what makes this independent of whose gesture is running — a
-        // collaborator who moved one of these members has already written it.
-        // One atomic undo entry: the Group's new size/position, its members,
-        // PLUS any newly absorbed loose nodes.
+        // the rect VERBATIM (no post-commit repair). `reanchoredMembers` takes
+        // the committed origin and works each member's new relative position out
+        // against the document, which is the copy every client writes those
+        // numbers relative to. One atomic undo entry: the Group's new
+        // size/position, its members, PLUS any newly absorbed loose nodes.
         gesture.end(() => {
           runCanvasUndoBatch(projectId, spaceId, () => {
             resizeGroup(
@@ -3484,15 +3483,10 @@ function CanvasSpaceInner({
               rect.width,
               rect.height,
             );
-            const from = resizeOriginRef.current;
-            const shift =
-              from === null
-                ? { dx: 0, dy: 0 }
-                : { dx: rect.x - from.x, dy: rect.y - from.y };
             for (const member of reanchoredMembers(
               buffer.documentPlaces(),
               groupId,
-              shift,
+              rect,
             )) {
               setNodePosition(projectId, spaceId, member.id, member.position);
             }

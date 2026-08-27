@@ -312,17 +312,16 @@ export interface AnchoredMember {
 /**
  * Where each member of a Group has to sit after a resize moved its origin.
  *
- * A resize leaves every member exactly where it is drawn, so a member's new
- * position relative to the Group is its stored one less however far this resize
- * moved the origin. The stored position comes from the document, which is the
- * copy every client agrees on: a collaborator who moved one of these members has
- * already written that move, and it is the number this reads.
+ * A resize leaves every member exactly where it is, so once the write lands a
+ * member's absolute position has to be what it already was: origin plus stored
+ * position. Solving that for the new relative number gives the stored one less
+ * the distance between the two origins.
  *
- * The shift is this resize's own travel, measured against the origin it started
- * from. Reading the document's current origin instead would fold in whatever
- * somebody else did to the Group meanwhile — the rect being committed is
- * measured from the origin this end started at, and the two are only the same
- * while nobody else moves the Group.
+ * Both of those come from the document. A stored member position is measured
+ * against the document's origin — that is the origin `toDragNode` resolves a
+ * member against, so it is the one every client writes relative to — and
+ * subtracting a travel measured from anywhere else leaves the member somewhere
+ * no one put it.
  *
  * Every member is written, including one somebody else has hold of. Their
  * release writes over this, measured against the origin this resize published;
@@ -330,24 +329,26 @@ export interface AnchoredMember {
  * for, a closed tab — leaves this as the only value, which is the right one.
  * @param docNodes - The nodes as the document has them.
  * @param groupId - The Group being resized.
- * @param shift - How far this resize moved the Group's origin.
- * @param shift.dx - Its horizontal travel.
- * @param shift.dy - Its vertical travel.
- * @returns One position per member, empty when the origin stayed put.
+ * @param origin - The Group's top-left as this resize is committing it.
+ * @param origin.x - Its horizontal position.
+ * @param origin.y - Its vertical position.
+ * @returns One position per member, empty when the origin ends up where the
+ *   document already has it, and when the document has no such Group.
  */
 export function reanchoredMembers(
   docNodes: ReadonlyArray<AnchoredMember>,
   groupId: string,
-  shift: { dx: number; dy: number },
+  origin: { x: number; y: number },
 ): Array<{ id: string; position: { x: number; y: number } }> {
-  if (shift.dx === 0 && shift.dy === 0) return [];
+  const stored = docNodes.find((node) => node.id === groupId)?.position;
+  if (stored === undefined) return [];
+  const dx = origin.x - stored.x;
+  const dy = origin.y - stored.y;
+  if (dx === 0 && dy === 0) return [];
   return docNodes
     .filter((node) => node.parentId === groupId)
     .map((node) => ({
       id: node.id,
-      position: {
-        x: node.position.x - shift.dx,
-        y: node.position.y - shift.dy,
-      },
+      position: { x: node.position.x - dx, y: node.position.y - dy },
     }));
 }
