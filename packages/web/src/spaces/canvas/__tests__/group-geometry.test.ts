@@ -317,39 +317,38 @@ describe('groupResizeBounds — per-control min size so the native clamp keeps m
 });
 
 describe('reanchoredMembers', () => {
-  /** A Group at 200,200 holding one member 24,24 inside it. */
+  /** A Group holding one member at 24,24 inside it, plus one in another Group. */
   const doc = [
     { id: 'g1', position: { x: 200, y: 200 } },
     { id: 'm1', parentId: 'g1', position: { x: 24, y: 24 } },
+    { id: 'other', parentId: 'g2', position: { x: 10, y: 10 } },
   ];
 
-  it('moves a member by the same amount the origin moved', () => {
-    // Pulling the left edge to 150 moves the origin 50 left, so the member has
-    // to sit 50 further right inside the Group to stay where it is drawn.
-    expect(
-      reanchoredMembers(doc, 'g1', { x: 150, y: 200 }, new Set()),
-    ).toEqual([{ id: 'm1', position: { x: 74, y: 24 } }]);
+  it('moves a member against the distance this resize moved the origin', () => {
+    // Pulling the left edge 50 to the left has to put the member 50 further
+    // right inside the Group for it to stay where it is drawn.
+    expect(reanchoredMembers(doc, 'g1', { dx: -50, dy: 0 })).toEqual([
+      { id: 'm1', position: { x: 74, y: 24 } },
+    ]);
   });
 
-  it('writes nothing when the origin did not move', () => {
-    expect(reanchoredMembers(doc, 'g1', { x: 200, y: 200 }, new Set())).toEqual([]);
+  it('writes nothing when this resize did not move the origin', () => {
+    expect(reanchoredMembers(doc, 'g1', { dx: 0, dy: 0 })).toEqual([]);
   });
 
-  it('leaves out a member a remote gesture has hold of directly', () => {
-    expect(
-      reanchoredMembers(doc, 'g1', { x: 150, y: 200 }, new Set(['m1'])),
-    ).toEqual([]);
+  it('leaves every other Group alone', () => {
+    expect(reanchoredMembers(doc, 'g2', { dx: -50, dy: 0 })).toEqual([
+      { id: 'other', position: { x: 60, y: 10 } },
+    ]);
   });
 
-  it('keeps a member whose Group is the one being dragged', () => {
-    // Dragging a Group never changes what its members' positions are relative
-    // to it, so this end's resize is still the only writer of that number.
-    expect(
-      reanchoredMembers(doc, 'g1', { x: 150, y: 200 }, new Set(['g1', 'm1'])),
-    ).toEqual([{ id: 'm1', position: { x: 74, y: 24 } }]);
+  it('says nothing about a Group with no members', () => {
+    expect(reanchoredMembers(doc, 'empty', { dx: -50, dy: 0 })).toEqual([]);
   });
 
-  it('writes nothing when the document has no such Group', () => {
-    expect(reanchoredMembers(doc, 'gone', { x: 150, y: 200 }, new Set())).toEqual([]);
+  it('moves both axes at once', () => {
+    expect(reanchoredMembers(doc, 'g1', { dx: -50, dy: -30 })).toEqual([
+      { id: 'm1', position: { x: 74, y: 54 } },
+    ]);
   });
 });

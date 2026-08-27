@@ -310,46 +310,44 @@ export interface AnchoredMember {
 }
 
 /**
- * Where each member of a Group has to sit for a rect this end is committing.
+ * Where each member of a Group has to sit after a resize moved its origin.
  *
- * A resize moves the Group's origin and leaves every member exactly where it is
- * drawn, so a member's new position relative to the Group is its old one plus
- * however far the origin travelled. Both of those come from the document, which
- * is what makes this independent of what any gesture is doing: a collaborator
- * who moved one of these members has already written that move, and it is the
- * number this reads.
+ * A resize leaves every member exactly where it is drawn, so a member's new
+ * position relative to the Group is its stored one less however far this resize
+ * moved the origin. The stored position comes from the document, which is the
+ * copy every client agrees on: a collaborator who moved one of these members has
+ * already written that move, and it is the number this reads.
  *
- * A member somebody else has hold of directly is left out — their own release
- * writes it, measured against the origin this resize is publishing. A member
- * held only through its Group stays in: dragging a Group never changes what its
- * members' positions are relative to it, so this end is still the only writer.
+ * The shift is this resize's own travel, measured against the origin it started
+ * from. Reading the document's current origin instead would fold in whatever
+ * somebody else did to the Group meanwhile — the rect being committed is
+ * measured from the origin this end started at, and the two are only the same
+ * while nobody else moves the Group.
+ *
+ * Every member is written, including one somebody else has hold of. Their
+ * release writes over this, measured against the origin this resize published;
+ * and a gesture that ends without writing — a drag xyflow never reported a stop
+ * for, a closed tab — leaves this as the only value, which is the right one.
  * @param docNodes - The nodes as the document has them.
  * @param groupId - The Group being resized.
- * @param newOrigin - The origin this resize is about to commit.
- * @param newOrigin.x - Its x.
- * @param newOrigin.y - Its y.
- * @param heldByRemote - Every node id a remote gesture is currently moving.
- * @returns One position per member that has to move, empty when none does.
+ * @param shift - How far this resize moved the Group's origin.
+ * @param shift.dx - Its horizontal travel.
+ * @param shift.dy - Its vertical travel.
+ * @returns One position per member, empty when the origin stayed put.
  */
 export function reanchoredMembers(
   docNodes: ReadonlyArray<AnchoredMember>,
   groupId: string,
-  newOrigin: { x: number; y: number },
-  heldByRemote: ReadonlySet<string>,
+  shift: { dx: number; dy: number },
 ): Array<{ id: string; position: { x: number; y: number } }> {
-  const origin = docNodes.find((node) => node.id === groupId)?.position;
-  if (origin === undefined) return [];
-  const dx = origin.x - newOrigin.x;
-  const dy = origin.y - newOrigin.y;
-  if (dx === 0 && dy === 0) return [];
+  if (shift.dx === 0 && shift.dy === 0) return [];
   return docNodes
-    .filter(
-      (node) =>
-        node.parentId === groupId &&
-        !(heldByRemote.has(node.id) && !heldByRemote.has(groupId)),
-    )
+    .filter((node) => node.parentId === groupId)
     .map((node) => ({
       id: node.id,
-      position: { x: node.position.x + dx, y: node.position.y + dy },
+      position: {
+        x: node.position.x - shift.dx,
+        y: node.position.y - shift.dy,
+      },
     }));
 }

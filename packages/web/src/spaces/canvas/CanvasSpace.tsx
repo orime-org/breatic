@@ -672,6 +672,11 @@ function CanvasSpaceInner({
   // itself lives inside the hook, so no path can reach the raw array on its way
   // to a document write (#2010, design §5.7 and invariant 7).
   const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
+  // Where the Group being resized sat when the gesture took hold. The rect
+  // ReactFlow hands back is measured from there, so this is what turns it into
+  // a travel distance — the document's own origin may have moved meanwhile,
+  // and that move is not this resize's to undo.
+  const resizeOriginRef = React.useRef<{ x: number; y: number } | null>(null);
   const {
     screenToFlowPosition,
     zoomIn,
@@ -3415,6 +3420,11 @@ function CanvasSpaceInner({
           gesture.update();
           return;
         }
+        // Where the rect being built starts from. ReactFlow measures the rect
+        // off the render buffer, and the buffer holds this Group still for the
+        // whole gesture, so this is the origin every later rect is relative to.
+        resizeOriginRef.current =
+          buffer.onScreen().find((node) => node.id === groupId)?.position ?? null;
         gesture.begin([groupId], groupId);
       },
       commitGroupResize: (groupId, rect): void => {
@@ -3474,11 +3484,15 @@ function CanvasSpaceInner({
               rect.width,
               rect.height,
             );
+            const from = resizeOriginRef.current;
+            const shift =
+              from === null
+                ? { dx: 0, dy: 0 }
+                : { dx: rect.x - from.x, dy: rect.y - from.y };
             for (const member of reanchoredMembers(
               buffer.documentPlaces(),
               groupId,
-              rect,
-              buffer.heldByRemote(),
+              shift,
             )) {
               setNodePosition(projectId, spaceId, member.id, member.position);
             }
