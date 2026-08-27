@@ -17,13 +17,13 @@
  */
 
 import * as React from 'react';
-import type { Editor } from '@tiptap/core';
 
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-} from '@web/components/ui/dropdown-menu';
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@web/components/ui/popover';
+import { cn } from '@web/lib/utils';
 
 /**
  * How long the menu stands after the pointer leaves.
@@ -48,11 +48,35 @@ const CLOSE_GRACE_MS = 120;
  */
 const MENU_SIDE_OFFSET = 4 + 5;
 
+/**
+ * The panel a menu is drawn on.
+ *
+ * `PopoverContent` is built for a wide panel of rich content; these hold a
+ * short list of rows, so they take the shared menu's width and padding.
+ */
+const MENU_PANEL =
+  'z-[var(--z-popover)] w-auto min-w-[10rem] overflow-hidden p-1 shadow-md';
+
+/**
+ * Closes the menu a row belongs to.
+ *
+ * Picking a row takes the menu away with it. The rows are written by the
+ * callers, so what closes the menu reaches them through here rather than
+ * through every one of the seventeen call sites.
+ */
+const CloseBubbleMenu = React.createContext<() => void>(() => {});
+
+/**
+ * What closes the menu the caller's rows are inside.
+ * @returns That function; a no-op outside a menu.
+ */
+export function useCloseBubbleMenu(): () => void {
+  return React.useContext(CloseBubbleMenu);
+}
+
 interface DocumentBubbleMenuProps {
   /** Stable id, used to build the test ids. */
   id: string;
-  /** The editor the focus goes back to when this menu closes. */
-  editor: Editor;
   /** What the slot itself looks like. */
   trigger: React.ReactNode;
   /** What the menu holds. */
@@ -85,7 +109,6 @@ interface DocumentBubbleMenuProps {
  * One dropdown that opens on hover.
  * @param props - See {@link DocumentBubbleMenuProps}.
  * @param props.id - Stable id, used to build the test ids.
- * @param props.editor - The editor the focus goes back to on close.
  * @param props.trigger - What the slot itself looks like.
  * @param props.children - What the menu holds.
  * @param props.contentClassName - Extra classes for the menu panel.
@@ -97,7 +120,6 @@ interface DocumentBubbleMenuProps {
  */
 export function DocumentBubbleMenu({
   id,
-  editor,
   trigger,
   children,
   contentClassName,
@@ -131,6 +153,12 @@ export function DocumentBubbleMenu({
     }, CLOSE_GRACE_MS);
   }, [cancelClose, onOpenChange]);
 
+  /** Takes the menu away now. */
+  const close = React.useCallback((): void => {
+    cancelClose();
+    onOpenChange(false);
+  }, [cancelClose, onOpenChange]);
+
   React.useEffect(() => cancelClose, [cancelClose]);
 
   // Once the body really scrolls, the menu goes (user 2026-08-26's fifth rule).
@@ -139,16 +167,11 @@ export function DocumentBubbleMenu({
   // positions.
   React.useEffect(() => {
     if (!open || !scroller) return undefined;
-    /** The body scrolled; take the menu away. */
-    const close = (): void => {
-      cancelClose();
-      onOpenChange(false);
-    };
     scroller.addEventListener('scroll', close);
     return () => {
       scroller.removeEventListener('scroll', close);
     };
-  }, [open, scroller, cancelClose, onOpenChange]);
+  }, [open, scroller, close]);
 
   // While the pointer rests on the menu, the wheel does not scroll the body.
   //
@@ -176,48 +199,40 @@ export function DocumentBubbleMenu({
       className='flex items-center'
       onPointerLeave={leave}
     >
-      <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
-        <DropdownMenuTrigger asChild onPointerEnter={enter}>
+      <Popover open={open} onOpenChange={onOpenChange} modal={false}>
+        <PopoverTrigger asChild onPointerEnter={enter}>
           {trigger}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
+        </PopoverTrigger>
+        <PopoverContent
           ref={setContent}
           container={container}
           data-testid={`${id}-menu`}
-          className={contentClassName}
+          className={cn(MENU_PANEL, contentClassName)}
           align='start'
           sideOffset={MENU_SIDE_OFFSET}
           onPointerEnter={enter}
-          // Closing hands the focus back to the BODY, not to the trigger.
+          // The focus stays in the body, on both ways.
           //
-          // Radix returns it to the trigger by default
-          // (`@radix-ui/react-dropdown-menu:114-115`), and the trigger sits on
-          // the bar, where nothing takes focus (ruling R4 / §5.2). Merely
-          // refusing that (`preventDefault` and nothing else) leaves the focus
-          // wherever Radix took it on open — measured: `activeElement` was
-          // `BODY`, and typing did nothing, because Radix moves focus into the
-          // menu when it opens and the prop that would stop it
-          // (`onOpenAutoFocus`) is `Omit`ted from the public type. So the body
-          // is given it back explicitly, the same way `DocumentSpace.tsx:155`
-          // does on every way out of the clear-document dialog.
+          // These menus take no keyboard input (user 2026-08-26), so the focus
+          // has no business moving into one: a reader typing while a menu is
+          // open goes on reaching the body. Radix moves it in on open and back
+          // out on close, and both halves are refused here — the way out is
+          // what closed a menu that had just opened beside it, since it runs
+          // one turn late (`react-focus-scope` puts the unmount half in a
+          // `setTimeout`) and by then the focus it takes belongs to the next
+          // menu along the bar.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+          }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            // A menu can outlive its editor: closing the tab destroys the
-            // editor first, and a destroyed editor's `view` getter throws
-            // rather than answering.
-            if (editor.isDestroyed) return;
-            // `view.focus()`, not `commands.focus()`. The command wraps the
-            // real call in a `requestAnimationFrame` while dispatching its
-            // transaction straight away, so the bar re-decides a whole frame
-            // before the focus lands — measured, it judged focus-has-left and
-            // took itself away, menu and all. The view's own call is
-            // synchronous.
-            editor.view.focus();
           }}
         >
-          {children}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <CloseBubbleMenu.Provider value={close}>
+            {children}
+          </CloseBubbleMenu.Provider>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

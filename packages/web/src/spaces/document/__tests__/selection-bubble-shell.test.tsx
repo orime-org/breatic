@@ -253,6 +253,36 @@ describe('the bubble bar shell', () => {
     });
   });
 
+  // None of these menus take the keyboard (user 2026-08-26), so none of them
+  // takes the focus either: typing while one is open goes on reaching the body.
+  describe('focus', () => {
+    it('leaves focus in the body while a menu is open', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      await hoverOpen('doc-bubble-block-type');
+
+      expect(document.activeElement).toBe(editor.view.dom);
+    });
+
+    // Moving along the bar opens each slot in turn. The one being left behind
+    // must not take the focus away from the one arriving.
+    it('leaves the second menu open when the pointer moves between slots', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      await hoverOpen('doc-bubble-align');
+      const second = await hoverOpen('doc-bubble-block-type');
+
+      // Long enough for a menu closing behind it to have run its own teardown.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 300);
+      });
+      expect(second.isConnected).toBe(true);
+      expect(document.activeElement).toBe(editor.view.dom);
+    });
+  });
+
   describe('controls whose command nobody has written yet', () => {
     /**
      * They look and behave the way the demo draws them — the alignment rows,
@@ -376,10 +406,9 @@ describe('the bubble bar shell', () => {
       // judge focus-has-left and take itself away.
       expect(editor.view.hasFocus()).toBe(true);
 
-      // R4 again: the opener also answers a click. Radix's trigger opens on
-      // `pointerdown` rather than on `click`.
+      // R4 again: the opener also answers a click.
       act(() => {
-        fireEvent.pointerDown(screen.getByTestId('doc-bubble-block-type'));
+        fireEvent.click(screen.getByTestId('doc-bubble-block-type'));
       });
       await waitFor(() => {
         expect(screen.queryByTestId('doc-bubble-block-type-menu')).not.toBeNull();
@@ -596,10 +625,12 @@ describe('the bubble bar shell', () => {
 
       const rows = Array.from(
         menu.querySelectorAll(
-          '[data-testid^="doc-bubble-block-type-item-"], [role="separator"]',
+          '[data-testid^="doc-bubble-block-type-item-"], [data-testid="doc-bubble-rule"]',
         ),
       );
-      const separators = rows.filter((n) => n.getAttribute('role') === 'separator');
+      const separators = rows.filter(
+        (n) => n.getAttribute('data-testid') === 'doc-bubble-rule',
+      );
       expect(separators).toHaveLength(1);
       // Between heading 3 and the bulleted list, nowhere else.
       expect(rows.indexOf(separators[0])).toBe(4);

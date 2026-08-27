@@ -27,11 +27,11 @@ import { useEditorState } from '@tiptap/react';
 
 import { Button } from '@web/components/ui/button';
 import {
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-} from '@web/components/ui/dropdown-menu';
+  BubbleMenuHeading,
+  BubbleMenuRow,
+  BubbleMenuRule,
+  BubbleMenuShortcut,
+} from '@web/spaces/document/document-bubble-rows';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
@@ -76,7 +76,7 @@ interface SlotProps {
 }
 
 /** What every slot receives from the bar, plus what makes it that slot. */
-interface SlotShellProps extends SlotProps {
+interface SlotShellProps extends Omit<SlotProps, 'editor'> {
   /** This slot's id, which is also the stem of every test id under it. */
   id: string;
   /** Read out for the opener. */
@@ -117,7 +117,6 @@ const ROWS = 'flex flex-col gap-1';
  * @param props.openerProps - Extra attributes for the opener.
  * @param props.children - The menu's rows.
  * @param props.contentClassName - Extra classes for the menu panel.
- * @param props.editor - The editor.
  * @param props.container - Which element the menu mounts inside.
  * @param props.scroller - The body's scroller.
  * @param props.openId - Which slot is open.
@@ -131,7 +130,6 @@ function SlotShell({
   openerProps,
   children,
   contentClassName,
-  editor,
   container,
   scroller,
   openId,
@@ -150,7 +148,6 @@ function SlotShell({
   return (
     <DocumentBubbleMenu
       id={id}
-      editor={editor}
       container={container}
       contentClassName={contentClassName}
       scroller={scroller}
@@ -211,7 +208,6 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       face={<CurrentIcon className='h-4 w-4' />}
       openerProps={{ 'data-block-type': current }}
       contentClassName={ROWS}
-      editor={editor}
       container={container}
       scroller={scroller}
       openId={openId}
@@ -225,8 +221,8 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
         return (
           <React.Fragment key={item.id}>
             {/* demo:571 rules off the headings from the lists below them. */}
-            {item.id === 'bullet-list' ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem
+            {item.id === 'bullet-list' ? <BubbleMenuRule /> : null}
+            <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
               // The row the selection is already in. Its fill sits one step
               // past hover in the same direction, so hovering it never washes
@@ -248,11 +244,11 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               <Icon />
               {t(item.labelKey)}
               {item.shortcut ? (
-                <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
+                <BubbleMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
                   {formatShortcut(item.shortcut)}
-                </DropdownMenuShortcut>
+                </BubbleMenuShortcut>
               ) : null}
-            </DropdownMenuItem>
+            </BubbleMenuRow>
           </React.Fragment>
         );
       })}
@@ -313,14 +309,13 @@ export const AlignSlot = React.memo(function AlignSlot({
         className: cn(SLOT, !appliesHere && UNAVAILABLE),
       }}
       contentClassName={ROWS}
-      editor={editor}
       container={container}
       scroller={scroller}
       openId={openId}
       onOpenChange={askOpen}
     >
       {ALIGN_ITEMS.map((item) => (
-        <DropdownMenuItem
+        <BubbleMenuRow
           key={item.id}
           data-testid={`${id}-item-${item.id}`}
           // Left is where every block already is, so it is the row demo:590
@@ -335,7 +330,7 @@ export const AlignSlot = React.memo(function AlignSlot({
         >
           <item.Icon />
           {t(item.labelKey)}
-        </DropdownMenuItem>
+        </BubbleMenuRow>
       ))}
     </SlotShell>
   );
@@ -365,7 +360,6 @@ const COLOUR_CELL =
  * @returns The slot.
  */
 export const ColorSlot = React.memo(function ColorSlot({
-  editor,
   container,
   scroller,
   openId,
@@ -394,15 +388,14 @@ export const ColorSlot = React.memo(function ColorSlot({
       label={label}
       face='A'
       openerProps={{ className: `${SLOT} font-semibold` }}
-      editor={editor}
       container={container}
       scroller={scroller}
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      <DropdownMenuLabel>
+      <BubbleMenuHeading>
         {t('spaces.document.commands.textColor')}
-      </DropdownMenuLabel>
+      </BubbleMenuHeading>
       <div className='flex gap-1.5 px-2 pb-3.5'>
         {/* The default sits first and reads as the one in force, since nothing
             has coloured the text (demo:665). */}
@@ -436,9 +429,9 @@ export const ColorSlot = React.memo(function ColorSlot({
           </Button>
         ))}
       </div>
-      <DropdownMenuLabel>
+      <BubbleMenuHeading>
         {t('spaces.document.commands.fillColor')}
-      </DropdownMenuLabel>
+      </BubbleMenuHeading>
       <div className='flex gap-1.5 px-2 pb-1'>
         {/* No background, drawn as the struck-through cell demo:252-260 draws,
             and likewise the one in force. */}
@@ -534,7 +527,6 @@ const AI_GROUPS = [
  * @returns The slot.
  */
 export const AiSlot = React.memo(function AiSlot({
-  editor,
   container,
   scroller,
   openId,
@@ -557,7 +549,6 @@ export const AiSlot = React.memo(function AiSlot({
         </>
       )}
       contentClassName={ROWS}
-      editor={editor}
       container={container}
       scroller={scroller}
       openId={openId}
@@ -565,9 +556,9 @@ export const AiSlot = React.memo(function AiSlot({
     >
       {AI_GROUPS.map((group) => (
         <React.Fragment key={group.labelKey}>
-          <DropdownMenuLabel>{t(group.labelKey)}</DropdownMenuLabel>
+          <BubbleMenuHeading>{t(group.labelKey)}</BubbleMenuHeading>
           {group.items.map((item) => (
-            <DropdownMenuItem
+            <BubbleMenuRow
               key={item.id}
               data-testid={`doc-bubble-ai-item-${item.id}`}
               onSelect={() => {
@@ -575,7 +566,7 @@ export const AiSlot = React.memo(function AiSlot({
               }}
             >
               {t(item.labelKey)}
-            </DropdownMenuItem>
+            </BubbleMenuRow>
           ))}
         </React.Fragment>
       ))}
