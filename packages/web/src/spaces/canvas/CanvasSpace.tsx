@@ -140,6 +140,7 @@ import {
   GROUP_PADDING,
   groupResizeBounds,
   planGroupGrowth,
+  reanchoredMembers,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
@@ -3456,14 +3457,13 @@ function CanvasSpaceInner({
         // ReactFlow's native per-control clamp (GroupResizer bounds) already keeps
         // every member ≥ GROUP_PADDING inside — even on a fast release — so commit
         // the rect VERBATIM (no post-commit repair). Each member's new relative
-        // position is read off the buffer, which is the only place that knows it:
-        // ReactFlow reanchored it against the moving origin as the gesture ran
-        // (`@xyflow/system:3484-3492`). A member a remote gesture holds goes
-        // through `writable` like every other write here, so this end commits
-        // nothing about it — that gesture's own release does, measured against
-        // the origin this resize is publishing. One atomic undo entry: the
-        // Group's new size/position, its members, PLUS any newly absorbed loose
-        // nodes.
+        // position is computed from the document: a resize moves the origin and
+        // leaves the members where they are drawn, so the new number is the
+        // stored one plus however far the origin travelled. Reading the document
+        // is what makes this independent of whose gesture is running — a
+        // collaborator who moved one of these members has already written it.
+        // One atomic undo entry: the Group's new size/position, its members,
+        // PLUS any newly absorbed loose nodes.
         gesture.end(() => {
           runCanvasUndoBatch(projectId, spaceId, () => {
             resizeGroup(
@@ -3474,9 +3474,13 @@ function CanvasSpaceInner({
               rect.width,
               rect.height,
             );
-            for (const child of buffer.reanchorable()) {
-              if (child.parentId !== groupId) continue;
-              setNodePosition(projectId, spaceId, child.id, child.position);
+            for (const member of reanchoredMembers(
+              buffer.documentPlaces(),
+              groupId,
+              rect,
+              buffer.heldByRemote(),
+            )) {
+              setNodePosition(projectId, spaceId, member.id, member.position);
             }
             for (const join of joins) {
               setNodeParent(projectId, spaceId, join.id, join.parentId, join.position);

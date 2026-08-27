@@ -8,7 +8,6 @@ import type { DocumentPlace } from '@web/spaces/canvas/doc-geometry-view';
 import {
   docGeometryView,
   landingCandidates,
-  reanchorable,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 
@@ -28,17 +27,14 @@ export interface BufferAccess {
    */
   landing: () => Node[];
   /**
-   * Those nodes whose position relative to their parent no remote gesture is
-   * changing, as the canvas is drawing them.
+   * The nodes as the document has them.
    *
-   * This one reads the buffer rather than `settled`, because the value it is
-   * after is the one this end's own gesture just produced: resizing a Group
-   * from its top or left edge moves the origin, and ReactFlow re-anchors every
-   * member against it (`@xyflow/system:3484-3492`). `settled` exists to undo a
-   * gesture's geometry, which for these members would hand back the position
-   * they had before the resize.
+   * A resize computes each member's new position from the document rather than
+   * from the buffer: the buffer's copy of a member depends on whose gesture is
+   * running and when it started, while the document holds one number that every
+   * client agrees on, collaborators' finished moves included.
    */
-  reanchorable: () => Node[];
+  documentPlaces: () => ReadonlyArray<DocumentPlace>;
   /** The ids remote gestures are holding right now. */
   heldByRemote: () => ReadonlySet<string>;
   /**
@@ -99,8 +95,7 @@ export function useBufferAccess(
     return {
       settled,
       landing: (): Node[] => landingCandidates(settled(), gestureRef.current),
-      reanchorable: (): Node[] =>
-        reanchorable(nodesRef.current, gestureRef.current),
+      documentPlaces: (): ReadonlyArray<DocumentPlace> => docRef.current,
       heldByRemote: (): ReadonlySet<string> => new Set(gestureRef.current.keys()),
       onScreen: (): ReadonlyArray<Node> => nodesRef.current,
     };

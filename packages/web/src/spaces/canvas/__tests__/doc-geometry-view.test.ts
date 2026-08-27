@@ -17,7 +17,6 @@ import type { DocumentPlace } from '@web/spaces/canvas/doc-geometry-view';
 import {
   docGeometryView,
   landingCandidates,
-  reanchorable,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 
@@ -170,33 +169,6 @@ describe('docGeometryView', () => {
       { x: 1, y: 2 },
       { x: 3, y: 4 },
     ]);
-  });
-});
-
-describe('reanchorable', () => {
-  it('leaves out a node a remote gesture has hold of directly', () => {
-    const buffer = [node('m1', 20, 20, { parentId: 'g1' })];
-    expect(reanchorable(buffer, moving('m1')).map((n) => n.id)).toEqual([]);
-  });
-
-  it('keeps a member whose Group is the one being dragged', () => {
-    // Dragging a Group rewrites the Group's own coordinates and the members
-    // follow through `parentId`, so their positions relative to it never
-    // changed and this end's resize may write them.
-    const buffer = [node('m1', 20, 20, { parentId: 'g1' })];
-    expect(reanchorable(buffer, moving('g1', 'm1')).map((n) => n.id)).toEqual([
-      'm1',
-    ]);
-  });
-
-  it('keeps a node no remote gesture touches', () => {
-    const buffer = [node('m1', 20, 20, { parentId: 'g1' })];
-    expect(reanchorable(buffer, moving('other')).map((n) => n.id)).toEqual(['m1']);
-  });
-
-  it('hands the array straight back when no remote gesture is running', () => {
-    const buffer = [node('m1', 20, 20, { parentId: 'g1' })];
-    expect(reanchorable(buffer, new Map())).toBe(buffer);
   });
 });
 

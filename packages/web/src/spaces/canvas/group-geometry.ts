@@ -298,3 +298,58 @@ export function groupResizeBounds(
     { position: 'bottom-right', minWidth: minWFromRight, minHeight: minHFromBottom },
   ];
 }
+
+/** What a member needs to know about itself for a Group resize to place it. */
+export interface AnchoredMember {
+  /** The node's id. */
+  id: string;
+  /** Containing Group id, when this node is a member. */
+  parentId?: string;
+  /** Position relative to the parent Group. */
+  position: { x: number; y: number };
+}
+
+/**
+ * Where each member of a Group has to sit for a rect this end is committing.
+ *
+ * A resize moves the Group's origin and leaves every member exactly where it is
+ * drawn, so a member's new position relative to the Group is its old one plus
+ * however far the origin travelled. Both of those come from the document, which
+ * is what makes this independent of what any gesture is doing: a collaborator
+ * who moved one of these members has already written that move, and it is the
+ * number this reads.
+ *
+ * A member somebody else has hold of directly is left out — their own release
+ * writes it, measured against the origin this resize is publishing. A member
+ * held only through its Group stays in: dragging a Group never changes what its
+ * members' positions are relative to it, so this end is still the only writer.
+ * @param docNodes - The nodes as the document has them.
+ * @param groupId - The Group being resized.
+ * @param newOrigin - The origin this resize is about to commit.
+ * @param newOrigin.x - Its x.
+ * @param newOrigin.y - Its y.
+ * @param heldByRemote - Every node id a remote gesture is currently moving.
+ * @returns One position per member that has to move, empty when none does.
+ */
+export function reanchoredMembers(
+  docNodes: ReadonlyArray<AnchoredMember>,
+  groupId: string,
+  newOrigin: { x: number; y: number },
+  heldByRemote: ReadonlySet<string>,
+): Array<{ id: string; position: { x: number; y: number } }> {
+  const origin = docNodes.find((node) => node.id === groupId)?.position;
+  if (origin === undefined) return [];
+  const dx = origin.x - newOrigin.x;
+  const dy = origin.y - newOrigin.y;
+  if (dx === 0 && dy === 0) return [];
+  return docNodes
+    .filter(
+      (node) =>
+        node.parentId === groupId &&
+        !(heldByRemote.has(node.id) && !heldByRemote.has(groupId)),
+    )
+    .map((node) => ({
+      id: node.id,
+      position: { x: node.position.x + dx, y: node.position.y + dy },
+    }));
+}

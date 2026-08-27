@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  reanchoredMembers,
   rectContainsPoint,
   groupContainsMemberCenter,
   toRelativePosition,
@@ -312,5 +313,43 @@ describe('groupResizeBounds — per-control min size so the native clamp keeps m
       expect(entry.minWidth).toBe(40);
       expect(entry.minHeight).toBe(40);
     }
+  });
+});
+
+describe('reanchoredMembers', () => {
+  /** A Group at 200,200 holding one member 24,24 inside it. */
+  const doc = [
+    { id: 'g1', position: { x: 200, y: 200 } },
+    { id: 'm1', parentId: 'g1', position: { x: 24, y: 24 } },
+  ];
+
+  it('moves a member by the same amount the origin moved', () => {
+    // Pulling the left edge to 150 moves the origin 50 left, so the member has
+    // to sit 50 further right inside the Group to stay where it is drawn.
+    expect(
+      reanchoredMembers(doc, 'g1', { x: 150, y: 200 }, new Set()),
+    ).toEqual([{ id: 'm1', position: { x: 74, y: 24 } }]);
+  });
+
+  it('writes nothing when the origin did not move', () => {
+    expect(reanchoredMembers(doc, 'g1', { x: 200, y: 200 }, new Set())).toEqual([]);
+  });
+
+  it('leaves out a member a remote gesture has hold of directly', () => {
+    expect(
+      reanchoredMembers(doc, 'g1', { x: 150, y: 200 }, new Set(['m1'])),
+    ).toEqual([]);
+  });
+
+  it('keeps a member whose Group is the one being dragged', () => {
+    // Dragging a Group never changes what its members' positions are relative
+    // to it, so this end's resize is still the only writer of that number.
+    expect(
+      reanchoredMembers(doc, 'g1', { x: 150, y: 200 }, new Set(['g1', 'm1'])),
+    ).toEqual([{ id: 'm1', position: { x: 74, y: 24 } }]);
+  });
+
+  it('writes nothing when the document has no such Group', () => {
+    expect(reanchoredMembers(doc, 'gone', { x: 150, y: 200 }, new Set())).toEqual([]);
   });
 });
