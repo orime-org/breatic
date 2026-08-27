@@ -72,7 +72,8 @@
         "used": "Spent any of them, even one? That pack can no longer be refunded.",
         "expired": "Past 30 days, packs are no longer refundable."
       },
-      "not_found": "That purchase could not be found."
+      "not_found": "That purchase could not be found.",
+      "unavailable": "This deployment does not sell credits."
     },
     "skill": {
       "not_found": "Skill not found",

@@ -72,7 +72,8 @@
         "used": "只要花过其中任何一个，这一笔就不能再退了。",
         "expired": "超过 30 天，不再受理退款。"
       },
-      "not_found": "找不到这笔购买。"
+      "not_found": "找不到这笔购买。",
+      "unavailable": "这个部署不出售积分。"
     },
     "skill": {
       "not_found": "找不到这个 Skill",

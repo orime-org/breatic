@@ -736,6 +736,34 @@ describe("POST /payment/checkout — who may start a purchase", () => {
     expect((await checkout(null)).status).toBe(401);
   });
 
+  it("says it is credits that are not for sale where nothing is", async () => {
+    initCore({
+      ...process.env,
+      PAYMENT_ENABLED: "false",
+      STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    });
+    const buyer = await seedBuyer();
+    try {
+      const res = await checkout(buyer.cookie);
+      expect(res.status).toBe(404);
+
+      // The gate is shared with the membership leg, and the sentence is not.
+      // A buyer who asked to top up and is told memberships are unavailable
+      // has been answered about something they did not ask for.
+      const body = (await res.json()) as { error?: { message?: string } };
+      expect(body.error?.message).toBe("This deployment does not sell credits.");
+    } finally {
+      initCore({
+        ...process.env,
+        PAYMENT_ENABLED: "true",
+        STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+        STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+      });
+      await dropBuyer(buyer.userId);
+    }
+  });
+
   it("refuses a pack this deployment does not sell", async () => {
     const buyer = await seedBuyer();
     try {

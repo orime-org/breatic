@@ -10,7 +10,8 @@
  *
  * Both the membership and the credit legs gate on this, so the test lives in
  * one place: a second copy would be a second answer the day the flag's meaning
- * moved.
+ * moved. What each leg says is its own — a buyer who asked to top up and is
+ * told memberships are unavailable has been answered about something else.
  */
 
 import type { MiddlewareHandler } from "hono";
@@ -18,23 +19,32 @@ import { env, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 
 /**
- * Throw when this deployment sells nothing.
+ * Refuse with this leg's own sentence when the deployment sells nothing.
+ * @param message - What to tell the caller, already in their language.
  * @throws {NotFoundError} When payments are switched off.
  */
-export function assertPaymentsEnabled(): void {
+function refuseWhenNotSelling(message: string): void {
   if (!env.PAYMENT_ENABLED) {
-    throw new NotFoundError(t("server.membership.unavailable"));
+    throw new NotFoundError(message);
   }
 }
 
 /**
- * The same test as a middleware, for routes that gate the whole handler.
+ * Throw on the membership endpoints when this deployment sells nothing.
+ * @throws {NotFoundError} When payments are switched off.
+ */
+export function assertPaymentsEnabled(): void {
+  refuseWhenNotSelling(t("server.membership.unavailable"));
+}
+
+/**
+ * The same test as a middleware, for the credit endpoints.
  * @param _c - The request context, unused.
  * @param next - The handler behind the gate.
  * @returns Its result.
  * @throws {NotFoundError} When payments are switched off.
  */
 export const requirePayments: MiddlewareHandler = (_c, next) => {
-  assertPaymentsEnabled();
+  refuseWhenNotSelling(t("server.payment.unavailable"));
   return next();
 };
