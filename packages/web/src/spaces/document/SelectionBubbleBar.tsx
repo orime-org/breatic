@@ -520,6 +520,11 @@ function BubbleBar({
   // transaction (plus focus and blur), and the mouse-event path that pins a
   // select-all to the pointer — the latter carries no transaction of its own.
   const [warranted, setWarranted] = React.useState(false);
+  // Which anchor the bar hangs off, as state so the render can read it: the
+  // pointer when a select-all is pinned, a line of the selection otherwise.
+  // The two want different coordinate systems (see `strategy` below), and
+  // `useFloating` is called during the render.
+  const [pinned, setPinned] = React.useState(false);
   const pointerRef = React.useRef<{ x: number; y: number } | null>(null);
   const pinnedRef = React.useRef<BubblePin | null>(null);
   // Whether the last transaction found a select-all, so the next one can tell
@@ -750,8 +755,10 @@ function BubbleBar({
       if (!isWarranted(view) || !pinToPointer()) return;
       // Straight to the state. This path carries no transaction of its own —
       // the reader moved the pointer, they did not edit — so there is nothing
-      // for the transaction listener to hear.
+      // for the transaction listener to hear. `pinToPointer` answered true
+      // just above, so this bar hangs off the pointer.
       setWarranted(true);
+      setPinned(true);
     };
     /**
      * Forget the pointer once it leaves the document.
@@ -949,9 +956,21 @@ function BubbleBar({
     // Tracked so `isPositioned` means "this bar, as it stands now, has been
     // placed" — it goes back to false each time the bar leaves.
     open: warranted,
-    // The bar hangs inside the scroller, positioned in the scrolled content's
-    // own coordinates, so it travels with the text.
-    strategy: 'absolute',
+    // Two anchors, two coordinate systems.
+    //
+    // Against a line of the selection the bar belongs to the scrolled content:
+    // `absolute` inside the scroller puts its offsets in the content's own
+    // coordinates, so it travels with the text and the scroller's overflow
+    // clips it when the line goes (E1, E5).
+    //
+    // Against the pointer it belongs to the screen. The pin is a client point,
+    // and holding a content-positioned element at a fixed client point takes a
+    // correction on every scroll event — measured in a browser, the bar moved
+    // with the content for the frame between the scroll and the correction
+    // landing, 120px on a single wheel step. `fixed` takes its offsets from the
+    // viewport, so the scroll moves nothing and there is nothing to correct
+    // (E2).
+    strategy: pinned ? 'fixed' : 'absolute',
     placement: side ?? 'top-start',
     middleware,
     whileElementsMounted: autoUpdate,
@@ -1036,6 +1055,10 @@ function BubbleBar({
     /** Re-ask whether the bar belongs on screen, and where it belongs. */
     const ask = (): void => {
       setWarranted(shouldShow({ view: editor.view }));
+      // Which anchor, asked at the same three moments: a selection becoming or
+      // ceasing to be a select-all is a transaction, and the answer decides
+      // the coordinate system the position is computed in.
+      setPinned(pinnedPoint() !== null);
       // Whether and where are asked together: these same three moments are
       // the ones that move the anchor. `autoUpdate` does not cover them — it
       // listens for scrolls and for elements changing size, and a new
@@ -1070,7 +1093,7 @@ function BubbleBar({
       editor.off('focus', ask);
       editor.off('blur', askOnBlur);
     };
-  }, [editor, shouldShow, update]);
+  }, [editor, shouldShow, pinnedPoint, update]);
 
   // Whether there is a selection at all, subscribed rather than read during
   // render — a co-editor's change arrives with no React render behind it. The

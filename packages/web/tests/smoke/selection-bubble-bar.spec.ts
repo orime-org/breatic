@@ -1588,6 +1588,53 @@ test('往上拖着选到正文区顶端，松手后条整个在正文区里', as
   expect(box.y + box.height).toBeLessThanOrEqual(view.bottom + 1);
 });
 
+// E2's "全选时滚动正文，浮出条在屏幕上不动" measured inside the frame rather
+// than across it. Sampling before and after a scroll settles says nothing
+// about what the frame between them drew.
+test('全选钉住之后滚动，条在滚动发生的那一刻就没有动', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  const view = await bodyView(page);
+  await page.mouse.move(view.left + 300, view.top + 260);
+  await selectWholeDocument(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  const samples = await page.evaluate(async () => {
+    const bar = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement;
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    const top = (): number => Math.round(bar.getBoundingClientRect().top);
+    const frame = (): Promise<void> =>
+      new Promise((r) => {
+        requestAnimationFrame(() => {
+          r();
+        });
+      });
+    const out: { before: number; sameTick: number; settled: number }[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const before = top();
+      viewport.scrollTop += 120;
+      const sameTick = top();
+      await frame();
+      await frame();
+      out.push({ before, sameTick, settled: top() });
+    }
+    return out;
+  });
+
+  // Every reading is the same one: the bar does not travel with the content
+  // and get pulled back, it never travels.
+  for (const s of samples) {
+    expect(s.sameTick).toBe(s.before);
+    expect(s.settled).toBe(s.before);
+  }
+});
+
 test('link: an address with a space in the host leaves confirm dimmed', async () => {
   // Only a real browser answers this. The check rests on the URL parser, and
   // the two runtimes treat `https://hello world` in opposite ways: Node's
