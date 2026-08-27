@@ -243,11 +243,22 @@ describe('the bubble bar shell', () => {
         (menu.querySelector(`[data-testid="${item}"]`) as HTMLElement).click();
       });
 
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toContain('not implemented yet');
+      // Counted among our own lines. `console.warn` carries other traffic:
+      // ProseMirror writes "TextSelection endpoint not pointing into a node
+      // with inline content" from the setup above whenever the Y.Doc's content
+      // has not landed by the time the selection is set, and a count of every
+      // call made that warning decide whether this case passed.
+      const ours = warn.mock.calls.filter((call) =>
+        String(call[0]).startsWith('not implemented yet'));
+      expect(ours).toHaveLength(1);
       // The document is what it was: the console is the only thing that
       // happened.
       expect(markupOf()).toBe(before);
+      // C2 ends "菜单照常关闭", and it says so for every row alike — the ones
+      // that reach a command and the ones that reach the console.
+      await waitFor(() => {
+        expect(screen.queryByTestId(`${slot}-menu`)).toBeNull();
+      });
     });
 
     // The task list is the one row the demo greys (demo:588), because it has

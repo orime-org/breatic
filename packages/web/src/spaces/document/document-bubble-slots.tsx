@@ -326,6 +326,17 @@ export const ColorSlot = React.memo(function ColorSlot({
   const label = t('spaces.document.commands.comingLabel', {
     name: t('spaces.document.commands.color'),
   });
+  // The panel's cells are buttons laid out in rows rather than menu rows, so
+  // the close is theirs to ask for: Radix dismisses on selecting a
+  // `DropdownMenuItem` and leaves every other press alone. C2 ends "菜单照常
+  // 关闭" and says it for every row alike.
+  const pick = React.useCallback(
+    (what: string): void => {
+      pressedWithNothingBehindIt(what);
+      onOpenChange(id, false);
+    },
+    [onOpenChange],
+  );
 
   return (
     <SlotShell
@@ -353,7 +364,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           data-selected='true'
           className={cn(COLOUR_CELL, 'border-palette-blue font-semibold')}
           onClick={() => {
-            pressedWithNothingBehindIt('text colour default');
+            pick('text colour default');
           }}
         >
           A
@@ -368,7 +379,7 @@ export const ColorSlot = React.memo(function ColorSlot({
             className={cn(COLOUR_CELL, 'font-semibold')}
             style={{ color: `var(--color-palette-${hue})` }}
             onClick={() => {
-              pressedWithNothingBehindIt(`text colour ${hue}`);
+              pick(`text colour ${hue}`);
             }}
           >
             A
@@ -388,7 +399,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           data-testid={`${id}-fill-none`}
           data-selected='true'
           onClick={() => {
-            pressedWithNothingBehindIt('background colour none');
+            pick('background colour none');
           }}
           className={cn(
             COLOUR_CELL,
@@ -410,7 +421,7 @@ export const ColorSlot = React.memo(function ColorSlot({
               background: `color-mix(in srgb, var(--color-palette-${hue}) 14%, transparent)`,
             }}
             onClick={() => {
-              pressedWithNothingBehindIt(`background colour ${hue}`);
+              pick(`background colour ${hue}`);
             }}
           />
         ))}
@@ -425,7 +436,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           tabIndex={-1}
           className='h-8 w-full text-sm'
           onClick={() => {
-            pressedWithNothingBehindIt('colour reset');
+            pick('colour reset');
           }}
         >
           {t('spaces.document.commands.colorReset')}
