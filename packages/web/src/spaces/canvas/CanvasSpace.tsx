@@ -2752,12 +2752,15 @@ function CanvasSpaceInner({
         return;
       }
       // Every geometry read here comes from the same view: every node present,
-      // and whatever a remote gesture is holding put back at its document
-      // place. So a Group still answers which Group a node sits in, and no
-      // in-flight coordinate reaches a decision. Which of those nodes may take
-      // part in a landing or a Group's new size is said separately, below.
-      const settled = buffer.settled();
-      const byId = new Map(settled.map((item) => [item.id, item]));
+      // and every Group where this screen draws it. A drop is judged against
+      // what the user aimed at, and where a node lands when it leaves a Group is
+      // the canvas point the pointer released — both are the screen's answer.
+      // A Group a remote is dragging takes no part in a landing and is never
+      // sized around, said separately below, so no in-flight rect reaches a
+      // write: the only geometry an expansion states is a Group's own, and a
+      // Group a remote holds is skipped before that.
+      const onScreen = buffer.onScreen() as Node[];
+      const byId = new Map(onScreen.map((item) => [item.id, item]));
       /**
        * Resolve a node to absolute canvas coordinates (a member's stored
        * position is relative to its Group) + its rendered size — the form
@@ -2778,12 +2781,24 @@ function CanvasSpaceInner({
             : item;
         const parent =
           source.parentId !== undefined ? byId.get(source.parentId) : undefined;
-        const absPos = parent
-          ? {
-            x: parent.position.x + source.position.x,
-            y: parent.position.y + source.position.y,
-          }
-          : source.position;
+        // ReactFlow states each node's absolute position itself, off the same
+        // frame it drew. Adding a member's relative offset to a Group origin
+        // read anywhere else adds up two frames: the offset is measured against
+        // the origin ReactFlow held when the pointer moved, and a Group a remote
+        // is dragging moves between frames, so the sum is a place no screen ever
+        // showed. Its own answer is only stale in the one case the fallback
+        // below covers — a collaborator changed this node's Group mid-drag, so
+        // ReactFlow is still holding a number from the space the node just left.
+        const absPos =
+          (source === item
+            ? getInternalNode(item.id)?.internals.positionAbsolute
+            : undefined) ??
+          (parent
+            ? {
+              x: parent.position.x + source.position.x,
+              y: parent.position.y + source.position.y,
+            }
+            : source.position);
         return {
           id: item.id,
           type: item.type ?? '',
@@ -2800,7 +2815,7 @@ function CanvasSpaceInner({
       };
       const ops = planGroupDrag(
         dragged.map(toDragNode),
-        settled.map(toDragNode),
+        onScreen.map(toDragNode),
         buffer.heldByRemote(),
       );
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
@@ -2823,7 +2838,7 @@ function CanvasSpaceInner({
         });
       });
     },
-    [readOnly, projectId, spaceId, buffer, gesture],
+    [readOnly, projectId, spaceId, buffer, gesture, getInternalNode],
   );
 
   // Wrap the loose selection in a new Group (group redesign). The Group

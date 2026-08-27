@@ -230,6 +230,24 @@ async function documentPosition(
 }
 
 /**
+ * Which Group the document says a node belongs to.
+ * @param page - The page to read.
+ * @param nodeId - The node to read.
+ * @returns Its parent Group id, or null when it is top-level or absent.
+ */
+async function documentParent(
+  page: Page,
+  nodeId: string,
+): Promise<string | null> {
+  return withCanvasModule<string | null, string>(
+    page,
+    `const found = canvas.readCanvasGraph(pid, sid).nodes.find((n) => n.id === extra);
+     return found ? found.parentId ?? null : null;`,
+    nodeId,
+  );
+}
+
+/**
  * Where a page is drawing a node right now, in screen coordinates.
  * @param page - The page to read.
  * @param nodeId - The node to find.
@@ -1034,6 +1052,89 @@ test('a Group grows once, at the end of the drag that fills it', async () => {
   expect(writes).toBe(2);
 
   await removeNode(mover, incomingId);
+  await removeNode(mover, memberId);
+  await removeNode(mover, groupId);
+});
+
+test('a member dragged out of a Group a remote holds lands where it was released', async () => {
+  // The members of such a Group stay draggable on this end, so dragging one
+  // clear of it is this user's own decision and the canvas point they released
+  // is where it belongs. Measuring the member against the Group's DOCUMENT
+  // origin while the screen draws it against the origin the other end has
+  // dragged to would put it back by exactly that distance.
+  const groupId = `leave-held-${Date.now()}`;
+  const memberId = `leaver-${Date.now()}`;
+  await seedGroupWithMember(mover, groupId, memberId);
+  await expect(
+    mover.locator(`.react-flow__node[data-id="${memberId}"]`),
+  ).toBeVisible({ timeout: SETTLE_MS });
+  const groupBeforeHold = await drawnAt(mover, groupId);
+  const held = await drawnAt(watcher, groupId);
+  if (groupBeforeHold === null || held === null) {
+    throw new Error('group missing');
+  }
+
+  // The watcher takes the Group and keeps holding it. Sideways, and below the
+  // member: the member fills the Group from (24,24) out to 320x240, and a press
+  // inside it drags the member instead, leaving the Group where it was. Both
+  // ends cull what leaves the viewport (`onlyRenderVisibleElements`), so the
+  // travel stays small enough for everything to keep its DOM.
+  await watcher.mouse.move(held.x + 200, held.y + 280);
+  await watcher.mouse.down();
+  for (let step = 1; step <= 5; step += 1) {
+    await watcher.mouse.move(held.x + 200 + step * 60, held.y + 280);
+    await watcher.waitForTimeout(90);
+  }
+
+  // The witness that the premise holds: without the Group having travelled on
+  // THIS screen the two origins coincide and every assertion below passes for
+  // the wrong reason.
+  await expect
+    .poll(async () => (await drawnAt(mover, groupId))?.x ?? null, {
+      timeout: SETTLE_MS,
+    })
+    .toBeGreaterThan(groupBeforeHold.x + 100);
+  const shifted = await drawnAt(mover, groupId);
+  if (shifted === null) throw new Error('group missing on the mover');
+
+  // The mover drags the member off the Group's left edge, which by now sits
+  // where the other end has dragged it.
+  const from = await drawnAt(mover, memberId);
+  if (from === null) throw new Error('member missing on the mover');
+  await mover.mouse.move(from.x + 40, from.y + 40);
+  await mover.mouse.down();
+  for (let step = 1; step <= 5; step += 1) {
+    await mover.mouse.move(from.x + 40 - step * 90, from.y + 40);
+    await mover.waitForTimeout(90);
+  }
+  const drawnBefore = await drawnAt(mover, memberId);
+  await mover.mouse.up();
+  await mover.waitForTimeout(SETTLE_MS);
+
+  if (drawnBefore === null) throw new Error('no frame before the release');
+  // The whole case rests on the member having left: still a member, and the
+  // assertion below would hold for a nudge that went nowhere.
+  expect(await documentParent(mover, memberId)).toBeNull();
+
+  // What went into the document is the one thing that has to be right, so work
+  // out what the pointer asked for and compare against that. Everything here is
+  // a DIFFERENCE between two readings of the same element, so whatever constant
+  // sits between a node's position and its box cancels out.
+  const delta = shifted.x - groupBeforeHold.x; // the other end's travel
+  const travel = drawnBefore.x - from.x; // this user's own travel
+  const docGroup = await documentPosition(mover, groupId);
+  const docMember = await documentPosition(mover, memberId);
+  if (docGroup === null || docMember === null) throw new Error('gone');
+  // Where the member was drawn when the drag began, in canvas terms: the
+  // Group's document origin, plus how far the other end has taken it, plus the
+  // 24 it sits at inside the Group. Add this user's travel and that is the
+  // point they released it at. Reading the Group's document origin alone would
+  // land `delta` short of it.
+  expect(docMember.x).toBeCloseTo(docGroup.x + delta + 24 + travel, 0);
+  expect(docMember.y).toBeCloseTo(docGroup.y + 24, 0);
+
+  await watcher.mouse.up();
+  await watcher.waitForTimeout(SETTLE_MS);
   await removeNode(mover, memberId);
   await removeNode(mover, groupId);
 });
