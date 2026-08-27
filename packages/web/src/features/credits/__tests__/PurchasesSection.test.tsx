@@ -277,16 +277,26 @@ describe('the purchase history', () => {
   it('counts what still needs assigning, and only once the list is read through', async () => {
     history.mockResolvedValue({
       items: [
+        // Active and pointed nowhere: the one thing this figure counts.
         row({ paymentId: 'a', designatedStudioId: null, designatedStudioName: null }),
-        row({ paymentId: 'b', status: 'pending', lifecycle: null }),
+        // Pointed nowhere but with no lot to point: there is nothing here to
+        // assign. Drop the lifecycle half of the test and this becomes a
+        // second one.
+        row({
+          paymentId: 'b',
+          status: 'pending',
+          lifecycle: null,
+          designatedStudioId: null,
+          designatedStudioName: null,
+        }),
+        // A lot, already pointed somewhere. Drop the designation half and this
+        // becomes a second one.
+        row({ paymentId: 'c' }),
       ],
       nextCursor: null,
     });
     renderHistory();
     await screen.findAllByTestId('purchase-row');
-    // One active-and-unassigned. The pending row is unassigned too, and has no
-    // lot, so it is not one of these — asserting the figure is what tells the
-    // two apart; the notice exists either way.
     const notice = await screen.findByTestId('unassigned-notice');
     expect(notice.textContent).toContain('1');
     expect(notice.textContent).not.toContain('2');

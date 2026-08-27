@@ -17,10 +17,10 @@
  * which is what makes a confirmation resent next year say what that purchase
  * actually agreed to.
  *
- * The refund rule itself is settled in the credits decision of 2026-07-31,
- * "钱包与退款": thirty UTC calendar days from payment, full refund only while
- * nothing in the pack has been spent, one refund per purchase. The three
- * lines here are the wording the pricing page publishes.
+ * The refund rule itself was settled on 2026-07-31: thirty UTC calendar days
+ * from payment, full refund only while nothing in the pack has been spent,
+ * one refund per purchase. The three lines here are the wording the pricing
+ * page publishes.
  */
 
 import { t } from "@breatic/shared";

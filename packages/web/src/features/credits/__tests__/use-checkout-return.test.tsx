@@ -22,7 +22,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useSearchParams } from 'react-router-dom';
 
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
@@ -56,6 +56,9 @@ interface Seen {
 
 let seen: Seen;
 
+/** The hook's own close, for the case where the buyer puts the panel away. */
+let closeOverlay: () => void = () => {};
+
 /**
  * A probe that renders whatever the hook says.
  * @returns Nothing visible; the state is read from `seen`.
@@ -72,6 +75,7 @@ function Probe({ timeoutMs = 50 }: { timeoutMs?: number }): React.JSX.Element {
     section: state.initialSection,
     search: params.toString(),
   };
+  closeOverlay = state.close;
   return <div data-testid='probe' />;
 }
 
@@ -262,6 +266,36 @@ describe('when the answer arrives after the wait already came down', () => {
     expect(seen.waiting).toBe(false);
     expect(seen.section).toBe('lots');
     expect(seen.search).toBe(addressAfterLanding);
+  });
+
+  it('does not reopen the panel the buyer has already closed', async () => {
+    let settle: (value: { status: string }) => void = () => {};
+    confirm.mockReturnValue(
+      new Promise<{ status: string }>((resolve) => {
+        settle = resolve;
+      }),
+    );
+    mountAt('?credits=1&session_id=cs_test_1');
+
+    // The timeout lands them in their purchase history, they read it, and
+    // they close it.
+    await waitFor(() => {
+      expect(seen.waiting).toBe(false);
+    });
+    act(() => {
+      closeOverlay();
+    });
+    expect(seen.open).toBe(false);
+
+    // Now the endpoint answers. Landing a second time would put the panel
+    // back over whatever they moved on to — this is the only state in which
+    // the two landings are told apart, since every other effect of the second
+    // one is identical to the first.
+    settle({ status: 'granted' });
+    await waitFor(() => {
+      expect(confirm).toHaveBeenCalledTimes(1);
+    });
+    expect(seen.open).toBe(false);
   });
 });
 

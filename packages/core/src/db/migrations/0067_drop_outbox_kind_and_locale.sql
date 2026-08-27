@@ -16,5 +16,5 @@
 -- `IF EXISTS` makes this a no-op on any database created from the current
 -- 0066.
 
-ALTER TABLE "purchase_mail_outbox" DROP COLUMN IF EXISTS "kind";
+ALTER TABLE "purchase_mail_outbox" DROP COLUMN IF EXISTS "kind";--> statement-breakpoint
 ALTER TABLE "purchase_mail_outbox" DROP COLUMN IF EXISTS "locale";

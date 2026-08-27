@@ -239,3 +239,41 @@ describe("the emphasis in the consent wording is rendered, not printed", () => {
     }
   });
 });
+
+/**
+ * Both versions name a key, and `t()` hands an unknown key straight back. So
+ * every assertion above that compares the letter against `refundLines(...)`
+ * holds just as well when neither side resolves to anything: point the version
+ * at wording that does not exist and the letter carries the key, the
+ * expectation is the same key, and it all passes.
+ *
+ * These are the assertions that do not: they say the version currently shipped
+ * resolves to real wording, in every language, and would have caught a version
+ * bumped without its copy.
+ */
+describe("both versions name wording that exists", () => {
+  const LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko"];
+
+  it.each(LOCALES)("the consent wording resolves in %s", (locale) => {
+    const text = consentText(locale);
+    expect(text).not.toContain("server.payment.");
+    expect(text.length).toBeGreaterThan(20);
+  });
+
+  it.each(LOCALES)("all three refund lines resolve in %s", (locale) => {
+    const lines = refundLines(locale);
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).not.toContain("server.payment.");
+      expect(line.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("says so when a version names wording that is not there", () => {
+    // What the guard above is guarding against, shown directly: nothing
+    // throws, and the key comes back as though it were the wording.
+    expect(refundLinesAt("refund-credits-v99", "en")[0]).toBe(
+      "server.payment.refund-credits-v99.unused",
+    );
+  });
+});

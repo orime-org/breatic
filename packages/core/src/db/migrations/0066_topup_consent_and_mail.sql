@@ -23,11 +23,11 @@
 -- long as the payment they describe, and deleting a consent record would
 -- destroy the evidence it exists to be.
 
-ALTER TABLE "payments" ADD COLUMN "tax_cents" integer;
-ALTER TABLE "payments" ADD COLUMN "total_cents" integer;
+ALTER TABLE "payments" ADD COLUMN "tax_cents" integer;--> statement-breakpoint
+ALTER TABLE "payments" ADD COLUMN "total_cents" integer;--> statement-breakpoint
 
 ALTER TABLE "payments" ADD CONSTRAINT "payments_status_check"
-  CHECK ("status" IN ('pending', 'completed', 'failed', 'expired'));
+  CHECK ("status" IN ('pending', 'completed', 'failed', 'expired'));--> statement-breakpoint
 
 CREATE TABLE "purchase_consents" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -44,14 +44,14 @@ CREATE TABLE "purchase_consents" (
   "stripe_payment_intent_id" varchar(255),
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "purchase_consents_payment_id_unique" UNIQUE ("payment_id")
-);
+);--> statement-breakpoint
 
 ALTER TABLE "purchase_consents" ADD CONSTRAINT "purchase_consents_payment_id_payments_id_fk"
-  FOREIGN KEY ("payment_id") REFERENCES "payments"("id") ON DELETE restrict;
+  FOREIGN KEY ("payment_id") REFERENCES "payments"("id") ON DELETE restrict;--> statement-breakpoint
 ALTER TABLE "purchase_consents" ADD CONSTRAINT "purchase_consents_user_id_users_id_fk"
-  FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE restrict;
+  FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE restrict;--> statement-breakpoint
 
-CREATE INDEX "purchase_consents_user_id_idx" ON "purchase_consents" ("user_id");
+CREATE INDEX "purchase_consents_user_id_idx" ON "purchase_consents" ("user_id");--> statement-breakpoint
 
 CREATE TABLE "purchase_mail_outbox" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE "purchase_mail_outbox" (
   CONSTRAINT "purchase_mail_outbox_payment_id_unique" UNIQUE ("payment_id"),
   CONSTRAINT "purchase_mail_outbox_status_check"
     CHECK ("status" IN ('pending', 'sending', 'sent', 'failed', 'skipped'))
-);
+);--> statement-breakpoint
 
 ALTER TABLE "purchase_mail_outbox" ADD CONSTRAINT "purchase_mail_outbox_payment_id_payments_id_fk"
   FOREIGN KEY ("payment_id") REFERENCES "payments"("id") ON DELETE restrict;
