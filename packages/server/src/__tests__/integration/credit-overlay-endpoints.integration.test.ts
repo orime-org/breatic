@@ -473,7 +473,7 @@ describe("the overview says whether the deployment charges at all (plan §4.4)",
 });
 
 describe("purchases show what was paid and where they point (plan §4.5 §4.6)", () => {
-  it("carries the amount paid and its currency", async () => {
+  it("falls back to the face value on a purchase Stripe never priced", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 880, 1000);
 
@@ -481,11 +481,12 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     const lot = page.items[0];
 
     expect(lot).toBeDefined();
-    // What was paid lives on `payments`, not on `credit_lots`. Working it
-    // back from the credit count through a price table fails too: that table
-    // is replaced wholesale (#13), and an old purchase was bought at the
-    // price of its own day.
-    expect(Number(lot!['paidCents'])).toBe(1000);
+    // This purchase carries no `total_cents`, which is every purchase settled
+    // before #13. What was paid lives on `payments` either way, not on
+    // `credit_lots`. Working it back from the credit count through a price
+    // table fails too: that table is replaced wholesale (#13), and an old
+    // purchase was bought at the price of its own day.
+    expect(lot!['paidCents']).toBe(1000);
     expect(lot!['currency']).toBe("usd");
   });
 
@@ -512,7 +513,7 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     // The purchase history prints `total_cents` for this row. A buyer who
     // opens the assign or refund screen and reads a different number has no
     // way to tell which one is on their statement.
-    expect(Number(lot!['paidCents'])).toBe(1120);
+    expect(lot!['paidCents']).toBe(1120);
   });
 
   it("names the studio a purchase points at", async () => {

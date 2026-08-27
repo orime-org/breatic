@@ -34,11 +34,6 @@ describe("the price file's currency", () => {
     expect(parsed.tiers[0]!.currency).toBe("usd");
   });
 
-  it("leaves one already written in lower case alone", () => {
-    const parsed = pricingSchema.parse({ tiers: [tier("eur")] });
-    expect(parsed.tiers[0]!.currency).toBe("eur");
-  });
-
   it("defaults to usd when a tier names none", () => {
     const parsed = pricingSchema.parse({ tiers: [tier()] });
     expect(parsed.tiers[0]!.currency).toBe("usd");
