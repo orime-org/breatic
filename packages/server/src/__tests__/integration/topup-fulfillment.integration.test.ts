@@ -392,6 +392,69 @@ describe("what the session says decides", () => {
     }
   });
 
+  it("records what Stripe worked out on a checkout whose money is still clearing", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // A delayed payment method: the buyer typed their address and finished
+      // the checkout, so Stripe has the tax and the final figure, while the
+      // money itself has not moved.
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, {
+          payment_status: "unpaid",
+          status: "complete",
+        }),
+      );
+
+      const outcome = await fulfillPayment(sessionId, null);
+
+      expect(outcome.status).toBe("noop");
+      // Nothing has been paid, so nothing is granted and the row stays where
+      // it is — but the figure Stripe holds is the only thing that can tell
+      // the buyer what this will cost, and this is the one moment it is
+      // available before the money lands.
+      expect((await countsFor(userId)).lots).toBe(0);
+      const [row] = await sql<
+        { status: string; total_cents: number | null; tax_cents: number | null }[]
+      >`
+        SELECT status, total_cents, tax_cents FROM payments WHERE id = ${paymentId}
+      `;
+      expect(row!.status).toBe("pending");
+      expect(row!.total_cents).toBe(2240);
+      expect(row!.tax_cents).toBe(240);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("leaves the figures alone on a session still being filled in", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      // Still `open`: Stripe has no address yet, so its `amount_total` is the
+      // face value with no tax worked out. Recording that as the final figure
+      // would say the buyer pays no tax.
+      stripe.checkout.sessions.retrieve.mockResolvedValue(
+        paidSession(sessionId, {
+          payment_status: "unpaid",
+          status: "open",
+          amount_total: 2000,
+          total_details: { amount_tax: 0 },
+        }),
+      );
+
+      await fulfillPayment(sessionId, null);
+
+      const [row] = await sql<
+        { total_cents: number | null; tax_cents: number | null }[]
+      >`
+        SELECT total_cents, tax_cents FROM payments WHERE id = ${paymentId}
+      `;
+      expect(row!.total_cents).toBeNull();
+      expect(row!.tax_cents).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
   it("expires a row whose session Stripe reports as expired", async () => {
     const { userId, paymentId, sessionId } = await seedPending();
     try {
@@ -469,6 +532,40 @@ describe("what the session says decides", () => {
     const outcome = await handlePaymentFailed("cs_test_stranger_failed");
 
     expect(outcome.status).toBe("unknown");
+  });
+
+  it("moves a purchase of ours to failed when its delayed payment is refused", async () => {
+    const { userId, paymentId, sessionId } = await seedPending();
+    try {
+      const outcome = await handlePaymentFailed(sessionId);
+
+      expect(outcome.status).toBe("failed");
+      const [row] = await sql<{ status: string }[]>`
+        SELECT status FROM payments WHERE id = ${paymentId}
+      `;
+      expect(row!.status).toBe("failed");
+      // Nothing was granted: the money never arrived. The row saying `failed`
+      // is what stops the history showing it as in flight, and reconciling
+      // still picks it up if the money lands after all.
+      expect((await countsFor(userId)).lots).toBe(0);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("says so rather than writing it twice when the same refusal arrives again", async () => {
+    const { userId, sessionId } = await seedPending();
+    try {
+      await handlePaymentFailed(sessionId);
+      const second = await handlePaymentFailed(sessionId);
+
+      // Stripe redelivers, and the row has already moved out of the states
+      // this transition accepts. Answering `replay` is what keeps the route
+      // from reporting a second failure for one refusal.
+      expect(second.status).toBe("replay");
+    } finally {
+      await dropUser(userId);
+    }
   });
 });
 

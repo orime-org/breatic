@@ -16,9 +16,10 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setLocale } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import { BuySection } from '@web/features/credits/sections/BuySection';
@@ -33,11 +34,11 @@ vi.mock('@web/data/api/payment', () => ({
 }));
 
 const PACKS = [
-  { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
-  { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
-  { name: '4,320 Credits', credits: 4320, priceCents: 5000, currency: 'usd' },
-  { name: '8,690 Credits', credits: 8690, priceCents: 10000, currency: 'usd' },
-  { name: '43,660 Credits', credits: 43660, priceCents: 50000, currency: 'usd' },
+  { credits: 830, priceCents: 1000, currency: 'usd' },
+  { credits: 1700, priceCents: 2000, currency: 'usd' },
+  { credits: 4320, priceCents: 5000, currency: 'usd' },
+  { credits: 8690, priceCents: 10000, currency: 'usd' },
+  { credits: 43660, priceCents: 50000, currency: 'usd' },
 ];
 
 /** The refund rule, as the server hands it over. */
@@ -120,6 +121,25 @@ describe('the buy screen', () => {
     for (const line of REFUND_LINES) {
       expect(rule.textContent).toContain(line);
     }
+  });
+
+  it('asks again in the new language when the language changes', async () => {
+    // The refund rule comes back translated, so the language is part of what
+    // was asked for. Left out of the query key, that block stays in the
+    // previous language until the answer goes stale — up to five minutes.
+    renderBuy();
+    await screen.findAllByTestId('credit-pack');
+    expect(fetchTiers).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      setLocale('zh-CN');
+    });
+    await waitFor(() => {
+      expect(fetchTiers).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      setLocale('en');
+    });
   });
 
   it('shows nothing about a payment in flight', async () => {

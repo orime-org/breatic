@@ -6,8 +6,9 @@
  *
  * It takes no input. A buyer standing here is waiting on the result of a
  * payment, and nothing else they could start right now should begin before
- * they know it — so the three ways out of a dialog are all refused, and the
- * close control is not drawn. What takes it down is the hook that raised it.
+ * they know it. Nothing is drawn to press, and `open` being controlled with
+ * no `onOpenChange` is what makes every way out of a dialog reach nothing.
+ * What takes it down is the hook that raised it.
  */
 
 import * as React from 'react';
@@ -30,15 +31,14 @@ describe('the cover over a purchase being settled', () => {
     expect(cover.textContent).not.toBe('');
   });
 
-  it('offers no way to close it', async () => {
+  it('draws no control at all', async () => {
     render(<CheckoutWaitOverlay open />);
     const cover = await screen.findByTestId('checkout-wait');
-    // Radix draws a close control on every dialog; this one hides it, because
-    // dismissing the cover would leave the buyer looking at a page that has
-    // not yet been told what happened to their money.
-    for (const button of cover.querySelectorAll('button')) {
-      expect(getComputedStyle(button).display).toBe('none');
-    }
+    // The close X is drawn by `DialogHeader`, which this cover does not use.
+    // Adding one would put a control in front of a buyer whose only correct
+    // move is to wait, so the assertion is that there is nothing here to
+    // press rather than that whatever is here is hidden.
+    expect(cover.querySelector('button')).toBeNull();
   });
 
   it('stays up when Escape is pressed', async () => {
@@ -48,6 +48,9 @@ describe('the cover over a purchase being settled', () => {
 
     await user.keyboard('{Escape}');
 
+    // Nothing here refuses the key. `open` is controlled and no
+    // `onOpenChange` is passed, so every way Radix has of closing itself
+    // reaches a callback that is not there.
     expect(screen.getByTestId('checkout-wait')).toBeInTheDocument();
   });
 

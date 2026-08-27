@@ -552,6 +552,34 @@ describe("GET /credits/overview — reconciling what both other paths missed", (
     }
   });
 
+  it("settles the rest of the batch when one payment throws", async () => {
+    const buyer = await seedBuyer();
+    const bad = await seedPending(buyer.userId);
+    const good = await seedPending(buyer.userId);
+    try {
+      // The passes run concurrently. Joined on the first rejection, whatever
+      // the others found goes with it — including a charge that disagrees
+      // with the price table, which nothing else in the system produces.
+      stripe.checkout.sessions.retrieve.mockImplementation(
+        async (id: string) => {
+          if (id === bad.sessionId) throw new Error("timeout");
+          return paidSession(id);
+        },
+      );
+
+      const res = await app.request("/api/v1/credits/overview", {
+        headers: { cookie: buyer.cookie },
+      });
+
+      expect(res.status).toBe(200);
+      expect(await statusOf(good.paymentId)).toBe("completed");
+      expect(await statusOf(bad.paymentId)).toBe("pending");
+    } finally {
+      stripe.checkout.sessions.retrieve.mockReset();
+      await dropBuyer(buyer.userId);
+    }
+  });
+
   it("answers with what we hold locally when Stripe cannot be reached", async () => {
     const buyer = await seedBuyer();
     const { paymentId } = await seedPending(buyer.userId);
