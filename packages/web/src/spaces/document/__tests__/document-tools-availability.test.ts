@@ -23,6 +23,14 @@
  * asserted. The dry run is conservative for the list commands over a body
  * heading or code block, and R7 does not forbid a dark button that would have
  * worked.
+ *
+ * The block type menu's code block row is absent from both assertions. It
+ * carries a guard, but the guard answers a different question — whether
+ * running would drop content this build cannot represent — and the answers
+ * here are about whether a command reaches anything. `block-type-commands`
+ * holds that row's own table. The four rows with no guard at all (paragraph,
+ * the three heading levels) never enter these assertions either: the dry run
+ * answers wrongly for them, which is why they carry none.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

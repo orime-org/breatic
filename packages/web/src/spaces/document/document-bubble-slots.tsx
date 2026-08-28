@@ -8,17 +8,18 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * Three rows in the block type menu reach a command this time round: bulleted
- * list, numbered list, quote — the three that sit on the bar today. The rest
- * are drawn the way the demo draws them and write a line to the console when
- * pressed, the menu closing after them either way (user 2026-08-27).
+ * Eight of the nine rows in the block type menu reach a command; the task
+ * list waits on a schema node. Everything else here is drawn the way the demo
+ * draws them and writes a line to the console when pressed, the menu closing
+ * after them either way (user 2026-08-27).
  *
- * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
+ * Four things carry the greyed treatment `document-coming-tool.tsx` defines,
  * each for a reason of its own: the task list row, which has no schema node to
- * turn anything into (the row the demo greys, #13); the alignment slot over a selection
- * alignment does not reach (A7); and a block row whose own dry run reaches
- * nothing where the selection sits (#85) — the only one of the three that
- * moves with the selection.
+ * turn anything into (the row the demo greys, #13); the alignment slot over a
+ * selection alignment does not reach (A7); a wrapping row whose own dry run
+ * reaches nothing where the selection sits (#85); and the code block row where
+ * the selection reaches content this build cannot represent, which a code
+ * block would drop. The last two move with the selection.
  */
 
 import * as React from 'react';
