@@ -55,10 +55,12 @@ interface UIState {
    */
   activeOverlayId: string | null;
   /**
-   * Which of the two regions the user is working in. A pointer press inside a
-   * region, or focus entering it, hands it over; nothing else does — focus
+   * Which of the two regions the user is working in. Three things hand it
+   * over: a pointer press inside a region, focus entering it, and a file
+   * dropped into it — the last one because a drag from the desktop presses no
+   * pointer down on the page and moves no focus. Nothing else does: focus
    * going to the top bar, to an overlay, or out of the window leaves it alone,
-   * and so do the wheel and drag-and-drop.
+   * and so does the wheel.
    *
    * Read by the canvas keyboard and clipboard gates and by the active-state
    * colours, so that what the screen says and what the keys do cannot drift
