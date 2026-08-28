@@ -96,7 +96,7 @@ describe('currentBlockType', () => {
   });
 
   // Cmd+click (Ctrl elsewhere) selects the node under the pointer and steps
-  // outward on each further click (`prosemirror-view:3338`, `:3397`). Such a
+  // outward on each further click (`prosemirror-view`'s `selectClickedNode`, `:3269-3294`). Such a
   // selection anchors at the position BEFORE the node, which resolves into
   // whatever holds it — so asking the anchor for its wrappers answers for the
   // ancestors rather than for the node the reader picked.

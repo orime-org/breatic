@@ -10,8 +10,7 @@
  * that reads as available and answers a click with nothing tells the reader
  * it is broken.
  *
- * The treatment follows the two snapshot commands in the whole-document menu
- * (`ComingEntry`, `StudioAccountMenu.tsx:99-119`): dimmed, `aria-disabled`,
+ * The treatment is dimmed, `aria-disabled`,
  * a cursor that says so, and nothing happens on click. Three things differ,
  * all three because this is a button on a floating bar rather than a row in
  * a menu — there is no room beside the icon for the badge that carries the

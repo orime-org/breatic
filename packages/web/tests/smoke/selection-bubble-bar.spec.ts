@@ -373,7 +373,7 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
-    // 四条，五组之间各一条（demo:521）：块类型 ｜ 对齐 ｜ 粗体 斜体 删除线
+    // 四条，五组之间各一条（demo 里条下面那句说明）：块类型 ｜ 对齐 ｜ 粗体 斜体 删除线
     // 下划线 ｜ 链接 行内代码 颜色 评论 ｜ AI。
     expect(geo.separators).toHaveLength(4);
     for (const sep of geo.separators) {
@@ -659,7 +659,7 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
 
   const colour = await hoverOpenSlot('doc-bubble-color');
   // Two rows of eight and a reset, and the cell's own measurements: 30 square
-  // with the letter at 15px (demo:241-247).
+  // with the letter at 15px（demo 的 `.color-cell`）。
   expect(await colour.locator('[data-testid^="doc-bubble-color-text-"]').count()).toBe(8);
   expect(await colour.locator('[data-testid^="doc-bubble-color-fill-"]').count()).toBe(8);
   await expect(colour.getByTestId('doc-bubble-color-reset')).toBeVisible();

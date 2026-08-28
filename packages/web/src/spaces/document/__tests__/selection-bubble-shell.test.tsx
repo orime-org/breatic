@@ -6,7 +6,8 @@
  *
  * Once #912 put the buttons on `--btn-inline` the bar's dimensions were right
  * and its slots were not: the demo
- * (`2026-08-21-editor-command-surface.html:477-519`, captioned on line 521)
+ * (`2026-08-21-editor-command-surface.html`, the `.bubble` block and the note
+ * under it)
  * draws five groups split by four rules — block type dropdown | alignment
  * dropdown | bold italic strike underline | link inline-code colour comment |
  * AI. The bar carried four groups, with the block type spread over three flat
@@ -187,7 +188,7 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    // A7's second half, from the demo's own note (demo:606): "对齐只作用在段落
+    // A7's second half, from the note under the demo's `对齐下拉` column: "对齐只作用在段落
     // 和 H1 / H2 / H3 上。选区落在引用、列表、代码块里时，这个下拉整个变灰。"
     // The first half — the greyed task list row — is `greys the task list row,
     // and only that one` further down.
@@ -463,7 +464,7 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    // The task list is the one row the demo greys (demo:588), because it has
+    // The task list is the one row the demo greys, because it has
     // no schema node to turn a paragraph into. The rest of the block type menu
     // reads as available.
     it('greys the task list row, and only that one', async () => {
@@ -703,7 +704,7 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-task-list',
       ]);
 
-      // demo:566-585 draws a shortcut column on seven of the items. This
+      // The demo draws a shortcut column on seven of the items. This
       // environment reports a non-Mac platform, so they read in the Windows
       // spelling; the Mac one is asserted below.
       const shortcuts = items.map(
@@ -739,7 +740,7 @@ describe('the bubble bar shell', () => {
       ).toBe('⌘⇧8');
     });
 
-    // demo:560 marks the row the selection is already in with
+    // The demo marks the row the selection is already in with
     // `data-active="true"`, which takes `--color-muted`.
     it('marks the row the selection is already in', async () => {
       const editor = open('<h1>a heading</h1><p>a paragraph</p>');
@@ -760,7 +761,7 @@ describe('the bubble bar shell', () => {
       expect(active[0].className).toContain('hover:bg-active-fill');
     });
 
-    // demo:571 rules the headings off from the lists below them.
+    // The demo's `.menu-sep` rules the headings off from the lists below them.
     it('rules the headings off from the lists', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
@@ -835,7 +836,7 @@ describe('the bubble bar shell', () => {
       await selectWithFocus(editor, 1, 10);
       const menu = await hoverOpen('doc-bubble-color');
 
-      // Eight, not seven: demo:693-694 puts a default in front of the seven
+      // Eight, not seven: the demo puts a default in front of the seven
       // hues on the text row and a "none" in front of them on the background
       // row, each marked as the one in force.
       expect(menu.querySelectorAll('[data-testid^="doc-bubble-color-text-"]')).toHaveLength(8);
@@ -846,7 +847,7 @@ describe('the bubble bar shell', () => {
       expect(
         menu.querySelector('[data-testid="doc-bubble-color-fill-none"]')?.getAttribute('data-selected'),
       ).toBe('true');
-      // demo:695: one full-width button under both rows.
+      // The demo's `.color-reset`: one full-width button under both rows.
       expect(menu.querySelector('[data-testid="doc-bubble-color-reset"]')).not.toBeNull();
 
       // demo 3.5 gives each row a heading of its own, and A6 names that as part
@@ -904,8 +905,8 @@ describe('the bubble bar shell', () => {
   });
 
   describe('which commands are wired', () => {
-    // These three are flat buttons on the bar today and really change the
-    // document. Moving them into the menu changes nothing (C1).
+    // These three moved off the bar into this menu, and they really change
+    // the document from there (C1).
     it.each([
       ['bullet-list', '<bulletlist>'],
       ['ordered-list', '<orderedlist'],

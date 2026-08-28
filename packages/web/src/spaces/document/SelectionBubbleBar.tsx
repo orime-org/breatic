@@ -50,10 +50,10 @@
  * of the body, and anything floating over the body that takes focus collides
  * with the body's own focus with no way to reconcile them. A plain div carries
  * no focusability to begin with, and a press on it is refused its default so
- * that focus does not move at all. The keyboard route to these eight commands
- * is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` / `Mod-u` for the
- * marks, `Mod-e` for inline code, `Mod-Shift-8` / `Mod-Shift-7` /
- * `Mod-Shift-b` for the blocks.
+ * that focus does not move at all. The keyboard route to the commands it
+ * carries is their shortcuts — `Mod-b` / `Mod-i` / `Mod-Shift-s` / `Mod-u` for
+ * the marks, `Mod-e` for inline code, `Mod-Shift-8` / `Mod-Shift-7` /
+ * `Mod-Shift-b` for the three the block type menu holds.
  */
 
 import * as React from 'react';
@@ -133,7 +133,8 @@ interface BubbleGroup {
  * The controls this carrier shows, grouped the way the demo draws them.
  *
  * Five groups split by four separators, the order the demo's own caption gives
- * (`2026-08-21-editor-command-surface.html:521`): block type | alignment |
+ * (`2026-08-21-editor-command-surface.html`, the note under its bar): block
+ * type | alignment |
  * bold italic strike underline | link inline-code colour comment | AI.
  *
  * Three of the five hold a slot that opens a menu on hover; the three block
@@ -1078,10 +1079,11 @@ function BubbleBar({
   return (
     // `FloatingPortal`, the same one the link panel uses. It mounts a
     // container of its own inside the root and puts the bar in that, which
-    // matters here: `index.css:970` makes every DIRECT child div of the body's
-    // scroll viewport a full-height column flex container, so a bar mounted as
-    // a direct child came out 74 wide and 870 tall with its controls stacked
-    // vertically (measured in a browser). Inside the portal's container the
+    // matters here: `index.css` makes the body scroll viewport's direct child
+    // divs full-height column flex containers, so a bar mounted as a direct
+    // child came out 74 wide and 870 tall with its controls stacked vertically
+    // (measured in a browser). That rule now excludes floating-ui's portal
+    // containers by attribute, which is what carries the bar and the panel. Inside the portal's container the
     // bar is a grandchild and that rule does not reach it.
     <FloatingPortal root={viewport}>
       <div

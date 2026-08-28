@@ -30,7 +30,7 @@ const ROW = [
   '[&_svg]:size-4 [&_svg]:shrink-0',
 ].join(' ');
 
-/** A group heading, at demo:290-293's size, weight and colour. */
+/** A group heading, at the demo's `.menu-group` size, weight and colour. */
 const HEADING =
   'px-2 pb-[3px] pt-1.5 text-2xs font-semibold text-muted-foreground';
 
@@ -38,7 +38,8 @@ const HEADING =
  * The rule between two groups.
  *
  * No margin of its own: it is a flex item of the menu's `gap-1` column, and a
- * margin would add to that gap rather than replace it — demo:289 gives it 4px
+ * margin would add to that gap rather than replace it — the demo's `.menu-sep`
+ * gives it 4px
  * either side, which the gap already is.
  */
 const RULE = '-mx-1 h-px bg-border';

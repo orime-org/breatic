@@ -67,9 +67,8 @@ function mount(bodyHtml: string): Editor {
 /**
  * Select a span, give the editor real focus, and wait for the bar.
  *
- * The focus is a hard condition: the plugin's `shouldShow` asks for
- * `view.hasFocus()`, and the bar's element only enters the document inside
- * `show()`.
+ * The focus is a hard condition: `shouldShow` asks for `view.hasFocus()`, and
+ * the bar renders nothing until it answers true.
  * @param editor - The editor.
  * @param from - Where the selection starts.
  * @param to - Where it ends.
@@ -101,10 +100,8 @@ async function openPopoverOver(editor: Editor, from: number, to: number): Promis
 /**
  * Press the link button on the bubble bar.
  *
- * Through the whole pointer sequence: the plugin raises `preventHide` in a
- * capture-phase mousedown (`@tiptap/extension-bubble-menu` dist:78-79), and the
- * body loses focus the moment the panel opens — without that press
- * `blurHandler` takes the whole bar out of the document.
+ * Through the whole pointer sequence: the bar refuses the focus change a press
+ * would cause, and the body keeps the focus that `shouldShow` asks for.
  */
 async function pressLinkButton(): Promise<void> {
   await userEvent.click(screen.getByTestId('doc-bubble-tool-link'));

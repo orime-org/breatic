@@ -62,7 +62,7 @@ const MENU_PANEL =
  *
  * Picking a row takes the menu away with it. The rows are written by the
  * callers, so what closes the menu reaches them through here rather than
- * through every one of the seventeen call sites.
+ * through every one of the twenty rows.
  */
 const CloseBubbleMenu = React.createContext<() => void>(() => {});
 

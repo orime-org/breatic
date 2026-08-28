@@ -7,7 +7,7 @@
  * #112 built the carrier with no new command of its own, so the one question
  * that mattered was: ONCE A COMMAND MOVES INTO THE NEW CARRIER, DOES PRESSING
  * IT THERE REALLY CHANGE THE DOCUMENT? #902 added underline and inline code,
- * and the bar now carries eight commands plus two entries not open yet. The
+ * and the bar now carries six commands, four menus and one entry not open yet. The
  * design adversarial round (2026-08-19) found that not one of the first ten
  * acceptance items covered this — `canRun` only decides whether a button
  * lights up, `run` is a different field on `ToolDef`, and reusing `canRun`
@@ -256,7 +256,7 @@ describe('the selection bubble bar', () => {
       // The link is in neither array: it opens a panel rather than running a
       // command, which `ToolDef` has no room for (design §4.3). The three
       // block commands (bullet list, ordered list, quote) live in the block
-      // type menu since 2026-08-26, the shape demo:521 draws; whether they
+      // type menu since 2026-08-26, the shape the demo's note names; whether they
       // still work is pinned by `selection-bubble-shell.test.tsx`.
       [...MARK_TOOLS, ...INLINE_TOOLS]
         .map((t) => t.id)
@@ -313,7 +313,7 @@ describe('the selection bubble bar', () => {
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const seps = bar.querySelectorAll('[role="separator"]');
 
-    // Five groups, four rules (demo:521): block type | alignment | B I S U |
+    // Five groups, four rules (the demo's note): block type | alignment | B I S U |
     // link code colour comment | AI.
     expect(seps).toHaveLength(4);
     for (const sep of seps) {

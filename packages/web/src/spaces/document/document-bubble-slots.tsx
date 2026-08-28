@@ -15,7 +15,7 @@
  *
  * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
  * each for a reason of its own: the task list row, which has no schema node to
- * turn anything into (demo:588, #13); the alignment slot over a selection
+ * turn anything into (the row the demo greys, #13); the alignment slot over a selection
  * alignment does not reach (A7); and a block row whose own dry run reaches
  * nothing where the selection sits (#85) — the only one of the three that
  * moves with the selection.
@@ -117,7 +117,7 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  */
 const ROWS = 'flex flex-col gap-1';
 
-/** The colour panel's own group label, at demo:236-238's size and colour. */
+/** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
 const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
 
 /**
@@ -194,7 +194,7 @@ function SlotShell({
  * The block type slot.
  *
  * Its icon tracks the current block (user 2026-08-26); the menu's nine rows
- * follow demo:560-588, seven of them carrying a shortcut column.
+ * follow the demo's `块类型下拉` column, seven of them carrying a shortcut column.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -235,7 +235,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
         const runnable = item.canRun === undefined || item.canRun(editor);
         return (
           <React.Fragment key={item.id}>
-            {/* demo:571 rules off the headings from the lists below them. */}
+            {/* The demo's `.menu-sep` rules off the headings from the lists. */}
             {item.id === 'bullet-list' ? <BubbleMenuRule /> : null}
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
@@ -275,7 +275,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   );
 });
 
-/** The alignment menu's three rows, from demo:590-596. */
+/** The alignment menu's three rows, from the demo's `对齐下拉` column. */
 const ALIGN_ITEMS = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
@@ -310,7 +310,8 @@ export const AlignSlot = React.memo(function AlignSlot({
     (slotId: string, open: boolean): void => {
       // A slot drawn as unavailable does not open. The demo's treatment for a
       // control that cannot act cancels the hover as well as the press
-      // (demo:463), so a grey cell that still dropped a live menu would be
+      // (the demo's note on its greyed rows), so a grey cell that still dropped a
+      // live menu would be
       // saying two things at once.
       if (open && !appliesHere) return;
       onOpenChange(slotId, open);
@@ -347,7 +348,7 @@ export const AlignSlot = React.memo(function AlignSlot({
         <BubbleMenuRow
           key={item.id}
           data-testid={`${id}-item-${item.id}`}
-          // Left is where every block already is, so it is the row demo:590
+          // Left is where every block already is, so it is the row the demo
           // draws as active.
           data-active={item.id === 'left' ? 'true' : undefined}
           className={cn(
@@ -370,7 +371,7 @@ const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
 
 /**
  * One cell of either colour row: 30 square, 6px apart, the letter at 15px
- * (demo:241-247). `text-base` is the step that carries 15px
+ * (the demo's `.color-cell`). `text-base` is the step that carries 15px
  * (`theme/tokens.css:364`).
  */
 const COLOUR_CELL =
@@ -391,8 +392,10 @@ const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
 /**
  * The colour slot.
  *
- * Its opener is the letter A and a chevron (demo:506-509). The panel holds two
- * rows of eight and a reset button (demo:693-695): the text row is a default
+ * Its opener is the letter A and a chevron, the way the demo draws it. The
+ * panel holds two
+ * rows of eight and a reset button (the demo's `.color-panel`): the text row is
+ * a default
  * plus the seven hues, each colouring the letter A; the background row is a
  * "none" cell plus the same seven as swatches. No command behind any of it this
  * time round — task #905.
@@ -437,7 +440,7 @@ export const ColorSlot = React.memo(function ColorSlot({
       </div>
       <div className='flex gap-1.5 px-2 pb-3.5'>
         {/* The default sits first and reads as the one in force, since nothing
-            has coloured the text (demo:665). */}
+            has coloured the text (the demo marks it `data-selected`). */}
         <Button
           variant={null}
           size={null}
@@ -476,7 +479,7 @@ export const ColorSlot = React.memo(function ColorSlot({
         {t('spaces.document.commands.fillColor')}
       </div>
       <div className='flex gap-1.5 px-2 pb-3.5'>
-        {/* No background, drawn as the struck-through cell demo:252-260 draws,
+        {/* No background, drawn as the demo's `.color-cell-none` is,
             and likewise the one in force. */}
         <Button
           variant={null}
@@ -514,7 +517,7 @@ export const ColorSlot = React.memo(function ColorSlot({
         ))}
       </div>
       {/* Takes both marks off the selection, once there are marks to take off
-          (demo:695). */}
+          (the demo's `.color-reset`). */}
       <div className='px-2 pb-1 pt-0.5'>
         <Button
           variant='outline'
@@ -523,7 +526,7 @@ export const ColorSlot = React.memo(function ColorSlot({
           tabIndex={-1}
           // No fill of its own: it sits on the popover, and `outline`'s
           // `bg-background` is the page's ground, a step darker than the panel
-          // under it (demo:261 leaves it transparent).
+          // under it (the demo's `.color-reset` is transparent).
           className='h-8 w-full bg-transparent text-sm'
           onClick={() => {
             pick('colour reset');

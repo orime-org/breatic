@@ -4,7 +4,8 @@
 /**
  * What the block type slot holds, and which of them the selection counts as.
  *
- * The nine come from the demo (`2026-08-21-editor-command-surface.html:560-588`).
+ * The nine come from the demo's `块类型下拉` column
+ * (`2026-08-21-editor-command-surface.html`).
  * The slot shows an ICON that tracks the current block and carries no text, so
  * nothing here goes through i18n (user 2026-08-26): it stands in the same run
  * as B, I and U, which are letterforms too, and a translated word would make
@@ -83,7 +84,7 @@ export interface BlockTypeItem {
    */
   wrapperNode?: string;
   /**
-   * Drawn greyed out, the way demo:588 draws it.
+   * Drawn greyed out, the way the demo draws that row.
    *
    * The demo greys one row, and for a reason of its own: the task list has no
    * schema node at all yet (#13). It has a place in the menu because a
