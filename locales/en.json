@@ -129,7 +129,7 @@
       "purchased_at": "Purchased: {when}",
       "refund_by": "Refundable until: {when}",
       "order_ref": "Order reference: {ref}",
-      "consent_heading": "What you agreed to at checkout",
+      "consent_heading": "What you agreed to when you bought",
       "refund_heading": "Refund rules for credit packs",
       "support": "Questions about this purchase? Write to {email}."
     }

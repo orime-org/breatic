@@ -129,7 +129,7 @@
       "purchased_at": "구매 시각: {when}",
       "refund_by": "환불 가능 기한: {when}",
       "order_ref": "주문 번호: {ref}",
-      "consent_heading": "결제 시 동의하신 내용",
+      "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
       "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
     }

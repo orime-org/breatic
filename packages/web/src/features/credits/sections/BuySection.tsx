@@ -41,7 +41,7 @@ interface BuySectionProps {
  * Three blocks sit under the packs, all of them things a buyer has to have
  * read before they reach Stripe: the price on the card is not what their card
  * is charged, credits do nothing until they are pointed at a Studio, and the
- * refund rule in full — the one the confirmation dialog asks them to tick.
+ * refund rule in full — the one the confirmation dialog's consent refers to.
  * @param props - The overview.
  * @param props.overview - What the account holds, and where.
  * @returns The section.
@@ -126,8 +126,9 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
       <Footnote data-testid='buy-assign-notice'>
         {t('credits.buy.assignNotice')}
       </Footnote>
-      {/* The confirmation dialog asks the buyer to tick that they have read
-          this rule, so it has to be on the screen that leads there. */}
+      {/* The consent in the confirmation dialog states when a purchase stops
+          being refundable, so the rule behind it has to be readable on the
+          screen that leads there. */}
       {packs.isSuccess ? (
         <div data-testid='buy-refund-rule'>
           <Card title={t('credits.buy.refundTitle')}>

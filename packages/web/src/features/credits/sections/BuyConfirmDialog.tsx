@@ -7,6 +7,7 @@ import { Button } from '@web/components/ui/button';
 import { Checkbox } from '@web/components/ui/checkbox';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -93,9 +94,10 @@ interface BuyConfirmDialogProps {
  *
  * The rule itself is here as well as on the screen behind, because a modal
  * dialog covers that screen twice over: an 80%-black scrim goes across it and
- * `aria-hidden` takes it out of the accessibility tree. Ticking that the rule
- * has been read, with the rule neither visible nor readable, is being asked to
- * take our word for it.
+ * `aria-hidden` takes it out of the accessibility tree. The sentence being
+ * agreed to states when a purchase stops being refundable, and the rule it
+ * refers to would otherwise be neither visible nor readable at the moment of
+ * agreeing.
  * @param props - The pack, the rule and the callbacks.
  * @param props.pack - The chosen pack, or null when closed.
  * @param props.refundLines - The refund rule, in the reader's language.
@@ -148,48 +150,50 @@ export function BuyConfirmDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {pack === null ? null : (
-          <dl className='grid grid-cols-2 gap-y-2 text-sm'>
-            <dt className='text-muted-foreground'>
-              {t('credits.buy.confirmPack')}
-            </dt>
-            <dd className='text-right font-semibold'>
-              {formatMoney(pack.priceCents, pack.currency)}
-            </dd>
-            <dt className='text-muted-foreground'>
-              {t('credits.buy.confirmCredits')}
-            </dt>
-            <dd className='text-right font-semibold'>
-              {formatCreditAmount(pack.credits)} {t('credits.unit')}
-            </dd>
-          </dl>
-        )}
+        <DialogBody>
+          {pack === null ? null : (
+            <dl className='grid grid-cols-2 gap-y-2 text-sm'>
+              <dt className='text-muted-foreground'>
+                {t('credits.buy.confirmPack')}
+              </dt>
+              <dd className='text-right font-semibold'>
+                {formatMoney(pack.priceCents, pack.currency)}
+              </dd>
+              <dt className='text-muted-foreground'>
+                {t('credits.buy.confirmCredits')}
+              </dt>
+              <dd className='text-right font-semibold'>
+                {formatCreditAmount(pack.credits)} {t('credits.unit')}
+              </dd>
+            </dl>
+          )}
 
-        {refundLines.length === 0 ? null : (
-          <div className='flex flex-col gap-2'>
-            <h3 className='text-sm font-semibold'>
-              {t('credits.buy.refundTitle')}
-            </h3>
-            <RuleLines
-              data-testid='confirm-refund-rule'
-              lines={refundLines}
+          {refundLines.length === 0 ? null : (
+            <div className='flex flex-col gap-2'>
+              <h3 className='text-sm font-semibold'>
+                {t('credits.buy.refundTitle')}
+              </h3>
+              <RuleLines
+                data-testid='confirm-refund-rule'
+                lines={refundLines}
+              />
+            </div>
+          )}
+
+          <label className='flex items-start gap-2 text-sm'>
+            <Checkbox
+              data-testid='confirm-consent'
+              checked={consented}
+              onCheckedChange={(next) => {
+                setConsented(next === true);
+              }}
             />
-          </div>
-        )}
-
-        <label className='flex items-start gap-2 text-sm'>
-          <Checkbox
-            data-testid='confirm-consent'
-            checked={consented}
-            onCheckedChange={(next) => {
-              setConsented(next === true);
-            }}
-          />
-          {/* The server's wording, verbatim. Holding a copy here would let
-              the sentence shown drift from the version recorded against the
-              purchase, and the record would then name wording nobody read. */}
-          <span>{withEmphasis(consentText)}</span>
-        </label>
+            {/* The server's wording, verbatim. Holding a copy here would let
+                the sentence shown drift from the version recorded against the
+                purchase, and the record would then name wording nobody read. */}
+            <span>{withEmphasis(consentText)}</span>
+          </label>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant='outline' onClick={cancel}>

@@ -90,13 +90,18 @@ function stripeCallBounds(): { timeout: number; maxNetworkRetries: number } {
 /**
  * One string a checkout stored on its own payment row.
  *
- * The language, the buyer's time zone and the two wording versions are all
- * read back from here rather than from the Checkout Session: the session's
- * metadata is what we told Stripe about the sale, and it holds none of them.
- * A confirmation resent from another device has to reproduce the language the
- * purchase was made in, and only this row remembers it.
+ * The language and the two wording versions are read back from here rather
+ * than from the Checkout Session: the session's metadata is what we told
+ * Stripe about the sale, and it holds none of them. A confirmation resent
+ * from another device has to reproduce the language the purchase was made in,
+ * and only this row remembers it.
+ *
+ * The buyer's time zone and the consent instant are stored on the same row and
+ * read straight off it. A fallback is what makes this helper the wrong reader
+ * for the consent instant: its absence has to mean no record was written, and
+ * a default would invent one.
  * @param payment - The payment row.
- * @param key - Which of the four.
+ * @param key - Which of the three.
  * @param fallback - What to use when checkout stored nothing, which is what
  *   every payment made before this shipped looks like.
  * @returns The stored value, or the fallback.
@@ -664,10 +669,10 @@ export function listTiers(): {
       priceCents: tier.priceCents,
       currency: tier.currency,
     })),
-    // The buy screen leads to a dialog that asks the buyer to agree to this,
-    // so it has to be readable before they get there. The wording is
-    // versioned and lives on the server, which is why it rides along here
-    // rather than sitting in the locale files the browser holds.
+    // The consent in that dialog states when a purchase stops being
+    // refundable, so this rule has to be readable before a buyer gets there.
+    // The wording is versioned and lives on the server, which is why it rides
+    // along here rather than sitting in the locale files the browser holds.
     refundLines: refundLinesAt(REFUND_CREDITS_VERSION, getActiveLocale()),
     // The sentence the confirm dialog puts its tick against. It comes from
     // the same constant the purchase records its version from, so a second

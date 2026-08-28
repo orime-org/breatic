@@ -129,7 +129,7 @@
       "purchased_at": "購買時間：{when}",
       "refund_by": "可退款截止：{when}",
       "order_ref": "訂單編號：{ref}",
-      "consent_heading": "你在結帳時同意的內容",
+      "consent_heading": "你在購買時同意的內容",
       "refund_heading": "點數包退款規則",
       "support": "對這筆購買有疑問，請寫信到 {email}。"
     }

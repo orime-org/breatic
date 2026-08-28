@@ -129,7 +129,7 @@
       "purchased_at": "购买时间：{when}",
       "refund_by": "可退款截止：{when}",
       "order_ref": "订单号：{ref}",
-      "consent_heading": "你在结账时同意的内容",
+      "consent_heading": "你在购买时同意的内容",
       "refund_heading": "积分包退款规则",
       "support": "对这笔购买有疑问，请写信到 {email}。"
     }

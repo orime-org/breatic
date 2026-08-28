@@ -129,7 +129,7 @@
       "purchased_at": "購入日時：{when}",
       "refund_by": "返金可能期限：{when}",
       "order_ref": "注文番号：{ref}",
-      "consent_heading": "お支払い時に同意いただいた内容",
+      "consent_heading": "ご購入時に同意いただいた内容",
       "refund_heading": "クレジットパックの返金規定",
       "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
     }
