@@ -113,28 +113,31 @@ function storedAtCheckout(
 /**
  * Record the consent this purchase carries, when it carries one.
  *
- * Evidence, not inference: a session that completed before the consent
- * control shipped says nothing about what its buyer agreed to, and writing a
- * record anyway would invent it. `payment_id` being unique makes the second
- * and later callers no-ops.
+ * Evidence, not inference: a purchase started before the consent control
+ * shipped says nothing about what its buyer agreed to, and writing a record
+ * anyway would invent it. `payment_id` being unique makes the second and
+ * later callers no-ops.
  *
- * The instant recorded is this one. Hosted Checkout reports when the session
- * was created and when it may expire, and those are two hours apart, so
- * neither of them is when the box was ticked; this is the first instant at
- * which we have observed that it was.
+ * The instant comes off our own row, stamped when the checkout request
+ * arrived carrying the tick. Settling can happen days later by way of
+ * reconciliation, so the moment this function runs is not the moment the
+ * buyer agreed.
  * @param payment - The payment this consent belongs to, and the row the
- *   language and both wording versions were stored on at checkout.
- * @param session - The Checkout Session carrying the answer.
+ *   language, both wording versions and the consent instant were stored on at
+ *   checkout.
+ * @param session - The Checkout Session, which names the charge behind it.
  * @param tx - The fulfillment transaction.
- * @returns Whether the session carried a consent to record.
+ * @returns Whether this purchase carried a consent to record.
  */
 async function writeConsentIfGiven(
   payment: PaymentEntity,
   session: Stripe.Checkout.Session,
   tx: DbTx,
 ): Promise<boolean> {
-  if (session.consent?.terms_of_service !== "accepted") return false;
-  const consentedAt = new Date();
+  const stamped = payment.metadata["consentedAt"];
+  if (typeof stamped !== "string") return false;
+  const consentedAt = new Date(stamped);
+  if (Number.isNaN(consentedAt.getTime())) return false;
   await consentRepo.insertConsent(tx, {
     paymentId: payment.id,
     userId: payment.userId,
@@ -554,6 +557,13 @@ export async function createCheckout(input: {
 
   const paymentId = randomUUID();
   const locale = getActiveLocale();
+  // Our own clock, taken before the call to Stripe: the buyer ticked on the
+  // confirm dialog one request ago, and `checkoutSchema` refuses a request
+  // that does not carry that tick, so reaching this line means it happened.
+  // Nothing downstream can work this instant out — Stripe reports when a
+  // session was created and when it expires, two hours apart, and neither of
+  // them is when the box was ticked.
+  const consentedAt = new Date();
   const { successUrl, cancelUrl } = returnUrls(input.returnUrl, paymentId);
 
   const session = await getStripeClient().checkout.sessions.create({
@@ -563,10 +573,6 @@ export async function createCheckout(input: {
     cancel_url: cancelUrl,
     locale: (STRIPE_LOCALES[locale] ?? "auto") as Stripe.Checkout.
       SessionCreateParams.Locale,
-    consent_collection: { terms_of_service: "required" },
-    custom_text: {
-      terms_of_service_acceptance: { message: consentTextAt(CONSENT_CREDITS_VERSION, locale) },
-    },
     automatic_tax: { enabled: true },
     expires_at: Math.floor(Date.now() / 1000) + SESSION_LIFETIME_SECONDS,
     metadata: { userId: input.userId, credits: String(tier.credits) },
@@ -579,14 +585,15 @@ export async function createCheckout(input: {
     amountCents: tier.priceCents,
     creditsGranted: tier.credits,
     currency: tier.currency,
-    // These four cannot be worked out later. A webhook carries no
-    // `Accept-Language` and no hint of a time zone, and the versions say what
-    // wording this purchase was made under.
+    // These five cannot be worked out later. A webhook carries no
+    // `Accept-Language`, no hint of a time zone, and no idea what the buyer
+    // ticked; the versions say what wording this purchase was made under.
     metadata: {
       locale,
       timeZone: knownTimeZone(input.timeZone),
       consentTextVersion: CONSENT_CREDITS_VERSION,
       refundTextVersion: REFUND_CREDITS_VERSION,
+      consentedAt: consentedAt.toISOString(),
     },
   });
 
@@ -644,6 +651,8 @@ export function listTiers(): {
     currency: string;
   }>;
   refundLines: readonly string[];
+  consentText: string;
+  consentTextVersion: string;
   confirmTimeoutMs: number;
 } {
   return {
@@ -660,6 +669,12 @@ export function listTiers(): {
     // versioned and lives on the server, which is why it rides along here
     // rather than sitting in the locale files the browser holds.
     refundLines: refundLinesAt(REFUND_CREDITS_VERSION, getActiveLocale()),
+    // The sentence the confirm dialog puts its tick against, and the version
+    // recorded against the purchase. Both come from here so they cannot
+    // disagree: a second copy of the wording in the browser's locale files
+    // would let the version we record name wording the buyer never read.
+    consentText: consentTextAt(CONSENT_CREDITS_VERSION, getActiveLocale()),
+    consentTextVersion: CONSENT_CREDITS_VERSION,
     // The page keeps a buyer behind a full-screen wait for at most this long.
     // The value is here and the timer is in the browser, so it rides along
     // with the list the buy screen already reads.

@@ -126,8 +126,22 @@ async function waitForMail(count: number): Promise<void> {
   }
 }
 
-/** A user with one pending payment; returns the ids and the session id. */
-async function seedPending(): Promise<{
+/**
+ * A user with one pending payment; returns the ids and the session id.
+ *
+ * The row carries `consentedAt` because every row `createCheckout` writes
+ * carries it: the buyer ticked on our own dialog one request before the
+ * session existed. Seeding without it would be seeding a purchase from before
+ * that control shipped, which is a different case and has its own test.
+ * @param metadata - What to store on the row, replacing the default.
+ * @returns The ids this suite drives the fulfillment with.
+ */
+async function seedPending(
+  metadata: Record<string, string> = {
+    locale: "en",
+    consentedAt: new Date().toISOString(),
+  },
+): Promise<{
   userId: string;
   paymentId: string;
   sessionId: string;
@@ -140,8 +154,8 @@ async function seedPending(): Promise<{
     VALUES (${`fulfil-${stamp}@example.test`}, true) RETURNING id
   `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, stripe_session_id, amount_cents, credits_granted, currency, status)
-    VALUES (${user!.id}, ${sessionId}, 2000, 1700, 'usd', 'pending')
+    INSERT INTO payments (user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
+    VALUES (${user!.id}, ${sessionId}, 2000, 1700, 'usd', 'pending', ${sql.json(metadata)})
     RETURNING id
   `;
   return { userId: user!.id, paymentId: payment!.id, sessionId };
@@ -714,14 +728,17 @@ describe("what a purchase agreed to is read off our own row", () => {
   it("records the language and both wording versions the checkout was made in", async () => {
     const { userId, paymentId, sessionId } = await seedPending();
     try {
-      // The four things checkout stored, which only our row holds: a webhook
-      // carries no `Accept-Language` and no hint of a time zone.
+      // The five things checkout stored, which only our row holds: a webhook
+      // carries no `Accept-Language`, no hint of a time zone, and no idea
+      // what the buyer ticked.
+      const ticked = "2026-08-28T01:02:03.456Z";
       await sql`
         UPDATE payments SET metadata = ${sql.json({
           locale: "ja",
           timeZone: "Asia/Tokyo",
           consentTextVersion: "consent-credits-v1",
           refundTextVersion: "refund-credits-v1",
+          consentedAt: ticked,
         })} WHERE id = ${paymentId}
       `;
       stripe.checkout.sessions.retrieve.mockResolvedValue(
@@ -732,14 +749,23 @@ describe("what a purchase agreed to is read off our own row", () => {
       expect(outcome.status).toBe("granted");
 
       const [consent] = await sql<
-        { locale: string; consent_text_version: string; refund_text_version: string }[]
+        {
+          locale: string;
+          consent_text_version: string;
+          refund_text_version: string;
+          consented_at: Date;
+        }[]
       >`
-        SELECT locale, consent_text_version, refund_text_version
+        SELECT locale, consent_text_version, refund_text_version, consented_at
         FROM purchase_consents WHERE payment_id = ${paymentId}
       `;
       expect(consent!.locale).toBe("ja");
       expect(consent!.consent_text_version).toBe("consent-credits-v1");
       expect(consent!.refund_text_version).toBe("refund-credits-v1");
+      // The instant is the one checkout stamped, not the one this row was
+      // written at: the tick happened a request earlier, and settling can
+      // arrive days later by way of reconciliation.
+      expect(consent!.consented_at.toISOString()).toBe(ticked);
 
       // The letter is written in the language stored on the payment, which
       // this record already pins; the outbox row keeps no second copy of it.
@@ -815,14 +841,14 @@ describe("what a purchase agreed to is read off our own row", () => {
     }
   });
 
-  it("writes no consent when the session carries none", async () => {
-    const { userId, paymentId, sessionId } = await seedPending();
+  it("writes no consent when the purchase carries no consent instant", async () => {
+    const { userId, paymentId, sessionId } = await seedPending({ locale: "en" });
     try {
-      // A session from before the consent control shipped, or one Stripe
-      // reports without an answer. The credits are still owed — the card was
-      // charged — but a record of an agreement nobody made would be invented.
+      // A purchase started before the consent control shipped. The credits are
+      // still owed — the card was charged — but a record of an agreement
+      // nobody made would be invented.
       stripe.checkout.sessions.retrieve.mockResolvedValue(
-        paidSession(sessionId, { consent: null }),
+        paidSession(sessionId),
       );
 
       const outcome = await fulfillPayment(sessionId, null);
@@ -861,12 +887,19 @@ describe("what a purchase agreed to is read off our own row", () => {
    * so its timestamp may only be the moment we genuinely observed the consent
    * to exist.
    */
-  it("stamps the consent at the moment we saw it, not when the page was opened", async () => {
-    const { userId, sessionId, paymentId } = await seedPending();
+  it("keeps the instant the buyer ticked, not the one this row was written at", async () => {
+    // Settling can arrive days after the tick: the confirmation endpoint may
+    // never be reached and reconciliation picks the purchase up later. The
+    // recorded instant has to survive that gap, or the evidence would say the
+    // buyer agreed at a moment they were not there.
+    const ticked = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const { userId, sessionId, paymentId } = await seedPending({
+      locale: "en",
+      consentedAt: ticked.toISOString(),
+    });
     try {
-      const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 60 * 60;
       stripe.checkout.sessions.retrieve.mockResolvedValue(
-        paidSession(sessionId, { created: twoHoursAgo }),
+        paidSession(sessionId),
       );
       const before = Date.now();
 
@@ -875,9 +908,8 @@ describe("what a purchase agreed to is read off our own row", () => {
       const [consent] = await sql<{ consented_at: Date }[]>`
         SELECT consented_at FROM purchase_consents WHERE payment_id = ${paymentId}
       `;
-      const stamped = consent!.consented_at.getTime();
-      expect(stamped).toBeGreaterThanOrEqual(before);
-      expect(stamped).toBeLessThanOrEqual(Date.now());
+      expect(consent!.consented_at.getTime()).toBe(ticked.getTime());
+      expect(consent!.consented_at.getTime()).toBeLessThan(before);
     } finally {
       await dropUser(userId);
     }

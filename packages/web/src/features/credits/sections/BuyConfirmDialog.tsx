@@ -24,6 +24,12 @@ interface BuyConfirmDialogProps {
   pack: CreditPack | null;
   /** The refund rule, in the reader's language, as the server hands it over. */
   refundLines: readonly string[];
+  /**
+   * The sentence the tick stands for, in the reader's language, as the server
+   * hands it over. It is recorded against the purchase by version, so the
+   * wording shown and the wording recorded come from the same place.
+   */
+  consentText: string;
   /** Called when the dialog closes itself. */
   onOpenChange: (open: boolean) => void;
   /**
@@ -37,11 +43,12 @@ interface BuyConfirmDialogProps {
 /**
  * The step between choosing a pack and reaching Stripe.
  *
- * The refund-rule tick lives here rather than under the packs, because it
- * belongs to one purchase: a tick sitting on the screen would be set once and
- * then carried, unnoticed, into every purchase after it. This dialog starts
- * unticked every time it opens, so it is the purchase in front of the buyer
- * that gets acknowledged.
+ * The consent tick lives here rather than under the packs, for two reasons.
+ * It belongs to one purchase: a tick sitting on the screen would be set once
+ * and then carried, unnoticed, into every purchase after it, and this dialog
+ * starts unticked every time it opens. And it is the step that stands between
+ * the buyer and paying — showing the sentence somewhere they can walk past is
+ * not the same as their agreeing to it.
  *
  * It states the pack, what lands, and that the price excludes tax — the three
  * things a buyer would otherwise first learn on somebody else's page.
@@ -54,6 +61,7 @@ interface BuyConfirmDialogProps {
  * @param props - The pack, the rule and the callbacks.
  * @param props.pack - The chosen pack, or null when closed.
  * @param props.refundLines - The refund rule, in the reader's language.
+ * @param props.consentText - The sentence the tick stands for.
  * @param props.onOpenChange - Called when the dialog closes itself.
  * @param props.onConfirm - Called with the pack once confirmed.
  * @returns The dialog.
@@ -61,6 +69,7 @@ interface BuyConfirmDialogProps {
 export function BuyConfirmDialog({
   pack,
   refundLines,
+  consentText,
   onOpenChange,
   onConfirm,
 }: BuyConfirmDialogProps): React.JSX.Element {
@@ -132,17 +141,16 @@ export function BuyConfirmDialog({
 
         <label className='flex items-start gap-2 text-sm'>
           <Checkbox
-            data-testid='confirm-refund-ack'
+            data-testid='confirm-consent'
             checked={acknowledged}
             onCheckedChange={(next) => {
               setAcknowledged(next === true);
             }}
           />
-          {/* One sentence, one key. Split into its clauses it was joined by
-              spaces written here, and where a clause joins the next is a
-              question about the language, not about this layout — every
-              non-English locale rendered the sentence with English spacing. */}
-          <span>{t('credits.buy.consent')}</span>
+          {/* The server's wording, verbatim. Holding a copy here would let
+              the sentence shown drift from the version recorded against the
+              purchase, and the record would then name wording nobody read. */}
+          <span>{consentText}</span>
         </label>
 
         <DialogFooter>

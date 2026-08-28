@@ -72,6 +72,10 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
         // Nothing later in the chain knows this. A webhook carries no hint of
         // it, and the confirmation email prints the purchase time in it.
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Reaching here means the dialog's tick is set: it is what releases
+        // the button this runs from. The server stamps the instant it
+        // arrives, and refuses a request that does not carry it.
+        consented: true,
       });
       window.location.assign(url);
       return true;
@@ -134,6 +138,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
       <BuyConfirmDialog
         pack={chosen}
         refundLines={packs.data?.refundLines ?? []}
+        consentText={packs.data?.consentText ?? ''}
         onOpenChange={close}
         onConfirm={start}
       />

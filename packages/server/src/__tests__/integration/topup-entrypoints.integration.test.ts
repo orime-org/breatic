@@ -757,6 +757,7 @@ describe("POST /payment/checkout — who may start a purchase", () => {
   async function checkout(
     cookie: string | null,
     priceCents = 1000,
+    over: Record<string, unknown> = {},
   ): Promise<Response> {
     return app.request("/api/v1/payment/checkout", {
       method: "POST",
@@ -768,12 +769,33 @@ describe("POST /payment/checkout — who may start a purchase", () => {
         price_cents: priceCents,
         return_url: "https://app.example.test/studio",
         time_zone: "UTC",
+        consented: true,
+        ...over,
       }),
     });
   }
 
   it("turns a signed-out caller away", async () => {
     expect((await checkout(null)).status).toBe(401);
+  });
+
+  it.each([
+    // `undefined` is dropped by `JSON.stringify`, so the field never leaves.
+    ["absent", { consented: undefined }],
+    ["refused", { consented: false }],
+  ])("starts nothing when the consent is %s", async (_case, over) => {
+    // Disabling the button is what a buyer meets; this is what anything else
+    // meets. A purchase that reached Stripe without the tick would leave a
+    // charge with no record of what its buyer agreed to, and proving that
+    // agreement is on us. 422 is what every schema rejection answers here.
+    const buyer = await seedBuyer();
+    try {
+      const res = await checkout(buyer.cookie, 1000, over);
+      expect(res.status).toBe(422);
+      expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
   });
 
   it("says it is credits that are not for sale where nothing is", async () => {

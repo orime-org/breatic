@@ -35,6 +35,14 @@ export interface PackList {
    */
   refundLines: string[];
   /**
+   * The sentence the confirm dialog puts its tick against, in the reader's
+   * language. It comes from the server together with the version recorded
+   * against the purchase, so the two cannot name different wording.
+   */
+  consentText: string;
+  /** Which wording that is, as recorded against a purchase made under it. */
+  consentTextVersion: string;
+  /**
    * How long the return page may keep a buyer behind the full-screen wait.
    * Decided on the server, where the value lives; the timer runs here.
    */
@@ -49,6 +57,11 @@ export interface CheckoutRequest {
   return_url: string;
   /** The buyer's IANA zone, which nothing later in the chain can work out. */
   time_zone: string;
+  /**
+   * That the buyer ticked the consent on the confirm dialog. The server
+   * refuses anything else, and stamps the instant it arrives.
+   */
+  consented: true;
 }
 
 export const paymentApi = {

@@ -184,7 +184,7 @@ function sessionBounds(): { timeout?: number; maxNetworkRetries?: number } {
 }
 
 describe("createCheckout — what reaches Stripe", () => {
-  it("asks for the consent tick and carries the buyer's own wording", async () => {
+  it("asks the hosted page to collect no consent of ours", async () => {
     const userId = await seedUser();
     try {
       await checkout({
@@ -196,14 +196,11 @@ describe("createCheckout — what reaches Stripe", () => {
       });
 
       const arg = sessionArg();
-      expect(arg["consent_collection"]).toEqual({
-        terms_of_service: "required",
-      });
-      expect(arg["custom_text"]).toEqual({
-        terms_of_service_acceptance: {
-          message: consentText("zh-CN"),
-        },
-      });
+      // The buyer already agreed, on our own confirm dialog, before this call
+      // was made. A second tick on the hosted page would ask for the same
+      // agreement again, and what it reports back carries no instant.
+      expect(arg["consent_collection"]).toBeUndefined();
+      expect(arg["custom_text"]).toBeUndefined();
     } finally {
       await dropUser(userId);
     }
@@ -228,10 +225,6 @@ describe("createCheckout — what reaches Stripe", () => {
 
       const arg = sessionArg();
       expect(arg["locale"]).toBe(theirs);
-      expect(
-        (arg["custom_text"] as { terms_of_service_acceptance: { message: string } })
-          .terms_of_service_acceptance.message,
-      ).toBe(consentText(ours));
     } finally {
       await dropUser(userId);
     }
@@ -394,6 +387,34 @@ describe("createCheckout — what reaches Stripe", () => {
 });
 
 describe("createCheckout — what lands in our own table", () => {
+  it("stamps the instant the buyer's consent reached us, on our own clock", async () => {
+    // The tick happens on our dialog one request earlier, so this is the
+    // first instant we can attest to. It has to be written down here: a
+    // webhook arriving later knows nothing about what the buyer agreed to,
+    // and the burden of proving the consent is ours.
+    const userId = await seedUser();
+    const before = Date.now();
+    try {
+      const { paymentId } = await checkout({
+        userId,
+        priceCents: 2000,
+        returnUrl: "https://app.example.test/s/mine",
+        timeZone: "UTC",
+        locale: "en",
+      });
+      const [row] = await sql<{ metadata: Record<string, unknown> }[]>`
+        SELECT metadata FROM payments WHERE id = ${paymentId}
+      `;
+      const stamped = row!.metadata["consentedAt"];
+      expect(typeof stamped).toBe("string");
+      const at = Date.parse(stamped as string);
+      expect(at).toBeGreaterThanOrEqual(before);
+      expect(at).toBeLessThanOrEqual(Date.now());
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
   it("writes no row at all when Stripe refuses the session", async () => {
     const userId = await seedUser();
     stripe.checkout.sessions.create.mockRejectedValueOnce(
@@ -496,6 +517,19 @@ describe("listTiers — what the buy screen is offered", () => {
     for (const line of listed.refundLines) {
       expect(line.length).toBeGreaterThan(0);
     }
+  });
+
+  it("carries the consent wording the dialog puts the tick against", () => {
+    // The tick records a version, and the version names the key its wording
+    // lives at. A second copy of the sentence in the browser's locale files
+    // would let the two drift, and the version we record would then name
+    // wording the buyer never read.
+    const listed = listTiers();
+    expect(listed.consentTextVersion).toBe("consent-credits-v1");
+    expect(listed.consentText).toBe(consentText("en"));
+    expect(runWithLocale("ja", () => listTiers()).consentText).toBe(
+      consentText("ja"),
+    );
   });
 
   it("gives that rule in whatever language the buyer is reading in", () => {

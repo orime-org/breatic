@@ -343,11 +343,18 @@ export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
  * two only ever differ in the parameters that say which way it was.
  * `time_zone` is what the browser reports; the confirmation email prints the
  * purchase time in it, and the server checks it before storing it.
+ *
+ * `consented` says the buyer ticked the consent on the confirm dialog. It is
+ * the only value the field accepts, so a request that omits it or answers
+ * `false` is refused here and no session is ever created: a charge with no
+ * record of what its buyer agreed to is one we cannot account for, and the
+ * disabled button only covers the callers who go through the screen.
  */
 export const checkoutSchema = z.object({
   price_cents: z.number().int().positive(),
   return_url: z.string().url(),
   time_zone: z.string().min(1).max(64),
+  consented: z.literal(true),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 

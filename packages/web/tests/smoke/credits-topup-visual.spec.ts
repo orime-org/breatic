@@ -98,7 +98,7 @@ for (const theme of ['light', 'dark'] as const) {
       .first()
       .getByRole('button')
       .click();
-    await expect(page.locator('[data-testid="confirm-refund-ack"]')).toBeVisible({
+    await expect(page.locator('[data-testid="confirm-consent"]')).toBeVisible({
       timeout: 10_000,
     });
 
@@ -139,7 +139,7 @@ for (const theme of ['light', 'dark'] as const) {
         return getComputedStyle(document.body).backgroundColor;
       };
 
-      const tick = document.querySelector('[data-testid="confirm-refund-ack"]');
+      const tick = document.querySelector('[data-testid="confirm-consent"]');
       const rule = document.querySelector('[data-testid="confirm-refund-rule"]');
       if (!tick || !rule) {
         throw new Error('the dialog is missing the tick or the rule');
@@ -265,7 +265,7 @@ test('the buy screen and its confirm dialog measure up', async ({ page }) => {
 
   // The dialog: the tick, its label, and the button it gates.
   await page.locator('[data-testid="credit-pack"]').first().getByRole('button').click();
-  const tick = page.locator('[data-testid="confirm-refund-ack"]');
+  const tick = page.locator('[data-testid="confirm-consent"]');
   await expect(tick).toBeVisible({ timeout: 10_000 });
 
   // The overlay is a dialog too, so the confirm one is named.
@@ -281,7 +281,7 @@ test('the buy screen and its confirm dialog measure up', async ({ page }) => {
         height: Math.round(r.height),
       };
     };
-    const tickEl = root.querySelector('[data-testid="confirm-refund-ack"]');
+    const tickEl = root.querySelector('[data-testid="confirm-consent"]');
     const label = tickEl?.closest('label') ?? null;
     const pay = root.querySelector('[data-testid="confirm-pay"]');
     const payStyle = pay ? getComputedStyle(pay) : null;

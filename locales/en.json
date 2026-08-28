@@ -1397,8 +1397,7 @@
       "confirmTax": "The price excludes tax. The checkout page shows the final amount with the tax where you are.",
       "cancel": "Cancel",
       "pay": "Continue to payment",
-      "failed": "That purchase could not be started. Try again.",
-      "consent": "I have read the refund rule"
+      "failed": "That purchase could not be started. Try again."
     },
     "purchase": {
       "processing": "Processing",
