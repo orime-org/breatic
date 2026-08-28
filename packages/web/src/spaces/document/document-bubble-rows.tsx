@@ -18,14 +18,15 @@ import { cn } from '@web/lib/utils';
 import { useCloseBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 
 /**
- * One row.
+ * What a row adds to the shared menu row.
  *
- * Its measurements are the shared menu row's: `px-2 py-1.5`, `text-sm`, 4px
- * between icon and label, a 16px icon.
+ * The measurements come from `size='menu-item'` and the hover fill from
+ * `variant='ghost'`, so a change to either reaches these menus along with
+ * every other one in the app.
  */
 const ROW = [
-  'w-full justify-start gap-2 rounded-chrome px-2 py-1.5 text-sm font-normal',
-  'cursor-default select-none transition-colors hover:bg-accent',
+  'w-full justify-start font-normal',
+  'cursor-default select-none transition-colors',
   '[&_svg]:size-4 [&_svg]:shrink-0',
 ].join(' ');
 
@@ -68,8 +69,8 @@ export function BubbleMenuRow({
   const close = useCloseBubbleMenu();
   return (
     <Button
-      variant={null}
-      size={null}
+      variant='ghost'
+      size='menu-item'
       tabIndex={-1}
       className={cn(ROW, className)}
       onClick={() => {

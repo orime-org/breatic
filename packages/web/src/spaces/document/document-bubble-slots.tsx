@@ -375,7 +375,18 @@ const PALETTE = ['red', 'orange', 'green', 'blue', 'violet', 'pink', 'teal'];
  */
 const COLOUR_CELL =
   'flex size-[30px] items-center justify-center rounded-content-sm border'
-  + ' border-border cursor-pointer hover:border-active-border text-base';
+  + ' border-border cursor-default hover:border-active-border text-base';
+
+/**
+ * The cell the selection already carries.
+ *
+ * `status-selected` rather than the demo's blue: the palette lives in `:root`
+ * (`theme/tokens.css:47`), so no `border-palette-*` utility is generated, and
+ * one written anyway wins the merge against `border-border` and leaves the
+ * border on `currentColor`. This token is in `@theme`, and it is what the
+ * canvas colour picker marks its own cell with (`GroupBackgroundPicker:91`).
+ */
+const COLOUR_CELL_ON = 'border-status-selected hover:border-status-selected';
 
 /**
  * The colour slot.
@@ -435,7 +446,8 @@ export const ColorSlot = React.memo(function ColorSlot({
           data-selected='true'
           className={cn(
             COLOUR_CELL,
-            'border-palette-blue font-semibold hover:border-palette-blue',
+            COLOUR_CELL_ON,
+            'font-semibold',
           )}
           onClick={() => {
             pick('text colour default');
@@ -477,8 +489,8 @@ export const ColorSlot = React.memo(function ColorSlot({
           }}
           className={cn(
             COLOUR_CELL,
-            'relative overflow-hidden border-palette-blue bg-background',
-            'hover:border-palette-blue',
+            COLOUR_CELL_ON,
+            'relative overflow-hidden bg-background',
             'after:absolute after:-inset-x-1 after:top-1/2 after:border-t'
             + ' after:border-muted-foreground after:[content:""]'
             + ' after:[transform:rotate(-38deg)]',
@@ -509,7 +521,10 @@ export const ColorSlot = React.memo(function ColorSlot({
           size={null}
           data-testid={`${id}-reset`}
           tabIndex={-1}
-          className='h-8 w-full text-sm'
+          // No fill of its own: it sits on the popover, and `outline`'s
+          // `bg-background` is the page's ground, a step darker than the panel
+          // under it (demo:261 leaves it transparent).
+          className='h-8 w-full bg-transparent text-sm'
           onClick={() => {
             pick('colour reset');
           }}
