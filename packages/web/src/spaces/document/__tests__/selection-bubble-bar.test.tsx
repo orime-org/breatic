@@ -25,8 +25,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
-import type { EditorView } from '@tiptap/pm/view';
-import type { EditorState } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -123,42 +121,18 @@ function mount(editor: Editor, readOnly = false): void {
   );
 }
 
-/** What can be asked of the bar from outside it. */
-interface BubblePluginView {
-  element?: HTMLElement;
-  scrollTarget?: unknown;
-  resizeDelay?: number;
-  isVisible?: boolean;
-  getReferencedVirtualElement?: () => { getBoundingClientRect: () => DOMRect } | null;
-  shouldShow?: (props: {
-    editor: Editor;
-    element: HTMLElement;
-    view: EditorView;
-    state: EditorState;
-    from: number;
-    to: number;
-  }) => boolean;
-  floatingUIOptions?: {
-    offset?: unknown;
-    flip?: { boundary?: unknown } | boolean;
-    shift?: { boundary?: unknown } | boolean;
-    hide?: { boundary?: unknown } | boolean;
-    placement?: string;
-  };
-}
 
 /**
- * What the bar looks like right now, read from the document.
+ * Whether the bar is on screen right now, read from the document.
  *
- * There is no plugin view to reach into: when the bar does not belong on
- * screen the component does not render it, so querying for the element IS the
- * thing the reader sees. How the middleware is configured is a local argument
- * to `useFloating` and neither readable nor worth reading — that is an
- * implementation detail, and the behaviour is pinned by items G1 through G3.
+ * When the bar does not belong on screen the component does not render it, so
+ * querying for the element IS the thing the reader sees. How the middleware is
+ * configured is a local argument to `useFloating`, neither readable nor worth
+ * reading — the behaviour it produces is pinned by items G1 through G3.
+ * @returns True while the bar is in the document.
  */
-function bubblePluginView(): BubblePluginView {
-  const bar = screen.queryByTestId('doc-selection-bubble-bar');
-  return { isVisible: bar !== null, element: bar ?? undefined };
+function barOnScreen(): boolean {
+  return screen.queryByTestId('doc-selection-bubble-bar') !== null;
 }
 
 
@@ -841,7 +815,7 @@ describe('the selection bubble bar', () => {
       moveMouseTo(420, 250);
 
       expect(shouldShowNow()).toBe(true);
-      expect(bubblePluginView().isVisible).toBe(true);
+      expect(barOnScreen()).toBe(true);
       const rect = anchorRectOf(editor, { x: 420, y: 250 });
       expect(rect?.top).toBe(242);
       expect(rect?.left).toBe(420);
@@ -911,7 +885,7 @@ describe('the selection bubble bar', () => {
       // float over the body while the reader typed in another field.
       moveMouseTo(420, 250);
 
-      expect(bubblePluginView().isVisible).toBe(false);
+      expect(barOnScreen()).toBe(false);
     });
 
     it('shows nothing for a select-all over a document with no text in it', async () => {
