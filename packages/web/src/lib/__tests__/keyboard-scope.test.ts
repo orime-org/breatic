@@ -58,7 +58,7 @@ describe('regionOwnsKeyboard', () => {
     });
   });
 
-  describe('an overlay keeps its own keys', () => {
+  describe('a target that passes through no region belongs to neither', () => {
     it('is false for a target whose ancestors pass through no region', () => {
       const overlay = document.createElement('div');
       overlay.setAttribute('role', 'dialog');

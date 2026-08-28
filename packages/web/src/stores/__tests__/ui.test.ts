@@ -25,8 +25,9 @@ describe('useUIStore', () => {
   });
 
   // Read off the store's own definition rather than the state, which the
-  // beforeEach above overwrites. A project that has just been opened and not
-  // yet clicked answers the keyboard from its canvas (#168, A9).
+  // beforeEach above does not reset for this field. A project that has just
+  // been opened and not yet clicked answers the keyboard from its canvas
+  // (#168, A9).
   it('starts with the space as the active region', () => {
     expect(useUIStore.getInitialState().activeRegion).toBe('space');
   });

@@ -695,10 +695,10 @@ function CanvasSpaceInner({
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
     if (purpose === undefined) return;
-    // A caret mid-sentence is a live surface, and only orphaned focus is
-    // rescued — the same rule the crop overlay's hand-off states. Escape
-    // reaches here from the prompt editor, where ending the pick is what the
-    // reader asked for and the caret is not.
+    // A caret mid-sentence is a live surface: Escape reaches here from the
+    // prompt editor, where ending the pick is what the reader asked for and
+    // moving the caret is not. Focus resting anywhere else goes to the
+    // trigger below.
     if (isEditableTarget(document.activeElement)) return;
     for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
       const trigger = document.querySelector<HTMLElement>(
@@ -2640,8 +2640,8 @@ function CanvasSpaceInner({
       const selection = window.getSelection();
       if (selection !== null && !selection.isCollapsed) return;
       // With nothing highlighted, the event's target is wherever the caret was
-      // last left and says nothing about this copy. Focus is what the other
-      // outlets read, and it answers the same question here: an overlay or the
+      // last left and says nothing about this copy, so focus answers the
+      // question the other outlets put to `event.target`: an overlay or the
       // top bar is handling this press itself, and otherwise the region does.
       if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
       if (isEditableTarget(document.activeElement)) return;
@@ -2929,7 +2929,9 @@ function CanvasSpaceInner({
   // The delete key, taken off the library and answered here so the region gate
   // gets a say (#168). `deleteKeyCode={null}` registers no listener at all
   // (useKeyPress wraps its whole effect body in `if (keyCode !== null)`), so
-  // this is the only listener on Backspace / Delete.
+  // the library answers these two keys nowhere. The prompt editor and the
+  // document space run their own Backspace / Delete, and a caret in either is
+  // editable, so this handler yields there.
   //
   // Carried over from the library: a modifier means this is not a plain delete
   // (`isMatchingKey` filters on `keys.length === pressedKeys.size`, so
@@ -3716,8 +3718,9 @@ function CanvasSpaceInner({
           onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
-          // The delete key is handled below, in a listener the region gate
-          // gets a say in. `null` registers no listener in the library at all.
+          // The delete key is handled in the Backspace / Delete effect above,
+          // where the region gate gets a say. `null` registers no listener in
+          // the library at all.
           deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
           fitView

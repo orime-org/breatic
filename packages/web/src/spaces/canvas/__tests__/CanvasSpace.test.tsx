@@ -3659,8 +3659,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
 
     describe('the space region holds it', () => {
       // The library matched a single key against the whole pressed set, so a
-      // modifier meant no match at all. Taking the key over keeps that: these
-      // three delete nothing today.
+      // modifier meant no match at all. Taking the key over keeps that: none
+      // of these delete anything today.
       it.each([
         ['Cmd+Backspace', 'Backspace', { meta: true }],
         // Ctrl is the multi-select key on Windows and Linux
