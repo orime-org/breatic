@@ -6,7 +6,7 @@
  */
 
 import { renderHook } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 
@@ -29,6 +29,16 @@ function watched(): { abandon: () => void; abandons: () => number } {
 describe('useGestureRelease', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  // The whole web suite runs in ONE process (`singleFork`), so a fake clock
+  // left standing is the clock every later file gets. React's scheduler then
+  // never advances, nothing flushes, and every render in the run after this
+  // file produces an empty body -- which is what CI showed: 68 files failing
+  // on `Unable to find an element` against `<body><div /></body>`. Locally the
+  // same suite was green, because the file order put this one last.
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('drops a gesture the pointer release left standing', () => {
