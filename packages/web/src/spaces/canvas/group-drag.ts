@@ -10,9 +10,9 @@
  *   - **positions** — dragged Groups (absolute; children follow natively via
  *     ReactFlow `parentId`) and members that just moved within the same parent.
  *   - **expansions** — Groups grown to wrap an in-group member whose body
- *     overflows (only-expand; the Group never auto-shrinks). The expand mutation
- *     reanchors members, so positions here are relative to the pre-expand
- *     top-left and are applied BEFORE the expansion.
+ *     overflows (only-expand; the Group never auto-shrinks). Only the Group's
+ *     own rect is written; every member of it appears in **positions**, stated
+ *     against the origin the expansion is moving it to.
  *
  * Kept ReactFlow-agnostic (absolute rects in, ops out) so the membership +
  * only-expand invariants are unit-tested in isolation; the canvas resolves
@@ -54,6 +54,8 @@ interface ReparentOp {
 interface PositionOp {
   id: string;
   position: { x: number; y: number };
+  /** The Group this position is measured against, or null when absolute. */
+  parentId: string | null;
 }
 
 /** A Group expansion: the new rect wrapping an overflowing in-group member. */
@@ -92,20 +94,59 @@ function rectOf(node: DragNode): Rect {
  * whose body overflows.
  * @param dragged - Every node ReactFlow moved in this drag (absolute coordinates).
  * @param allNodes - All current nodes (absolute), for Group hit-testing + membership.
+ * @param heldByRemote - Nodes a remote gesture is moving. They still answer which
+ *   Group a node belongs to; they take no part in a landing decision, and no
+ *   Group is sized around them.
+ * @param settled - The same nodes with every remote gesture put back where the
+ *   document has it. Anything a remote is holding is measured from here: its
+ *   on-screen rect is one the document has never had.
+ * @param resizedByRemote - Groups a remote is RESIZING. A resize moves no
+ *   member, so it subtracts its whole travel from each member's stored
+ *   position — which only lands right if that position was measured against the
+ *   Group's document origin. A drag carries its members along instead, so those
+ *   stay measured against the origin on screen.
  * @returns The reparents, positions, and Group expansions to apply.
  */
 export function planGroupDrag(
   dragged: ReadonlyArray<DragNode>,
   allNodes: ReadonlyArray<DragNode>,
+  heldByRemote: ReadonlySet<string> = new Set(),
+  settled: ReadonlyArray<DragNode> = allNodes,
+  resizedByRemote: ReadonlySet<string> = new Set(),
 ): GroupDragOps {
   const groups = allNodes.filter((node) => node.type === 'group');
   const groupById = new Map(groups.map((group) => [group.id, group]));
+  const settledById = new Map(settled.map((node) => [node.id, node]));
+  const draggedIds = new Set(dragged.map((node) => node.id));
+  /**
+   * Whether this end has to leave a node's place to whoever else is holding it.
+   *
+   * A node in this drag is the exception: two people can hold one node, and
+   * where this user just dropped it is what this drag-stop is committing. Both
+   * the place a node is written at and the extent a Group is sized around ask
+   * this same question, so they answer it the same way.
+   * @param node - The node as this screen draws it.
+   * @returns True when a remote decides this node's place, not this drag.
+   */
+  const leftToRemote = (node: DragNode): boolean =>
+    heldByRemote.has(node.id) && !draggedIds.has(node.id);
+  /**
+   * The node as the document has it, for anything a remote is holding.
+   * @param node - The node as this screen draws it.
+   * @returns The settled node, or the given one when this drag owns it.
+   */
+  const asSettled = (node: DragNode): DragNode =>
+    leftToRemote(node) ? (settledById.get(node.id) ?? node) : node;
 
   const draggedMembers = dragged.filter((node) => node.type !== 'group');
+  // A Group somebody else is dragging stays in the list and is marked instead:
+  // its rect right now is one the document has never held, so it neither
+  // receives a node nor is judged to have lost one.
   const groupRefs: GroupRef[] = groups.map((group) => ({
     id: group.id,
     rect: rectOf(group),
     locked: group.locked,
+    heldByRemote: heldByRemote.has(group.id),
   }));
   const decisions = planGroupDragStop(
     draggedMembers.map((node) => ({
@@ -123,7 +164,7 @@ export function planGroupDrag(
   for (const node of dragged) {
     if (node.type === 'group') {
       // a dragged Group persists its absolute position; children follow natively
-      positions.push({ id: node.id, position: node.absPos });
+      positions.push({ id: node.id, position: node.absPos, parentId: null });
       continue;
     }
     const decision = decisionById.get(node.id);
@@ -145,12 +186,22 @@ export function planGroupDrag(
     }
     // membership unchanged — persist in the right coordinate space
     const parent = node.parentId !== undefined ? groupById.get(node.parentId) : undefined;
+    // A Group being dragged elsewhere carries its members along, so a member
+    // nudged inside it belongs at that spot in the Group and travels the rest
+    // of the way with it — measured from the origin on screen. A resize moves
+    // no member and subtracts its whole travel from every stored position, so
+    // there the document origin is the one that lands right.
+    const anchor =
+      parent !== undefined && resizedByRemote.has(parent.id)
+        ? (settledById.get(parent.id) ?? parent)
+        : parent;
     positions.push({
       id: node.id,
       position:
-        parent !== undefined
-          ? toRelativePosition(node.absPos, parent.absPos)
+        anchor !== undefined
+          ? toRelativePosition(node.absPos, anchor.absPos)
           : node.absPos,
+      parentId: parent !== undefined ? parent.id : null,
     });
   }
 
@@ -168,12 +219,28 @@ export function planGroupDrag(
 
   const expansions: ExpansionOp[] = [];
   for (const group of groups) {
+    // Growing a Group writes its position and size, and the rect it would grow
+    // from is the one on screen -- an origin the document has never held. A
+    // Group a remote is dragging is one this end writes nothing about, so its
+    // wrap waits for a drag-stop after that gesture ends.
+    if (heldByRemote.has(group.id)) continue;
     const members = allNodes.filter(
       (node) => node.type !== 'group' && newParentOf(node) === group.id,
     );
     if (members.length === 0) continue;
     const groupRect = rectOf(group);
-    const grown = expandGroupToWrap(groupRect, members.map(rectOf));
+    // A member somebody else is dragging is about to land somewhere this end
+    // cannot know, and `expandGroupToWrap` only ever grows — a Group sized to
+    // wrap it now keeps that size after it lands elsewhere. A member of this
+    // drag is not such a node even when a remote holds it too: this drag-stop
+    // is committing the place the pointer released it at, so the Group grows
+    // around that place. That case is a remote holding the member itself; when
+    // the remote holds the GROUP the loop has already skipped it above, and the
+    // member stays outside its Group until a drag-stop after that gesture ends.
+    // Untouched members still get restated below: the origin moving is about
+    // where every member sits, not about who is holding one.
+    const sizedAround = members.filter((node) => !leftToRemote(node));
+    const grown = expandGroupToWrap(groupRect, sizedAround.map(rectOf));
     if (
       grown.x !== groupRect.x ||
       grown.y !== groupRect.y ||
@@ -186,8 +253,39 @@ export function planGroupDrag(
         width: grown.width,
         height: grown.height,
       });
+      // The expansion moves the origin every member of this Group is measured
+      // against, and the Group's own write says nothing about members — so
+      // every one of them is stated against where the origin is going, the one
+      // the pointer moved along with the ones it never touched. Each still
+      // takes a single position write (#2010, acceptance 9), and each keeps the
+      // absolute place it already had. A Group that only got bigger keeps its
+      // origin, and with it every member's position.
+      if (grown.x === groupRect.x && grown.y === groupRect.y) continue;
+      const stated = new Map(
+        [...reparents, ...positions].map((op) => [op.id, op]),
+      );
+      for (const member of members) {
+        const from = asSettled(member);
+        const position = {
+          x: from.absPos.x - grown.x,
+          y: from.absPos.y - grown.y,
+        };
+        const op = stated.get(member.id);
+        if (op === undefined) {
+          positions.push({ id: member.id, position, parentId: group.id });
+        }
+        else op.position = position;
+      }
     }
   }
 
-  return { reparents, positions, expansions };
+  // An expansion writes the Group's position along with its size, so a dragged
+  // Group that also grew has already been placed — a second op for it would be
+  // a second write of the one key (#2010, acceptance 9).
+  const grown = new Set(expansions.map((e) => e.groupId));
+  return {
+    reparents,
+    positions: positions.filter((op) => !grown.has(op.id)),
+    expansions,
+  };
 }

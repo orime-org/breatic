@@ -585,17 +585,22 @@ export function removeNode(
  * @param position - The node's new canvas coordinates.
  * @param position.x - New x coordinate.
  * @param position.y - New y coordinate.
+ * @param parentId - The Group the position is measured against, or null for an
+ *   absolute one. A member's position means nothing without it, and the node
+ *   can leave its Group between the frame a caller planned on and this call.
  */
 export function setNodePosition(
   projectId: string,
   spaceId: string,
   nodeId: string,
   position: { x: number; y: number },
+  parentId: string | null,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!node) return;
+  if ((node.get('parentId') ?? null) !== parentId) return;
   doc.transact(() => node.set('position', position), CANVAS_UNDO);
 }
 
@@ -1629,6 +1634,10 @@ export function setNodeParent(
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const node = nodesMap.get(nodeId);
   if (!(node instanceof Y.Map)) return;
+  // The Group can go between the frame a caller planned against and this call.
+  // Binding the node to it anyway leaves a parent nobody can see and a position
+  // measured against an origin that is not there.
+  if (parentId !== null && !(nodesMap.get(parentId) instanceof Y.Map)) return;
   doc.transact(() => {
     if (parentId === null) node.delete('parentId');
     else node.set('parentId', parentId);
@@ -1639,7 +1648,9 @@ export function setNodeParent(
 /**
  * Resize a Group — frontend-owned (group redesign). Writes the Group's new
  * top-left position and authoritative `data.width`/`data.height` in one
- * transaction (members are not rescaled). No-op when the group does not exist.
+ * transaction. Where its members end up is the caller's to write: only the
+ * render buffer knows where each one is right now, and deriving it here from
+ * the origin's delta would assume nobody else moved one meanwhile.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the Group.
  * @param groupId - Id of the Group to resize.
@@ -1648,6 +1659,7 @@ export function setNodeParent(
  * @param position.y - New y coordinate.
  * @param width - The Group's new width.
  * @param height - The Group's new height.
+ * @returns Whether the Group was still there to write.
  */
 export function resizeGroup(
   projectId: string,
@@ -1656,18 +1668,19 @@ export function resizeGroup(
   position: { x: number; y: number },
   width: number,
   height: number,
-): void {
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
+  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return false;
   const data = group.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!(data instanceof Y.Map)) return false;
   doc.transact(() => {
     group.set('position', position);
     data.set('width', width);
     data.set('height', height);
   }, CANVAS_UNDO);
+  return true;
 }
 
 /**

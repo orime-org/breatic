@@ -14,7 +14,7 @@ import { create } from 'zustand';
  * It is a PLAIN zustand store (no immer) on purpose: the node array is
  * high-frequency and immer's autoFreeze + draft proxies would freeze / wrap the
  * node objects, which fights ReactFlow's controlled rendering and the
- * reference-stable mirror merge (`mergeMirroredSelection`). The setters take a
+ * reference-stable mirror merge (`mergeCanvasNodes`). The setters take a
  * functional updater so that merge can reconcile against the current buffer.
  *
  * Splitting the buffer out of the monolithic `CanvasSpace` component into this

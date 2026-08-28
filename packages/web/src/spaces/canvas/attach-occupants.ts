@@ -3,8 +3,6 @@
 
 import type { Node } from '@xyflow/react';
 
-import { sameIdList } from '@web/spaces/canvas/active-node-ids';
-
 /** The key the occupant list travels under inside a node's `data`. */
 const OCCUPANTS_KEY = 'occupants';
 
@@ -45,51 +43,4 @@ export function attachOccupants(
   const holders = byNode.get(node.id);
   if (holders === undefined) return node;
   return { ...node, data: { ...node.data, [OCCUPANTS_KEY]: holders } };
-}
-
-/**
- * Take a node's holders back off it.
- * @param node - A node carrying holders.
- * @returns The node without the key.
- */
-function withoutOccupants(node: Node): Node {
-  const { [OCCUPANTS_KEY]: _dropped, ...rest } = node.data as Record<
-    string,
-    unknown
-  >;
-  return { ...node, data: rest };
-}
-
-/**
- * Bring a whole render buffer in line with a fresh occupant table.
- *
- * This is the path a change of holders takes on its own, with no Yjs write
- * behind it — someone else selecting a node, or letting one go. It rewrites
- * `data` and touches nothing else, which is the point: the mirror takes its
- * positions from Yjs, and a drag in progress has moved the node somewhere Yjs
- * has not heard about yet. Measured on a real canvas: running the whole mirror
- * for a remote selection put the dragged node back at its starting position
- * until the next pointer event moved it out again.
- *
- * A node whose holders are unchanged keeps its object reference, and a buffer
- * where nothing changed is handed back as the same array, so `React.memo`
- * bails everywhere but the nodes that really changed hands.
- * @param nodes - The current render buffer.
- * @param byNode - Node id to the user ids holding it.
- * @returns The buffer with every node's holders current.
- */
-export function applyOccupants(
-  nodes: ReadonlyArray<Node>,
-  byNode: ReadonlyMap<string, readonly string[]>,
-): Node[] {
-  let changed = false;
-  const next = nodes.map((node) => {
-    const holders = byNode.get(node.id) ?? null;
-    if (sameIdList(readOccupants(node.data), holders)) return node;
-    changed = true;
-    return holders === null
-      ? withoutOccupants(node)
-      : attachOccupants(node, byNode);
-  });
-  return changed ? next : (nodes as Node[]);
 }

@@ -35,6 +35,11 @@ export interface GroupRef {
   /** The Group's absolute rect. */
   rect: Rect;
   /**
+   * Whether a gesture on another screen is moving this Group. Its rect right
+   * now is one the document has never held, so it decides nothing.
+   */
+  heldByRemote?: boolean;
+  /**
    * Whether the Group is locked — a locked Group's membership is frozen, so it
    * never accepts a dragged-in node (excluded as a reparent target).
    */
@@ -51,12 +56,24 @@ export interface ReparentDecision {
 }
 
 /**
+ * Whether a Group can take a dragged node IN. Losing one is a separate
+ * question, answered at the call site: a locked Group keeps its members, while
+ * a Group a remote is dragging lets one go that the user drags clear of it.
+ * @param group - The Group to judge.
+ * @returns True when a node dropped inside it may join it.
+ */
+function accepts(group: GroupRef): boolean {
+  return group.locked !== true && group.heldByRemote !== true;
+}
+
+/**
  * Decide, per dragged node, which Group (if any) it now belongs to — the Group
  * whose rect contains the node's center. A node never reparents into itself (a
  * Group dragged over another is excluded by id), so dragging a Group yields no
  * membership change here.
  * @param dragged - Every dropped node with its current parent + absolute rect.
- * @param groups - The candidate Groups with their absolute rects.
+ * @param groups - Every Group on the canvas with its absolute rect, whether or
+ *   not it takes part in the decision.
  * @returns One reparent decision per dragged node.
  */
 export function planGroupDragStop(
@@ -64,15 +81,28 @@ export function planGroupDragStop(
   groups: ReadonlyArray<GroupRef>,
 ): ReparentDecision[] {
   return dragged.map((node) => {
+    const currentParent = node.parentId ?? null;
+    const parent =
+      currentParent === null
+        ? undefined
+        : groups.find((group) => group.id === currentParent);
+    // A locked Group's structure is frozen both ways: it takes nobody in and
+    // loses nobody.
+    if (parent?.locked === true) {
+      return { nodeId: node.id, targetGroupId: currentParent, changed: false };
+    }
+    // A Group a remote is dragging answers only the first half of that. Its
+    // members stay draggable on this end, so one dragged clear of it has left —
+    // writing "still a member" for a node the user put outside leaves the Group
+    // to grow over that gap on the next drag-stop. It stays a candidate for the
+    // member it already has, which is what keeps a nudge inside it a no-op.
     const target = groups.find(
       (group) =>
         group.id !== node.id &&
-        // A locked Group's structure is frozen — never accept a dragged-in node.
-        group.locked !== true &&
+        (group.id === currentParent || accepts(group)) &&
         groupContainsMemberCenter(group.rect, node.rect),
     );
     const targetGroupId = target?.id ?? null;
-    const currentParent = node.parentId ?? null;
     return { nodeId: node.id, targetGroupId, changed: targetGroupId !== currentParent };
   });
 }
