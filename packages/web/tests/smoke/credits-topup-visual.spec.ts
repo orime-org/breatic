@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 充值这条线的真机取数（任务 #13 视觉对抗）。
+ * Measurements the top-up screens can only give in a real browser.
  *
- * 这里只放 jsdom 量不了的：计算样式、盒子几何、焦点环、对比度、明暗两套。
- * 哪些包列进「可以退的」、弹层勾选说什么、邮件里印什么，都由单测和集成测试
- * 逐条钉住，这里不重复。
+ * What lives here is what jsdom cannot answer: computed styles, box geometry,
+ * focus rings, contrast ratios, and both themes. Which packs count as
+ * refundable, what the dialog's tick says and what the mail prints are each
+ * pinned by the unit and integration suites, and are not repeated here.
  *
- * 需要 dev 起着 + smoke 账号：
+ * Needs a running dev server and the smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
 import {
@@ -356,7 +357,8 @@ test('the refunds screen measures up', async ({ page }) => {
     const cards = [...root.querySelectorAll('[data-slot="card"], section, article')];
     const footnote = root.querySelector('footer, small, [data-slot="footnote"]');
     const refundBtn = [...root.querySelectorAll('button')].find((b) =>
-      /refund|退款|退款/i.test(b.textContent ?? ''),
+      // Simplified and traditional Chinese spell this one the same way.
+      /refund|退款/i.test(b.textContent ?? ''),
     );
     return {
       cardCount: cards.length,
