@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Node } from '@xyflow/react';
 
-import type { GestureTable } from '@web/spaces/canvas/gesture-table';
+import type { GestureGeometry, GestureTable } from '@web/spaces/canvas/gesture-table';
 import type { MergeInput } from '@web/spaces/canvas/merge-canvas-nodes';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 
@@ -42,7 +42,7 @@ function node(id: string, x: number, y: number, extra: Partial<Node> = {}): Node
  * @returns The table.
  */
 function gesturing(
-  ...entries: Array<[string, { x: number; y: number; width?: number; height?: number }]>
+  ...entries: Array<[string, GestureGeometry]>
 ): GestureTable {
   return new Map(entries);
 }
@@ -642,5 +642,61 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
     const merged = mergeCanvasNodes(prev, fresh, QUIET);
     expect(merged[0]).not.toBe(prev[0]);
     expect(merged[0].parentId).toBe('g');
+  });
+});
+
+describe('mergeCanvasNodes, a gesture entry that rode in on a Group', () => {
+  it('stops speaking for a member the document has taken out of that Group', () => {
+    // A remote holds Group `g`, so its batch carries every member's absolute
+    // place as of the press. While that runs, THIS user drags one member clear
+    // and the document takes it to the top level at 44. The batch still lists
+    // the member at 404, where it sat inside the Group — a place the document
+    // has never had it and the user never released it at. That entry rode in on
+    // `g`, so it says nothing about a node no longer in `g`.
+    const prev = [
+      node('g', 380, 200, { type: 'group' }),
+      node('m', 24, 24, { parentId: 'g' }),
+    ];
+    const fresh = [node('g', 200, 200, { type: 'group' }), node('m', 44, 224)];
+    const merged = mergeCanvasNodes(prev, fresh, {
+      ...QUIET,
+      remoteGesture: gesturing(
+        ['g', { x: 380, y: 200, root: 'g' }],
+        ['m', { x: 404, y: 224, root: 'g' }],
+      ),
+    });
+    expect(merged.find((n) => n.id === 'm')?.position).toEqual({ x: 44, y: 224 });
+    // The Group itself is what the remote has hold of, so it still moves.
+    expect(merged.find((n) => n.id === 'g')?.position).toEqual({ x: 380, y: 200 });
+  });
+
+  it('still moves a member that is still in the Group', () => {
+    const prev = [
+      node('g', 380, 200, { type: 'group' }),
+      node('m', 24, 24, { parentId: 'g' }),
+    ];
+    const fresh = [
+      node('g', 200, 200, { type: 'group' }),
+      node('m', 24, 24, { parentId: 'g' }),
+    ];
+    const merged = mergeCanvasNodes(prev, fresh, {
+      ...QUIET,
+      remoteGesture: gesturing(
+        ['g', { x: 380, y: 200, root: 'g' }],
+        ['m', { x: 404, y: 224, root: 'g' }],
+      ),
+    });
+    // Relative to the Group's gesture origin: 404 - 380 = 24.
+    expect(merged.find((n) => n.id === 'm')?.position).toEqual({ x: 24, y: 24 });
+  });
+
+  it('moves a top-level node the remote is dragging directly', () => {
+    const prev = [node('n', 0, 0)];
+    const fresh = [node('n', 0, 0)];
+    const merged = mergeCanvasNodes(prev, fresh, {
+      ...QUIET,
+      remoteGesture: gesturing(['n', { x: 700, y: 700, root: 'n' }]),
+    });
+    expect(merged[0]?.position).toEqual({ x: 700, y: 700 });
   });
 });

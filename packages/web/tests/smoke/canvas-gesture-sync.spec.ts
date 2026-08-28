@@ -1133,6 +1133,16 @@ test('a member dragged out of a Group a remote holds lands where it was released
   expect(docMember.x).toBeCloseTo(docGroup.x + delta + 24 + travel, 0);
   expect(docMember.y).toBeCloseTo(docGroup.y + 24, 0);
 
+  // And it is drawn there. The other end is still holding the Group, and its
+  // batch still lists this member at the place it had inside it -- an entry
+  // that speaks for a Group this node has left. ReactFlow states each node's
+  // absolute position in its own transform, so read that rather than a box.
+  const drawn = await mover.evaluate((id) => {
+    const el = document.querySelector(`.react-flow__node[data-id="${id}"]`);
+    return el === null ? null : (el as HTMLElement).style.transform;
+  }, memberId);
+  expect(drawn).toBe(`translate(${docMember.x}px, ${docMember.y}px)`);
+
   await watcher.mouse.up();
   await watcher.waitForTimeout(SETTLE_MS);
   await removeNode(mover, memberId);

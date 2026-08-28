@@ -17,6 +17,17 @@ export interface GestureGeometry {
   width?: number;
   /** Height, carried only by a Group being resized. */
   height?: number;
+  /**
+   * The node this entry rode in on: itself when the gesture has hold of it,
+   * its Group when it came along as a member.
+   *
+   * A gesture settles what it holds when it takes hold and never asks again,
+   * so a member that leaves the Group while the gesture runs is still listed,
+   * at a place inside a Group it is no longer in. The reader needs to know
+   * which Group an entry speaks for to tell that entry apart from one for a
+   * node the gesture has hold of directly.
+   */
+  root?: string;
 }
 
 /** Node id to the geometry a gesture is showing it at. */
@@ -47,7 +58,10 @@ function readGeometry(value: unknown): GestureGeometry | null {
   if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (!isCoordinate(raw.x) || !isCoordinate(raw.y)) return null;
-  const geometry: GestureGeometry = { x: raw.x, y: raw.y };
+  const geometry: GestureGeometry =
+    typeof raw.root === 'string' && raw.root !== ''
+      ? { x: raw.x, y: raw.y, root: raw.root }
+      : { x: raw.x, y: raw.y };
   // A size travels only with a Group being resized, so absent is sound and
   // present-but-not-a-number is not: a Group drawn at a nonsense size is worse
   // than one drawn at the size the document already knows.

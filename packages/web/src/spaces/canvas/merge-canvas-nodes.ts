@@ -115,6 +115,20 @@ export function mergeCanvasNodes(
     }
     const gesture = remoteGesture.get(node.id);
     if (gesture === undefined) return null;
+    // An entry that rode in on a Group speaks only for a node still in that
+    // Group. The sending gesture settles what it holds when it takes hold and
+    // never asks again, so a member this end has since taken out is still
+    // listed, at the place it had inside the Group — a place the document has
+    // never held it and the user never put it. Its own document geometry is
+    // what is left. Entries with no root come from a client that predates the
+    // field; nothing distinguishes them, so they are taken as before.
+    if (
+      gesture.root !== undefined &&
+      gesture.root !== node.id &&
+      gesture.root !== node.parentId
+    ) {
+      return null;
+    }
     if (node.parentId === undefined) return fromRemote(node, gesture, null);
     const origin = groupOrigin(node.parentId);
     // A member whose Group has not arrived has nothing to measure from, so it

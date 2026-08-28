@@ -128,7 +128,7 @@ describe('gestureGeometry', () => {
       [loose('n1', 120, 240)],
       null,
     );
-    expect(published).toEqual({ n1: { x: 120, y: 240 } });
+    expect(published).toEqual({ n1: { x: 120, y: 240, root: 'n1' } });
   });
 
   it('turns a member relative position into an absolute one', () => {
@@ -137,7 +137,8 @@ describe('gestureGeometry', () => {
       [group('g1', 100, 200, 400, 300), member('m1', 'g1', 10, 20)],
       null,
     );
-    expect(published).toEqual({ m1: { x: 110, y: 220 } });
+    // The Group is not in this gesture, so the member speaks for itself.
+    expect(published).toEqual({ m1: { x: 110, y: 220, root: 'm1' } });
   });
 
   it('carries the size of the Group being resized', () => {
@@ -146,7 +147,9 @@ describe('gestureGeometry', () => {
       [group('g1', 100, 200, 400, 300)],
       'g1',
     );
-    expect(published).toEqual({ g1: { x: 100, y: 200, width: 400, height: 300 } });
+    expect(published).toEqual({
+      g1: { x: 100, y: 200, width: 400, height: 300, root: 'g1' },
+    });
   });
 
   it('leaves the size off a Group that is only being dragged', () => {
@@ -155,7 +158,7 @@ describe('gestureGeometry', () => {
       [group('g1', 100, 200, 400, 300)],
       null,
     );
-    expect(published).toEqual({ g1: { x: 100, y: 200 } });
+    expect(published).toEqual({ g1: { x: 100, y: 200, root: 'g1' } });
   });
 
   it('leaves the size off the members of a resized Group', () => {
@@ -165,8 +168,9 @@ describe('gestureGeometry', () => {
       'g1',
     );
     expect(published).toEqual({
-      g1: { x: 100, y: 200, width: 400, height: 300 },
-      m1: { x: 110, y: 220 },
+      g1: { x: 100, y: 200, width: 400, height: 300, root: 'g1' },
+      // The member rode in on the Group, so that is what its entry speaks for.
+      m1: { x: 110, y: 220, root: 'g1' },
     });
   });
 

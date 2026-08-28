@@ -85,7 +85,7 @@ describe('useGestureBroadcast, a drag', () => {
 
     broadcast.begin(['n1'], null);
 
-    expect(log).toEqual([{ kind: 'publish', batch: { n1: { x: 10, y: 20 } } }]);
+    expect(log).toEqual([{ kind: 'publish', batch: { n1: { x: 10, y: 20, root: 'n1' } } }]);
   });
 
   it('publishes the whole batch again as it moves', () => {
@@ -96,7 +96,7 @@ describe('useGestureBroadcast, a drag', () => {
     buffer.current = [loose('n1', 11, 21)];
     broadcast.update();
 
-    expect(log[1]).toEqual({ kind: 'publish', batch: { n1: { x: 11, y: 21 } } });
+    expect(log[1]).toEqual({ kind: 'publish', batch: { n1: { x: 11, y: 21, root: 'n1' } } });
   });
 
   it('holds the nodes it is moving for the merge stage', () => {
@@ -143,7 +143,7 @@ describe('useGestureBroadcast, the release', () => {
     broadcast.end(() => log.push({ kind: 'document' }));
 
     expect(log).toEqual([
-      { kind: 'publishNow', batch: { n1: { x: 99, y: 99 } } },
+      { kind: 'publishNow', batch: { n1: { x: 99, y: 99, root: 'n1' } } },
       { kind: 'document' },
       { kind: 'clear' },
     ]);
@@ -159,7 +159,7 @@ describe('useGestureBroadcast, the release', () => {
     buffer.current = [loose('n1', 500, 600)];
     broadcast.end(() => undefined);
 
-    expect(log[1]).toEqual({ kind: 'publishNow', batch: { n1: { x: 500, y: 600 } } });
+    expect(log[1]).toEqual({ kind: 'publishNow', batch: { n1: { x: 500, y: 600, root: 'n1' } } });
   });
 
   it('takes the field down even when the document write throws', () => {
@@ -196,8 +196,8 @@ describe('useGestureBroadcast, a resize', () => {
     expect(log[0]).toEqual({
       kind: 'publish',
       batch: {
-        g1: { x: 100, y: 200, width: 400, height: 300 },
-        m1: { x: 110, y: 220 },
+        g1: { x: 100, y: 200, width: 400, height: 300, root: 'g1' },
+        m1: { x: 110, y: 220, root: 'g1' },
       },
     });
   });
@@ -214,7 +214,7 @@ describe('useGestureBroadcast, a resize', () => {
 
     expect(log[1]).toEqual({
       kind: 'publish',
-      batch: { g1: { x: 0, y: 0, width: 800, height: 300 } },
+      batch: { g1: { x: 0, y: 0, width: 800, height: 300, root: 'g1' } },
     });
   });
 
@@ -231,7 +231,7 @@ describe('useGestureBroadcast, a resize', () => {
 
     expect(log[0]).toEqual({
       kind: 'publishNow',
-      batch: { g1: { x: 0, y: 0, width: 900, height: 700 } },
+      batch: { g1: { x: 0, y: 0, width: 900, height: 700, root: 'g1' } },
     });
   });
 });

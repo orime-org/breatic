@@ -61,6 +61,9 @@ export function gestureGeometry(
     const node = byId.get(id);
     if (node === undefined) continue;
     let { x, y } = node.position;
+    // What this entry speaks for: the node itself, unless it is here only
+    // because the gesture has hold of its Group.
+    let root = id;
     if (node.parentId !== undefined) {
       const parent = byId.get(node.parentId);
       // A member with no Group to measure from has no absolute place to
@@ -69,11 +72,12 @@ export function gestureGeometry(
       if (parent === undefined) continue;
       x += parent.position.x;
       y += parent.position.y;
+      if (ids.has(node.parentId)) root = node.parentId;
     }
     published[id] =
       id === resizedGroupId && node.width !== undefined && node.height !== undefined
-        ? { x, y, width: node.width, height: node.height }
-        : { x, y };
+        ? { x, y, width: node.width, height: node.height, root }
+        : { x, y, root };
   }
   return published;
 }
