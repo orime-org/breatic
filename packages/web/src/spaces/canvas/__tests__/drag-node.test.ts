@@ -69,10 +69,14 @@ describe('toPlacedDragNode', () => {
 });
 
 describe('toScreenDragNode', () => {
-  it('takes the painted point when ReactFlow has one', () => {
-    expect(toScreenDragNode(MEMBER, SCREEN, { x: 450, y: 150 }).absPos).toEqual({
-      x: 450,
-      y: 150,
+  it('takes the painted point over anything the list would work out', () => {
+    // ReactFlow moves the node it is dragging every pointer event, while the
+    // buffer this list came from is a frame behind. The painted point is the
+    // one the pointer was over, so a value that disagrees with the list has to
+    // win -- checked with a point no arithmetic over SCREEN can produce.
+    expect(toScreenDragNode(MEMBER, SCREEN, { x: 777, y: 888 }).absPos).toEqual({
+      x: 777,
+      y: 888,
     });
   });
 
