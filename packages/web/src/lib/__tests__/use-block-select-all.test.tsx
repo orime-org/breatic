@@ -102,7 +102,7 @@ describe('useBlockSelectAll', () => {
 
     it('on a capital A, which is what CapsLock sends', () => {
       renderHook(() => useBlockSelectAll());
-      expect(press(page.plain, { key: 'A' })).toBe(true);
+      expect(press(page.plain, { key: 'A', code: '' })).toBe(true);
     });
 
     it('while the key is held down and repeating', () => {
