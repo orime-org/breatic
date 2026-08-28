@@ -3671,6 +3671,40 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(event.defaultPrevented).toBe(false);
       });
 
+      // Both keys delete on every platform; the Mac keyboard's key is
+      // Backspace, so a suite that only presses that one leaves the other
+      // untested.
+      it('the Delete key removes the selected node', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Delete');
+        await waitFor(() =>
+          expect(removeElements).toHaveBeenCalledWith('p', 's', ['n1'], []),
+        );
+      });
+
+      // Both wires run between nodes that survive, so the selected one can
+      // only be in the call because the key took it.
+      it('the delete key removes the selected edges alongside the nodes', async () => {
+        mountWithSelection(3);
+        const { removeElements } = spyWrites();
+        act(() => {
+          useCanvasGraphStore
+            .getState()
+            .setFlowNodes((prev) =>
+              prev.map((n) => ({ ...n, selected: n.id === 'n1' })),
+            );
+          useCanvasGraphStore.getState().setFlowEdges(() => [
+            { id: 'e1', source: 'n2', target: 'n3', selected: true },
+            { id: 'e2', source: 'n2', target: 'n3', selected: false },
+          ]);
+        });
+        dispatchKeyDown('Backspace');
+        await waitFor(() =>
+          expect(removeElements).toHaveBeenCalledWith('p', 's', ['n1'], ['e1']),
+        );
+      });
+
       it('copy puts the selection on the clipboard', () => {
         mountWithSelection();
         expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
