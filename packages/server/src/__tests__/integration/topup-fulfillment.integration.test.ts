@@ -203,7 +203,6 @@ function paidSession(
     currency: "usd",
     total_details: { amount_tax: 240 },
     payment_intent: `pi_${sessionId}`,
-    consent: { terms_of_service: "accepted" },
     metadata: { locale: "en", consent_text_version: "v1" },
     ...over,
   };
@@ -880,13 +879,6 @@ describe("what a purchase agreed to is read off our own row", () => {
     }
   });
 
-  /**
-   * A checkout page can sit open for two hours (`expires_at`), so when the
-   * session was created and when the buyer actually ticked the box can be up
-   * to two hours apart. A consent record is our evidence for a distance sale,
-   * so its timestamp may only be the moment we genuinely observed the consent
-   * to exist.
-   */
   it("keeps the instant the buyer ticked, not the one this row was written at", async () => {
     // Settling can arrive days after the tick: the confirmation endpoint may
     // never be reached and reconciliation picks the purchase up later. The

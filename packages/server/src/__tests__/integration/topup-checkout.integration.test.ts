@@ -525,7 +525,7 @@ describe("listTiers — what the buy screen is offered", () => {
     // would let the two drift, and the version we record would then name
     // wording the buyer never read.
     const listed = listTiers();
-    expect(listed.consentTextVersion).toBe("consent-credits-v1");
+    expect(CONSENT_CREDITS_VERSION).toBe("consent-credits-v1");
     expect(listed.consentText).toBe(consentText("en"));
     expect(runWithLocale("ja", () => listTiers()).consentText).toBe(
       consentText("ja"),

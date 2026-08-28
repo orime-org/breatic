@@ -177,7 +177,7 @@ export type FulfillOutcome =
       creditsGranted: number;
       lotId: string;
       /**
-       * Whether the session carried a consent to record. A paid session
+       * Whether this purchase carried a consent to record. A paid purchase
        * without one is not a reason to withhold credits, and it is a reason
        * for somebody to look: the record is what a chargeback is answered
        * with, and this purchase now has none.
@@ -642,7 +642,8 @@ export async function getPayment(paymentId: string, userId: string): Promise<Pay
  *
  * Stripe Price IDs stay here: they name the same packs and the browser has no
  * use for them.
- * @returns The packs, the refund rule, and the confirmation wait.
+ * @returns The packs, the refund rule, the consent wording, and the
+ *   confirmation wait.
  */
 export function listTiers(): {
   packs: Array<{
@@ -652,7 +653,6 @@ export function listTiers(): {
   }>;
   refundLines: readonly string[];
   consentText: string;
-  consentTextVersion: string;
   confirmTimeoutMs: number;
 } {
   return {
@@ -669,12 +669,11 @@ export function listTiers(): {
     // versioned and lives on the server, which is why it rides along here
     // rather than sitting in the locale files the browser holds.
     refundLines: refundLinesAt(REFUND_CREDITS_VERSION, getActiveLocale()),
-    // The sentence the confirm dialog puts its tick against, and the version
-    // recorded against the purchase. Both come from here so they cannot
-    // disagree: a second copy of the wording in the browser's locale files
-    // would let the version we record name wording the buyer never read.
+    // The sentence the confirm dialog puts its tick against. It comes from
+    // the same constant the purchase records its version from, so a second
+    // copy in the browser's locale files cannot make the recorded version
+    // name wording the buyer never read.
     consentText: consentTextAt(CONSENT_CREDITS_VERSION, getActiveLocale()),
-    consentTextVersion: CONSENT_CREDITS_VERSION,
     // The page keeps a buyer behind a full-screen wait for at most this long.
     // The value is here and the timer is in the browser, so it rides along
     // with the list the buy screen already reads.

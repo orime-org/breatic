@@ -695,17 +695,17 @@ export const payments = pgTable(
 /**
  * The consent a buyer gave when they paid (0066, #13).
  *
- * Legal evidence, so it is written from inside the fulfillment transaction
- * and never from the checkout call: at the moment a Checkout Session is
- * created its `consent` is necessarily null, because the buyer has not seen
- * the page yet. All four callers of `fulfillPayment` reach this write, and
- * `payment_id` being UNIQUE is what makes the later ones no-ops rather than
- * a second, contradicting record.
+ * Legal evidence. The row is written from inside the fulfillment transaction,
+ * so the consent and the credits it paid for commit together. All four
+ * callers of `fulfillPayment` reach this write, and `payment_id` being UNIQUE
+ * is what makes the later ones no-ops rather than a second, contradicting
+ * record.
  *
- * `consented_at` holds when we first observed the consent. Hosted Checkout
- * reports when the session was created and when it may expire, two hours
- * apart, and neither is when the box was ticked; this is the earliest instant
- * we can attest to.
+ * `consented_at` is the instant the checkout request arrived carrying the
+ * tick, stamped on our own clock and kept on the payment row until this one
+ * is written. The buyer ticks on our own confirm dialog, one request earlier;
+ * settling can arrive days later by way of reconciliation, so the moment this
+ * row is written is not the moment they agreed.
  *
  * Append-only: `created_at` and no `deleted_at`. A consent record outlives
  * the statutory retention period and deleting one would destroy the evidence

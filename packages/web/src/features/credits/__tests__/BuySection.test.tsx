@@ -62,7 +62,6 @@ beforeEach(() => {
     confirmTimeoutMs: 15000,
     refundLines: REFUND_LINES,
     consentText: CONSENT_TEXT,
-    consentTextVersion: 'consent-credits-v1',
   });
   startCheckout.mockResolvedValue({ url: 'https://checkout.stripe.test/x' });
 });

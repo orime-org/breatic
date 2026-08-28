@@ -5,7 +5,7 @@
  * The wording a buyer agrees to, and the version it was agreed at.
  *
  * Two texts reach a buyer at checkout and both are evidence: what they tick
- * on the Stripe page, and the refund rule the confirmation repeats. Both will
+ * on our own confirm dialog, and the refund rule the confirmation repeats. Both will
  * be reworded — the refund window was fifteen days before it was thirty — so
  * a purchase records the version it was made under, and the version names the
  * key its wording lives at.
@@ -38,7 +38,8 @@ export const REFUND_CREDITS_VERSION = "refund-credits-v1";
  * made in.
  * @param version - Which wording, as recorded on the payment.
  * @param locale - The language the buyer bought in.
- * @returns The wording, ready to hand to Stripe or to print in an email.
+ * @returns The wording, ready to put on the confirm dialog or to print in an
+ *   email.
  */
 export function consentTextAt(version: string, locale: Locale): string {
   return runWithLocale(locale, () => t(`server.payment.${version}`));

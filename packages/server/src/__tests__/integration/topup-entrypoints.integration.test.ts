@@ -219,7 +219,6 @@ function paidSession(sessionId: string): Record<string, unknown> {
     currency: "usd",
     total_details: { amount_tax: 240 },
     payment_intent: `pi_${sessionId}`,
-    consent: { terms_of_service: "accepted" },
     created: Math.floor(Date.now() / 1000),
     metadata: {},
   };
@@ -237,7 +236,6 @@ function unpaidSession(
     payment_status: "unpaid",
     amount_subtotal: 2000,
     currency: "usd",
-    consent: null,
     metadata: {},
   };
 }

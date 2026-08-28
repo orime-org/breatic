@@ -33,7 +33,6 @@ const stripe = {
         currency: "usd",
         total_details: { amount_tax: 0 },
         payment_intent: `pi_${id}`,
-        consent: null,
         metadata: {},
       })),
     },

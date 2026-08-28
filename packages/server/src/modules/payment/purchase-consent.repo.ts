@@ -23,8 +23,8 @@ import type { DbTx } from "@breatic/core";
  * @param row.locale - The language the wording was shown in.
  * @param row.consentTextVersion - Which consent wording it was.
  * @param row.refundTextVersion - Which refund rule was in force, when one was recorded.
- * @param row.consentedAt - When this consent was first observed, which is the
- *   earliest instant we can attest to.
+ * @param row.consentedAt - The instant the checkout request arrived carrying
+ *   the tick, read back off the payment row.
  * @param row.stripePaymentIntentId - The charge behind it, when there is one.
  */
 export async function insertConsent(

@@ -36,12 +36,10 @@ export interface PackList {
   refundLines: string[];
   /**
    * The sentence the confirm dialog puts its tick against, in the reader's
-   * language. It comes from the server together with the version recorded
-   * against the purchase, so the two cannot name different wording.
+   * language. The server holds it, so the wording shown and the version
+   * recorded against the purchase come from the same place.
    */
   consentText: string;
-  /** Which wording that is, as recorded against a purchase made under it. */
-  consentTextVersion: string;
   /**
    * How long the return page may keep a buyer behind the full-screen wait.
    * Decided on the server, where the value lives; the timer runs here.

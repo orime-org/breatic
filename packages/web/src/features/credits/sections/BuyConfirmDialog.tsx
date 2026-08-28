@@ -103,15 +103,15 @@ export function BuyConfirmDialog({
   onConfirm,
 }: BuyConfirmDialogProps): React.JSX.Element {
   const t = useTranslation();
-  const [acknowledged, setAcknowledged] = React.useState(false);
+  const [consented, setConsented] = React.useState(false);
   const [starting, setStarting] = React.useState(false);
 
   // Every purchase is confirmed on its own. Reopening on a different pack with
-  // the previous tick still set would carry one purchase's acknowledgement
+  // the previous tick still set would carry one purchase's consent
   // into the next.
   React.useEffect(() => {
     if (pack !== null) {
-      setAcknowledged(false);
+      setConsented(false);
       setStarting(false);
     }
   }, [pack]);
@@ -171,9 +171,9 @@ export function BuyConfirmDialog({
         <label className='flex items-start gap-2 text-sm'>
           <Checkbox
             data-testid='confirm-consent'
-            checked={acknowledged}
+            checked={consented}
             onCheckedChange={(next) => {
-              setAcknowledged(next === true);
+              setConsented(next === true);
             }}
           />
           {/* The server's wording, verbatim. Holding a copy here would let
@@ -188,7 +188,7 @@ export function BuyConfirmDialog({
           </Button>
           <Button
             data-testid='confirm-pay'
-            disabled={!acknowledged || starting}
+            disabled={!consented || starting}
             onClick={confirm}
           >
             {t('credits.buy.pay')}
