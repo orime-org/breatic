@@ -40,10 +40,12 @@ CREATE TABLE "purchase_consents" (
   "locale" varchar(10) NOT NULL,
   "consent_text_version" varchar(20) NOT NULL,
   "refund_text_version" varchar(20),
-  -- The first instant at which we observed the consent, which is when the
-  -- session was read. Hosted Checkout does not report when the box was ticked,
-  -- and the two instants it does report — when the session was created and
-  -- when it expires — are two hours apart, so neither is that moment either.
+  -- When the buyer ticked, by our own clock. The tick happens on our confirm
+  -- dialog, and the checkout request that follows is refused without it, so
+  -- the instant is taken there and carried on the session's metadata until
+  -- settlement writes this row. Hosted Checkout reports no such instant of its
+  -- own: the two it does report — when the session was created and when it
+  -- expires — are two hours apart, and neither is that moment.
   "consented_at" timestamp with time zone NOT NULL,
   "stripe_payment_intent_id" varchar(255),
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
