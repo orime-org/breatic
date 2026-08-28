@@ -351,6 +351,30 @@ describe('FocusCropOverlay', () => {
     }
   });
 
+  // The generate panel stays mounted behind this overlay for the whole focus
+  // session, so a reader can be typing in its prompt box. Escape has no native
+  // behaviour there for the field to keep.
+  it('Escape peels the marquee with the caret in a field inside the space', () => {
+    const onBackToPick = vi.fn();
+    const { container } = renderOverlay(vi.fn(), onBackToPick);
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 });
+    expect(screen.queryByTestId('focus-crop-rect')).not.toBeNull();
+    const prompt = document.createElement('div');
+    Object.defineProperty(prompt, 'isContentEditable', { value: true });
+    prompt.tabIndex = 0;
+    (container.querySelector('[data-region=space]') as HTMLElement).append(
+      prompt,
+    );
+    prompt.focus();
+    try {
+      fireEvent.keyDown(prompt, { key: 'Escape' });
+      expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
+      expect(onBackToPick).not.toHaveBeenCalled();
+    } finally {
+      prompt.remove();
+    }
+  });
+
   it('Escape yields to focus inside an open alertdialog (adversarial r2)', () => {
     const onBackToPick = vi.fn();
     const { container } = renderOverlay(vi.fn(), onBackToPick);

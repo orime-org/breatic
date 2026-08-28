@@ -79,9 +79,12 @@ describe('useBlockSelectAll', () => {
   });
 
   describe('blocks select-all where a caret cannot land', () => {
-    it('on a plain element', () => {
+    // An empty `code` is what a synthetic press, an on-screen keyboard and
+    // several automation drivers report, so the letter is all there is to
+    // match on.
+    it('on a plain element, with the letter as the only signal', () => {
       renderHook(() => useBlockSelectAll());
-      expect(press(page.plain)).toBe(true);
+      expect(press(page.plain, { code: '' })).toBe(true);
     });
 
     // A Russian layout sends 'ф' from the physical A key while the browser
