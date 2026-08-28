@@ -178,3 +178,19 @@ describe('useBufferAccess when an entry no longer speaks for its node', () => {
     expect([...result.current.heldByRemote()].sort()).toEqual(['g1', 'm1']);
   });
 });
+
+describe('useBufferAccess telling a remote resize from a remote drag', () => {
+  it('names only the Groups a remote is resizing', () => {
+    // Only a resize publishes a size, so that is what separates the two.
+    const buffer: Node[] = [
+      node('g1', { x: 0, y: 0 }, { type: 'group' }),
+      node('g2', { x: 0, y: 0 }, { type: 'group' }),
+    ];
+    const gestures: GestureTable = new Map([
+      ['g1', { x: 0, y: 0, width: 400, height: 300, root: 'g1' }],
+      ['g2', { x: 50, y: 0, root: 'g2' }],
+    ]);
+    const { result } = renderHook(() => useBufferAccess(buffer, buffer, gestures));
+    expect([...result.current.resizedByRemote()]).toEqual(['g1']);
+  });
+});

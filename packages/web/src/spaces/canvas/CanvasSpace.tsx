@@ -2763,6 +2763,8 @@ function CanvasSpaceInner({
       // Group a remote holds is skipped before that.
       const onScreen = buffer.onScreen() as Node[];
       const byId = new Map(onScreen.map((item) => [item.id, item]));
+      const settled = buffer.settled();
+      const docById = new Map(settled.map((item) => [item.id, item]));
       /**
        * Resolve a node to absolute canvas coordinates (a member's stored
        * position is relative to its Group) + its rendered size — the form
@@ -2776,7 +2778,7 @@ function CanvasSpaceInner({
         // the drag ran leaves ReactFlow holding a number from the space the
         // node just left, so the document's own geometry is what is left to
         // read — the same call the merge stage makes for what to draw.
-        const inDocument = byId.get(item.id);
+        const inDocument = docById.get(item.id);
         const source =
           inDocument !== undefined && inDocument.parentId !== item.parentId
             ? inDocument
@@ -2816,6 +2818,8 @@ function CanvasSpaceInner({
         dragged.map(toDragNode),
         onScreen.map(toDragNode),
         buffer.heldByRemote(),
+        settled.map(toDragNode),
+        buffer.resizedByRemote(),
       );
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
       // parent change AND a position change, plus any Group expansion — without

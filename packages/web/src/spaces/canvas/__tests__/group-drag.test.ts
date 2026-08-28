@@ -217,3 +217,59 @@ describe('planGroupDrag while a remote gesture holds part of the canvas', () => 
     expect(ops.reparents).toEqual([]);
   });
 });
+
+describe('planGroupDrag against geometry a remote is still moving', () => {
+  it('restates a member a remote is holding when the origin moves', () => {
+    // Growing left moves the origin every member is measured from. A member
+    // somebody else is dragging has to be restated too, or the Group's write
+    // moves it in the document -- and the value restated is the document's,
+    // not the place the other end is showing it at.
+    const g = dn('g', 'group', 0, 0, 200, 200);
+    const dragged = dn('m', 'image', -10, 90, 40, 40, 'g'); // pushes the edge out
+    const flyingScreen = dn('r', 'image', 900, 900, 40, 40, 'g');
+    const flyingDoc = dn('r', 'image', 100, 100, 40, 40, 'g');
+    const ops = planGroupDrag(
+      [dragged],
+      [g, dragged, flyingScreen],
+      new Set(['r']),
+      [g, dragged, flyingDoc],
+    );
+    expect(ops.expansions[0]?.position).toEqual({ x: -34, y: 0 });
+    const restated = ops.positions.find((p) => p.id === 'r');
+    expect(restated?.position).toEqual({ x: 134, y: 100 }); // 100 - (-34), 100 - 0
+  });
+
+  it('measures a member against the document origin while a remote resizes the Group', () => {
+    // A resize moves no member, so it subtracts its whole travel from each
+    // stored position. That lands right only when the position was measured
+    // from the Group's document origin.
+    const screenGroup = dn('g', 'group', 300, 0, 200, 200);
+    const docGroup = dn('g', 'group', 0, 0, 200, 200);
+    const m = dn('m', 'image', 350, 50, 40, 40, 'g');
+    const ops = planGroupDrag(
+      [m],
+      [screenGroup, m],
+      new Set(['g']),
+      [docGroup, m],
+      new Set(['g']),
+    );
+    const stated = ops.positions.find((p) => p.id === 'm');
+    expect(stated?.position).toEqual({ x: 350, y: 50 }); // 350 - 0, not 350 - 300
+  });
+
+  it('keeps measuring against the on-screen origin while a remote drags the Group', () => {
+    // A drag carries its members along, so a member nudged inside it belongs at
+    // that spot in the Group and travels the rest of the way with it.
+    const screenGroup = dn('g', 'group', 300, 0, 200, 200);
+    const docGroup = dn('g', 'group', 0, 0, 200, 200);
+    const m = dn('m', 'image', 350, 50, 40, 40, 'g');
+    const ops = planGroupDrag(
+      [m],
+      [screenGroup, m],
+      new Set(['g']),
+      [docGroup, m],
+    );
+    const stated = ops.positions.find((p) => p.id === 'm');
+    expect(stated?.position).toEqual({ x: 50, y: 50 }); // 350 - 300
+  });
+});

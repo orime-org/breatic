@@ -43,6 +43,15 @@ export interface BufferAccess {
    */
   heldByRemote: () => ReadonlySet<string>;
   /**
+   * The Groups a remote is RESIZING, out of those it is holding.
+   *
+   * A resize moves no member, so it commits each member's stored position minus
+   * its whole travel — which lands right only if that position was measured
+   * against the Group's document origin. A drag carries its members along
+   * instead, so the two need telling apart.
+   */
+  resizedByRemote: () => ReadonlySet<string>;
+  /**
    * The buffer as the canvas is drawing it this instant, in-flight geometry
    * included. This is what the gesture field publishes, which is the one thing
    * that is supposed to carry those coordinates.
@@ -103,6 +112,14 @@ export function useBufferAccess(
       documentPlaces: (): ReadonlyArray<DocumentPlace> => docRef.current,
       heldByRemote: (): ReadonlySet<string> =>
         heldIds(gestureRef.current, docRef.current),
+      resizedByRemote: (): ReadonlySet<string> => {
+        // Only a resize publishes a size, so carrying one is what marks it.
+        const resizing = new Set<string>();
+        for (const [id, geometry] of gestureRef.current) {
+          if (geometry.width !== undefined) resizing.add(id);
+        }
+        return resizing;
+      },
       onScreen: (): ReadonlyArray<Node> => nodesRef.current,
     };
   }, []);
