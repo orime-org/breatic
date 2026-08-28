@@ -10,7 +10,7 @@ import {
   landingCandidates,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
-import { heldIds } from '@web/spaces/canvas/gesture-table';
+import { heldIds, speaksFor } from '@web/spaces/canvas/gesture-table';
 
 /** The ways the canvas may read its own render buffer. */
 export interface BufferAccess {
@@ -115,8 +115,11 @@ export function useBufferAccess(
       resizedByRemote: (): ReadonlySet<string> => {
         // Only a resize publishes a size, so carrying one is what marks it.
         const resizing = new Set<string>();
+        const byId = new Map(docRef.current.map((node) => [node.id, node]));
         for (const [id, geometry] of gestureRef.current) {
-          if (geometry.width !== undefined) resizing.add(id);
+          const node = byId.get(id);
+          if (geometry.width === undefined || node === undefined) continue;
+          if (speaksFor(geometry, node)) resizing.add(id);
         }
         return resizing;
       },

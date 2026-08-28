@@ -122,8 +122,19 @@ export function planGroupDrag(
    * @param node - The node as this screen draws it.
    * @returns The settled node, or the given one when nothing holds it.
    */
+  const draggedIds = new Set(dragged.map((node) => node.id));
+  /**
+   * The node as the document has it, for anything a remote is holding.
+   *
+   * A node in this drag is the exception: two people can hold one node, and
+   * where this user just dropped it is what this drag-stop is committing.
+   * @param node - The node as this screen draws it.
+   * @returns The settled node, or the given one when this drag owns it.
+   */
   const asSettled = (node: DragNode): DragNode =>
-    heldByRemote.has(node.id) ? (settledById.get(node.id) ?? node) : node;
+    heldByRemote.has(node.id) && !draggedIds.has(node.id)
+      ? (settledById.get(node.id) ?? node)
+      : node;
 
   const draggedMembers = dragged.filter((node) => node.type !== 'group');
   // A Group somebody else is dragging stays in the list and is marked instead:
@@ -206,9 +217,10 @@ export function planGroupDrag(
 
   const expansions: ExpansionOp[] = [];
   for (const group of groups) {
-    // Growing a Group writes its position and size. A Group a remote is
-    // dragging is one this end writes nothing about, so its wrap waits for the
-    // next drag-stop after that gesture ends.
+    // Growing a Group writes its position and size, and the rect it would grow
+    // from is the one on screen -- an origin the document has never held. A
+    // Group a remote is dragging is one this end writes nothing about, so its
+    // wrap waits for a drag-stop after that gesture ends.
     if (heldByRemote.has(group.id)) continue;
     const members = allNodes.filter(
       (node) => node.type !== 'group' && newParentOf(node) === group.id,

@@ -71,7 +71,10 @@ export function docGeometryView(
   const docById = new Map(docNodes.map((n) => [n.id, n]));
   let changed = false;
   const view = flowNodes.map((node) => {
-    if (!remoteGesture.has(node.id)) return node;
+    const gesture = remoteGesture.get(node.id);
+    // An entry that no longer speaks for this node is holding nothing, so the
+    // buffer already has the document's own geometry here.
+    if (gesture === undefined || !speaksFor(gesture, node)) return node;
     const inDocument = docById.get(node.id);
     // A node the document has dropped keeps what the buffer holds; deciding
     // whether it still exists belongs to the caller, not to this view.

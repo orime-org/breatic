@@ -142,7 +142,6 @@ import {
   groupResizeBounds,
   planGroupGrowth,
   planGroupResize,
-  toAbsolutePosition,
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
@@ -184,6 +183,10 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
+import {
+  toPlacedDragNode,
+  toScreenDragNode,
+} from '@web/spaces/canvas/drag-node';
 import { heldIds } from '@web/spaces/canvas/gesture-table';
 import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
@@ -2753,72 +2756,41 @@ function CanvasSpaceInner({
         gesture.abandon();
         return;
       }
-      // Every geometry read here comes from the same view: every node present,
-      // and every Group where this screen draws it. A drop is judged against
-      // what the user aimed at, and where a node lands when it leaves a Group is
-      // the canvas point the pointer released — both are the screen's answer.
-      // A Group a remote is dragging takes no part in a landing and is never
-      // sized around, said separately below, so no in-flight rect reaches a
-      // write: the only geometry an expansion states is a Group's own, and a
-      // Group a remote holds is skipped before that.
+      // A drop is judged against what the user aimed at, so the screen answers
+      // for landings and for where a node goes when it leaves a Group. The
+      // document answers wherever a stored value will later have somebody
+      // else's travel subtracted from it. The two are separate conversions
+      // because they disagree by exactly that travel.
       const onScreen = buffer.onScreen() as Node[];
       const byId = new Map(onScreen.map((item) => [item.id, item]));
+      // The same nodes with every remote gesture put back where the document
+      // has it. Its own map, because a member's place is its Group's origin
+      // plus its offset and both have to come from the same list.
       const settled = buffer.settled();
       const docById = new Map(settled.map((item) => [item.id, item]));
       /**
-       * Resolve a node to absolute canvas coordinates (a member's stored
-       * position is relative to its Group) + its rendered size — the form
-       * planGroupDrag hit-tests against the Group rects.
-       * @param item - The ReactFlow node.
-       * @returns The node in the absolute DragNode form.
+       * Where this screen is drawing a node, which is the point the pointer was
+       * over.
+       * @param item - The render-buffer node.
+       * @returns The node in the planner's absolute form.
        */
-      const toDragNode = (item: Node): DragNode => {
-        // The parent decides what `item.position` is measured against. A
-        // collaborator moving this node between a Group and the top level while
-        // the drag ran leaves ReactFlow holding a number from the space the
-        // node just left, so the document's own geometry is what is left to
-        // read — the same call the merge stage makes for what to draw.
-        const inDocument = docById.get(item.id);
-        const source =
-          inDocument !== undefined && inDocument.parentId !== item.parentId
-            ? inDocument
-            : item;
-        const parent =
-          source.parentId !== undefined ? byId.get(source.parentId) : undefined;
-        // ReactFlow states each node's absolute position itself, off the same
-        // frame it drew. Adding a member's relative offset to a Group origin
-        // read anywhere else adds up two frames: the offset is measured against
-        // the origin ReactFlow held when the pointer moved, and a Group a remote
-        // is dragging moves between frames, so the sum is a place no screen ever
-        // showed. Its own answer is only stale in the one case the fallback
-        // below covers — a collaborator changed this node's Group mid-drag, so
-        // ReactFlow is still holding a number from the space the node just left.
-        const absPos =
-          (source === item
-            ? getInternalNode(item.id)?.internals.positionAbsolute
-            : undefined) ??
-          (parent
-            ? toAbsolutePosition(source.position, parent.position)
-            : source.position);
-        return {
-          id: item.id,
-          type: item.type ?? '',
-          parentId: source.parentId,
-          absPos,
-          size: {
-            width: item.measured?.width ?? item.width ?? GROUP_DRAG_FALLBACK_W,
-            height: item.measured?.height ?? item.height ?? GROUP_DRAG_FALLBACK_H,
-          },
-          // A locked Group never accepts a dragged-in node (planGroupDragStop
-          // skips it); carry its lock state through so the planner can see it.
-          locked: Boolean((item.data as { locked?: unknown }).locked),
-        };
-      };
+      const toScreen = (item: Node): DragNode =>
+        toScreenDragNode(
+          item,
+          byId,
+          getInternalNode(item.id)?.internals.positionAbsolute,
+        );
+      /**
+       * Where the document has a node, whatever any screen is showing.
+       * @param item - The settled node.
+       * @returns The node in the planner's absolute form.
+       */
+      const toDocument = (item: Node): DragNode => toPlacedDragNode(item, docById);
       const ops = planGroupDrag(
-        dragged.map(toDragNode),
-        onScreen.map(toDragNode),
+        dragged.map(toScreen),
+        onScreen.map(toScreen),
         buffer.heldByRemote(),
-        settled.map(toDragNode),
+        settled.map(toDocument),
         buffer.resizedByRemote(),
       );
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
