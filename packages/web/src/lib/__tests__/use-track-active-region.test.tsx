@@ -54,7 +54,7 @@ function buildPage(): Fixture {
  * @param el - Where the event starts.
  * @param type - The event type.
  */
-function fire(el: Element, type: 'pointerdown' | 'focusin'): void {
+function fire(el: Element, type: 'pointerdown' | 'focusin' | 'drop'): void {
   el.dispatchEvent(new Event(type, { bubbles: true }));
 }
 
@@ -105,6 +105,39 @@ describe('useTrackActiveRegion', () => {
       renderHook(() => useTrackActiveRegion());
       fire(page.spaceButton, 'focusin');
       expect(useUIStore.getState().activeRegion).toBe('space');
+    });
+  });
+
+  // Dragging a file in from the desktop never presses a pointer down on the
+  // page and never moves focus, so the drop itself is the only moment the
+  // region it lands in can be handed over.
+  describe('a drop hands the region over', () => {
+    it('takes the space region when a file lands in it', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      renderHook(() => useTrackActiveRegion());
+      fire(page.spaceButton, 'drop');
+      expect(useUIStore.getState().activeRegion).toBe('space');
+    });
+
+    it('takes the agent region when a file lands in it', () => {
+      renderHook(() => useTrackActiveRegion());
+      fire(page.agentButton, 'drop');
+      expect(useUIStore.getState().activeRegion).toBe('agent');
+    });
+
+    it('leaves it alone when a file lands outside both regions', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      renderHook(() => useTrackActiveRegion());
+      fire(page.topBarButton, 'drop');
+      expect(useUIStore.getState().activeRegion).toBe('agent');
+    });
+
+    it('stops tracking drops once unmounted', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      const { unmount } = renderHook(() => useTrackActiveRegion());
+      unmount();
+      fire(page.spaceButton, 'drop');
+      expect(useUIStore.getState().activeRegion).toBe('agent');
     });
   });
 

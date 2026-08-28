@@ -31,10 +31,12 @@ function dropHighlightOutsideSpace(): void {
 
 /**
  * Keeps the stored active region on whichever region the user is working in:
- * a pointer press inside a region hands it over, and so does focus entering
- * it — the second one is how Tab reaches a region without a press.
+ * a pointer press inside a region hands it over, so does focus entering it —
+ * that is how Tab reaches a region without a press — and so does a drop, which
+ * is how a file dragged in from the desktop arrives, pressing no pointer down
+ * on the page and moving no focus.
  *
- * Both listeners sit on `document`'s capture phase, which runs before
+ * The listeners sit on `document`'s capture phase, which runs before
  * anything inside the app root. Two places in the repo stop propagation
  * before the region roots would see these events: `suppressTooltipFocusOpen`
  * for focusin (through React's delegated listener on the app root) and
@@ -45,8 +47,8 @@ export function useTrackActiveRegion(): void {
     /**
      * Hands the region the event started in the active slot, if it started in
      * one at all.
-     * @param event - A pointerdown or focusin, caught on document's capture
-     *   phase.
+     * @param event - A pointerdown, focusin or drop, caught on document's
+     *   capture phase.
      */
     const claim = (event: Event): void => {
       if (!(event.target instanceof Element)) return;
@@ -57,9 +59,11 @@ export function useTrackActiveRegion(): void {
     };
     document.addEventListener('pointerdown', claim, true);
     document.addEventListener('focusin', claim, true);
+    document.addEventListener('drop', claim, true);
     return () => {
       document.removeEventListener('pointerdown', claim, true);
       document.removeEventListener('focusin', claim, true);
+      document.removeEventListener('drop', claim, true);
     };
   }, []);
 }
