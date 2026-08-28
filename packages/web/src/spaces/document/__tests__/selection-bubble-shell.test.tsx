@@ -188,7 +188,7 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    // A7's second half, from the note under the demo's `对齐下拉` column: "对齐只作用在段落
+    // A7's second half, from the note under the demo's alignment menu: "对齐只作用在段落
     // 和 H1 / H2 / H3 上。选区落在引用、列表、代码块里时，这个下拉整个变灰。"
     // The first half — the greyed task list row — is `greys the task list row,
     // and only that one` further down.

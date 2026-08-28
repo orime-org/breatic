@@ -4,7 +4,7 @@
 /**
  * What the block type slot holds, and which of them the selection counts as.
  *
- * The nine come from the demo's `块类型下拉` column
+ * The nine come from the demo's block type menu
  * (`2026-08-21-editor-command-surface.html`).
  * The slot shows an ICON that tracks the current block and carries no text, so
  * nothing here goes through i18n (user 2026-08-26): it stands in the same run

@@ -194,7 +194,7 @@ function SlotShell({
  * The block type slot.
  *
  * Its icon tracks the current block (user 2026-08-26); the menu's nine rows
- * follow the demo's `块类型下拉` column, seven of them carrying a shortcut column.
+ * follow the demo's block type menu, seven of them carrying a shortcut column.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -275,7 +275,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   );
 });
 
-/** The alignment menu's three rows, from the demo's `对齐下拉` column. */
+/** The alignment menu's three rows, from the demo's alignment menu. */
 const ALIGN_ITEMS = [
   { id: 'left', labelKey: 'spaces.document.commands.alignLeft', Icon: TextAlignStart },
   { id: 'center', labelKey: 'spaces.document.commands.alignCenter', Icon: TextAlignCenter },
