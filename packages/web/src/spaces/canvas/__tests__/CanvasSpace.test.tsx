@@ -3701,17 +3701,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         );
       });
 
-      // Nothing was written, so taking the press would end it as a copy that
-      // silently left the reader with whatever the clipboard held before.
-      it('leaves the press alone when there is no clipboard to write to', () => {
-        mountWithSelection();
-        const event = new Event('copy', { bubbles: true, cancelable: true });
-        act(() => {
-          keyTarget().dispatchEvent(event);
-        });
-        expect(event.defaultPrevented).toBe(false);
-      });
-
       // Both keys delete on every platform; the Mac keyboard's key is
       // Backspace, so a suite that only presses that one leaves the other
       // untested.

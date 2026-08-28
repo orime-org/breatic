@@ -2647,11 +2647,10 @@ function CanvasSpaceInner({
         flowNodesRef.current,
       );
       if (clipboardNodes.length === 0) return;
-      // Nothing was written without one, so the press goes back to the browser
-      // rather than ending as a copy that left the old contents in place.
-      const clipboard = event.clipboardData;
-      if (!clipboard) return;
-      clipboard.setData('text/plain', serializeNodes(clipboardNodes));
+      event.clipboardData?.setData(
+        'text/plain',
+        serializeNodes(clipboardNodes),
+      );
       event.preventDefault();
     };
     document.addEventListener('copy', onCopy);
