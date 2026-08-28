@@ -152,7 +152,11 @@ describe('what the buttons claim', () => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });
       // 块命令住在块类型菜单里，判据跟着命令一起搬了过去。
-      BLOCK_TYPE_ITEMS.filter((item) => item.canRun).forEach((item) => {
+      // 点名这三项：代码块那一项也有 canRun，但它问的是另一个问题
+      // （选区触及的块里有没有本 build 表示不了的内容），跟这张表的
+      // 「命令跑不跑得通」不是一回事，归 block-type-commands 测。
+      const DRY_RUN_ROWS = ['bullet-list', 'ordered-list', 'quote'];
+      BLOCK_TYPE_ITEMS.filter((item) => DRY_RUN_ROWS.includes(item.id)).forEach((item) => {
         const expected = item.id === 'quote' ? c.quote : c.lists;
         expect(`${item.id}=${item.canRun?.(editor)}`).toBe(`${item.id}=${expected}`);
       });
@@ -167,7 +171,9 @@ describe('what the buttons claim', () => {
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
     it(`with ${c.name}, every live button does something`, () => {
-      const blockRows = BLOCK_TYPE_ITEMS.filter((item) => item.run && item.canRun).map(
+      const blockRows = BLOCK_TYPE_ITEMS.filter(
+        (item) => item.run && item.canRun && item.id !== 'code-block',
+      ).map(
         (item) => ({
           id: item.id,
           canRun: item.canRun as (e: Editor) => boolean,

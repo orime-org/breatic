@@ -17,8 +17,8 @@
  * the four dropdowns holds, and the treatment carried by the items with no
  * command behind them (user 2026-08-23's rule, implemented in
  * `document-coming-tool.tsx`, kept by user 2026-08-26). Whether a command is
- * wired is a separate question — three of them reach a function today: bullet
- * list, ordered list, quote.
+ * wired is a separate question — eight of the nine reach one; the task list
+ * waits on a schema node it has not been given.
  *
  * The bar's position, when it appears and how it follows a scroll belong to
  * `selection-bubble-bar.test.tsx`, which already holds them.
@@ -433,7 +433,6 @@ describe('the bubble bar shell', () => {
       ['doc-bubble-color', 'doc-bubble-color-text-red'],
       ['doc-bubble-color', 'doc-bubble-color-reset'],
       ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
-      ['doc-bubble-block-type', 'doc-bubble-block-type-item-heading-1'],
     ])('says on the console that %s / %s reached no command', async (slot, item) => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const editor = open('<p>hello world</p>');
@@ -464,10 +463,11 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    // The task list is the one row the demo greys, because it has
-    // no schema node to turn a paragraph into. The rest of the block type menu
-    // reads as available.
-    it('greys the task list row, and only that one', async () => {
+    // Over a plain paragraph the task list is the one row the demo greys,
+    // because it has no schema node to turn a paragraph into. The code block
+    // row greys too where the selection reaches content this build cannot
+    // represent — `block-type-commands` covers that; here there is none.
+    it('greys the task list row, and only that one, over plain prose', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
@@ -480,6 +480,43 @@ describe('the bubble bar shell', () => {
       expect(greyed.map((n) => n.getAttribute('data-testid'))).toEqual([
         'doc-bubble-block-type-item-task-list',
       ]);
+    });
+
+    // The guard on the code block row is the one thing on this bar standing
+    // between a press and content leaving the shared document, so it has to
+    // answer for where the selection is NOW. The selection moves under an
+    // open menu, and a block type that has not changed with it would leave a
+    // component reading its own last render.
+    it('greys the code block row when the selection reaches unsupported content', async () => {
+      const editor = open('<p>plain prose</p><p>with a guest</p>');
+      const guest = editor.state.schema.nodes.unsupportedInline.create({
+        name: 'somethingNewer',
+        json: '{}',
+      });
+      // Into the second paragraph, which starts after the first one ends.
+      const secondStart = editor.state.doc.child(0).nodeSize;
+      act(() => {
+        editor.view.dispatch(editor.state.tr.insert(secondStart + 3, guest));
+      });
+
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      const menu = await hoverOpen('doc-bubble-block-type');
+
+      const codeBlockRow = (): Element | null =>
+        menu.querySelector('[data-testid="doc-bubble-block-type-item-code-block"]');
+      expect(codeBlockRow()?.getAttribute('aria-disabled')).toBeNull();
+
+      // Reach into the paragraph holding the guest, menu still open.
+      await act(async () => {
+        editor.commands.setTextSelection({
+          from: secondStart + 2,
+          to: secondStart + 5,
+        });
+        await Promise.resolve();
+      });
+
+      expect(codeBlockRow()?.getAttribute('aria-disabled')).toBe('true');
     });
   });
 
@@ -923,21 +960,45 @@ describe('the bubble bar shell', () => {
       expect(markupOf()).toContain(marker);
     });
 
-    // Every other item leaves the document untouched (C2).
+    // What the rows wired in #904 make of a plain paragraph. The paragraph row
+    // is absent: it leaves the markup reading the same, so a marker cannot
+    // tell it apart from a row that did nothing at all — `document-block-type`
+    // has its outcome instead.
     it.each([
-      ['doc-bubble-block-type', 'paragraph'],
-      ['doc-bubble-block-type', 'heading-1'],
-      ['doc-bubble-block-type', 'code-block'],
-      ['doc-bubble-block-type', 'task-list'],
-    ])('clicking %s / %s leaves the document alone', async (slot, item) => {
+      ['heading-1', '<heading level="1">'],
+      ['heading-2', '<heading level="2">'],
+      ['heading-3', '<heading level="3">'],
+      ['code-block', '<codeblock>'],
+    ])('clicking %s makes %s', async (item, marker) => {
+      const editor = open('<p>hello world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+
+      const menu = await hoverOpen('doc-bubble-block-type');
+      act(() => {
+        (
+          menu.querySelector(
+            `[data-testid="doc-bubble-block-type-item-${item}"]`,
+          ) as HTMLElement
+        ).click();
+      });
+
+      expect(markupOf()).toContain(marker);
+    });
+
+    it('clicking the task list row leaves the document alone', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 6);
       const before = markupOf();
 
-      const menu = await hoverOpen(slot);
+      const menu = await hoverOpen('doc-bubble-block-type');
       act(() => {
-        (menu.querySelector(`[data-testid="${slot}-item-${item}"]`) as HTMLElement).click();
+        (
+          menu.querySelector(
+            '[data-testid="doc-bubble-block-type-item-task-list"]',
+          ) as HTMLElement
+        ).click();
       });
 
       expect(markupOf()).toBe(before);
