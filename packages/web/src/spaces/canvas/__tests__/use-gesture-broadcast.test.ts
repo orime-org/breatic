@@ -329,3 +329,32 @@ describe('useGestureBroadcast with no gesture running', () => {
     expect(broadcast.isRunning()).toBe(false);
   });
 });
+
+describe('useGestureBroadcast, what each entry speaks for', () => {
+  it('keeps a member entry pointing at the Group that pulled it in', () => {
+    // A gesture settles what it holds when it takes hold. A member that leaves
+    // the Group while the drag runs is still in the batch, so its entry has to
+    // keep naming the Group -- that is the whole of how a reader tells a stale
+    // member entry from one for a node the gesture has hold of directly. Read
+    // off the live buffer, the label flips to the member's own id the moment
+    // the buffer sees the reparent, and every reader accepts it again.
+    const buffer: { current: GeometryNode[] } = {
+      current: [
+        { id: 'g1', position: { x: 100, y: 200 }, width: 400, height: 300 },
+        { id: 'm1', parentId: 'g1', position: { x: 10, y: 20 } },
+      ],
+    };
+    const { broadcast, log } = mount(buffer);
+    broadcast.begin(['g1'], null);
+    expect((log[0] as { batch: GestureBatch }).batch.m1?.root).toBe('g1');
+
+    // A collaborator takes m1 out of the Group; this end's buffer follows.
+    buffer.current = [
+      { id: 'g1', position: { x: 100, y: 200 }, width: 400, height: 300 },
+      { id: 'm1', position: { x: 110, y: 220 } },
+    ];
+    broadcast.update();
+    const latest = log[log.length - 1] as { batch: GestureBatch };
+    expect(latest.batch.m1?.root).toBe('g1');
+  });
+});

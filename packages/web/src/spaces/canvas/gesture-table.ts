@@ -27,7 +27,7 @@ export interface GestureGeometry {
    * which Group an entry speaks for to tell that entry apart from one for a
    * node the gesture has hold of directly.
    */
-  root?: string;
+  root: string;
 }
 
 /** Node id to the geometry a gesture is showing it at. */
@@ -58,10 +58,13 @@ function readGeometry(value: unknown): GestureGeometry | null {
   if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (!isCoordinate(raw.x) || !isCoordinate(raw.y)) return null;
-  const geometry: GestureGeometry =
-    typeof raw.root === 'string' && raw.root !== ''
-      ? { x: raw.x, y: raw.y, root: raw.root }
-      : { x: raw.x, y: raw.y };
+  // Every entry names what it speaks for. Without it a reader cannot tell a
+  // member entry left over from a Group the node has since left apart from an
+  // entry for a node the gesture has hold of directly, and would take the
+  // stale one — so a missing root drops the entry the same as a missing
+  // coordinate does, and the reader falls back to the document.
+  if (typeof raw.root !== 'string' || raw.root === '') return null;
+  const geometry: GestureGeometry = { x: raw.x, y: raw.y, root: raw.root };
   // A size travels only with a Group being resized, so absent is sound and
   // present-but-not-a-number is not: a Group drawn at a nonsense size is worse
   // than one drawn at the size the document already knows.
@@ -143,4 +146,53 @@ export function collectRemoteGesture(
     for (const [nodeId, geometry] of table) merged.set(nodeId, geometry);
   }
   return merged;
+}
+
+/** What a reader needs off a node to judge an entry against it. */
+export interface GestureSubject {
+  /** The node's id. */
+  id: string;
+  /** Its Group right now, when it is a member. */
+  parentId?: string;
+}
+
+/**
+ * Whether a gesture entry still speaks for a node.
+ *
+ * A gesture settles what it holds when it takes hold and never asks again, so
+ * an entry that rode in on a Group keeps listing a member the document has
+ * since taken out of that Group — at the place it had inside it, which is a
+ * place the document has never held it and the user never put it. Such an entry
+ * decides nothing: not what is drawn, not who counts as held, not what may be
+ * grouped or absorbed.
+ *
+ * Every reading of the table runs this, so the table gives one answer rather
+ * than one per consumer.
+ * @param gesture - The entry.
+ * @param node - The node as the document has it now.
+ * @returns True when the entry is about this node or the Group it is still in.
+ */
+export function speaksFor(
+  gesture: GestureGeometry,
+  node: GestureSubject,
+): boolean {
+  return gesture.root === node.id || gesture.root === node.parentId;
+}
+
+/**
+ * The ids a remote gesture is deciding, out of the nodes given.
+ * @param gestures - The remote gesture table.
+ * @param nodes - The nodes as the document has them.
+ * @returns The ids whose entry still speaks for them.
+ */
+export function heldIds(
+  gestures: GestureTable,
+  nodes: ReadonlyArray<GestureSubject>,
+): Set<string> {
+  const held = new Set<string>();
+  for (const node of nodes) {
+    const gesture = gestures.get(node.id);
+    if (gesture !== undefined && speaksFor(gesture, node)) held.add(node.id);
+  }
+  return held;
 }

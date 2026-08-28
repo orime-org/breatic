@@ -58,7 +58,9 @@ const DOCUMENT: DocumentPlace[] = [
 ];
 
 /** The remote is moving one node. */
-const REMOTE: GestureTable = new Map([[FLYING_ID, { ...FLYING_AT }]]);
+const REMOTE: GestureTable = new Map([
+  [FLYING_ID, { ...FLYING_AT, root: FLYING_ID }],
+]);
 
 /**
  * Mount the hook over the fixtures above.

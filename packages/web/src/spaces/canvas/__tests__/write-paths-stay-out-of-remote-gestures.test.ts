@@ -80,12 +80,15 @@ function documentNodes(): Node[] {
 }
 
 /** The remote is moving the loose node. */
-const REMOTE: GestureTable = new Map([[FLYING_ID, { ...FLYING_AT }]]);
+const REMOTE: GestureTable = new Map([
+  [FLYING_ID, { ...FLYING_AT, root: FLYING_ID }],
+]);
 
 /** The remote is dragging the Group, which carries its member along. */
 const HELD_BY_REMOTE: GestureTable = new Map([
-  [GROUP_ID, { x: 0, y: 0 }],
-  [MEMBER_ID, { x: 20, y: 20 }],
+  [GROUP_ID, { x: 0, y: 0, root: GROUP_ID }],
+  // The member rode in on the Group, which is what its entry speaks for.
+  [MEMBER_ID, { x: 20, y: 20, root: GROUP_ID }],
 ]);
 
 /**

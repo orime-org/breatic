@@ -42,9 +42,13 @@ function node(id: string, x: number, y: number, extra: Partial<Node> = {}): Node
  * @returns The table.
  */
 function gesturing(
-  ...entries: Array<[string, GestureGeometry]>
+  ...entries: Array<[string, Omit<GestureGeometry, 'root'> & { root?: string }]>
 ): GestureTable {
-  return new Map(entries);
+  // Absent root means the gesture has hold of this node itself, which is what
+  // every case here is about unless it says otherwise.
+  return new Map(
+    entries.map(([id, geometry]) => [id, { root: id, ...geometry }]),
+  );
 }
 
 describe('mergeCanvasNodes, this client gesturing (LOCAL)', () => {

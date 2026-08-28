@@ -733,10 +733,10 @@ describe('usePublishPresence, the gesture geometry', () => {
     const { publisher } = mountPublisher(awareness);
     await settled();
 
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
 
     await untilPublished(awareness, (p) => {
-      expect(p.gesture).toEqual({ n1: { x: 10, y: 20 } });
+      expect(p.gesture).toEqual({ n1: { x: 10, y: 20, root: 'n1' } });
     });
   });
 
@@ -746,14 +746,14 @@ describe('usePublishPresence, the gesture geometry', () => {
     await settled();
 
     publisher.publishGesture({
-      g1: { x: 0, y: 0, width: 400, height: 300 },
-      m1: { x: 10, y: 20 },
+      g1: { x: 0, y: 0, width: 400, height: 300, root: 'g1' },
+      m1: { x: 10, y: 20, root: 'm1' },
     });
 
     await untilPublished(awareness, (p) => {
       expect(p.gesture).toEqual({
-        g1: { x: 0, y: 0, width: 400, height: 300 },
-        m1: { x: 10, y: 20 },
+        g1: { x: 0, y: 0, width: 400, height: 300, root: 'g1' },
+        m1: { x: 10, y: 20, root: 'm1' },
       });
     });
   });
@@ -767,14 +767,14 @@ describe('usePublishPresence, the gesture geometry', () => {
     const { publisher } = mountPublisher(awareness);
     await settled();
 
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
-      expect(p.gesture).toEqual({ n1: { x: 10, y: 20 } });
+      expect(p.gesture).toEqual({ n1: { x: 10, y: 20, root: 'n1' } });
     });
 
-    publisher.publishGesture({ n1: { x: 11, y: 21 } });
+    publisher.publishGesture({ n1: { x: 11, y: 21, root: 'n1' } });
     await untilPublished(awareness, (p) => {
-      expect(p.gesture).toEqual({ n1: { x: 11, y: 21 } });
+      expect(p.gesture).toEqual({ n1: { x: 11, y: 21, root: 'n1' } });
     });
   });
 
@@ -786,7 +786,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     const { publisher } = mountPublisher(awareness);
     await settled();
 
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
       expect(p.gesture).not.toBeNull();
     });
@@ -796,7 +796,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     awareness.on('update', () => {
       writes += 1;
     });
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await settled();
     expect(writes).toBe(0);
   });
@@ -810,7 +810,9 @@ describe('usePublishPresence, the gesture geometry', () => {
     awareness.on('update', () => {
       writes += 1;
     });
-    for (let i = 0; i < 20; i += 1) publisher.publishGesture({ n1: { x: i, y: i } });
+    for (let i = 0; i < 20; i += 1) {
+      publisher.publishGesture({ n1: { x: i, y: i, root: 'n1' } });
+    }
     await settled();
 
     // Twenty moves in one burst are one write, whatever the machine's speed:
@@ -822,29 +824,29 @@ describe('usePublishPresence, the gesture geometry', () => {
     const awareness = makeAwareness();
     const { publisher } = mountPublisher(awareness);
 
-    publisher.publishGesture({ n1: { x: 1, y: 1 } });
+    publisher.publishGesture({ n1: { x: 1, y: 1, root: 'n1' } });
     await untilPublished(awareness, (p) => {
-      expect(p.gesture).toEqual({ n1: { x: 1, y: 1 } });
+      expect(p.gesture).toEqual({ n1: { x: 1, y: 1, root: 'n1' } });
     });
     // Straight after a write, the limiter would park anything else until its
     // floor has passed — and the release is exactly when that happens.
-    publisher.publishGestureNow({ n1: { x: 999, y: 999 } });
-    expect(published(awareness).gesture).toEqual({ n1: { x: 999, y: 999 } });
+    publisher.publishGestureNow({ n1: { x: 999, y: 999, root: 'n1' } });
+    expect(published(awareness).gesture).toEqual({ n1: { x: 999, y: 999, root: 'n1' } });
   });
 
   it('sends the final geometry even when it is what was already published', async () => {
     const awareness = makeAwareness();
     const { publisher } = mountPublisher(awareness);
 
-    publisher.publishGesture({ n1: { x: 5, y: 5 } });
+    publisher.publishGesture({ n1: { x: 5, y: 5, root: 'n1' } });
     await untilPublished(awareness, (p) => {
-      expect(p.gesture).toEqual({ n1: { x: 5, y: 5 } });
+      expect(p.gesture).toEqual({ n1: { x: 5, y: 5, root: 'n1' } });
     });
     let writes = 0;
     awareness.on('update', () => {
       writes += 1;
     });
-    publisher.publishGestureNow({ n1: { x: 5, y: 5 } });
+    publisher.publishGestureNow({ n1: { x: 5, y: 5, root: 'n1' } });
     expect(writes).toBe(1);
   });
 
@@ -852,7 +854,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     const awareness = makeAwareness();
     const { publisher } = mountPublisher(awareness);
 
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
       expect(p.gesture).not.toBeNull();
     });
@@ -864,7 +866,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     const awareness = makeAwareness();
     const { publisher } = mountPublisher(awareness);
 
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
       expect(p.gesture).not.toBeNull();
     });
@@ -883,7 +885,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     const awareness = makeAwareness();
     const { publisher } = mountPublisher(awareness);
 
-    publisher.publishGesture({ n1: { x: 1, y: 1 }, n2: { x: 2, y: 2 } });
+    publisher.publishGesture({ n1: { x: 1, y: 1, root: 'n1' }, n2: { x: 2, y: 2, root: 'n2' } });
     await untilPublished(awareness, (p) => {
       expect(Object.keys(p.gesture ?? {})).toHaveLength(2);
     });
@@ -902,7 +904,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     const awareness = makeAwareness();
     const { container, publisher } = mountPublisher(awareness);
     sendPointer(container, 'pointermove', { clientX: 4, clientY: 6 });
-    publisher.publishGesture({ n1: { x: 10, y: 20 } });
+    publisher.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
       expect(p.gesture).not.toBeNull();
       expect(p.pointer).not.toBeNull();
@@ -914,7 +916,7 @@ describe('usePublishPresence, the gesture geometry', () => {
     // gesture; the pointer is withdrawn because nobody is looking at it.
     await settled();
     expect(published(awareness).pointer).toBeNull();
-    expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20 } });
+    expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20, root: 'n1' } });
   });
 
   it('clears the geometry when it unmounts mid-gesture', async () => {
@@ -930,7 +932,7 @@ describe('usePublishPresence, the gesture geometry', () => {
         toFlowPosition: SHIFTED,
       }),
     );
-    result.current.publishGesture({ n1: { x: 10, y: 20 } });
+    result.current.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
       expect(p.gesture).not.toBeNull();
     });
@@ -956,7 +958,7 @@ describe('usePublishPresence, the gesture geometry', () => {
         }),
       { initialProps: { synced: true } },
     );
-    result.current.publishGesture({ n1: { x: 10, y: 20 } });
+    result.current.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
     await untilPublished(awareness, (p) => {
       expect(p.gesture).not.toBeNull();
     });
@@ -971,6 +973,6 @@ describe('usePublishPresence, the gesture geometry', () => {
     rerender({ synced: true });
 
     await vi.waitFor(() => expect(writes).toBeGreaterThan(0));
-    expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20 } });
+    expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20, root: 'n1' } });
   });
 });

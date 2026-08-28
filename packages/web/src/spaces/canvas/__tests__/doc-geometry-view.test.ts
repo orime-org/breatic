@@ -58,7 +58,7 @@ function doc(
  * @returns The table.
  */
 function moving(...ids: string[]): GestureTable {
-  return new Map(ids.map((id) => [id, { x: 0, y: 0 }]));
+  return new Map(ids.map((id) => [id, { x: 0, y: 0, root: id }]));
 }
 
 describe('docGeometryView', () => {
@@ -185,7 +185,7 @@ describe('landingCandidates', () => {
 
   it('leaves out whatever a remote gesture is currently moving', () => {
     const nodes = [plain('g1', 'group'), plain('a'), plain('b')];
-    const remote: GestureTable = new Map([['g1', { x: 9, y: 9 }]]);
+    const remote: GestureTable = new Map([['g1', { x: 9, y: 9, root: 'g1' }]]);
     expect(landingCandidates(nodes, remote).map((n) => n.id)).toEqual(['a', 'b']);
   });
 

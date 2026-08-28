@@ -42,35 +42,40 @@ function states(
  * @param entries - Node id to geometry.
  * @returns The table.
  */
-function table(...entries: Array<[string, GestureGeometry]>): GestureTable {
-  return new Map(entries);
+function table(
+  ...entries: Array<[string, Omit<GestureGeometry, 'root'> & { root?: string }]>
+): GestureTable {
+  // Absent root means the gesture has hold of the node itself.
+  return new Map(
+    entries.map(([id, geometry]) => [id, { root: id, ...geometry }]),
+  );
 }
 
 describe('collectRemoteGesture', () => {
   it('collects one remote gesture', () => {
     const collected = collectRemoteGesture(
-      states([2, stateWith({ n1: { x: 10, y: 20 } })]),
+      states([2, stateWith({ n1: { x: 10, y: 20, root: 'n1' } })]),
       1,
     );
-    expect(collected.get('n1')).toEqual({ x: 10, y: 20 });
+    expect(collected.get('n1')).toEqual({ x: 10, y: 20, root: 'n1' });
   });
 
   it('merges the batches of two remotes', () => {
     const collected = collectRemoteGesture(
       states(
-        [2, stateWith({ n1: { x: 10, y: 20 } })],
-        [3, stateWith({ n2: { x: 30, y: 40 } })],
+        [2, stateWith({ n1: { x: 10, y: 20, root: 'n1' } })],
+        [3, stateWith({ n2: { x: 30, y: 40, root: 'n2' } })],
       ),
       1,
     );
     expect(collected.size).toBe(2);
-    expect(collected.get('n1')).toEqual({ x: 10, y: 20 });
-    expect(collected.get('n2')).toEqual({ x: 30, y: 40 });
+    expect(collected.get('n1')).toEqual({ x: 10, y: 20, root: 'n1' });
+    expect(collected.get('n2')).toEqual({ x: 30, y: 40, root: 'n2' });
   });
 
   it('leaves this client out of the table', () => {
     const collected = collectRemoteGesture(
-      states([1, stateWith({ mine: { x: 1, y: 2 } })]),
+      states([1, stateWith({ mine: { x: 1, y: 2, root: 'mine' } })]),
       1,
     );
     expect(collected.size).toBe(0);
@@ -78,10 +83,10 @@ describe('collectRemoteGesture', () => {
 
   it('carries the size a resized Group publishes', () => {
     const collected = collectRemoteGesture(
-      states([2, stateWith({ g1: { x: 0, y: 0, width: 400, height: 300 } })]),
+      states([2, stateWith({ g1: { x: 0, y: 0, width: 400, height: 300, root: 'g1' } })]),
       1,
     );
-    expect(collected.get('g1')).toEqual({ x: 0, y: 0, width: 400, height: 300 });
+    expect(collected.get('g1')).toEqual({ x: 0, y: 0, width: 400, height: 300, root: 'g1' });
   });
 
   it('drops a remote whose gesture ended', () => {
@@ -96,22 +101,22 @@ describe('collectRemoteGesture', () => {
 
   it('keeps only the other nodes when one remote of two ends', () => {
     const collected = collectRemoteGesture(
-      states([2, stateWith(null)], [3, stateWith({ n2: { x: 30, y: 40 } })]),
+      states([2, stateWith(null)], [3, stateWith({ n2: { x: 30, y: 40, root: 'n2' } })]),
       1,
     );
     expect(collected.size).toBe(1);
-    expect(collected.get('n2')).toEqual({ x: 30, y: 40 });
+    expect(collected.get('n2')).toEqual({ x: 30, y: 40, root: 'n2' });
   });
 
   it('lets the later entry win when two remotes move the same node', () => {
     const collected = collectRemoteGesture(
       states(
-        [2, stateWith({ n1: { x: 10, y: 20 } })],
-        [3, stateWith({ n1: { x: 99, y: 99 } })],
+        [2, stateWith({ n1: { x: 10, y: 20, root: 'n1' } })],
+        [3, stateWith({ n1: { x: 99, y: 99, root: 'n1' } })],
       ),
       1,
     );
-    expect(collected.get('n1')).toEqual({ x: 99, y: 99 });
+    expect(collected.get('n1')).toEqual({ x: 99, y: 99, root: 'n1' });
   });
 
   it('ignores a state with no gesture field', () => {
@@ -137,11 +142,17 @@ describe('collectRemoteGesture', () => {
 
   it('keeps the sound entries of a batch that has one malformed member', () => {
     const collected = collectRemoteGesture(
-      states([2, stateWith({ n1: { x: 10, y: 20 }, n2: { x: 'ten', y: 20 } })]),
+      states([
+        2,
+        stateWith({
+          n1: { x: 10, y: 20, root: 'n1' },
+          n2: { x: 'ten', y: 20, root: 'n2' },
+        }),
+      ]),
       1,
     );
     expect(collected.size).toBe(1);
-    expect(collected.get('n1')).toEqual({ x: 10, y: 20 });
+    expect(collected.get('n1')).toEqual({ x: 10, y: 20, root: 'n1' });
   });
 
   it('drops a size that is not a number', () => {
@@ -155,8 +166,17 @@ describe('collectRemoteGesture', () => {
 
 describe('readGestureField', () => {
   it('reads a sound table', () => {
-    const read = readGestureField({ n1: { x: 1, y: 2 } });
-    expect(read?.get('n1')).toEqual({ x: 1, y: 2 });
+    const read = readGestureField({ n1: { x: 1, y: 2, root: 'n1' } });
+    expect(read?.get('n1')).toEqual({ x: 1, y: 2, root: 'n1' });
+  });
+
+  it('drops an entry that does not name what it speaks for', () => {
+    // Without a root a reader cannot tell a member entry left over from a Group
+    // the node has since left from an entry for a node the gesture holds
+    // directly, so the entry decides nothing and the document is what is left.
+    expect(readGestureField({ n1: { x: 1, y: 2 } })?.size).toBe(0);
+    expect(readGestureField({ n1: { x: 1, y: 2, root: '' } })?.size).toBe(0);
+    expect(readGestureField({ n1: { x: 1, y: 2, root: 7 } })?.size).toBe(0);
   });
 
   it('reports null for a field that is absent', () => {

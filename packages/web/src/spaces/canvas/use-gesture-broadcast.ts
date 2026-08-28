@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import type { GeometryNode } from '@web/spaces/canvas/local-gesture';
-import { gestureGeometry, gestureNodeIds } from '@web/spaces/canvas/local-gesture';
+import { gestureGeometry, gestureRoots } from '@web/spaces/canvas/local-gesture';
 import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
 import type { GesturePublisher } from '@web/spaces/canvas/use-publish-presence';
 
@@ -56,7 +56,11 @@ export function useGestureBroadcast(
   // Which Group the gesture is resizing, settled when it starts and read back
   // on every later call.
   const resizedGroup = React.useRef<string | null>(null);
-  const activeIds = React.useRef<ReadonlySet<string>>(new Set());
+  // Every node this gesture decides, each paired with what brought it in.
+  // Settled at `begin` and read back unchanged: a member that leaves its Group
+  // mid-gesture keeps naming the Group, which is what lets a reader tell that
+  // entry apart from one for a node the gesture has hold of directly.
+  const activeRoots = React.useRef<ReadonlyMap<string, string>>(new Map());
   return React.useMemo((): GestureBroadcast => {
     /**
      * The geometry to publish for whatever the gesture currently holds.
@@ -64,29 +68,29 @@ export function useGestureBroadcast(
      */
     const batch = (): GestureBatch =>
       gestureGeometry(
-        activeIds.current,
+        activeRoots.current,
         onScreen(),
         resizedGroup.current,
       );
     /** Forget the gesture and take its field down. */
     const drop = (): void => {
-      activeIds.current = new Set();
+      activeRoots.current = new Map();
       resizedGroup.current = null;
       publisher.clearGesture();
-      onHeldChange(activeIds.current);
+      onHeldChange(new Set());
     };
     return {
       begin: (seedIds, resizedGroupId): void => {
         resizedGroup.current = resizedGroupId;
-        activeIds.current = gestureNodeIds(seedIds, onScreen());
+        activeRoots.current = gestureRoots(seedIds, onScreen());
         publisher.publishGesture(batch());
-        onHeldChange(activeIds.current);
+        onHeldChange(new Set(activeRoots.current.keys()));
       },
       update: (): void => {
         // xyflow keeps its auto-pan frame loop alive through an aborted drag
         // (`@xyflow/system:2263-2272` returns before cancelling it), so this
         // keeps arriving after the gesture is gone.
-        if (activeIds.current.size === 0) return;
+        if (activeRoots.current.size === 0) return;
         publisher.publishGesture(batch());
       },
       end: (writeDocument): void => {
@@ -101,10 +105,10 @@ export function useGestureBroadcast(
         }
       },
       abandon: (): void => {
-        if (activeIds.current.size === 0) return;
+        if (activeRoots.current.size === 0) return;
         drop();
       },
-      isRunning: () => activeIds.current.size > 0,
+      isRunning: () => activeRoots.current.size > 0,
     };
   }, [publisher, onScreen, onHeldChange]);
 }
