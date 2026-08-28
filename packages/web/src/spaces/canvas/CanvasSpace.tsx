@@ -184,6 +184,7 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
+import { heldIds } from '@web/spaces/canvas/gesture-table';
 import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
@@ -2688,9 +2689,9 @@ function CanvasSpaceInner({
   // agrees on. A Group's background writes no geometry at all.
   const groupableIds = useStableList(
     React.useMemo(() => {
-      const held = buffer.heldByRemote();
+      const held = heldIds(remoteGesture, docPlaces);
       return selectedIds.filter((id) => !held.has(id));
-    }, [selectedIds, buffer, remoteGesture]),
+    }, [selectedIds, remoteGesture, docPlaces]),
   );
 
   const publishedPoint = React.useCallback(
