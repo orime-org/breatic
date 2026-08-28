@@ -58,6 +58,21 @@ function selectAll(editor: Editor): void {
   editor.view.dispatch(tr.setSelection(new AllSelection(d)));
 }
 
+/**
+ * Select the first node of the given type, the way Cmd+click does.
+ * @param editor - The editor.
+ * @param nodeName - The node type to pick.
+ */
+function selectNode(editor: Editor, nodeName: string): void {
+  let at = -1;
+  editor.state.doc.descendants((node, pos) => {
+    if (at < 0 && node.type.name === nodeName) at = pos;
+    return true;
+  });
+  const { doc: d, tr } = editor.state;
+  editor.view.dispatch(tr.setSelection(NodeSelection.create(d, at)));
+}
+
 describe('currentBlockType', () => {
   // An `AllSelection` anchors at 0, which resolves to the document node
   // itself rather than to any text block. The face still has to name a block,
@@ -90,14 +105,30 @@ describe('currentBlockType', () => {
     ['ordered-list', '<ul><li><p>a</p><ol><li><p>b</p></li></ol></li></ul>', 'orderedList'],
   ])('names %s for a node selection on that list', (blockType, body, nodeName) => {
     const editor = open(body);
-    let at = -1;
-    editor.state.doc.descendants((node, pos) => {
-      if (at < 0 && node.type.name === nodeName) at = pos;
-      return true;
-    });
-    const { doc: d, tr } = editor.state;
-    editor.view.dispatch(tr.setSelection(NodeSelection.create(d, at)));
+    selectNode(editor, nodeName);
 
     expect(currentBlockType(editor)).toBe(blockType);
   });
+
+  // A wrapper picked this way holds another one, and the walk below reads the
+  // innermost — which is the one INSIDE what the reader picked. The node the
+  // click landed on is the answer, so it is asked first.
+  it('names the picked quote rather than the list it holds', () => {
+    const editor = open('<blockquote><ul><li><p>the text</p></li></ul></blockquote>');
+    selectNode(editor, 'blockquote');
+
+    expect(currentBlockType(editor)).toBe('quote');
+  });
+
+  // Which block a paragraph counts as does not depend on how it was selected:
+  // a caret resting in this line answers `bullet-list` too.
+  it.each([['listItem'], ['paragraph']])(
+    'names the list a picked %s belongs to',
+    (nodeName) => {
+      const editor = open('<ul><li><p>an item</p></li></ul>');
+      selectNode(editor, nodeName);
+
+      expect(currentBlockType(editor)).toBe('bullet-list');
+    },
+  );
 });

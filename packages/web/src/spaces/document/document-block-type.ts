@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { NodeSelection } from '@tiptap/pm/state';
 
 import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
 
@@ -212,13 +213,15 @@ const WRAPPERS = new Map<string, BlockTypeId>(
  */
 function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
   const at = doc.resolve(pos);
+  // A position resting on a block boundary rather than inside a text block —
+  // between two paragraphs, say — has no type of its own to report. Asked
+  // before the wrappers, or such a position would answer for whatever holds
+  // it and the caller would have no way to tell that apart from a real answer.
+  if (!at.parent.isTextblock) return null;
   for (let depth = at.depth; depth > 0; depth -= 1) {
     const wrapper = WRAPPERS.get(at.node(depth).type.name);
     if (wrapper !== undefined) return wrapper;
   }
-  // A position resting on a block boundary rather than inside a text block —
-  // between two paragraphs, say — has no type of its own to report.
-  if (!at.parent.isTextblock) return null;
   return blockTypeOf(at.parent.type.name, at.parent.attrs);
 }
 
@@ -233,19 +236,26 @@ function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
  * The anchor answers only where it resolves inside a text block, which a text
  * selection guarantees and the other two shapes do not: a select-all anchors
  * at 0, and a node selection at the position BEFORE the node it picked, both
- * of which resolve into whatever HOLDS the selection. Asking either for its
- * wrappers answers for an ancestor — over a list inside a quote, for the
- * quote. Those fall to the walk, which takes the first block covered: the
- * document's first for a select-all, the picked node's own content for a node
- * selection.
+ * of which resolve into whatever HOLDS the selection.
+ *
+ * A node selection names the node the reader picked. Cmd+click steps outward
+ * on each further click (`prosemirror-view:3277`), so the pick can be a
+ * wrapper holding another one, and the walk below reads the innermost — the
+ * one inside what was picked. A picked node that wraps nothing (a list item,
+ * a paragraph) has no answer of its own and falls to the walk, which puts it
+ * with the list it belongs to, the same answer a text selection there gives.
+ *
+ * What is left falls to the walk, which takes the first block covered.
  * @param editor - The editor.
  * @returns The current block type.
  */
 export function currentBlockType(editor: Editor): BlockTypeId {
   const { doc, selection } = editor.state;
-  const anchored = doc.resolve(selection.anchor).parent.isTextblock
-    ? blockTypeAt(doc, selection.anchor)
-    : null;
+  if (selection instanceof NodeSelection) {
+    const picked = WRAPPERS.get(selection.node.type.name);
+    if (picked !== undefined) return picked;
+  }
+  const anchored = blockTypeAt(doc, selection.anchor);
   if (anchored !== null) return anchored;
   let first: BlockTypeId | null = null;
   doc.nodesBetween(selection.from, selection.to, (node, pos) => {

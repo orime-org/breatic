@@ -929,6 +929,43 @@ describe('what the bar carries and what happens around the panel', () => {
       screen.queryByTestId('doc-selection-bubble-bar'),
     ).not.toBeInTheDocument();
   });
+
+  it('shows the bar again on the next selection after the panel closed', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('doc-selection-bubble-bar'),
+      ).not.toBeInTheDocument();
+    });
+
+    await selectWithFocus(editor, 1, 3);
+
+    const bar = screen.getByTestId('doc-selection-bubble-bar');
+    expect(bar.className).not.toContain('invisible');
+  });
+
+  it('shows the bar again after the panel was carried away with the text', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    // A co-editor deletes the linked span. The panel never gets to say it
+    // closed: the collapsed selection takes the bar away and the panel with it.
+    act(() => {
+      editor.commands.deleteRange({ from: 4, to: 12 });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('doc-selection-bubble-bar'),
+      ).not.toBeInTheDocument();
+    });
+
+    await selectWithFocus(editor, 1, 3);
+
+    const bar = screen.getByTestId('doc-selection-bubble-bar');
+    expect(bar.className).not.toContain('invisible');
+  });
 });
 
 describe('text that cannot carry a link', () => {
