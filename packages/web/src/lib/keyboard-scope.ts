@@ -26,11 +26,14 @@ export function regionOf(el: Element): ActiveRegion | null {
  * instead of the state it feeds — and they disagree whenever the region moved
  * without focus following, as pressing a scrollbar does.
  *
- * What the target does decide is whether anyone nearer than the region owns
- * this press. Two of them can: a field being typed in, which every key
- * belongs to, and an overlay, which portals to `<body>` and therefore sits in
- * no region. A target in either region, and `<body>` itself, defer to the
- * store.
+ * What the target does decide is whether an overlay is handling this press
+ * itself: an overlay portals to `<body>` and therefore sits in no region. A
+ * target in either region, and `<body>` itself, defer to the store.
+ *
+ * A field being typed in is a separate question, and the answer depends on
+ * the key: Cmd+Z in a text box is the box's own undo, while Escape there
+ * belongs to whoever put the box on screen. So the outlets whose key has a
+ * native meaning inside a field ask `isEditableTarget` themselves.
  * @param target - The event's target.
  * @param region - The region asking.
  * @returns True when the region should act on this event.
