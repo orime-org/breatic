@@ -2931,9 +2931,9 @@ function CanvasSpaceInner({
   // Carried over from the library: a modifier means this is not a plain delete
   // (`isMatchingKey` filters on `keys.length === pressedKeys.size`, so
   // Cmd+Backspace never matched the single-key `['Backspace']`), and
-  // `keyPressed` was a boolean, so holding the key deleted once. Auto-repeat
-  // now returns before `preventDefault` where the library prevented every
-  // repeat; nothing in this repo reads `defaultPrevented` on these two keys.
+  // `keyPressed` was a boolean, so holding the key deleted once while every
+  // repeat was still prevented. The repeat check sits after `preventDefault`
+  // to keep both halves of that.
   React.useEffect(() => {
     /**
      * Document keydown handler: delete the current selection.
@@ -2944,9 +2944,9 @@ function CanvasSpaceInner({
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
-      if (event.repeat) return;
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
       event.preventDefault();
+      if (event.repeat) return;
       const { nodes, edges } = rfStoreApi.getState();
       void deleteElements({
         nodes: nodes.filter((node) => node.selected),

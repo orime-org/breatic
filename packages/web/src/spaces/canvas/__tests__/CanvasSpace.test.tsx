@@ -3623,6 +3623,20 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(removeElements).not.toHaveBeenCalled();
       });
 
+      // Only the first press deletes, but every repeat still belongs to the
+      // canvas, so each one is answered the way the library answered it.
+      it('a repeat of the delete key leaves the event default-prevented', () => {
+        mountWithSelection();
+        let prevented: boolean | null = null;
+        const probe = (e: Event): void => {
+          prevented = e.defaultPrevented;
+        };
+        document.addEventListener('keydown', probe);
+        dispatchKeyDown('Backspace', { repeat: true });
+        document.removeEventListener('keydown', probe);
+        expect(prevented).toBe(true);
+      });
+
       it('the delete key leaves the event default-prevented', () => {
         mountWithSelection();
         let prevented: boolean | null = null;
