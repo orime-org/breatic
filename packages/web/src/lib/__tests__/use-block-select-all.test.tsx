@@ -42,6 +42,7 @@ interface KeyOptions {
   shift?: boolean;
   alt?: boolean;
   repeat?: boolean;
+  code?: string;
 }
 
 /**
@@ -58,6 +59,7 @@ function press(el: Element, options: KeyOptions = {}): boolean {
     shiftKey: options.shift ?? false,
     altKey: options.alt ?? false,
     repeat: options.repeat ?? false,
+    code: options.code ?? `Key${(options.key ?? 'a').toUpperCase()}`,
     bubbles: true,
     cancelable: true,
   });
@@ -80,6 +82,14 @@ describe('useBlockSelectAll', () => {
     it('on a plain element', () => {
       renderHook(() => useBlockSelectAll());
       expect(press(page.plain)).toBe(true);
+    });
+
+    // A Russian layout sends 'ф' from the physical A key while the browser
+    // still runs select-all off the key's position, so the letter alone
+    // misses it.
+    it('on a layout whose A key sends another letter', () => {
+      renderHook(() => useBlockSelectAll());
+      expect(press(page.plain, { key: 'ф', code: 'KeyA' })).toBe(true);
     });
 
     it('with Ctrl rather than Cmd', () => {

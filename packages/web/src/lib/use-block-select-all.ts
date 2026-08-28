@@ -29,7 +29,10 @@ export function useBlockSelectAll(): void {
      * @param event - A keydown, caught while it bubbles to the document.
      */
     const swallow = (event: KeyboardEvent): void => {
-      if (event.key.toLowerCase() !== 'a') return;
+      // The browser runs select-all off the key's position, so a layout that
+      // sends another letter from the A key — Russian sends 'ф' — reaches it
+      // too. `code` names the position.
+      if (event.key.toLowerCase() !== 'a' && event.code !== 'KeyA') return;
       if (!event.metaKey && !event.ctrlKey) return;
       // Cmd+Shift+A and Option+Cmd+A are other shortcuts, not this one.
       if (event.shiftKey || event.altKey) return;
