@@ -11,6 +11,8 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
+import { useUIStore } from '@web/stores/ui';
 
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
@@ -70,10 +72,18 @@ export function AgentColHeader({
   onRenameConversation,
 }: AgentColHeaderProps): React.JSX.Element {
   const t = useTranslation();
+  // The conversation name stands for this column and takes its colour from
+  // here, so this one class is what says whether the column is the region the
+  // keyboard belongs to (#168). Both icon buttons state their own colour, so
+  // nothing else in the row moves with it.
+  const active = useUIStore((s) => s.activeRegion) === 'agent';
   return (
     <header
       data-testid='agent-col-header'
-      className='flex shrink-0 items-center border-b border-border bg-background'
+      className={cn(
+        'flex shrink-0 items-center border-b border-border bg-background',
+        active ? 'text-foreground' : 'text-muted-foreground',
+      )}
       style={{ height: 40, padding: '0 var(--space-4)', gap: 'var(--space-2)' }}
     >
       <Tooltip>

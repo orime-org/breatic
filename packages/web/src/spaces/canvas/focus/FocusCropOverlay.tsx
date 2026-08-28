@@ -7,6 +7,7 @@ import { toast } from '@web/lib/toast';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
 import type { CapturedResize } from '@web/spaces/canvas/focus/crop-math';
 import {
   CROP_PRESETS,
@@ -595,19 +596,11 @@ export function FocusCropOverlay({
       ) {
         return;
       }
-      const active = document.activeElement;
-      // Yield by Esc OWNERSHIP, not focus location (round-6): consumers
-      // (the @-suggestion, Radix overlays) preventDefault or hold focus in
-      // overlay content; a plain focused prompt editor consumes nothing,
-      // and yielding to it left Esc silently dead there.
-      if (
-        active &&
-        active.closest(
-          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
-        ) !== null
-      ) {
-        return;
-      }
+      // This overlay holds no focus trap, so a reader can click into the agent
+      // panel while it is open — and from that press the keys are the agent's,
+      // the same answer the canvas's other outlets give. An overlay portalled
+      // to <body> passes through no region and keeps its own Escape.
+      if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
       if (
         boxStateRef.current !== null &&
         (rectRef.current || interactionRef.current)

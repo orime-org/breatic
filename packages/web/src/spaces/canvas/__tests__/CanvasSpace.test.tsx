@@ -69,7 +69,7 @@ import * as canvasSpace from '@web/data/yjs/canvas-space';
 import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { serializeNodes } from '@web/spaces/canvas/node-clipboard';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import { useCanvasStore } from '@web/stores';
+import { useCanvasStore, useUIStore } from '@web/stores';
 import { useCanvasGraphStore } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { assetsApi } from '@web/data/api';
@@ -90,6 +90,9 @@ const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 // into a dirty start.
 beforeEach(() => {
   useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  // The active region is a module singleton for the same reason, and the
+  // canvas gates read it on every key.
+  useUIStore.setState({ activeRegion: 'space' });
 });
 const mockRunFocusCrop = vi.mocked(runFocusCrop);
 
@@ -118,6 +121,15 @@ function mockSpace(
 }
 
 /**
+ * Where a browser aims a keyboard or clipboard event: the focused element,
+ * falling back to `<body>` when nothing holds focus.
+ * @returns The element to dispatch from.
+ */
+function keyTarget(): Element {
+  return document.activeElement ?? document.body;
+}
+
+/**
  * Dispatch a `keydown` on the document so the canvas history shortcut handler
  * (a document-level listener) sees it.
  * @param key - The `KeyboardEvent.key` value.
@@ -125,15 +137,27 @@ function mockSpace(
  */
 function dispatchKeyDown(
   key: string,
-  mods: { meta?: boolean; ctrl?: boolean; shift?: boolean } = {},
+  mods: {
+    meta?: boolean;
+    ctrl?: boolean;
+    shift?: boolean;
+    alt?: boolean;
+    repeat?: boolean;
+  } = {},
 ): void {
   act(() => {
-    document.dispatchEvent(
+    // At the focused element, which is where a browser aims a key event —
+    // `<body>` when nothing holds focus. Bubbling carries it to the document
+    // listeners; dispatching on `document` itself would leave `event.target`
+    // as the document, a target no real key event ever has.
+    keyTarget().dispatchEvent(
       new KeyboardEvent('keydown', {
         key,
         metaKey: mods.meta ?? false,
         ctrlKey: mods.ctrl ?? false,
         shiftKey: mods.shift ?? false,
+        altKey: mods.alt ?? false,
+        repeat: mods.repeat ?? false,
         bubbles: true,
         cancelable: true,
       }),
@@ -180,8 +204,19 @@ function dispatchPaste(text: string): void {
     },
   });
   act(() => {
-    document.dispatchEvent(event);
+    keyTarget().dispatchEvent(event);
   });
+}
+
+/**
+ * The space region root the mount is wrapped in.
+ * @returns The region root.
+ * @throws {Error} When the space is not mounted.
+ */
+function spaceRegion(): HTMLElement {
+  const root = document.querySelector<HTMLElement>('[data-region="space"]');
+  if (!root) throw new Error('the space region root is not mounted');
+  return root;
 }
 
 /**
@@ -193,6 +228,11 @@ function dispatchPaste(text: string): void {
  * not make the first Generate of a session wait. A bare mount would throw
  * "No QueryClient set". A fresh client per mount keeps one test's cached
  * catalog out of the next one.
+ * The region root is the wrapper ProjectPage puts around the space column, and
+ * the keyboard gate reads it. A press aimed at an element inside the mount
+ * then resolves the way it does in the app; one aimed at `<body>` — which is
+ * where `keyTarget()` lands when nothing holds focus — takes the gate's
+ * `<body>` branch either way.
  * @param readOnly - Mount the space in its read-only form.
  * @returns The render result.
  */
@@ -202,7 +242,9 @@ function renderSpace(readOnly = false): ReturnType<typeof render> {
   });
   return render(
     <QueryClientProvider client={client}>
-      <CanvasSpace projectId='p' spaceId='s' readOnly={readOnly} />
+      <div data-region='space'>
+        <CanvasSpace projectId='p' spaceId='s' readOnly={readOnly} />
+      </div>
     </QueryClientProvider>,
   );
 }
@@ -466,7 +508,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         },
       });
       act(() => {
-        document.dispatchEvent(event);
+        keyTarget().dispatchEvent(event);
       });
       expect(written).toContain('notes worth keeping');
     });
@@ -1573,6 +1615,50 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose exits on
   // Escape with the same guard set — reference and style had no listener at
   // all (only focus did), so their banners showed Exit but Esc was dead.
+  // The generate panel stays on screen for the whole pick session and its
+  // prompt box is a contenteditable inside the space column. Escape has no
+  // native behaviour there for the field to keep, so abandoning the pick from
+  // the prompt box is the same press as abandoning it from the board.
+  it('Escape exits a pick session from the prompt box inside the space', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    // The panel that carries the pick's Exit trigger stays on screen for the
+    // whole session, and `onExitPick` hands focus back to it.
+    const trigger = document.createElement('button');
+    trigger.setAttribute('data-testid', 'generate-tool-reference');
+    const prompt = document.createElement('div');
+    Object.defineProperty(prompt, 'isContentEditable', { value: true });
+    prompt.tabIndex = 0;
+    spaceRegion().append(trigger, prompt);
+    prompt.focus();
+    try {
+      act(() => {
+        fireEvent.keyDown(prompt, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+      // The reader is mid-sentence in that box; ending the pick is theirs to
+      // ask for, the caret is not.
+      expect(document.activeElement).toBe(prompt);
+    } finally {
+      prompt.remove();
+      trigger.remove();
+    }
+  });
+
   it('Escape exits a REFERENCE pick session (was silently dead — #8)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
@@ -1591,7 +1677,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       useCanvasStore.getState().startReferencePick('target');
     });
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.keyDown(keyTarget(), { key: 'Escape' });
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
@@ -1626,11 +1712,11 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useCanvasStore.getState().pickSession).not.toBeNull();
     // An auto-repeat Esc is ignored too.
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape', repeat: true });
+      fireEvent.keyDown(keyTarget(), { key: 'Escape', repeat: true });
     });
     expect(useCanvasStore.getState().pickSession).not.toBeNull();
     act(() => {
-      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.keyDown(keyTarget(), { key: 'Escape' });
     });
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
@@ -1674,7 +1760,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       expect(useCanvasStore.getState().pickSession).not.toBeNull();
       // The next, unconsumed press exits.
       act(() => {
-        fireEvent.keyDown(window, { key: 'Escape' });
+        fireEvent.keyDown(keyTarget(), { key: 'Escape' });
       });
       expect(useCanvasStore.getState().pickSession).toBeNull();
     } finally {
@@ -1682,7 +1768,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  it('Escape yields to an open alertdialog (adversarial r2 — role was missing from the yield)', () => {
+  // An overlay portals to <body>, outside both region roots, so the key
+  // belongs to whoever put it there rather than to the canvas.
+  it('Escape yields to an open alertdialog', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -1707,7 +1795,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     btn.focus();
     try {
       act(() => {
-        fireEvent.keyDown(window, { key: 'Escape' });
+        fireEvent.keyDown(keyTarget(), { key: 'Escape' });
       });
       expect(useCanvasStore.getState().pickSession).not.toBeNull();
     } finally {
@@ -2385,7 +2473,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mockImplementation(() => undefined);
     renderSpace();
     const input = document.createElement('input');
-    document.body.appendChild(input);
+    spaceRegion().appendChild(input);
     input.focus();
 
     dispatchPaste('text into the input');
@@ -2483,7 +2571,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
     renderSpace();
     const input = document.createElement('input');
-    document.body.appendChild(input);
+    spaceRegion().appendChild(input);
     input.focus();
 
     dispatchKeyDown('z', { meta: true });
@@ -2714,12 +2802,14 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  // ---- Pick-end focus catch-all (adversarial round-2, a11y) ----
-  // The banner Exit hand-off focuses the pick trigger, but when the trigger
-  // is disabled (t2i switch mid-pick) or the pick ends by another path (panel
-  // X, host node deleted) focus dropped to <body>. A catch-all restores focus
-  // to the canvas container whenever a pick ends with focus orphaned.
-  it('restores focus to the canvas container when a pick ends with focus on <body>', () => {
+  // ---- Pick-end focus (#168) ----
+  // A pick used to end by pulling focus into the canvas container whenever
+  // focus was orphaned on <body>. A pick can end without any local action —
+  // a collaborator writing the host node's mode ends it — so that pull moved
+  // the active region with nobody touching anything. Keyboard ownership no
+  // longer reads focus, so the canvas answers the keyboard on the <body>
+  // target anyway and the pull has nothing left to do.
+  it('leaves focus where it is when a pick ends with focus on <body>', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -2742,10 +2832,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       document.body.focus();
       useCanvasStore.setState({ pickSession: null });
     });
-    expect(document.activeElement).toBe(screen.getByTestId('canvas-space'));
+    expect(document.activeElement).toBe(document.body);
   });
 
-  it('does not steal focus when a pick ends with focus already placed (Exit hand-off)', () => {
+  it('leaves focus where it is when a pick ends with focus already placed', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -2769,7 +2859,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         elsewhere.focus();
         useCanvasStore.setState({ pickSession: null });
       });
-      // Focus was NOT on body, so the catch-all leaves it alone.
       expect(document.activeElement).toBe(elsewhere);
     } finally {
       elsewhere.remove();
@@ -3355,6 +3444,463 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     } finally {
       rect.mockRestore();
     }
+  });
+
+  // Every global keyboard and clipboard outlet on the canvas asks the same
+  // question first: does this event belong to the space region? The seven below
+  // are the ones #168 changes; the modifier-key props ReactFlow owns are scoped
+  // by where the pointer lands, so they are untouched.
+  describe('keyboard and clipboard belong to the active region (#168)', () => {
+    /**
+     * Mounts a space holding `count` text nodes, all selected the way the
+     * canvas reads selection (its ReactFlow mirror, not Yjs). Two of them is
+     * what the group shortcut needs before it offers anything.
+     * @param count - How many nodes to put on the board.
+     */
+    const mountWithSelection = (count = 1): void => {
+      mockUseCanvasSpace.mockReturnValue(
+        mockSpace({
+          nodes: Array.from({ length: count }, (_, i) => ({
+            id: `n${i + 1}`,
+            type: 'text' as const,
+            position: { x: i * 400, y: 0 },
+            data: { kind: 'text' as const, status: 'idle' as const, name: 'N' },
+          })),
+        }),
+      );
+      renderSpace();
+      act(() => {
+        useCanvasGraphStore
+          .getState()
+          .setFlowNodes((prev) => prev.map((n) => ({ ...n, selected: true })));
+      });
+    };
+
+    /**
+     * Spies on the space's write helpers, which is where every one of these
+     * outlets ends up. The mocked hook feeds the canvas its nodes, so the
+     * document itself never holds them — the write call is the observable.
+     * @returns The spies, restored by `vi.restoreAllMocks` between tests.
+     */
+    const spyWrites = (): {
+      removeElements: ReturnType<typeof vi.spyOn>;
+      addNode: ReturnType<typeof vi.spyOn>;
+      createGroup: ReturnType<typeof vi.spyOn>;
+    } => ({
+      removeElements: vi.spyOn(canvasSpace, 'removeElements'),
+      addNode: vi.spyOn(canvasSpace, 'addNode'),
+      createGroup: vi.spyOn(canvasSpace, 'createGroup'),
+    });
+
+    const attached: Element[] = [];
+
+    afterEach(() => {
+      for (const el of attached) el.remove();
+      attached.length = 0;
+    });
+
+    /**
+     * Attaches an element holding words, standing in for a place the reader
+     * can put the caret or drag across.
+     * @param region - The `data-region` to wrap it in, or null for an overlay
+     * or the top bar, both of which pass through no region.
+     * @returns The element holding the words.
+     */
+    const wordsIn = (region: string | null): Element => {
+      const host = document.createElement('div');
+      if (region !== null) host.setAttribute('data-region', region);
+      const span = document.createElement('span');
+      span.textContent = 'a highlighted reply';
+      host.append(span);
+      document.body.append(host);
+      attached.push(host);
+      return span;
+    };
+
+    /**
+     * Puts focus on a fresh control inside `region`, standing in for where the
+     * reader last clicked. A copy event's target follows the selection rather
+     * than focus, so this is the thing the gate reads.
+     * @param region - The `data-region` to wrap it in, or null for an overlay
+     * or the top bar, both of which pass through no region.
+     * @returns The focused control.
+     */
+    const focusInside = (region: string | null): HTMLElement => {
+      const host = document.createElement('div');
+      if (region !== null) host.setAttribute('data-region', region);
+      const control = document.createElement('button');
+      host.append(control);
+      document.body.append(host);
+      attached.push(host);
+      control.focus();
+      return control;
+    };
+
+    /**
+     * Drags across every word in `el`, leaving a live text selection.
+     * @param el - The element whose words get highlighted.
+     */
+    const dragAcross = (el: Element): void => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
+    /**
+     * Clicks once in `el` without dragging, so the caret collapses there and
+     * no text ends up selected.
+     * @param el - The element the caret lands in.
+     */
+    const clickInto = (el: Element): void => {
+      const caret = document.createRange();
+      caret.setStart(el.firstChild as Node, 1);
+      caret.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(caret);
+    };
+
+    /**
+     * Dispatches a copy event carrying a clipboard stub, and reports what the
+     * canvas wrote to it.
+     * @param from - The element the event targets; defaults to the key target.
+     * @returns Whatever landed on the clipboard, empty when nothing did.
+     */
+    const copyAndRead = (from?: Element): string => {
+      let written = '';
+      const event = new Event('copy', { bubbles: true }) as Event & {
+        clipboardData: { setData: (type: string, data: string) => void };
+      };
+      Object.defineProperty(event, 'clipboardData', {
+        value: {
+          setData: (_type: string, data: string) => {
+            written = data;
+          },
+        },
+      });
+      act(() => {
+        (from ?? keyTarget()).dispatchEvent(event);
+      });
+      return written;
+    };
+
+    describe('the agent panel holds it', () => {
+      beforeEach(() => {
+        useUIStore.setState({ activeRegion: 'agent' });
+      });
+
+      it('undo leaves the document alone', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        dispatchKeyDown('z', { meta: true });
+        expect(undoSpy).not.toHaveBeenCalled();
+      });
+
+      it('redo leaves the document alone', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        dispatchKeyDown('z', { meta: true, shift: true });
+        expect(redoSpy).not.toHaveBeenCalled();
+      });
+
+      it('paste creates no node', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        const { addNode } = spyWrites();
+        dispatchPaste('https://example.com/a.png');
+        expect(addNode).not.toHaveBeenCalled();
+      });
+
+      it('copy leaves the clipboard alone', () => {
+        mountWithSelection();
+        expect(copyAndRead()).toBe('');
+      });
+
+      it('the duplicate shortcut creates no clone', async () => {
+        mountWithSelection();
+        const { addNode } = spyWrites();
+        dispatchKeyDown('d', { meta: true });
+        await new Promise((r) => setTimeout(r, 30));
+        expect(addNode).not.toHaveBeenCalled();
+      });
+
+      it('the group shortcut creates no group', async () => {
+        mountWithSelection(2);
+        const { createGroup } = spyWrites();
+        dispatchKeyDown('g', { meta: true });
+        await new Promise((r) => setTimeout(r, 30));
+        expect(createGroup).not.toHaveBeenCalled();
+      });
+
+      it('the delete key removes nothing', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Backspace');
+        await new Promise((r) => setTimeout(r, 30));
+        expect(removeElements).not.toHaveBeenCalled();
+      });
+
+      it('escape does not end a pick session', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        act(() => {
+          useCanvasStore.getState().startReferencePick('n1');
+        });
+        act(() => {
+          keyTarget().dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+          );
+        });
+        expect(useCanvasStore.getState().pickSession).not.toBeNull();
+      });
+    });
+
+    describe('the space region holds it', () => {
+      // The library matched a single key against the whole pressed set, so a
+      // modifier meant no match at all. Taking the key over keeps that: none
+      // of these delete anything today.
+      it.each([
+        ['Cmd+Backspace', 'Backspace', { meta: true }],
+        // Ctrl is the multi-select key on Windows and Linux
+        // (`multiSelectionKeyCode = isMacOs() ? 'Meta' : 'Control'`), so it is
+        // held down during ordinary canvas work there.
+        ['Ctrl+Backspace', 'Backspace', { ctrl: true }],
+        ['Shift+Delete', 'Delete', { shift: true }],
+        ['Option+Backspace', 'Backspace', { alt: true }],
+      ])('%s deletes nothing', async (_name, key, mods) => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown(key, mods);
+        await new Promise((r) => setTimeout(r, 30));
+        expect(removeElements).not.toHaveBeenCalled();
+      });
+
+      // A held key repeated ~30 times a second; the library's boolean meant one
+      // delete per press.
+      it('a repeat of the delete key deletes nothing', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Backspace', { repeat: true });
+        await new Promise((r) => setTimeout(r, 30));
+        expect(removeElements).not.toHaveBeenCalled();
+      });
+
+      // Only the first press deletes, but every repeat still belongs to the
+      // canvas, so each one is answered the way the library answered it.
+      it('a repeat of the delete key leaves the event default-prevented', () => {
+        mountWithSelection();
+        let prevented: boolean | null = null;
+        const probe = (e: Event): void => {
+          prevented = e.defaultPrevented;
+        };
+        document.addEventListener('keydown', probe);
+        dispatchKeyDown('Backspace', { repeat: true });
+        document.removeEventListener('keydown', probe);
+        expect(prevented).toBe(true);
+      });
+
+      it('the delete key leaves the event default-prevented', () => {
+        mountWithSelection();
+        let prevented: boolean | null = null;
+        const probe = (e: Event): void => {
+          prevented = e.defaultPrevented;
+        };
+        document.addEventListener('keydown', probe);
+        dispatchKeyDown('Backspace');
+        document.removeEventListener('keydown', probe);
+        expect(prevented).toBe(true);
+      });
+
+      it('the delete key removes the selected node', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Backspace');
+        await waitFor(() =>
+          expect(removeElements).toHaveBeenCalledWith('p', 's', ['n1'], []),
+        );
+      });
+
+      // Both keys delete on every platform; the Mac keyboard's key is
+      // Backspace, so a suite that only presses that one leaves the other
+      // untested.
+      it('the Delete key removes the selected node', async () => {
+        mountWithSelection();
+        const { removeElements } = spyWrites();
+        dispatchKeyDown('Delete');
+        await waitFor(() =>
+          expect(removeElements).toHaveBeenCalledWith('p', 's', ['n1'], []),
+        );
+      });
+
+      // Both wires run between nodes that survive, so the selected one can
+      // only be in the call because the key took it.
+      it('the delete key removes the selected edges alongside the nodes', async () => {
+        mountWithSelection(3);
+        const { removeElements } = spyWrites();
+        act(() => {
+          useCanvasGraphStore
+            .getState()
+            .setFlowNodes((prev) =>
+              prev.map((n) => ({ ...n, selected: n.id === 'n1' })),
+            );
+          useCanvasGraphStore.getState().setFlowEdges(() => [
+            { id: 'e1', source: 'n2', target: 'n3', selected: true },
+            { id: 'e2', source: 'n2', target: 'n3', selected: false },
+          ]);
+        });
+        dispatchKeyDown('Backspace');
+        await waitFor(() =>
+          expect(removeElements).toHaveBeenCalledWith('p', 's', ['n1'], ['e1']),
+        );
+      });
+
+      it('copy puts the selection on the clipboard', () => {
+        mountWithSelection();
+        expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
+      });
+
+      // Words the reader dragged across are the ones they asked for, wherever
+      // they sit — either region, or an overlay and the top bar, which sit in
+      // none. None of those is "copy the nodes".
+      it.each([
+        ['inside the agent panel', 'agent'],
+        ['inside the space itself', 'space'],
+        ['outside both regions', null],
+      ])('copy leaves the clipboard alone for words dragged %s', (_name, region) => {
+        mountWithSelection();
+        const words = wordsIn(region);
+        dragAcross(words);
+        expect(copyAndRead(words)).toBe('');
+      });
+
+      // Dragging across a picture selects something the reader asked for
+      // while `toString()` stays empty, so what counts is whether the
+      // selection is collapsed.
+      it('copy leaves the clipboard alone for a picture dragged across', () => {
+        mountWithSelection();
+        const host = document.createElement('div');
+        host.append(document.createElement('img'));
+        document.body.append(host);
+        try {
+          dragAcross(host);
+          expect(window.getSelection()?.isCollapsed).toBe(false);
+          expect(window.getSelection()?.toString()).toBe('');
+          expect(copyAndRead(host)).toBe('');
+        } finally {
+          host.remove();
+        }
+      });
+
+      // A click without a drag leaves a caret wherever it landed and selects
+      // no text, so the event's target is a leftover that says nothing about
+      // this copy. What is selected is the nodes.
+      it('copy puts the nodes on the clipboard with a caret left outside both regions', () => {
+        mountWithSelection();
+        const words = wordsIn(null);
+        clickInto(words);
+        expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
+      });
+
+      // Each of these keys has a native meaning inside a field: Backspace
+      // deletes a character, Cmd+Z undoes the typing, Cmd+D and Cmd+G are the
+      // browser's own. The field sits in the space region, so the region hands
+      // the press over and the field is what keeps the canvas out.
+      describe('a field inside the space keeps the keys it owns', () => {
+        /**
+         * Puts a focused text box inside the space column.
+         * @returns The focused input.
+         */
+        const fieldInSpace = (): HTMLInputElement => {
+          const field = document.createElement('input');
+          spaceRegion().append(field);
+          attached.push(field);
+          field.focus();
+          return field;
+        };
+
+        it('the delete key removes nothing', async () => {
+          mountWithSelection();
+          const { removeElements } = spyWrites();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'Backspace' });
+          await new Promise((r) => setTimeout(r, 30));
+          expect(removeElements).not.toHaveBeenCalled();
+        });
+
+        it('undo leaves the document alone', () => {
+          mountWithSelection();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'z', metaKey: true });
+          expect(undoSpy).not.toHaveBeenCalled();
+        });
+
+        it('the duplicate shortcut creates no clone', async () => {
+          mountWithSelection();
+          const { addNode } = spyWrites();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'd', metaKey: true });
+          await new Promise((r) => setTimeout(r, 30));
+          expect(addNode).not.toHaveBeenCalled();
+        });
+
+        it('the group shortcut creates no group', async () => {
+          mountWithSelection(2);
+          const { createGroup } = spyWrites();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'g', metaKey: true });
+          await new Promise((r) => setTimeout(r, 30));
+          expect(createGroup).not.toHaveBeenCalled();
+        });
+
+        it('paste creates no node', async () => {
+          mountWithSelection();
+          const { addNode } = spyWrites();
+          fieldInSpace();
+          dispatchPaste('hello from clipboard');
+          await new Promise((r) => setTimeout(r, 30));
+          expect(addNode).not.toHaveBeenCalled();
+        });
+      });
+
+      // The field sits in the space region, so the region has no quarrel with
+      // this press — what keeps the canvas out is the field itself.
+      it('copy leaves the clipboard alone with focus inside a field', () => {
+        mountWithSelection();
+        const field = document.createElement('input');
+        spaceRegion().append(field);
+        attached.push(field);
+        field.focus();
+        expect(copyAndRead()).toBe('');
+      });
+
+      // Focus is what says whether something else is already handling this
+      // press. An overlay portals to <body> and the top bar sits outside both
+      // columns, so neither passes through a region — the canvas keeps out of
+      // a copy made while focus is in one of them, exactly as it keeps out of
+      // Delete there.
+      it.each([
+        ['an overlay or the top bar', null, ''],
+        ['the space itself', 'space', '__breatic_canvas_nodes__:'],
+      ])(
+        'copy with focus inside %s and nothing highlighted',
+        (_name, region, expected) => {
+          mountWithSelection();
+          focusInside(region);
+          const written = copyAndRead();
+          if (expected === '') expect(written).toBe('');
+          else expect(written).toContain(expected);
+        },
+      );
+
+      it('undo runs', () => {
+        mockUseCanvasSpace.mockReturnValue(mockSpace());
+        renderSpace();
+        dispatchKeyDown('z', { meta: true });
+        expect(undoSpy).toHaveBeenCalled();
+      });
+    });
   });
 });
 

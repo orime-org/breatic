@@ -15,6 +15,12 @@ import { immer } from 'zustand/middleware/immer';
  *
  * Yjs source-of-truth data does NOT live here.
  */
+/**
+ * The two regions a project page is split into. The space region holds the
+ * tab bar and every space under it; the agent region is the chat column.
+ */
+export type ActiveRegion = 'space' | 'agent';
+
 interface UIState {
   chatPanelCollapsed: boolean;
   drawerOpen: boolean;
@@ -48,6 +54,19 @@ interface UIState {
    * state when `activeOverlayId !== id`).
    */
   activeOverlayId: string | null;
+  /**
+   * Which of the two regions the user is working in. Three things hand it
+   * over: a pointer press inside a region, focus entering it, and a file
+   * dropped into it — the last one because a drag from the desktop presses no
+   * pointer down on the page and moves no focus. Nothing else does: focus
+   * going to the top bar, to an overlay, or out of the window leaves it alone,
+   * and so does the wheel.
+   *
+   * Read by the canvas keyboard and clipboard gates and by the active-state
+   * colours, so that what the screen says and what the keys do cannot drift
+   * apart.
+   */
+  activeRegion: ActiveRegion;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
   setDrawerOpen: (open: boolean) => void;
@@ -59,6 +78,7 @@ interface UIState {
   setSpaceOpInProgress: (op: UIState['spaceOpInProgress']) => void;
   setReadOnlyViewSpaceId: (id: string | null) => void;
   setActiveOverlayId: (id: string | null) => void;
+  setActiveRegion: (region: ActiveRegion) => void;
   /** Reset per-project chrome session state (overlays / modals / share / drawer); keeps layout prefs (#1771). */
   reset: () => void;
 }
@@ -74,6 +94,7 @@ export const useUIStore = create<UIState>()(
     spaceOpInProgress: null,
     readOnlyViewSpaceId: null,
     activeOverlayId: null,
+    activeRegion: 'space',
     setChatPanelCollapsed: (collapsed) =>
       set((s) => {
         s.chatPanelCollapsed = collapsed;
@@ -115,6 +136,10 @@ export const useUIStore = create<UIState>()(
       set((s) => {
         s.activeOverlayId = id;
       }),
+    setActiveRegion: (region) =>
+      set((s) => {
+        s.activeRegion = region;
+      }),
     reset: () =>
       set((s) => {
         s.drawerOpen = false;
@@ -123,6 +148,8 @@ export const useUIStore = create<UIState>()(
         s.spaceOpInProgress = null;
         s.readOnlyViewSpaceId = null;
         s.activeOverlayId = null;
+        // A fresh project opens with the space region in charge (2026-08-26).
+        s.activeRegion = 'space';
         // `sidebarOpen` / `chatPanelCollapsed` are layout preferences, not
         // per-project session state — deliberately kept across a project change.
       }),
