@@ -3660,6 +3660,17 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         );
       });
 
+      // Nothing was written, so taking the press would end it as a copy that
+      // silently left the reader with whatever the clipboard held before.
+      it('leaves the press alone when there is no clipboard to write to', () => {
+        mountWithSelection();
+        const event = new Event('copy', { bubbles: true, cancelable: true });
+        act(() => {
+          keyTarget().dispatchEvent(event);
+        });
+        expect(event.defaultPrevented).toBe(false);
+      });
+
       it('copy puts the selection on the clipboard', () => {
         mountWithSelection();
         expect(copyAndRead()).toContain('__breatic_canvas_nodes__:');
