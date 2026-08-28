@@ -803,12 +803,9 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      // Every consumer that preventDefaults owns the press — including an
-      // open Radix tooltip dismissing itself (adversarial round-2 reversal:
-      // a [role=tooltip]-presence bypass misattributed OTHER consumers'
-      // preventDefault under the same single bit, double-acting on one
-      // press). Layered peel: the tooltip visibly dismisses, then the next
-      // press exits the session.
+      // Whoever prevented the default owns the press, so Escape peels one
+      // layer at a time: an open tooltip visibly dismisses on the first
+      // press, and the next one exits the session.
       if (
         e.key !== 'Escape' ||
         e.defaultPrevented ||

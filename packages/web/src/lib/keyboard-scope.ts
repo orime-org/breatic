@@ -27,9 +27,10 @@ export function regionOf(el: Element): ActiveRegion | null {
  * instead of the state it feeds — and they disagree whenever the region moved
  * without focus following, as pressing a scrollbar does.
  *
- * So the target only decides one thing: whether an overlay is handling this
- * event itself. An overlay portals to `<body>` and therefore sits in no
- * region; a target in either region, and `<body>` itself, both defer to the
+ * What the target does decide is whether anyone nearer than the region owns
+ * this press. Two of them can: a field being typed in, which every key
+ * belongs to, and an overlay, which portals to `<body>` and therefore sits in
+ * no region. A target in either region, and `<body>` itself, defer to the
  * store.
  * @param target - The event's target.
  * @param region - The region asking.
