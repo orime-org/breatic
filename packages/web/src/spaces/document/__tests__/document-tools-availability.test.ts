@@ -34,9 +34,9 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import {
   MARK_TOOLS,
-  BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
+import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
 
 const editors: Editor[] = [];
 
@@ -151,9 +151,10 @@ describe('what the buttons claim', () => {
       MARK_TOOLS.forEach((tool) => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });
-      BLOCK_TOOLS.forEach((tool) => {
-        const expected = tool.id === 'quote' ? c.quote : c.lists;
-        expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${expected}`);
+      // 块命令住在块类型菜单里，判据跟着命令一起搬了过去。
+      BLOCK_TYPE_ITEMS.filter((item) => item.canRun).forEach((item) => {
+        const expected = item.id === 'quote' ? c.quote : c.lists;
+        expect(`${item.id}=${item.canRun?.(editor)}`).toBe(`${item.id}=${expected}`);
       });
       // 行内组装的也是 mark，答案跟 MARK_TOOLS 那一列同源。
       INLINE_TOOLS.forEach((tool) => {
@@ -166,7 +167,14 @@ describe('what the buttons claim', () => {
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
     it(`with ${c.name}, every live button does something`, () => {
-      [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS].forEach((tool) => {
+      const blockRows = BLOCK_TYPE_ITEMS.filter((item) => item.run && item.canRun).map(
+        (item) => ({
+          id: item.id,
+          canRun: item.canRun as (e: Editor) => boolean,
+          run: item.run as (e: Editor) => void,
+        }),
+      );
+      [...MARK_TOOLS, ...INLINE_TOOLS, ...blockRows].forEach((tool) => {
         const editor = open(c.body);
         c.place(editor);
         if (!tool.canRun(editor)) return;

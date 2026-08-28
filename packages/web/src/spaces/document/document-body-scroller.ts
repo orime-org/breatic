@@ -7,13 +7,9 @@
  * One definition because three different kinds of code depend on it: the
  * stylesheet paints the scrollbar through it and hangs the entry's layout
  * variables on it (`--doc-entry-*`, `--doc-body-gutter`), and
- * `SelectionBubbleBar` walks up from the scroller to it to find the box the bar
- * must hang outside of. Left as a literal in those places, renaming it while
- * restyling the scrollbar would silently move the bar to the end of the body
- * and leave the entry with no sizes at all. Where it appears would not
- * change — the plugin positions it absolutely and floating-ui measures against
- * whatever offset parent it lands in — but it would leave the editor's own
- * subtree, and with it every stacking and clipping relationship that placement
- * was chosen for.
+ * `SelectionBubbleBar` walks up from the scroller to find the viewport it
+ * portals itself into. Left as a literal in those places, renaming it while
+ * restyling the scrollbar would put the bar at the end of the body and leave
+ * the entry with no sizes at all.
  */
 export const BODY_SCROLLER_CLASS = 'doc-body-scroller';

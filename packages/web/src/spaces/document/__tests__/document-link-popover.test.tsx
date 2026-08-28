@@ -67,9 +67,8 @@ function mount(bodyHtml: string): Editor {
 /**
  * Select a span, give the editor real focus, and wait for the bar.
  *
- * The focus is a hard condition: the plugin's `shouldShow` asks for
- * `view.hasFocus()`, and the bar's element only enters the document inside
- * `show()`.
+ * The focus is a hard condition: `shouldShow` asks for `view.hasFocus()`, and
+ * the bar renders nothing until it answers true.
  * @param editor - The editor.
  * @param from - Where the selection starts.
  * @param to - Where it ends.
@@ -101,10 +100,8 @@ async function openPopoverOver(editor: Editor, from: number, to: number): Promis
 /**
  * Press the link button on the bubble bar.
  *
- * Through the whole pointer sequence: the plugin raises `preventHide` in a
- * capture-phase mousedown (`@tiptap/extension-bubble-menu` dist:78-79), and the
- * body loses focus the moment the panel opens — without that press
- * `blurHandler` takes the whole bar out of the document.
+ * Through the whole pointer sequence: the bar refuses the focus change a press
+ * would cause, and the body keeps the focus that `shouldShow` asks for.
  */
 async function pressLinkButton(): Promise<void> {
   await userEvent.click(screen.getByTestId('doc-bubble-tool-link'));
@@ -908,7 +905,10 @@ describe('what the bar carries and what happens around the panel', () => {
     await openPopoverOver(editor, 4, 12);
 
     const bar = screen.getByTestId('doc-selection-bubble-bar');
-    expect(bar.className).toContain('invisible!');
+    // A plain `invisible`, no `!`. The important marker was there to beat the
+    // inline `visibility` the bubble-menu plugin wrote when it showed the bar;
+    // the bar now positions itself and writes that property only to hide.
+    expect(bar.className).toContain('invisible');
     expect(bar.className).toContain('pointer-events-none');
   });
 
@@ -925,6 +925,43 @@ describe('what the bar carries and what happens around the panel', () => {
     expect(
       screen.queryByTestId('doc-selection-bubble-bar'),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows the bar again on the next selection after the panel closed', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('doc-selection-bubble-bar'),
+      ).not.toBeInTheDocument();
+    });
+
+    await selectWithFocus(editor, 1, 3);
+
+    const bar = screen.getByTestId('doc-selection-bubble-bar');
+    expect(bar.className).not.toContain('invisible');
+  });
+
+  it('shows the bar again after the panel was carried away with the text', async () => {
+    const editor = mount(ONE_LINK);
+    await openPopoverOver(editor, 4, 12);
+
+    // A co-editor deletes the linked span. The panel never gets to say it
+    // closed: the collapsed selection takes the bar away and the panel with it.
+    act(() => {
+      editor.commands.deleteRange({ from: 4, to: 12 });
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('doc-selection-bubble-bar'),
+      ).not.toBeInTheDocument();
+    });
+
+    await selectWithFocus(editor, 1, 3);
+
+    const bar = screen.getByTestId('doc-selection-bubble-bar');
+    expect(bar.className).not.toContain('invisible');
   });
 });
 

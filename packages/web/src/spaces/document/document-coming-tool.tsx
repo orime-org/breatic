@@ -10,8 +10,7 @@
  * that reads as available and answers a click with nothing tells the reader
  * it is broken.
  *
- * The treatment follows the two snapshot commands in the whole-document menu
- * (`ComingEntry`, `StudioAccountMenu.tsx:99-119`): dimmed, `aria-disabled`,
+ * The treatment is dimmed, `aria-disabled`,
  * a cursor that says so, and nothing happens on click. Three things differ,
  * all three because this is a button on a floating bar rather than a row in
  * a menu — there is no room beside the icon for the badge that carries the
@@ -32,14 +31,11 @@
  * the accessibility tree to be read, the second drops it out.
  */
 
-import { ChevronDown, type LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import {
-  BUBBLE_CONTROL_HEIGHT,
-  BUBBLE_ICON_BUTTON_SIZE,
-} from '@web/spaces/document/document-tool-button';
+import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import {
   Tooltip,
   TooltipContent,
@@ -54,9 +50,15 @@ import { useTranslation } from '@web/i18n/use-translation';
  * give: `cn()` runs twMerge, and a class named here beats the variant's own
  * in the same group. Without them the entry lights up under the pointer the
  * way a working button does, and says it can be pressed.
+ *
+ * `focus:` as well as `hover:`, and they are not the same thing: inside a menu
+ * Radix highlights the row under the pointer by moving the focus to it and
+ * styling `focus:bg-accent`, so an entry that turned only `hover:` off still
+ * lit up like a working one.
  */
-const UNAVAILABLE =
-  'hover:bg-transparent hover:text-current cursor-not-allowed opacity-50';
+export const UNAVAILABLE =
+  'hover:bg-transparent hover:text-current focus:bg-transparent focus:text-current'
+  + ' cursor-not-allowed opacity-50';
 
 /** An entry whose command has no implementation behind it yet. */
 export interface ComingToolDef {
@@ -66,13 +68,6 @@ export interface ComingToolDef {
   labelKey: string;
   /** The icon the demo draws for it. */
   Icon: LucideIcon;
-  /**
-   * Draws the shape the demo gives a menu opener: icon, label, chevron
-   * (`.bubble-drop`), rather than a bare icon button (`.bubble-btn`). The AI
-   * entry is drawn this way — it opens onto a list of commands, and the demo
-   * says so on its face.
-   */
-  drawsAsDropdown?: boolean;
 }
 
 interface ComingToolProps {
@@ -100,28 +95,14 @@ export const ComingTool = React.memo(function ComingTool({
       <TooltipTrigger asChild>
         <Button
           variant='ghost'
-          size={tool.drawsAsDropdown ? null : 'icon'}
+          size='icon'
           aria-disabled='true'
           aria-label={label}
           data-testid={`doc-bubble-coming-${tool.id}`}
           tabIndex={-1}
-          className={
-            tool.drawsAsDropdown
-              // `.bubble-drop`: 28 tall, 6px either side, 3px between the
-              // three things in it. The demo draws 13px text and this takes
-              // the button's own `text-sm`: the demo fixes the shape, not
-              // every value in it.
-              ? `flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5 ${UNAVAILABLE}`
-              : `${BUBBLE_ICON_BUTTON_SIZE} ${UNAVAILABLE}`
-          }
+          className={`${BUBBLE_ICON_BUTTON_SIZE} ${UNAVAILABLE}`}
         >
           <Icon className='h-4 w-4' />
-          {tool.drawsAsDropdown ? (
-            <>
-              {t(tool.labelKey)}
-              <ChevronDown className='h-[13px] w-[13px]' />
-            </>
-          ) : null}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
