@@ -147,6 +147,10 @@ for (const theme of ['light', 'dark'] as const) {
       const tickStyle = getComputedStyle(tick);
       const lines = [...rule.querySelectorAll('li')];
       const lineStyle = getComputedStyle(lines[0]!);
+      // The sentence the tick stands for, as it actually renders. The server
+      // sends it; nothing here holds a copy to fall back on, so an empty
+      // label would mean the buyer is ticking a blank.
+      const consentLabel = tick.closest('label')?.textContent ?? '';
 
       return {
         // Asserted below. Without it the run reads exactly the same whether
@@ -170,6 +174,7 @@ for (const theme of ['light', 'dark'] as const) {
         ruleSeparators: lines.filter(
           (li) => getComputedStyle(li).borderTopWidth !== '0px',
         ).length,
+        consentLabel: consentLabel.trim(),
       };
     });
 
@@ -182,6 +187,14 @@ for (const theme of ['light', 'dark'] as const) {
     expect(measured.ruleLineCount).toBe(3);
     expect(measured.ruleContrast).toBeGreaterThanOrEqual(4.5);
     expect(measured.ruleSeparators).toBe(0);
+    // What the tick stands for has to say both halves: the credits come now,
+    // and using any of them ends the refund. An empty or truncated label
+    // would leave the consent standing for nothing.
+    expect(measured.consentLabel).toContain('right away');
+    expect(measured.consentLabel).toContain('refunded');
+    // The stored wording marks its stressed clause with `**`. Rendered as
+    // characters, the buyer reads asterisks in the middle of it.
+    expect(measured.consentLabel).not.toContain('*');
   });
 }
 

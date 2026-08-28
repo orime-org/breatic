@@ -41,9 +41,12 @@ const PACKS = [
   { credits: 43660, priceCents: 50000, currency: 'usd' },
 ];
 
-/** The consent sentence, as the server hands it over. */
+/**
+ * The consent sentence, as the server hands it over. The stored wording marks
+ * the clause it stresses with `**`, the way every locale file writes it.
+ */
 const CONSENT_TEXT =
-  'I ask for the credits right away, and once I use any of them this purchase can no longer be refunded.';
+  'I ask for the credits right away, and **once I use any of them this purchase can no longer be refunded**. Unused credits are refunded in full within 30 days.';
 
 /** The refund rule, as the server hands it over. */
 const REFUND_LINES = [
@@ -203,7 +206,20 @@ describe('the confirmation before paying', () => {
     const packs = await screen.findAllByTestId('credit-pack');
     await user.click(within(packs[0]!).getByRole('button'));
 
-    expect(await screen.findByText(CONSENT_TEXT)).toBeInTheDocument();
+    const tick = await screen.findByTestId('confirm-consent');
+    const label = tick.closest('label');
+    expect(label).not.toBeNull();
+    // The markers say which clause is stressed. Reaching the buyer as
+    // characters, they would be reading asterisks in the middle of the
+    // sentence they are about to agree to.
+    expect(label!.textContent).toBe(
+      'I ask for the credits right away, and once I use any of them this purchase can no longer be refunded. Unused credits are refunded in full within 30 days.',
+    );
+    expect(
+      within(label!).getByText(
+        'once I use any of them this purchase can no longer be refunded',
+      ).tagName,
+    ).toBe('STRONG');
   });
 
   it('tells the server the consent was given', async () => {

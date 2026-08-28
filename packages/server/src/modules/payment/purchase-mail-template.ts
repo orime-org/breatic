@@ -45,10 +45,11 @@ import {
 /**
  * Where the stored legal wording marks its emphasis.
  *
- * One string serves two readers. Stripe's hosted checkout renders markdown, so
- * the wording carries `**` around the sentence it stresses and the buyer sees
- * it in bold there. This letter renders nothing, so the markers reach it as
- * characters unless they are turned into what they mean.
+ * One string serves three readers: the confirm dialog the buyer ticks on, and
+ * both bodies of this letter. The wording carries `**` around the sentence it
+ * stresses, and each reader renders that its own way. Plain text renders
+ * nothing, so the markers reach it as characters unless they are turned into
+ * what they mean.
  */
 const EMPHASIS = /\*\*(.+?)\*\*/g;
 

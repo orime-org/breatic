@@ -18,6 +18,35 @@ import { RuleLines, formatMoney } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 
+/**
+ * Where the stored legal wording marks the clause it stresses.
+ *
+ * The same string is read in three places — this dialog, the plain-text
+ * confirmation and the HTML one — and each renders the emphasis its own way.
+ * Reaching a reader untranslated, the markers are asterisks in the middle of
+ * the sentence the buyer is agreeing to.
+ */
+const EMPHASIS = /\*\*(.+?)\*\*/g;
+
+/**
+ * The stored wording with its emphasis rendered.
+ *
+ * Split rather than set as markup: the sentence is ours, but putting any
+ * string into the DOM as HTML is a habit this codebase does not keep.
+ * @param text - The stored wording, as the server hands it over.
+ * @returns The words, with the stressed clause in `<strong>`.
+ */
+function withEmphasis(text: string): React.ReactNode[] {
+  return text.split(EMPHASIS).map((part, index) =>
+    // `split` on a capturing group alternates: plain, captured, plain…
+    index % 2 === 0 ? (
+      part
+    ) : (
+      <strong key={`${String(index)}-${part}`}>{part}</strong>
+    ),
+  );
+}
+
 /** The pack being confirmed, and what the dialog reports. */
 interface BuyConfirmDialogProps {
   /** The chosen pack, or null when the dialog is closed. */
@@ -150,7 +179,7 @@ export function BuyConfirmDialog({
           {/* The server's wording, verbatim. Holding a copy here would let
               the sentence shown drift from the version recorded against the
               purchase, and the record would then name wording nobody read. */}
-          <span>{consentText}</span>
+          <span>{withEmphasis(consentText)}</span>
         </label>
 
         <DialogFooter>
