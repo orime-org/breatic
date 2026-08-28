@@ -272,4 +272,30 @@ describe('planGroupDrag against geometry a remote is still moving', () => {
     const stated = ops.positions.find((p) => p.id === 'm');
     expect(stated?.position).toEqual({ x: 50, y: 50 }); // 350 - 300
   });
+
+  it('grows the Group around a member this drag dropped, remote hand on it or not', () => {
+    // Two people can hold one node. A member only a remote holds is about to
+    // land somewhere this end cannot know, so the Group is not sized around it
+    // -- but a member of THIS drag is not such a node: the pointer released it
+    // here, and the place it is being written to is the place the Group has to
+    // reach. Writing the position while refusing to grow leaves the document
+    // with a member outside its own Group, and Groups never shrink back.
+    const g = dn('g', 'group', 0, 0, 200, 200);
+    const dropped = dn('m', 'image', 20, 140, 100, 100, 'g'); // runs to y=240
+    const ops = planGroupDrag(
+      [dropped],
+      [g, dropped],
+      new Set(['m']),
+      [g, dn('m', 'image', 20, 20, 100, 100, 'g')],
+    );
+    // The Group reaches past the member by GROUP_PADDING on every side it has
+    // to move, so its origin goes to (-4,0) and the member is restated against
+    // it. Sized around the settled place instead, nothing grows at all.
+    expect(ops.expansions).toEqual([
+      { groupId: 'g', position: { x: -4, y: 0 }, width: 204, height: 264 },
+    ]);
+    expect(ops.positions).toEqual([
+      { id: 'm', position: { x: 24, y: 140 }, parentId: 'g' },
+    ]);
+  });
 });

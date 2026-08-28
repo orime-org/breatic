@@ -15,9 +15,15 @@ import { heldIds, speaksFor } from '@web/spaces/canvas/gesture-table';
 /** The ways the canvas may read its own render buffer. */
 export interface BufferAccess {
   /**
-   * The buffer with every remote gesture's geometry back where the document
-   * has it. Everything that turns buffer geometry into a document write reads
-   * this one.
+   * The buffer with every REMOTE gesture's geometry back where the document
+   * has it. What a write must read before it can say anything about a node
+   * somebody else is moving.
+   *
+   * This end's own gesture is left as it is drawn: a drag-stop is committing
+   * the place its pointer released, and taking that back out would write the
+   * place the drag started from. So these are document coordinates for every
+   * node except the ones this client is holding right now — a caller that
+   * needs the document's own answer for those reads `documentPlaces`.
    */
   settled: () => Node[];
   /**

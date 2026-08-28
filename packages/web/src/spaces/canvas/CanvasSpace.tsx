@@ -135,7 +135,6 @@ import type {
   Modality,
 } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
-import { planGroupDrag, type DragNode } from '@web/spaces/canvas/group-drag';
 import {
   GROUP_MIN_SIZE,
   GROUP_PADDING,
@@ -183,10 +182,7 @@ import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
 import { mergeCanvasNodes } from '@web/spaces/canvas/merge-canvas-nodes';
 import { useRemoteGesture } from '@web/spaces/canvas/use-remote-gesture';
 import { useGestureBroadcast } from '@web/spaces/canvas/use-gesture-broadcast';
-import {
-  toPlacedDragNode,
-  toScreenDragNode,
-} from '@web/spaces/canvas/drag-node';
+import { planDragStop } from '@web/spaces/canvas/drag-node';
 import { heldIds } from '@web/spaces/canvas/gesture-table';
 import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
@@ -2737,7 +2733,7 @@ function CanvasSpaceInner({
   // Group drag carries its members natively (ReactFlow `parentId` positions
   // children relative to their Group), so there is no manual member-carry ref or
   // drag-start snapshot — onNodeDragStop alone resolves the whole result
-  // (reparent + position + Group auto-expand). See planGroupDrag.
+  // (reparent + position + Group auto-expand). See planDragStop.
   // Typed by ReactFlow's own `OnNodeDrag` rather than by spelling the
   // parameters out. The hand-written version named `React.MouseEvent`, which
   // was never what arrives: the callback is handed d3's `sourceEvent`, a
@@ -2761,38 +2757,17 @@ function CanvasSpaceInner({
       // document answers wherever a stored value will later have somebody
       // else's travel subtracted from it. The two are separate conversions
       // because they disagree by exactly that travel.
-      const onScreen = buffer.onScreen() as Node[];
-      const byId = new Map(onScreen.map((item) => [item.id, item]));
-      // The same nodes with every remote gesture put back where the document
-      // has it. Its own map, because a member's place is its Group's origin
-      // plus its offset and both have to come from the same list.
-      const settled = buffer.settled();
-      const docById = new Map(settled.map((item) => [item.id, item]));
-      /**
-       * Where this screen is drawing a node, which is the point the pointer was
-       * over.
-       * @param item - The render-buffer node.
-       * @returns The node in the planner's absolute form.
-       */
-      const toScreen = (item: Node): DragNode =>
-        toScreenDragNode(
-          item,
-          byId,
-          getInternalNode(item.id)?.internals.positionAbsolute,
-        );
-      /**
-       * Where the document has a node, whatever any screen is showing.
-       * @param item - The settled node.
-       * @returns The node in the planner's absolute form.
-       */
-      const toDocument = (item: Node): DragNode => toPlacedDragNode(item, docById);
-      const ops = planGroupDrag(
-        dragged.map(toScreen),
-        onScreen.map(toScreen),
-        buffer.heldByRemote(),
-        settled.map(toDocument),
-        buffer.resizedByRemote(),
-      );
+      // Which view feeds which planner argument is the whole decision, and it
+      // is made in `planDragStop` so a test can hand it two frames that
+      // disagree — this component can hand it only the one the canvas is in.
+      const ops = planDragStop({
+        dragged,
+        onScreen: buffer.onScreen() as Node[],
+        settled: buffer.settled(),
+        heldByRemote: buffer.heldByRemote(),
+        resizedByRemote: buffer.resizedByRemote(),
+        paintedAt: (id) => getInternalNode(id)?.internals.positionAbsolute,
+      });
       // Commit the whole drag-stop as ONE atomic undo entry: a reparent fires a
       // parent change AND a position change, plus any Group expansion — without
       // batching, captureTimeout:0 would split them so undo restored a

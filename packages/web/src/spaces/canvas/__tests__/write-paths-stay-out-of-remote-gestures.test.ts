@@ -10,9 +10,8 @@
  * document write — both views of the same buffer, and pin what each of them
  * says about a node somebody else is moving.
  *
- * Which view a call site actually passes is decided in `CanvasSpace.tsx` and
- * covered by the two-browser cases in `tests/smoke/canvas-gesture-sync.spec.ts`;
- * nothing here can see that choice.
+ * Which view the drag-stop passes to which planner argument is `planDragStop`'s
+ * to decide and `drag-node.test.ts`'s to pin; nothing here can see that choice.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -25,6 +24,7 @@ import {
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import type { DragNode } from '@web/spaces/canvas/group-drag';
+import { toPlacedDragNode } from '@web/spaces/canvas/drag-node';
 import { planGroupDrag } from '@web/spaces/canvas/group-drag';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import { captureClipboard } from '@web/spaces/canvas/node-clipboard';
@@ -92,31 +92,17 @@ const HELD_BY_REMOTE: GestureTable = new Map([
 ]);
 
 /**
- * Turn a buffer node into the absolute form the drag planner hit-tests with.
+ * Turn a buffer into the absolute form the drag planner hit-tests with.
+ *
+ * The real conversion, not a copy of it: a second one here would answer these
+ * cases off its own arithmetic and its own fallback size, and would keep
+ * answering them after the real one changed.
  * @param all - The whole buffer, for resolving a member's parent.
- * @returns A mapper from node to drag node.
+ * @returns Each node in the planner's absolute form.
  */
 function toDragNodes(all: ReadonlyArray<Node>): DragNode[] {
   const byId = new Map(all.map((n) => [n.id, n]));
-  return all.map((item): DragNode => {
-    const parent = item.parentId !== undefined ? byId.get(item.parentId) : undefined;
-    return {
-      id: item.id,
-      type: item.type ?? 'image',
-      parentId: item.parentId,
-      absPos: parent
-        ? {
-          x: parent.position.x + item.position.x,
-          y: parent.position.y + item.position.y,
-        }
-        : { x: item.position.x, y: item.position.y },
-      size: {
-        width: item.measured?.width ?? item.width ?? 288,
-        height: item.measured?.height ?? item.height ?? 192,
-      },
-      locked: false,
-    };
-  });
+  return all.map((item) => toPlacedDragNode(item, byId));
 }
 
 describe('every write path reads the buffer through the door', () => {

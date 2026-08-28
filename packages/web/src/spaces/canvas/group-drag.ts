@@ -117,24 +117,26 @@ export function planGroupDrag(
   const groups = allNodes.filter((node) => node.type === 'group');
   const groupById = new Map(groups.map((group) => [group.id, group]));
   const settledById = new Map(settled.map((node) => [node.id, node]));
-  /**
-   * The node as the document has it, for anything a remote is holding.
-   * @param node - The node as this screen draws it.
-   * @returns The settled node, or the given one when nothing holds it.
-   */
   const draggedIds = new Set(dragged.map((node) => node.id));
   /**
-   * The node as the document has it, for anything a remote is holding.
+   * Whether this end has to leave a node's place to whoever else is holding it.
    *
    * A node in this drag is the exception: two people can hold one node, and
-   * where this user just dropped it is what this drag-stop is committing.
+   * where this user just dropped it is what this drag-stop is committing. Both
+   * the place a node is written at and the extent a Group is sized around ask
+   * this same question, so they answer it the same way.
+   * @param node - The node as this screen draws it.
+   * @returns True when a remote decides this node's place, not this drag.
+   */
+  const leftToRemote = (node: DragNode): boolean =>
+    heldByRemote.has(node.id) && !draggedIds.has(node.id);
+  /**
+   * The node as the document has it, for anything a remote is holding.
    * @param node - The node as this screen draws it.
    * @returns The settled node, or the given one when this drag owns it.
    */
   const asSettled = (node: DragNode): DragNode =>
-    heldByRemote.has(node.id) && !draggedIds.has(node.id)
-      ? (settledById.get(node.id) ?? node)
-      : node;
+    leftToRemote(node) ? (settledById.get(node.id) ?? node) : node;
 
   const draggedMembers = dragged.filter((node) => node.type !== 'group');
   // A Group somebody else is dragging stays in the list and is marked instead:
@@ -229,10 +231,13 @@ export function planGroupDrag(
     const groupRect = rectOf(group);
     // A member somebody else is dragging is about to land somewhere this end
     // cannot know, and `expandGroupToWrap` only ever grows — a Group sized to
-    // wrap it now keeps that size after it lands elsewhere. It still gets
-    // restated below: the origin moving is about where every member sits, not
-    // about who is holding one.
-    const sizedAround = members.filter((node) => !heldByRemote.has(node.id));
+    // wrap it now keeps that size after it lands elsewhere. A member of this
+    // drag is not such a node even when a remote holds it too: this drag-stop
+    // is committing the place the pointer released it at, so the Group has to
+    // grow around that place or the document keeps a member outside its own
+    // Group. Untouched members still get restated below: the origin moving is
+    // about where every member sits, not about who is holding one.
+    const sizedAround = members.filter((node) => !leftToRemote(node));
     const grown = expandGroupToWrap(groupRect, sizedAround.map(rectOf));
     if (
       grown.x !== groupRect.x ||
