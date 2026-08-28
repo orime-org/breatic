@@ -27,6 +27,8 @@ import '@xyflow/react/dist/style.css';
 import { LocateFixed } from 'lucide-react';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
+import { isEditableTarget } from '@web/lib/is-editable-target';
+import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
 import { canGenerate, newId } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -398,23 +400,6 @@ const DOT_SIZE_PX = 2;
  */
 const SNAP_GRID: [number, number] = [DOT_GAP_PX, DOT_GAP_PX];
 
-/**
- * Whether a focused element should keep the browser's native paste / copy —
- * so editing a node body or a form field isn't hijacked by the canvas
- * clipboard handlers.
- * @param el - The currently focused element (`document.activeElement`).
- * @returns True for inputs, textareas, and contenteditable elements.
- */
-function isEditableTarget(el: Element | null): boolean {
-  if (!el) return false;
-  const tag = el.tagName;
-  return (
-    tag === 'INPUT' ||
-    tag === 'TEXTAREA' ||
-    (el as HTMLElement).isContentEditable
-  );
-}
-
 // Footprint assumed for a node ReactFlow has not measured yet (drag hit-test +
 // group geometry). Uses the real empty-node size (288×192) so an unmeasured
 // node's center isn't mis-estimated for the one frame before it measures (the
@@ -669,6 +654,7 @@ function CanvasSpaceInner({
     zoomTo,
     setCenter,
     getInternalNode,
+    deleteElements,
   } = useReactFlow();
 
   // ---- Zoom bridge (chrome toolbar ↔ ReactFlow) ----
@@ -703,12 +689,17 @@ function CanvasSpaceInner({
   // mounted together (a node's panel is one kind), so trying the purpose's
   // candidate ids and taking whichever is on screen resolves it without
   // asking the store a second question. Nothing on screen — a pick that
-  // outlived its panel — falls through to the orphan catch-all below, which
-  // returns focus to the canvas container.
+  // outlived its panel — leaves focus where it already is; where focus goes
+  // after a pick ends is #125.
   const onExitPick = React.useCallback((): void => {
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
     if (purpose === undefined) return;
+    // A caret mid-sentence is a live surface: Escape reaches here from the
+    // prompt editor, where ending the pick is what the reader asked for and
+    // moving the caret is not. Focus resting anywhere else goes to the
+    // trigger below.
+    if (isEditableTarget(document.activeElement)) return;
     for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
       const trigger = document.querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
@@ -817,12 +808,9 @@ function CanvasSpaceInner({
      * @param e - The keyboard event.
      */
     const onKeyDown = (e: KeyboardEvent): void => {
-      // Every consumer that preventDefaults owns the press — including an
-      // open Radix tooltip dismissing itself (adversarial round-2 reversal:
-      // a [role=tooltip]-presence bypass misattributed OTHER consumers'
-      // preventDefault under the same single bit, double-acting on one
-      // press). Layered peel: the tooltip visibly dismisses, then the next
-      // press exits the session.
+      // Whoever prevented the default owns the press, so Escape peels one
+      // layer at a time: an open tooltip visibly dismisses on the first
+      // press, and the next one exits the session.
       if (
         e.key !== 'Escape' ||
         e.defaultPrevented ||
@@ -832,18 +820,7 @@ function CanvasSpaceInner({
       ) {
         return;
       }
-      const active = document.activeElement;
-      // Ownership-based yield (round-6, matching the overlay): the
-      // defaultPrevented guard covers Esc consumers; a plain focused
-      // editor consumes nothing and must not deaden Esc.
-      if (
-        active &&
-        active.closest(
-          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
-        ) !== null
-      ) {
-        return;
-      }
+      if (!regionOwnsKeyboard(e.target, 'space')) return;
       onExitPick();
     };
     window.addEventListener('keydown', onKeyDown);
@@ -1046,12 +1023,6 @@ function CanvasSpaceInner({
     },
     [focusCropTargetId, projectId, spaceId, t],
   );
-  // Pick-end focus catch-all (adversarial round-2, a11y): the Exit hand-off
-  // only works when the trigger is enabled + mounted. When it is disabled (a
-  // t2i switch mid-pick) or the pick ends by another path (panel X, host node
-  // deleted), focus drops to <body>. Whenever a pick ENDS with focus orphaned
-  // there, return it to the canvas container so keyboard users stay in
-  // context. Focus already placed (the Exit hand-off succeeded) is left alone.
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
   // client fallback constant that could drift from the yaml value); the
@@ -1060,19 +1031,6 @@ function CanvasSpaceInner({
     void canvasApi.fetchLimits().catch(() => undefined);
   }, []);
 
-  const wasPickingRef = React.useRef(false);
-  React.useEffect(() => {
-    const wasPicking = wasPickingRef.current;
-    wasPickingRef.current = pickForNodeId != null;
-    if (
-      wasPicking &&
-      pickForNodeId == null &&
-      (document.activeElement == null ||
-        document.activeElement === document.body)
-    ) {
-      containerRef.current?.focus();
-    }
-  }, [pickForNodeId]);
   const rfZoom = useStore((s) => s.transform[2]);
   React.useEffect(() => {
     setZoom(rfZoom);
@@ -1200,7 +1158,10 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
       const action = matchHistoryShortcut(event);
       if (!action) return;
       event.preventDefault();
@@ -2606,7 +2567,10 @@ function CanvasSpaceInner({
      * @param event - The clipboard paste event.
      */
     const onPaste = (event: ClipboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
@@ -2670,13 +2634,17 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      // TODO(#168): this takes the copy away from a text selection. Dragging
-      // across words anywhere on the page leaves `document.activeElement` on
-      // `body`, so the editable-target check lets it through, and a reader who
-      // highlighted a reply in the chat panel gets the selected node's JSON.
-      // Text selections belong to the browser; the node goes on the clipboard
-      // only when there is none.
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly) return;
+      // Words the reader dragged across are the ones they asked for, wherever
+      // they sit, so the browser copies those and the nodes stay put.
+      const selection = window.getSelection();
+      if (selection !== null && !selection.isCollapsed) return;
+      // With nothing highlighted, the event's target is wherever the caret was
+      // last left and says nothing about this copy, so focus answers the
+      // question the other outlets put to `event.target`: an overlay or the
+      // top bar is handling this press itself, and otherwise the region does.
+      if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
+      if (isEditableTarget(document.activeElement)) return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
@@ -2811,7 +2779,10 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
       // Always swallow a group / ungroup chord on the canvas so the browser's
       // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
       // current selection (group mixed with loose nodes → no-op, B decision).
@@ -2943,7 +2914,10 @@ function CanvasSpaceInner({
      * @param event - The keyboard event.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (readOnly || isEditableTarget(document.activeElement)) return;
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
       duplicateSelection();
@@ -2951,6 +2925,46 @@ function CanvasSpaceInner({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [readOnly, duplicateSelection]);
+
+  // The delete key, taken off the library and answered here so the region gate
+  // gets a say (#168). `deleteKeyCode={null}` registers no listener at all
+  // (useKeyPress wraps its whole effect body in `if (keyCode !== null)`), so
+  // the library answers these two keys nowhere. The prompt editor and the
+  // document space run their own Backspace / Delete, and a caret in either is
+  // editable, so this handler yields there.
+  //
+  // Carried over from the library: a modifier means this is not a plain delete
+  // (`isMatchingKey` filters on `keys.length === pressedKeys.size`, so
+  // Cmd+Backspace never matched the single-key `['Backspace']`), and
+  // `keyPressed` was a boolean, so holding the key deleted once while every
+  // repeat was still prevented. The repeat check sits after `preventDefault`
+  // to keep both halves of that.
+  React.useEffect(() => {
+    /**
+     * Document keydown handler: delete the current selection.
+     * @param event - The keyboard event.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!DELETE_KEYS.includes(event.key)) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
+      if (isEditableTarget(event.target as Element | null)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const { nodes, edges } = rfStoreApi.getState();
+      void deleteElements({
+        nodes: nodes.filter((node) => node.selected),
+        edges: edges.filter((edge) => edge.selected),
+      });
+      rfStoreApi.setState({ nodesSelectionActive: false });
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [readOnly, deleteElements, rfStoreApi]);
 
   // Selection-menu delete: cascade each selected Group to the WHOLE group (frame
   // + every member, via selectionDeletionIds) — the same cascade the single-node
@@ -3620,8 +3634,7 @@ function CanvasSpaceInner({
         data-project-id={projectId}
         data-space-id={spaceId}
         data-readonly={readOnly ? 'true' : undefined}
-        // Programmatically focusable (not tab-reachable) so the pick-end focus
-        // catch-all can return focus here instead of dropping it on <body>.
+        // Click-focusable, not tab-reachable.
         tabIndex={-1}
         // canvas-picking scopes the pick-mode stylesheet: it hides xyflow's
         // NodesSelection rect (see index.css) so a marquee mid-pick cannot
@@ -3705,7 +3718,10 @@ function CanvasSpaceInner({
           onPaneClick={onPaneClick}
           onSelectionContextMenu={onSelectionContextMenu}
           onEdgeContextMenu={onEdgeContextMenu}
-          deleteKeyCode={DELETE_KEYS}
+          // The delete key is handled in the Backspace / Delete effect above,
+          // where the region gate gets a say. `null` registers no listener in
+          // the library at all.
+          deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
           fitView
           // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a

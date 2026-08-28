@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   render as rtlRender,
   screen,
@@ -269,5 +269,99 @@ describe('SpaceTabBar', () => {
         expect.objectContaining({ inline: 'start', block: 'nearest' }),
       );
     });
+  });
+
+  // The active tab's label is the one piece of text that stands for the space
+  // region. Its fill answers a different question — which of these spaces is
+  // the current one — and that stays true whichever region is active, so the
+  // fill does not move (#168).
+  describe('the active tab label follows the active region (#168)', () => {
+    afterEach(() => {
+      useUIStore.getState().setActiveRegion('space');
+    });
+
+    it('is bright while the space region is the active one', () => {
+      useUIStore.getState().setActiveRegion('space');
+      setup();
+      const tab = screen.getByTestId('space-tab-s1');
+      expect(tab.className).toContain('text-foreground');
+      expect(tab.className).not.toContain('text-muted-foreground');
+      expect(tab.className).toContain('bg-accent');
+    });
+
+    it('is dim while the agent column is the active region, fill unchanged', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      setup();
+      const tab = screen.getByTestId('space-tab-s1');
+      expect(tab.className).toContain('text-muted-foreground');
+      expect(tab.className).toContain('bg-accent');
+    });
+
+    it.each(['space', 'agent'] as const)(
+      'leaves the resting inactive tabs dim while the active region is %s',
+      (region) => {
+        useUIStore.getState().setActiveRegion(region);
+        setup();
+        for (const id of ['s2', 's3']) {
+          const tab = screen.getByTestId(`space-tab-${id}`);
+          expect(tab.className).toContain('text-muted-foreground');
+          expect(tab.className).toContain('bg-transparent');
+        }
+      },
+    );
+
+    // Hover reaches for the same brightness the label uses to say the keyboard
+    // is here, so it follows the region too: with the agent column active the
+    // current tab is dim, and a hovered one brighter than it would read as the
+    // current one.
+    it('brightens a hovered resting tab while the space region is the active one', () => {
+      useUIStore.getState().setActiveRegion('space');
+      setup();
+      const tab = screen.getByTestId('space-tab-s2');
+      expect(tab.className).toContain('hover:bg-accent');
+      expect(tab.className).toContain('hover:text-foreground');
+    });
+
+    it('leaves a hovered resting tab dim while the agent column is the active region', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      setup();
+      const tab = screen.getByTestId('space-tab-s2');
+      expect(tab.className).toContain('hover:bg-accent');
+      expect(tab.className).not.toContain('hover:text-foreground');
+    });
+
+    // Everything inside the active tab states its own colour, so the tab's
+    // says nothing about them.
+    it.each(['space', 'agent'] as const)(
+      'leaves what is inside the active tab alone while the active region is %s',
+      (region) => {
+        useUIStore.getState().setActiveRegion(region);
+        // s3 is the locked one, so the lock icon is on screen too.
+        setup({ activeSpaceId: 's3' });
+        const tab = screen.getByTestId('space-tab-s3');
+        const typeIcon = tab.querySelector('svg[aria-hidden="true"]');
+        expect(typeIcon?.getAttribute('class')).toContain('text-muted-foreground');
+        expect(screen.getByLabelText('Locked').getAttribute('class')).toContain(
+          'text-muted-foreground',
+        );
+        expect(
+          screen.getByTestId('space-tab-close-s3').className,
+        ).toContain('text-muted-foreground');
+      },
+    );
+
+    it.each(['space', 'agent'] as const)(
+      'leaves the rename field bright while the active region is %s',
+      async (region) => {
+        const user = userEvent.setup();
+        useUIStore.getState().setActiveRegion(region);
+        // Double-click rename only opens when there is somewhere to commit to.
+        setup({ onRenameSpace: vi.fn() });
+        await user.dblClick(screen.getByTestId('space-tab-name-s1'));
+        const field = screen.getByTestId('space-tab-name-input-s1');
+        expect(field.className).toContain('text-foreground');
+        expect(field.className).not.toContain('text-muted-foreground');
+      },
+    );
   });
 });

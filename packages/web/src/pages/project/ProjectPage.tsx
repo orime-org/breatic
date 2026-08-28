@@ -18,6 +18,8 @@ import { CollaboratorNamesProvider } from '@web/features/collab-editor/collabora
 import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
 import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
+import { useBlockSelectAll } from '@web/lib/use-block-select-all';
+import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
@@ -159,6 +161,14 @@ function ProjectWorkspace({
   // Record the open once the project has loaded — floats it to the top of the
   // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
   useRecordProjectOpen(projectId, projectQuery.isSuccess);
+
+  // Follow the user between the two regions, so the canvas keyboard and
+  // clipboard gates and the active-state colours read the same value.
+  useTrackActiveRegion();
+
+  // Mounted here rather than app-wide, so select-all on the studio routes and
+  // the login page stays as it was.
+  useBlockSelectAll();
 
   // Reset the per-project UI stores when LEAVING or SWITCHING a project (#1771):
   // the canvas / chrome UI stores are module singletons that survive React
@@ -812,7 +822,13 @@ function ProjectWorkspace({
               not just disabled) AND when the user has collapsed it. The
               backend gates agent chat on role; this hide is UX only. */}
             {collapsed || isViewer ? null : <AgentColumn projectId={projectId} />}
-            <section className='flex min-w-0 flex-1 flex-col'>
+            {/* The other of the two regions a keyboard or clipboard event can
+              belong to. The tab bar sits inside it, which is what makes the
+              tabs part of the space region without a rule of their own. */}
+            <section
+              className='flex min-w-0 flex-1 flex-col'
+              data-region='space'
+            >
               <SpaceTabBar
                 spaces={openTabs}
                 allSpaces={spaces}
