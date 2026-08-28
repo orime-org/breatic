@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { withinRefundWindow } from '@breatic/shared';
 import type { CreditLotView } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
@@ -19,7 +20,6 @@ import {
   SectionError,
   SectionSkeleton,
   formatMoney,
-  formatRefundable,
 } from '@web/features/credits/section-chrome';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -102,8 +102,16 @@ export function RefundsSection({
     enabled: billing && userId !== null,
   });
 
+  // The card below calls these refundable, so the rule itself is the
+  // membership test: within thirty days, with no credit spent. A purchase
+  // listed here that the rule refuses is a promise this screen cannot keep.
+  // `everSpent` rather than the balance — a failed generation returns the
+  // credits, leaving a spent purchase reading as untouched.
   const refundable = paging.rows.filter(
-    (lot) => lot.lifecycle === 'active' && lot.remainingCredits > 0,
+    (lot) =>
+      lot.lifecycle === 'active' &&
+      !lot.everSpent &&
+      withinRefundWindow(lot.createdAt, new Date()),
   );
   const asked = paging.rows.filter(
     (lot) =>
@@ -155,7 +163,6 @@ export function RefundsSection({
                     main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
                     sub={t('credits.refundableHint', {
                       credits: formatCreditAmount(lot.remainingCredits),
-                      money: formatRefundable(lot.remainingCredits, lot.currency),
                     })}
                     right={
                       <Button

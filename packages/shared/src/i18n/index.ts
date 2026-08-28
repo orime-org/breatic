@@ -104,6 +104,21 @@ export function getLocale(): Locale {
 }
 
 /**
+ * The locale a `t()` call made right now would be answered in.
+ *
+ * On the server that is the locale pinned for this request, which
+ * {@link getLocale} does not see: the pin lives in the loader's
+ * AsyncLocalStorage and reaches `t()` through the resolver, while
+ * `getLocale()` reads the process-wide value the whole server shares.
+ * Anything that has to agree with what `t()` just produced — text handed to
+ * another service, a locale recorded alongside it — reads this one.
+ * @returns the resolver's locale when one is installed, else the global one
+ */
+export function getActiveLocale(): Locale {
+  return activeLocale();
+}
+
+/**
  * Get all available locale codes that have been registered.
  * @returns the list of registered locale codes
  */

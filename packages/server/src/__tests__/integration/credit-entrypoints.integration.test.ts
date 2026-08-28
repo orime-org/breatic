@@ -17,6 +17,32 @@ import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 // `ai` is stubbed: the real SDK is replaced with a double that reaches no
 // network, so this suite needs no API key and the SDK stays out of its
 // module graph.
+// Fulfillment now asks Stripe what the session currently is, so this layer
+// needs a double. Every fixture payment here is 1000 / usd, and the double
+// answers with the same figures so the amount comparison holds.
+const stripe = {
+  checkout: {
+    sessions: {
+      retrieve: vi.fn(async (id: string) => ({
+        id,
+        mode: "payment",
+        status: "complete",
+        payment_status: "paid",
+        amount_subtotal: 1000,
+        amount_total: 1000,
+        currency: "usd",
+        total_details: { amount_tax: 0 },
+        payment_intent: `pi_${id}`,
+        metadata: {},
+      })),
+    },
+  },
+};
+
+vi.mock("@server/infra/stripe.js", () => ({
+  getStripeClient: () => stripe,
+}));
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -105,6 +131,16 @@ async function seedFixture(): Promise<Fixture> {
   return { userId, studioId, projectId: project!.id };
 }
 
+/**
+ * One webhook event. The id and the type travel together because the claim
+ * records both.
+ * @param id - The event's own id.
+ * @returns That event.
+ */
+function evt(id: string): { id: string; type: string } {
+  return { id, type: "checkout.session.completed" };
+}
+
 /** 一笔待付款的结账会话。 */
 async function seedPendingPayment(
   userId: string,
@@ -123,11 +159,8 @@ describe("充值到账", () => {
     const fx = await seedFixture();
     const { paymentId, sessionId } = await seedPendingPayment(fx.userId, 880);
 
-    const outcome = await paymentService.handleCheckoutCompleted(
-      sessionId,
-      "pi_test_1",
-    );
-    expect(outcome.status).toBe("completed");
+    const outcome = await paymentService.fulfillPayment(sessionId, evt("evt_test_1"));
+    expect(outcome.status).toBe("granted");
 
     const lots = await sql<{ id: string; remaining_credits: string }[]>`
       SELECT id, remaining_credits FROM credit_lots WHERE payment_id = ${paymentId}
@@ -147,8 +180,8 @@ describe("充值到账", () => {
     const fx = await seedFixture();
     const { paymentId, sessionId } = await seedPendingPayment(fx.userId, 880);
 
-    await paymentService.handleCheckoutCompleted(sessionId, "pi_test_2");
-    const replay = await paymentService.handleCheckoutCompleted(sessionId, "pi_test_2");
+    await paymentService.fulfillPayment(sessionId, evt("evt_test_2"));
+    const replay = await paymentService.fulfillPayment(sessionId, evt("evt_test_2"));
 
     expect(replay.status).toBe("replay");
     const counted = await sql<{ count: string }[]>`
@@ -176,7 +209,7 @@ describe("预检", () => {
   it("这个 studio 有笔但不够时，说需要多少、可用多少", async () => {
     const fx = await seedFixture();
     const { sessionId } = await seedPendingPayment(fx.userId, 30);
-    await paymentService.handleCheckoutCompleted(sessionId, `pi_${seq++}`);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
@@ -194,7 +227,7 @@ describe("预检", () => {
     // 会让用户以为付款没到账。
     const fx = await seedFixture();
     const { sessionId } = await seedPendingPayment(fx.userId, 880);
-    await paymentService.handleCheckoutCompleted(sessionId, `pi_${seq++}`);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
 
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
       () => null,
@@ -220,7 +253,7 @@ describe("预检", () => {
     // 等于把人支使去做一件解决不了问题的事。
     const fx = await seedFixture();
     const { sessionId } = await seedPendingPayment(fx.userId, 30);
-    await paymentService.handleCheckoutCompleted(sessionId, `pi_${seq++}`);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
     await creditLotService.chargeForGeneration({
       projectId: fx.projectId,
@@ -230,7 +263,7 @@ describe("预检", () => {
     });
     // 账号里另有一笔没指定给任何 studio 的，旧顺序会先撞上它。
     const spare = await seedPendingPayment(fx.userId, 500);
-    await paymentService.handleCheckoutCompleted(spare.sessionId, `pi_${seq++}`);
+    await paymentService.fulfillPayment(spare.sessionId, evt(`evt_${seq++}`));
 
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
       () => null,
@@ -243,7 +276,7 @@ describe("预检", () => {
   it("够花就放行", async () => {
     const fx = await seedFixture();
     const { sessionId } = await seedPendingPayment(fx.userId, 880);
-    await paymentService.handleCheckoutCompleted(sessionId, `pi_${seq++}`);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     await expect(precheckCredits(fx.projectId, fx.userId, 100)).resolves.toBeUndefined();
@@ -255,7 +288,7 @@ describe("幂等扣费", () => {
     // 聊天一个回合和一次文本工具都可能被重放：断线重连、流重发。
     const fx = await seedFixture();
     const { sessionId } = await seedPendingPayment(fx.userId, 100);
-    await paymentService.handleCheckoutCompleted(sessionId, `pi_${seq++}`);
+    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     const refKey = `turn:${fx.projectId}:0`;

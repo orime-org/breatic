@@ -65,7 +65,15 @@
     },
     "payment": {
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
-      "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다"
+      "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다",
+      "consent-credits-v1": "크레딧을 즉시 제공받기를 요청하며, **하나라도 사용하면 이 구매는 환불받을 수 없다**는 점을 알고 있습니다. 사용하지 않은 크레딧은 30일 이내에 전액 환불됩니다.",
+      "refund-credits-v1": {
+        "unused": "30일 이내에 구매했고 크레딧을 하나도 쓰지 않았다면, 원래 결제 카드로 전액 환불됩니다.",
+        "used": "하나라도 사용했다면 해당 패키지는 환불되지 않습니다.",
+        "expired": "30일이 지나면 환불되지 않습니다."
+      },
+      "not_found": "해당 구매를 찾을 수 없습니다.",
+      "unavailable": "이 배포에서는 크레딧을 판매하지 않습니다."
     },
     "skill": {
       "not_found": "Skill을 찾을 수 없습니다",
@@ -109,6 +117,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다.",
       "quota_exceeded_generate": "Studio 저장 공간이 가득 찼습니다. 생성할 수 없습니다."
+    },
+    "purchase_mail": {
+      "subject": "크레딧이 충전되었습니다",
+      "intro": "구매해 주셔서 감사합니다. 아래는 이번 구매 내역이니 보관해 주세요.",
+      "credits": "이번 충전: {credits} 크레딧",
+      "balance": "현재 잔액: {credits} 크레딧",
+      "subtotal": "가격: {amount}",
+      "tax": "세액: {amount}",
+      "total": "결제 합계: {amount}",
+      "purchased_at": "구매 시각: {when}",
+      "refund_by": "환불 가능 기한: {when}",
+      "order_ref": "주문 번호: {ref}",
+      "consent_heading": "구매 시 동의하신 내용",
+      "refund_heading": "크레딧 패키지 환불 규정",
+      "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
     }
   },
   "chat": {
@@ -720,7 +743,33 @@
         "comment": "댓글",
         "ai": "AI",
         "comingLabel": "{name}(미제공)",
-        "link": "링크"
+        "link": "링크",
+        "blockType": "블록 종류",
+        "paragraph": "본문",
+        "heading1": "제목 1",
+        "heading2": "제목 2",
+        "heading3": "제목 3",
+        "codeBlock": "코드 블록",
+        "taskList": "할 일 목록",
+        "align": "정렬",
+        "alignLeft": "왼쪽",
+        "alignCenter": "가운데",
+        "alignRight": "오른쪽",
+        "color": "색",
+        "textColor": "글자색",
+        "fillColor": "배경색",
+        "colorReset": "기본값으로 되돌리기",
+        "aiRewriteGroup": "선택한 글 다시 쓰기",
+        "aiProduceGroup": "선택한 글로 만들기",
+        "aiOtherGroup": "기타",
+        "ai_refine": "다듬기",
+        "ai_expand": "늘리기",
+        "ai_shorten": "줄이기",
+        "ai_translate": "번역",
+        "ai_tone": "어조 바꾸기",
+        "ai_storyboard": "콘티 만들기",
+        "ai_illustrate": "이 문단으로 그림 만들기",
+        "ai_custom": "직접 지시…"
       },
       "schemaOutdated": {
         "headline": "문서 편집기가 업데이트되었습니다",
@@ -1282,7 +1331,7 @@
     },
     "section": {
       "overview": "개요",
-      "lots": "충전 내역",
+      "lots": "구매 내역",
       "ledger": "사용 내역",
       "studios": "Studio 별",
       "buy": "크레딧 구매",
@@ -1309,10 +1358,10 @@
       "title": "구매한 크레딧은 Studio에 지정해야 쓸 수 있습니다",
       "body": "왼쪽 「크레딧 구매」에서 충전하고, 「지정」에서 쓸 Studio에 나눠 주세요."
     },
-    "lotsEmpty": "충전 내역이 아직 없습니다.",
+    "lotsEmpty": "구매 내역이 아직 없습니다.",
     "lotsEmptyNotice": {
-      "title": "충전하면 여기에 하나씩 쌓입니다",
-      "body": "얼마를 샀는지, 얼마가 남았는지, 어느 Studio에 지정했는지 보여 줍니다."
+      "title": "모든 구매가 여기에 표시됩니다",
+      "body": "각 구매의 금액, 처리 상태, 크레딧이 지정된 Studio를 확인할 수 있습니다."
     },
     "assignedTo": "{studio}에 지정",
     "ofPurchased": "총 {amount}",
@@ -1342,10 +1391,6 @@
     "noLotsHere": "지정된 크레딧이 없습니다",
     "debtAndSpent": "미지급 {debt} · 사용 {spent}",
     "spentOnly": "사용 {spent}",
-    "buySoon": {
-      "title": "충전은 곧 열립니다",
-      "body": "열리면 여기에서 바로 구매할 수 있습니다. 표시 가격은 세금 별도이며, 실제 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액입니다. 구매한 크레딧은 Studio에 지정해야 쓸 수 있습니다."
-    },
     "assignEmpty": "지정할 크레딧이 없습니다.",
     "assignEmptyNotice": {
       "title": "구매한 크레딧을 여기에서 Studio에 나눠 줍니다",
@@ -1357,7 +1402,7 @@
     "designateFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
     "refundsEmpty": "환불할 크레딧이 없습니다.",
     "refundable": "환불 가능한 충전",
-    "refundableHint": "{credits} 크레딧 남음, {money} 상당",
+    "refundableHint": "{credits} 크레딧 남음",
     "askRefund": "환불 신청",
     "refundNotOpen": "환불은 아직 열리지 않았습니다",
     "refundsAsked": "신청한 건",
@@ -1366,6 +1411,36 @@
     "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
     "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
     "refundedHint": "{credits} 크레딧 · 환불되어 Studio에 지정할 수 없습니다",
-    "refundsNote": "쓰지 않은 부분만 원래 결제 수단으로 환불하며, 심사를 거칩니다."
+    "refundsNote": "1 크레딧도 사용하지 않은 충전은 30일 이내에 전액을 원래 결제 수단으로 환불하며, 심사를 거칩니다.",
+    "buy": {
+      "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
+      "assignNotice": "크레딧은 Studio에 지정해야 사용할 수 있습니다.",
+      "refundTitle": "환불 규정",
+      "action": "구매",
+      "confirmTitle": "구매 확인",
+      "confirmPack": "크레딧 패키지",
+      "confirmCredits": "지급 크레딧",
+      "confirmTax": "표시 가격은 세금이 포함되지 않습니다. 결제 페이지에 세금이 포함된 최종 금액이 표시됩니다.",
+      "cancel": "취소",
+      "pay": "결제로 이동",
+      "failed": "이 구매를 시작하지 못했습니다. 다시 시도해 주세요."
+    },
+    "purchase": {
+      "processing": "처리 중",
+      "expired": "만료됨",
+      "failed": "실패",
+      "landed": "지급 완료",
+      "notCharged": "결제 없음",
+      "creditsOnArrival": "지급 후 표시",
+      "resend": "다시 보내기",
+      "resendSent": "확인 메일을 보내고 있습니다.",
+      "resendFailed": "이 메일은 아직 보내지 못했습니다.",
+      "beforeTax": "{amount}(세전)"
+    },
+    "checkoutWait": {
+      "title": "이 구매를 처리하고 있습니다",
+      "body": "이 페이지를 닫지 마세요.",
+      "skip": "구매 내역 보기"
+    }
   }
 }

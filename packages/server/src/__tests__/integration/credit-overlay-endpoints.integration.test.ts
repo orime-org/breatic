@@ -153,6 +153,27 @@ async function seedLot(
 }
 
 /**
+ * Draw credits from one purchase, the way a generation does.
+ * @param userId - Whose purchase it is.
+ * @param lotId - The purchase drawn from.
+ * @param credits - How many, as a positive count.
+ */
+async function spendFrom(
+  userId: string,
+  lotId: string,
+  credits: number,
+): Promise<void> {
+  await sql`
+    INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, entry_type, amount)
+    VALUES (${userId}, ${userId}, ${lotId}, 'spend', ${-credits})
+  `;
+  await sql`
+    UPDATE credit_lots SET remaining_credits = remaining_credits - ${credits}
+    WHERE id = ${lotId}
+  `;
+}
+
+/**
  * A session cookie.
  * @param userId - Who is signed in.
  * @returns The cookie.
@@ -473,7 +494,7 @@ describe("the overview says whether the deployment charges at all (plan §4.4)",
 });
 
 describe("purchases show what was paid and where they point (plan §4.5 §4.6)", () => {
-  it("carries the amount paid and its currency", async () => {
+  it("falls back to the face value on a purchase Stripe never priced", async () => {
     const fx = await seedFixture();
     await seedLot(fx.userId, 880, 1000);
 
@@ -481,12 +502,39 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     const lot = page.items[0];
 
     expect(lot).toBeDefined();
-    // What was paid lives on `payments`, not on `credit_lots`. Working it
-    // back from the credit count through a price table fails too: that table
-    // is replaced wholesale (#13), and an old purchase was bought at the
-    // price of its own day.
-    expect(Number(lot!['paidCents'])).toBe(1000);
+    // This purchase carries no `total_cents`, which is every purchase settled
+    // before #13. What was paid lives on `payments` either way, not on
+    // `credit_lots`. Working it back from the credit count through a price
+    // table fails too: that table is replaced wholesale (#13), and an old
+    // purchase was bought at the price of its own day.
+    expect(lot!['paidCents']).toBe(1000);
     expect(lot!['currency']).toBe("usd");
+  });
+
+  it("carries the figure with the tax in it, the same one the history prints", async () => {
+    const fx = await seedFixture();
+    // A purchase in a taxed region: face value 1000, Stripe took 1120.
+    // `automatic_tax` is on for every checkout, so this is the ordinary case
+    // wherever there is tax, not an edge one.
+    const [payment] = await sql<{ id: string }[]>`
+      INSERT INTO payments (
+        user_id, amount_cents, tax_cents, total_cents, status, credits_granted
+      )
+      VALUES (${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
+    `;
+    await creditLotService.grantFromPayment({
+      paymentId: payment!.id,
+      userId: fx.userId,
+      purchasedCredits: 880,
+    });
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    // The purchase history prints `total_cents` for this row. A buyer who
+    // opens the assign or refund screen and reads a different number has no
+    // way to tell which one is on their statement.
+    expect(lot!['paidCents']).toBe(1120);
   });
 
   it("names the studio a purchase points at", async () => {
@@ -499,6 +547,71 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     expect(lot).toBeDefined();
     expect(lot!['designatedStudioId']).toBe(fx.studioId);
     expect(lot!['designatedStudioName']).toBe(fx.studioName);
+  });
+});
+
+describe("whether a purchase has ever been spent from", () => {
+  it("says no for one nothing has been drawn from", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx.userId, 830, 1000);
+
+    const page = await readLots(fx.cookie);
+
+    expect(page.items[0]!['everSpent']).toBe(false);
+  });
+
+  it("says yes once a generation has drawn from it", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 830, 1000);
+    await spendFrom(fx.userId, lotId, 12);
+
+    const page = await readLots(fx.cookie);
+
+    expect(page.items[0]!['everSpent']).toBe(true);
+  });
+
+  // The rule this column answers reads the ledger rather than the balance,
+  // for exactly this case: a failed generation gives the credits back, so the
+  // balance says untouched while the purchase has been spent from. Reading
+  // the balance would offer this purchase a refund the rule does not allow.
+  // Repaying a studio's debt draws from the purchase just as a generation
+  // does: `designateLot` charges the lot and writes this row. Reading only
+  // `spend` would call such a purchase untouched and offer it a full refund.
+  it("says yes for one drawn on to repay a studio's debt", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 830, 1000);
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, studio_id, entry_type, amount)
+      VALUES (${fx.userId}, ${fx.userId}, ${lotId}, ${fx.studioId}, 'debt_repayment', -40)
+    `;
+    await sql`
+      UPDATE credit_lots SET remaining_credits = remaining_credits - 40 WHERE id = ${lotId}
+    `;
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    expect(lot!['lifecycle']).toBe("active");
+    expect(lot!['everSpent']).toBe(true);
+  });
+
+  it("says yes for one whose credits all came back after a failure", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx.userId, 830, 1000);
+    await spendFrom(fx.userId, lotId, 12);
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, entry_type, amount)
+      VALUES (${fx.userId}, ${fx.userId}, ${lotId}, 'refund', 12)
+    `;
+    await sql`
+      UPDATE credit_lots SET remaining_credits = purchased_credits WHERE id = ${lotId}
+    `;
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    expect(lot!['remainingCredits']).toBe(lot!['purchasedCredits']);
+    expect(lot!['everSpent']).toBe(true);
   });
 });
 

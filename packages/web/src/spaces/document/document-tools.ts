@@ -29,9 +29,6 @@ import {
   Bold,
   Code,
   Italic,
-  List,
-  ListOrdered,
-  Quote,
   Strikethrough,
   Underline,
 } from 'lucide-react';
@@ -94,44 +91,3 @@ export const INLINE_TOOLS: ToolDef[] = [
   },
 ];
 
-/**
- * Block-level formatting.
- *
- * These ask the dry run and nothing else, exactly as the marks above do. The
- * dry run is conservative for the two list commands — they clear the block
- * type before wrapping, and a dry run performs no steps, so over a body
- * heading or code block it answers no while the command works. That belongs to
- * the slice that owns the body's editing behaviour (#85); a dark button that
- * would have worked is the direction R7 permits.
- *
- * Two attempts to widen the answer past the dry run are what this reverts.
- * The second lit the list buttons over a selection where pressing one
- * stripped a body heading to a paragraph and produced no list, because the
- * clearing step lands even when the wrap that follows it fails.
- */
-export const BLOCK_TOOLS: ToolDef[] = [
-  {
-    id: 'bullet-list',
-    labelKey: 'spaces.document.commands.bulletList',
-    Icon: List,
-    isActive: (e) => e.isActive('bulletList'),
-    canRun: (e) => e.can().chain().toggleBulletList().run(),
-    run: (e) => e.chain().focus().toggleBulletList().run(),
-  },
-  {
-    id: 'ordered-list',
-    labelKey: 'spaces.document.commands.orderedList',
-    Icon: ListOrdered,
-    isActive: (e) => e.isActive('orderedList'),
-    canRun: (e) => e.can().chain().toggleOrderedList().run(),
-    run: (e) => e.chain().focus().toggleOrderedList().run(),
-  },
-  {
-    id: 'quote',
-    labelKey: 'spaces.document.commands.quote',
-    Icon: Quote,
-    isActive: (e) => e.isActive('blockquote'),
-    canRun: (e) => e.can().chain().toggleBlockquote().run(),
-    run: (e) => e.chain().focus().toggleBlockquote().run(),
-  },
-];

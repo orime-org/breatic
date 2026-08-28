@@ -22,7 +22,7 @@ import {
   chatCreateConversationSchema,
   chatRenameConversationSchema,
   chatEarlierMessagesQuerySchema,
-  conversationIdParamSchema,
+  idParamSchema,
   attachmentParamSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -336,7 +336,7 @@ chat.post(
  */
 chat.patch(
   "/conversations/:id",
-  validate("param", conversationIdParamSchema),
+  validate("param", idParamSchema),
   validate("json", chatRenameConversationSchema),
   async (c) => {
     const user = c.get("user");
@@ -384,7 +384,7 @@ chat.post("/open", validate("json", chatOpenSchema), async (c) => {
  * @returns Conversation entity and its message history
  * @throws {AppError} `404` if not found, `403` if not the owner
  */
-chat.get("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
+chat.get("/conversations/:id", validate("param", idParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   const { messages, ...rest } = await conversationService.getWithMessages(conversationId, user.id);
@@ -403,7 +403,7 @@ chat.get("/conversations/:id", validate("param", conversationIdParamSchema), asy
  */
 chat.get(
   "/conversations/:id/messages",
-  validate("param", conversationIdParamSchema),
+  validate("param", idParamSchema),
   validate("query", chatEarlierMessagesQuerySchema),
   async (c) => {
     const user = c.get("user");
@@ -423,7 +423,7 @@ chat.get(
  * @returns `200` with success message
  * @throws {AppError} `404` if not found, `403` if not the owner
  */
-chat.delete("/conversations/:id", validate("param", conversationIdParamSchema), async (c) => {
+chat.delete("/conversations/:id", validate("param", idParamSchema), async (c) => {
   const user = c.get("user");
   const conversationId = c.req.param("id");
   await conversationService.deleteConversation(conversationId, user.id);
@@ -443,7 +443,7 @@ chat.delete("/conversations/:id", validate("param", conversationIdParamSchema), 
  */
 chat.get(
   "/conversations/:id/attachments",
-  validate("param", conversationIdParamSchema),
+  validate("param", idParamSchema),
   async (c) => {
     const user = c.get("user");
     const conversationId = c.req.param("id");
