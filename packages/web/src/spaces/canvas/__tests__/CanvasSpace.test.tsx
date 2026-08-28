@@ -1706,7 +1706,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  it('Escape yields to an open alertdialog (adversarial r2 — role was missing from the yield)', () => {
+  // An overlay portals to <body>, outside both region roots, so the key
+  // belongs to whoever put it there rather than to the canvas.
+  it('Escape yields to an open alertdialog', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [

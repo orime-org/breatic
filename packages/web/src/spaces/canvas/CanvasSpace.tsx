@@ -819,18 +819,6 @@ function CanvasSpaceInner({
         return;
       }
       if (!regionOwnsKeyboard(e.target, 'space')) return;
-      const active = document.activeElement;
-      // Ownership-based yield (round-6, matching the overlay): the
-      // defaultPrevented guard covers Esc consumers; a plain focused
-      // editor consumes nothing and must not deaden Esc.
-      if (
-        active &&
-        active.closest(
-          '[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]',
-        ) !== null
-      ) {
-        return;
-      }
       onExitPick();
     };
     window.addEventListener('keydown', onKeyDown);
