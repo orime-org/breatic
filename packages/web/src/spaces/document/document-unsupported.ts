@@ -54,7 +54,16 @@ import { t } from '@breatic/shared';
 const ORIGINAL_NAME = 'originalName';
 
 /** The two node names the label decoration dresses. */
-const LABELLED_NODES = new Set(['unsupportedBlock', 'unsupportedInline']);
+/** The node a block we cannot represent is kept as. */
+export const UNSUPPORTED_BLOCK = 'unsupportedBlock';
+
+/** The node an inline we cannot represent is kept as. */
+export const UNSUPPORTED_INLINE = 'unsupportedInline';
+
+/** The mark a mark we cannot represent is kept as. */
+export const UNSUPPORTED_MARK = 'unsupportedMark';
+
+const LABELLED_NODES = new Set([UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE]);
 
 /**
  * The label decorations for every stand-in node in the document.
@@ -148,7 +157,7 @@ export const UnsupportedBlock = Node.create({
  * no edit is involved.
  */
 export const UnsupportedInline = Node.create({
-  name: 'unsupportedInline',
+  name: UNSUPPORTED_INLINE,
   group: 'inline',
   inline: true,
   atom: true,
@@ -182,7 +191,7 @@ export const UnsupportedInline = Node.create({
  * value it arrived with.
  */
 export const UnsupportedMark = Mark.create({
-  name: 'unsupportedMark',
+  name: UNSUPPORTED_MARK,
   excludes: '',
 
   addAttributes() {
