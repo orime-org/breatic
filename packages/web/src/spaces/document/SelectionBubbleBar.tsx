@@ -16,7 +16,7 @@
  *
  * By `@floating-ui/react`'s `useFloating`, the same way the link panel is —
  * `strategy: 'absolute'`, mounted inside the body's scroller, recomputed by
- * `autoUpdate`. Four choices in it are ours rather than the library's
+ * `autoUpdate`. Five choices in it are ours rather than the library's
  * defaults:
  *
  * - **The anchor.** Not the selection's bounding box: over a `Mod-a` selection
@@ -187,11 +187,10 @@ const GAP_FROM_SELECTION_PX = 8;
  * has left the body area the bar is meant to go away, and the scroller's own
  * overflow clips it there (see `middleware` below).
  *
- * Neither end being on screen is not this function's problem either. Hunting
- * for some third line the reader can currently see is exactly what this used
- * to do, and that branch was the common source of the in-scope defects found
- * in five of the six implementation-adversarial rounds. None of Lexical,
- * Slate, ProseMirror's own example, or this plugin does it either.
+ * Neither end being on screen is not this function's problem either: the bar
+ * is meant to be gone by then, and the scroller's overflow is what takes it.
+ * Neither Lexical, Slate, nor ProseMirror's own example hunts for a third
+ * line the reader can see.
  *
  * Lines rather than DOM rectangles, deliberately. `Range.getClientRects()`
  * hands back the BORDER BOX of any element the range wholly contains, so a
@@ -201,18 +200,10 @@ const GAP_FROM_SELECTION_PX = 8;
  * A `TextSelection`'s two ends are inside text, so `coordsAtPos` answers a
  * real line box for them. It answers a zero-height separator instead at a
  * BLOCK BOUNDARY (`prosemirror-view@1.42.2/dist/index.js:618` collapses top
- * onto bottom there), which is where an `AllSelection`'s head sits.
- *
- * A select-all DOES reach here, contrary to what this said before. It happens
- * inside the plugin's own 250ms update debounce (`dist/index.js:36`): the
- * selection has just become a select-all with the pointer outside the body,
- * so there is no pin, while the bar is still up from the previous selection
- * and `shouldShow` has not been asked again yet. Any `updatePosition` in that
- * window — a scroll, a resize — takes the anchor from here. The reading is a
- * zero-height line at the document's end, and the debounce ends by hiding the
- * bar. So this is a stale anchor for at most 250ms, not a wrong resting
- * place; the walk that used to convert such a boundary into a text position
- * changed nothing that outlived that window, which is why it is gone.
+ * onto bottom there), which is where an `AllSelection`'s head sits. A
+ * select-all reaching this far is answered by its pin before the call
+ * ({@link bubbleAnchorRect}), so that reading stands only in the frames
+ * between a pin being dropped and the bar being taken away with it.
  * @param view - The editor view to measure against.
  * @param bounds - The visible box of the body's scroll container.
  * @returns The anchored line's extent, in viewport coordinates.
@@ -266,9 +257,9 @@ function selectionBox(view: EditorView): DOMRect {
 /**
  * A zero-width rectangle standing in for one line of text, grown by the gap.
  *
- * The gap belongs here rather than in an `offset` middleware because flip runs
- * BEFORE offset in this plugin and would otherwise decide whether the bar fits
- * without knowing the bar needs 8px more than its own height. Growing the
+ * The gap belongs here rather than in an `offset` middleware because `flip`
+ * runs first in the array below and would otherwise decide whether the bar
+ * fits without knowing it needs 8px more than its own height. Growing the
  * anchor says the same thing in a form flip can see, and it says it on both
  * sides at once, so the gap comes out right whichever way the bar ends up.
  *
@@ -441,20 +432,10 @@ interface SelectionBubbleBarProps {
  * The formatting bar that follows the selection.
  *
  * Resolves the body's scroll container and renders nothing until it has it.
- * That is not defensiveness: the plugin reads `options.scrollTarget` when it
- * registers, and on THIS wiring that is the only chance to hand it the right
- * one. The plugin itself can take it later — `updateOptions` rebinds the scroll
- * listener when the target changes (`dist/index.js:405-409`) — but the update
- * that would carry it never arrives here.
- * Handing it over on a later render does not work either — the React wrapper
- * drops the first update after registration (`skipFirstUpdateRef`,
- * `@tiptap/react/dist/menus/index.js`), and React batches that skipped update
- * with the state change that carries the viewport. Measured: passed late, the
- * plugin's target stayed `window` through mount and selection and only became
- * the viewport once something else re-rendered `DocumentEditor` — which, being
- * memoised on a history object that changes only after the user edits, never
- * happens in a freshly opened document. Waiting one commit costs nothing;
- * there is no selection to float above on the first frame either.
+ * The bar below needs that element in two places that admit no null — the
+ * portal it mounts into and the box `flip` measures against — and it exists
+ * one commit after this component first renders. Waiting that commit out costs
+ * nothing: there is no selection to float above on the first frame either.
  *
  * Splitting the resolution from the bar is what keeps every branch below live:
  * with the viewport known non-null, nothing downstream has to ask again.
@@ -546,18 +527,20 @@ function BubbleBar({
    * shorter list and so put the bar up over an editor the reader had already
    * left.
    *
-   * The text condition drops the plugin's `isTextSelection` guard on purpose:
-   * an `AllSelection` is not a `TextSelection`, so with that guard a
-   * select-all over an emptied document showed a bar whose every button was
-   * dead. What matters is whether the selection holds text, not its class.
+   * The text condition asks what the selection HOLDS, not what class it is:
+   * an `AllSelection` is not a `TextSelection`, and over an emptied document
+   * it holds nothing a button on this bar could act on.
    *
    * The focus condition is the editor's focus and nothing else. It used to
    * also accept focus sitting inside the bar, from the days when the bar was
    * focusable; the bar now refuses the focus change a press would cause (see
    * the note further down), so that branch had no way left to be true.
    *
-   * Takes the view rather than reading it off the editor: the plugin asks this
-   * during teardown too, and by then `editor.view` throws.
+   * Takes the view rather than reading it off the editor. Once the editor has
+   * torn its view down, `editor.view` hands back a Proxy that stubs a handful
+   * of properties and throws on everything else
+   * (`@tiptap/core@3.29.2/dist/index.js:5875-5905`) — `hasFocus` below is one
+   * of the ones it throws on.
    * @param view - The editor view the caller already holds.
    * @returns True when a bar is warranted at all.
    */
@@ -588,10 +571,7 @@ function BubbleBar({
    * Pure: it reads the pin and never writes one. Pinning happens at the two
    * moments the ruling names and nowhere else — the transaction that makes
    * the selection a select-all, and a mouse event over the body. Keeping the
-   * two apart is what makes "the pointer is only read at those moments" true;
-   * when this doubled as the act of pinning, the plugin's own 250ms update
-   * debounce decided the moment instead, and a pointer moved inside that
-   * window was taken as the answer.
+   * two apart is what makes "the pointer is only read at those moments" true.
    *
    * It used to store the rescaled point back, on the reasoning that ratios
    * would otherwise compound across resizes. They do not: this always maps
@@ -636,12 +616,10 @@ function BubbleBar({
      * stops being one.
      *
      * Both acts ride on the transaction rather than on the question "should
-     * the bar show", because that question is asked on the plugin's schedule:
-     * 250ms after the fact (its update debounce), and again on every later
-     * transaction. Pinning there made the pointer's position 250ms after the
-     * select-all the answer, and let a co-editor's keystroke pin a bar the
-     * reader never asked for. Dropping there never ran at all on the one
-     * transition that needs it, since an empty selection returns earlier.
+     * the bar show". That question is asked again on every later transaction,
+     * so a co-editor's keystroke arriving while the reader's pointer has moved
+     * would answer with wherever it moved to; and its first line returns on an
+     * empty selection, which is the one transition the drop has to catch.
      */
     const follow = (): void => {
       const { view } = editor;
@@ -676,22 +654,20 @@ function BubbleBar({
 
 
   /**
-   * Whether a bar belongs on screen right now — the plugin's own question.
+   * Whether a bar belongs on screen right now.
    *
    * Read-only: it never pins. A select-all shows exactly when a pin already
    * exists, put there either by the transaction that made the selection a
    * select-all or by a mouse event over the body.
    *
-   * The mouse-event path below asks the same thing without coming through
-   * here, and it has to: the plugin's `'show'` meta runs `updatePosition()`
-   * and `show()` without consulting `shouldShow` at all
-   * (`dist/index.js:159-161`; its four metas — `updatePosition`,
-   * `updateOptions`, `hide`, `show` — are the whole vocabulary, there is no
-   * "reconsider" among them). What that path must not do is state the rule a
-   * second time, and it does not: it calls the same {@link isWarranted}, and
-   * then `pinToPointer`, whose true answer already means "this is a
-   * select-all AND there is now a pin" — the second half of the branch below.
-   * @param root0 - What the plugin passes its `shouldShow`.
+   * The mouse-event path below reaches the same answer without coming through
+   * here, and it has to: it runs on a pointer move, which carries no
+   * transaction for the listener that calls this to hear. What it must not do
+   * is state the rule a second time, and it does not: it calls the same
+   * {@link isWarranted}, and then `pinToPointer`, whose true answer already
+   * means "this is a select-all AND there is now a pin" — the second half of
+   * the branch below.
+   * @param root0 - The view to answer about.
    * @param root0.view - The editor view.
    * @returns True when the bar belongs on screen.
    */
@@ -737,11 +713,10 @@ function BubbleBar({
       pointerRef.current = { x: event.clientX, y: event.clientY };
       // Two field reads first, and they are not just an optimisation. On an
       // existing pin `pinToPointer` answers TRUE (it is idempotent), so
-      // without this exit the two metas below would fire on every mouse event
-      // while a bar is up — waking the plugin over and over to be told
-      // nothing changed. The select-all test is the cheap half of what
-      // `pinToPointer` asks, and skipping the call keeps this handler's
-      // reading of the rules in one place.
+      // without this exit the two writes below would run on every mouse event
+      // anywhere on the page while a bar is up. The select-all test is the
+      // cheap half of what `pinToPointer` asks, and skipping the call keeps
+      // this handler's reading of the rules in one place.
       if (pinnedRef.current) return;
       const { view } = editor;
       if (!(view.state.selection instanceof AllSelection)) return;
@@ -814,13 +789,12 @@ function BubbleBar({
    * the two would otherwise be anchored to the same line: measured, a panel
    * that `flip` sent above its target landed on the bar's own pixels.
    *
-   * Made invisible rather than hidden through the plugin. Telling the plugin to
-   * hide takes the bar's whole subtree with it, and every panel is part of that
-   * subtree: measured in a browser, pressing the link button left bar, button
-   * and panel all absent, because a portalled panel still belongs to the
-   * component that renders it. jsdom does not show this — its bar element goes
-   * while React keeps the children — which is why it is a browser case that
-   * pins it.
+   * Made invisible rather than taken away. Judging the bar unwarranted
+   * unmounts its whole subtree, and every panel is part of that subtree:
+   * measured in a browser, pressing the link button left bar, button and panel
+   * all absent, because a portalled panel still belongs to the component that
+   * renders it. jsdom does not show this — its bar element goes while React
+   * keeps the children — which is why it is a browser case that pins it.
    *
    * Coming back is the selection's business either way: closing a panel drops
    * the selection, so `shouldShow` turns the bar off a moment later.
@@ -862,17 +836,14 @@ function BubbleBar({
 
   // The bar stays away while the pointer is down (D1).
   //
-  // Same route the link panel takes — `invisible!` on the bar, rather than
-  // asking the plugin to re-run `shouldShow`: its `update` returns early when
-  // neither the selection nor the document changed
-  // (`bubble-menu-plugin.ts`, `handleDebouncedUpdate`), so a transaction that
-  // alters nothing buys no second look.
+  // Same route the link panel takes — a class on the bar, rather than a
+  // second condition inside `shouldShow`: what it answers is whether a bar is
+  // warranted at all, and mid-drag it is. The reader has a selection and is
+  // still extending it.
   //
-  // The plugin debounces selection changes by 250ms and asks "has the
-  // selection held still that long", which a pause mid-drag satisfies — the
-  // bar appears, the drag goes on, and it jumps after. What it judges is "the
-  // selection stopped moving", not "the act of selecting ended". The industry
-  // answer is a pointer gate rather than a delay: BlockNote's
+  // A delay would judge "the selection stopped moving", which a pause mid-drag
+  // satisfies — the bar appears, the drag goes on, and it jumps after. The
+  // industry answer is a pointer gate: BlockNote's
   // `FormattingToolbar` takes the bar away on `pointerdown` and asks again on
   // `pointerup` (its comment names Notion as the source; `setTimeout` appears
   // nowhere in the file), and Plate's `useFloatingToolbar` does the same.
@@ -1078,8 +1049,7 @@ function BubbleBar({
      * `relatedTarget` rather than `document.activeElement`: during a focus
      * change the active element is `<body>` for the length of the `blur`, and
      * a check reading it there judges every menu opening as focus leaving for
-     * nowhere. `relatedTarget` names the element about to receive it. The
-     * bubble-menu plugin reads the same field for the same reason.
+     * nowhere. `relatedTarget` names the element about to receive it.
      * @param payload - What tiptap passes its `blur` event.
      * @param payload.event - The DOM focus event.
      */

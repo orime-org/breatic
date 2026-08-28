@@ -18,12 +18,7 @@
  *
  * These buttons come and go with the selection. `SelectionBubbleBar` renders
  * them only while one exists, because each of them dry-runs its command on
- * every transaction and the bar spends almost all of its life hidden.
- *
- * (The bar's own element is a separate matter: the plugin removes it from the
- * document on hide — `dist/index.js:377-379` sets `visibility` and then calls
- * `element.remove()` — and appends the same element back on the next
- * `show()`. That element is the plugin's, not React's.)
+ * every transaction and the bar spends almost all of its life away.
  */
 
 import * as React from 'react';
