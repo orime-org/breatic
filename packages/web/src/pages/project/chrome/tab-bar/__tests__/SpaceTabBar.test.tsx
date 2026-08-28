@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
+import { SPACE_TAB_MAX_WIDTH } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -363,5 +364,49 @@ describe('SpaceTabBar', () => {
         expect(field.className).not.toContain('text-muted-foreground');
       },
     );
+  });
+
+  describe('a name too long for the strip', () => {
+    // The strip scrolls sideways, so a long name never breaks the layout --
+    // it takes the whole visible width for itself and pushes every other tab
+    // behind the scroll arrows. A cap on the tab is what keeps the rest
+    // reachable (#2015; user set 160px on 2026-08-28).
+    //
+    // jsdom does no layout, so `getBoundingClientRect` here is all zeroes and
+    // these assertions can only say the cap is declared, not that it renders
+    // at 160px. The rendered width is measured in a real browser.
+    const LONG = '素材分镜脚本第一版终稿请勿删除';
+    const withLongName = {
+      spaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
+      allSpaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
+      openTabIds: ['s1'],
+    };
+
+    it('caps the tab and clips the name that overflows it', () => {
+      setup(withLongName);
+      const tab = screen.getByTestId('space-tab-s1');
+      expect(tab.style.maxWidth).toBe(`${SPACE_TAB_MAX_WIDTH}px`);
+      // The clip belongs to the name, not the tab: the icon and the close
+      // control keep their room and the name gives up what is left.
+      expect(screen.getByTestId('space-tab-name-s1').className).toContain(
+        'truncate',
+      );
+    });
+
+    it('caps the rename field the same way while it is being typed into', async () => {
+      const user = userEvent.setup();
+      setup({ ...withLongName, onRenameSpace: vi.fn() });
+      await user.dblClick(screen.getByTestId('space-tab-name-s1'));
+      const field = screen.getByTestId('space-tab-name-input-s1');
+      // A width computed from the character count grows without end, which is
+      // the same overflow through the editing state. The field grows with its
+      // content up to the cap and scrolls after that, so the caret stays in
+      // view -- the treatment the project title already uses.
+      expect(field.className).toContain('[field-sizing:content]');
+      expect(field.style.width).toBe('');
+      expect(screen.getByTestId('space-tab-s1').style.maxWidth).toBe(
+        `${SPACE_TAB_MAX_WIDTH}px`,
+      );
+    });
   });
 });

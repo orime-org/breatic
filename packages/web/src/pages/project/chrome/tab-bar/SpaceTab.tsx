@@ -43,6 +43,22 @@ interface SpaceTabProps {
   onRename?: (name: string) => Promise<void> | void;
 }
 
+/**
+ * How wide one tab may get (px).
+ *
+ * A name may run to `SPACE_NAME_MAX_LEN`, and the strip scrolls sideways, so
+ * without a cap one long name takes the whole visible width and pushes every
+ * other tab behind the scroll arrows. 160 leaves 124px for the name once the
+ * padding, the type icon and its gap are paid for — about nine CJK characters
+ * or nineteen Latin ones at 13px (user set this on 2026-08-28, #2015).
+ *
+ * The cap is a width and not a character count because a full-width character
+ * is about as wide as the font size while a Latin one is about half that: the
+ * same count would render a Chinese tab close to twice the width of an English
+ * one, which is the crowding this exists to stop.
+ */
+export const SPACE_TAB_MAX_WIDTH = 160;
+
 const TYPE_ICON: Record<SpaceType, typeof FileText> = {
   canvas: Palette,
   document: FileText,
@@ -195,6 +211,7 @@ export function SpaceTab({
         padding: '0 var(--space-4)',
         gap: 'var(--space-3)',
         borderRadius: 4,
+        maxWidth: SPACE_TAB_MAX_WIDTH,
       }}
     >
       <Icon
@@ -223,13 +240,21 @@ export function SpaceTab({
           onDoubleClick={(e) => e.stopPropagation()}
           data-testid={`space-tab-name-input-${id}`}
           aria-label={t('spaces.rename.inputAriaLabel')}
-          className='border-0 bg-transparent p-0 text-sm text-foreground outline-none'
-          style={{ width: `${Math.max(draft.length, 1) + 1}ch` }}
+          // Grows with what is typed and stops at the tab's cap, after which
+          // the field scrolls and the caret stays in view. A width worked out
+          // from the character count grows without end instead, which is the
+          // same crowding through the editing state. This is the treatment the
+          // project title already uses (`TitleEditable.tsx`).
+          className='min-w-0 border-0 bg-transparent p-0 text-sm text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span
           onDoubleClick={onNameDoubleClick}
           data-testid={`space-tab-name-${id}`}
+          // The name is what gives way when the tab meets its cap: the icon
+          // and the close control keep their room, and `min-w-0` is what lets
+          // this shrink below its text inside the flex row.
+          className='min-w-0 truncate'
         >
           {name}
         </span>
