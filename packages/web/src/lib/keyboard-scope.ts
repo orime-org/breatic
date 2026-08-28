@@ -27,13 +27,20 @@ export function regionOf(el: Element): ActiveRegion | null {
  * without focus following, as pressing a scrollbar does.
  *
  * What the target does decide is whether an overlay is handling this press
- * itself: an overlay portals to `<body>` and therefore sits in no region. A
- * target in either region, and `<body>` itself, defer to the store.
+ * itself. The overlays that do sit in no region because they portal to
+ * `<body>` — Radix menus, popovers, dialogs. The panels xyflow's `NodeToolbar`
+ * portals into `.react-flow__renderer` land inside the space region and are
+ * the space's, which is what makes Delete from a generate panel delete its
+ * host node. A target in either region, and `<body>` itself, defer to the
+ * store.
  *
  * A field being typed in is a separate question, and the answer depends on
- * the key: Cmd+Z in a text box is the box's own undo, while Escape there
- * belongs to whoever put the box on screen. So the outlets whose key has a
- * native meaning inside a field ask `isEditableTarget` themselves.
+ * who else answers the key while a caret sits in one. Undo, paste, copy,
+ * group, duplicate and delete are all answered by the field or by the browser
+ * — Cmd+Z is the box's own undo, Cmd+G is find-again — so those six ask
+ * `isEditableTarget` themselves. Escape has neither, so the two Escape
+ * handlers take it from a field and rely on `defaultPrevented` for whoever
+ * did consume it.
  * @param target - The event's target.
  * @param region - The region asking.
  * @returns True when the region should act on this event.

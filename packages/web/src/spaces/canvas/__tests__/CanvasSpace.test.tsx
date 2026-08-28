@@ -209,6 +209,17 @@ function dispatchPaste(text: string): void {
 }
 
 /**
+ * The space region root the mount is wrapped in.
+ * @returns The region root.
+ * @throws {Error} When the space is not mounted.
+ */
+function spaceRegion(): HTMLElement {
+  const root = document.querySelector<HTMLElement>('[data-region="space"]');
+  if (!root) throw new Error('the space region root is not mounted');
+  return root;
+}
+
+/**
  * Mounts the space with a query client around it, the way the real app always
  * does (`App.tsx` wraps everything in one).
  *
@@ -225,17 +236,6 @@ function dispatchPaste(text: string): void {
  * @param readOnly - Mount the space in its read-only form.
  * @returns The render result.
  */
-/**
- * The space region root the mount is wrapped in.
- * @returns The region root.
- * @throws {Error} When the space is not mounted.
- */
-function spaceRegion(): HTMLElement {
-  const root = document.querySelector<HTMLElement>('[data-region="space"]');
-  if (!root) throw new Error('the space region root is not mounted');
-  return root;
-}
-
 function renderSpace(readOnly = false): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -1639,7 +1639,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // The panel that carries the pick's Exit trigger stays on screen for the
     // whole session, and `onExitPick` hands focus back to it.
     const trigger = document.createElement('button');
-    trigger.dataset.testid = 'generate-tool-reference';
     trigger.setAttribute('data-testid', 'generate-tool-reference');
     const prompt = document.createElement('div');
     Object.defineProperty(prompt, 'isContentEditable', { value: true });

@@ -1159,8 +1159,8 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
-      // The key has a native meaning inside a field, so a caret there
-      // keeps it.
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
       const action = matchHistoryShortcut(event);
       if (!action) return;
@@ -2568,8 +2568,8 @@ function CanvasSpaceInner({
      */
     const onPaste = (event: ClipboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
-      // The key has a native meaning inside a field, so a caret there
-      // keeps it.
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
 
       // File paste (screenshot / copied file) carries binary in
@@ -2780,8 +2780,8 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
-      // The key has a native meaning inside a field, so a caret there
-      // keeps it.
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
       // Always swallow a group / ungroup chord on the canvas so the browser's
       // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
@@ -2915,8 +2915,8 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
-      // The key has a native meaning inside a field, so a caret there
-      // keeps it.
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
@@ -2948,8 +2948,8 @@ function CanvasSpaceInner({
         return;
       }
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
-      // The key has a native meaning inside a field, so a caret there
-      // keeps it.
+      // A caret in a field is answered by the field or by the browser, so
+      // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (event.repeat) return;
