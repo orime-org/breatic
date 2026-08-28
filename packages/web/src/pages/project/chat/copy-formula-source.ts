@@ -1,0 +1,201 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Hands a reader copying a reply the formula the model wrote.
+ *
+ * KaTeX draws a formula three times over — MathML for a screen reader, the
+ * LaTeX it came from, and the glyphs — so a selection across one serialises
+ * two of the three, and the reader gets the formula twice with neither copy
+ * readable. Importing this module puts a copy handler on the document that
+ * replaces each formula with its own source instead, leaving the MathML in
+ * the page where the screen reader still reaches it.
+ *
+ * KaTeX ships this idea as `katex/contrib/copy-tex`, which cannot be used
+ * here: it derives the text from `fragment.textContent`, and `textContent`
+ * carries elements the browser never renders. Radix gives every ScrollArea a
+ * `style` element of its own, and a formula on a line of its own is drawn
+ * inside one — so what that handler puts on the clipboard is the model's
+ * words with a stylesheet spliced into them. Its delimiters are also fixed at
+ * a single `$` for an inline formula, which this product reads as a character.
+ */
+
+/** Both ends of a formula, inline or on a line of its own (user 2026-08-25). */
+const DELIMITER = '$$';
+
+/** What KaTeX marks any rendered formula with. */
+const FORMULA_CLASS = 'katex';
+
+/**
+ * What a paste target cannot read outside the element it came from.
+ *
+ * Measured in Chromium over every parent-dependent element in HTML: there are
+ * two ways one arrives broken, and this set is all of both. The table family
+ * is dropped tag and all, leaving behind what was inside it. A list item
+ * survives and loses the numbering its list carried. Everything else HTML
+ * calls parent-dependent — `dt`, `dd`, `option`, `figcaption`, `summary`,
+ * `rt` — a parser hands back whole.
+ *
+ * Six of these are reachable from a reply: `LI` from the CommonMark parser,
+ * and `TR TD TH THEAD TBODY` from remark-gfm's tables. The last four cover
+ * the rest of the table family, which nothing in this pipeline emits today.
+ */
+const NEEDS_ITS_PARENT = new Set([
+  'LI',
+  'TR',
+  'TD',
+  'TH',
+  'THEAD',
+  'TBODY',
+  'TFOOT',
+  'CAPTION',
+  'COL',
+  'COLGROUP',
+]);
+
+/**
+ * Whether this is something a paste target can read on its own.
+ *
+ * Whatever the climb below has wrapped so far sits at the top of `held`:
+ * `Range.cloneContents` rebuilds every partially selected ancestor under the
+ * common one, and each turn of the climb wraps in a shallow clone.
+ * @param node - What was taken out of the document.
+ * @returns Whether a parser gives it back whole.
+ */
+function standsAlone(node: Node): boolean {
+  const held = document.createElement('div');
+  held.append(node.cloneNode(true));
+  return ![...held.children].some((child) => NEEDS_ITS_PARENT.has(child.tagName));
+}
+
+/**
+ * Put back as much of the chain around this as it needs to be read.
+ *
+ * A copy holds what sits under the two ends' common ancestor, never the
+ * ancestor itself — so a drag across table cells holds rows with no table
+ * around them, and a drag down a numbered list holds items with no list.
+ * @param range - Where the copy came from.
+ * @param contents - What was taken out of it.
+ * @returns The contents, under as much of their own chain as they need.
+ */
+function underTheirOwnChain(range: Range, contents: DocumentFragment): Node {
+  let held: Node = contents;
+  let ancestor =
+    range.commonAncestorContainer instanceof Element
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+
+  while (ancestor && !standsAlone(held)) {
+    const around = ancestor.cloneNode(false) as Element;
+    around.append(held);
+    held = around;
+    ancestor = ancestor.parentElement;
+  }
+  return held;
+}
+
+/**
+ * The formula this node sits in, if it sits in one.
+ * @param node - Where an end of the selection landed.
+ * @returns The formula's element, or null.
+ */
+function formulaAround(node: Node): Element | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest(`.${FORMULA_CLASS}`) ?? null;
+}
+
+/**
+ * Turn every formula in this copy back into the source it was drawn from.
+ * @param copied - The copied selection, modified in place.
+ */
+function replaceFormulaeWithSource(copied: Element): void {
+  for (const formula of copied.querySelectorAll(`.${FORMULA_CLASS}`)) {
+    // The LaTeX KaTeX kept alongside the MathML it built.
+    const source = formula.querySelector('annotation')?.textContent ?? '';
+    // Read off the formula, which is all a copy of one holds: the block it
+    // stood in is not cloned when the reader drags across the formula alone.
+    // KaTeX writes MathML's own way of saying it, and leaves the attribute
+    // off an inline formula.
+    const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
+    const holder = document.createElement('span');
+    // Source, not prose: the line breaks around a formula on its own line are
+    // part of what makes it one, and normal white-space handling would fold
+    // them into spaces on the way out.
+    holder.style.whiteSpace = 'pre';
+    holder.textContent = onItsOwnLine
+      ? `${DELIMITER}\n${source}\n${DELIMITER}`
+      : `${DELIMITER}${source}${DELIMITER}`;
+    formula.replaceWith(holder);
+  }
+}
+
+document.addEventListener('copy', (event: ClipboardEvent): void => {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !event.clipboardData) return;
+
+  // Serialising this by hand is what the browser is for: `textContent` knows
+  // nothing of block boundaries, table cells or list markers, and markup
+  // built by joining text escapes nothing — a reply whose words look like a
+  // tag would arrive as a live one. `innerText` reads what was laid out, so
+  // the element has to be rendered somewhere out of sight rather than hidden.
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;top:0;left:-9999px';
+
+  // Gecko makes a selection of several ranges out of a ctrl-drag, and all of
+  // them are what the reader asked for. Two of them can cut through the same
+  // formula, which the widening below would then hand over twice, so each one
+  // is taken by whichever range reaches it first.
+  const taken = new Set<Element>();
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    // A reader who dragged across half a formula meant the formula: half of
+    // one is neither readable nor valid source. The widening is done on a
+    // copy, so what stays highlighted is what the reader drew.
+    const range = selection.getRangeAt(index).cloneRange();
+    const start = formulaAround(range.startContainer);
+    const end = formulaAround(range.endContainer);
+    // Both ends read before either is recorded: one range can begin and end
+    // inside the same formula, and that formula is its own to take.
+    const startTaken = start !== null && taken.has(start);
+    const endTaken = end !== null && taken.has(end);
+    if (start) {
+      if (startTaken) range.setStartAfter(start);
+      else {
+        range.setStartBefore(start);
+        taken.add(start);
+      }
+    }
+    if (end) {
+      if (endTaken) range.setEndBefore(end);
+      else {
+        range.setEndAfter(end);
+        taken.add(end);
+      }
+    }
+    const contents = underTheirOwnChain(range, range.cloneContents());
+    if (selection.rangeCount > 1) {
+      // What a drag hands over is the words inside a block, not the block —
+      // so two of them appended one after the other would read as one line.
+      // Several ranges are several places in the document, and the browser's
+      // own copy keeps them apart.
+      const part = document.createElement('div');
+      part.append(contents);
+      host.append(part);
+    } else {
+      host.append(contents);
+    }
+  }
+
+  if (!host.querySelector(`.${FORMULA_CLASS}`)) return;
+
+  // Neither of these belongs in something a person pastes, and a stylesheet
+  // pasted into a rich-text target would apply itself there.
+  for (const unrendered of host.querySelectorAll('style, script')) unrendered.remove();
+  replaceFormulaeWithSource(host);
+
+  document.body.append(host);
+  event.clipboardData.setData('text/html', host.innerHTML);
+  event.clipboardData.setData('text/plain', host.innerText);
+  host.remove();
+
+  event.preventDefault();
+});
