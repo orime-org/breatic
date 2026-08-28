@@ -382,9 +382,9 @@ export async function chargeOnceForGeneration(
  * the endpoint does not confirm which lot ids exist.
  *
  * A lot in the refund flow refuses to move, because it is on its way out of
- * the account: asking for a refund detaches the lot from its studio then and
- * there, and until the refund resolves the money belongs to no pool and may
- * not be put back to work. A rejection returns it to `active`, still
+ * the account: a refund can only be asked for on a lot the buyer has already
+ * released, and until the refund resolves the money belongs to no pool and
+ * may not be put back to work. A rejection returns it to `active`, still
  * unassigned, and only then may it be designated again.
  *
  * Designating into a studio that owes credits pays the debt down first, out

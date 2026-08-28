@@ -52,10 +52,11 @@ ALTER TABLE "credit_ledger" ADD CONSTRAINT "credit_ledger_entry_type_check" CHEC
 
 -- A lot on its way out of the account belongs to no studio.
 --
--- The rule (decided 2026-08-21): asking for a refund detaches the lot from
--- its studio then and there, and until the refund resolves it cannot be
--- designated to any studio — a rejection returns it to `active`, still
--- unassigned, and only then may it be designated again.
+-- The rule (decided 2026-08-21; how the lot gets there revised 2026-08-28):
+-- a refund is asked for on a lot the buyer has already released, and until
+-- the refund resolves it cannot be designated to any studio — a rejection
+-- returns it to `active`, still unassigned, and only then may it be
+-- designated again.
 --
 -- This constraint is what a machine can see of that rule. Without it the only
 -- statement of it is prose in the refund task, and the invariant the debt
