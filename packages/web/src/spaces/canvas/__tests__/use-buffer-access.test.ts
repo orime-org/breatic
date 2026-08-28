@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The four readings the canvas has of its own render buffer (#2010).
+ * The readings the canvas has of its own render buffer (#2010).
  *
  * The buffer lives inside this hook, so reading it means naming one of these.
- * What each case pins is the difference between them: three of them are what a
- * document write may read, and `onScreen` is the one that still carries a
- * collaborator's in-flight coordinates, because publishing those is its job.
+ * What each case pins is the difference between them, and `onScreen` is the
+ * one that still carries a collaborator's in-flight coordinates, because
+ * publishing those is its job.
  */
 
 import { renderHook } from '@testing-library/react';

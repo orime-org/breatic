@@ -53,9 +53,11 @@ export function landingCandidates(
  * plain node keeps the `measured` it has: its dimensions live only there, and
  * no document geometry can put them back.
  *
- * This is the single door: every call site that turns buffer geometry into a
- * document write goes through here, so a new one is a call that did not use it
- * rather than an entry missing from a list.
+ * A path that needs the whole buffer to draw a conclusion reads this, and the
+ * criterion is having read it rather than appearing on a list of call sites.
+ * The drag-stop is the one path that does not: it takes both frames at once,
+ * because the place its own pointer released is the value it commits, and it
+ * is told separately which nodes a remote decides (`planDragStop`).
  * @param flowNodes - The render buffer.
  * @param docNodes - The nodes as the document has them, mapped by `toFlowNode`.
  * @param remoteGesture - The nodes remote gestures are currently moving.

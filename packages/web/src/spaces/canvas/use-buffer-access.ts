@@ -59,8 +59,8 @@ export interface BufferAccess {
   resizedByRemote: () => ReadonlySet<string>;
   /**
    * The buffer as the canvas is drawing it this instant, in-flight geometry
-   * included. This is what the gesture field publishes, which is the one thing
-   * that is supposed to carry those coordinates.
+   * included. The gesture field publishes it, and the drag-stop judges a
+   * release against it — where the pointer aimed is what this screen drew.
    */
   onScreen: () => ReadonlyArray<Node>;
 }
@@ -77,9 +77,8 @@ export interface BufferAccess {
  * (#2010, design §5.7 and invariant 7).
  *
  * The buffer lives in here so that reading it means picking one of these by
- * name. Each of the three writing readings answers a different question, and
- * the fourth says in its own name that it is the screen rather than the
- * document.
+ * name. Each answers a different question, and the one that hands back the
+ * in-flight geometry says so in its own name.
  *
  * The refs are written in the commit phase, which is as early as React lets a
  * component observe its own render. A gesture callback runs inside the pointer

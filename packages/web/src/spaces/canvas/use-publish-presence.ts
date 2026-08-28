@@ -126,13 +126,13 @@ function samePoint(a: Point | null, b: Point | null): boolean {
 
 /**
  * Publish what this client is doing into awareness — the single writer of
- * `activeNodeIds` and `pointer`.
+ * `activeNodeIds`, `pointer` and `gesture`.
  *
  * Writes are rate-limited by {@link createPublishThrottle}: the frame folds
  * together a rubber-band drag, where the holding genuinely changes on every
  * pointer move and comparing values damps nothing, and the interval caps the
- * rate. Both fields go through the same limiter and land in one write, because
- * awareness resends the whole state whatever field you touch.
+ * rate. All three fields go through the same limiter and land in one write,
+ * because awareness resends the whole state whatever field you touch.
  *
  * The de-duplication compares against the values read back out of awareness
  * rather than a local copy, so a state removed from the outside reads as a
@@ -196,8 +196,8 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     const skip = !force.current && unchanged;
     force.current = false;
     if (skip) return;
-    // One write for both fields: awareness resends the whole state per field,
-    // so two writes would double the traffic to say one thing.
+    // One write for all of them: awareness resends the whole state per field,
+    // so writing them separately would send the same thing several times.
     awareness.setLocalState({ ...awareness.getLocalState(), ...next });
   }, [awareness]);
 

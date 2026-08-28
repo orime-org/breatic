@@ -342,10 +342,12 @@ export interface GroupResizeWrites {
  * exactly as the document already had it. That is the whole of what a resize
  * promises about members: it changes the Group's bounds and moves nothing.
  *
- * Every member is written, including one somebody else has hold of. Their
- * release writes over this; a gesture that ends without writing — a drag
- * ReactFlow never reported a stop for, a closed tab — leaves this as the only
- * value, which is the right one.
+ * A resize that moved the origin writes every member, including one somebody
+ * else has hold of. Their release writes over this; a gesture that ends
+ * without writing — a drag ReactFlow never reported a stop for, a closed tab —
+ * leaves this as the only value, which is the right one. An origin that did
+ * not travel leaves every stored position already correct, so that case writes
+ * no member at all.
  * @param docNodes - The nodes as the document has them.
  * @param groupId - The Group being resized.
  * @param startOrigin - Where the Group sat when the pointer went down.
