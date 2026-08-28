@@ -11,10 +11,19 @@
 
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
-import { checkoutSchema, paginationSchema } from "@server/routes/schemas.js";
+import {
+  checkoutSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
+  paymentHistoryQuerySchema,
+  idParamSchema,
+} from "@server/routes/schemas.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { requirePayments } from "@server/middleware/require-payments.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService } from "@server/modules";
+import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import { verifyWebhookSignature } from "@server/infra/stripe.js";
 import { logger } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
@@ -22,11 +31,12 @@ import { handleSubscriptionEvent } from "@server/modules/subscription/subscripti
 const payment = new Hono<{ Variables: AuthVariables }>();
 
 /**
- * `GET /payment/tiers` - list available credit purchase tiers.
+ * `GET /payment/tiers` — the credit packs on offer.
  *
- * Public pricing info for the frontend (no auth required).
+ * Behind auth: the buy screen is inside the account.
+ * @returns `200` with the packs.
  */
-payment.get("/tiers", async (c) => {
+payment.get("/tiers", requireAuth, async (c) => {
   const tiers = paymentService.listTiers();
   return c.json({ data: tiers });
 });
@@ -35,24 +45,94 @@ payment.get("/tiers", async (c) => {
 payment.post(
   "/checkout",
   requireAuth,
+  requirePayments,
+  rateLimitFor("payment-checkout", "user"),
   validate("json", checkoutSchema),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
-    const result = await paymentService.createCheckout(
-      user.id,
-      body.tier,
-      body.success_url,
-      body.cancel_url,
-    );
+    const result = await paymentService.createCheckout({
+      userId: user.id,
+      priceCents: body.price_cents,
+      returnUrl: body.return_url,
+      timeZone: body.time_zone,
+    });
     // Audit log moved from payment.service.ts per CLAUDE.md
     // "core and shared must not log" mandate (2026-05-27 PR
     // `feat/2026-05-27-collab-infra-resilience`).
     logger.info(
-      { userId: user.id, tier: body.tier, paymentId: result.paymentId },
+      { userId: user.id, priceCents: body.price_cents, paymentId: result.paymentId },
       "payment_checkout_session_created",
     );
-    return c.json({ data: result }, 201);
+    return c.json({ data: { url: result.url } }, 201);
+  },
+);
+
+/**
+ * `POST /payment/confirm` — the buyer is back from a payment.
+ *
+ * Settles the purchase there and then rather than waiting for the webhook,
+ * because a buyer standing in front of a full-screen wait should see their
+ * credits, not a spinner. The webhook still arrives and finds the work done.
+ * @returns `200` with what settling it did; `404` when the session names no
+ *   purchase of theirs.
+ */
+payment.post(
+  "/confirm",
+  requireAuth,
+  requirePayments,
+  rateLimitFor("payment-confirm", "user"),
+  validate("json", paymentConfirmSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { session_id: sessionId } = c.req.valid("json");
+    const outcome = await paymentService.confirmCheckout(user.id, sessionId);
+    logFulfillment(outcome, {
+      stripeSessionId: sessionId,
+      from: "confirm",
+      userId: user.id,
+    });
+    return c.json({ data: { status: outcome.status } });
+  },
+);
+
+/**
+ * `POST /payment/cancel` — the buyer pressed Back on the Stripe page.
+ *
+ * Expires the session so the purchase stops showing as in flight. Answers 200
+ * even when Stripe could not be reached: nothing the buyer holds is harmed,
+ * and reconciling picks the row up two minutes later.
+ * @returns `200` with where the purchase now stands; `404` when it is not
+ *   theirs.
+ */
+payment.post(
+  "/cancel",
+  requireAuth,
+  requirePayments,
+  rateLimitFor("payment-cancel", "user"),
+  validate("json", paymentCancelSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { payment_id: paymentId } = c.req.valid("json");
+    const result = await paymentService.cancelCheckout(user.id, paymentId);
+    if (result.settled !== null) {
+      // Pressing Back on a session that had in fact been paid settles it here,
+      // and no webhook or reconcile pass produces this outcome a second time.
+      logFulfillment(result.settled.outcome, {
+        stripeSessionId: result.settled.stripeSessionId,
+        from: "cancel",
+        userId: user.id,
+      });
+    }
+    if (result.failure !== null) {
+      // Answered 200 regardless: nothing the buyer holds is harmed, and
+      // reconciling reaches this row two minutes later.
+      logger.error(
+        { err: result.failure, userId: user.id, paymentId },
+        "payment_cancel_unsettled",
+      );
+    }
+    return c.json({ data: { status: result.status } });
   },
 );
 
@@ -75,9 +155,9 @@ payment.post("/webhook", async (c) => {
 
   // Subscriptions first: the membership leg has its own event types, its own
   // idempotency, and its own identification chain. It answers `notMine` only
-  // for events that are genuinely the credit-pack leg's — including the
-  // `checkout.session.completed` of a credit-pack session, which is the one
-  // type both legs receive.
+  // for events that are genuinely the credit-pack leg's — including the four
+  // Checkout Session types both legs receive, which nothing but the session's
+  // `mode` separates (`SHARED_SESSION_EVENT_TYPES`).
   const subscriptionOutcome = await handleSubscriptionEvent(event);
   if (subscriptionOutcome.status !== "notMine") {
     // A `noop` is logged at warn, not info: the two ways to reach it are an
@@ -108,36 +188,21 @@ payment.post("/webhook", async (c) => {
   const session = event.data.object as { id: string; payment_intent?: string };
 
   switch (event.type) {
-    case "checkout.session.completed": {
-      const outcome = await paymentService.handleCheckoutCompleted(
-        session.id,
-        typeof session.payment_intent === "string" ? session.payment_intent : undefined,
-      );
-      // Audit log moved from payment.service.ts (17B mandate).
-      // The discriminated outcome distinguishes the at-most-once
-      // CAS replay path from the real credit grant.
-      if (outcome.status === "replay") {
-        logger.info(
-          { stripeSessionId: session.id },
-          "payment_webhook_replay",
-        );
-      } else {
-        logger.info(
-          {
-            userId: outcome.userId,
-            credits: outcome.creditsGranted,
-            lotId: outcome.lotId,
-            stripeSessionId: session.id,
-          },
-          "payment_credits_granted",
-        );
-      }
+    case "checkout.session.completed":
+    case "checkout.session.async_payment_succeeded":
+    case "checkout.session.expired": {
+      const outcome = await paymentService.fulfillPayment(session.id, {
+        id: event.id,
+        type: event.type,
+      });
+      logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
       break;
     }
-    case "checkout.session.async_payment_failed":
-      await paymentService.handlePaymentFailed(session.id);
-      logger.info({ stripeSessionId: session.id }, "payment_failed");
+    case "checkout.session.async_payment_failed": {
+      const outcome = await paymentService.handlePaymentFailed(session.id);
+      logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
       break;
+    }
     default:
       break;
   }
@@ -145,25 +210,63 @@ payment.post("/webhook", async (c) => {
   return c.json({ received: true });
 });
 
-/** `GET /payment/history` - list the authenticated user's payments. */
+/**
+ * `GET /payment/history` — every purchase this account has made.
+ *
+ * Includes the ones that have not landed and the ones the buyer abandoned:
+ * this is the screen that answers "what happened to my money", and a purchase
+ * with no credits behind it yet is exactly the case that needs answering.
+ *
+ * No deployment gate. An install that sells nothing still opens this screen
+ * and shows an empty state, which is a thing to render rather than a 404.
+ * @returns `200` with one keyset page.
+ */
 payment.get(
   "/history",
   requireAuth,
-  validate("query", paginationSchema),
+  validate("query", paymentHistoryQuerySchema),
   async (c) => {
     const user = c.get("user");
-    const { limit, offset } = c.req.valid("query");
-    const list = await paymentService.listPayments(user.id, limit, offset);
-    return c.json({ data: list });
+    const { limit, cursor } = c.req.valid("query");
+    const data = await paymentService.getPurchaseHistory(user.id, limit, cursor);
+    return c.json({ data });
+  },
+);
+
+/**
+ * `POST /payment/:id/resend-confirmation` — send that letter again.
+ *
+ * Offered from the purchase history when the first send did not go out. The
+ * outbox claim is what makes five taps one letter.
+ * @returns `200` with whether a letter went out; `404` when the purchase is
+ *   not theirs.
+ */
+payment.post(
+  "/:id/resend-confirmation",
+  requireAuth,
+  requirePayments,
+  rateLimitFor("payment-resend", "user"),
+  validate("param", idParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { id: paymentId } = c.req.valid("param");
+    const sent = await paymentService.resendConfirmation(user.id, paymentId);
+    logger.info({ userId: user.id, paymentId, sent }, "purchase_mail_resent");
+    return c.json({ data: { sent } });
   },
 );
 
 /** `GET /payment/:id` - get a single payment by ID. */
-payment.get("/:id", requireAuth, async (c) => {
-  const user = c.get("user");
-  const id = c.req.param("id");
-  const result = await paymentService.getPayment(id, user.id);
-  return c.json({ data: result });
-});
+payment.get(
+  "/:id",
+  requireAuth,
+  validate("param", idParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const { id } = c.req.valid("param");
+    const result = await paymentService.getPayment(id, user.id);
+    return c.json({ data: result });
+  },
+);
 
 export { payment as paymentRoute };

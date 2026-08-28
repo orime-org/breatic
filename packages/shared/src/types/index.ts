@@ -32,6 +32,7 @@ export type {
 
 export type {
   CreditPage,
+  PurchaseRow,
   CreditLotView,
   StudioLotView,
   CreditLedgerKind,

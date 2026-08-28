@@ -19,6 +19,9 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
+  paymentHistoryQuerySchema,
   paginationSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
@@ -283,20 +286,11 @@ export const skillMarketQuerySchema = z.object({
 });
 
 /**
- * The conversation id in a path.
- *
- * Without it the id goes straight to a query, where PG rejects a malformed
- * uuid by throwing -- and nothing recognises that throw, so an input that
- * should read as "no such conversation" comes back as a 500 with an error-level
- * log behind it, which anyone can produce as fast as they can send requests.
- */
-export const conversationIdParamSchema = z.object({ id: z.string().uuid() });
-
-/**
  * Both ids in the attachment path.
  *
- * `aid` for the reason above -- it goes to a query. `cid` is not read by the
- * handler at all, and is declared here so that the path means what it says:
+ * `aid` for the reason `idParamSchema` gives -- it goes to a query. `cid` is
+ * not read by the handler at all, and is declared here so that the path
+ * means what it says:
  * an attachment named under a conversation that is not one is not a request
  * this route should be answering.
  */
@@ -343,5 +337,12 @@ export const designationSchema = z.object({
   studioId: z.string().uuid().nullable(),
 });
 
-/** A lot named in a path. Checked so a malformed id answers 422 rather than reaching the uuid column. */
-export const lotParamSchema = z.object({ id: z.string().uuid() });
+/**
+ * A uuid named in a path.
+ *
+ * Without it the id goes straight to a query, where PG rejects a malformed
+ * uuid by throwing -- and nothing recognises that throw, so an input that
+ * should read as "no such thing" comes back as a 500 with an error-level log
+ * behind it, which anyone can produce as fast as they can send requests.
+ */
+export const idParamSchema = z.object({ id: z.string().uuid() });

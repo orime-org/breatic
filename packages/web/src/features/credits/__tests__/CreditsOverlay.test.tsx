@@ -21,6 +21,16 @@ vi.mock('@web/data/api/credits', () => ({
   designateCreditLot: vi.fn(),
 }));
 
+const paymentHistory = vi.fn();
+vi.mock('@web/data/api/payment', () => ({
+  paymentApi: {
+    tiers: () => Promise.resolve({ packs: [], confirmTimeoutMs: 15000 }),
+    history: (...args: unknown[]) => paymentHistory(...args),
+    checkout: vi.fn(),
+    resendConfirmation: vi.fn(),
+  },
+}));
+
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => Promise.resolve([]) },
 }));
@@ -116,12 +126,12 @@ describe('CreditsOverlay', () => {
 
     await screen.findByTestId('credits-index');
     // The overview reads no paged endpoint.
-    expect(fetchCreditLots).not.toHaveBeenCalled();
+    expect(paymentHistory).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('tab', { name: /Purchases/ }));
 
     await waitFor(() => {
-      expect(fetchCreditLots).toHaveBeenCalled();
+      expect(paymentHistory).toHaveBeenCalled();
     });
     expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
       'aria-selected',

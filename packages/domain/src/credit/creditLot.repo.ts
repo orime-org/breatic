@@ -602,11 +602,24 @@ export async function setDesignation(
 
 /** What a lot's row carries beyond the lot itself. */
 export interface LotContext {
-  /** What was paid for it, in the smallest unit of `currency`. */
+  /**
+   * What the buyer paid for it, tax included, in the smallest unit of
+   * `currency`. The same figure the purchase history prints.
+   */
   paidCents: number;
   currency: string;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
+  /**
+   * Whether anything has ever been drawn from this purchase.
+   *
+   * Read off the ledger, not off the balance: a failed generation gives the
+   * credits back, so a purchase that has been spent from can carry its full
+   * count again. The refund rule turns on this fact rather than on the
+   * balance for that reason. Counts both ways of drawing on a purchase, a
+   * generation and the repayment of a studio's debt.
+   */
+  everSpent: boolean;
 }
 
 /**
@@ -631,11 +644,18 @@ export async function listLotsByUser(
   const rows = await db
     .select({
       lot: creditLots,
-      // What was really paid for it, which lives on the payment rather than the
-      // lot. Working it back from the credit count would not do: the price
-      // table gets replaced, and an old lot was bought at the price of its own
-      // day.
-      paidCents: payments.amountCents,
+      // What the buyer paid for it, tax included, which lives on the payment
+      // rather than the lot. Working it back from the credit count would not
+      // do: the price table gets replaced, and an old lot was bought at the
+      // price of its own day.
+      //
+      // `total_cents` is what Stripe worked out and is the figure the purchase
+      // history prints; a lot only exists on a purchase that landed, so it is
+      // set by the same statement that settled the payment. The face value
+      // stands in for the rare session Stripe gave no total for — and reading
+      // the face value everywhere is what made the same purchase show one
+      // figure here and another in the history.
+      paidCents: sql<number>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
       currency: payments.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed
@@ -649,6 +669,17 @@ export async function listLotsByUser(
       designatedStudioName: sql<
         string | null
       >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
+      // Whether anything was ever drawn from this purchase. The refund rule
+      // asks the ledger rather than the balance: a failed generation returns
+      // the credits, so a purchase spent from can be back at its full count.
+      // Both ways of drawing on it count — a generation and the repayment of
+      // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
+      // Served by `credit_ledger_lot_idx`.
+      everSpent: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${creditLedger}
+        WHERE ${creditLedger.lotId} = ${creditLots.id}
+          AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
+      )`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -681,6 +712,7 @@ export async function listLotsByUser(
     paidCents: row.paidCents,
     currency: row.currency,
     designatedStudioName: row.designatedStudioName,
+    everSpent: row.everSpent,
     cursorAt: row.cursorAt,
   }));
 }
@@ -732,11 +764,16 @@ export async function listLotsByStudio(
 
 
 /**
- * The two entry types an account's ledger reports.
+ * The two entry types that take credits out of a purchase.
  *
  * A debt is neither: it names no payer, because at the moment it is recorded
  * nobody has paid it. It is paid later, and that payment is the repayment row
  * below.
+ *
+ * Read twice: an account's ledger reports these two lines, and `everSpent`
+ * asks whether either has ever touched a purchase. Both questions are the
+ * same one — what has been drawn on this account's purchases — so they read
+ * one list.
  */
 const SPENDING_ENTRY_TYPES: readonly CreditLedgerEntryType[] = [
   "spend",

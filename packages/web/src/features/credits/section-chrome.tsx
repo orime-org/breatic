@@ -5,7 +5,6 @@ import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
-import { Badge } from '@web/components/ui/badge';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -84,13 +83,19 @@ interface SectionEmptyProps {
 export function SectionEmpty({
   message,
 }: SectionEmptyProps): React.JSX.Element {
-  return <p className='text-sm text-muted-foreground'>{message}</p>;
+  return (
+    <p data-testid='credits-empty' className='text-sm text-muted-foreground'>
+      {message}
+    </p>
+  );
 }
 
 /** A line explaining what is above it. */
 interface FootnoteProps {
   /** The explanation. */
   children: React.ReactNode;
+  /** A hook for tests to name this particular line. */
+  'data-testid'?: string;
 }
 
 /**
@@ -101,10 +106,52 @@ interface FootnoteProps {
  * reader of this code should not have to work out which is meant.
  * @param props - The explanation.
  * @param props.children - The explanation.
+ * @param props.'data-testid' - A hook for tests to name this particular line.
  * @returns The line.
  */
-export function Footnote({ children }: FootnoteProps): React.JSX.Element {
-  return <p className='text-sm text-muted-foreground'>{children}</p>;
+export function Footnote({
+  children,
+  'data-testid': testId,
+}: FootnoteProps): React.JSX.Element {
+  return (
+    <p className='text-sm text-muted-foreground' data-testid={testId}>
+      {children}
+    </p>
+  );
+}
+
+/** The sentences of a rule, and a name for tests to reach them by. */
+interface RuleLinesProps {
+  /** The sentences, in the order they were handed over. */
+  lines: readonly string[];
+  /** A hook for tests to name this particular block. */
+  'data-testid'?: string;
+}
+
+/**
+ * A rule, one sentence per line.
+ *
+ * Its own shape rather than {@link Rows}: those put a label left and a figure
+ * right and rule off between them, which under prose draws a line through the
+ * middle of a paragraph and pulls each sentence toward opposite edges.
+ * @param props - The sentences and the hook.
+ * @param props.lines - The sentences, in order.
+ * @param props.'data-testid' - A hook for tests to name this block.
+ * @returns The lines.
+ */
+export function RuleLines({
+  lines,
+  'data-testid': testId,
+}: RuleLinesProps): React.JSX.Element {
+  return (
+    <ul data-testid={testId} className='flex list-none flex-col gap-1.5'>
+      {lines.map((line) => (
+        <li key={line} className='text-sm text-muted-foreground'>
+          {line}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /** A bordered block, and what is in it. */
@@ -187,6 +234,8 @@ interface RowProps {
   sub?: React.ReactNode;
   /** What sits at the right end: a figure, a control, or nothing. */
   right?: React.ReactNode;
+  /** A hook for tests to name this particular row. */
+  'data-testid'?: string;
 }
 
 /**
@@ -198,11 +247,20 @@ interface RowProps {
  * @param props.main - The row's first line.
  * @param props.sub - Its second, quieter line.
  * @param props.right - What sits at the right end.
+ * @param props.'data-testid' - A hook for tests to name this particular row.
  * @returns The row.
  */
-export function Row({ main, sub, right }: RowProps): React.JSX.Element {
+export function Row({
+  main,
+  sub,
+  right,
+  'data-testid': testId,
+}: RowProps): React.JSX.Element {
   return (
-    <li className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0'>
+    <li
+      data-testid={testId}
+      className='flex items-baseline gap-3 border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0'
+    >
       <span className='min-w-0'>
         <span className='text-sm'>{main}</span>
         {sub === undefined ? null : (
@@ -243,6 +301,8 @@ interface NoticeProps {
    * the amber fill; anything merely informative stays neutral.
    */
   tone?: 'warning' | 'info';
+  /** A hook for tests to name this particular block. */
+  'data-testid'?: string;
 }
 
 /**
@@ -251,15 +311,18 @@ interface NoticeProps {
  * @param props.title - Its first line.
  * @param props.body - The explanation under it.
  * @param props.tone - Whether something needs doing.
+ * @param props.'data-testid' - A hook for tests to name this particular block.
  * @returns The block.
  */
 export function Notice({
   title,
   body,
   tone = 'warning',
+  'data-testid': testId,
 }: NoticeProps): React.JSX.Element {
   return (
     <div
+      data-testid={testId}
       className={cn(
         'rounded-content-sm border px-3 py-2.5 text-sm',
         tone === 'warning'
@@ -324,50 +387,6 @@ export function formatMoney(cents: number, currency: string): string {
     style: 'currency',
     currency: currency.toUpperCase(),
   });
-}
-
-/**
- * What unspent credits are worth, in the currency they were bought with.
- *
- * A credit is one US cent. The code comes from the payment the purchase was
- * made on, and `payments.currency` defaults to `usd` with no checkout writing
- * anything else, so this rate holds for every row that can reach it. A second
- * currency needs a rate per currency, not this constant applied to it.
- * @param credits - The credits left on the purchase.
- * @param currency - The purchase's ISO 4217 code.
- * @returns What they are worth, formatted.
- */
-export function formatRefundable(credits: number, currency: string): string {
-  const US_CENTS_PER_CREDIT = 1;
-  return formatMoney(credits * US_CENTS_PER_CREDIT, currency);
-}
-
-/** The lifecycle to name. */
-interface LotBadgeProps {
-  /** The purchase's lifecycle. */
-  lifecycle: string;
-}
-
-/**
- * What state a purchase is in, when that is worth saying.
- *
- * An active purchase with credits left carries no badge: that is the ordinary
- * case, and a badge on every row says nothing.
- * @param props - The lifecycle.
- * @param props.lifecycle - The purchase's lifecycle.
- * @returns The badge, or nothing.
- */
-export function LotBadge({ lifecycle }: LotBadgeProps): React.JSX.Element | null {
-  const t = useTranslation();
-  if (lifecycle === 'active') return null;
-  return (
-    <Badge
-      variant={lifecycle === 'refunded' ? 'destructive' : 'secondary'}
-      className='ml-2 align-middle'
-    >
-      {t(`credits.lifecycle.${lifecycle}`)}
-    </Badge>
-  );
 }
 
 /** Where a list ends, and whether more is coming. */
