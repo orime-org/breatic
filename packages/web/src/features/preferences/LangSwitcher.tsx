@@ -61,18 +61,13 @@ export function LangSwitcher(): React.JSX.Element {
         className='w-44 p-1'
         data-testid='lang-popover'
       >
-        <div className='flex flex-col gap-1'>
+        <div className='flex flex-col gap-0.5'>
           {langs.map((l) => (
             <Button
               key={l.code}
               variant='ghost'
               size='menu-item'
-              className={cn(
-                'justify-start',
-                // The picked row sits one step past hover in the same
-                // direction, so hovering it never washes the mark away.
-                locale === l.code && 'bg-active-fill hover:bg-active-fill',
-              )}
+              className={cn('justify-start', locale === l.code && 'bg-accent')}
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}
             >

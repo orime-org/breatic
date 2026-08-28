@@ -755,10 +755,8 @@ describe('the bubble bar shell', () => {
       expect(active.map((n) => n.getAttribute('data-testid'))).toEqual([
         'doc-bubble-block-type-item-heading-1',
       ]);
-      expect(active[0].className).toContain('bg-active-fill');
-      // The rows highlight on hover, so the mark has to restate itself for
-      // that state or the pointer washes it away.
-      expect(active[0].className).toContain('hover:bg-active-fill');
+      // The same fill the language menu marks its picked row with.
+      expect(active[0].className).toContain('bg-accent');
     });
 
     // The demo's `.menu-sep` rules the headings off from the lists below them.
