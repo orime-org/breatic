@@ -151,6 +151,18 @@ for (const theme of ['light', 'dark'] as const) {
       // sends it; nothing here holds a copy to fall back on, so an empty
       // label would mean the buyer is ticking a blank.
       const consentLabel = tick.closest('label')?.textContent ?? '';
+      // Preflight's `strong { font-weight: bolder }` is relative to whatever
+      // weight it inherits. Read once as it stands, and once under a heavier
+      // parent: an absolute weight answers the same both times.
+      const stressed = tick.closest('label')?.querySelector('strong') ?? null;
+      const label = tick.closest('label') as HTMLElement | null;
+      const weightAsIs = stressed ? getComputedStyle(stressed).fontWeight : '';
+      const parentWeight = label?.style.fontWeight ?? '';
+      if (label) label.style.fontWeight = '600';
+      const weightUnderHeavierParent = stressed
+        ? getComputedStyle(stressed).fontWeight
+        : '';
+      if (label) label.style.fontWeight = parentWeight;
 
       return {
         // Asserted below. Without it the run reads exactly the same whether
@@ -175,6 +187,8 @@ for (const theme of ['light', 'dark'] as const) {
           (li) => getComputedStyle(li).borderTopWidth !== '0px',
         ).length,
         consentLabel: consentLabel.trim(),
+        stressedWeight: weightAsIs,
+        stressedWeightUnderHeavierParent: weightUnderHeavierParent,
       };
     });
 
@@ -195,6 +209,8 @@ for (const theme of ['light', 'dark'] as const) {
     // The stored wording marks its stressed clause with `**`. Rendered as
     // characters, the buyer reads asterisks in the middle of it.
     expect(measured.consentLabel).not.toContain('*');
+    expect(measured.stressedWeight).toBe('700');
+    expect(measured.stressedWeightUnderHeavierParent).toBe('700');
   });
 }
 

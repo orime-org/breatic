@@ -214,11 +214,14 @@ describe('the confirmation before paying', () => {
     expect(label!.textContent).toBe(
       'I ask for the credits right away, and once I use any of them this purchase can no longer be refunded. Unused credits are refunded in full within 30 days.',
     );
-    expect(
-      within(label!).getByText(
-        'once I use any of them this purchase can no longer be refunded',
-      ).tagName,
-    ).toBe('STRONG');
+    const stressed = within(label!).getByText(
+      'once I use any of them this purchase can no longer be refunded',
+    );
+    expect(stressed.tagName).toBe('STRONG');
+    // Preflight ships `strong { font-weight: bolder }`, and `bolder` steps up
+    // from the inherited weight. Pinned, the way the two other renderers of
+    // this same markup pin it (`index.css` for the document body and the chat).
+    expect(stressed.className).toContain('font-bold');
   });
 
   it('tells the server the consent was given', async () => {

@@ -33,6 +33,13 @@ const EMPHASIS = /\*\*(.+?)\*\*/g;
  *
  * Split rather than set as markup: the sentence is ours, but putting any
  * string into the DOM as HTML is a habit this codebase does not keep.
+ *
+ * The weight is pinned. Preflight ships `strong { font-weight: bolder }`, and
+ * `bolder` steps up from the inherited weight, so the same mark lands on a
+ * different weight depending on what it sits inside — measured here as 900
+ * under a 600 parent, while the repository's own scale stops at 700. The two
+ * other renderers of this markup pin it the same way (`index.css`, for the
+ * document body and the chat).
  * @param text - The stored wording, as the server hands it over.
  * @returns The words, with the stressed clause in `<strong>`.
  */
@@ -42,7 +49,9 @@ function withEmphasis(text: string): React.ReactNode[] {
     index % 2 === 0 ? (
       part
     ) : (
-      <strong key={`${String(index)}-${part}`}>{part}</strong>
+      <strong className='font-bold' key={`${String(index)}-${part}`}>
+        {part}
+      </strong>
     ),
   );
 }
