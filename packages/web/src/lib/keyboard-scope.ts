@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { isEditableTarget } from '@web/lib/is-editable-target';
 import { type ActiveRegion, useUIStore } from '@web/stores/ui';
 
 /**
@@ -41,7 +40,6 @@ export function regionOwnsKeyboard(
   region: ActiveRegion,
 ): boolean {
   if (!(target instanceof Element)) return false;
-  if (isEditableTarget(target)) return false;
   if (regionOf(target) === null && target !== document.body) return false;
 
   return useUIStore.getState().activeRegion === region;

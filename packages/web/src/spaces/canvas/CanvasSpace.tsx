@@ -1154,6 +1154,9 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // The key has a native meaning inside a field, so a caret there
+      // keeps it.
+      if (isEditableTarget(event.target as Element | null)) return;
       const action = matchHistoryShortcut(event);
       if (!action) return;
       event.preventDefault();
@@ -2560,6 +2563,9 @@ function CanvasSpaceInner({
      */
     const onPaste = (event: ClipboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // The key has a native meaning inside a field, so a caret there
+      // keeps it.
+      if (isEditableTarget(event.target as Element | null)) return;
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
@@ -2633,6 +2639,7 @@ function CanvasSpaceInner({
       // outlets read, and it answers the same question here: an overlay or the
       // top bar is handling this press itself, and otherwise the region does.
       if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
+      if (isEditableTarget(document.activeElement)) return;
       const clipboardNodes = captureClipboardWithText(
         flowNodesRef.current
           .filter((node) => node.selected)
@@ -2769,6 +2776,9 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // The key has a native meaning inside a field, so a caret there
+      // keeps it.
+      if (isEditableTarget(event.target as Element | null)) return;
       // Always swallow a group / ungroup chord on the canvas so the browser's
       // native Cmd+G (find-again) can't fire — even when it doesn't apply to the
       // current selection (group mixed with loose nodes → no-op, B decision).
@@ -2901,6 +2911,9 @@ function CanvasSpaceInner({
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // The key has a native meaning inside a field, so a caret there
+      // keeps it.
+      if (isEditableTarget(event.target as Element | null)) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
       duplicateSelection();
@@ -2931,6 +2944,9 @@ function CanvasSpaceInner({
         return;
       }
       if (readOnly || !regionOwnsKeyboard(event.target, 'space')) return;
+      // The key has a native meaning inside a field, so a caret there
+      // keeps it.
+      if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (event.repeat) return;
       const { nodes, edges } = rfStoreApi.getState();

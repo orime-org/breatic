@@ -37,23 +37,24 @@ describe('regionOwnsKeyboard', () => {
     expect(regionOwnsKeyboard(document, 'space')).toBe(false);
   });
 
-  describe('an editable target keeps its own keys', () => {
-    it('is false for an input inside the active region', () => {
-      expect(regionOwnsKeyboard(inRegion('space', 'input'), 'space')).toBe(
-        false,
-      );
+  // Whether a field keeps the press depends on the key — Cmd+Z in a text box
+  // is the box's own undo, while Escape there belongs to whoever put the box
+  // on screen — so the outlets answer that one and this reports the region.
+  describe('a field inside the region is still inside the region', () => {
+    it('is true for an input inside the active region', () => {
+      expect(regionOwnsKeyboard(inRegion('space', 'input'), 'space')).toBe(true);
     });
 
-    it('is false for a textarea inside the active region', () => {
+    it('is true for a textarea inside the active region', () => {
       expect(regionOwnsKeyboard(inRegion('space', 'textarea'), 'space')).toBe(
-        false,
+        true,
       );
     });
 
-    it('is false for a contenteditable element inside the active region', () => {
+    it('is true for a contenteditable element inside the active region', () => {
       const el = inRegion('space', 'div');
       Object.defineProperty(el, 'isContentEditable', { value: true });
-      expect(regionOwnsKeyboard(el, 'space')).toBe(false);
+      expect(regionOwnsKeyboard(el, 'space')).toBe(true);
     });
   });
 

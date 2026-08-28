@@ -217,6 +217,9 @@ function dispatchPaste(text: string): void {
  * not make the first Generate of a session wait. A bare mount would throw
  * "No QueryClient set". A fresh client per mount keeps one test's cached
  * catalog out of the next one.
+ * The region root is the wrapper ProjectPage puts around the space column, and
+ * the keyboard gate reads it: without it every press here resolves through the
+ * `<body>` branch instead of the in-region branch the app runs.
  * @param readOnly - Mount the space in its read-only form.
  * @returns The render result.
  */
@@ -226,7 +229,9 @@ function renderSpace(readOnly = false): ReturnType<typeof render> {
   });
   return render(
     <QueryClientProvider client={client}>
-      <CanvasSpace projectId='p' spaceId='s' readOnly={readOnly} />
+      <div data-region='space'>
+        <CanvasSpace projectId='p' spaceId='s' readOnly={readOnly} />
+      </div>
     </QueryClientProvider>,
   );
 }
@@ -1597,6 +1602,42 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose exits on
   // Escape with the same guard set — reference and style had no listener at
   // all (only focus did), so their banners showed Exit but Esc was dead.
+  // The generate panel stays on screen for the whole pick session and its
+  // prompt box is a contenteditable inside the space column. Escape has no
+  // native behaviour there for the field to keep, so abandoning the pick from
+  // the prompt box is the same press as abandoning it from the board.
+  it('Escape exits a pick session from the prompt box inside the space', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'image',
+            position: { x: 0, y: 0 },
+            data: { kind: 'image', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    const prompt = document.createElement('div');
+    Object.defineProperty(prompt, 'isContentEditable', { value: true });
+    (document.querySelector('[data-region="space"]') as HTMLElement).append(
+      prompt,
+    );
+    try {
+      act(() => {
+        fireEvent.keyDown(prompt, { key: 'Escape' });
+      });
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+    } finally {
+      prompt.remove();
+    }
+  });
+
   it('Escape exits a REFERENCE pick session (was silently dead — #8)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
@@ -3752,10 +3793,77 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
       });
 
+      // Each of these keys has a native meaning inside a field: Backspace
+      // deletes a character, Cmd+Z undoes the typing, Cmd+D and Cmd+G are the
+      // browser's own. The field sits in the space region, so the region hands
+      // the press over and the field is what keeps the canvas out.
+      describe('a field inside the space keeps the keys it owns', () => {
+        /**
+         * Puts a focused text box inside the space column.
+         * @returns The focused input.
+         */
+        const fieldInSpace = (): HTMLInputElement => {
+          const field = document.createElement('input');
+          (
+            document.querySelector('[data-region="space"]') as HTMLElement
+          ).append(field);
+          attached.push(field);
+          field.focus();
+          return field;
+        };
+
+        it('the delete key removes nothing', async () => {
+          mountWithSelection();
+          const { removeElements } = spyWrites();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'Backspace' });
+          await new Promise((r) => setTimeout(r, 30));
+          expect(removeElements).not.toHaveBeenCalled();
+        });
+
+        it('undo leaves the document alone', () => {
+          mountWithSelection();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'z', metaKey: true });
+          expect(undoSpy).not.toHaveBeenCalled();
+        });
+
+        it('the duplicate shortcut creates no clone', async () => {
+          mountWithSelection();
+          const { addNode } = spyWrites();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'd', metaKey: true });
+          await new Promise((r) => setTimeout(r, 30));
+          expect(addNode).not.toHaveBeenCalled();
+        });
+
+        it('the group shortcut creates no group', async () => {
+          mountWithSelection(2);
+          const { createGroup } = spyWrites();
+          const field = fieldInSpace();
+          fireEvent.keyDown(field, { key: 'g', metaKey: true });
+          await new Promise((r) => setTimeout(r, 30));
+          expect(createGroup).not.toHaveBeenCalled();
+        });
+
+        it('paste creates no node', async () => {
+          mountWithSelection();
+          const { addNode } = spyWrites();
+          fieldInSpace();
+          dispatchPaste('hello from clipboard');
+          await new Promise((r) => setTimeout(r, 30));
+          expect(addNode).not.toHaveBeenCalled();
+        });
+      });
+
+      // The field sits in the space region, so the region has no quarrel with
+      // this press — what keeps the canvas out is the field itself.
       it('copy leaves the clipboard alone with focus inside a field', () => {
         mountWithSelection();
         const field = document.createElement('input');
-        document.body.append(field);
+        (document.querySelector('[data-region="space"]') as HTMLElement).append(
+          field,
+        );
         attached.push(field);
         field.focus();
         expect(copyAndRead()).toBe('');
