@@ -221,6 +221,10 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、一条 socket 承载多少文档。**单文档并发可写连接数上限不在这里**——它来自档位,见 `config/membership.yaml` 的 `concurrent_editors` |
 | `config/pricing.yaml` | 积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID) |
+| `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位的月费 + test/live Stripe Price ID + 订阅状态过期判据 + 问 Stripe 现状的超时。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
+| `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。加载器 `packages/core/src/config/membership.ts` |
+| `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)`;**key 维度(IP 还是 user)按 action 写死在代码里**,只有次数进 yaml |
+| `config/storage.yaml` | 浏览器直传与头像:上传大小上限、客户端重试次数与超时、presigned URL 过期时长、头像大小上限。加载器 `packages/core/src/config/storage.ts` |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |
