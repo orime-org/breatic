@@ -271,6 +271,46 @@ describe("POST /payment/confirm — the buyer came back from a payment", () => {
     }
   });
 
+  it("writes down a charge that disagrees with the price table", async () => {
+    const buyer = await seedBuyer();
+    const { paymentId, sessionId } = await seedPending(buyer.userId);
+    // `stripe_price_id` is a hand-typed string in the price file with nothing
+    // tying it to the amount behind it in Stripe. Typed into the wrong row,
+    // every buyer of that tier pays one figure while we record another and
+    // grant a third — and the checkout page shows Stripe's, so nothing looks
+    // wrong from where the buyer stands. The line this asserts is the only
+    // thing that notices, and `amount_cents` is what a refund is paid from.
+    stripe.checkout.sessions.retrieve.mockResolvedValue({
+      ...paidSession(sessionId),
+      amount_subtotal: 4700,
+    });
+    try {
+      const res = await app.request("/api/v1/payment/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: buyer.cookie },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.status).toBe("mismatch");
+      expect(await statusOf(paymentId)).toBe("pending");
+      expect(
+        await sql`SELECT id FROM credit_lots WHERE user_id = ${buyer.userId}`,
+      ).toHaveLength(0);
+
+      const line = logged.find((l) => l.line === "payment_amount_mismatch");
+      expect(line).toBeDefined();
+      // Both figures, so the price table can be compared against Stripe
+      // without opening either.
+      expect(line?.ctx).toMatchObject({
+        expectedCents: 2000,
+        chargedCents: 4700,
+        stripeSessionId: sessionId,
+      });
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
   it("answers the same way when the webhook already did the work", async () => {
     const buyer = await seedBuyer();
     const { paymentId, sessionId } = await seedPending(buyer.userId, {
