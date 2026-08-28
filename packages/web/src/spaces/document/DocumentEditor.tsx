@@ -69,9 +69,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         />
       </ScrollArea>
       {/* A sibling here, inside the scroller's viewport at runtime: the bar
-          portals itself there so it scrolls with the line it points at, and
-          the viewport's own overflow is what takes it away when that line
-          leaves. */}
+          portals itself there, so the viewport's own overflow is what takes it
+          away once it has been carried out of sight. Over a select-all it is
+          pinned to the pointer and stays put instead (E2). */}
       <SelectionBubbleBar editor={editor} readOnly={readOnly} />
     </div>
   );

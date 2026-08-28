@@ -230,15 +230,22 @@ function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
  * anchor is that end — `head` is where the drag has reached, `anchor` where it
  * began.
  *
- * A select-all anchors at 0, which resolves to the document node rather than
- * to any text block. Its anchor end is where the document starts, so the walk
- * below takes the first block it covers.
+ * The anchor answers only where it resolves inside a text block, which a text
+ * selection guarantees and the other two shapes do not: a select-all anchors
+ * at 0, and a node selection at the position BEFORE the node it picked, both
+ * of which resolve into whatever HOLDS the selection. Asking either for its
+ * wrappers answers for an ancestor — over a list inside a quote, for the
+ * quote. Those fall to the walk, which takes the first block covered: the
+ * document's first for a select-all, the picked node's own content for a node
+ * selection.
  * @param editor - The editor.
  * @returns The current block type.
  */
 export function currentBlockType(editor: Editor): BlockTypeId {
   const { doc, selection } = editor.state;
-  const anchored = blockTypeAt(doc, selection.anchor);
+  const anchored = doc.resolve(selection.anchor).parent.isTextblock
+    ? blockTypeAt(doc, selection.anchor)
+    : null;
   if (anchored !== null) return anchored;
   let first: BlockTypeId | null = null;
   doc.nodesBetween(selection.from, selection.to, (node, pos) => {

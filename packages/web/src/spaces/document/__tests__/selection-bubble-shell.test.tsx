@@ -373,6 +373,34 @@ describe('the bubble bar shell', () => {
     });
   });
 
+  // An open menu is why the bar stays through a blur — the reader is working
+  // in it, not gone. Once it closes that reason is spent, and nothing else
+  // arrives to say so: a blur carries no transaction, and the reader who left
+  // sends no further events.
+  it('takes the bar away once the last menu closes after a blur', async () => {
+    const editor = open('<p>the quick brown fox</p>');
+    mount(editor);
+    await selectWithFocus(editor, 1, 10);
+    await hoverOpen('doc-bubble-block-type');
+
+    act(() => {
+      editor.view.dom.blur();
+      editor.emit('blur', {
+        editor,
+        event: new FocusEvent('blur'),
+        transaction: editor.state.tr,
+      });
+    });
+    expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerLeave(screen.getByTestId('doc-bubble-block-type-zone'));
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
+    });
+  });
+
   describe('controls whose command nobody has written yet', () => {
     /**
      * They look and behave the way the demo draws them — the alignment rows,

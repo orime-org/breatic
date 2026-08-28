@@ -842,6 +842,14 @@ function BubbleBar({
   // with itself. Measured: pressing edit inside the link panel put the whole
   // panel out of the document.
   overlayOpenRef.current = openMenu !== null || panelOpen;
+  // An open overlay is the reason the bar stays through a blur. Once the last
+  // one closes that reason is spent, and nothing else arrives to say so: a
+  // blur carries no transaction, and a reader who has left sends no further
+  // events. So closing the last one is itself a moment to re-ask.
+  const overlayOpen = overlayOpenRef.current;
+  React.useEffect(() => {
+    if (!overlayOpen) setWarranted(shouldShow({ view: editor.view }));
+  }, [overlayOpen, editor, shouldShow]);
   const setMenuOpen = React.useCallback((id: string, open: boolean): void => {
     setOpenMenu((current) => {
       if (open) return id;

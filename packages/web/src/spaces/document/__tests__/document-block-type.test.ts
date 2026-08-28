@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Editor } from '@tiptap/react';
-import { AllSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -78,5 +78,26 @@ describe('currentBlockType', () => {
     selectAll(editor);
 
     expect(currentBlockType(editor)).toBe('heading-1');
+  });
+
+  // Cmd+click (Ctrl elsewhere) selects the node under the pointer and steps
+  // outward on each further click (`prosemirror-view:3338`, `:3397`). Such a
+  // selection anchors at the position BEFORE the node, which resolves into
+  // whatever holds it — so asking the anchor for its wrappers answers for the
+  // ancestors rather than for the node the reader picked.
+  it.each([
+    ['bullet-list', '<blockquote><ul><li><p>the text</p></li></ul></blockquote>', 'bulletList'],
+    ['ordered-list', '<ul><li><p>a</p><ol><li><p>b</p></li></ol></li></ul>', 'orderedList'],
+  ])('names %s for a node selection on that list', (blockType, body, nodeName) => {
+    const editor = open(body);
+    let at = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.type.name === nodeName) at = pos;
+      return true;
+    });
+    const { doc: d, tr } = editor.state;
+    editor.view.dispatch(tr.setSelection(NodeSelection.create(d, at)));
+
+    expect(currentBlockType(editor)).toBe(blockType);
   });
 });

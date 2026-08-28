@@ -13,10 +13,12 @@
  * are drawn the way the demo draws them and write a line to the console when
  * pressed, the menu closing after them either way (user 2026-08-27).
  *
- * Two things carry the greyed treatment `document-coming-tool.tsx` defines,
- * both for a reason of their own: the task list row, which has no schema node
- * to turn anything into (demo:588, #13), and the alignment slot over a
- * selection alignment does not reach (A7).
+ * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
+ * each for a reason of its own: the task list row, which has no schema node to
+ * turn anything into (demo:588, #13); the alignment slot over a selection
+ * alignment does not reach (A7); and a block row whose own dry run reaches
+ * nothing where the selection sits (#85) — the only one of the three that
+ * moves with the selection.
  */
 
 import * as React from 'react';
@@ -114,6 +116,9 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  * The colour panel is not rows — its spacing comes from the demo.
  */
 const ROWS = 'flex flex-col gap-1';
+
+/** The colour panel's own group label, at demo:236-238's size and colour. */
+const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
 
 /**
  * One slot: an opener that ends in a chevron, and the menu it opens.
@@ -416,9 +421,9 @@ export const ColorSlot = React.memo(function ColorSlot({
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      <BubbleMenuHeading>
+      <div className={COLOUR_GROUP_LABEL}>
         {t('spaces.document.commands.textColor')}
-      </BubbleMenuHeading>
+      </div>
       <div className='flex gap-1.5 px-2 pb-3.5'>
         {/* The default sits first and reads as the one in force, since nothing
             has coloured the text (demo:665). */}
@@ -455,10 +460,10 @@ export const ColorSlot = React.memo(function ColorSlot({
           </Button>
         ))}
       </div>
-      <BubbleMenuHeading>
+      <div className={COLOUR_GROUP_LABEL}>
         {t('spaces.document.commands.fillColor')}
-      </BubbleMenuHeading>
-      <div className='flex gap-1.5 px-2 pb-1'>
+      </div>
+      <div className='flex gap-1.5 px-2 pb-3.5'>
         {/* No background, drawn as the struck-through cell demo:252-260 draws,
             and likewise the one in force. */}
         <Button
