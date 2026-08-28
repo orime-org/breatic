@@ -2,28 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 选中浮出条（任务 #112，菜单体系第 4 步）。
+ * The selection bubble bar (task #112, step 4 of the menu system).
  *
- * 载体是 #112 建的，当时零新命令，核心问题只有一个：**把命令搬进新载体之后，
- * 在那儿按下去，文档真的变了吗**。#902 给条加了下划线和行内代码，条上现在是
- * 八个命令加两个还没开放的入口。设计对抗（2026-08-19）
- * 咬出初版验收清单十条里没有一条验证这件事——`canRun` 只决定按钮亮不亮，
- * `run` 是 `ToolDef` 上另一个字段，复用 `canRun` 一个字都没覆盖它；而且点击
- * 发生在编辑器 DOM 之外（浮出条走 `appendTo` 挂出滚动容器），要靠 bubble-menu
- * 自己的焦点豁免兜住，那恰恰是本次新引入的一层。
+ * #112 built the carrier with no new command of its own, so the one question
+ * that mattered was: ONCE A COMMAND MOVES INTO THE NEW CARRIER, DOES PRESSING
+ * IT THERE REALLY CHANGE THE DOCUMENT? #902 added underline and inline code,
+ * and the bar now carries six commands, four menus and one entry not open yet. The
+ * design adversarial round (2026-08-19) found that not one of the first ten
+ * acceptance items covered this — `canRun` only decides whether a button
+ * lights up, `run` is a different field on `ToolDef`, and reusing `canRun`
+ * covers none of it. The press also lands outside the editor's own DOM, which
+ * is the layer this carrier newly introduced.
  *
- * testid 带载体前缀（`doc-bubble-tool-*`）：#112 那时横条和条同时渲染同一批
- * `ToolDef`，不带前缀每个 id 会各出现两份，让 `DocumentEditor.test.tsx` 的
- * `getByTestId`（多个匹配即抛错）当场变红。横条 2026-08-22 删了，前缀留着是
- * 为 #113 的块手柄菜单，理由写在 `document-tool-button.tsx` 的模块注释里
- * （前缀是在那儿拼出来的）。
+ * The test ids carry a carrier prefix (`doc-bubble-tool-*`): back in #112 a
+ * toolbar and this bar rendered the same `ToolDef`s, so an unprefixed id named
+ * two buttons and `DocumentEditor.test.tsx`'s `getByTestId` (which throws on
+ * more than one match) went red. The toolbar went in 2026-08-22; the prefix
+ * stays for #113's block handle menu, for the reason written in
+ * `document-tool-button.tsx`'s module comment, where the prefix is built.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
-import type { EditorView } from '@tiptap/pm/view';
-import type { EditorState } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -31,8 +32,11 @@ import { buildDocumentExtensions } from '@web/spaces/document/document-extension
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
+  bubbleAnchorRect,
+  pinnedScreenPoint,
+} from '@web/spaces/document/SelectionBubbleBar';
+import {
   MARK_TOOLS,
-  BLOCK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 
@@ -49,15 +53,16 @@ afterEach(() => {
     e.destroy();
   });
   doc.destroy();
-  // 还原 `pinSelectionBox` 打在 `Range.prototype` 上的桩。不还原就会漏给同一个
-  // jsdom 里之后跑的每一个文件（`singleFork`，环境只建一次）。
+  // Restore the stub `pinSelectionBox` puts on `Range.prototype`. Left in
+  // place it leaks into every file that runs after it in the same jsdom
+  // (`singleFork` builds the environment once).
   vi.restoreAllMocks();
 });
 
 /**
- * 一个装着给定正文的真编辑器，绑在真 Y.Doc 上。
- * @param bodyHtml - 正文 HTML。
- * @returns 编辑器。
+ * A real editor holding the given body, bound to a real Y.Doc.
+ * @param bodyHtml - The body's HTML.
+ * @returns The editor.
  */
 function open(bodyHtml: string): Editor {
   const editor = new Editor({
@@ -69,15 +74,14 @@ function open(bodyHtml: string): Editor {
 }
 
 /**
- * 选中一段文字，并让编辑器真的持有焦点。
+ * Select a run of text, with the editor really holding the focus.
  *
- * 焦点不是可有可无的布置：bubble-menu 默认的 `shouldShow` 第一个条件就是
- * `view.hasFocus()`（`dist/index.js:72-73`），不满足就不调 `show()`；而那个
- * 浮出条元素是在 `show()` 里才 `appendChild` 进 DOM 的（`:366-367`）。没有
- * 焦点，它一辈子不在 document 里，任何查询都落空。
- * @param editor - 编辑器。
- * @param from - 选区起点。
- * @param to - 选区终点。
+ * The focus is not decoration: the first of the bar's conditions is that the
+ * editor holds it, and without it the bar never enters the document at all, so
+ * every query comes back empty.
+ * @param editor - The editor.
+ * @param from - Where the selection starts.
+ * @param to - Where it ends.
  */
 async function selectWithFocus(
   editor: Editor,
@@ -88,8 +92,8 @@ async function selectWithFocus(
     editor.view.dom.focus();
     editor.commands.setTextSelection({ from, to });
   });
-  // 插件对选区变化有 250ms 防抖（`updateDelay` 的默认值），而 `show()` 里才
-  // 把浮出条 `appendChild` 进 DOM。同步断言会跑在它前面、什么都查不到。
+  // The bar reaches the document one render after the selection changes, so a
+  // synchronous assertion would run ahead of it and find nothing.
   await waitFor(() => {
     expect(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
@@ -98,18 +102,18 @@ async function selectWithFocus(
 }
 
 /**
- * 把编辑器连同它的两个载体渲染进 document。
+ * Render the editor, carriers and all, into the document.
  *
- * 走真实的 `DocumentEditor` 而不是自己搭一个壳：浮出条那个 div 是
- * `BubbleMenu` 自己 `createElement` 出来的，要靠插件的 `appendTo` 挂进 DOM，
- * 而 `appendTo` 默认落在 `view.dom.parentElement` —— 编辑器不真挂进
- * document，那个 div 就永远进不去，测什么都测不到。
- * @param editor - 已经装好正文的编辑器。
- * @param readOnly - 是否只读。
+ * Through the real `DocumentEditor` rather than a shell of our own: the bar
+ * mounts inside the body's scroller, which only exists once the editor is
+ * really in the document.
+ * @param editor - An editor with its body already in place.
+ * @param readOnly - Whether the editor is read-only.
  */
 function mount(editor: Editor, readOnly = false): void {
-  // 包一层 provider 模拟 App：全站只有一个 `TooltipProvider`、挂在 `App.tsx`，
-  // 而条上那两个未开放的入口用 tooltip 说明自己为什么不能用。
+  // Wrapped in a provider to stand in for App: the whole product has one
+  // `TooltipProvider`, mounted in `App.tsx`, and the bar's two entries that
+  // are not open yet explain themselves through a tooltip.
   render(
     <TooltipProvider>
       <DocumentEditor editor={editor} readOnly={readOnly} />
@@ -117,53 +121,27 @@ function mount(editor: Editor, readOnly = false): void {
   );
 }
 
-/** 插件视图上我们真正配进去的那几样，取出来直接问。 */
-interface BubblePluginView {
-  element?: HTMLElement;
-  scrollTarget?: unknown;
-  resizeDelay?: number;
-  isVisible?: boolean;
-  getReferencedVirtualElement?: () => { getBoundingClientRect: () => DOMRect } | null;
-  shouldShow?: (props: {
-    editor: Editor;
-    element: HTMLElement;
-    view: EditorView;
-    state: EditorState;
-    from: number;
-    to: number;
-  }) => boolean;
-  floatingUIOptions?: {
-    offset?: unknown;
-    flip?: { boundary?: unknown } | boolean;
-    shift?: { boundary?: unknown } | boolean;
-    hide?: { boundary?: unknown } | boolean;
-    placement?: string;
-  };
-}
 
 /**
- * 从编辑器身上取浮出条那个插件视图。
+ * Whether the bar is on screen right now, read from the document.
  *
- * 插件把 `getReferencedVirtualElement` 原样存在自己身上（`dist/index.js:173`），
- * 所以这是「它真正会调用的那个函数」，不是测试自己另外造的一份。
- * @param editor - 编辑器。
- * @returns 插件视图。
+ * When the bar does not belong on screen the component does not render it, so
+ * querying for the element IS the thing the reader sees. How the middleware is
+ * configured is a local argument to `useFloating`, neither readable nor worth
+ * reading — the behaviour it produces is pinned by items G1 through G3.
+ * @returns True while the bar is in the document.
  */
-function bubblePluginView(editor: Editor): BubblePluginView {
-  const views =
-    (editor.view as unknown as { pluginViews: unknown[] }).pluginViews ?? [];
-  const found = views.find(
-    (v) => v !== null && typeof v === 'object' && 'scrollTarget' in v,
-  );
-  expect(found).toBeDefined();
-  return found as BubblePluginView;
+function barOnScreen(): boolean {
+  return screen.queryByTestId('doc-selection-bubble-bar') !== null;
 }
 
+
 /**
- * 把正文滚动容器的可见范围钉成一个已知的框。
+ * Pin the body scroller's visible area to a known box.
  *
- * jsdom 里一切矩形都是零，锚点逻辑要判的「这一行看得见吗」在零框里问不出答案。
- * @param box - 要钉的可见框。
+ * Every rectangle is zero in jsdom, and the anchor logic asks "is this line in
+ * view", which a zero box cannot answer.
+ * @param box - The visible box to pin.
  */
 function pinViewport(box: DOMRect): void {
   const viewport = document.querySelector(
@@ -173,28 +151,90 @@ function pinViewport(box: DOMRect): void {
   (viewport as HTMLElement).getBoundingClientRect = () => box;
 }
 
-/** 锚点测试里选区包围盒的固定值，`left` 是水平轴唯一该取的那个数。 */
+/**
+ * The bar's anchor rectangle.
+ *
+ * Calls the function that computes it rather than reaching into the
+ * positioning engine: which line the anchor lands on is this bar's own rule,
+ * and swapping engines should not take that coverage with it.
+ * @param editor - The editor.
+ * @param pinned - The screen point a select-all is pinned to, or null.
+ * @returns The rectangle, or null while the selection is empty.
+ */
+function anchorRectOf(
+  editor: Editor,
+  pinned: { x: number; y: number } | null = null,
+): DOMRect | null {
+  const viewport = document.querySelector<HTMLElement>(
+    '.doc-body-scroller [data-radix-scroll-area-viewport]',
+  );
+  expect(viewport).not.toBeNull();
+  return bubbleAnchorRect(
+    editor.view,
+    (viewport as HTMLElement).getBoundingClientRect(),
+    pinned,
+  );
+}
+
+/**
+ * Where the bar sits vertically right now, read from its own positioning style.
+ *
+ * This is the only outlet "where the bar is" has towards the reader: however
+ * the anchor is computed, it ends up in this number.
+ *
+ * Vertical only: every element's `clientWidth` is zero in jsdom, so the
+ * visible width `shift` derives from it is zero too and the horizontal
+ * coordinate is always pushed back to 0. That is jsdom failing to measure
+ * rather than the bar behaving, and the horizontal axis is left to a browser.
+ * @returns The bar's vertical coordinate.
+ */
+function barTop(): number {
+  const bar = screen.getByTestId('doc-selection-bubble-bar');
+  const matched = /translate\(-?[\d.]+px,\s*(-?[\d.]+)px\)/.exec(bar.style.transform);
+  expect(matched).not.toBeNull();
+  return Number((matched as RegExpExecArray)[1]);
+}
+
+/**
+ * Wait for the bar to land on a given vertical coordinate.
+ *
+ * floating-ui computes asynchronously (`computePosition` returns a promise),
+ * so every recomputation needs waiting on; a synchronous read may still hold
+ * the previous round's value.
+ * @param top - The expected coordinate.
+ */
+async function expectBarTop(top: number): Promise<void> {
+  await waitFor(() => {
+    expect(barTop()).toBe(top);
+  });
+}
+
+/** The selection box the anchor tests hold fixed; its `left` is the only
+ * number the horizontal axis should ever take. */
 const SELECTION_BOX = new DOMRect(137, 0, 400, 20);
 
 /**
- * 把选区包围盒钉成一个已知的矩形。
+ * Pin the selection's bounding box to a known rectangle.
  *
- * 水平方向取的是它，跟竖直方向取自文档位置是两回事——jsdom 里两样都得钉。
+ * The horizontal coordinate comes from this box while the vertical one comes
+ * from a document position — two separate things, both of which jsdom needs
+ * pinned.
  *
- * 早先这里直接写 `Range.prototype.getBoundingClientRect = ...` 且不还原，注释
- * 说「下一个文件重新跑 setup」——**那是假的**：`vitest.setup.ts` 那一行是
- * `??=`，对已经存在的函数是空操作，还原不了任何东西；而 `vitest.config.ts` 是
- * `forks` 加 `singleFork`，jsdom 环境在文件循环外只建一次，`Range.prototype`
- * 整个包共用一个对象。实测：本文件之后跑的文件里 `createRange()` 量出来的是
- * 这里钉的 137 乘 400，而不是零矩形，而 `reference-mention-caret.ts` 正是拿它
- * 去定拖拽虚影的宽度。所以改成 `vi.spyOn`，`afterEach` 里统一还原。
- * @param box - 要钉的包围盒。
+ * Through `vi.spyOn`, restored in `afterEach`. Writing
+ * `Range.prototype.getBoundingClientRect = ...` and leaving it, as this once
+ * did, leaks into every file that runs after: `vitest.setup.ts` assigns with
+ * `??=`, which is a no-op against a function already there, and
+ * `vitest.config.ts` runs `forks` with `singleFork`, so one jsdom environment
+ * — one `Range.prototype` — serves the whole package. Measured: files running
+ * after this one saw `createRange()` return the 137 by 400 pinned here, and
+ * `reference-mention-caret.ts` sizes a drag image off exactly that.
+ * @param box - The box to pin.
  */
 function pinSelectionBox(box: DOMRect): void {
   vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(box);
 }
 
-/** 正文带标记的样子，用来判命令有没有真的改到文档。 */
+/** The body with its markup, for telling whether a command really ran. */
 function markupOf(): string {
   return documentBodyFragment(doc)
     .toArray()
@@ -202,8 +242,8 @@ function markupOf(): string {
     .join('');
 }
 
-describe('选中浮出条', () => {
-  it('选中文字时出现，装的正好是那八个命令加链接', async () => {
+describe('the selection bubble bar', () => {
+  it('appears on a selection, carrying those eight commands and the link', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -213,9 +253,12 @@ describe('选中浮出条', () => {
     ).map((el) => el.getAttribute('data-testid')?.replace('doc-bubble-tool-', ''));
 
     expect(ids.sort()).toEqual(
-      // 链接不在这三个数组里：它开的是浮层不是命令，`ToolDef` 装不下
-      // （设计 §4.3）。
-      [...BLOCK_TOOLS, ...MARK_TOOLS, ...INLINE_TOOLS]
+      // The link is in neither array: it opens a panel rather than running a
+      // command, which `ToolDef` has no room for (design §4.3). The three
+      // block commands (bullet list, ordered list, quote) live in the block
+      // type menu since 2026-08-26, the shape the demo's note names; whether they
+      // still work is pinned by `selection-bubble-shell.test.tsx`.
+      [...MARK_TOOLS, ...INLINE_TOOLS]
         .map((t) => t.id)
         .concat('link')
         .sort(),
@@ -232,14 +275,17 @@ describe('选中浮出条', () => {
     await selectWithFocus(editor, 1, 6);
 
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
-    const rendered = Array.from(
-      bar.querySelectorAll('[data-testid^="doc-bubble-"]'),
-    ).map((el) => el.getAttribute('data-testid'));
+    const rendered = Array.from(bar.querySelectorAll('[data-testid^="doc-bubble-"]'))
+      .map((el) => el.getAttribute('data-testid') as string)
+      // Each of the four dropdowns is wrapped in a `-zone` (the container that
+      // decides whether the pointer is inside "slot plus menu"), and an opened
+      // `-menu` is portalled into the bar — neither is a slot.
+      .filter((id) => !id.endsWith('-zone') && !id.endsWith('-menu'));
 
     expect(rendered).toEqual([
-      'doc-bubble-tool-bullet-list',
-      'doc-bubble-tool-ordered-list',
-      'doc-bubble-tool-quote',
+      'doc-bubble-block-type',
+      'doc-bubble-sep-align',
+      'doc-bubble-align',
       'doc-bubble-sep-marks',
       'doc-bubble-tool-bold',
       'doc-bubble-tool-italic',
@@ -248,9 +294,10 @@ describe('选中浮出条', () => {
       'doc-bubble-sep-inline',
       'doc-bubble-tool-link',
       'doc-bubble-tool-code',
+      'doc-bubble-color',
       'doc-bubble-coming-comment',
       'doc-bubble-sep-ai',
-      'doc-bubble-coming-ai',
+      'doc-bubble-ai',
     ]);
   });
 
@@ -266,7 +313,9 @@ describe('选中浮出条', () => {
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const seps = bar.querySelectorAll('[role="separator"]');
 
-    expect(seps).toHaveLength(3);
+    // Five groups, four rules (the demo's note): block type | alignment | B I S U |
+    // link code colour comment | AI.
+    expect(seps).toHaveLength(4);
     for (const sep of seps) {
       expect(sep.getAttribute('aria-orientation')).toBe('vertical');
     }
@@ -278,7 +327,6 @@ describe('选中浮出条', () => {
   // whole-document menu (task #129).
   it.each([
     ['comment'],
-    ['ai'],
   ])('shows %s as an entry that is not open yet', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
@@ -293,7 +341,6 @@ describe('选中浮出条', () => {
   // A10: clicking one leaves the document exactly as it was.
   it.each([
     ['comment'],
-    ['ai'],
   ])('does nothing when %s is clicked', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
@@ -307,19 +354,17 @@ describe('选中浮出条', () => {
     expect(markupOf()).toBe(before);
   });
 
-  // A11: the whole bar stays out of the tab order (ruling R4), so these two
-  // follow the command buttons beside them. What they do carry is
-  // `aria-disabled` rather than HTML `disabled`: the first leaves them in the
-  // accessibility tree to be read, the second drops them out of it.
-  it.each([
-    ['comment'],
-    ['ai'],
-  ])('keeps %s out of the tab order, the way the bar does', async (id) => {
+  // A11: the whole bar stays out of the tab order (ruling R4), so the comment
+  // entry follows the command buttons beside it. What it carries is
+  // `aria-disabled` rather than HTML `disabled`: the first leaves it in the
+  // accessibility tree to be read, the second drops it out of it. The four
+  // dropdowns are held to the same rule by `selection-bubble-shell.test.tsx`.
+  it('keeps comment out of the tab order, the way the bar does', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
-    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
+    const entry = screen.getByTestId('doc-bubble-coming-comment');
     expect(entry.getAttribute('tabindex')).toBe('-1');
     expect(entry.hasAttribute('disabled')).toBe(false);
   });
@@ -363,25 +408,29 @@ describe('选中浮出条', () => {
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
   });
 
-  // A9：AI 那一个按 demo 是带文字和箭头的下拉样子，评论是图标按钮。没有这一条
-  // 时把 `drawsAsDropdown` 摘掉，两层测试都是绿的（第二轮对抗变异证过）。
+  // A9: the demo draws the AI entry as a menu opener, with a label and a
+  // chevron, and the comment entry as an icon button. Without this test,
+  // dropping `drawsAsDropdown` left both layers green (proved by mutation in
+  // the second adversarial round).
   it('draws the AI entry the way the demo draws a menu opener', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
-    const ai = screen.getByTestId('doc-bubble-coming-ai');
+    const ai = screen.getByTestId('doc-bubble-ai');
     const comment = screen.getByTestId('doc-bubble-coming-comment');
 
     expect(ai).toHaveTextContent('AI');
-    // 图标加箭头两个 svg；评论只有图标一个。
+    // Icon plus chevron makes two svgs; the comment entry has only its icon.
     expect(ai.querySelectorAll('svg')).toHaveLength(2);
     expect(comment.querySelectorAll('svg')).toHaveLength(1);
     expect(comment.textContent).toBe('');
 
-    // demo 给评论画的是带文字线的那版气泡（`message-square-text`：气泡一条、
-    // 文字线三条）。数 path 分得出它和光气泡的 `message-square`——文案对抗
-    // 逮到实现取的是后者，而上面那些断言对两个都成立。
+    // The demo draws the comment entry as the bubble WITH text lines
+    // (`message-square-text`: one bubble path, three line paths). Counting
+    // paths tells it apart from the bare `message-square` — the copy
+    // adversarial round caught the implementation using the latter, and every
+    // assertion above holds for both.
     expect(comment.querySelectorAll('svg path')).toHaveLength(4);
   });
 
@@ -393,7 +442,7 @@ describe('选中浮出条', () => {
     ['tool-underline', 'spaces.document.commands.underline'],
     ['tool-code', 'spaces.document.commands.code'],
     ['coming-comment', 'spaces.document.commands.comment'],
-    ['coming-ai', 'spaces.document.commands.ai'],
+    ['ai', 'spaces.document.commands.ai'],
   ])('gives %s a name that can be read out', async (id, key) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
@@ -404,19 +453,20 @@ describe('选中浮出条', () => {
     expect(label).not.toContain(key);
   });
 
-  // A11：这一步存在的唯一理由。八个逐一验，不抽验。
-  // 标记是 Yjs 片段里的 schema 节点名，不是 HTML 标签名——`toString()` 打出来
-  // 的是 `<bold>` / `<bulletlist>` 这一套。
+  // A11: the whole reason this step exists. Each one checked, none sampled.
+  // The markers are schema node names inside the Yjs fragment rather than HTML
+  // tag names — `toString()` prints `<bold>` / `<bulletlist>` and the like.
   it.each([
     ['bold', '<bold>', '<p>hello world</p>', 1, 6],
     ['italic', '<italic>', '<p>hello world</p>', 1, 6],
     ['strike', '<strike>', '<p>hello world</p>', 1, 6],
     ['underline', '<underline>', '<p>hello world</p>', 1, 6],
     ['code', '<code>', '<p>hello world</p>', 1, 6],
-    ['bullet-list', '<bulletlist>', '<p>hello world</p>', 1, 6],
-    ['ordered-list', '<orderedlist', '<p>hello world</p>', 1, 6],
-    ['quote', '<blockquote>', '<p>hello world</p>', 1, 6],
-  ])('在浮出条里点 %s，文档真的变了', async (id, marker, body, from, to) => {
+    // The three block commands (bullet list, ordered list, quote) live in the
+    // block type menu since 2026-08-26; whether pressing them there still
+    // changes the document is pinned by `selection-bubble-shell.test.tsx`'s
+    // "running %s from the menu still changes the document".
+  ])('pressing %s on the bar really changes the document', async (id, marker, body, from, to) => {
     const editor = open(body);
     mount(editor);
     await selectWithFocus(editor, from, to);
@@ -446,49 +496,28 @@ describe('选中浮出条', () => {
     );
   });
 
-  // A12 的回归钉：滚动跟随要在**一次额外重渲染都没有**的情况下就成立。
+  // "the plugin is handed the body's scroller with no extra render" is gone:
+  // it asserted the configuration passed to the BubbleMenu plugin, and
+  // positioning now goes through `useFloating`, so that object does not exist.
+  // The behaviour belongs to acceptance item G1, whose verification is written
+  // in §7 of the design record.
+
+  // A3: the anchor, line by line. One test for each of the two rules design
+  // §5.1 asks for, both put to the function that really computes it.
   //
-  // 插件只在构造时读一次 `options.scrollTarget`（`dist/index.js:172`），而
-  // `DocumentEditor` 是 memo 的、它的 `history` 只在用户编辑过之后才换对象。
-  // 所以「先把选项交出去、指望之后的 props 更新补上」在一篇刚打开、还没被
-  // 编辑过的文档里永远补不上——实现对抗 2026-08-19 实测：挂载后和选区出现
-  // 后 `scrollTarget` 都还是 `window`。初版 E2E 正好先敲了 40 行字，
-  // `canUndo` 翻真触发了那次重渲染，于是绕过了这个缺口、绿着。
-  it('不靠任何额外重渲染，插件拿到的就是正文的滚动容器', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const views =
-      (editor.view as unknown as { pluginViews: unknown[] }).pluginViews ?? [];
-    const bubbleView = views.find(
-      (v) => v !== null && typeof v === 'object' && 'scrollTarget' in v,
-    ) as { scrollTarget?: unknown } | undefined;
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    );
-
-    expect(viewport).not.toBeNull();
-    expect(bubbleView).toBeDefined();
-    expect(bubbleView?.scrollTarget).toBe(viewport);
-    expect(bubbleView?.scrollTarget).not.toBe(window);
-  });
-
-  // A3：逐行锚点。设计 §5.1 要求的两条规则各钉一条，都在插件真正会调用的那个
-  // 函数上问（`bubblePluginView` 取的就是插件自己存的那份）。
-  //
-  // 造场景的办法是把「哪一行在哪儿」直接钉死：jsdom 没有布局，一切矩形是零，
-  // 而这段逻辑判的正是「这一行看得见吗」。所以钉一个可见框（纵向 100 到 500），
-  // 再让每个文档位置回答一个已知的行坐标。
-  describe('锚点', () => {
+  // The scenario is built by pinning "which line is where": jsdom has no
+  // layout and every rectangle is zero, while this logic asks precisely "is
+  // this line in view". So a visible box is pinned (100 through 500
+  // vertically) and every document position answers with a known line.
+  describe('the anchor', () => {
     beforeEach(() => {
       pinSelectionBox(SELECTION_BOX);
     });
 
     /**
-     * 让每个文档位置回答一个已知的行坐标。
-     * @param editor - 编辑器。
-     * @param lines - 位置到行顶坐标的映射，未列出的位置回答 top。
+     * Make every document position answer with a known line.
+     * @param editor - The editor.
+     * @param lines - Position to line top; anything unlisted answers 0.
      */
     function pinLines(editor: Editor, lines: Record<number, number>): void {
       editor.view.coordsAtPos = (pos: number) => {
@@ -497,31 +526,56 @@ describe('选中浮出条', () => {
       };
     }
 
-    it('拖出来的选区锚在松手那一行——也就是选区的 head', async () => {
+    it('really moves above the new line when the selection changes', async () => {
+      const editor = open('<p>hello</p><p>world</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 6);
+      pinViewport(new DOMRect(0, 100, 800, 400));
+
+      pinLines(editor, { 1: 300, 6: 300, 8: 200, 12: 200 });
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 6 });
+      });
+      await expectBarTop(292);
+
+      // Select in the second paragraph. The anchor is computed live, but the
+      // number it comes back with only counts once it reaches the bar —
+      // floating-ui recomputes when it is woken, and a selection change is not
+      // among the things it listens for (it listens for scrolls and for
+      // elements changing size). Without that wake-up the bar stays above the
+      // first paragraph.
+      act(() => {
+        editor.commands.setTextSelection({ from: 8, to: 12 });
+      });
+
+      await expectBarTop(192);
+    });
+
+    it('anchors a dragged selection to the line it was released on, its head', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 6);
       pinViewport(new DOMRect(0, 100, 800, 400));
 
-      // 从 1 往下拖到 6：head 是 6，两端都在视口里。两端各给一个不同的行坐标，
-      // 才分辨得出锚的是松手那端还是选区起点。
+      // Dragged from 1 down to 6: the head is 6 and both ends are in view.
+      // Each end gets its own line, which is what tells "the released end"
+      // apart from "where the selection started".
       act(() => {
         editor.commands.setTextSelection({ from: 1, to: 6 });
       });
       pinLines(editor, { 1: 300, 6: 200 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
-      // 锚的是 6 那一行（200 到 220），上下各撑 8。
+      // Anchored to the line at 6 (200 through 220), with 8 either side.
       expect(rect?.top).toBe(192);
       expect(rect?.bottom).toBe(228);
-      // 左边取自选区包围盒，不是行尾、也不是锚定那一行的 x。
+      // The left edge comes from the selection's box, neither from the end of
+      // the line nor from the anchored line's own x.
       expect(rect?.left).toBe(SELECTION_BOX.left);
     });
 
-    it('head 那一行看不见时，锚的是选区起点那一行', async () => {
+    it('anchors to the line the selection started on when the head is out of view', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -530,19 +584,18 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.setTextSelection({ from: 2, to: 12 });
       });
-      // 往下拖出去的选区：松手那端（12）已经滚过可见区下沿，起点（2）还在屏上。
+      // Dragged off the bottom: the released end (12) has scrolled past the
+      // visible area while the start (2) is still on screen.
       pinLines(editor, { 2: 200, 12: 900 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
-      // 起点那一行是 200 到 220，上下各撑 8。
+      // The starting line runs 200 through 220, with 8 either side.
       expect(rect?.top).toBe(192);
       expect(rect?.bottom).toBe(228);
     });
 
-    it('两端都看不见时也锚起点那一行——藏不藏归 hide 中间件管', async () => {
+    it('still anchors to the starting line when neither end is in view', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -551,56 +604,29 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.setTextSelection({ from: 2, to: 12 });
       });
-      // 选区整个跨过了可见区：起点在上面、松手那端在下面。这里不再去找第三条
-      // 「读者当下看得见的行」——那条分支是前六轮实现对抗里五次承诺内问题的
-      // 共同出处，现在锚点照常给出去，由 `hide` 判它在不在正文区域里。
+      // The selection spans the visible area entirely: its start above, its
+      // released end below. No third "line the reader can see right now" is
+      // hunted for — that branch was the common source of five in-scope
+      // findings across the first six adversarial rounds. The anchor is handed
+      // over as computed, and the scroller's own overflow clips whatever falls
+      // outside the body.
       pinLines(editor, { 2: -300, 12: 900 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
       expect(rect?.top).toBe(-308);
     });
 
-    it('间距做在锚点矩形上，不交给 offset 中间件', async () => {
-      const editor = open('<p>hello world</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 6);
+    // Three tests are gone from here, all of which asserted the configuration
+    // passed to the BubbleMenu plugin — the gap not being handed to an
+    // `offset` middleware, the `-start` alignment, and flip's boundary.
+    // Positioning goes through `useFloating` now and that object does not
+    // exist. The gap living in the anchor rectangle is covered by the anchor
+    // tests above, which each expect a line's top minus 8; the other two
+    // belong to acceptance items G1 and E3, whose verification is written in
+    // §7 of the design record.
 
-      // 插件只有在 `options.offset` 为真时才往中间件里推 offset
-      // （`dist/index.js:211-217`）。间距既然做进了锚点，这里必须是假值，
-      // 否则 8px 会被加两次。
-      expect(bubblePluginView(editor).floatingUIOptions?.offset).toBeFalsy();
-    });
-
-    it('左边缘对齐选区左边缘——靠的是 placement 带 -start', async () => {
-      const editor = open('<p>hello world</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 6);
-
-      // A6 的水平对齐全部落在这一个值上：`@floating-ui/core` 只在 placement
-      // 带 `-start` / `-end` 时才在对齐轴上偏移，裸 `top` 是居中。改成裸
-      // `top` 时条心会压在选区左边缘上、半个条宽悬在选区外。
-      expect(bubblePluginView(editor).floatingUIOptions?.placement).toBe('top-start');
-    });
-
-    it('翻转的判据是正文可见区，不是默认的裁切祖先', async () => {
-      const editor = open('<p>hello world</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 6);
-
-      const viewport = document.querySelector(
-        '.doc-body-scroller [data-radix-scroll-area-viewport]',
-      );
-      const flip = bubblePluginView(editor).floatingUIOptions?.flip;
-
-      expect(viewport).not.toBeNull();
-      expect(typeof flip).toBe('object');
-      expect((flip as { boundary?: unknown }).boundary).toBe(viewport);
-    });
-
-    it('锚定那一行在可见区上方时不再被夹住——翻不翻由 flip 定', async () => {
+    it('hands over a line above the visible area uncapped, leaving flip to decide', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 6);
@@ -609,21 +635,21 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.setTextSelection({ from: 1, to: 6 });
       });
-      // 那一行跨在可见框上沿：顶 90 已经被滚上去，底 110 还露着。
+      // The line straddles the top edge: its top at 90 has scrolled away while
+      // its bottom at 110 is still showing.
       pinLines(editor, { 1: 90, 6: 90 });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor);
 
-      // 原来这里会把顶夹到 100。夹住等于骗 flip：它看到的空间比实际多，
-      // 于是永远不翻，而条被裁掉一截。现在如实交出去。
+      // This used to cap the top at 100. Capping lies to flip: it sees more
+      // room than there is, never flips, and the bar gets clipped. The truth
+      // is handed over instead.
       expect(rect?.top).toBe(82);
       expect(rect?.bottom).toBe(118);
     });
 
 
-    it('选区为空时不给锚点', async () => {
+    it('gives no anchor while the selection is empty', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 6);
@@ -634,21 +660,24 @@ describe('选中浮出条', () => {
       });
 
       expect(
-        bubblePluginView(editor).getReferencedVirtualElement?.(),
+        anchorRectOf(editor),
       ).toBeNull();
     });
   });
 
   /**
-   * 全选那一档（A14）。
+   * The select-all tier (A14).
    *
-   * 规则是 user 2026-08-20 定的三条：全选那一刻鼠标在正文区域内就把条摆在鼠标
-   * 那儿、不在就不显示；鼠标从正文外进到正文里时，如果是全选而条还没摆出来，
-   * 就摆在鼠标那儿；条已经摆出来之后一律不再判、也不动。
+   * Three rules, set by user 2026-08-20: at the moment the selection becomes a
+   * select-all, the bar goes where the pointer is if the pointer is inside the
+   * body and stays away otherwise; when the pointer enters the body while the
+   * selection is a select-all and no bar is up, the bar goes where the pointer
+   * is; once the bar is up, nothing re-decides and nothing moves it.
    *
-   * 「全选」的判据是 `AllSelection` —— 选了四分之三仍是区域选择，走上面那一组。
+   * "Select-all" means `AllSelection` — three quarters selected is still a
+   * range, and takes the tier above.
    */
-  describe('全选那一档', () => {
+  describe('the select-all tier', () => {
     const VIEWPORT = new DOMRect(0, 100, 800, 400);
 
     beforeEach(() => {
@@ -656,13 +685,14 @@ describe('选中浮出条', () => {
     });
 
     /**
-     * 把最后一次已知的鼠标位置挪到某处。
+     * Move the last known pointer position somewhere.
      *
-     * 事件发在 `document` 上而不是编辑器上：这个判据要回答的是「鼠标在不在正文
-     * 区域内」，鼠标离开正文之后必须还能收到它的位置，否则记下的永远是最后一次
-     * 在正文里的坐标、判据恒为真。
-     * @param x - 视口横坐标。
-     * @param y - 视口纵坐标。
+     * Dispatched on `document` rather than on the editor: the question is
+     * whether the pointer is inside the body, so its position has to keep
+     * arriving after it leaves — otherwise the last coordinate inside the body
+     * stands forever and the answer is always yes.
+     * @param x - Viewport x.
+     * @param y - Viewport y.
      */
     function moveMouseTo(x: number, y: number): void {
       act(() => {
@@ -673,36 +703,24 @@ describe('选中浮出条', () => {
     }
 
     /**
-     * 把插件的显示判据问一遍。
+     * Whether the bar is on screen right now.
      *
-     * 它问的是「插件如果现在被问，会答什么」，**不是「条现在在不在屏幕上」**。
-     * 两者在这一档会分开：鼠标事件那条路要靠 `remember` 发两个 meta 去唤醒
-     * 插件，而那两行删掉之后本文件一条都不红——实测。真正钉住「条被摆出来
-     * 了」的是 `tests/smoke/selection-bubble-bar.spec.ts` 的「全选后鼠标回到
-     * 正文里，条自己就出来了」，同一个变异下它当场红。
-     * @param editor - 编辑器。
-     * @returns 插件此刻会不会显示这条。
+     * Queries the document for the element: when the bar does not belong on
+     * screen the component does not render it, so this IS the thing the reader
+     * sees.
+     * @returns Whether it is there.
      */
-    function shouldShowNow(editor: Editor): boolean {
-      const view = bubblePluginView(editor);
-      expect(view.shouldShow).toBeTypeOf('function');
-      const { from, to } = editor.state.selection;
-      return view.shouldShow!({
-        editor,
-        element: view.element!,
-        view: editor.view,
-        state: editor.state,
-        from,
-        to,
-      });
+    function shouldShowNow(): boolean {
+      return screen.queryByTestId('doc-selection-bubble-bar') !== null;
     }
 
-    it('鼠标在正文区域内时，锚的是鼠标那个点，不是任何一行', async () => {
+    it('anchors to the pointer, not to any line, while the pointer is inside the body', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
-      // 每一行都给一个一眼认得出的坐标：锚点若还是从行算的，断言会读到它们。
+      // Every line gets an unmistakable coordinate: were the anchor still
+      // computed from a line, the assertions would read it back.
       editor.view.coordsAtPos = () => ({
         top: 300,
         bottom: 320,
@@ -715,35 +733,36 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      const rect = anchorRectOf(editor, { x: 420, y: 250 });
 
       expect(rect).toBeDefined();
-      // 鼠标点是零高度的，锚点矩形上下各撑一个间距（8）。
+      // The pointer is a point with no height; the anchor rectangle grows by
+      // one gap (8) either side.
       expect(rect?.top).toBe(242);
       expect(rect?.bottom).toBe(258);
-      // 水平也取自鼠标，不再是选区包围盒——全选没有「选区左边缘」这回事，
-      // 整篇的包围盒左边缘是正文列的左边，跟用户在看哪儿无关。
+      // The horizontal coordinate comes from the pointer too, not from the
+      // selection's box: a select-all has no "left edge of the selection", and
+      // the box drawn around the whole document has the body column's left
+      // edge, which says nothing about where the reader is looking.
       expect(rect?.left).toBe(420);
     });
 
-    it('鼠标在正文区域外时，这条不显示', async () => {
+    it('stays away while the pointer is outside the body', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 正文可见区是 y 从 100 到 500；50 在它上方，也就是顶部横条那一带。
+      // The body's visible area runs from y 100 to 500; 50 is above it.
       moveMouseTo(420, 50);
       act(() => {
         editor.commands.selectAll();
       });
 
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
-    it('从来没有过鼠标位置时，这条不显示', async () => {
+    it('stays away when there has never been a pointer position', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -753,10 +772,10 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
-    it('条摆出来之后鼠标离开正文区域，它不跟着消失', async () => {
+    it('does not follow the pointer out of the body once it is up', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -766,46 +785,43 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
 
-      // 摆出来之后它在屏幕上的坐标就定了，鼠标去哪都不再影响它。
+      // Once up, its place on screen is settled and the pointer no longer
+      // affects it.
       moveMouseTo(420, 50);
 
-      expect(shouldShowNow(editor)).toBe(true);
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
+      expect(shouldShowNow()).toBe(true);
+      await expectBarTop(242);
+    });
+
+    it('comes up when the pointer enters the body, with no scroll to wait for', async () => {
+      const editor = open('<p>one</p><p>two</p><p>three</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 4);
+      pinViewport(VIEWPORT);
+
+      // The pointer was outside the body when the selection became a
+      // select-all, so nothing showed.
+      moveMouseTo(420, 50);
+      act(() => {
+        editor.commands.selectAll();
+      });
+      expect(shouldShowNow()).toBe(false);
+
+      // The pointer enters the body. That is the moment: no scroll and no
+      // second select-all needed (user 2026-08-20 moved the trigger from
+      // "every scroll" to "the pointer enters the body").
+      moveMouseTo(420, 250);
+
+      expect(shouldShowNow()).toBe(true);
+      expect(barOnScreen()).toBe(true);
+      const rect = anchorRectOf(editor, { x: 420, y: 250 });
       expect(rect?.top).toBe(242);
       expect(rect?.left).toBe(420);
     });
 
-    it('鼠标从正文外面进到正文里，条就摆出来——不用等滚动', async () => {
-      const editor = open('<p>one</p><p>two</p><p>three</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 4);
-      pinViewport(VIEWPORT);
-
-      // 全选那一刻鼠标在正文外面，所以什么都不显示。
-      moveMouseTo(420, 50);
-      act(() => {
-        editor.commands.selectAll();
-      });
-      expect(shouldShowNow(editor)).toBe(false);
-
-      // 鼠标进到正文里。这一下就是触发时刻——不需要滚动，也不需要再按一次
-      // 全选（user 2026-08-20 把触发条件从「每次滚动」改成「鼠标进入正文」）。
-      moveMouseTo(420, 250);
-
-      expect(shouldShowNow(editor)).toBe(true);
-      expect(bubblePluginView(editor).isVisible).toBe(true);
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      expect(rect?.top).toBe(242);
-      expect(rect?.left).toBe(420);
-    });
-
-    it('条摆出来之后鼠标再进出正文，位置一动不动', async () => {
+    it('does not budge as the pointer leaves and re-enters once it is up', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -815,73 +831,68 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      const first = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      expect(first?.left).toBe(420);
+      await expectBarTop(242);
 
-      // 出去再进来：条已经摆出来了，这一进不该把它挪到新位置。
+      // Out and back in: the bar is already up, and this entry must not move
+      // it to the new place (which would read 292).
       moveMouseTo(420, 50);
       moveMouseTo(700, 300);
 
-      const after = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      expect(after?.left).toBe(420);
-      expect(after?.top).toBe(first?.top);
+      await expectBarTop(242);
     });
 
-    it('鼠标进正文时不是全选，什么都不发生', async () => {
+    it('does nothing when the pointer enters and the selection is not a select-all', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 选区只是一小段，鼠标从外面进来——这一档跟着选区走，不看鼠标。
+      // The selection is a short run and the pointer comes in from outside:
+      // this tier follows the selection and never looks at the pointer.
       moveMouseTo(420, 50);
+      editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
       act(() => {
         editor.commands.setTextSelection({ from: 1, to: 4 });
       });
-      editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
       moveMouseTo(420, 250);
 
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      // 锚在行上（200 撑 8），不是鼠标那一点。
-      expect(rect?.top).toBe(192);
+      // Anchored to the line (200 less 8), not to the pointer (which would
+      // read 242).
+      await expectBarTop(192);
     });
 
-    it('鼠标进正文不绕开显示判据：编辑器没有焦点时，条不摆出来', async () => {
+    it('does not let the pointer path skip the conditions: no focus, no bar', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 鼠标在正文外，全选：条不显示，也没钉住任何位置。
+      // Pointer outside the body, select-all: no bar, and nothing pinned.
       moveMouseTo(420, 50);
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
-      // 编辑器失去焦点——用户去别处打字了。
+      // The editor loses focus — the reader is typing somewhere else.
       act(() => {
         editor.view.dom.blur();
       });
 
-      // 鼠标回到正文里。这一路自己也要问「编辑器有没有焦点」——它跟插件问的
-      // 是同一个 `isWarranted`，不是另写一套；早先鼠标这条路带着自己那份更短
-      // 的判据，于是条会浮在正文上，而用户正在别的输入框里打字。
+      // The pointer comes back into the body. This path has to ask "does the
+      // editor hold the focus" too, through the same `isWarranted` rather than
+      // a list of its own: it used to carry a shorter list, and the bar would
+      // float over the body while the reader typed in another field.
       moveMouseTo(420, 250);
 
-      expect(bubblePluginView(editor).isVisible).toBe(false);
+      expect(barOnScreen()).toBe(false);
     });
 
-    it('文档里一个字都没有时，全选不显示这条', async () => {
+    it('shows nothing for a select-all over a document with no text in it', async () => {
       const editor = open('<p></p>');
       mount(editor);
-      // 空文档里没有选区可选，浮出条从不出现，所以不能用 selectWithFocus。
+      // An empty document has no selection to make and the bar never appears,
+      // so `selectWithFocus` cannot be used here.
       act(() => {
         editor.view.dom.focus();
       });
@@ -892,12 +903,13 @@ describe('选中浮出条', () => {
         editor.commands.selectAll();
       });
 
-      // 八个按钮一个都不能用，一条全是死按钮的载体只是噪音（定稿 §3.3.1 给
-      // viewer 不渲染整条的正是这个理由）。
-      expect(shouldShowNow(editor)).toBe(false);
+      // None of the eight commands can run, and a carrier of dead buttons is
+      // just noise — the same reason §3.3.1 renders no bar at all for a
+      // viewer.
+      expect(shouldShowNow()).toBe(false);
     });
 
-    it('已经是全选之后，本地再来一笔事务也不会重新钉', async () => {
+    it('does not re-pin on a later local transaction once it is a select-all', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -907,30 +919,30 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      const pinned = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      expect(pinned?.left).toBe(420);
+      await expectBarTop(242);
 
-      // 把鼠标挪到别处，然后造一个事务。选区仍是全选，钉的位置不该动。挡住
-      // 它的是 `follow` 里的 `became`——选区在上一笔就已经是全选了，这一笔
-      // 不是「全选那一刻」，压根走不到 `pinToPointer`。
+      // Move the pointer elsewhere, then make a transaction. The selection is
+      // still a select-all and the pin must not move. What stops it is
+      // `became` inside `follow`: the selection was already a select-all on
+      // the previous transaction, so this one is not "the moment", and
+      // `pinToPointer` is never reached.
       //
-      // `pinToPointer` 开头那句 `if (pinnedPoint()) return true` 挡的是同一
-      // 件事，但它是第三道：实测单独删掉它，本文件一条都不红。它留着是那个
-      // 函数自己的不变量（被调到时不覆盖已有的钉），不是这条规则的实现。
+      // `pinToPointer`'s opening `if (pinnedPoint()) return true` guards the
+      // same thing, but it is the third line of defence: measured, deleting it
+      // alone turns nothing in this file red. It stays as that function's own
+      // invariant (never overwrite an existing pin when called), not as this
+      // rule's implementation.
       moveMouseTo(700, 300);
       act(() => {
         editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
       });
 
-      const after = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      expect(after?.left).toBe(420);
+      // The transaction makes the bar recompute its place, so this number
+      // comes from a recomputation rather than from nobody touching it.
+      await expectBarTop(242);
     });
 
-    it('条钉住之后，协作对端敲字不会把它挪到当下的鼠标位置', async () => {
+    it('is not moved to the current pointer by a co-editor typing after it is pinned', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -940,15 +952,13 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
-      ).toBe(420);
+      await expectBarTop(242);
 
-      // 真的走一遍 wire：另一个 Y.Doc 上打一个字，把增量应用回来。上一条用的
-      // 本地 dispatch 代替不了它——y-prosemirror 把每一笔远程变更投递成整篇
-      // 文档的替换，途中的选区跟本地事务里那个不是一回事。
+      // Really over the wire: a character typed into another Y.Doc, with the
+      // update applied back. The local dispatch above is no substitute —
+      // y-prosemirror delivers every remote change as a replacement of the
+      // whole document, and the selection along that path is not the one a
+      // local transaction carries.
       const remote = new Y.Doc();
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
       const paragraph = documentBodyFragment(remote).get(0) as Y.XmlElement;
@@ -963,76 +973,70 @@ describe('选中浮出条', () => {
       });
       remote.destroy();
 
-      expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
-      ).toBe(420);
+      await expectBarTop(242);
     });
 
-    it('鼠标一步没动，正文区域长大把它包了进来——下一个鼠标事件就该摆出条', async () => {
+    it('comes up on the next mouse event when the body grows around a pointer that never moved', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
 
-      // 正文区域先是窄的，鼠标停在它右边外面。
+      // The body starts narrow, with the pointer resting outside its right
+      // edge.
       pinViewport(new DOMRect(0, 100, 400, 400));
       moveMouseTo(600, 250);
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
-      // 窗口拉宽，正文区域跟着长大，同一个坐标现在落在区域里。鼠标一步没动，
-      // 所以判据要是「这次在里面、上次在外面」就永远算不出来——两次读数是同
-      // 一个点，拿长大后的区域去判，两次都在里面。
+      // The window widens, the body grows with it, and the same coordinate is
+      // now inside. The pointer never moved, so a test of "inside now, outside
+      // before" could never fire: both readings are the same point, and
+      // against the grown area both are inside.
       pinViewport(new DOMRect(0, 100, 800, 400));
       moveMouseTo(600, 250);
 
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
       expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
+        anchorRectOf(editor, { x: 600, y: 250 })?.left,
       ).toBe(600);
     });
 
-    it('鼠标从页面出现起一步没动过，滚一下滚轮就把条摆出来', async () => {
+    it('comes up on a wheel gesture when the pointer has not moved since the page loaded', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 一次 mousemove 都没派发过：位置未知，键盘全选摆不出条。
+      // Not one `mousemove` has been dispatched: the position is unknown, and
+      // a keyboard select-all raises no bar.
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
-      // 滚轮也是鼠标事件，它带着 clientX/clientY（`scroll` 不带）。这是
-      // 「鼠标一步没动」时唯一能知道它在哪的途径。删掉 `wheel` 那行监听
-      // 这条就红。
+      // A wheel gesture is a mouse event and carries clientX/clientY, which
+      // `scroll` does not. It is the only way to learn where a pointer that
+      // never moved is. Delete the `wheel` listener and this goes red.
       act(() => {
         document.dispatchEvent(
           new MouseEvent('wheel', { clientX: 420, clientY: 250, bubbles: true }),
         );
       });
 
-      expect(shouldShowNow(editor)).toBe(true);
-      expect(
-        bubblePluginView(editor)
-          .getReferencedVirtualElement?.()
-          ?.getBoundingClientRect().left,
-      ).toBe(420);
+      expect(shouldShowNow()).toBe(true);
+      await expectBarTop(242);
     });
 
-    it('编辑器没有焦点时变成全选，不钉——焦点回来也不会凭空摆出来', async () => {
+    it('pins nothing for a select-all made without focus, and raises nothing when focus returns', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 鼠标在正文里，但用户人在别处，编辑器没有焦点。
+      // The pointer is inside the body, but the reader is elsewhere and the
+      // editor holds no focus.
       moveMouseTo(420, 250);
       act(() => {
         editor.view.dom.blur();
@@ -1040,40 +1044,43 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
-      // 焦点回来。「全选那一刻」已经过去了，而那一刻条件不满足；这一刻不是
-      // 任何一个判断时刻，所以条不该凭空出现。删掉 `follow` 里那句
-      // `isWarranted` 这条就红——全选那一刻会钉，焦点一回来条就摆出来。
+      // Focus returns. "The moment of the select-all" has passed, and the
+      // conditions did not hold then; this instant is not one of the deciding
+      // moments, so no bar should appear from nowhere. Delete `follow`'s
+      // `isWarranted` and this goes red — the pin is made at the select-all
+      // and the bar springs up the moment focus comes back.
       act(() => {
         editor.view.dom.focus();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
-    it('编辑器没有焦点时，别人的事务不该替鼠标把位置钉下来', async () => {
+    it('does not let a co-editor transaction pin a position on the pointer behalf while focus is away', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
 
-      // 鼠标在正文外面全选：不显示，也没钉。
+      // Select-all with the pointer outside the body: no bar, nothing pinned.
       moveMouseTo(420, 50);
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
-      // 用户切走了，编辑器失焦；鼠标路过正文。这一下 `remember` 会被
-      // `isWarranted` 挡住，不钉——这一半本轮已经做对了。
+      // The reader switches away and the editor loses focus while the pointer
+      // crosses the body. `isWarranted` stops `remember` from pinning.
       act(() => {
         editor.view.dom.blur();
       });
       moveMouseTo(420, 250);
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
 
-      // 协作对端敲一个字。选区仍是全选，于是 `follow` 跑——而它不问有没有
-      // 焦点，直接拿「鼠标最后路过的那个点」钉了下来。
+      // A co-editor types a character. The selection is still a select-all so
+      // `follow` runs — and if it did not ask about focus it would pin
+      // wherever the pointer last passed through.
       const remote = new Y.Doc();
       Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
       const paragraph = documentBodyFragment(remote).get(0) as Y.XmlElement;
@@ -1086,17 +1093,18 @@ describe('选中浮出条', () => {
       });
       remote.destroy();
 
-      // 鼠标早就走了，用户也切回来了（焦点回来，选区没变）。条不该拿那个
-      // 早已作废的点摆出来。
+      // The pointer has long since left and the reader is back (focus
+      // returns, the selection is unchanged). The bar must not come up on that
+      // stale point.
       moveMouseTo(700, 380);
       act(() => {
         editor.view.dom.focus();
       });
 
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
-    it('鼠标离开页面之后位置就不知道了——键盘全选不把条摆出来', async () => {
+    it('forgets the pointer once it leaves the page, so a keyboard select-all raises nothing', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -1104,8 +1112,9 @@ describe('选中浮出条', () => {
 
       moveMouseTo(420, 250);
 
-      // 指针离开页面：`mouseout` 冒泡到 document，而 `relatedTarget` 是空的
-      // ——它没有进入任何元素，也就是去了浏览器外面。
+      // The pointer leaves the page: `mouseout` bubbles to the document and
+      // its `relatedTarget` is null — it entered nothing, which is to say it
+      // left the browser.
       act(() => {
         document.dispatchEvent(
           new MouseEvent('mouseout', { bubbles: true, relatedTarget: null }),
@@ -1115,10 +1124,10 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(false);
+      expect(shouldShowNow()).toBe(false);
     });
 
-    it('页面内部的 mouseout 不算离开——最后那个坐标还作数', async () => {
+    it('does not count a mouseout inside the page as leaving it', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 4);
@@ -1126,8 +1135,9 @@ describe('选中浮出条', () => {
 
       moveMouseTo(420, 250);
 
-      // 指针从一个元素移到另一个元素，页面内部每一次都这样发一遍。
-      // `relatedTarget` 指名了进入的那个元素，所以这不是离开。
+      // The pointer moves from one element to another, which the page fires
+      // on every such crossing. `relatedTarget` names the element being
+      // entered, so this is not a departure.
       act(() => {
         document.dispatchEvent(
           new MouseEvent('mouseout', {
@@ -1140,40 +1150,39 @@ describe('选中浮出条', () => {
       act(() => {
         editor.commands.selectAll();
       });
-      expect(shouldShowNow(editor)).toBe(true);
+      expect(shouldShowNow()).toBe(true);
     });
 
-    it('选了一部分时不看鼠标在哪——那一档跟着选区走', async () => {
+    it('ignores where the pointer is for a partial selection: that tier follows the selection', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 6);
       pinViewport(VIEWPORT);
 
-      // 鼠标停在正文区域外，而选区只是一小段：这一档照常显示，锚在行上。
+      // The pointer rests outside the body while the selection is a short
+      // run: this tier shows as usual, anchored to a line.
       moveMouseTo(420, 50);
-      act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 6 });
-      });
       editor.view.coordsAtPos = () => ({
         top: 200,
         bottom: 220,
         left: 40,
         right: 60,
       });
+      act(() => {
+        editor.commands.setTextSelection({ from: 1, to: 4 });
+      });
 
-      expect(shouldShowNow(editor)).toBe(true);
-      const rect = bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect();
-      expect(rect?.top).toBe(192);
-      expect(rect?.left).toBe(SELECTION_BOX.left);
+      expect(shouldShowNow()).toBe(true);
+      // That line's top is 200, with 8 either side. The pointer's 50 plays no
+      // part.
+      await expectBarTop(192);
     });
   });
 
-  // 第八轮实现对抗查实：`tabIndex = -1` 挡的是 Tab，不挡鼠标。点条的内边距
-  // 或一个禁用按钮，焦点就落进条里、正文的选中高亮被清掉，而插件那两条 hide
-  // 路径（preventHide 和 relatedTarget）双双被吃掉，条从此赖在正文上。
-  it('浮出条整条不可聚焦——鼠标点它的空白处也带不走焦点', async () => {
+  // Confirmed in the eighth adversarial round: `tabIndex = -1` stops the Tab
+  // key, not the mouse. Pressing the bar's padding or a disabled button put
+  // focus inside the bar and cleared the body's selection highlight.
+  it('takes no focus, not even from a press on its padding', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1182,8 +1191,9 @@ describe('选中浮出条', () => {
       '[data-testid="doc-selection-bubble-bar"]',
     );
     expect(bar).not.toBeNull();
-    // 没有 tabindex 属性的 div 天生不可聚焦，Tab 和鼠标两条路一起断掉；
-    // `tabIndex = -1` 只断前一条。
+    // A div with no tabindex attribute is not focusable at all, which closes
+    // both the keyboard and the mouse route; `tabIndex = -1` closes only the
+    // first.
     expect(bar?.hasAttribute('tabindex')).toBe(false);
 
     act(() => {
@@ -1192,183 +1202,131 @@ describe('选中浮出条', () => {
     expect(document.activeElement).not.toBe(bar);
   });
 
-  it('正文区域被读到零尺寸时，钉住的坐标不参与换算', async () => {
-    const editor = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
+  /**
+   * The select-all tier's remapping rule: where a pinned point lands once the
+   * body area has changed.
+   *
+   * Put straight to the function that computes it. The whole rule lives in
+   * `pinnedScreenPoint`, which knows only three things — the point, the area
+   * it was pinned in, and the area now — and nothing about the editor or where
+   * the bar is mounted. Going through the component would also run into jsdom
+   * measuring no element sizes, which distorts the horizontal coordinate.
+   */
+  describe('remapping a pinned point as the body area changes', () => {
+    const AREA = new DOMRect(0, 100, 800, 400);
 
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editor.commands.selectAll();
-    });
-    const before = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-    expect(before?.left).toBe(420);
+    it('leaves the pinned point out of the arithmetic when the area reads as zero', () => {
+      const pin = { x: 420, y: 250, area: AREA };
 
-    // 这里不针对任何具体场景——第九轮对抗把原稿点名的两个（Space 切换、
-    // 面板折叠）都证伪了。它是那个比例换算自己的定义域。**新**框为零时算出
-    // 来的是 `0`（比例乘以零宽），不是 NaN——实测；条会跳到区域左上角。
-    pinViewport(new DOMRect(0, 100, 0, 0));
-    bubblePluginView(editor).getReferencedVirtualElement?.();
+      // Not aimed at any particular scenario — the ninth adversarial round
+      // disproved both the draft named (switching Space, collapsing a panel).
+      // This is the ratio's own domain. A zero NEW box yields `0` (the ratio
+      // times zero width) rather than NaN — measured; the bar would jump to
+      // the area's top left corner.
+      expect(pinnedScreenPoint(pin, new DOMRect(0, 100, 0, 0))).toEqual({
+        x: 420,
+        y: 250,
+      });
 
-    // 尺寸回来之后，坐标必须还是原来那个。
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    const after = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-    expect(after?.left).toBe(420);
-  });
-
-  // 上一条判的是**新**读数为零；分母其实是**旧**框——点当初是在那个框里定的
-  // 位置。旧框也能是零：`isInside` 接受一个塌成一点的矩形（`x >= left &&
-  // x <= right` 在两者相等时同时成立），所以一次 0×0 的读数照样能让坐标被
-  // 记下来。删掉那半判据这条就红。
-  it('钉下坐标时区域是零尺寸，之后也不拿它当分母', async () => {
-    const editor = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-
-    // 区域塌成 (420,250) 这一个点，鼠标正好停在那儿——`isInside` 放行。
-    pinViewport(new DOMRect(420, 250, 0, 0));
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editor.commands.selectAll();
+      // Once the size is back the coordinate has to be the original one.
+      // Reading never writes back, so the zero reading in between leaves no
+      // mark on the pin.
+      expect(pinnedScreenPoint(pin, AREA)).toEqual({ x: 420, y: 250 });
     });
 
-    // 区域恢复正常尺寸。分母是钉下时那个零宽，而分子也是零——指针只有正好
-    // 落在那一个点上才过得了 `isInside`，所以不判的话算的是 `0 / 0`，得 NaN。
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    const rect = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-    expect(rect?.left).toBe(420);
-    expect(Number.isFinite(rect?.left)).toBe(true);
-    expect(Number.isFinite(rect?.top)).toBe(true);
+    // The test above guards a zero NEW reading; the denominator is really the
+    // OLD box, the one the point was placed in. That one can be zero too:
+    // `isInside` accepts a rectangle collapsed to a point (`x >= left && x <=
+    // right` both hold when the two are equal), so a single 0 by 0 reading can
+    // still let a coordinate be recorded. Delete that half of the test and
+    // this goes red.
+    it('never uses a zero area as the denominator, even when pinned in one', () => {
+      // The area collapses to the single point (420,250) with the pointer
+      // resting exactly there, which `isInside` lets through.
+      const pin = { x: 420, y: 250, area: new DOMRect(420, 250, 0, 0) };
+
+      // The area comes back to a normal size. The denominator is the zero
+      // width it was pinned in, and the numerator is zero too — only a pointer
+      // exactly on that point gets through `isInside` — so without the guard
+      // this computes `0 / 0` and yields NaN.
+      const point = pinnedScreenPoint(pin, AREA);
+
+      expect(point).toEqual({ x: 420, y: 250 });
+      expect(Number.isFinite(point?.x)).toBe(true);
+      expect(Number.isFinite(point?.y)).toBe(true);
+    });
+
+    // Two changes in a row must land the bar where one change straight to the
+    // final size would: A17's "follows along" cannot drift because a few steps
+    // were taken on the way.
+    //
+    // This CANNOT tell whether the remapping writes intermediate results back:
+    // both spellings satisfy the property (a linear map composes), and putting
+    // those two write-back lines in leaves it green — measured. So it guards
+    // the property, not that rewrite.
+    it('lands on the same point through two changes as through one', () => {
+      const pin = { x: 420, y: 250, area: AREA };
+
+      // Two steps: 800 to 600 to 400.
+      pinnedScreenPoint(pin, new DOMRect(0, 100, 600, 400));
+      const twoSteps = pinnedScreenPoint(pin, new DOMRect(0, 100, 400, 400));
+
+      // Straight there: 800 to 400.
+      expect(pinnedScreenPoint(pin, AREA)).toEqual({ x: 420, y: 250 });
+      const direct = pinnedScreenPoint(pin, new DOMRect(0, 100, 400, 400));
+
+      expect(twoSteps).toEqual(direct);
+    });
+
+    // "Has the area changed" compares all four numbers. Comparing only the
+    // sizes would judge an area that moved without resizing as unchanged,
+    // while the formula reads left/top — and the bar would stay where the body
+    // used to be.
+    it('moves the pinned point with an area that shifts without resizing', () => {
+      const pin = { x: 420, y: 250, area: AREA };
+
+      // Same size, moved 100 right and 50 down. The point keeps its place
+      // within the area, so its screen coordinates follow by +100 / +50.
+      expect(pinnedScreenPoint(pin, new DOMRect(100, 150, 800, 400))).toEqual({
+        x: 520,
+        y: 300,
+      });
+    });
+
+    // The vertical axis gets its own pass: height only, width untouched. The
+    // test above changes position, this one changes size — and only this one
+    // catches writing `area.width` where `moved.y` needs `area.height`, the
+    // two axes being near-identical code and so the easiest place to leave one
+    // word unchanged.
+    it('moves the pinned point in proportion when the area height changes', () => {
+      const pin = { x: 420, y: 300, area: AREA };
+
+      // The point sits at (300 - 100) / 400 = 0.5 down the area. Halve the
+      // height and it belongs at 100 + 0.5 * 200 = 200; the width did not
+      // change, so the horizontal coordinate must not move.
+      expect(pinnedScreenPoint(pin, new DOMRect(0, 100, 800, 200))).toEqual({
+        x: 420,
+        y: 200,
+      });
+    });
   });
 
-  // 窗口连着变两次，条落在哪，跟一步变到最终尺寸应当一致——A17 说的「跟着动」
-  // 不能因为中间经过了几步就漂。
+  // Confirmed in the ninth adversarial round: removing the tabindex changed
+  // where focus LANDS, not whether it LEAVES the body. After a press on the
+  // bar's padding, focus was in neither the editor nor the bar and the body's
+  // selection highlight was gone.
   //
-  // 这条**分辨不出**换算把中间结果存不存回去：两种写法都满足这个性质（线性
-  // 映射可传递），实测把存回那两行加回来它照样绿。所以它是这个性质的守卫，
-  // 不是那次改写的守卫；那次改写按非逻辑改动处理，依据是让读取函数不再写。
-  it('区域连着变两次，跟一步变到位算出来的是同一个点', async () => {
-    const editorA = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editorA);
-    await selectWithFocus(editorA, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editorA.commands.selectAll();
-    });
-
-    // 走两步：800 → 600 → 400。
-    pinViewport(new DOMRect(0, 100, 600, 400));
-    bubblePluginView(editorA).getReferencedVirtualElement?.();
-    pinViewport(new DOMRect(0, 100, 400, 400));
-    const twoSteps = bubblePluginView(editorA)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-
-    // 一步到位：800 → 400。
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    const oneStep = bubblePluginView(editorA)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-    expect(oneStep?.left).toBe(420);
-    pinViewport(new DOMRect(0, 100, 400, 400));
-    const direct = bubblePluginView(editorA)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-
-    expect(twoSteps?.left).toBe(direct?.left);
-    expect(twoSteps?.top).toBe(direct?.top);
-  });
-
-  // 「区域变没变」比的是四个数。只比宽高的话，一个平移了但没缩放的区域会被
-  // 当成没变，而换算公式读的正是 left/top——条会留在正文原来的位置上。
-  it('区域整体平移、尺寸没变时，钉住的点跟着平移', async () => {
-    const editor = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
-
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 250, bubbles: true }),
-      );
-      editor.commands.selectAll();
-    });
-    expect(
-      bubblePluginView(editor)
-        .getReferencedVirtualElement?.()
-        ?.getBoundingClientRect().left,
-    ).toBe(420);
-
-    // 同样大小的区域，整体右移 100、下移 50。点在区域里的相对位置不变，屏幕
-    // 坐标跟着 +100 / +50。
-    pinViewport(new DOMRect(100, 150, 800, 400));
-    const moved = bubblePluginView(editor)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-    expect(moved?.left).toBe(520);
-    // 锚点是零高度的点上下各撑 8，所以顶 = 钉住的 y 减 8。
-    expect(moved?.top).toBe(250 + 50 - 8);
-  });
-
-  // 竖直方向的换算单独走一遍：只改高度，不动宽度。上一条改的是位置，这条改
-  // 的是尺寸——把 `moved.y` 里的 `area.height` 写成 `area.width` 这类同族错误
-  // 只有这条钉得住，而两条轴的代码几乎一模一样，正是最容易漏改一个词的形状。
-  it('区域高度变了，钉住的点按高度比例跟着动', async () => {
-    const editorH = open('<p>one</p><p>two</p><p>three</p>');
-    mount(editorH);
-    await selectWithFocus(editorH, 1, 4);
-    pinSelectionBox(SELECTION_BOX);
-    pinViewport(new DOMRect(0, 100, 800, 400));
-    act(() => {
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { clientX: 420, clientY: 300, bubbles: true }),
-      );
-      editorH.commands.selectAll();
-    });
-
-    // 点在区域里的纵向相对位置是 (300 − 100) ÷ 400 = 0.5。
-    // 高度减半之后应当落在 100 + 0.5 × 200 = 200。
-    pinViewport(new DOMRect(0, 100, 800, 200));
-    const rect = bubblePluginView(editorH)
-      .getReferencedVirtualElement?.()
-      ?.getBoundingClientRect();
-    expect(rect?.top).toBe(200 - 8);
-    // 宽度没变，横坐标不该动。
-    expect(rect?.left).toBe(420);
-  });
-
-  // 第九轮实现对抗查实：去掉 tabindex 只改了焦点的落点，没挡住焦点离开正文。
-  // 点条的内边距，正文失焦、选中高亮消失，而插件的 `preventHide`（捕获相
-  // mousedown，`dist/index.js:78-79` 定义、`:182` 注册）让 `blurHandler` 走到
-  // `:106-108` 就返回，条不隐藏；之后没有事务，也就没有人再问一次该不该显示。
+  // The move is Slate's official hovering-toolbar example
+  // (`site/examples/ts/hovering-toolbar.tsx`, whose comment reads "prevent
+  // toolbar from taking focus away from editor"): refuse mousedown's default
+  // on the bar and focus does not move at all.
   //
-  // 做法跟 Slate 官方 hovering-toolbar 示例一致（`site/examples/ts/
-  // hovering-toolbar.tsx`，注释原文「prevent toolbar from taking focus away
-  // from editor」）：在条上阻止 mousedown 的默认行为，焦点根本不动。
-  //
-  // 这里只验「默认行为被阻止了」这一件事，**焦点真的没走**在这一层验不了：
-  // jsdom 的 mousedown 默认行为本来就不移动焦点，阻不阻止都一样。量焦点的是
-  // `tests/smoke/selection-bubble-bar.spec.ts` 的「按过浮出条之后再点到编辑器
-  // 外面，条要消失」，那条在真浏览器里数过——按条 0 次 blur、按 Tab 2 次。
-  it('按下浮出条时阻止默认行为', async () => {
+  // Only "the default was prevented" is checked here; THAT FOCUS REALLY STAYS
+  // cannot be checked at this layer, since jsdom's mousedown does not move
+  // focus either way. Focus is counted in
+  // `tests/smoke/selection-bubble-bar.spec.ts` — 0 blurs from pressing the
+  // bar, 2 from pressing Tab.
+  it('refuses the default action of a press on it', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1386,117 +1344,95 @@ describe('选中浮出条', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('锚点离开正文可见区就隐藏，靠的是 hide 中间件', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
+  // Two more tests are gone from here — hiding once the anchor leaves the
+  // visible area, and clamping sideways through `shift` — both of which
+  // asserted the configuration passed to the BubbleMenu plugin. That object
+  // does not exist now that positioning goes through `useFloating`. The
+  // behaviours belong to acceptance items G2 / E5 and G1, whose verification
+  // is written in §7 of the design record.
 
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    );
-    const hide = bubblePluginView(editor).floatingUIOptions?.hide;
-
-    // 插件默认 `hide: false`（`dist/index.js:55`），不传就没有这个中间件，
-    // 锚点滚出正文之后条会一直画在那儿。而它的边界默认是裁切祖先，那一层的顶
-    // 比正文可见区高 40px——不显式传边界等于没解决这 40px。
-    expect(viewport).not.toBeNull();
-    expect(typeof hide).toBe('object');
-    expect((hide as { boundary?: unknown }).boundary).toBe(viewport);
-  });
-
-  it('左右夹取交给 shift，边界也是正文可见区', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
-
-    const viewport = document.querySelector(
-      '.doc-body-scroller [data-radix-scroll-area-viewport]',
-    );
-    const shift = bubblePluginView(editor).floatingUIOptions?.shift;
-
-    // shift 本来就开着（`dist/index.js:51` 默认 `{}`），我们要改的只是它量的
-    // 那个盒子——默认的裁切祖先跟正文可见区不是同一个。
-    expect(viewport).not.toBeNull();
-    expect(typeof shift).toBe('object');
-    expect((shift as { boundary?: unknown }).boundary).toBe(viewport);
-  });
-
-  // 没有选区时八个按钮根本不建。查的是插件自己那个元素而不是 document：条隐藏
-  // 时它被 `element.remove()` 摘出文档（`dist/index.js:377-379`），从 document
-  // 里查什么都查不到，那样的断言分辨不出「没建」和「建了但不在文档里」。
+  // With no selection the eight buttons are not built at all.
   //
-  // 为什么要不建：每个按钮都在每一笔事务上跑一次自己命令的干跑（`canRun`），
-  // 而浮出条绝大多数时间是隐藏的——留着它们等于给每次击键多付八次干跑，换来
-  // 一个没人看得见的载体。
-  it('没有选区时，浮出条里一个按钮都不建', async () => {
+  // Why they must not be: each of them runs its command's dry run (`canRun`)
+  // on every transaction, and the bar spends almost all of its life away —
+  // leaving them mounted costs eight extra dry runs per keystroke for a
+  // carrier nobody can see.
+  it('builds none of the buttons while there is no selection', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
-    const view = bubblePluginView(editor);
     expect(
-      view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
-    ).toHaveLength(9);
+      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
+    ).toHaveLength(6);
 
     act(() => {
       editor.commands.setTextSelection(3);
     });
 
+    // Queried across the document rather than inside the bar element caught
+    // earlier: when the bar does not belong on screen the component renders
+    // nothing, and that earlier node has left the document with its own
+    // subtree, buttons and all, intact.
     await waitFor(() => {
       expect(
-        view.element?.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
+        document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
       ).toHaveLength(0);
     });
   });
 
-  // A12 的另一半：滚动时**每个事件**都重算，不是滚完才算。
-  //
-  // 插件默认 `resizeDelay = 60`（`dist/index.js:37`），而 `:95` 的 handler 每次
-  // 都先 `clearTimeout` 再重排，所以滚动手势期间那个计时器永远到不了期——条
-  // 在整个滚动过程中一动不动，手停下 60ms 才跳过去（真机实测：十步滚动里
-  // barTop 全程 407，选中行从 379 走到 331）。
-  //
-  // 业界没有一家这么做：floating-ui 官方 `autoUpdate` 的 `ancestorScroll`
-  // 默认每次滚动都更新、无防抖；Lexical 的浮出格式条在 scroll 回调里直接重算。
-  it('滚动重算没有防抖', async () => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 1, 6);
+  // "recomputing on scroll is not debounced" is gone for the same reason: it
+  // asserted the plugin's configuration. That behaviour belongs to acceptance
+  // item G1, verified as written in §7 of the design record.
 
-    expect(bubblePluginView(editor).resizeDelay).toBe(0);
-  });
-
-  // A5 在 jsdom 层能测的那一半：浮出条挂在滚动容器**外面**。
+  // The half of G2 that jsdom can answer: the bar mounts INSIDE the body's
+  // scroller, in the same place the link panel does.
   //
-  // 第三轮实证：把 `appendTo` 整个删掉（条就落回库默认的 `view.dom.parentElement`，
-  // 也就是滚动容器内部，正是 A5 禁止的），21 条单测一条不红。位置和裁切确实要真
-  // 浏览器才量得了，但「它挂在谁下面」是 DOM 结构问题，jsdom 完全答得了。
-  it('浮出条挂在滚动容器外面，不在它内部', async () => {
+  // This assertion turned around on 2026-08-26. It used to hold that the bar
+  // hung outside the scroller, with a `hide` middleware to take it away once
+  // the anchor left the visible area. User measured the link panel — it opens
+  // below when the target is near the top, above when it is near the bottom,
+  // and travels with the text and out of sight as the body scrolls, all three
+  // without trouble — so the bar follows it: mounted inside, clipped by the
+  // scroller's own overflow, with that whole home-grown hiding mechanism gone.
+  //
+  // Where it lands and what clips it need a browser; "what is it mounted
+  // under" is a DOM structure question jsdom answers fully.
+  it('mounts inside the scroller, where the link panel mounts', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
 
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
-    const scroller = document.querySelector('.doc-body-scroller');
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    );
 
     expect(bar).not.toBeNull();
-    expect(scroller).not.toBeNull();
-    expect(bar?.closest('.doc-body-scroller')).toBeNull();
-    // 挂的正是滚动容器的父元素——比「不在里面」更具体，换个地方挂也会红。
-    expect(bar?.parentElement).toBe(scroller?.parentElement);
+    expect(viewport).not.toBeNull();
+    expect(bar?.closest('.doc-body-scroller')).not.toBeNull();
+    // Inside a container of the portal's own, which is a child of that
+    // viewport — the link panel mounts exactly this way. The extra layer is
+    // load-bearing: `index.css:970` makes every direct child div of the
+    // viewport a full-height column flex container, and a bar mounted as a
+    // direct child came out 74 wide and 870 tall with its controls stacked
+    // (measured in a browser).
+    expect(bar?.parentElement?.parentElement).toBe(viewport);
   });
 
-  // A9：浮出条整条不进 tab 序（定稿 §5.2，user 2026-08-19 拍定）。
+  // A9: the whole bar stays out of the tab order (ruling §5.2, user
+  // 2026-08-19).
   //
-  // 理由是层次：顶部横条跟正文并排、常驻，这一条浮在正文**上面**，而浮在上面
-  // 的东西一旦拿走焦点就跟正文的焦点直接冲突。八个按钮是原生 `<button>`、天生
-  // 可聚焦，所以每个都显式设成 -1。
+  // The reason is layering: a toolbar sits beside the body and stays there,
+  // while this bar floats ON TOP of it, and anything on top that takes focus
+  // collides with the body's own. The buttons are native `<button>`s and
+  // focusable by birth, so each is set to -1 explicitly.
   //
-  // 容器那一半不在这里：插件默认给它 `tabIndex = 0`（`dist/index.js:178`），
-  // 而实现的做法是把属性整个删掉、不是设成 -1（-1 仍然可聚焦，只是不进 Tab
-  // 序，鼠标点得进去）。钉它的是上面「整条不可聚焦」那条的
-  // `hasAttribute('tabindex')`。这里读 `bar.tabIndex` 读不出区别——没有属性的
-  // div 本来就答 -1。
-  it('浮出条的九个按钮都不进 Tab 序', async () => {
+  // The container's half is not here: it carries no tabindex attribute at all
+  // rather than a -1 (which stays focusable and merely leaves the Tab order,
+  // so the mouse still reaches it), pinned by `hasAttribute('tabindex')` in
+  // the focusability test above. Reading `bar.tabIndex` here would tell
+  // nothing apart — a div with no attribute answers -1 anyway.
+  it('keeps its six buttons out of the tab order', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 1, 6);
@@ -1505,7 +1441,12 @@ describe('选中浮出条', () => {
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    expect(buttons).toHaveLength(9);
+    // Six: B I S U plus inline code plus the link. With the three block
+    // commands moved into the block type menu, this counts what is left on the
+    // bar; the four dropdown openers are pinned by
+    // `selection-bubble-shell.test.tsx`'s "keeps the four new openers out of
+    // the tab order".
+    expect(buttons).toHaveLength(6);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);
     }
@@ -1520,21 +1461,25 @@ describe('选中浮出条', () => {
   // reach whether that answer arrives at the DOM's `disabled`. So it compares
   // those two directly.
   it.each([
-    ['整段普通文字都能用', '<p>hello world</p>', 1, 6, false],
-    ['代码块里标记类命令用不了', '<pre><code>hello</code></pre>', 1, 6, true],
+    ['a run of plain text, everything available', '<p>hello world</p>', 1, 6, false],
+    ['inside a code block, the mark commands cannot run', '<pre><code>hello</code></pre>', 1, 6, true],
   ])('%s: the buttons agree with canRun', async (_name, body, from, to, hasDark) => {
     const editor = open(body);
     mount(editor);
     await selectWithFocus(editor, from, to);
 
-    // 先确认这个选区真的造出了要测的那种局面：八个按钮全亮或全暗，下面那个
-    // 循环照样「一致」，而它什么都没说。
+    // First confirm the selection really builds the situation under test: with
+    // all eight buttons lit, or all eight dark, the loop below still reports
+    // "they agree" while saying nothing at all.
     const dark = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[data-testid^="doc-bubble-tool-"]'),
     ).filter((b) => b.disabled).length;
     expect(dark > 0).toBe(hasDark);
 
-    for (const tool of [...MARK_TOOLS, ...INLINE_TOOLS, ...BLOCK_TOOLS]) {
+    // Only what is left on the bar. The three in `BLOCK_TOOLS` live in the
+    // block type menu since 2026-08-26, and whether those items are lit
+    // belongs to `selection-bubble-shell.test.tsx`.
+    for (const tool of [...MARK_TOOLS, ...INLINE_TOOLS]) {
       const button = document.querySelector<HTMLButtonElement>(
         `[data-testid="doc-bubble-tool-${tool.id}"]`,
       );
@@ -1545,12 +1490,13 @@ describe('选中浮出条', () => {
     }
   });
 
-  // A7：viewer 整条不出现（定稿 §3.3.1）。
-  it('只读时整条不出现', async () => {
+  // A7: no bar at all for a viewer (ruling §3.3.1).
+  it('renders no bar at all when the editor is read-only', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor, true);
-    // 这里不能用 selectWithFocus——它等的正是「浮出条出现」，而这条要证明它
-    // 不出现。改成设完选区后等足防抖，再断言仍然没有。
+    // `selectWithFocus` cannot be used here — it waits for the bar to appear,
+    // which is what this test has to disprove. The selection is made and given
+    // time, then the absence is asserted.
     act(() => {
       editor.view.dom.focus();
       editor.commands.setTextSelection({ from: 1, to: 6 });

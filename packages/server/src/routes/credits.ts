@@ -20,12 +20,15 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate } from "@server/middleware/validate.js";
 import { creditLotService } from "@breatic/domain";
-import { creditViewService } from "@server/modules";
+import { creditViewService, paymentService } from "@server/modules";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { env, logger } from "@breatic/core";
+import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditLotQuerySchema,
   creditLedgerQuerySchema,
   designationSchema,
-  lotParamSchema,
+  idParamSchema,
 } from "@server/routes/schemas.js";
 
 const credits = new Hono<{ Variables: AuthVariables }>();
@@ -40,11 +43,48 @@ credits.use(requireAuth);
  * until they are pointed at a studio.
  * @returns `200` with the overview.
  */
-credits.get("/overview", async (c) => {
-  const user = c.get("user");
-  const data = await creditViewService.getOverview(user.id);
-  return c.json({ data });
-});
+credits.get(
+  "/overview",
+  // Reconciling below reaches Stripe on every read, so this reader is a caller
+  // of somebody else's API and is capped like one.
+  rateLimitFor("credits-read", "user"),
+  async (c) => {
+    const user = c.get("user");
+    // Purchases that neither the return-side confirmation nor the webhook
+    // settled are repaired here, because this is the query the overlay's seven
+    // sections already wait behind — the buyer is looking at the answer.
+    //
+    // A repair that could not run is not a reason to show them nothing: the
+    // overview is answered from our own rows either way, and the next read
+    // tries again.
+    if (env.PAYMENT_ENABLED) {
+      try {
+        for (const pass of await paymentService.reconcilePayments(user.id)) {
+          if ("failure" in pass) {
+            logger.error(
+              {
+                err: pass.failure,
+                userId: user.id,
+                stripeSessionId: pass.stripeSessionId,
+              },
+              "payment_reconcile_pass_failed",
+            );
+            continue;
+          }
+          logFulfillment(pass.outcome, {
+            stripeSessionId: pass.stripeSessionId,
+            from: "reconcile",
+            userId: user.id,
+          });
+        }
+      } catch (err) {
+        logger.error({ err, userId: user.id }, "credits_reconcile_failed");
+      }
+    }
+    const data = await creditViewService.getOverview(user.id);
+    return c.json({ data });
+  },
+);
 
 /**
  * `GET /credits/lots` — this account's purchases, newest first.
@@ -84,7 +124,7 @@ credits.get("/ledger", validate("query", creditLedgerQuerySchema), async (c) => 
  */
 credits.patch(
   "/lots/:id/designation",
-  validate("param", lotParamSchema),
+  validate("param", idParamSchema),
   validate("json", designationSchema),
   async (c) => {
     const user = c.get("user");

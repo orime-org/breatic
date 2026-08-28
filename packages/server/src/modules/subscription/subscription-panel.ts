@@ -25,7 +25,7 @@
 import type Stripe from "stripe";
 import {
   db,
-  getStripeReadTimeoutMs,
+  getStripeCallTimeoutMs,
   logger,
   listSubscriptions,
   lockAccountRow,
@@ -86,7 +86,7 @@ async function reconcile(
     // the wait to repair something that repairs itself the next time the
     // panel opens.
     {
-      timeout: getStripeReadTimeoutMs(),
+      timeout: getStripeCallTimeoutMs(),
       maxNetworkRetries: 0,
     },
   );

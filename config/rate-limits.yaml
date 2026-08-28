@@ -42,6 +42,21 @@ asset-report:   { max: 120, window_seconds: 60 }
 # what one account can send outward.
 membership-read: { max: 60, window_seconds: 60 }
 
+# Reading the credits overlay. It reconciles unsettled payments with Stripe on
+# every read (#13 §4.6), so the same reasoning as membership-read applies: an
+# unthrottled reader is an unthrottled caller of somebody else's API.
+credits-read: { max: 60, window_seconds: 60 }
+
+# The four things a buyer does to a credit purchase (#13 §4.7). Each one
+# reaches Stripe — checkout creates a session, confirm and cancel read or
+# expire one — or puts a letter on the wire. Nobody buying credits needs more
+# than a handful of tries a minute, and the resend is capped harder because
+# each one is an email somebody receives.
+payment-checkout: { max: 10, window_seconds: 60 }
+payment-confirm: { max: 20, window_seconds: 60 }
+payment-cancel: { max: 20, window_seconds: 60 }
+payment-resend: { max: 5, window_seconds: 300 }
+
 # The four subscription actions (#106 §7). Each one reaches Stripe: checkout
 # creates a Checkout Session, the other three update a subscription. Nothing a
 # person does to their own membership needs more than a handful of tries in a

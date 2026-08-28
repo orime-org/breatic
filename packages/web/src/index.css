@@ -974,10 +974,18 @@ body {
    column flex container keeps that chain intact, because a column's items
    stretch to its width. The selector carries `[data-scrollbars='vertical']` as
    well as the class purely to outrank that rule by specificity rather than by
-   source order, which would be a silent thing to depend on. */
+   source order, which would be a silent thing to depend on.
+
+   The wrapper is the target, so the selector says which direct children are NOT
+   it. `FloatingPortal` mounts its container as a direct child of this same
+   viewport — that is how the bubble bar and the link panel hang inside the
+   scroller — and `min-height: 100%` on that container adds a whole empty
+   viewport to the document's scroll range: measured in a browser, selecting one
+   phrase took the range from 2350 to 3220. `data-floating-ui-portal` is the
+   attribute floating-ui puts on every container it makes. */
 [data-scrollbars='vertical'].doc-body-scroller
   > [data-radix-scroll-area-viewport]
-  > div {
+  > div:not([data-floating-ui-portal]) {
   display: flex !important;
   flex-direction: column;
   min-height: 100%;

@@ -24,6 +24,7 @@ import {
   uniqueIndex,
   index,
   primaryKey,
+  check,
 } from "drizzle-orm/pg-core";
 import type { MessagePart } from "@breatic/shared";
 
@@ -659,14 +660,105 @@ export const payments = pgTable(
     currency: varchar("currency", { length: 10 }).default("usd").notNull(),
     status: varchar("status", { length: 20 }).default("pending").notNull(),
     creditsGranted: doublePrecision("credits_granted").default(0).notNull(),
+    // What Stripe worked out this purchase comes to, tax included, read back
+    // off the Checkout Session (0066, #13). Filled the first time we read a
+    // session Stripe has already priced: for a delayed payment method that is
+    // when its session completes, days before the money moves; for every
+    // other purchase it is settlement itself, written alongside the CAS. So a
+    // value here says nothing about whether the money moved — `status`
+    // answers that. NULL until then: Stripe cannot work out the tax without
+    // knowing where the buyer is, and `amount_cents` beside them is the
+    // pre-tax face value from our own price table, which is why a refund of a
+    // landed purchase pays back `total_cents` instead.
+    taxCents: integer("tax_cents"),
+    totalCents: integer("total_cents"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
     ...timestamps,
   },
   (table) => [
     index("payments_user_id_idx").on(table.userId),
     uniqueIndex("payments_stripe_session_id_idx").on(table.stripeSessionId),
+    // `expired` (0066, #13) is how an abandoned checkout leaves "processing":
+    // the buyer clicking back expires the session on the spot, and the two
+    // slower paths (the session's own expiry, and reconciling) land here too.
+    // Without it the purchase record would show a payment as in flight for as
+    // long as the session lives, with nothing in flight.
+    check(
+      "payments_status_check",
+      sql`${table.status} IN ('pending', 'completed', 'failed', 'expired')`,
+    ),
   ],
 );
+
+// ── 7b. Purchase consent and confirmation mail ───────────────────────
+
+/**
+ * The consent a buyer gave when they paid (0066, #13).
+ *
+ * Legal evidence. The row is written from inside the fulfillment transaction,
+ * so the consent and the credits it paid for commit together. All four
+ * callers of `fulfillPayment` reach this write, and `payment_id` being UNIQUE
+ * is what makes the later ones no-ops rather than a second, contradicting
+ * record.
+ *
+ * `consented_at` is the instant the checkout request arrived carrying the
+ * tick, stamped on our own clock and kept on the payment row until this one
+ * is written. The buyer ticks on our own confirm dialog, one request earlier;
+ * settling can arrive days later by way of reconciliation, so the moment this
+ * row is written is not the moment they agreed.
+ *
+ * Append-only: `created_at` and no `deleted_at`. A consent record outlives
+ * the statutory retention period and deleting one would destroy the evidence
+ * it exists to be — the written reason this table is waived from the
+ * soft-delete mandate.
+ */
+export const purchaseConsents = pgTable("purchase_consents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  paymentId: uuid("payment_id")
+    .notNull()
+    .unique()
+    .references(() => payments.id, { onDelete: "restrict" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  locale: varchar("locale", { length: 10 }).notNull(),
+  consentTextVersion: varchar("consent_text_version", { length: 20 }).notNull(),
+  refundTextVersion: varchar("refund_text_version", { length: 20 }),
+  consentedAt: timestamp("consented_at", { withTimezone: true }).notNull(),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+/**
+ * One purchase-confirmation email per payment (0066, #13).
+ *
+ * The row is born `pending` inside the fulfillment transaction, so a purchase
+ * that landed always has one. A purchase that has not landed has none, and
+ * the purchase history reaches this table through a left join. A resend is
+ * offered from every state but `sent`, and from `sending` only once that send
+ * has gone stale.
+ *
+ * `updated_at` carries `$onUpdate`, which the `sending` timeout depends on:
+ * a process replaced between claiming `sending` and writing the result would
+ * otherwise strand that row forever, with no background sweep to free it.
+ *
+ * Append-only in the sense that matters here: it lives as long as the payment
+ * it records, and there is nothing a user could delete — the written reason
+ * for its soft-delete waiver.
+ */
+export const purchaseMailOutbox = pgTable("purchase_mail_outbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  paymentId: uuid("payment_id")
+    .notNull()
+    .unique()
+    .references(() => payments.id, { onDelete: "restrict" }),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  lastError: text("last_error"),
+  ...timestamps,
+});
 
 // ── 7b. Subscriptions ────────────────────────────────────────────────
 

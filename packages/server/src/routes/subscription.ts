@@ -14,15 +14,15 @@
  */
 
 import { Hono } from "hono";
-import { env, logger, NotFoundError } from "@breatic/core";
+import { logger } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
+import { assertPaymentsEnabled } from "@server/middleware/require-payments.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate } from "@server/middleware/validate.js";
 import {
   subscriptionChangeSchema,
   subscriptionPlanSchema,
-  t,
 } from "@breatic/shared";
 import * as subscriptionService from "@server/modules/subscription/subscription.service.js";
 
@@ -36,19 +36,6 @@ subscription.use(requireAuth);
 // per-route list is a place for the fifth one to be forgotten.
 subscription.use(rateLimitFor("subscription-write", "user"));
 
-/**
- * Refuses every endpoint here when this deployment sells nothing.
- *
- * A `404` rather than a `403`: on a self-hosted install these endpoints do not
- * exist as a feature, and saying "forbidden" would imply they might work for
- * somebody else.
- * @throws {NotFoundError} when payments are switched off.
- */
-function requirePayments(): void {
-  if (!env.PAYMENT_ENABLED) {
-    throw new NotFoundError(t("server.membership.unavailable"));
-  }
-}
 
 /**
  * `POST /account/subscription/checkout` — start paying for a membership.
@@ -61,7 +48,7 @@ subscription.post(
   "/checkout",
   validate("json", subscriptionPlanSchema),
   async (c) => {
-    requirePayments();
+    assertPaymentsEnabled();
     const user = c.get("user");
     const body = c.req.valid("json");
     const result = await subscriptionService.startCheckout({
@@ -87,7 +74,7 @@ subscription.post(
   "/change",
   validate("json", subscriptionChangeSchema),
   async (c) => {
-    requirePayments();
+    assertPaymentsEnabled();
     const user = c.get("user");
     const body = c.req.valid("json");
     const result = await subscriptionService.changePlan({
@@ -109,7 +96,7 @@ subscription.post(
  * is taken away early.
  */
 subscription.post("/cancel", async (c) => {
-  requirePayments();
+  assertPaymentsEnabled();
   const user = c.get("user");
   await subscriptionService.cancel(user.id);
   logger.info({ userId: user.id }, "subscription_cancelled");
@@ -124,7 +111,7 @@ subscription.post("/cancel", async (c) => {
  * subscribe again.
  */
 subscription.post("/resume", async (c) => {
-  requirePayments();
+  assertPaymentsEnabled();
   const user = c.get("user");
   await subscriptionService.resume(user.id);
   logger.info({ userId: user.id }, "subscription_resumed");

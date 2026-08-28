@@ -65,7 +65,15 @@
     },
     "payment": {
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
-      "price_not_configured": "Price not configured for tier: {tier}"
+      "price_not_configured": "Price not configured for tier: {tier}",
+      "consent-credits-v1": "I ask for the credits to be delivered right away, and I understand that **once I use any of them I can no longer get this purchase refunded**. Unused credits can be refunded in full within 30 days.",
+      "refund-credits-v1": {
+        "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
+        "used": "Spent any of them, even one? That pack can no longer be refunded.",
+        "expired": "Past 30 days, packs are no longer refundable."
+      },
+      "not_found": "That purchase could not be found.",
+      "unavailable": "This deployment does not sell credits."
     },
     "skill": {
       "not_found": "Skill not found",
@@ -109,6 +117,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio storage is full. Uploading is unavailable.",
       "quota_exceeded_generate": "Studio storage is full. Generating is unavailable."
+    },
+    "purchase_mail": {
+      "subject": "Your credits are in",
+      "intro": "Thank you for your purchase. Here is what it was, kept for your records.",
+      "credits": "Credits added: {credits}",
+      "balance": "Balance now: {credits}",
+      "subtotal": "Price: {amount}",
+      "tax": "Tax: {amount}",
+      "total": "Total charged: {amount}",
+      "purchased_at": "Purchased: {when}",
+      "refund_by": "Refundable until: {when}",
+      "order_ref": "Order reference: {ref}",
+      "consent_heading": "What you agreed to when you bought",
+      "refund_heading": "Refund rules for credit packs",
+      "support": "Questions about this purchase? Write to {email}."
     }
   },
   "chat": {
@@ -721,7 +744,33 @@
         "comment": "Comment",
         "ai": "AI",
         "comingLabel": "{name} (not open yet)",
-        "link": "Link"
+        "link": "Link",
+        "blockType": "Block type",
+        "paragraph": "Text",
+        "heading1": "Heading 1",
+        "heading2": "Heading 2",
+        "heading3": "Heading 3",
+        "codeBlock": "Code block",
+        "taskList": "To-do list",
+        "align": "Alignment",
+        "alignLeft": "Left",
+        "alignCenter": "Centre",
+        "alignRight": "Right",
+        "color": "Colour",
+        "textColor": "Text colour",
+        "fillColor": "Background colour",
+        "colorReset": "Reset to default",
+        "aiRewriteGroup": "Rewrite the selection",
+        "aiProduceGroup": "Make something from the selection",
+        "aiOtherGroup": "Other",
+        "ai_refine": "Polish",
+        "ai_expand": "Expand",
+        "ai_shorten": "Shorten",
+        "ai_translate": "Translate",
+        "ai_tone": "Change tone",
+        "ai_storyboard": "Draft a shot list",
+        "ai_illustrate": "Illustrate this passage",
+        "ai_custom": "Custom instruction…"
       },
       "schemaOutdated": {
         "headline": "Document editor updated",
@@ -1313,7 +1362,7 @@
     "lotsEmpty": "No purchases yet.",
     "lotsEmptyNotice": {
       "title": "Every purchase will be listed here",
-      "body": "Each one shows what it bought, what is left of it, and which Studio it went to."
+      "body": "Each one shows what it cost, where it stands, and which Studio its credits went to."
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",
@@ -1343,10 +1392,6 @@
     "noLotsHere": "Nothing assigned to it yet",
     "debtAndSpent": "owes {debt} · spent {spent}",
     "spentOnly": "spent {spent}",
-    "buySoon": {
-      "title": "Buying opens soon",
-      "body": "You will be able to buy here. Prices exclude tax; what you pay is the price plus the tax where you are. Credits bought have to be assigned to a Studio before they can be spent."
-    },
     "assignEmpty": "Nothing to assign.",
     "assignEmptyNotice": {
       "title": "Give purchases to Studios here",
@@ -1358,7 +1403,7 @@
     "designateFailed": "That did not save. Try again.",
     "refundsEmpty": "Nothing can be refunded.",
     "refundable": "Refundable purchases",
-    "refundableHint": "{credits} credits left, worth {money}",
+    "refundableHint": "{credits} credits left",
     "askRefund": "Ask for a refund",
     "refundNotOpen": "Refunds are not open yet",
     "refundsAsked": "Requests made",
@@ -1367,6 +1412,36 @@
     "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
     "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
     "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
-    "refundsNote": "Only what is unspent is refunded, to the original payment method, after review."
+    "refundsNote": "A purchase with no credit spent can be refunded in full within 30 days, to the original payment method, after review.",
+    "buy": {
+      "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
+      "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
+      "refundTitle": "Refund rule",
+      "action": "Buy",
+      "confirmTitle": "Confirm your purchase",
+      "confirmPack": "Pack",
+      "confirmCredits": "Credits",
+      "confirmTax": "The price excludes tax. The checkout page shows the final amount with the tax where you are.",
+      "cancel": "Cancel",
+      "pay": "Continue to payment",
+      "failed": "That purchase could not be started. Try again."
+    },
+    "purchase": {
+      "processing": "Processing",
+      "expired": "Expired",
+      "failed": "Failed",
+      "landed": "Landed",
+      "notCharged": "Not charged",
+      "creditsOnArrival": "Shown once it lands",
+      "resend": "Send again",
+      "resendSent": "The confirmation is on its way.",
+      "resendFailed": "That letter still could not be sent.",
+      "beforeTax": "{amount} before tax"
+    },
+    "checkoutWait": {
+      "title": "Processing this purchase",
+      "body": "Please keep this page open.",
+      "skip": "View purchase history"
+    }
   }
 }

@@ -65,7 +65,15 @@
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
-      "price_not_configured": "套餐 {tier} 的价格未配置"
+      "price_not_configured": "套餐 {tier} 的价格未配置",
+      "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
+      "refund-credits-v1": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。"
+      },
+      "not_found": "找不到这笔购买。",
+      "unavailable": "这个部署不出售积分。"
     },
     "skill": {
       "not_found": "找不到这个 Skill",
@@ -109,6 +117,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
       "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
+    },
+    "purchase_mail": {
+      "subject": "积分已到账",
+      "intro": "感谢购买。以下是这笔购买的内容，请留存。",
+      "credits": "本次到账：{credits} 积分",
+      "balance": "当前余额：{credits} 积分",
+      "subtotal": "价格：{amount}",
+      "tax": "税额：{amount}",
+      "total": "实付合计：{amount}",
+      "purchased_at": "购买时间：{when}",
+      "refund_by": "可退款截止：{when}",
+      "order_ref": "订单号：{ref}",
+      "consent_heading": "你在购买时同意的内容",
+      "refund_heading": "积分包退款规则",
+      "support": "对这笔购买有疑问，请写信到 {email}。"
     }
   },
   "chat": {
@@ -721,7 +744,33 @@
         "comment": "评论",
         "ai": "AI",
         "comingLabel": "{name}（未开放）",
-        "link": "链接"
+        "link": "链接",
+        "blockType": "块类型",
+        "paragraph": "正文",
+        "heading1": "标题 1",
+        "heading2": "标题 2",
+        "heading3": "标题 3",
+        "codeBlock": "代码块",
+        "taskList": "任务列表",
+        "align": "对齐",
+        "alignLeft": "靠左",
+        "alignCenter": "居中",
+        "alignRight": "靠右",
+        "color": "颜色",
+        "textColor": "字体颜色",
+        "fillColor": "背景颜色",
+        "colorReset": "恢复默认",
+        "aiRewriteGroup": "改写选中的文字",
+        "aiProduceGroup": "据选中的文字产出新东西",
+        "aiOtherGroup": "其它",
+        "ai_refine": "优化",
+        "ai_expand": "扩写",
+        "ai_shorten": "缩写",
+        "ai_translate": "翻译",
+        "ai_tone": "改语气",
+        "ai_storyboard": "生成分镜表",
+        "ai_illustrate": "据这段生成示意图",
+        "ai_custom": "自定义要求…"
       },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",
@@ -1283,7 +1332,7 @@
     },
     "section": {
       "overview": "总览",
-      "lots": "充值记录",
+      "lots": "购买记录",
       "ledger": "消耗流水",
       "studios": "各 Studio",
       "buy": "购买积分",
@@ -1310,10 +1359,10 @@
       "title": "买了积分之后，还要指定给某个 Studio 才能用",
       "body": "左侧「购买积分」可以充值；充完在「指定」里把每个积分包分给要用它的 Studio。"
     },
-    "lotsEmpty": "还没有充值记录。",
+    "lotsEmpty": "还没有购买记录。",
     "lotsEmptyNotice": {
-      "title": "充值之后每个积分包都会出现在这里",
-      "body": "每个积分包会显示买了多少、还剩多少、指给了哪个 Studio。"
+      "title": "每一笔购买都会列在这里",
+      "body": "每一笔会显示花了多少、处理到哪一步，以及积分去了哪个 Studio。"
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1343,10 +1392,6 @@
     "noLotsHere": "还没有指定给它的积分",
     "debtAndSpent": "欠账 {debt} · 已消耗 {spent}",
     "spentOnly": "已消耗 {spent}",
-    "buySoon": {
-      "title": "充值即将开放",
-      "body": "开放后可以在这里直接购买，标价不含税，实付金额是标价加上你所在地的税额。买到的积分需要指定给某个 Studio 才能用。"
-    },
     "assignEmpty": "没有可以指定的积分。",
     "assignEmptyNotice": {
       "title": "买了积分之后在这里分给 Studio",
@@ -1358,7 +1403,7 @@
     "designateFailed": "指定没能保存，请重试。",
     "refundsEmpty": "没有可以退的积分。",
     "refundable": "可以退的积分包",
-    "refundableHint": "还剩 {credits} 积分，可退 {money}",
+    "refundableHint": "还剩 {credits} 积分",
     "askRefund": "申请退款",
     "refundNotOpen": "退款还没开放",
     "refundsAsked": "已提交的申请",
@@ -1367,6 +1412,36 @@
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
-    "refundsNote": "只退没用掉的部分，按原路退回，需要审核。"
+    "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",
+    "buy": {
+      "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
+      "assignNotice": "积分需要指定给某个 Studio 才能使用。",
+      "refundTitle": "退款规则",
+      "action": "购买",
+      "confirmTitle": "确认购买",
+      "confirmPack": "积分包",
+      "confirmCredits": "到账积分",
+      "confirmTax": "标价不含税。结账页会显示加上当地税额后的最终金额。",
+      "cancel": "取消",
+      "pay": "去支付",
+      "failed": "这笔购买没能发起，请再试一次。"
+    },
+    "purchase": {
+      "processing": "处理中",
+      "expired": "已失效",
+      "failed": "未成功",
+      "landed": "已到账",
+      "notCharged": "未付款",
+      "creditsOnArrival": "到账后显示",
+      "resend": "重发",
+      "resendSent": "确认邮件已在发送。",
+      "resendFailed": "这封邮件仍然没能发出。",
+      "beforeTax": "{amount}（税前）"
+    },
+    "checkoutWait": {
+      "title": "正在处理这笔购买",
+      "body": "请不要关闭页面。",
+      "skip": "查看购买记录"
+    }
   }
 }

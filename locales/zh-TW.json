@@ -62,7 +62,15 @@
     },
     "payment": {
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
-      "price_not_configured": "方案 {tier} 的價格未設定"
+      "price_not_configured": "方案 {tier} 的價格未設定",
+      "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。",
+      "refund-credits-v1": {
+        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
+        "used": "只要花過其中任何一個，這一筆就不能再退了。",
+        "expired": "超過 30 天，不再受理退款。"
+      },
+      "not_found": "找不到這筆購買。",
+      "unavailable": "這個部署不出售點數。"
     },
     "text_tool": {
       "already_running": "另一個文字工具正在執行,請稍候。"
@@ -109,6 +117,21 @@
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
       "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
+    },
+    "purchase_mail": {
+      "subject": "點數已入帳",
+      "intro": "感謝購買。以下是這筆購買的內容，請留存。",
+      "credits": "本次入帳：{credits} 點",
+      "balance": "目前餘額：{credits} 點",
+      "subtotal": "價格：{amount}",
+      "tax": "稅額：{amount}",
+      "total": "實付合計：{amount}",
+      "purchased_at": "購買時間：{when}",
+      "refund_by": "可退款截止：{when}",
+      "order_ref": "訂單編號：{ref}",
+      "consent_heading": "你在購買時同意的內容",
+      "refund_heading": "點數包退款規則",
+      "support": "對這筆購買有疑問，請寫信到 {email}。"
     }
   },
   "chat": {
@@ -721,7 +744,33 @@
         "comment": "評論",
         "ai": "AI",
         "comingLabel": "{name}（未開放）",
-        "link": "連結"
+        "link": "連結",
+        "blockType": "區塊類型",
+        "paragraph": "內文",
+        "heading1": "標題 1",
+        "heading2": "標題 2",
+        "heading3": "標題 3",
+        "codeBlock": "程式碼區塊",
+        "taskList": "待辦清單",
+        "align": "對齊",
+        "alignLeft": "靠左",
+        "alignCenter": "置中",
+        "alignRight": "靠右",
+        "color": "顏色",
+        "textColor": "文字顏色",
+        "fillColor": "背景顏色",
+        "colorReset": "恢復預設",
+        "aiRewriteGroup": "改寫選取的文字",
+        "aiProduceGroup": "依選取的文字產出新東西",
+        "aiOtherGroup": "其他",
+        "ai_refine": "潤飾",
+        "ai_expand": "擴寫",
+        "ai_shorten": "縮寫",
+        "ai_translate": "翻譯",
+        "ai_tone": "改語氣",
+        "ai_storyboard": "產生分鏡表",
+        "ai_illustrate": "依這段產生示意圖",
+        "ai_custom": "自訂要求…"
       },
       "schemaOutdated": {
         "headline": "文件編輯器已更新",
@@ -1283,7 +1332,7 @@
     },
     "section": {
       "overview": "總覽",
-      "lots": "儲值紀錄",
+      "lots": "購買記錄",
       "ledger": "消耗明細",
       "studios": "各 Studio",
       "buy": "購買點數",
@@ -1310,10 +1359,10 @@
       "title": "買了點數之後，還要指定給某個 Studio 才能用",
       "body": "左側「購買點數」可以儲值；儲值後在「指定」裡把每個點數包分給要用它的 Studio。"
     },
-    "lotsEmpty": "還沒有儲值紀錄。",
+    "lotsEmpty": "還沒有購買記錄。",
     "lotsEmptyNotice": {
-      "title": "儲值之後每個點數包都會出現在這裡",
-      "body": "每個點數包會顯示買了多少、還剩多少、指給了哪個 Studio。"
+      "title": "每一筆購買都會列在這裡",
+      "body": "每一筆會顯示花了多少、處理到哪一步，以及點數去了哪個 Studio。"
     },
     "assignedTo": "指定給 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1343,10 +1392,6 @@
     "noLotsHere": "還沒有指定給它的點數",
     "debtAndSpent": "欠帳 {debt} · 已消耗 {spent}",
     "spentOnly": "已消耗 {spent}",
-    "buySoon": {
-      "title": "儲值即將開放",
-      "body": "開放後可以在這裡直接購買，標價不含稅，實付金額是標價加上你所在地的稅額。買到的點數需要指定給某個 Studio 才能用。"
-    },
     "assignEmpty": "沒有可以指定的點數。",
     "assignEmptyNotice": {
       "title": "買了點數之後在這裡分給 Studio",
@@ -1358,7 +1403,7 @@
     "designateFailed": "指定沒能儲存，請重試。",
     "refundsEmpty": "沒有可以退的點數。",
     "refundable": "可以退的點數包",
-    "refundableHint": "還剩 {credits} 點數，可退 {money}",
+    "refundableHint": "還剩 {credits} 點數",
     "askRefund": "申請退款",
     "refundNotOpen": "退款還沒開放",
     "refundsAsked": "已送出的申請",
@@ -1367,6 +1412,36 @@
     "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
     "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
     "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
-    "refundsNote": "只退沒用掉的部分，按原路退回，需要審核。"
+    "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
+    "buy": {
+      "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
+      "assignNotice": "點數需要指定給某個 Studio 才能使用。",
+      "refundTitle": "退款規則",
+      "action": "購買",
+      "confirmTitle": "確認購買",
+      "confirmPack": "點數包",
+      "confirmCredits": "入帳點數",
+      "confirmTax": "標價不含稅。結帳頁會顯示加上當地稅額後的最終金額。",
+      "cancel": "取消",
+      "pay": "前往付款",
+      "failed": "這筆購買沒能發起，請再試一次。"
+    },
+    "purchase": {
+      "processing": "處理中",
+      "expired": "已失效",
+      "failed": "未成功",
+      "landed": "已到帳",
+      "notCharged": "未付款",
+      "creditsOnArrival": "入帳後顯示",
+      "resend": "重新寄送",
+      "resendSent": "確認信正在寄送。",
+      "resendFailed": "這封信仍然沒能寄出。",
+      "beforeTax": "{amount}（稅前）"
+    },
+    "checkoutWait": {
+      "title": "正在處理這筆購買",
+      "body": "請不要關閉頁面。",
+      "skip": "查看購買記錄"
+    }
   }
 }

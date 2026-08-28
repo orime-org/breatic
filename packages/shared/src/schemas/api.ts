@@ -334,12 +334,65 @@ export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 
 // ── Payment ──────────────────────────────────────────────────────────
 
+/**
+ * Buying a credit pack.
+ *
+ * A pack is named by its face value: the name is what a buyer reads and is
+ * free to be reworded, the face value is the pack. `return_url` is where the
+ * buyer came from — the server derives both ways back from it, so that the
+ * two only ever differ in the parameters that say which way it was.
+ * `time_zone` is what the browser reports; the confirmation email prints the
+ * purchase time in it, and the server checks it before storing it.
+ *
+ * `consented` says the buyer ticked the consent on the confirm dialog. It is
+ * the only value the field accepts, so a request that omits it or answers
+ * `false` is refused here and no session is ever created: a charge with no
+ * record of what its buyer agreed to is one we cannot account for, and the
+ * disabled button only covers the callers who go through the screen.
+ */
 export const checkoutSchema = z.object({
-  tier: z.string().min(1),
-  success_url: z.string().url(),
-  cancel_url: z.string().url(),
+  price_cents: z.number().int().positive(),
+  return_url: z.string().url(),
+  time_zone: z.string().min(1).max(64),
+  consented: z.literal(true),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
+
+/**
+ * Settling the purchase a buyer just came back from.
+ *
+ * The session id arrives on `success_url`, where Stripe substitutes it for
+ * the `{CHECKOUT_SESSION_ID}` placeholder.
+ */
+export const paymentConfirmSchema = z.object({
+  session_id: z.string().min(1).max(255),
+});
+export type PaymentConfirmInput = z.infer<typeof paymentConfirmSchema>;
+
+/**
+ * Abandoning the purchase a buyer just pressed Back on.
+ *
+ * Named by our own row's id, which `cancel_url` carries: Stripe documents its
+ * session-id placeholder for `success_url` only.
+ */
+export const paymentCancelSchema = z.object({
+  payment_id: z.string().uuid(),
+});
+export type PaymentCancelInput = z.infer<typeof paymentCancelSchema>;
+
+/**
+ * One page of the purchase history.
+ *
+ * Its own schema rather than the shared `paginationSchema`, which is
+ * `{limit, offset}` and is read by other routes: this screen pages by cursor,
+ * because a purchase landing between two reads would otherwise shift every
+ * row after it.
+ */
+export const paymentHistoryQuerySchema = z.object({
+  limit: z.string().optional(),
+  cursor: z.string().optional(),
+});
+export type PaymentHistoryQuery = z.infer<typeof paymentHistoryQuerySchema>;
 
 /**
  * Starting or changing a membership subscription (#106).

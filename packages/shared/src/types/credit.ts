@@ -24,6 +24,55 @@ export interface CreditPage<T> {
   nextCursor: string | null;
 }
 
+/**
+ * One row of the purchase history.
+ *
+ * Built from `payments` rather than from the lots, because a purchase that has
+ * not landed yet — one still processing, one the buyer abandoned — has no lot
+ * and is exactly what this screen exists to show. Everything the lot carries
+ * is therefore nullable here, and a row with nulls is a row that has not
+ * landed rather than a row with something missing.
+ */
+export interface PurchaseRow {
+  paymentId: string;
+  /** The listed price, before tax. Always known: it is what we charged for. */
+  amountCents: number;
+  /**
+   * What Stripe worked out this purchase comes to, tax included.
+   *
+   * Filled the first time a pass reads a session Stripe has already priced:
+   * for a delayed payment method that is when its session completes, days
+   * before the money moves; for every other purchase it is settlement itself.
+   * Present does not mean paid: `status` is what answers that, and a purchase
+   * that ended without being charged can still carry a figure Stripe computed
+   * before the bank refused it.
+   *
+   * Null until then, because Stripe cannot work out the tax without knowing
+   * where the buyer is; `amountCents` is what is known before that.
+   */
+  totalCents: number | null;
+  /** The tax within that figure, on the same terms. */
+  taxCents: number | null;
+  currency: string;
+  /** How many credits this purchase buys. */
+  creditsGranted: number;
+  /** How many are left. Null until it lands. */
+  remainingCredits: number | null;
+  /** Where the lot stands. Null until it lands. */
+  lifecycle: string | null;
+  /**
+   * The studio these credits were pointed at, and its name. Both read through
+   * the same "not deleted" predicate the overview uses, so one purchase cannot
+   * count as unassigned in one place and read "assigned to X" here with X gone.
+   */
+  designatedStudioId: string | null;
+  designatedStudioName: string | null;
+  status: string;
+  createdAt: string;
+  /** Whether the resend control is offered, decided on the server. */
+  canResend: boolean;
+}
+
 /** One purchase of this account's, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
@@ -39,12 +88,24 @@ export interface CreditLotView {
   designatedStudioId: string | null;
   /** That studio, named. Null whenever `designatedStudioId` is. */
   designatedStudioName: string | null;
-  /** What was paid for it, in the smallest unit of `currency`. */
+  /**
+   * What the buyer paid for it, tax included, in the smallest unit of
+   * `currency`. The same figure the purchase history prints for this purchase.
+   */
   paidCents: number;
   currency: string;
   lifecycle: CreditLotLifecycle;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;
+  /**
+   * Whether anything has ever been drawn from this purchase.
+   *
+   * Read off the ledger, not off the balance. A failed generation gives the
+   * credits back, so a purchase that has been spent from can be back at its
+   * full count — and the refund rule refuses it either way. Being drawn on to
+   * repay a studio's debt counts as much as a generation does.
+   */
+  everSpent: boolean;
   createdAt: string;
 }
 

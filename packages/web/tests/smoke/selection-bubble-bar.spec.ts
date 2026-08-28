@@ -11,7 +11,7 @@
  * 需要 dev 起着 + smoke 账号：
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { test, expect, type Locator, type Page } from 'playwright/test';
 
 import { createSpace, deleteSpace } from './helpers/space';
 
@@ -86,12 +86,26 @@ test.afterEach(async () => {
   }
 });
 
+/**
+ * 这一轮在哪个 project 里跑。
+ *
+ * 不给就走 studio 首页最上面那个。那份列表按最近编辑排序，所以一个跑过很多
+ * 轮的账号会一直落在同一个 project 上，Space 一轮一轮堆进去；堆到几百个之
+ * 后，抽屉里的删除确认按钮就等不出来了，`deleteSpace` 只好放弃，抽屉留在开
+ * 着的状态挡住下一条用例。给一个地址就绕开这条链，指哪跑哪。
+ */
+const projectUrl = process.env.SMOKE_PROJECT_URL;
+
 /** 进到一个新建的 Document Space，光标已在正文里。 */
 async function openFreshDocument(page: Page): Promise<void> {
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
+  if (projectUrl === undefined) {
+    await page.goto('/studio');
+    const firstProject = page.locator('a[href^="/project/"]').first();
+    await expect(firstProject).toBeVisible({ timeout: 15_000 });
+    await firstProject.click();
+  } else {
+    await page.goto(projectUrl);
+  }
   await page.waitForURL(/\/project\//, { timeout: 15_000 });
 
   createdSpaceIds.push(
@@ -231,17 +245,17 @@ for (const scheme of ['light', 'dark'] as const) {
         const r = n.getBoundingClientRect();
         return `${Math.round(r.width)}×${Math.round(r.height)}`;
       };
-      // 图标取每一格里的**第一个** `svg`。AI 那格是下拉形态（图标、文字、
-      // 箭头），所以它有两个 svg，而箭头不是图标——按 `button > svg` 一把抓
-      // 会把 13px 的箭头混进 16px 的图标里。
-      const icons = Array.from(el.querySelectorAll('button')).map((n) =>
-        size(n.querySelector('svg') as Element),
-      );
-      // 那个箭头单独量，免得它跟着图标一起被改掉没人发现。
+      // 条上每一个 svg，按尺寸归类。四个下拉各带一个箭头，而颜色那格画的是
+      // 字母 A 加箭头、没有图标——所以「每格第一个 svg」抓不准，得整片抓完
+      // 再按尺寸分。
+      const svgs = Array.from(el.querySelectorAll('svg')).map(size);
+      const icons = svgs.filter((v) => v === '16×16');
+      const chevrons = svgs.filter((v) => v === '13×13');
+      // AI 那格的箭头单独量一次，免得它跟着别的一起被改掉没人发现。
       const aiChevron = size(
         [
           ...(el
-            .querySelector('[data-testid="doc-bubble-coming-ai"]')
+            .querySelector('[data-testid="doc-bubble-ai"]')
             ?.querySelectorAll('svg') ?? []),
         ].pop() as Element,
       );
@@ -270,9 +284,20 @@ for (const scheme of ['light', 'dark'] as const) {
         };
       });
       // #902 A10：两个未开放的入口，变暗且光标说得出自己不能用。
-      const coming = Array.from(
-        el.querySelectorAll('[data-testid^="doc-bubble-coming-"]'),
-      ).map((n) => {
+      /**
+       * 一个控件的尺寸和它「能不能用」那几样的计算值。
+       * @param testid - 它的 test id。
+       * @returns 量出来的那几个数。
+       */
+      const control = (testid: string): {
+        width: number;
+        height: number;
+        opacity: string;
+        cursor: string;
+        ariaDisabled: string | null;
+      } | null => {
+        const n = el.querySelector(`[data-testid="${testid}"]`);
+        if (!n) return null;
         const ccs = getComputedStyle(n);
         const r = n.getBoundingClientRect();
         return {
@@ -282,7 +307,9 @@ for (const scheme of ['light', 'dark'] as const) {
           cursor: ccs.cursor,
           ariaDisabled: n.getAttribute('aria-disabled'),
         };
-      });
+      };
+      const comment = control('doc-bubble-coming-comment');
+      const ai = control('doc-bubble-ai');
       // A5：最上层命中的真的是浮出条自己——比「它在 DOM 里」强，能同时排除
       // 被裁掉一半和被别的东西盖住。
       const hit = document.elementFromPoint(
@@ -306,8 +333,10 @@ for (const scheme of ['light', 'dark'] as const) {
         tokenBackground,
         hasShadow: cs.boxShadow !== 'none',
         buttons,
+        chevrons,
         separators,
-        coming,
+        comment,
+        ai,
         barHeight,
         controlGap,
         icons,
@@ -327,26 +356,26 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(geo.radius).toBe(geo.tokenRadius);
     expect(geo.hasShadow).toBe(true);
     // demo 的 `.bubble-btn`（`2026-08-21-editor-command-surface.html`）是 28 高、
-    // 28 宽。九个：#902 的八个命令，加上 #903 的链接。最后那个交给 Radix 当浮层
-    // 触发器、不是按下就跑命令的那种，尺寸仍旧跟其余八个一样。
-    expect(geo.buttons).toHaveLength(9);
+    // 28 宽。六个：粗体 斜体 删除线 下划线 行内代码 链接。三个块命令 2026-08-26
+    // 起住在块类型菜单里。
+    expect(geo.buttons).toHaveLength(6);
     for (const b of geo.buttons) {
       expect(b).toEqual({ width: 28, height: 28 });
     }
-    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。图标
-    // 十一个：九个命令加评论、AI。AI 那格的箭头 13 不在 A 档改动之列，单独
-    // 钉住它没被顺手动过。
+    // #912 的另外三个数。整条外高是按钮 28 加上下内距各 4 加边框各 1。
     expect(geo.barHeight).toBe(38);
     expect(geo.controlGap).toBe('2px');
-    expect(geo.icons).toHaveLength(11);
-    for (const icon of geo.icons) {
-      expect(icon).toBe('16×16');
-    }
+    // 16px 的图标十个：六个命令、块类型、对齐、AI、评论。颜色那格画的是字母
+    // A，没有图标。
+    expect(geo.icons).toHaveLength(10);
+    // 13px 的箭头四个，四个下拉各一个。
+    expect(geo.chevrons).toHaveLength(4);
     expect(geo.aiChevron).toBe('13×13');
     // #902 A5 / A6：demo 的 `.bubble-sep`（`2026-08-21-editor-command-surface.html`）
     // 是 1px 宽、16px 高、左右各 3px，颜色走 `--color-border`。
-    // 三条：块类型组与 marks 组之间、marks 组与行内组之间、行内组与 AI 之间。
-    expect(geo.separators).toHaveLength(3);
+    // 四条，五组之间各一条（demo 里条下面那句说明）：块类型 ｜ 对齐 ｜ 粗体 斜体 删除线
+    // 下划线 ｜ 链接 行内代码 颜色 评论 ｜ AI。
+    expect(geo.separators).toHaveLength(4);
     for (const sep of geo.separators) {
       expect(sep.width).toBe(1);
       expect(sep.height).toBe(16);
@@ -354,19 +383,22 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(sep.marginRight).toBe('3px');
       expect(sep.background).toBe(sep.tokenBorder);
     }
-    // #902 A9 / A10：评论和 AI 占位，尺寸跟命令按钮一样，看得出不能用。
-    // 尺寸只核评论那个：AI 按 demo 是带文字和箭头的下拉样子（`.bubble-drop`，
-    // 宽度跟着文字走），评论是图标按钮（`.bubble-btn`，28 宽）。
-    expect(geo.coming).toHaveLength(2);
-    for (const entry of geo.coming) {
-      expect(entry.height).toBe(28);
-      expect(entry.opacity).toBe('0.5');
-      expect(entry.cursor).toBe('not-allowed');
-      expect(entry.ariaDisabled).toBe('true');
-    }
-    expect(geo.coming[0]!.width).toBe(28);
-    // A5：挂在滚动容器外面、最上层可见、没跑出窗口。
-    expect(geo.insideScroller).toBe(false);
+    // 评论那一个照 `ComingTool` 的既有表示画：图标按钮（`.bubble-btn`，28 宽），
+    // 变暗、不可点，看得出它的功能还没做（#18）。
+    expect(geo.comment).toMatchObject({
+      width: 28,
+      height: 28,
+      opacity: '0.5',
+      cursor: 'not-allowed',
+      ariaDisabled: 'true',
+    });
+    // AI 那格是普通控件：hover 就展开菜单，菜单里每一项照 demo 画，按下去在
+    // 控制台留一行（user 2026-08-26）。demo 给它的是带文字和箭头的下拉样子
+    // （`.bubble-drop`，宽度跟着文字走）。
+    expect(geo.ai).toMatchObject({ height: 28, opacity: '1', ariaDisabled: null });
+    expect(geo.ai!.width).toBeGreaterThan(28);
+    // G2：挂在滚动容器里面、最上层可见、没跑出窗口。
+    expect(geo.insideScroller).toBe(true);
     expect(geo.hitInsideBar).toBe(true);
     expect(geo.aboveWindowTop).toBe(false);
   });
@@ -422,26 +454,31 @@ test('上方放不下就翻到选区下方，放得下就留在上方', async ()
   expect(middle.hitAtOwnTop).toBe(true);
 });
 
-test('选中的那一行被滚到正文顶部时，浮出条翻到下方而不是被裁掉', async () => {
+test('keeps the side it came up on as its line scrolls to the top (E3)', async () => {
   test.setTimeout(180_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 6);
 
-  // 滚到让那一行正好停在正文可见区上沿下面 10px：上方只剩 10，放不下 46。
-  // 滚动量按量到的位置算，不写死——写死的数字随字号和行距一起漂，而漂到
-  // 「整段滚出视野」时测的就完全是另一件事了（那种情形不在本次范围内）。
+  // It comes up above the selection: this paragraph has room over it.
   const before = await readGeometry(page);
+  expect(before.below).toBe(false);
+
+  // Scroll until that line rests 10px below the top of the visible body, so
+  // there is no longer room for the bar's 46 above it. The distance is
+  // measured rather than written down: a fixed number drifts with the font
+  // size and the line height, and drifting as far as "the paragraph leaves the
+  // view" would make this test about something else entirely.
   await scrollBodyTo(page, before.lineTop - (await bodyViewportTop(page)) - 10);
 
-  const m = await readGeometry(page);
-  expect(m.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
-  // 第一轮实现在这里把浮出条画到了裁切盒之外，顶上 4px 被削掉（实测条顶 76、
-  // 裁切盒顶 80）。现在它该翻到选区下方。
-  expect(m.below).toBe(true);
-  expect(m.gap).toBe(8);
-  expect(m.hitAtOwnTop).toBe(true);
+  const after = await readGeometry(page);
+  expect(after.lineTop - (await bodyViewportTop(page))).toBeLessThan(46);
+  // Which side was settled when the bar came up and holds for as long as it
+  // stays up (user 2026-08-26). It travels with its line and the scroller's
+  // overflow clips whatever no longer fits, the way the link panel does.
+  expect(after.below).toBe(false);
+  expect(after.gap).toBe(8);
 });
 
 test('浮出条不占 tab 站：从正文按 Tab 不会落进它', async () => {
@@ -566,11 +603,121 @@ test('未开放的入口悬停时说得出自己为什么不能用', async () =>
   // 可操作性检查会一直等下去。真人的鼠标不走那道检查。
   const before = await html();
   await entry.click({ force: true });
-  await page.getByTestId('doc-bubble-coming-ai').click({ force: true });
+  await page.getByTestId('doc-bubble-ai').click({ force: true });
   expect(await html()).toBe(before);
 
   // 这套用例共享同一个 page，而后面几条的前提是「鼠标不在正文里」。上面的悬停
   // 会把指针留在条上，所以离开时把它放回正文外，跟这条开始时一样。
+  await page.mouse.move(8, 8);
+});
+
+/**
+ * Walk the pointer onto one opener and wait for its menu.
+ *
+ * Step-wise, the way the case above does it: `.hover()` teleports, and Radix
+ * decides from pointer events, so a jump delivers none and the menu never
+ * opens.
+ * @param slot - The opener's test id.
+ * @returns The menu element's locator.
+ */
+async function hoverOpenSlot(slot: string): Promise<Locator> {
+  const opener = page.getByTestId(slot);
+  const box = (await opener.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
+    steps: 12,
+  });
+  const menu = page.getByTestId(`${slot}-menu`);
+  await expect(menu).toBeVisible({ timeout: 5_000 });
+  return menu;
+}
+
+// B1 and A5/A6 in a real browser. Every hover menu on the bar had been opened
+// only in jsdom, where no stylesheet loads and Radix's own pointer handling
+// runs against a layout that does not exist — so what a reader sees on
+// hovering one of these four had never been measured.
+test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('the quick brown fox jumps');
+  await selectFirstParagraph(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  // 按 testid 而不是 menu 语义：这些菜单不接受键盘输入，所以它们不声明
+  // `role="menu"`——那会向读屏宣告一套并不存在的方向键导航。
+  const rowsOf = async (menu: Locator): Promise<string[]> =>
+    menu.evaluate((el) =>
+      [...el.querySelectorAll('[data-testid*="-item-"]')].map((r) =>
+        (r as HTMLElement).innerText.replace(/\s+/g, ' ').trim()));
+
+  const blockType = await hoverOpenSlot('doc-bubble-block-type');
+  expect(await rowsOf(blockType)).toHaveLength(9);
+  expect(
+    await blockType.locator('[data-testid^="doc-bubble-block-type-shortcut-"]').count(),
+  ).toBe(7);
+
+  const align = await hoverOpenSlot('doc-bubble-align');
+  expect(await rowsOf(align)).toHaveLength(3);
+
+  const colour = await hoverOpenSlot('doc-bubble-color');
+  // Two rows of eight and a reset, and the cell's own measurements: 30 square
+  // with the letter at 15px（demo 的 `.color-cell`）。
+  expect(await colour.locator('[data-testid^="doc-bubble-color-text-"]').count()).toBe(8);
+  expect(await colour.locator('[data-testid^="doc-bubble-color-fill-"]').count()).toBe(8);
+  await expect(colour.getByTestId('doc-bubble-color-reset')).toBeVisible();
+  // The computed box rather than the painted one: the bar is placed by a
+  // `transform` whose offsets carry a fraction, so every rect under it lands
+  // on a fraction too and rounds to 29 or 30 depending on where the bar sits.
+  const cell = await colour.getByTestId('doc-bubble-color-text-red').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { w: cs.width, h: cs.height, fontSize: cs.fontSize, box: cs.boxSizing };
+  });
+  expect(cell).toMatchObject({
+    w: '30px',
+    h: '30px',
+    fontSize: '15px',
+    box: 'border-box',
+  });
+
+  // Set up before the menu opens. A menu closes once the pointer has been off
+  // it for its grace period, so anything done between opening and pressing is
+  // time the menu spends on its way out.
+  const lines: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'warning') lines.push(m.text());
+  });
+  const bodyBefore = await page.evaluate(
+    () =>
+      document.querySelector('[data-testid="document-space"] .ProseMirror')
+        ?.innerHTML ?? '',
+  );
+
+  const ai = await hoverOpenSlot('doc-bubble-ai');
+  expect(await rowsOf(ai)).toHaveLength(8);
+
+  // Pressing a row that reaches no command: the console carries it, the
+  // document is untouched, and the menu goes away like any other.
+  //
+  // The pointer walks onto the row and presses there. `click()` teleports and
+  // holds the press until the element reports itself stable, and a menu that
+  // opens with a transition is not stable for a frame or two — long enough for
+  // the pointer, still parked on the opener, to be treated as having left.
+  const row = ai.getByTestId('doc-bubble-ai-item-refine');
+  const rowBox = (await row.boundingBox())!;
+  await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2, {
+    steps: 10,
+  });
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.getByTestId('doc-bubble-ai-menu')).toBeHidden({ timeout: 5_000 });
+  expect(lines.filter((l) => l.includes('not implemented yet'))).toHaveLength(1);
+  expect(
+    await page.evaluate(
+      () =>
+        document.querySelector('[data-testid="document-space"] .ProseMirror')
+          ?.innerHTML ?? '',
+    ),
+  ).toBe(bodyBefore);
+
+  // The pointer goes back outside the body, the way the cases here leave it.
   await page.mouse.move(8, 8);
 });
 
@@ -690,8 +837,10 @@ test('正文列右边放不下时，浮出条改成右边缘对齐选区左边�
 
   // 先确认这个几何真的造出了「放不下」，否则下面的断言测的是另一件事。
   expect(m.roomToTheRight).toBeLessThan(m.barWidth);
-  // 放不下时它不再左对齐，而是把右边缘落在选区左边缘上。
-  expect(m.leftDelta).toBe(-m.barWidth);
+  // 放不下时它不再左对齐，而是把右边缘落在选区左边缘上。左边缘的位置由这两
+  // 个各自 `Math.round` 过的数相减得来，所以容许 1px：和的舍入跟两个舍入的和
+  // 差得出 1。对齐这件事本身由下一句量，那里只有一次舍入。
+  expect(Math.abs((m.leftDelta ?? NaN) + m.barWidth)).toBeLessThanOrEqual(1);
   // 取绝对值：这个差值由两次 `Math.round` 相减得来，落在零上时可能是 `-0`，
   // 而 `toBe` 走 `Object.is`，`-0` 跟 `0` 在那儿不相等。
   expect(Math.abs(m.rightDelta ?? NaN)).toBe(0);
@@ -959,7 +1108,10 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
         barRight: Math.round(b.right),
         viewLeft: Math.round(v.left),
         viewRight: Math.round(v.right),
-        inside: b.left >= v.left && b.right <= v.right,
+        // 1px 容差：`shift` 把条推到边界上时两条边重合，而这是浮点数，
+        // 差出来的零点几像素画不出来。量到过 `barRight` 和 `viewRight`
+        // 舍入后都是 1680，精确比较仍判 false。
+        inside: b.left >= v.left - 1 && b.right <= v.right + 1,
       };
     });
 
@@ -978,13 +1130,16 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   // 一个已经在区域外面的位置上。
   await page.setViewportSize({ width: 1680, height: 950 });
   await page.waitForTimeout(600);
-  const far = await page.evaluate(() => {
+  const pin = await page.evaluate(() => {
     const v = document
       .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
       .getBoundingClientRect();
-    return { x: Math.round(v.right) - 40, y: Math.round(v.top) + 300 };
+    // A quarter of the way in. The bar is about 421 wide and fits to the right
+    // of that point at both widths, so `shift` leaves it where the anchor puts
+    // it and `barLeft` below reads the pin itself.
+    return { x: Math.round(v.left + v.width * 0.25), y: Math.round(v.top) + 300 };
   });
-  await page.mouse.move(far.x, far.y);
+  await page.mouse.move(pin.x, pin.y);
   await selectWholeDocument(page);
   const allWide = await geo();
   expect(allWide.shown).toBe(true);
@@ -995,93 +1150,104 @@ test('窗口缩小时，两档的条都跟着动并留在正文区域内', async
   const allNarrow = await geo();
   expect(allNarrow.shown).toBe(true);
   expect(allNarrow.inside).toBe(true);
-  // 相对位置守恒：钉住的点在区域宽度里占的比例，缩窄前后一致。容差是比值的
-  // 0.01，窄档正文可见区约 680px 时折合约 7px、宽档约 1360px 时约 14px——不是
-  // 2px，早先这里那个数说错了。
-  //
-  // 量的是 `barRight`，它等于钉住的 x **只在 flip 把对齐轴翻成 `-end` 时**成立
-  // ——鼠标放在离右沿 40px 处、条宽约 192px，放不下才会翻。下面先断言这个几何
-  // 真的成立，否则这两句量的是「钉住点 + 条宽」，那是另一回事。
-  // 宽档：鼠标钉在离右沿 40 的地方，条翻过来之后右边缘就落在那个点上。
-  expect(allWide.viewRight - allWide.barRight).toBe(40);
-  // 窄档：那个点按比例重算过，离右沿的距离跟着区域一起缩，所以严格小于 40。
-  // 这两句同时也是「flip 真的翻了」的证据——没翻的话条的右边缘会是
-  // 「钉住点加条宽」，差值当场变成负数。
-  expect(allNarrow.viewRight - allNarrow.barRight).toBeLessThan(40);
-  expect(allNarrow.viewRight - allNarrow.barRight).toBeGreaterThan(0);
+  // The bar's left edge is the pinned point: `top-start` against a zero-width
+  // anchor puts the floating x on the reference's own left edge, and nothing
+  // moves it from there while it fits. This is what makes the two ratios below
+  // measure the pin rather than a boundary — a bar pushed onto the body's edge
+  // reads that edge at both widths, and the comparison would hold whatever the
+  // pin did. 1px of tolerance for the rounding on either side.
+  expect(Math.abs(allWide.barLeft - pin.x)).toBeLessThanOrEqual(1);
+  // The point is remapped, so it lands somewhere else on screen.
+  expect(allNarrow.barLeft).not.toBe(allWide.barLeft);
+  // Its share of the body's width is what survives the resize. The tolerance is
+  // 0.01 of the ratio: about 7px over the narrow body's ~680, about 14px over
+  // the wide one's ~1360.
   const ratioWide =
-    (allWide.barRight - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
+    (allWide.barLeft - allWide.viewLeft) / (allWide.viewRight - allWide.viewLeft);
   const ratioNarrow =
-    (allNarrow.barRight - allNarrow.viewLeft)
+    (allNarrow.barLeft - allNarrow.viewLeft)
     / (allNarrow.viewRight - allNarrow.viewLeft);
   expect(Math.abs(ratioNarrow - ratioWide)).toBeLessThan(0.01);
 });
 
-// A15。每 6px 采样一次（步长写在下面的 `y += 6`，不是逐像素）：锚定那一行跟
-// 正文可见区不相交的采样位置上，条都不能在屏幕上。不能只断言「它被裁掉了」——条挂在滚动容器外面，裁它的那一层比正文
-// 可见区高 40px，只靠裁切它会在那条 40px 的带子里露出来，画在顶部横条上。
-test('选了一部分时，锚定那一行滚出正文显示区，条就不显示', async () => {
+// E5, both halves. The bar travels with its line and the scroller's overflow
+// clips it: measured every 6px on the way out, the bar is on screen only while
+// its anchor is, and scrolling back brings it into view again. The reverse half
+// is the one that used to go unmeasured — a bar that never came back would have
+// passed.
+test('the bar leaves view with its line, and comes back with it', async () => {
   test.setTimeout(240_000);
   await openFreshDocument(page);
   await typeLongBody(page);
   await scrollBodyTo(page, 0);
   await selectParagraph(page, 6);
 
-  const start = await readGeometry(page);
   const bad: { scroll: number; barTop: number | null; lineTop: number }[] = [];
-  const stray: { scroll: number; barTop: number; viewTop: number }[] = [];
-  // 从「那一行还在屏上」一路滚到「它早已滚过去」，每 6px 量一次。
+  /**
+   * Where the bar and its line sit against the body's visible area.
+   * @returns The three boxes, rounded.
+   */
+  const measure = async (): Promise<{
+    barTop: number | null;
+    barBottom: number | null;
+    lineTop: number;
+    lineBottom: number;
+    viewTop: number;
+    viewBottom: number;
+  }> => page.evaluate(() => {
+    const el = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement | null;
+    const bar = el?.getBoundingClientRect();
+    const box = window.getSelection()?.rangeCount
+      ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+      : null;
+    const v = document
+      .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      ?.getBoundingClientRect();
+    return {
+      barTop: bar ? Math.round(bar.top) : null,
+      barBottom: bar ? Math.round(bar.bottom) : null,
+      lineTop: box ? Math.round(box.top) : 0,
+      lineBottom: box ? Math.round(box.bottom) : 0,
+      viewTop: v ? Math.round(v.top) : 0,
+      viewBottom: v ? Math.round(v.bottom) : 0,
+    };
+  });
+
+  const start = await measure();
+
+  // Out: from "the line is still on screen" to well past it, 6px at a time.
   for (let y = 0; y <= start.lineTop + 240; y += 6) {
-    await page.evaluate((top) => {
-      document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-        ?.scrollTo(0, top);
-    }, y);
-    // 滚动重算没有防抖，一帧足够。
+    await scrollBodyTo(page, y);
+    // Repositioning on scroll is not debounced; one frame is enough.
     await page.waitForTimeout(30);
-    const m = await page.evaluate(() => {
-      const el = document.querySelector(
-        '[data-testid="doc-selection-bubble-bar"]',
-      ) as HTMLElement | null;
-      const shown = !!el && el.isConnected
-        && getComputedStyle(el).visibility !== 'hidden';
-      const box = window.getSelection()?.rangeCount
-        ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
-        : null;
-      const v = document
-        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')
-        ?.getBoundingClientRect();
-      return {
-        shown,
-        barTop: el ? Math.round(el.getBoundingClientRect().top) : null,
-        // 锚定的是 head 那一行，看不见才退到 from 那一行。这里选区是一整段，
-        // 两端在同一段里，段落的包围盒够用。
-        lineTop: box ? Math.round(box.top) : 0,
-        lineBottom: box ? Math.round(box.bottom) : 0,
-        viewTop: v ? Math.round(v.top) : 0,
-        viewBottom: v ? Math.round(v.bottom) : 0,
-      };
-    });
-    // 判的是喂给 `hide` 中间件的那个锚点矩形，也就是那一行上下各撑一个间距
-    // ——间距是锚点的一部分（做进锚点是为了让 `flip` 看到条真实需要的空间），
-    // 所以行盒本身刚离开可见区时锚点矩形还差 8px 才算完全离开。拿没撑过的行盒
-    // 去判会比实现严 8px：实测在 6px 的扫描步长下落进两个采样点（滚动位置 276
-    // 和 282），而那两处条顶分别是 127 和 121，都在可见区（顶 120）里面。
+    const m = await measure();
+    // The anchor is the line grown by one gap either side, which is what the
+    // bar is placed against.
     const anchorTop = m.lineTop - GAP_FROM_SELECTION_PX;
     const anchorBottom = m.lineBottom + GAP_FROM_SELECTION_PX;
-    const overlaps = anchorBottom > m.viewTop && anchorTop < m.viewBottom;
-    if (!overlaps && m.shown) {
+    const anchorInView = anchorBottom > m.viewTop && anchorTop < m.viewBottom;
+    const barInView =
+      m.barTop !== null
+      && m.barBottom !== null
+      && m.barBottom > m.viewTop
+      && m.barTop < m.viewBottom;
+    if (!anchorInView && barInView) {
       bad.push({ scroll: y, barTop: m.barTop, lineTop: m.lineTop });
     }
-    // A15 真正要防的后果，单独量一次：条挂在滚动容器外面，裁它的那一层比正文
-    // 可见区高 40px，所以只靠裁切它会在那条带子里露出来、画在顶部横条上。
-    if (m.shown && m.barTop !== null && m.barTop < m.viewTop) {
-      stray.push({ scroll: y, barTop: m.barTop, viewTop: m.viewTop });
-    }
   }
-
   expect(bad).toEqual([]);
-  expect(stray).toEqual([]);
+
+  // Back: the same selection, the same place, and the bar is visible again.
+  await scrollBodyTo(page, 0);
+  await page.waitForTimeout(60);
+  const back = await measure();
+  expect(back.barTop).not.toBeNull();
+  expect(back.barBottom!).toBeGreaterThan(back.viewTop);
+  expect(back.barTop!).toBeLessThan(back.viewBottom);
+  // Where it was before any of this scrolling.
+  expect(Math.abs(back.barTop! - start.barTop)).toBeLessThanOrEqual(1);
 });
 
 // A16。左右都不许伸出正文显示区，两档各量一次。
@@ -1290,6 +1456,200 @@ async function bodyView(
     return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
   });
 }
+
+// G2. The bar hangs inside the body's scroller, and the container it hangs in
+// is a direct child of that scroller — the same position `index.css` gives the
+// wrapper Radix puts around the document. Only a real browser answers whether
+// the rule aimed at that wrapper also lands on the portal's container: jsdom
+// loads no stylesheet, so `min-height` is empty there whatever the selector says.
+test('selecting text leaves the document as long as it was', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  const scrollRange = async (): Promise<{ height: number; client: number }> =>
+    page.evaluate(() => {
+      const v = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      return { height: v.scrollHeight, client: v.clientHeight };
+    });
+
+  const before = await scrollRange();
+  await selectParagraph(page, 4);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+  const after = await scrollRange();
+
+  expect(after.height).toBe(before.height);
+
+  // Where the growth came from, so a failure names it rather than only the sum.
+  const portal = await page.evaluate(() => {
+    const el = document.querySelector('[data-floating-ui-portal]') as HTMLElement | null;
+    if (!el) return null;
+    return {
+      insideViewport: !!el.closest('[data-radix-scroll-area-viewport]'),
+      height: Math.round(el.getBoundingClientRect().height),
+      minHeight: getComputedStyle(el).minHeight,
+    };
+  });
+  expect(portal).not.toBeNull();
+  expect(portal!.insideViewport).toBe(true);
+  expect(portal!.minHeight).not.toBe(`${before.client}px`);
+});
+
+// The bar's first painted frame. floating-ui needs the element in the document
+// before it can measure it, so the bar enters at whatever offsets the last
+// computation left behind and moves once the real ones land. Whether the
+// reader sees that is the question: only a browser paints, and only a browser
+// runs the frames this counts.
+test('浮出条第一次画出来就在它最终的位置上', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  // Recorded from inside the page: a frame is a frame, and reading positions
+  // over the wire samples whatever the driver happens to catch.
+  await page.evaluate(() => {
+    const w = window as unknown as { __barFrames?: unknown[] };
+    w.__barFrames = [];
+    const frames = w.__barFrames as { visible: boolean; top: number; left: number }[];
+    const watch = (bar: HTMLElement): void => {
+      let left = 40;
+      const tick = (): void => {
+        const r = bar.getBoundingClientRect();
+        frames.push({
+          visible: getComputedStyle(bar).visibility !== 'hidden',
+          top: Math.round(r.top),
+          left: Math.round(r.left),
+        });
+        left -= 1;
+        if (left > 0 && bar.isConnected) requestAnimationFrame(tick);
+      };
+      tick();
+    };
+    new MutationObserver((records) => {
+      for (const rec of records) {
+        for (const node of rec.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue;
+          const bar = node.matches('[data-testid="doc-selection-bubble-bar"]')
+            ? node
+            : node.querySelector<HTMLElement>('[data-testid="doc-selection-bubble-bar"]');
+          if (bar && frames.length === 0) watch(bar);
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
+  // Selected from the keyboard. A mouse selection hides the bar for the length
+  // of the press (D1), and the press outlasts the frames this counts — so the
+  // bar's entry would be covered by a gate that has nothing to do with where
+  // it is placed.
+  await page
+    .locator('[data-testid="document-space"] .ProseMirror p')
+    .nth(5)
+    .click();
+  await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached();
+  for (let i = 0; i < 10; i += 1) {
+    await page.keyboard.press('Shift+ArrowRight');
+  }
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+  await page.waitForTimeout(700);
+
+  const frames = await page.evaluate(
+    () =>
+      (window as unknown as { __barFrames: { visible: boolean; top: number; left: number }[] })
+        .__barFrames,
+  );
+  expect(frames.length).toBeGreaterThan(2);
+
+  const shown = frames.filter((f) => f.visible);
+  expect(shown.length).toBeGreaterThan(0);
+  // Every frame the reader sees is the resting one. A bar that enters at a
+  // stale offset and jumps has at least two distinct visible positions.
+  const settled = shown.at(-1)!;
+  expect(shown[0]).toMatchObject({ top: settled.top, left: settled.left });
+});
+
+// E3 says the bar picks its side as it comes up. D1 keeps it off screen for
+// the length of a drag-select, so "as it comes up" is the release — and a side
+// settled from an anchor passed through mid-drag is settled from a place the
+// reader never saw. Dragging upward is where the two differ: there is room
+// above the head where the drag starts and none where it ends.
+test('往上拖着选到正文区顶端，松手后条整个在正文区里', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  // Scrolled into the body, so the line the drag ends on has the top edge just
+  // above it and no room for the bar there.
+  await scrollBodyTo(page, 400);
+
+  const view = await bodyView(page);
+  const paragraphs = page.locator('[data-testid="document-space"] .ProseMirror p');
+  const startBox = (await paragraphs
+    .filter({ hasText: 'line' })
+    .first()
+    .boundingBox())!;
+  const x = startBox.x + 40;
+
+  await page.mouse.move(x, view.top + 320);
+  await page.mouse.down();
+  await page.mouse.move(x, view.top + 20, { steps: 20 });
+  await page.mouse.up();
+
+  const bar = page.getByTestId('doc-selection-bubble-bar');
+  await expect(bar).toBeVisible({ timeout: 5_000 });
+  const box = (await bar.boundingBox())!;
+  // 1px of tolerance: the bar is placed by a transform whose offsets carry a
+  // fraction, so its edges land on fractions too.
+  expect(box.y).toBeGreaterThanOrEqual(view.top - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(view.bottom + 1);
+});
+
+// E2's "全选时滚动正文，浮出条在屏幕上不动" measured inside the frame rather
+// than across it. Sampling before and after a scroll settles says nothing
+// about what the frame between them drew.
+test('全选钉住之后滚动，条在滚动发生的那一刻就没有动', async () => {
+  await openFreshDocument(page);
+  await typeLongBody(page);
+  await scrollBodyTo(page, 0);
+
+  const view = await bodyView(page);
+  await page.mouse.move(view.left + 300, view.top + 260);
+  await selectWholeDocument(page);
+  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
+
+  const samples = await page.evaluate(async () => {
+    const bar = document.querySelector(
+      '[data-testid="doc-selection-bubble-bar"]',
+    ) as HTMLElement;
+    const viewport = document.querySelector(
+      '.doc-body-scroller [data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    const top = (): number => Math.round(bar.getBoundingClientRect().top);
+    const frame = (): Promise<void> =>
+      new Promise((r) => {
+        requestAnimationFrame(() => {
+          r();
+        });
+      });
+    const out: { before: number; sameTick: number; settled: number }[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const before = top();
+      viewport.scrollTop += 120;
+      const sameTick = top();
+      await frame();
+      await frame();
+      out.push({ before, sameTick, settled: top() });
+    }
+    return out;
+  });
+
+  // Every reading is the same one: the bar does not travel with the content
+  // and get pulled back, it never travels.
+  for (const s of samples) {
+    expect(s.sameTick).toBe(s.before);
+    expect(s.settled).toBe(s.before);
+  }
+});
 
 test('link: an address with a space in the host leaves confirm dimmed', async () => {
   // Only a real browser answers this. The check rests on the URL parser, and

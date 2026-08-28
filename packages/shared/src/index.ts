@@ -172,6 +172,7 @@ export {
 
 export type {
   CreditPage,
+  PurchaseRow,
   CreditLotView,
   StudioLotView,
   CreditLedgerKind,
@@ -205,6 +206,9 @@ export {
   understandSchema,
   projectCreateSchema,
   checkoutSchema,
+  paymentConfirmSchema,
+  paymentCancelSchema,
+  paymentHistoryQuerySchema,
   subscriptionPlanSchema,
   subscriptionChangeSchema,
   paginationSchema,
@@ -229,6 +233,9 @@ export type {
   UnderstandInput,
   ProjectCreateInput,
   CheckoutInput,
+  PaymentConfirmInput,
+  PaymentCancelInput,
+  PaymentHistoryQuery,
   PaginationInput,
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
@@ -239,6 +246,7 @@ export {
   t,
   setLocale,
   getLocale,
+  getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
   setLocaleResolver,
@@ -282,6 +290,14 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
+
+// Both readers of the refund rule are outside this package: the confirmation
+// email names the instant the window closes, in the buyer's zone and in UTC,
+// and the refunds screen leaves out the purchases whose window has shut.
+export {
+  refundWindowCloses,
+  withinRefundWindow,
+} from "@shared/refund-window.js";
 
 export { newId, deriveId } from "@shared/ids.js";
 

@@ -39,6 +39,14 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "per-user upsert tracker behind the Recent feed: a row for a deleted project is filtered out by the query's join, so a leftover row is harmless. Its mutable column is last_opened_at; there is no updated_at either",
   ],
   [
+    "purchaseConsents",
+    "legal evidence of what a buyer agreed to at checkout (0066): it is kept for as long as the payment it describes, and soft-deleting it is the evidence disappearing — which is the one thing this table exists to prevent",
+  ],
+  [
+    "purchaseMailOutbox",
+    "the record of whether one purchase's confirmation email went out (0066): it lives and dies with that payment and has no delete of its own, and the resend control reads its status, so a row that could vanish would leave a buyer with no way to ask for the letter again",
+  ],
+  [
     "stripeWebhookEvents",
     "append-only record of which Stripe events have been processed; the primary key is the idempotency guard, so deleting a row is exactly what would let that event be replayed",
   ],

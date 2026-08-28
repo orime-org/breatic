@@ -27,6 +27,11 @@ interface CreditsOverlayProps {
   open: boolean;
   /** Called when it closes itself (the X, the backdrop, Escape). */
   onOpenChange: (open: boolean) => void;
+  /**
+   * Which section to show first. A buyer coming back from a payment lands on
+   * their purchase history rather than on the overview they did not ask for.
+   */
+  initialSection?: CreditsSectionId | null;
 }
 
 /**
@@ -44,14 +49,25 @@ interface CreditsOverlayProps {
  * @param props - Whether the overlay is open, and how it reports closing.
  * @param props.open - Whether the overlay is showing.
  * @param props.onOpenChange - Called when it closes itself.
+ * @param props.initialSection - Which section to show first.
  * @returns The overlay.
  */
 export function CreditsOverlay({
   open,
   onOpenChange,
+  initialSection = null,
 }: CreditsOverlayProps): React.JSX.Element {
   const t = useTranslation();
-  const [active, setActive] = React.useState<CreditsSectionId>('overview');
+  const [active, setActive] = React.useState<CreditsSectionId>(
+    initialSection ?? 'overview',
+  );
+
+  // Whoever opens the overlay may say where to open it. It is applied when
+  // that instruction changes rather than on every render, so a reader who
+  // then clicks elsewhere in the index stays where they clicked.
+  React.useEffect(() => {
+    if (initialSection !== null) setActive(initialSection);
+  }, [initialSection]);
   // The element the paging sections watch. Held as state rather than a ref so
   // that a section mounting after it is attached still re-renders with it.
   const [scroller, setScroller] = React.useState<HTMLDivElement | null>(null);

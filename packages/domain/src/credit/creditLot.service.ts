@@ -115,16 +115,27 @@ export interface ChargeOutcome {
  * @param input.paymentId - The payment row. Unique across lots, so a redelivered webhook fails here.
  * @param input.userId - Who paid.
  * @param input.purchasedCredits - How many credits it bought.
+ * @param outer - The caller's transaction, when it has one. Fulfillment grants
+ *   inside the same transaction that claims the event and moves the payment's
+ *   status, so all three roll back together.
  * @returns The new lot.
  * @throws {Error} If a lot already exists for this payment — the unique constraint rejects the insert.
  */
-export async function grantFromPayment(input: {
-  paymentId: string;
-  userId: string;
-  purchasedCredits: number;
-}): Promise<CreditLotEntity> {
+export async function grantFromPayment(
+  input: {
+    paymentId: string;
+    userId: string;
+    purchasedCredits: number;
+  },
+  outer?: DbTx,
+): Promise<CreditLotEntity> {
   const amount = fromMicroCredits(toMicroCredits(input.purchasedCredits));
-  return db.transaction(async (tx) => {
+  /**
+   * The two writes, against whichever transaction is in hand.
+   * @param tx - The caller's transaction, or one opened here.
+   * @returns The new lot.
+   */
+  const run = async (tx: DbTx): Promise<CreditLotEntity> => {
     const lot = await creditLotRepo.createLot(
       {
         paymentId: input.paymentId,
@@ -144,7 +155,11 @@ export async function grantFromPayment(input: {
       tx,
     );
     return lot;
-  });
+  };
+  // The caller may already hold the transaction that decided this payment is
+  // ours to grant. Opening a second one here would let the grant commit
+  // while the decision rolls back.
+  return outer ? run(outer) : db.transaction(run);
 }
 
 /**
