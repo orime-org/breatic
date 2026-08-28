@@ -218,11 +218,24 @@ function dispatchPaste(text: string): void {
  * "No QueryClient set". A fresh client per mount keeps one test's cached
  * catalog out of the next one.
  * The region root is the wrapper ProjectPage puts around the space column, and
- * the keyboard gate reads it: without it every press here resolves through the
- * `<body>` branch instead of the in-region branch the app runs.
+ * the keyboard gate reads it. A press aimed at an element inside the mount
+ * then resolves the way it does in the app; one aimed at `<body>` — which is
+ * where `keyTarget()` lands when nothing holds focus — takes the gate's
+ * `<body>` branch either way.
  * @param readOnly - Mount the space in its read-only form.
  * @returns The render result.
  */
+/**
+ * The space region root the mount is wrapped in.
+ * @returns The region root.
+ * @throws {Error} When the space is not mounted.
+ */
+function spaceRegion(): HTMLElement {
+  const root = document.querySelector<HTMLElement>('[data-region="space"]');
+  if (!root) throw new Error('the space region root is not mounted');
+  return root;
+}
+
 function renderSpace(readOnly = false): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -1623,18 +1636,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => {
       useCanvasStore.getState().startReferencePick('target');
     });
+    // The panel that carries the pick's Exit trigger stays on screen for the
+    // whole session, and `onExitPick` hands focus back to it.
+    const trigger = document.createElement('button');
+    trigger.dataset.testid = 'generate-tool-reference';
+    trigger.setAttribute('data-testid', 'generate-tool-reference');
     const prompt = document.createElement('div');
     Object.defineProperty(prompt, 'isContentEditable', { value: true });
-    (document.querySelector('[data-region="space"]') as HTMLElement).append(
-      prompt,
-    );
+    prompt.tabIndex = 0;
+    spaceRegion().append(trigger, prompt);
+    prompt.focus();
     try {
       act(() => {
         fireEvent.keyDown(prompt, { key: 'Escape' });
       });
       expect(useCanvasStore.getState().pickSession).toBeNull();
+      // The reader is mid-sentence in that box; ending the pick is theirs to
+      // ask for, the caret is not.
+      expect(document.activeElement).toBe(prompt);
     } finally {
       prompt.remove();
+      trigger.remove();
     }
   });
 
@@ -2452,7 +2474,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       .mockImplementation(() => undefined);
     renderSpace();
     const input = document.createElement('input');
-    document.body.appendChild(input);
+    spaceRegion().appendChild(input);
     input.focus();
 
     dispatchPaste('text into the input');
@@ -2550,7 +2572,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     mockUseCanvasSpace.mockReturnValue(mockSpace({ canUndo: true }));
     renderSpace();
     const input = document.createElement('input');
-    document.body.appendChild(input);
+    spaceRegion().appendChild(input);
     input.focus();
 
     dispatchKeyDown('z', { meta: true });
@@ -3793,9 +3815,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
          */
         const fieldInSpace = (): HTMLInputElement => {
           const field = document.createElement('input');
-          (
-            document.querySelector('[data-region="space"]') as HTMLElement
-          ).append(field);
+          spaceRegion().append(field);
           attached.push(field);
           field.focus();
           return field;
@@ -3850,9 +3870,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       it('copy leaves the clipboard alone with focus inside a field', () => {
         mountWithSelection();
         const field = document.createElement('input');
-        (document.querySelector('[data-region="space"]') as HTMLElement).append(
-          field,
-        );
+        spaceRegion().append(field);
         attached.push(field);
         field.focus();
         expect(copyAndRead()).toBe('');

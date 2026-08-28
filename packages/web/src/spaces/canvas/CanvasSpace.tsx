@@ -695,6 +695,11 @@ function CanvasSpaceInner({
     const purpose = useCanvasStore.getState().pickSession?.purpose;
     endPick();
     if (purpose === undefined) return;
+    // A caret mid-sentence is a live surface, and only orphaned focus is
+    // rescued — the same rule the crop overlay's hand-off states. Escape
+    // reaches here from the prompt editor, where ending the pick is what the
+    // reader asked for and the caret is not.
+    if (isEditableTarget(document.activeElement)) return;
     for (const testId of Object.values(PICK_PURPOSE_UI[purpose].trigger)) {
       const trigger = document.querySelector<HTMLElement>(
         `[data-testid="${testId}"]`,
