@@ -194,3 +194,33 @@ describe('landingCandidates', () => {
     expect(landingCandidates(nodes, new Map())).toBe(nodes);
   });
 });
+
+describe('landingCandidates when an entry no longer speaks for its node', () => {
+  it('offers a node the document has taken out of the Group the entry names', () => {
+    // A remote holds Group g1, so its batch lists every member as of the press.
+    // This end has since dragged m1 clear; the entry still lists it, at a place
+    // inside a Group it is no longer in. That entry says nothing about m1, so
+    // m1 is a node this end may write.
+    const nodes: Node[] = [
+      { id: 'g1', type: 'group', position: { x: 0, y: 0 }, data: {} },
+      { id: 'm1', type: 'image', position: { x: 900, y: 900 }, data: {} },
+    ];
+    const remote: GestureTable = new Map([
+      ['g1', { x: 100, y: 0, root: 'g1' }],
+      ['m1', { x: 124, y: 24, root: 'g1' }],
+    ]);
+    expect(landingCandidates(nodes, remote).map((n) => n.id)).toEqual(['m1']);
+  });
+
+  it('keeps out a member the document still has in that Group', () => {
+    const nodes: Node[] = [
+      { id: 'g1', type: 'group', position: { x: 0, y: 0 }, data: {} },
+      { id: 'm1', type: 'image', position: { x: 24, y: 24 }, data: {}, parentId: 'g1' },
+    ];
+    const remote: GestureTable = new Map([
+      ['g1', { x: 100, y: 0, root: 'g1' }],
+      ['m1', { x: 124, y: 24, root: 'g1' }],
+    ]);
+    expect(landingCandidates(nodes, remote)).toEqual([]);
+  });
+});

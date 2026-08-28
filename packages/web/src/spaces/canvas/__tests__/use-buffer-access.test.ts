@@ -138,3 +138,43 @@ describe('useBufferAccess', () => {
     expect(result.current).toBe(first);
   });
 });
+
+describe('useBufferAccess when an entry no longer speaks for its node', () => {
+  it('leaves a node the document has taken out of the named Group unheld', () => {
+    // A remote holds Group g1 and its batch lists m1 as of the press. This end
+    // has since dragged m1 clear, so the entry is about a Group m1 is no longer
+    // in: it holds nothing, and every path that asks "is a remote on this node"
+    // has to say no.
+    const buffer: Node[] = [
+      node('g1', { x: 100, y: 0 }, { type: 'group' }),
+      node('m1', { x: 900, y: 900 }),
+    ];
+    const doc: DocumentPlace[] = [
+      node('g1', { x: 0, y: 0 }, { type: 'group' }),
+      node('m1', { x: 900, y: 900 }),
+    ];
+    const gestures: GestureTable = new Map([
+      ['g1', { x: 100, y: 0, root: 'g1' }],
+      ['m1', { x: 124, y: 24, root: 'g1' }],
+    ]);
+    const { result } = renderHook(() => useBufferAccess(buffer, doc, gestures));
+    expect([...result.current.heldByRemote()]).toEqual(['g1']);
+  });
+
+  it('holds a member the document still has in that Group', () => {
+    const buffer: Node[] = [
+      node('g1', { x: 100, y: 0 }, { type: 'group' }),
+      node('m1', { x: 24, y: 24 }, { parentId: 'g1' }),
+    ];
+    const doc: DocumentPlace[] = [
+      node('g1', { x: 0, y: 0 }, { type: 'group' }),
+      node('m1', { x: 24, y: 24 }, { parentId: 'g1' }),
+    ];
+    const gestures: GestureTable = new Map([
+      ['g1', { x: 100, y: 0, root: 'g1' }],
+      ['m1', { x: 124, y: 24, root: 'g1' }],
+    ]);
+    const { result } = renderHook(() => useBufferAccess(buffer, doc, gestures));
+    expect([...result.current.heldByRemote()].sort()).toEqual(['g1', 'm1']);
+  });
+});

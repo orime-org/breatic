@@ -10,6 +10,7 @@ import {
   landingCandidates,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
+import { heldIds } from '@web/spaces/canvas/gesture-table';
 
 /** The ways the canvas may read its own render buffer. */
 export interface BufferAccess {
@@ -35,7 +36,11 @@ export interface BufferAccess {
    * client agrees on, collaborators' finished moves included.
    */
   documentPlaces: () => ReadonlyArray<DocumentPlace>;
-  /** The ids remote gestures are holding right now. */
+  /**
+   * The ids remote gestures are holding right now, judged against the document:
+   * an entry that rode in on a Group holds nothing once the document has taken
+   * the node out of that Group.
+   */
   heldByRemote: () => ReadonlySet<string>;
   /**
    * The buffer as the canvas is drawing it this instant, in-flight geometry
@@ -96,7 +101,8 @@ export function useBufferAccess(
       settled,
       landing: (): Node[] => landingCandidates(settled(), gestureRef.current),
       documentPlaces: (): ReadonlyArray<DocumentPlace> => docRef.current,
-      heldByRemote: (): ReadonlySet<string> => new Set(gestureRef.current.keys()),
+      heldByRemote: (): ReadonlySet<string> =>
+        heldIds(gestureRef.current, docRef.current),
       onScreen: (): ReadonlyArray<Node> => nodesRef.current,
     };
   }, []);

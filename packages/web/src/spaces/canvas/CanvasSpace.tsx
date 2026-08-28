@@ -2687,10 +2687,10 @@ function CanvasSpaceInner({
   // it reads that Group's stored origin, which is the number every client
   // agrees on. A Group's background writes no geometry at all.
   const groupableIds = useStableList(
-    React.useMemo(
-      () => selectedIds.filter((id) => !remoteGesture.has(id)),
-      [selectedIds, remoteGesture],
-    ),
+    React.useMemo(() => {
+      const held = buffer.heldByRemote();
+      return selectedIds.filter((id) => !held.has(id));
+    }, [selectedIds, buffer, remoteGesture]),
   );
 
   const publishedPoint = React.useCallback(

@@ -4,6 +4,7 @@
 import type { Node } from '@xyflow/react';
 
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
+import { speaksFor } from '@web/spaces/canvas/gesture-table';
 
 /** A node as the document has it, mapped the way the render buffer expects. */
 export type DocumentPlace = Node;
@@ -28,7 +29,10 @@ export function landingCandidates(
   remoteGesture: GestureTable,
 ): Node[] {
   if (remoteGesture.size === 0) return nodes as Node[];
-  return nodes.filter((node) => !remoteGesture.has(node.id));
+  return nodes.filter((node) => {
+    const gesture = remoteGesture.get(node.id);
+    return gesture === undefined || !speaksFor(gesture, node);
+  });
 }
 
 /**
