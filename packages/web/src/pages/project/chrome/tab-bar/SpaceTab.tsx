@@ -92,9 +92,9 @@ export function SpaceTab({
   onRename,
 }: SpaceTabProps): React.JSX.Element {
   const t = useTranslation();
-  // The comparison sits inside the selector so an inactive tab subscribes to a
-  // stable `false` and zustand bails out of its re-render.
-  const regionActive = useUIStore((s) => active && s.activeRegion === 'space');
+  // The comparison sits inside the selector so a tab subscribes to a boolean
+  // and zustand bails out of every re-render where that boolean holds.
+  const spaceRegionActive = useUIStore((s) => s.activeRegion === 'space');
   const Icon = TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
@@ -178,12 +178,17 @@ export function SpaceTab({
         'group inline-flex shrink-0 cursor-pointer items-center whitespace-nowrap border-0 text-sm',
         // The fill answers which of these spaces is the current one, and that
         // stays true whichever region is active — so only the label colour
-        // moves, saying whether the keyboard belongs here (#168).
+        // moves, saying whether the keyboard belongs here (#168). Hover
+        // reaches for that same brightness, so it follows the region too:
+        // with the agent column active a hovered tab brighter than the
+        // current one would read as the current one.
         active
-          ? regionActive
+          ? spaceRegionActive
             ? 'bg-accent text-foreground'
             : 'bg-accent text-muted-foreground'
-          : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
+          : spaceRegionActive
+            ? 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+            : 'bg-transparent text-muted-foreground hover:bg-accent',
       )}
       style={{
         height: 'var(--btn-chrome)',

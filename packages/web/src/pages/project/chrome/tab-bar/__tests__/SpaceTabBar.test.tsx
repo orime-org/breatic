@@ -310,6 +310,26 @@ describe('SpaceTabBar', () => {
       },
     );
 
+    // Hover reaches for the same brightness the label uses to say the keyboard
+    // is here, so it follows the region too: with the agent column active the
+    // current tab is dim, and a hovered one brighter than it would read as the
+    // current one.
+    it('brightens a hovered resting tab while the space region is the active one', () => {
+      useUIStore.getState().setActiveRegion('space');
+      setup();
+      const tab = screen.getByTestId('space-tab-s2');
+      expect(tab.className).toContain('hover:bg-accent');
+      expect(tab.className).toContain('hover:text-foreground');
+    });
+
+    it('leaves a hovered resting tab dim while the agent column is the active region', () => {
+      useUIStore.getState().setActiveRegion('agent');
+      setup();
+      const tab = screen.getByTestId('space-tab-s2');
+      expect(tab.className).toContain('hover:bg-accent');
+      expect(tab.className).not.toContain('hover:text-foreground');
+    });
+
     // Everything inside the active tab states its own colour, so the tab's
     // says nothing about them.
     it.each(['space', 'agent'] as const)(
