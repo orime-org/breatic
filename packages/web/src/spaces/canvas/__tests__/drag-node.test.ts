@@ -20,7 +20,7 @@ import {
   toPlacedDragNode,
   toScreenDragNode,
 } from '@web/spaces/canvas/drag-node';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/node-factory';
+import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 
 /** A Group as the document has it. */
 const DOC_GROUP: Node = {
@@ -101,7 +101,7 @@ describe('toScreenDragNode', () => {
     });
   });
 
-  it('falls back to the screen list for a node ReactFlow is not rendering', () => {
+  it('falls back to the list for a node ReactFlow has not taken in yet', () => {
     expect(toScreenDragNode(MEMBER, SCREEN, undefined).absPos).toEqual({
       x: 450,
       y: 150,
@@ -193,7 +193,83 @@ describe('planDragStop', () => {
 
   it('leaves the Group a remote is resizing alone', () => {
     expect(run().expansions).toEqual([]);
-    expect(run().reparents).toEqual([]);
+  });
+
+  it('works a node ReactFlow has no answer for out of the drawn list', () => {
+    // A node that reached the buffer from the document after the last render
+    // is not in ReactFlow's lookup yet, and the list is what places it. It has
+    // to be the drawn list: the Group it hangs off is drawn 500 to the right of
+    // where the document has it, and a member measured from the document origin
+    // would be written half a screen from its own Group.
+    const drawn: Node = {
+      id: 'g',
+      type: 'group',
+      position: { x: 500, y: 0 },
+      width: 400,
+      height: 400,
+      data: {},
+    };
+    const stored: Node = { ...drawn, position: { x: 0, y: 0 } };
+    const member: Node = {
+      id: 'm',
+      type: 'image',
+      parentId: 'g',
+      position: { x: 100, y: 100 },
+      measured: { width: 100, height: 100 },
+      data: {},
+    };
+    const ops = planDragStop({
+      dragged: [member],
+      onScreen: [drawn, member],
+      settled: [stored, member],
+      heldByRemote: new Set(),
+      resizedByRemote: new Set(),
+      paintedAt: (id) => (id === 'g' ? drawn.position : undefined),
+    });
+    // 600 against the drawn origin 500. Off the settled list it works out to
+    // 100, which is 400 to the left of the Group and outside it altogether.
+    expect(ops.positions).toEqual([
+      { id: 'm', position: { x: 100, y: 100 }, parentId: 'g' },
+    ]);
+    expect(ops.reparents).toEqual([]);
+  });
+
+  it('judges the landing against the box on screen, which is the one aimed at', () => {
+    // The buffer list decides which Group a release lands in, and a resize is
+    // the case where the two lists disagree about a Group's extent: the remote
+    // has pulled the right edge out to 400, the document still says 200. The
+    // user aimed at the box they can see, so a release at 250 is inside it --
+    // judged against the document's box the same release falls outside and the
+    // member is evicted to the top level.
+    const drawn: Node = {
+      id: 'g',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 400,
+      height: 400,
+      data: {},
+    };
+    const stored: Node = { ...drawn, width: 200, height: 200 };
+    const member: Node = {
+      id: 'm',
+      type: 'image',
+      parentId: 'g',
+      position: { x: 10, y: 10 },
+      measured: { width: 100, height: 100 },
+      data: {},
+    };
+    const ops = planDragStop({
+      dragged: [member],
+      onScreen: [drawn, member],
+      settled: [stored, member],
+      heldByRemote: new Set(),
+      resizedByRemote: new Set(),
+      paintedAt: (id) => (id === 'm' ? { x: 250, y: 250 } : drawn.position),
+    });
+    expect(ops.reparents).toEqual([]);
+    expect(ops.positions).toEqual([
+      { id: 'm', position: { x: 250, y: 250 }, parentId: 'g' },
+    ]);
   });
 
   it('grows a Group around where the pointer released a member, not where it was', () => {

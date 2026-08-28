@@ -298,4 +298,19 @@ describe('planGroupDrag against geometry a remote is still moving', () => {
       { id: 'm', position: { x: 24, y: 140 }, parentId: 'g' },
     ]);
   });
+
+  it('sizes the Group around members nobody is holding, dragged or not', () => {
+    // The other half of the same predicate. A member left overflowing by an
+    // earlier drag-stop is the state this recovers from: nobody holds it, this
+    // drag is not moving it, and the Group still has to reach it. Left out of
+    // the sizing it stays outside its own Group for good, since Groups only
+    // ever grow and only a drag-stop grows them.
+    const g = dn('g', 'group', 0, 0, 200, 200);
+    const stranded = dn('m', 'image', 20, 140, 100, 100, 'g'); // runs to y=240
+    const moved = dn('k', 'image', 30, 30, 40, 40, 'g');
+    const ops = planGroupDrag([moved], [g, stranded, moved]);
+    expect(ops.expansions).toEqual([
+      { groupId: 'g', position: { x: -4, y: 0 }, width: 204, height: 264 },
+    ]);
+  });
 });

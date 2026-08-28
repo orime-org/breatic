@@ -316,6 +316,11 @@ async function dragAndSample(
 }
 
 test.beforeAll(async ({ browser }) => {
+  // A hook keeps the config's budget until it raises its own: a file-scope
+  // `test.setTimeout` reaches the tests and not this. Seeding a Space and two
+  // live collab connections outlasts 30s, and `mode: 'serial'` turns a hook
+  // that runs out of time into 14 cases reported as never run.
+  test.setTimeout(120_000);
   context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
   mover = await context.newPage();
   await signIn(mover);
@@ -344,8 +349,8 @@ test.afterAll(async () => {
   await context?.close();
 });
 
-// Seeding a Space and two live collab connections outlasts the suite-wide 30s
-// budget before a single assertion runs.
+// The cases drive two browsers through a whole gesture, which outlasts the
+// suite-wide 30s budget.
 test.setTimeout(120_000);
 
 test('a drag in progress moves the node on the other connection', async () => {

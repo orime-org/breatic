@@ -13,14 +13,11 @@
 import type { Node } from '@xyflow/react';
 
 import {
+  EMPTY_NODE_SIZE,
   groupRectForMembers,
   toRelativePosition,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
-
-/** Footprint assumed for a member ReactFlow has not measured yet. */
-const DEFAULT_NODE_WIDTH = 160;
-const DEFAULT_NODE_HEIGHT = 96;
 
 /** One member's new position (relative to the Group top-left) after wrapping. */
 interface GroupMemberPlan {
@@ -49,13 +46,13 @@ export interface GroupCreationPlan {
  * @returns Its absolute bounding rect.
  */
 function flowNodeRect(node: Node): Rect {
-  const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
-  const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
+  const width = node.measured?.width ?? node.width ?? EMPTY_NODE_SIZE.width;
+  const height = node.measured?.height ?? node.height ?? EMPTY_NODE_SIZE.height;
   return {
     x: node.position.x,
     y: node.position.y,
-    width: width || DEFAULT_NODE_WIDTH,
-    height: height || DEFAULT_NODE_HEIGHT,
+    width: width || EMPTY_NODE_SIZE.width,
+    height: height || EMPTY_NODE_SIZE.height,
   };
 }
 

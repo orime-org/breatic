@@ -17,11 +17,13 @@ import { newId } from '@breatic/shared';
 import {
   createEmptyNode,
   createGroupNode,
-  EMPTY_NODE_SIZE,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
-import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
+import {
+  EMPTY_NODE_SIZE,
+  toAbsolutePosition,
+} from '@web/spaces/canvas/group-geometry';
 
 /** Fallback Group size when a captured Group entry is missing its stored size. */
 const GROUP_CLONE_FALLBACK = 192;

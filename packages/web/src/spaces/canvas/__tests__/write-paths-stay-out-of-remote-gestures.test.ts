@@ -137,12 +137,9 @@ describe('every write path reads the buffer through the door', () => {
       .filter((n) => n.parentId === undefined && n.type !== 'group')
       .map((n) => ({
         id: n.id,
-        rect: {
-          x: n.position.x,
-          y: n.position.y,
-          width: n.measured?.width ?? 288,
-          height: n.measured?.height ?? 192,
-        },
+        // Sized from the same conversion the drag-stop uses, so this case
+        // cannot answer the fallback question its own way.
+        rect: { ...n.position, ...toPlacedDragNode(n, new Map()).size },
       }));
     // A node somebody else is dragging is not absorbed: its coordinates are
     // about to change and the document has never held them.

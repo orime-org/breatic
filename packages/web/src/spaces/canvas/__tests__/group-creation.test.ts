@@ -5,7 +5,10 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
-import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
+import {
+  EMPTY_NODE_SIZE,
+  GROUP_PADDING,
+} from '@web/spaces/canvas/group-geometry';
 
 /**
  * Build a flow node with an explicit measured size for deterministic rects.
@@ -36,6 +39,30 @@ function node(
 }
 
 describe('planGroupCreation', () => {
+  it('wraps a node nothing has measured at the size a node is created at', () => {
+    // Culling leaves a node that has never been on screen without a measured
+    // size, and a content node stores none. Every path that has to guess reads
+    // one constant, because the guess decides where the node's centre is and
+    // the centre decides which Group it belongs to -- this planner answering it
+    // its own way puts a member outside the box built around it, for good.
+    const unmeasured: Node = {
+      id: 'u',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: {},
+      selected: true,
+    };
+    const plan = planGroupCreation(
+      [unmeasured, node('b', 0, 0, 10, 10)],
+      ['u', 'b'],
+      'group',
+    );
+    // The unmeasured node is the far corner on both axes, so both extents are
+    // its assumed size plus the Group's padding.
+    expect(plan?.width).toBe(EMPTY_NODE_SIZE.width + 2 * GROUP_PADDING);
+    expect(plan?.height).toBe(EMPTY_NODE_SIZE.height + 2 * GROUP_PADDING);
+  });
+
   it('returns null for fewer than two selected nodes', () => {
     expect(planGroupCreation([node('a', 0, 0, 50, 50)], ['a'], 'group')).toBeNull();
   });

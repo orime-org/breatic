@@ -136,6 +136,7 @@ import type {
 } from '@web/spaces/canvas/types/node-view';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
+  EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
   GROUP_PADDING,
   groupResizeBounds,
@@ -224,7 +225,6 @@ import {
 } from '@web/spaces/canvas/node-clipboard';
 import {
   createGroupNode,
-  EMPTY_NODE_SIZE,
   isCreatableNodeType,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';

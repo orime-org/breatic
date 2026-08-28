@@ -18,10 +18,12 @@
 import type { Node } from '@xyflow/react';
 
 import type { Point } from '@web/spaces/canvas/group-geometry';
-import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
+import {
+  EMPTY_NODE_SIZE,
+  toAbsolutePosition,
+} from '@web/spaces/canvas/group-geometry';
 import type { DragNode, GroupDragOps } from '@web/spaces/canvas/group-drag';
 import { planGroupDrag } from '@web/spaces/canvas/group-drag';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/node-factory';
 
 /**
  * Everything but the position, which is what the two frames disagree about.
@@ -77,8 +79,10 @@ export function toPlacedDragNode(
  * Where a node is painted, which is the point the pointer was over.
  *
  * ReactFlow states this itself, off the same frame it drew, so a member's
- * offset and its Group's origin never come from two different frames. It has no
- * answer for a node it is not rendering, and the list is the fallback there.
+ * offset and its Group's origin never come from two different frames. It keeps
+ * an answer for every node it has been handed, culled ones included, and the
+ * list is the fallback for one it has not taken in yet — a node that reached
+ * this buffer from the document after the last render.
  * @param item - The node.
  * @param onScreen - Every node of the render buffer, by id.
  * @param paintedAt - What ReactFlow says this node's absolute position is.

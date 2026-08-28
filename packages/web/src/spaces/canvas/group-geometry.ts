@@ -39,6 +39,17 @@ export const GROUP_PADDING = 24;
 export const GROUP_MIN_SIZE = 40;
 
 /**
+ * The footprint of an empty / handling content node (`NodeContent`: 288 × 192).
+ *
+ * Every path that has to size a node ReactFlow has not measured yet reads this
+ * one, because the size decides where the node's centre is and the centre
+ * decides which Group it belongs to: two paths guessing separately answer that
+ * question two ways for the same node. It lives here rather than with node
+ * creation so the geometry that depends on it needs nothing but arithmetic.
+ */
+export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
+
+/**
  * The center point of a rect.
  * @param rect - The rectangle.
  * @returns Its geometric center.

@@ -233,10 +233,12 @@ export function planGroupDrag(
     // cannot know, and `expandGroupToWrap` only ever grows — a Group sized to
     // wrap it now keeps that size after it lands elsewhere. A member of this
     // drag is not such a node even when a remote holds it too: this drag-stop
-    // is committing the place the pointer released it at, so the Group has to
-    // grow around that place or the document keeps a member outside its own
-    // Group. Untouched members still get restated below: the origin moving is
-    // about where every member sits, not about who is holding one.
+    // is committing the place the pointer released it at, so the Group grows
+    // around that place. That case is a remote holding the member itself; when
+    // the remote holds the GROUP the loop has already skipped it above, and the
+    // member stays outside its Group until a drag-stop after that gesture ends.
+    // Untouched members still get restated below: the origin moving is about
+    // where every member sits, not about who is holding one.
     const sizedAround = members.filter((node) => !leftToRemote(node));
     const grown = expandGroupToWrap(groupRect, sizedAround.map(rectOf));
     if (
