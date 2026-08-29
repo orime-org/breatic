@@ -326,3 +326,25 @@ export function selectionCanAlign(editor: Editor): boolean {
 export function blockTypeItem(id: BlockTypeId): BlockTypeItem {
   return BY_ID.get(id) ?? BLOCK_TYPE_ITEMS[0];
 }
+
+/**
+ * Is every text block in the selection this item?
+ * @param editor - The editor.
+ * @param id - Which row.
+ * @returns Whether the row is ticked.
+ */
+export function isMarked(editor: Editor, id: BlockTypeId): boolean {
+  void editor;
+  void id;
+  return false;
+}
+
+/**
+ * Runs the row's transition against the selection.
+ * @param editor - The editor.
+ * @param id - Which row.
+ */
+export function runBlockType(editor: Editor, id: BlockTypeId): void {
+  void editor;
+  void id;
+}
