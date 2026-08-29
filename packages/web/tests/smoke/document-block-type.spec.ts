@@ -137,7 +137,10 @@ test('九行各点一次，文档每次都跟着变', async () => {
     await expect
       .poll(async () => bodyHtml(page), { timeout: 10_000 })
       .toBe(html);
-    await page.locator(EDITOR).click();
+    // 点第一个块本身，不点编辑器容器：点在末块下方的空白处会让
+    // `DocumentClickToWrite` 在文档末尾补一个新块（既有功能），下一轮的
+    // 全选就多框住一个块。
+    await page.locator(`${EDITOR} > *`).first().click();
     await page.keyboard.press(`${MOD}+a`);
   }
 
@@ -212,6 +215,9 @@ test('对勾在快捷键右边，分隔线在 Code block 之后', async () => {
       document.querySelector(`[data-testid="${testid}"]`)?.getBoundingClientRect() ?? null;
     const shortcut = rect(`${slot}-shortcut-heading-1`);
     const tick = rect(`${slot}-tick-heading-1`);
+    const shortcutRights = ['heading-1', 'heading-2', 'heading-3'].map(
+      (id) => Math.round(rect(`${slot}-shortcut-${id}`)?.right ?? -1),
+    );
     const codeBlock = rect(`${slot}-item-code-block`);
     const quote = rect(`${slot}-item-quote`);
     const rule = document
@@ -229,6 +235,7 @@ test('对勾在快捷键右边，分隔线在 Code block 之后', async () => {
       activeRows: document.querySelectorAll(
         `[data-testid="${slot}-menu"] [data-active="true"]`,
       ).length,
+      shortcutRights,
     };
   }, SLOT);
 
@@ -243,6 +250,11 @@ test('对勾在快捷键右边，分隔线在 Code block 之后', async () => {
     geometry.codeBlockBottom as number,
   );
   expect(geometry.quoteTop as number).toBeGreaterThanOrEqual(geometry.ruleTop as number);
+
+  // 每行都留着对勾那一格，所以打勾那行的快捷键跟别的行仍在同一条线上
+  // （demo 的 `.row .tick`）。
+  expect(new Set(geometry.shortcutRights).size).toBe(1);
+  expect(geometry.shortcutRights[0]).toBeGreaterThan(0);
 
   // 行底色没了，勾是唯一的标记。
   expect(geometry.activeRows).toBe(0);

@@ -185,6 +185,24 @@ describe('the tick', () => {
     expect(tickedIds(menu)).toEqual([]);
   });
 
+  it('has a column of its own on every row, ticked or not', async () => {
+    const editor = open('<h1>the quick brown fox</h1>');
+    mountDocumentEditor(editor);
+    await selectAll(editor);
+    const menu = await openMenu();
+
+    // The demo gives the tick a column on every row
+    // (`2026-08-29-block-type-transitions.html`'s `.row .tick`), so the one
+    // carrying a tick is laid out like the rest and the shortcuts stay in
+    // line. That the columns really do line up is measured in the browser
+    // (`tests/smoke/document-block-type.spec.ts`); jsdom reports every
+    // rectangle as zero.
+    for (const id of rowIds(menu)) {
+      expect(menu.querySelector(`[data-testid="${SLOT}-tickcol-${id}"]`)).not.toBeNull();
+    }
+    expect(tickedIds(menu)).toEqual(['heading-1']);
+  });
+
   it('sits after the shortcut in the row', async () => {
     const editor = open('<h1>the quick brown fox</h1>');
     mountDocumentEditor(editor);

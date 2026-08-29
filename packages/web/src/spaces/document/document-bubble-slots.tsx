@@ -270,18 +270,25 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
                   {formatShortcut(item.shortcut)}
                 </DropdownMenuShortcut>
               ) : null}
-              {/* The tick goes after the shortcut, where the demo draws it.
-                  `components/ui/dropdown-menu`'s checkbox item puts one on the
-                  left instead, so this row keeps that component's mark — the
-                  same glyph at the same weight — in the place the demo gives
-                  it. */}
-              {marked.has(item.id) ? (
-                <Check
-                  data-testid={`${id}-tick-${item.id}`}
-                  className='ml-1 size-4 shrink-0'
-                  strokeWidth={3}
-                />
-              ) : null}
+              {/* The tick goes after the shortcut, where the demo draws it,
+                  and every row carries the column whether or not it is ticked
+                  (the demo's `.row .tick`) — otherwise the ticked row lays out
+                  narrower than the rest and its shortcut leaves the line the
+                  others sit on. `components/ui/dropdown-menu`'s checkbox item
+                  puts its mark on the left instead, so this row keeps that
+                  component's glyph at that weight in the demo's place. */}
+              <span
+                data-testid={`${id}-tickcol-${item.id}`}
+                className='ml-1 flex size-4 shrink-0 items-center justify-center'
+              >
+                {marked.has(item.id) ? (
+                  <Check
+                    data-testid={`${id}-tick-${item.id}`}
+                    className='size-4'
+                    strokeWidth={3}
+                  />
+                ) : null}
+              </span>
             </BubbleMenuRow>
             {/* The demo's `.menu-sep`, ruling the exclusive eight off Quote. */}
             {item.id === BLOCK_TYPE_SEPARATOR_AFTER ? <BubbleMenuRule /> : null}
