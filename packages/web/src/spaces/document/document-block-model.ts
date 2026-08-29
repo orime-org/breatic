@@ -150,16 +150,26 @@ export function isMarked(editor: Editor, id: BlockTypeId): boolean {
 }
 
 /**
+ * The first and last text block the selection covers.
+ * @param tr - The transaction.
+ * @returns Those two positions, or null where the selection holds no text block.
+ */
+function selectionEnds(tr: Transaction): { first: number; last: number } | null {
+  const positions = textBlockPositions(tr.doc, tr.selection.from, tr.selection.to);
+  const first = positions[0];
+  const last = positions[positions.length - 1];
+  return first === undefined || last === undefined ? null : { first, last };
+}
+
+/**
  * The node range covering the selection's text blocks.
  * @param tr - The transaction.
  * @returns That range, or null where the selection holds no text block.
  */
 function selectedRange(tr: Transaction): NodeRange | null {
-  const positions = textBlockPositions(tr.doc, tr.selection.from, tr.selection.to);
-  const first = positions[0];
-  const last = positions[positions.length - 1];
-  if (first === undefined || last === undefined) return null;
-  return tr.doc.resolve(first).blockRange(tr.doc.resolve(last));
+  const ends = selectionEnds(tr);
+  if (!ends) return null;
+  return tr.doc.resolve(ends.first).blockRange(tr.doc.resolve(ends.last));
 }
 
 /**
@@ -171,6 +181,11 @@ function selectedRange(tr: Transaction): NodeRange | null {
  * blocks strictly decreases and the loop ends — a pass count would instead
  * leave the items beyond it in their old list while the transaction went out
  * anyway.
+ *
+ * Coming out one level is as far as some blocks go, and that is the answer the
+ * design gives them: an item indented under another, with a sibling on its own
+ * level, ends up a paragraph inside the item above rather than at the top
+ * (§5.3, measured).
  * @param tr - The transaction, written into.
  */
 function liftOutOfLists(tr: Transaction): void {
@@ -241,42 +256,45 @@ function unwrapQuotes(tr: Transaction): void {
 }
 
 /**
- * The depth of the nearest list holding the whole range.
- * @param range - The range.
+ * The depth of the nearest list holding this position.
+ * @param $pos - A resolved position inside a text block.
  * @returns That depth, or null where no list holds it.
  */
-function listDepthOf(range: NodeRange): number | null {
-  for (let depth = range.depth; depth > 0; depth -= 1) {
-    if (LIST_NAMES.has(range.$from.node(depth).type.name)) return depth;
+function listDepthAt($pos: ReturnType<PMNode['resolve']>): number | null {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if (LIST_NAMES.has($pos.node(depth).type.name)) return depth;
   }
   return null;
 }
 
 /**
- * Splits the nearest list at the selection's edges.
+ * Splits the nearest list at each end of the selection.
  *
- * Leaves the selected items in a list of their own, so wrapping that list in a
- * quote leaves the items nobody selected outside it (§5.2 of the design). The
- * tail goes first: splitting there does not move the positions before it.
+ * Each end is asked on its own, so a selection running from outside a list
+ * into it splits there all the same — the two ends can sit in different lists,
+ * or one of them in none. What is left is a list holding the selected run and
+ * nothing else, which is what lets a quote take that run and leave the items
+ * nobody selected outside it (§5.2 of the design). The tail goes first:
+ * splitting there does not move the positions before it.
  * @param tr - The transaction, written into.
  */
 function splitListAtSelectionEdges(tr: Transaction): void {
-  const range = selectedRange(tr);
-  if (!range) return;
-  const depth = listDepthOf(range);
-  if (depth === null) return;
-  const itemDepth = depth + 1;
-
-  if (range.$to.index(depth) + 1 < range.$from.node(depth).childCount) {
-    const tail = range.$to.after(itemDepth);
-    if (canSplit(tr.doc, tail, 1)) tr.split(tail, 1);
+  const tail = selectionEnds(tr);
+  if (!tail) return;
+  const $last = tr.doc.resolve(tail.last);
+  const tailDepth = listDepthAt($last);
+  if (tailDepth !== null && $last.index(tailDepth) + 1 < $last.node(tailDepth).childCount) {
+    const at = $last.after(tailDepth + 1);
+    if (canSplit(tr.doc, at, 1)) tr.split(at, 1);
   }
-  if (range.$from.index(depth) > 0) {
-    const moved = selectedRange(tr);
-    if (moved) {
-      const head = moved.$from.before(itemDepth);
-      if (canSplit(tr.doc, head, 1)) tr.split(head, 1);
-    }
+
+  const head = selectionEnds(tr);
+  if (!head) return;
+  const $first = tr.doc.resolve(head.first);
+  const headDepth = listDepthAt($first);
+  if (headDepth !== null && $first.index(headDepth) > 0) {
+    const at = $first.before(headDepth + 1);
+    if (canSplit(tr.doc, at, 1)) tr.split(at, 1);
   }
 }
 
@@ -291,7 +309,6 @@ function splitListAtSelectionEdges(tr: Transaction): void {
 function wrapInQuote(tr: Transaction): boolean {
   const quote = tr.doc.type.schema.nodes.blockquote;
   if (!quote) return false;
-  splitListAtSelectionEdges(tr);
   const range = selectedRange(tr);
   if (!range) return false;
   for (let depth = range.depth; depth >= 0; depth -= 1) {
@@ -340,10 +357,40 @@ function toBlockType(
 }
 
 /**
+ * The selection's text blocks, grouped into runs one list can hold.
+ *
+ * A run is a stretch of blocks sharing one parent with nothing between them,
+ * which is what a list can wrap: blocks on either side of a quote's edge
+ * belong to different parents, and blocks with a non-text block between them
+ * are not adjacent. Each run becomes a list of its own, and what sits between
+ * them stays where it is (§6.0).
+ * @param tr - The transaction.
+ * @returns Each run's first and last position, in document order.
+ */
+function selectedRuns(tr: Transaction): Array<[first: number, last: number]> {
+  const runs: Array<[number, number]> = [];
+  let parent: string | null = null;
+  let previous = -2;
+  for (const pos of textBlockPositions(tr.doc, tr.selection.from, tr.selection.to)) {
+    const $pos = tr.doc.resolve(pos);
+    const depth = $pos.depth - 1;
+    const here = `${depth}:${$pos.start(depth)}`;
+    const index = $pos.index(depth);
+    const run = runs[runs.length - 1];
+    if (run !== undefined && here === parent && index === previous + 1) run[1] = pos;
+    else runs.push([pos, pos]);
+    parent = here;
+    previous = index;
+  }
+  return runs;
+}
+
+/**
  * Turns the selection into items of one list type.
  *
  * A list item's first block is a paragraph, so whatever the blocks were has to
- * become one before the list can hold them.
+ * become one before the list can hold them. The runs are wrapped back to
+ * front, which leaves the positions of the earlier ones untouched.
  * @param tr - The transaction, written into.
  * @param listType - The list node type.
  * @returns Whether every step went in.
@@ -353,9 +400,16 @@ function toList(tr: Transaction, listType: NodeType): boolean {
   if (!paragraph) return false;
   liftOutOfLists(tr);
   if (!setBlocks(tr, paragraph, null)) return false;
-  const range = selectedRange(tr);
-  if (!range) return false;
-  return wrapRangeInList(tr, range, listType);
+
+  const runs = selectedRuns(tr);
+  if (runs.length === 0) return false;
+  for (let i = runs.length - 1; i >= 0; i -= 1) {
+    const [first, last] = runs[i] as [number, number];
+    const range = tr.doc.resolve(first).blockRange(tr.doc.resolve(last));
+    if (!range) return false;
+    if (!wrapRangeInList(tr, range, listType)) return false;
+  }
+  return true;
 }
 
 /**
@@ -373,9 +427,12 @@ function applyTransition(
   marked: boolean,
 ): boolean {
   if (id === 'quote') {
-    // Both directions start by taking the selected blocks out of every quote
-    // holding them, which is what splits an original quote at the selection's
-    // edges and leaves the blocks nobody selected inside it.
+    // Both directions start the same way. Splitting the list at the selection's
+    // edges leaves the selected items in a list of their own, so either
+    // direction acts on those and no others; taking the blocks out of every
+    // quote holding them then splits an original quote at those same edges and
+    // leaves the blocks nobody selected inside it.
+    splitListAtSelectionEdges(tr);
     unwrapQuotes(tr);
     return marked ? true : wrapInQuote(tr);
   }
@@ -422,7 +479,13 @@ export function runBlockType(editor: Editor, id: BlockTypeId): void {
   if (!(state.selection instanceof TextSelection)) {
     tr.setSelection(TextSelection.create(tr.doc, first, last));
   }
-  if (applyTransition(tr, state.schema, id, marked)) editor.view.dispatch(tr);
+  // Rule 4, both halves. `applyTransition` reports whether every step went in,
+  // which keeps half a press out of the document; `docChanged` answers the
+  // other way round — a press the schema left nowhere to go writes no step at
+  // all, and an empty transaction has no business being dispatched.
+  if (applyTransition(tr, state.schema, id, marked) && tr.docChanged) {
+    editor.view.dispatch(tr);
+  }
 }
 
 /**
