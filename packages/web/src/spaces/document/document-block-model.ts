@@ -489,34 +489,35 @@ export function runBlockType(editor: Editor, id: BlockTypeId): void {
 }
 
 /**
+ * The exclusive eight, lists first.
+ *
+ * A block held by a list is a paragraph of its own type, so both the list row
+ * and Text answer for it; the list is the row the reader sees, and asking it
+ * first is what makes the face say so.
+ */
+const EXCLUSIVE: BlockTypeId[] = [
+  'bullet-list',
+  'ordered-list',
+  'task-list',
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+  'code-block',
+];
+
+/**
  * Which block a position counts as, for the slot's face.
  *
- * The exclusive item it is: the nearest list where a list holds it, and the
- * block's own type otherwise. A quote is orthogonal and takes no part, which
- * is what makes the face show a heading inside a quote (#928).
+ * The exclusive item it is, judged by the same `isItemAt` the ticks use. A
+ * quote is orthogonal and takes no part, which is what makes the face show a
+ * heading inside a quote (#928).
  * @param doc - The document.
  * @param pos - A position inside a text block.
  * @returns That block's type, or null when it is none of the nine.
  */
 export function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
-  const $pos = doc.resolve(pos);
-  if (!$pos.parent.isTextblock) return null;
-  const list = nearestListName($pos);
-  if (list !== null) {
-    const row = (Object.keys(LIST_NODE) as BlockTypeId[])
-      .find((id) => LIST_NODE[id] === list);
-    if (row !== undefined) return row;
-  }
-  const block = $pos.parent;
-  if (block.type.name === 'paragraph') return 'paragraph';
-  if (block.type.name === 'codeBlock') return 'code-block';
-  if (block.type.name === 'heading') {
-    const level = block.attrs.level;
-    if (level === 1) return 'heading-1';
-    if (level === 2) return 'heading-2';
-    if (level === 3) return 'heading-3';
-  }
-  return null;
+  return EXCLUSIVE.find((id) => isItemAt(doc, pos, id)) ?? null;
 }
 
 /** The block types alignment has anything to say about. */

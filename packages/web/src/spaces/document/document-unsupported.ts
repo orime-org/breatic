@@ -53,16 +53,16 @@ import { t } from '@breatic/shared';
 /** Attribute holding the type name this build could not resolve. */
 const ORIGINAL_NAME = 'originalName';
 
-/** The two node names the label decoration dresses. */
 /** The node a block we cannot represent is kept as. */
-export const UNSUPPORTED_BLOCK = 'unsupportedBlock';
+const UNSUPPORTED_BLOCK = 'unsupportedBlock';
 
 /** The node an inline we cannot represent is kept as. */
-export const UNSUPPORTED_INLINE = 'unsupportedInline';
+const UNSUPPORTED_INLINE = 'unsupportedInline';
 
 /** The mark a mark we cannot represent is kept as. */
-export const UNSUPPORTED_MARK = 'unsupportedMark';
+const UNSUPPORTED_MARK = 'unsupportedMark';
 
+/** The two node names the label decoration dresses. */
 const LABELLED_NODES = new Set([UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE]);
 
 /**

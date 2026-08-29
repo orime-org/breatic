@@ -13,12 +13,10 @@
  * draws them and writes a line to the console when pressed, the menu closing
  * after them either way (user 2026-08-27).
  *
- * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
+ * Two things carry the greyed treatment `document-coming-tool.tsx` defines,
  * each for a reason of its own: the task list row, which has no schema node to
- * turn anything into (the row the demo greys, #13); the alignment slot over a
- * selection alignment does not reach (A7); and a wrapping row whose own dry
- * run reaches nothing where the selection sits (#85) — the only one of the
- * three that moves with the selection.
+ * turn anything into (the row the demo greys, #13), and the alignment slot
+ * over a selection alignment does not reach (A7).
  */
 
 import * as React from 'react';
@@ -214,25 +212,21 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-block-type';
-  // An id rather than the row itself: `useEditorState` compares what the
-  // selector returns to decide whether to re-render, and the ids are stable
-  // where a fresh object would not be.
   const current = useEditorState({
     editor,
     selector: ({ editor: e }) => (e ? currentBlockType(e) : 'paragraph'),
   });
-  // A string rather than the set itself: `useEditorState` compares what the
-  // selector returns to decide whether to re-render, and a fresh Set never
-  // compares equal.
-  const markedKey = useEditorState({
+  // `useEditorState` compares what the selector returns with `fast-equals`'
+  // `deepEqual` (`@tiptap/react@3.29.2` `dist/index.js:240`), which reads a Set
+  // by value, and hands back the previous one where they match — so a fresh Set
+  // every read costs nothing and the reference stays put.
+  const marked = useEditorState({
     editor,
     selector: ({ editor: e }) =>
-      (e ? BLOCK_TYPE_ITEMS.filter((item) => isMarked(e, item.id)).map((i) => i.id).join() : ''),
+      new Set<BlockTypeId>(
+        e ? BLOCK_TYPE_ITEMS.filter((item) => isMarked(e, item.id)).map((i) => i.id) : [],
+      ),
   });
-  const marked = React.useMemo(
-    () => new Set<BlockTypeId>(markedKey === '' ? [] : (markedKey.split(',') as BlockTypeId[])),
-    [markedKey],
-  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
