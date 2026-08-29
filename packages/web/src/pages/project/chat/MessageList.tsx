@@ -169,6 +169,23 @@ function MessageListInner({
       last.interrupted ? 'i' : '',
     ].join('|');
   }, [messages]);
+  /**
+   * Puts this column at its end, writing its own scroller and nothing else.
+   *
+   * `scrollIntoView` walks up the tree and moves every scroller on the way, and
+   * the project page is one of them: measured in a browser, a page parked at
+   * scrollLeft 141 was dragged back to 11 by a single call, so a reader in a
+   * narrow window lost their place on every reply.
+   *
+   * Instant, not smooth — a smooth scroll raises scroll events all the way
+   * down, and every one of them reads as "the reader is far from the end"
+   * until it lands, which would switch following off mid-turn.
+   */
+  const goToBottom = React.useCallback((): void => {
+    const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
+    if (viewport instanceof HTMLElement) viewport.scrollTop = viewport.scrollHeight;
+  }, []);
+
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
   React.useEffect(() => {
@@ -185,14 +202,14 @@ function MessageListInner({
     // effect below watches -- are both unchanged by the press. Following
     // alone would leave the column exactly where the reader scrolled it,
     // which reads as the press having done nothing.
-    bottomRef.current?.scrollIntoView();
+    goToBottom();
     // And on arriving in another conversation, for the same reason as sending:
     // what is in front of the reader now is not what they scrolled away from.
     // Done here rather than by keying this component on the conversation --
     // that tore down the scroller, every bubble in it and the observers around
     // them, to set one boolean back to true, and the scroller it left behind
     // stayed on screen as an empty half-column.
-  }, [sentCount, conversationId]);
+  }, [sentCount, conversationId, goToBottom]);
 
   React.useEffect(() => {
     const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
@@ -204,37 +221,29 @@ function MessageListInner({
       stickToBottom.current = distance <= AT_BOTTOM_SLACK_PX;
     };
 
-    viewport.addEventListener('scroll', remember, { passive: true });
-    return () => viewport.removeEventListener('scroll', remember);
-    // The anchor only exists once there are messages, so this has to be able
-    // to run again when the first one arrives.
-  }, [count]);
-
-  React.useEffect(() => {
-    if (!stickToBottom.current) return;
-    // Instant, not smooth. A smooth scroll raises scroll events all the way
-    // down, and every one of them is read above as "the reader is far from
-    // the end" until it lands — which would switch following off mid-turn.
-    bottomRef.current?.scrollIntoView();
-  }, [count, lastShape]);
-
-  React.useEffect(() => {
-    const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-
     // A column that changes width rewraps every line, so the same words take a
-    // different number of them. Nothing above notices: the message count and
+    // different number of them. Nothing else notices: the message count and
     // the last bubble's shape are both unchanged, and the browser keeps
     // scrollTop where it was rather than raising a scroll event. A reader who
     // was watching the last line of a reply is then left looking at the middle
     // of it — the narrower the column, the further from the end they land.
     const observer = new ResizeObserver(() => {
-      if (!stickToBottom.current) return;
-      bottomRef.current?.scrollIntoView();
+      if (stickToBottom.current) goToBottom();
     });
+
+    viewport.addEventListener('scroll', remember, { passive: true });
     observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [count]);
+    return () => {
+      viewport.removeEventListener('scroll', remember);
+      observer.disconnect();
+    };
+    // The anchor only exists once there are messages, so this has to be able
+    // to run again when the first one arrives.
+  }, [count, goToBottom]);
+
+  React.useEffect(() => {
+    if (stickToBottom.current) goToBottom();
+  }, [count, lastShape, goToBottom]);
 
   return (
     <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>
