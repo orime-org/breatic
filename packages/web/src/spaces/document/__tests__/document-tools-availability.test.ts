@@ -24,9 +24,11 @@
  * heading or code block, and R7 does not forbid a dark button that would have
  * worked.
  *
- * The five rows wired in #904 never enter these assertions: they carry no
- * dry run, because it answers wrongly for them — `setBlockType` returns false
- * inside a list item while the command itself lifts the content out.
+ * The block type menu's nine rows are not here. #904 took the dry run off them
+ * altogether: under the model each row has a result waiting for it whatever the
+ * selection, so there is no state for a judgement to report. What each press
+ * does is pinned in `block-type-transitions.test.ts`, and that every row stays
+ * pressable in `block-type-menu.test.tsx`.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -40,7 +42,6 @@ import {
   MARK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
-import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
 
 const editors: Editor[] = [];
 
@@ -155,11 +156,6 @@ describe('what the buttons claim', () => {
       MARK_TOOLS.forEach((tool) => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });
-      // 块命令住在块类型菜单里，判据跟着命令一起搬了过去。
-      BLOCK_TYPE_ITEMS.filter((item) => item.canRun).forEach((item) => {
-        const expected = item.id === 'quote' ? c.quote : c.lists;
-        expect(`${item.id}=${item.canRun?.(editor)}`).toBe(`${item.id}=${expected}`);
-      });
       // 行内组装的也是 mark，答案跟 MARK_TOOLS 那一列同源。
       INLINE_TOOLS.forEach((tool) => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
@@ -171,14 +167,7 @@ describe('what the buttons claim', () => {
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
     it(`with ${c.name}, every live button does something`, () => {
-      const blockRows = BLOCK_TYPE_ITEMS.filter((item) => item.run && item.canRun).map(
-        (item) => ({
-          id: item.id,
-          canRun: item.canRun as (e: Editor) => boolean,
-          run: item.run as (e: Editor) => void,
-        }),
-      );
-      [...MARK_TOOLS, ...INLINE_TOOLS, ...blockRows].forEach((tool) => {
+      [...MARK_TOOLS, ...INLINE_TOOLS].forEach((tool) => {
         const editor = open(c.body);
         c.place(editor);
         if (!tool.canRun(editor)) return;

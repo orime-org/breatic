@@ -16,22 +16,33 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
 
 const live: Editor[] = [];
 
 /**
  * An editor holding the given body, on a Y.Doc of its own.
+ *
+ * Capturing stops once the body is in, so undo takes back what a test does
+ * next rather than the body itself. Yjs groups by wall clock (500ms by
+ * default), and a reader's document is always older than the press they are
+ * taking back.
  * @param bodyHtml - The body's HTML.
  * @returns The editor.
  */
 export function openBody(bodyHtml: string): Editor {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
+  const undoManager = createDocumentUndoManager(doc);
   const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
+    extensions: buildDocumentExtensions({
+      fragment: documentBodyFragment(doc),
+      undoManager,
+    }),
   });
   live.push(editor);
   editor.commands.setContent(bodyHtml);
+  undoManager.stopCapturing();
   return editor;
 }
 

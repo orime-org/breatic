@@ -140,7 +140,9 @@ describe('the bubble bar shell', () => {
       ['heading-3', '<h3>the quick brown fox</h3>'],
       ['bullet-list', '<ul><li><p>the quick brown fox</p></li></ul>'],
       ['ordered-list', '<ol><li><p>the quick brown fox</p></li></ol>'],
-      ['quote', '<blockquote><p>the quick brown fox</p></blockquote>'],
+      // A quote is orthogonal to the eight exclusive items, so the face reads
+      // the block it holds rather than the quote (#928).
+      ['paragraph', '<blockquote><p>the quick brown fox</p></blockquote>'],
       ['code-block', '<pre><code>the quick brown fox</code></pre>'],
     ])('reads %s off the block the selection sits in', async (blockType, body) => {
       const editor = open(body);
@@ -197,7 +199,10 @@ describe('the bubble bar shell', () => {
       ['<h1>the quick brown fox</h1>', false],
       ['<h2>the quick brown fox</h2>', false],
       ['<h3>the quick brown fox</h3>', false],
-      ['<blockquote><p>the quick brown fox</p></blockquote>', true],
+      // Alignment reads the same judgement the block type face does, and that
+      // one now answers `paragraph` inside a quote — so the slot is live there
+      // (§6.6; pressing it still only writes to the console, #905).
+      ['<blockquote><p>the quick brown fox</p></blockquote>', false],
       ['<ul><li><p>the quick brown fox</p></li></ul>', true],
       ['<ol><li><p>the quick brown fox</p></li></ol>', true],
       ['<pre><code>the quick brown fox</code></pre>', true],
@@ -260,7 +265,7 @@ describe('the bubble bar shell', () => {
     it.each([
       ['bullet-list', '<h1>a heading</h1><ul><li><p>an item</p></li></ul>', 16],
       ['ordered-list', '<h1>a heading</h1><ol><li><p>an item</p></li></ol>', 16],
-      ['quote', '<h1>a heading</h1><blockquote><p>a line</p></blockquote>', 15],
+      ['paragraph', '<h1>a heading</h1><blockquote><p>a line</p></blockquote>', 15],
     ])('shows %s at the anchor end when the selection leaves it', async (
       blockType,
       body,
@@ -276,10 +281,10 @@ describe('the bubble bar shell', () => {
       ).toBe(blockType);
     });
 
-    // A7 greys the slot over a list or a quote. Two of them side by side is
-    // still every block wrapped, so the answer cannot turn on whether one
-    // wrapper happens to cover the whole selection.
-    it('greys the alignment slot when the selection spans two wrappers', async () => {
+    // A7 greys the slot where nothing in the selection is alignable. One
+    // alignable block is enough, and the paragraph inside the quote is one —
+    // the list item beside it is not.
+    it('leaves the alignment slot live where a quote is one of two wrappers', async () => {
       const editor = open(
         '<ul><li><p>an item</p></li></ul><blockquote><p>a line</p></blockquote>',
       );
@@ -288,7 +293,7 @@ describe('the bubble bar shell', () => {
 
       expect(
         screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
-      ).toBe('true');
+      ).toBeNull();
     });
   });
 
@@ -699,9 +704,9 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-heading-3',
         'doc-bubble-block-type-item-bullet-list',
         'doc-bubble-block-type-item-ordered-list',
-        'doc-bubble-block-type-item-quote',
-        'doc-bubble-block-type-item-code-block',
         'doc-bubble-block-type-item-task-list',
+        'doc-bubble-block-type-item-code-block',
+        'doc-bubble-block-type-item-quote',
       ]);
 
       // The demo draws a shortcut column on seven of the items. This
@@ -717,9 +722,9 @@ describe('the bubble bar shell', () => {
         'Ctrl+Alt+3',
         'Ctrl+Shift+8',
         'Ctrl+Shift+7',
-        'Ctrl+Shift+B',
-        'Ctrl+Alt+C',
         null,
+        'Ctrl+Alt+C',
+        'Ctrl+Shift+B',
       ]);
     });
 
@@ -738,45 +743,6 @@ describe('the bubble bar shell', () => {
       expect(
         menu.querySelector('[data-testid="doc-bubble-block-type-shortcut-bullet-list"]')?.textContent?.trim(),
       ).toBe('⌘⇧8');
-    });
-
-    // The demo marks the row the selection is already in with
-    // `data-active="true"`, which takes `--color-muted`.
-    it('marks the row the selection is already in', async () => {
-      const editor = open('<h1>a heading</h1><p>a paragraph</p>');
-      mount(editor);
-      await selectWithFocus(editor, 2, 6);
-      const menu = await hoverOpen('doc-bubble-block-type');
-
-      const active = Array.from(
-        menu.querySelectorAll('[data-testid^="doc-bubble-block-type-item-"]'),
-      ).filter((n) => n.getAttribute('data-active') === 'true');
-
-      expect(active.map((n) => n.getAttribute('data-testid'))).toEqual([
-        'doc-bubble-block-type-item-heading-1',
-      ]);
-      // The same fill the language menu marks its picked row with.
-      expect(active[0].className).toContain('bg-accent');
-    });
-
-    // The demo's `.menu-sep` rules the headings off from the lists below them.
-    it('rules the headings off from the lists', async () => {
-      const editor = open('<p>the quick brown fox</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-block-type');
-
-      const rows = Array.from(
-        menu.querySelectorAll(
-          '[data-testid^="doc-bubble-block-type-item-"], [data-testid="doc-bubble-rule"]',
-        ),
-      );
-      const separators = rows.filter(
-        (n) => n.getAttribute('data-testid') === 'doc-bubble-rule',
-      );
-      expect(separators).toHaveLength(1);
-      // Between heading 3 and the bulleted list, nowhere else.
-      expect(rows.indexOf(separators[0])).toBe(4);
     });
 
     // Every row of the demo's alignment menu carries a 16px icon, the way the
@@ -965,43 +931,6 @@ describe('the bubble bar shell', () => {
       });
 
       expect(markupOf()).toBe(before);
-    });
-  });
-
-  describe('what a row can do', () => {
-    // The three block commands moved off the bar and into this menu, and the
-    // judgement of whether each can run where the selection is has to travel
-    // with them: inside a code block a list command reaches nothing, and a row
-    // that reads as available and does nothing tells the reader it is broken.
-    it('dims the block commands where they cannot run', async () => {
-      const editor = open('<pre><code>hello world</code></pre>');
-      mount(editor);
-      await selectWithFocus(editor, 2, 7);
-      const menu = await hoverOpen('doc-bubble-block-type');
-
-      // The two list commands reach nothing inside a code block. Quote does
-      // reach something — it wraps the code block — which
-      // `document-tools-availability.test.ts` measured for each of six
-      // placements.
-      const dimmed = (id: string): string | null | undefined =>
-        menu
-          .querySelector(`[data-testid="doc-bubble-block-type-item-${id}"]`)
-          ?.getAttribute('aria-disabled');
-      expect(dimmed('bullet-list')).toBe('true');
-      expect(dimmed('ordered-list')).toBe('true');
-      expect(dimmed('quote')).toBeNull();
-    });
-
-    it('leaves them available in a plain paragraph', async () => {
-      const editor = open('<p>the quick brown fox</p>');
-      mount(editor);
-      await selectWithFocus(editor, 1, 10);
-      const menu = await hoverOpen('doc-bubble-block-type');
-
-      for (const id of ['bullet-list', 'ordered-list', 'quote']) {
-        const row = menu.querySelector(`[data-testid="doc-bubble-block-type-item-${id}"]`);
-        expect(`${id}=${row?.getAttribute('aria-disabled')}`).toBe(`${id}=null`);
-      }
     });
   });
 

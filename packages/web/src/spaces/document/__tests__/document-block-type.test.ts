@@ -17,7 +17,7 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { currentBlockType } from '@web/spaces/document/document-block-type';
+import { currentBlockType } from '@web/spaces/document/document-block-model';
 
 const editors: Editor[] = [];
 let doc: Y.Doc;
@@ -79,7 +79,7 @@ describe('currentBlockType', () => {
   // and the one the anchor end sits at is the first the selection covers.
   it.each([
     ['heading-1', '<h1>a heading</h1><ul><li><p>an item</p></li></ul>'],
-    ['quote', '<blockquote><p>a line</p></blockquote><p>a paragraph</p>'],
+    ['paragraph', '<blockquote><p>a line</p></blockquote><p>a paragraph</p>'],
     ['bullet-list', '<ul><li><p>an item</p></li></ul><h2>a heading</h2>'],
   ])('names the first block, %s, under a select-all', (blockType, body) => {
     const editor = open(body);
@@ -113,11 +113,14 @@ describe('currentBlockType', () => {
   // A wrapper picked this way holds another one, and the walk below reads the
   // innermost — which is the one INSIDE what the reader picked. The node the
   // click landed on is the answer, so it is asked first.
-  it('names the picked quote rather than the list it holds', () => {
+  // A quote is orthogonal to the eight exclusive items, so the face names what
+  // the block IS rather than what holds it — which is what puts a heading's
+  // icon on the face inside a quote (#928).
+  it('names the list a picked quote holds rather than the quote', () => {
     const editor = open('<blockquote><ul><li><p>the text</p></li></ul></blockquote>');
     selectNode(editor, 'blockquote');
 
-    expect(currentBlockType(editor)).toBe('quote');
+    expect(currentBlockType(editor)).toBe('bullet-list');
   });
 
   // Which block a paragraph counts as does not depend on how it was selected:

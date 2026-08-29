@@ -12,8 +12,8 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
-import { isMarked } from '@web/spaces/document/document-block-type';
-import type { BlockTypeId } from '@web/spaces/document/document-block-type';
+import { isMarked } from '@web/spaces/document/document-block-model';
+import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import {
   openBody,

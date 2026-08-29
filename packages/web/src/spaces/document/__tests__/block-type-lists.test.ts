@@ -12,7 +12,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
-import { runBlockType, isMarked } from '@web/spaces/document/document-block-type';
+import { runBlockType, isMarked } from '@web/spaces/document/document-block-model';
 
 import { openBody, closeAll, selectBlock, selectWholeBody } from './block-type-fixtures';
 

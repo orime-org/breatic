@@ -11,7 +11,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
-import { runBlockType } from '@web/spaces/document/document-block-type';
+import { runBlockType } from '@web/spaces/document/document-block-model';
 
 import { openBody, closeAll, selectBlock, selectRange } from './block-type-fixtures';
 
@@ -92,9 +92,10 @@ describe('a nested list item', () => {
     selectBlock(editor, 'deep');
     runBlockType(editor, 'quote');
     expect(editor.getHTML()).toBe(
-      '<ul><li><p>one</p><blockquote>'
-        + '<ul><li><p>deep</p></li><li><p>sib</p></li></ul>'
-        + '</blockquote></li></ul>',
+      '<ul><li><p>one</p>'
+        + '<blockquote><ul><li><p>deep</p></li></ul></blockquote>'
+        + '<ul><li><p>sib</p></li></ul>'
+        + '</li></ul>',
     );
   });
 });

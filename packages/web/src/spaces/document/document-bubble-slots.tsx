@@ -23,6 +23,7 @@
 
 import * as React from 'react';
 import {
+  Check,
   ChevronDown,
   TextAlignStart,
   TextAlignCenter,
@@ -45,10 +46,16 @@ import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
 import {
   BLOCK_TYPE_ITEMS,
+  BLOCK_TYPE_SEPARATOR_AFTER,
   blockTypeItem,
-  currentBlockType,
-  selectionCanAlign,
 } from '@web/spaces/document/document-block-type';
+import {
+  currentBlockType,
+  isMarked,
+  runBlockType,
+  selectionCanAlign,
+} from '@web/spaces/document/document-block-model';
+import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
@@ -214,6 +221,18 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     editor,
     selector: ({ editor: e }) => (e ? currentBlockType(e) : 'paragraph'),
   });
+  // A string rather than the set itself: `useEditorState` compares what the
+  // selector returns to decide whether to re-render, and a fresh Set never
+  // compares equal.
+  const markedKey = useEditorState({
+    editor,
+    selector: ({ editor: e }) =>
+      (e ? BLOCK_TYPE_ITEMS.filter((item) => isMarked(e, item.id)).map((i) => i.id).join() : ''),
+  });
+  const marked = React.useMemo(
+    () => new Set<BlockTypeId>(markedKey === '' ? [] : (markedKey.split(',') as BlockTypeId[])),
+    [markedKey],
+  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -230,34 +249,18 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     >
       {BLOCK_TYPE_ITEMS.map((item) => {
         const Icon = item.Icon;
-        // A row with a command is dimmed only where that command reaches
-        // nothing; a row with none is never dimmed on this account.
-        const runnable = item.canRun === undefined || item.canRun(editor);
         return (
           <React.Fragment key={item.id}>
-            {/* The demo's `.menu-sep` rules off the headings from the lists. */}
-            {item.id === 'bullet-list' ? <BubbleMenuRule /> : null}
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
-              // The row the selection is already in. Its fill sits one step
-              // past hover in the same direction, so hovering it never washes
-              // the mark away.
-              data-active={item.id === current ? 'true' : undefined}
-              aria-disabled={item.greyed || !runnable ? 'true' : undefined}
-              // The mark goes last: `UNAVAILABLE` cancels the hover fill, and
-              // a row can be both at once — the selection anchored in a list
-              // that reaches out into a heading is in the bullet list AND the
-              // dry run for that command says no there (#85).
-              className={cn(
-                (item.greyed || !runnable) && UNAVAILABLE,
-                item.id === current && 'bg-accent',
-              )}
+              aria-disabled={item.greyed ? 'true' : undefined}
+              className={cn(item.greyed && UNAVAILABLE)}
               onSelect={() => {
-                if (item.run) {
-                  if (runnable) item.run(editor);
+                if (item.greyed) {
+                  pressedWithNothingBehindIt(`block type ${item.id}`);
                   return;
                 }
-                pressedWithNothingBehindIt(`block type ${item.id}`);
+                runBlockType(editor, item.id);
               }}
             >
               <Icon />
@@ -267,7 +270,21 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
                   {formatShortcut(item.shortcut)}
                 </DropdownMenuShortcut>
               ) : null}
+              {/* The tick goes after the shortcut, where the demo draws it.
+                  `components/ui/dropdown-menu`'s checkbox item puts one on the
+                  left instead, so this row keeps that component's mark — the
+                  same glyph at the same weight — in the place the demo gives
+                  it. */}
+              {marked.has(item.id) ? (
+                <Check
+                  data-testid={`${id}-tick-${item.id}`}
+                  className='ml-1 size-4 shrink-0'
+                  strokeWidth={3}
+                />
+              ) : null}
             </BubbleMenuRow>
+            {/* The demo's `.menu-sep`, ruling the exclusive eight off Quote. */}
+            {item.id === BLOCK_TYPE_SEPARATOR_AFTER ? <BubbleMenuRule /> : null}
           </React.Fragment>
         );
       })}
