@@ -14,14 +14,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
+import { screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { TooltipProvider } from '@web/components/ui/tooltip';
-import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+
+import { mountDocumentEditor, hoverOpenSlot } from './bubble-bar-harness';
 
 const editors: Editor[] = [];
 let doc: Y.Doc;
@@ -56,18 +56,6 @@ function open(bodyHtml: string): Editor {
 }
 
 /**
- * Render the editor, carrier and all, into the document.
- * @param editor - An editor with its body already in place.
- */
-function mount(editor: Editor): void {
-  render(
-    <TooltipProvider>
-      <DocumentEditor editor={editor} />
-    </TooltipProvider>,
-  );
-}
-
-/**
  * Select the whole body, with the editor really holding the focus.
  * @param editor - The editor.
  */
@@ -93,14 +81,11 @@ async function selectAll(editor: Editor): Promise<void> {
 }
 
 /**
- * Move the pointer onto the block type slot and wait for its menu.
+ * Open the block type slot's menu.
  * @returns The opened menu element.
  */
 async function openMenu(): Promise<HTMLElement> {
-  act(() => {
-    fireEvent.pointerEnter(screen.getByTestId(SLOT));
-  });
-  return waitFor(() => screen.getByTestId(`${SLOT}-menu`));
+  return hoverOpenSlot(SLOT);
 }
 
 /**
@@ -126,7 +111,7 @@ function tickedIds(menu: HTMLElement): string[] {
 describe('the menu', () => {
   it('draws the nine in order, the rule after Code block', async () => {
     const editor = open('<p>the quick brown fox</p>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
 
@@ -157,7 +142,7 @@ describe('the menu', () => {
 
   it('keeps the task list row greyed and pressable by no one else', async () => {
     const editor = open('<p>the quick brown fox</p>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
 
@@ -169,7 +154,7 @@ describe('the menu', () => {
 
   it('carries no row fill and no data-active', async () => {
     const editor = open('<h1>the quick brown fox</h1>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
 
@@ -186,7 +171,7 @@ describe('the menu', () => {
 describe('the tick', () => {
   it('marks the one exclusive row the selection is, alongside Quote', async () => {
     const editor = open('<blockquote><h1>the quick brown fox</h1></blockquote>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
     expect(tickedIds(menu).sort()).toEqual(['heading-1', 'quote']);
@@ -194,7 +179,7 @@ describe('the tick', () => {
 
   it('marks nothing in the exclusive group over a mixed selection', async () => {
     const editor = open('<h1>the quick</h1><p>brown fox</p>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
     expect(tickedIds(menu)).toEqual([]);
@@ -202,7 +187,7 @@ describe('the tick', () => {
 
   it('sits after the shortcut in the row', async () => {
     const editor = open('<h1>the quick brown fox</h1>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
 
@@ -218,14 +203,14 @@ describe('the tick', () => {
 describe('the face', () => {
   it('shows the block inside a quote rather than the quote', async () => {
     const editor = open('<blockquote><h1>the quick brown fox</h1></blockquote>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     expect(screen.getByTestId(SLOT).getAttribute('data-block-type')).toBe('heading-1');
   });
 
   it('answers for the anchor over a mixed selection while no row is ticked', async () => {
     const editor = open('<h1>the quick</h1><p>brown fox</p>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     expect(screen.getByTestId(SLOT).getAttribute('data-block-type')).toBe('heading-1');
     const menu = await openMenu();
@@ -237,7 +222,7 @@ describe('pressing a row', () => {
   it('changes the document and writes nothing to the console', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const editor = open('<p>the quick brown fox</p>');
-    mount(editor);
+    mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await openMenu();
 
