@@ -71,12 +71,14 @@ export class LocalStorageAdapter implements StorageAdapter {
    * Resolve the upload directory and public base URL, creating the
    * directory if it does not yet exist.
    */
-  constructor() {
+  constructor(options: { uploadBaseUrl?: string } = {}) {
     // LOCAL_UPLOAD_DIR overrides; default = monorepo root /uploads
     const dir = env.LOCAL_UPLOAD_DIR || resolve(MONOREPO_ROOT, "uploads");
     this.uploadDir = resolve(dir);
-    // UPLOAD_BASE_URL for CDN; fallback to local server
-    this.baseUrl = env.UPLOAD_BASE_URL || `http://localhost:${env.PORT}/uploads`;
+    // An explicit base points at a CDN. Local files stay same-origin so the
+    // same URL works through nginx, the Vite proxy, and LAN hostnames.
+    const configuredBaseUrl = options.uploadBaseUrl ?? env.UPLOAD_BASE_URL;
+    this.baseUrl = configuredBaseUrl || "/uploads";
 
     mkdirSync(this.uploadDir, { recursive: true });
   }
