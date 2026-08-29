@@ -180,6 +180,67 @@ test('the tabs lie in one row and the strip scrolls sideways', async () => {
   expect(laid.clipped).toBe(false);
 });
 
+test('the scrollbar and the arrows agree after the content width changes', async () => {
+  // Renaming a Space changes how wide the row of tabs is while the box it
+  // scrolls in stays exactly as it was — and a resize observer watching only
+  // that box never hears about it. Driving the row's width directly is the
+  // same signal a rename sends, without depending on a name long enough to
+  // cross the boundary. Both indicators answer the same question, so they
+  // must not be able to answer it differently.
+  /**
+   * Reads what the rail and the arrows each believe about the strip.
+   * @returns The rail's own verdict and whether the right arrow is live.
+   */
+  const verdicts = (): Promise<{ railScrollable: string | null; rightLive: boolean }> =>
+    page.evaluate(() => {
+      const list = document.querySelector('[role="tablist"]');
+      const bar = list?.closest('[data-testid="space-tab-bar"]') ?? null;
+      const rail = bar?.querySelector('[data-orientation="horizontal"]') ?? null;
+      const right = document.querySelector('[data-testid="tabs-scroll-right"]');
+      return {
+        railScrollable: rail ? rail.getAttribute('data-scrollable') : null,
+        rightLive: right instanceof HTMLButtonElement ? !right.disabled : false,
+      };
+    });
+
+  // The narrow window leaves the strip around 114px, too little for narrower
+  // tabs to stop overflowing it. Widen for this one case.
+  await page.setViewportSize({ width: 1400, height: 800 });
+  // Start from the left edge: an earlier case leaves the strip scrolled, and
+  // the right arrow is disabled at the right end for reasons of its own.
+  await page.evaluate(() => {
+    const list = document.querySelector('[role="tablist"]');
+    const viewport = list?.closest('[data-radix-scroll-area-viewport]') ?? null;
+    if (viewport instanceof HTMLElement) viewport.scrollLeft = 0;
+  });
+  await page.waitForTimeout(500);
+  const before = await verdicts();
+  expect(before).toEqual({ railScrollable: 'true', rightLive: true });
+
+  // Narrow the tabs themselves, which is what shorter names do. Clipping the
+  // row instead would leave every tab laid out where it was, and the boundary
+  // check reads tab rects.
+  await page.evaluate(() => {
+    const style = document.createElement('style');
+    style.id = 'narrow-tabs-probe';
+    style.textContent = '[role="tab"]{max-width:10px !important;padding:0 !important}';
+    document.head.appendChild(style);
+  });
+  await page.waitForTimeout(500);
+  const shrunk = await verdicts();
+
+  await page.evaluate(() => {
+    document.getElementById('narrow-tabs-probe')?.remove();
+  });
+  await page.waitForTimeout(500);
+  const restored = await verdicts();
+  await page.setViewportSize(NARROW);
+  await page.waitForTimeout(500);
+
+  expect(shrunk).toEqual({ railScrollable: 'false', rightLive: false });
+  expect(restored).toEqual({ railScrollable: 'true', rightLive: true });
+});
+
 test('the tabs sit centred in the bar', async () => {
   const boxes = await page.evaluate(() => {
     const bar = document.querySelector('[data-testid="space-tab-bar"]');

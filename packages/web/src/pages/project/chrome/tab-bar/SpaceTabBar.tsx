@@ -187,6 +187,13 @@ export function SpaceTabBar({
     el.addEventListener('scroll', updateScrollState);
     const ro = new ResizeObserver(updateScrollState);
     ro.observe(el);
+    // The row of tabs grows and shrinks — a name is edited here or by a
+    // collaborator — while the box it scrolls in keeps the width the bar gives
+    // it, and a resize observer watching only that box never hears about it.
+    // ScrollArea watches the same wrapper for the same reason, so watching it
+    // here too is what keeps the arrows and the rail from answering the same
+    // question differently.
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => {
       el.removeEventListener('scroll', updateScrollState);
       ro.disconnect();
