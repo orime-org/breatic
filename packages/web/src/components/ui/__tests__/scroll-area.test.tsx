@@ -296,6 +296,29 @@ describe('ScrollArea', () => {
       );
     });
 
+    it('cancels a secondary press too — the contract names no button', () => {
+      // The drag takeover returns early for anything but the primary button,
+      // so a secondary or middle press arrives at the rail as a mousedown of
+      // its own, and moving focus is that event's default action. Deleting the
+      // rail's mousedown handler leaves the primary case above green.
+      const { rail } = renderScrollableWithInput();
+      expect(fireEvent.mouseDown(rail, { button: 2 })).toBe(false);
+      expect(fireEvent.mouseDown(rail, { button: 1 })).toBe(false);
+    });
+
+    it('runs a caller-supplied onMouseDown after the cancel', () => {
+      const spy = vi.fn();
+      const { container } = render(
+        <ScrollAreaPrimitive.Root type='always'>
+          <ScrollAreaPrimitive.Viewport />
+          <ScrollBar forceMount orientation='vertical' onMouseDown={spy} />
+        </ScrollAreaPrimitive.Root>,
+      );
+      const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      expect(fireEvent.mouseDown(bar, { button: 2 })).toBe(false);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
   });
 });
 
@@ -444,6 +467,50 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     expect(rail.dataset.dragging).toBe('true');
     fireEvent(rail, new PointerEvent('pointermove', { clientX: 12 }));
     expect(scrollLeft).toBeGreaterThan(0);
+  });
+
+  it('drags in layout space when an ancestor is scaled (2026-08-29)', () => {
+    // A CSS transform changes what the rail is painted at without changing
+    // what it reports for `offsetWidth`, while pointer coordinates arrive in
+    // screen px. Dividing by the measured ratio between the two is what keeps
+    // the content under the cursor inside the zoomed canvas — where six
+    // scrollers live (the text node, the node-history panel, the model and
+    // mini-tool pickers, the prompt editor and the mention list).
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    // Layout says 200; a 0.5-scaled ancestor paints it 100 wide.
+    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { value: 200, configurable: true });
+    rail.getBoundingClientRect = (() =>
+      ({ left: 0, top: 0, width: 100, height: 4 })) as typeof rail.getBoundingClientRect;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    thumb.getBoundingClientRect = (() =>
+      ({ left: 0, right: 20, top: 0, bottom: 4 })) as typeof thumb.getBoundingClientRect;
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    // The rail's midpoint on screen is 50; in layout it is 100, which is the
+    // middle of the track, so the content lands halfway.
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 50 });
+    expect(scrollLeft).toBe(400);
   });
 
   it('answers the first move back after a track press that landed at an end (2026-08-29)', () => {

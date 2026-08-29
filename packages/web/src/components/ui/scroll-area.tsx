@@ -206,7 +206,14 @@ const ScrollBar = React.forwardRef<
     revealed?: boolean;
   }
 >((
-  { className, orientation = 'vertical', scrollable = true, revealed = false, ...props },
+  {
+    className,
+    orientation = 'vertical',
+    scrollable = true,
+    revealed = false,
+    onMouseDown,
+    ...props
+  },
   ref,
 ) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
@@ -387,8 +394,14 @@ const ScrollBar = React.forwardRef<
       // the pointerdown of the primary one, which suppresses the compatibility
       // mousedown it would otherwise produce, so for a drag this never runs;
       // the secondary and middle buttons reach the rail as a mousedown of
-      // their own, and moving focus is that event's default action.
-      onMouseDown={(e) => e.preventDefault()}
+      // their own, and moving focus is that event's default action. A caller's
+      // own handler runs after the cancel and cannot remove it — it is
+      // destructured out of the spread above so that this one does not replace
+      // it, which is what a duplicate JSX prop does.
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onMouseDown?.(e);
+      }}
       onPointerDownCapture={takeOverDrag}
       className={cn(
         // Always-mounted rail, visibility by opacity TRANSITION (not

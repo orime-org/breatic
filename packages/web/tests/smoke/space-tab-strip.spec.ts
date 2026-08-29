@@ -262,15 +262,25 @@ test('the scrollbar and the arrows agree after the content width changes', async
    * Reads what the rail and the arrows each believe about the strip.
    * @returns The rail's own verdict and whether the right arrow is live.
    */
-  const verdicts = (): Promise<{ railScrollable: string | null; rightLive: boolean }> =>
+  const verdicts = (): Promise<{
+    railScrollable: string | null;
+    rightLive: boolean;
+    viewportWidth: number;
+  }> =>
     page.evaluate(() => {
       const list = document.querySelector('[role="tablist"]');
       const bar = list?.closest('[data-testid="space-tab-bar"]') ?? null;
       const rail = bar?.querySelector('[data-orientation="horizontal"]') ?? null;
+      const viewport = list?.closest('[data-radix-scroll-area-viewport]') ?? null;
       const right = document.querySelector('[data-testid="tabs-scroll-right"]');
       return {
         railScrollable: rail ? rail.getAttribute('data-scrollable') : null,
         rightLive: right instanceof HTMLButtonElement ? !right.disabled : false,
+        // The box the strip scrolls in. Holding it still is what makes the
+        // content observer the only thing that can notice: let it change and
+        // the plain observer on the box itself re-measures, and the rail comes
+        // out right for a reason this case is not about.
+        viewportWidth: viewport instanceof HTMLElement ? Math.round(viewport.clientWidth) : -1,
       };
     });
 
@@ -283,20 +293,27 @@ test('the scrollbar and the arrows agree after the content width changes', async
   });
   await page.waitForTimeout(500);
   const before = await verdicts();
-  expect(before).toEqual({ railScrollable: 'true', rightLive: true });
+  expect(before).toMatchObject({ railScrollable: 'true', rightLive: true });
 
   // Narrow the tabs themselves, which is what shorter names do. Clipping the
   // row instead would leave every tab laid out where it was, and the boundary
   // check reads tab rects. One 10px tab fits the 114px strip whatever the
   // account happens to carry, so the verdict flips for any tab count.
-  await page.evaluate(() => {
+  await page.evaluate((frozen) => {
     const style = document.createElement('style');
     style.id = 'narrow-tabs-probe';
     style.textContent =
       '[role="tab"]:not(:first-child){display:none !important}' +
-      '[role="tab"]{max-width:10px !important;padding:0 !important}';
+      '[role="tab"]{max-width:10px !important;padding:0 !important}' +
+      // Holding the scroller's own box still: the arrows hide once the strip
+      // stops overflowing, which hands their width to a flex-1 scroller and
+      // resizes it — and a resize is something the plain observer already
+      // notices, so the content observer would never be the reason.
+      `[data-testid="space-tab-bar"] > [data-radix-scroll-area-root],
+       [data-testid="space-tab-bar"] > div:has(> [data-radix-scroll-area-viewport])
+       {width:${frozen}px !important;flex:none !important}`;
     document.head.appendChild(style);
-  });
+  }, before.viewportWidth);
   await page.waitForTimeout(500);
   const shrunk = await verdicts();
 
@@ -306,8 +323,11 @@ test('the scrollbar and the arrows agree after the content width changes', async
   await page.waitForTimeout(500);
   const restored = await verdicts();
 
-  expect(shrunk).toEqual({ railScrollable: 'false', rightLive: false });
-  expect(restored).toEqual({ railScrollable: 'true', rightLive: true });
+  expect(shrunk).toMatchObject({ railScrollable: 'false', rightLive: false });
+  expect(restored).toMatchObject({ railScrollable: 'true', rightLive: true });
+  // Both verdicts flipped while the box they read stayed the size it was.
+  expect(shrunk.viewportWidth).toBe(before.viewportWidth);
+  expect(restored.viewportWidth).toBe(before.viewportWidth);
 });
 
 test('the tabs sit centred in the bar', async () => {
@@ -440,16 +460,14 @@ test('the rail lets clicks through to the tabs until the pointer is in the strip
   // Pointer parked well away from the strip: the whole tab answers to a click,
   // including the band the hidden rail covers.
   await page.mouse.move(x, (strip?.y ?? 0) + 300);
-  // Long enough for the OTHER reveal to expire: Radix keeps `data-state` at
-  // visible for `scrollHideDelay` (600ms) after the last scroll, and an
-  // earlier case leaves the strip scrolled, so a shorter wait reads a rail
-  // that is painted for a reason that has nothing to do with the pointer.
-  await page.waitForTimeout(1_200);
-  expect(await railState()).toEqual({
-    revealed: 'false',
-    pointerEvents: 'none',
-    opacity: '0',
-  });
+  // Polled rather than slept: the rail also idles out on its own after the
+  // last scroll (Radix holds `data-state` visible for its hide delay, then the
+  // opacity transition runs), and an earlier case leaves the strip scrolled —
+  // so what this has to wait for is two independent timers plus a round trip,
+  // which is not a number worth guessing.
+  await expect
+    .poll(railState, { timeout: 5_000 })
+    .toEqual({ revealed: 'false', pointerEvents: 'none', opacity: '0' });
   expect(await topmostOnTabBottom()).toBe('tab');
 
   // Pointer inside the strip: the rail is showing, and it takes its own band
