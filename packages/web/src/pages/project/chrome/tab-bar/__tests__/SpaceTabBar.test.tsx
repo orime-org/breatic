@@ -12,7 +12,6 @@ import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
-import { SPACE_TAB_MAX_WIDTH } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -177,7 +176,16 @@ describe('SpaceTabBar', () => {
      * and disables the arrows before the test can click them).
      */
     function makeOverflow(): HTMLElement {
-      const scroller = screen.getByRole('tablist');
+      // The element that scrolls is the ScrollArea viewport; the tablist is
+      // the row of tabs inside it. They are two elements on purpose — a role
+      // that owns the tabs belongs on the element they sit in, and the
+      // scrolling belongs to the viewport around it.
+      const scroller = screen
+        .getByRole('tablist')
+        .closest('[data-radix-scroll-area-viewport]');
+      if (!(scroller instanceof HTMLElement)) {
+        throw new Error('the tab row is not inside a scroll-area viewport');
+      }
       Object.defineProperty(scroller, 'scrollWidth', {
         value: 600,
         configurable: true,
@@ -367,6 +375,21 @@ describe('SpaceTabBar', () => {
   });
 
   describe('the strip that scrolls sideways', () => {
+    it('lays the tabs out in one row that can overflow sideways', () => {
+      setup();
+      // Radix puts a `display:table` div of its own inside a viewport, so a
+      // flex declared ON the viewport reaches that div and stops. The tabs
+      // would then stack one per row, the strip would never overflow
+      // sideways, and both the bar and the arrows would never appear.
+      const tab = screen.getByTestId('space-tab-s1');
+      const row = tab.parentElement;
+      expect(row?.getAttribute('role')).toBe('tablist');
+      expect(row?.className).toContain('flex');
+      // The role belongs to the element the tabs sit in, so the same element
+      // carries both.
+      expect(row?.querySelectorAll('[role="tab"]').length).toBe(3);
+    });
+
     it('scrolls through the shared component, not a native bar', () => {
       setup();
       // Every visible scroller in the app is the ScrollArea component
@@ -400,7 +423,9 @@ describe('SpaceTabBar', () => {
     it('caps the tab and clips the name that overflows it', () => {
       setup(withLongName);
       const tab = screen.getByTestId('space-tab-s1');
-      expect(tab.style.maxWidth).toBe(`${SPACE_TAB_MAX_WIDTH}px`);
+      // The literal is the point: restating the constant would let the
+      // assertion follow the number wherever it was changed to.
+      expect(tab.style.maxWidth).toBe('160px');
       // The clip belongs to the name, not the tab: the icon and the close
       // control keep their room and the name gives up what is left.
       expect(screen.getByTestId('space-tab-name-s1').className).toContain(
@@ -420,7 +445,7 @@ describe('SpaceTabBar', () => {
       expect(field.className).toContain('[field-sizing:content]');
       expect(field.style.width).toBe('');
       expect(screen.getByTestId('space-tab-s1').style.maxWidth).toBe(
-        `${SPACE_TAB_MAX_WIDTH}px`,
+        '160px',
       );
     });
   });

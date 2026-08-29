@@ -44,6 +44,27 @@ import { cn } from '@web/lib/utils';
  *     an index.css rule (horizontal/both keep `table` — Radix uses it so
  *     content can exceed the viewport for horizontal scrolling).
  */
+/**
+ * Hand one node to a local ref and to whoever else asked for it.
+ *
+ * Both elements this file hands out need their node in two places at once: the
+ * component keeps one to measure and drive, and a caller may have asked for
+ * the same node.
+ * @param local - The ref this component reads.
+ * @param forwarded - The ref a caller passed in, if any.
+ * @returns A ref callback that feeds both.
+ */
+function keepBoth<T>(
+  local: React.MutableRefObject<T | null>,
+  forwarded: React.Ref<T> | undefined,
+): (node: T | null) => void {
+  return (node) => {
+    local.current = node;
+    if (typeof forwarded === 'function') forwarded(node);
+    else if (forwarded) (forwarded as React.MutableRefObject<T | null>).current = node;
+  };
+}
+
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
@@ -55,17 +76,6 @@ const ScrollArea = React.forwardRef<
      * `scrollLeft` or calling `scrollBy` there does nothing.
      */
     viewportRef?: React.Ref<HTMLDivElement>;
-    /**
-     * Anything else the viewport has to carry. A role that owns its children
-     * (`tablist`, `listbox`) belongs on the element the children sit in, and
-     * after this wrapper that element is the viewport — putting it on the Root
-     * would leave the viewport and Radix's content wrapper standing between
-     * the role and the items it owns.
-     */
-    viewportProps?: Omit<
-      React.ComponentPropsWithoutRef<'div'>,
-      'ref' | 'className' | 'children'
-    >;
   }
 >(
   (
@@ -76,22 +86,12 @@ const ScrollArea = React.forwardRef<
       type = 'scroll',
       scrollbars = 'vertical',
       viewportRef: forwardedViewportRef,
-      viewportProps,
       ...props
     },
     ref,
   ) => {
     const viewportRef = React.useRef<HTMLDivElement>(null);
-    /**
-     * Keeps the local viewport ref while handing the same node to a caller
-     * that asked for it — the same merge the rail below does.
-     * @param node - The viewport element, or null on unmount.
-     */
-    const setViewportRef = (node: HTMLDivElement | null): void => {
-      viewportRef.current = node;
-      if (typeof forwardedViewportRef === 'function') forwardedViewportRef(node);
-      else if (forwardedViewportRef) forwardedViewportRef.current = node;
-    };
+    const setViewportRef = keepBoth(viewportRef, forwardedViewportRef);
     const [scrollable, setScrollable] = React.useState({ x: false, y: false });
     React.useEffect(() => {
       const viewport = viewportRef.current;
@@ -131,7 +131,6 @@ const ScrollArea = React.forwardRef<
         <ScrollAreaPrimitive.Viewport
           ref={setViewportRef}
           className={cn('h-full w-full rounded-[inherit]', viewportClassName)}
-          {...viewportProps}
         >
           {children}
         </ScrollAreaPrimitive.Viewport>
@@ -160,16 +159,7 @@ const ScrollBar = React.forwardRef<
   }
 >(({ className, orientation = 'vertical', onMouseDown, scrollable = true, ...props }, ref) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
-  /**
-   * Merges the forwarded ref with the local rail ref (the drag takeover
-   * needs the DOM node).
-   * @param node - The rail element, or null on unmount.
-   */
-  const setRailRef = (node: HTMLDivElement | null): void => {
-    railRef.current = node;
-    if (typeof ref === 'function') ref(node);
-    else if (ref) ref.current = node;
-  };
+  const setRailRef = keepBoth(railRef, ref);
   /**
    * Input-state contract (user-ratified 2026-07-15): interacting with a
    * scrollbar must never move focus, collapse a selection, or interrupt an

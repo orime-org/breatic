@@ -48,9 +48,11 @@ interface SpaceTabProps {
  *
  * A name may run to `SPACE_NAME_MAX_LEN`, and the strip scrolls sideways, so
  * without a cap one long name takes the whole visible width and pushes every
- * other tab behind the scroll arrows. 160 leaves 124px for the name once the
- * padding, the type icon and its gap are paid for — about nine CJK characters
- * or nineteen Latin ones at 13px (user set this on 2026-08-28, #2015).
+ * other tab behind the scroll arrows. What the name is left with, measured in
+ * a browser at 13px: 104px on the current tab — about eight CJK characters or
+ * fourteen Latin ones — and 124px on the others, the difference being the
+ * close control only the current tab carries (user set 160 on 2026-08-28,
+ * #2015).
  *
  * The cap is a width and not a character count because a full-width character
  * is about as wide as the font size while a Latin one is about half that: the
@@ -245,7 +247,7 @@ export function SpaceTab({
           // from the character count grows without end instead, which is the
           // same crowding through the editing state. This is the treatment the
           // project title already uses (`TitleEditable.tsx`).
-          className='min-w-0 border-0 bg-transparent p-0 text-sm text-foreground outline-none [field-sizing:content]'
+          className='w-[2ch] min-w-[2ch] border-0 bg-transparent p-0 text-sm text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span
@@ -286,7 +288,7 @@ export function SpaceTab({
             }
           }}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+          className='ml-[2px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>

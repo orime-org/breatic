@@ -372,36 +372,39 @@ export function SpaceTabBar({
         viewportRef={scrollerRef}
         className='flex-1'
         style={{ minWidth: 0, height: '100%' }}
-        viewportClassName='flex items-center'
-        // The tablist is the element the tabs sit in, which after this is the
-        // viewport: a role between a tablist and its tabs would break the
-        // relationship a reader depends on.
-        viewportProps={{
-          role: 'tablist',
-          'aria-label': t('chrome.aria.openSpaces'),
-          style: {
-            gap: 'var(--space-1)',
-            padding: '0 var(--space-2)',
-          },
-        }}
       >
-        {spaces.map((s) => (
-          <SpaceTab
-            key={s.id}
-            id={s.id}
-            name={s.name}
-            type={s.type}
-            active={s.id === activeSpaceId}
-            locked={s.locked}
-            onActivate={() => onActivate(s.id)}
-            onClose={onClose ? () => onClose(s.id) : undefined}
-            onRename={
-              onRenameSpace
-                ? (next) => onRenameSpace(s.id, next)
-                : undefined
-            }
-          />
-        ))}
+        {/*
+          The row is ours and the tabs are its own flex children. Radix puts a
+          `display:table` div inside every viewport, so a flex declared on the
+          viewport reaches that div and stops: the tabs would lay out one per
+          row, the strip would never overflow sideways, and neither the bar nor
+          the arrows would ever appear. Carrying the row here also puts the
+          tablist role on the element the tabs actually sit in.
+        */}
+        <div
+          role='tablist'
+          aria-label={t('chrome.aria.openSpaces')}
+          className='flex h-full w-max items-center'
+          style={{ gap: 'var(--space-1)', padding: '0 var(--space-2)' }}
+        >
+          {spaces.map((s) => (
+            <SpaceTab
+              key={s.id}
+              id={s.id}
+              name={s.name}
+              type={s.type}
+              active={s.id === activeSpaceId}
+              locked={s.locked}
+              onActivate={() => onActivate(s.id)}
+              onClose={onClose ? () => onClose(s.id) : undefined}
+              onRename={
+                onRenameSpace
+                  ? (next) => onRenameSpace(s.id, next)
+                  : undefined
+              }
+            />
+          ))}
+        </div>
       </ScrollArea>
 
       <ArrowButton
