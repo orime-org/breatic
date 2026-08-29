@@ -460,8 +460,10 @@ describe('SpaceTabBar', () => {
     // The cap buys back the rest of the strip by taking the end of the name
     // away, and until this the name was nowhere else on the strip: two Spaces
     // whose names agree for the first hundred pixels printed the same glyphs.
-    // Hovering the tab hands the whole name back (user 2026-08-29).
-    describe('reading the clipped name back', () => {
+    // Hovering a tab hands the whole name back — EVERY tab, whatever its name
+    // is worth (user 2026-08-29): someone who has learnt to hover for the full
+    // name must not find that gesture silently dead on the short ones.
+    describe('reading the name back', () => {
       afterEach(() => {
         vi.useRealTimers();
       });
@@ -500,18 +502,14 @@ describe('SpaceTabBar', () => {
       const tooltipTexts = (): string[] =>
         screen.queryAllByRole('tooltip').map((el) => el.textContent ?? '');
 
-      it('shows the whole name above a tab that has clipped it', () => {
+      it.each([
+        ['the strip cut it short', 211, 100],
+        ['it fits as it is', 100, 100],
+      ])('shows the whole name above a tab when %s', (_case, scrollWidth, clientWidth) => {
         setup(withLongName);
-        measureName(211, 100);
+        measureName(scrollWidth, clientWidth);
         hoverTab();
         expect(tooltipTexts()).toContain(LONG);
-      });
-
-      it('stays quiet on a tab whose name fits', () => {
-        setup(withLongName);
-        measureName(100, 100);
-        hoverTab();
-        expect(tooltipTexts()).toEqual([]);
       });
 
       it('stays quiet while the name is being edited', () => {

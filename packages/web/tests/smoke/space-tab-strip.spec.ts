@@ -121,7 +121,10 @@ test('one tab never grows past its cap', async () => {
   expect(Math.max(...widths)).toBeLessThanOrEqual(TAB_MAX_WIDTH);
 });
 
-test('hands the whole name back above a tab that has clipped it', async () => {
+test('hands the whole name back above the tab it belongs to', async () => {
+  // Every tab does this, short names included (pinned in SpaceTabBar.test).
+  // Read here off one the strip really has cut short, because that is the tab
+  // where the geometry has to be right for the answer to be worth anything.
   const id = createdSpaceIds[0] as string;
   const nameEl = page.getByTestId(`space-tab-name-${id}`);
   const full = (await nameEl.textContent()) ?? '';

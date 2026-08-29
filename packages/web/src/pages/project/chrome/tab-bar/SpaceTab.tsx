@@ -122,35 +122,7 @@ export function SpaceTab({
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const nameRef = React.useRef<HTMLSpanElement>(null);
   const [nameTipOpen, setNameTipOpen] = React.useState(false);
-
-  /**
-   * Whether the tab is showing less than the whole name, asked at the moment
-   * it matters. The cap makes this the common case, and two Spaces whose names
-   * agree over the first hundred pixels then print the same glyphs — the strip
-   * has nowhere else to read the rest.
-   *
-   * Measured on each open instead of kept in state: the name, the lock icon
-   * and the strip's own width all move it, and a value carried between renders
-   * would answer for whichever of them changed last.
-   * @returns True when the name element has more text than it can show.
-   */
-  const nameIsClipped = (): boolean => {
-    const el = nameRef.current;
-    return el !== null && el.scrollWidth > el.clientWidth;
-  };
-
-  /**
-   * Opens the name tooltip only for a name the tab has cut short.
-   *
-   * While the name is being edited the element this reads is not on the page,
-   * so an edit closes the question rather than answering it.
-   * @param next - Whether Radix wants the tooltip open.
-   */
-  const onNameTipOpenChange = (next: boolean): void => {
-    setNameTipOpen(next && nameIsClipped());
-  };
 
   // Keep `draft` aligned with external `name` updates (collab broadcast)
   // when we are not currently editing.
@@ -286,7 +258,6 @@ export function SpaceTab({
         />
       ) : (
         <span
-          ref={nameRef}
           onDoubleClick={onNameDoubleClick}
           data-testid={`space-tab-name-${id}`}
           // The name is what gives way when the tab meets its cap: the icon
@@ -332,7 +303,16 @@ export function SpaceTab({
     </Button>
   );
   return (
-    <Tooltip open={nameTipOpen} onOpenChange={onNameTipOpenChange}>
+    // Every tab hands its whole name back, whatever the name is worth (user
+    // 2026-08-29). Someone who has learnt that hovering a tab shows the full
+    // name must get the same answer on the short ones: asking first whether
+    // the strip had cut this one short leaves that gesture silently dead on
+    // some tabs and alive on others.
+    //
+    // The rename field is the one state that closes it — the whole name is
+    // already in the field, selected, and a tooltip over it would be labelling
+    // the old name while a new one is being typed.
+    <Tooltip open={nameTipOpen && !editing} onOpenChange={setNameTipOpen}>
       {/* The whole tab is the anchor, so the gap the tooltip keeps is measured
           from the edge a person sees rather than from the name inset within
           it. */}
