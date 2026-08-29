@@ -34,10 +34,6 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection } from '@tiptap/pm/state';
 
 import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
-import {
-  UNSUPPORTED_INLINE,
-  UNSUPPORTED_MARK,
-} from '@web/spaces/document/document-unsupported';
 
 /** The nine blocks this slot knows. */
 export type BlockTypeId =
@@ -68,24 +64,17 @@ export interface BlockTypeItem {
    * The command behind this row.
    *
    * Eight of the nine reach one; the task list waits on a schema node.
-   *
-   * Running this directly skips the guard below — the bar consults `canRun`
-   * before it calls this (`document-bubble-slots.tsx`), and a second caller
-   * would have to do the same.
    */
   run?: (editor: Editor) => void;
   /**
-   * Whether this row's command may run where the selection is.
+   * Whether this row's command reaches anything where the selection is.
    *
-   * Two different questions wear this name. The three wrapping rows ask
-   * whether the command reaches anything — a dry run of the same chain, since
-   * a row that reads as available and does nothing tells the reader it is
-   * broken. The code block row asks something else: whether running would
-   * take content out of the shared document (see `holdsFallbackContent`).
+   * A dry run of the same chain, carried by the three wrapping rows: a row
+   * that reads as available and does nothing tells the reader it is broken.
    *
-   * The rows that ask neither carry no judgement to make. A dry run answers
-   * wrongly for them: `setBlockType` returns false inside a list item while
-   * the command itself lifts the content out and rewrites it, so the guard
+   * The other rows carry no judgement to make, because a dry run answers
+   * wrongly for them — `setBlockType` returns false inside a list item while
+   * the command itself lifts the content out and rewrites it, so a guard here
    * would grey out rows that work.
    */
   canRun?: (editor: Editor) => boolean;
@@ -110,39 +99,6 @@ export interface BlockTypeItem {
 }
 
 /** The nine, in the demo's order. */
-/**
- * Does any block the command would rewrite hold content we cannot represent?
- *
- * Asked of the BLOCKS, not of the selection. `setBlockType` hands
- * `clearIncompatible` the position of each block it rewrites, and that clears
- * the block's whole content against the new type — so a fallback node sitting
- * outside the selection but inside the same paragraph goes too. A predicate
- * scoped to the selection calls that case clean.
- *
- * The block-level fallback survives on its own: `canChangeType` says no for
- * it, and `setBlockType` steps over what it cannot change. Only the inline
- * node and the mark need asking about.
- * @param editor - The editor to read.
- * @returns True where a code block would drop something.
- */
-export function holdsFallbackContent(editor: Editor): boolean {
-  const { doc, selection } = editor.state;
-  let found = false;
-  doc.nodesBetween(selection.from, selection.to, (node) => {
-    if (found) return false;
-    if (!node.isTextblock) return true;
-    node.descendants((child) => {
-      if (child.type.name === UNSUPPORTED_INLINE) found = true;
-      if (child.marks.some((mark) => mark.type.name === UNSUPPORTED_MARK)) {
-        found = true;
-      }
-      return !found;
-    });
-    return false;
-  });
-  return found;
-}
-
 export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
   {
     id: 'paragraph',
@@ -217,7 +173,6 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     labelKey: 'spaces.document.commands.codeBlock',
     Icon: SquareCode,
     shortcut: { mod: true, alt: true, key: 'C' },
-    canRun: (e) => !holdsFallbackContent(e),
     run: (e) => {
       e.chain().focus().toggleCodeBlock().run();
     },

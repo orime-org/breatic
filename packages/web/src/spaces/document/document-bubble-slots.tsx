@@ -13,13 +13,12 @@
  * draws them and writes a line to the console when pressed, the menu closing
  * after them either way (user 2026-08-27).
  *
- * Four things carry the greyed treatment `document-coming-tool.tsx` defines,
+ * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
  * each for a reason of its own: the task list row, which has no schema node to
  * turn anything into (the row the demo greys, #13); the alignment slot over a
- * selection alignment does not reach (A7); a wrapping row whose own dry run
- * reaches nothing where the selection sits (#85); and the code block row where
- * the selection reaches content this build cannot represent, which a code
- * block would drop. The last two move with the selection.
+ * selection alignment does not reach (A7); and a wrapping row whose own dry
+ * run reaches nothing where the selection sits (#85) — the only one of the
+ * three that moves with the selection.
  */
 
 import * as React from 'react';
@@ -48,7 +47,6 @@ import {
   BLOCK_TYPE_ITEMS,
   blockTypeItem,
   currentBlockType,
-  holdsFallbackContent,
   selectionCanAlign,
 } from '@web/spaces/document/document-block-type';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
@@ -209,20 +207,13 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-block-type';
-  // Both answers ride one subscription. `useEditorState` compares with
-  // `deepEqual`, so returning an object is safe, and the guard has to be in
-  // here rather than read off the row during render: the selection moves
-  // under an open menu, and where the block type has not changed with it the
-  // component would not re-render — the row would go on reading an answer
-  // taken before the selection reached a block it must not act on.
-  const state = useEditorState({
+  // An id rather than the row itself: `useEditorState` compares what the
+  // selector returns to decide whether to re-render, and the ids are stable
+  // where a fresh object would not be.
+  const current = useEditorState({
     editor,
-    selector: ({ editor: e }) => ({
-      current: e ? currentBlockType(e) : 'paragraph',
-      codeBlockAllowed: e ? !holdsFallbackContent(e) : true,
-    }),
+    selector: ({ editor: e }) => (e ? currentBlockType(e) : 'paragraph'),
   });
-  const current = state.current;
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -239,15 +230,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     >
       {BLOCK_TYPE_ITEMS.map((item) => {
         const Icon = item.Icon;
-        // The subscribed answer for the code block row, the row's own dry run
-        // for the three wrapping rows, and nothing to judge for the rest. The
-        // code block row's guard lives in the subscription alone: reading
-        // `item.canRun` here as well would leave two answers to the same
-        // question, and the stale one is the one that deletes content.
-        const runnable =
-          item.id === 'code-block'
-            ? state.codeBlockAllowed
-            : item.canRun === undefined || item.canRun(editor);
+        // A row with a command is dimmed only where that command reaches
+        // nothing; a row with none is never dimmed on this account.
+        const runnable = item.canRun === undefined || item.canRun(editor);
         return (
           <React.Fragment key={item.id}>
             {/* The demo's `.menu-sep` rules off the headings from the lists. */}

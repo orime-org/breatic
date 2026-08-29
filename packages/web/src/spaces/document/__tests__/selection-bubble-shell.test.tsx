@@ -463,11 +463,10 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    // Over a plain paragraph the task list is the one row the demo greys,
-    // because it has no schema node to turn a paragraph into. The code block
-    // row greys too where the selection reaches content this build cannot
-    // represent — `block-type-commands` covers that; here there is none.
-    it('greys the task list row, and only that one, over plain prose', async () => {
+    // The task list is the one row the demo greys, because it has
+    // no schema node to turn a paragraph into. The rest of the block type menu
+    // reads as available.
+    it('greys the task list row, and only that one', async () => {
       const editor = open('<p>the quick brown fox</p>');
       mount(editor);
       await selectWithFocus(editor, 1, 10);
@@ -482,42 +481,6 @@ describe('the bubble bar shell', () => {
       ]);
     });
 
-    // The guard on the code block row is the one thing on this bar standing
-    // between a press and content leaving the shared document, so it has to
-    // answer for where the selection is NOW. The selection moves under an
-    // open menu, and a block type that has not changed with it would leave a
-    // component reading its own last render.
-    it('greys the code block row when the selection reaches unsupported content', async () => {
-      const editor = open('<p>plain prose</p><p>with a guest</p>');
-      const guest = editor.state.schema.nodes.unsupportedInline.create({
-        name: 'somethingNewer',
-        json: '{}',
-      });
-      // Into the second paragraph, which starts after the first one ends.
-      const secondStart = editor.state.doc.child(0).nodeSize;
-      act(() => {
-        editor.view.dispatch(editor.state.tr.insert(secondStart + 3, guest));
-      });
-
-      mount(editor);
-      await selectWithFocus(editor, 1, 6);
-      const menu = await hoverOpen('doc-bubble-block-type');
-
-      const codeBlockRow = (): Element | null =>
-        menu.querySelector('[data-testid="doc-bubble-block-type-item-code-block"]');
-      expect(codeBlockRow()?.getAttribute('aria-disabled')).toBeNull();
-
-      // Reach into the paragraph holding the guest, menu still open.
-      await act(async () => {
-        editor.commands.setTextSelection({
-          from: secondStart + 2,
-          to: secondStart + 5,
-        });
-        await Promise.resolve();
-      });
-
-      expect(codeBlockRow()?.getAttribute('aria-disabled')).toBe('true');
-    });
   });
 
   describe('the tab order', () => {

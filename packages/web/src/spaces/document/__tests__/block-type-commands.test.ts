@@ -19,10 +19,7 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import {
-  BLOCK_TYPE_ITEMS,
-  holdsFallbackContent,
-} from '@web/spaces/document/document-block-type';
+import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
 import type { BlockTypeId } from '@web/spaces/document/document-block-type';
 
 const live: Editor[] = [];
@@ -99,43 +96,6 @@ function contentOf(
   return hit;
 }
 
-/**
- * A paragraph reading "before" carrying a fallback inline node after "be".
- * @returns The editor.
- */
-function withFallbackInline(): Editor {
-  const editor = open('<p>before</p>');
-  const node = editor.state.schema.nodes.unsupportedInline.create({
-    name: 'somethingNewer',
-    json: '{}',
-  });
-  editor.view.dispatch(editor.state.tr.insert(3, node));
-  return editor;
-}
-
-/**
- * A paragraph whose text carries a fallback mark.
- * @returns The editor.
- */
-function withFallbackMark(): Editor {
-  const editor = open('<p>before</p>');
-  const mark = editor.state.schema.marks.unsupportedMark.create({
-    name: 'somethingNewer',
-    json: '{}',
-  });
-  editor.view.dispatch(editor.state.tr.addMark(1, 4, mark));
-  return editor;
-}
-
-/** Does the document still hold a fallback inline node? */
-const stillHasFallbackInline = (editor: Editor): boolean => {
-  let found = false;
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === 'unsupportedInline') found = true;
-    return !found;
-  });
-  return found;
-};
 
 describe('the paragraph row', () => {
   it('leaves a plain paragraph reading the same', () => {
@@ -201,92 +161,11 @@ describe('the code block row', () => {
   });
 });
 
-describe('the guard on the code block row', () => {
-  it.each([
-    ['the whole paragraph', (e: Editor) => contentOf(e, 'paragraph')],
-    ['only the text ahead of the fallback', () => ({ from: 1, to: 3 })],
-    ['only the text after it', () => ({ from: 6, to: 9 })],
-  ])('refuses where a fallback inline node shares the block: %s', (_name, pick) => {
-    const editor = withFallbackInline();
-    editor.commands.setTextSelection(pick(editor));
-    expect(row('code-block').canRun?.(editor)).toBe(false);
-  });
-
-  it('refuses where the block sits inside a list item', () => {
-    const editor = open('<ul><li><p>item</p></li></ul>');
-    const node = editor.state.schema.nodes.unsupportedInline.create({
-      name: 'somethingNewer',
-      json: '{}',
-    });
-    editor.view.dispatch(editor.state.tr.insert(4, node));
-    editor.commands.setTextSelection(contentOf(editor, 'paragraph'));
-    expect(row('code-block').canRun?.(editor)).toBe(false);
-  });
-
-  it('refuses where only one of two selected blocks holds one', () => {
-    const editor = withFallbackInline();
-    editor.view.dispatch(
-      editor.state.tr.insert(
-        editor.state.doc.content.size,
-        editor.state.schema.nodes.paragraph.create(
-          null,
-          editor.state.schema.text('after'),
-        ),
-      ),
-    );
-    editor.commands.setTextSelection({
-      from: 1,
-      to: editor.state.doc.content.size - 1,
-    });
-    expect(row('code-block').canRun?.(editor)).toBe(false);
-  });
-
-  it('refuses where the text carries a fallback mark', () => {
-    const editor = withFallbackMark();
-    editor.commands.setTextSelection(contentOf(editor, 'paragraph'));
-    expect(row('code-block').canRun?.(editor)).toBe(false);
-  });
-
-  it('allows a block with nothing of the sort in it', () => {
-    const editor = open('<p>plain text</p>');
-    editor.commands.setTextSelection(contentOf(editor, 'paragraph'));
-    expect(row('code-block').canRun?.(editor)).toBe(true);
-  });
-
-  it('guards against a real deletion, not an imagined one', () => {
-    // The guard says no above. Run the command anyway and the fallback goes —
-    // which is what the guard is standing in front of.
-    const editor = withFallbackInline();
-    editor.commands.setTextSelection(contentOf(editor, 'paragraph'));
-    expect(stillHasFallbackInline(editor)).toBe(true);
-    editor.chain().focus().toggleCodeBlock().run();
-    expect(stillHasFallbackInline(editor)).toBe(false);
-  });
-
-  it('reads the blocks the command rewrites, not the selection', () => {
-    const editor = withFallbackInline();
-    // A selection covering neither side of the fallback node still sits in the
-    // block that holds it.
-    editor.commands.setTextSelection({ from: 6, to: 9 });
-    expect(holdsFallbackContent(editor)).toBe(true);
-  });
-});
-
-describe('the other four rows', () => {
-  it.each([['paragraph'], ['heading-1'], ['heading-2'], ['heading-3']])(
+describe('all five rows', () => {
+  it.each([['paragraph'], ['heading-1'], ['heading-2'], ['heading-3'], ['code-block']])(
     '%s carries no guard',
     (id) => {
       expect(row(id as BlockTypeId).canRun).toBeUndefined();
-    },
-  );
-
-  it.each([['paragraph'], ['heading-1'], ['heading-2'], ['heading-3']])(
-    '%s leaves a fallback inline node where it was',
-    (id) => {
-      const editor = withFallbackInline();
-      editor.commands.setTextSelection(contentOf(editor, 'paragraph'));
-      press(id as BlockTypeId, editor);
-      expect(stillHasFallbackInline(editor)).toBe(true);
     },
   );
 });

@@ -106,7 +106,7 @@ function labelDecorations(state: EditorState): DecorationSet | null {
  * mechanism the empty-document placeholder rides.
  */
 export const UnsupportedBlock = Node.create({
-  name: 'unsupportedBlock',
+  name: UNSUPPORTED_BLOCK,
   group: 'block',
   atom: true,
   selectable: true,

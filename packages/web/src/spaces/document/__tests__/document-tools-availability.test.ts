@@ -24,13 +24,9 @@
  * heading or code block, and R7 does not forbid a dark button that would have
  * worked.
  *
- * The block type menu's code block row is absent from both assertions. It
- * carries a guard, but the guard answers a different question — whether
- * running would drop content this build cannot represent — and the answers
- * here are about whether a command reaches anything. `block-type-commands`
- * holds that row's own table. The four rows with no guard at all (paragraph,
- * the three heading levels) never enter these assertions either: the dry run
- * answers wrongly for them, which is why they carry none.
+ * The five rows wired in #904 never enter these assertions: they carry no
+ * dry run, because it answers wrongly for them — `setBlockType` returns false
+ * inside a list item while the command itself lifts the content out.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -160,11 +156,7 @@ describe('what the buttons claim', () => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });
       // 块命令住在块类型菜单里，判据跟着命令一起搬了过去。
-      // 点名这三项：代码块那一项也有 canRun，但它问的是另一个问题
-      // （选区触及的块里有没有本 build 表示不了的内容），跟这张表的
-      // 「命令跑不跑得通」不是一回事，归 block-type-commands 测。
-      const DRY_RUN_ROWS = ['bullet-list', 'ordered-list', 'quote'];
-      BLOCK_TYPE_ITEMS.filter((item) => DRY_RUN_ROWS.includes(item.id)).forEach((item) => {
+      BLOCK_TYPE_ITEMS.filter((item) => item.canRun).forEach((item) => {
         const expected = item.id === 'quote' ? c.quote : c.lists;
         expect(`${item.id}=${item.canRun?.(editor)}`).toBe(`${item.id}=${expected}`);
       });
@@ -179,9 +171,7 @@ describe('what the buttons claim', () => {
 describe('and what actually happens when they are pressed', () => {
   CASES.forEach((c) => {
     it(`with ${c.name}, every live button does something`, () => {
-      const blockRows = BLOCK_TYPE_ITEMS.filter(
-        (item) => item.run && item.canRun && item.id !== 'code-block',
-      ).map(
+      const blockRows = BLOCK_TYPE_ITEMS.filter((item) => item.run && item.canRun).map(
         (item) => ({
           id: item.id,
           canRun: item.canRun as (e: Editor) => boolean,
