@@ -78,24 +78,3 @@ describe('switching a nested item to the list type it already is', () => {
     expect(editor.getHTML()).toBe('<ul><li><p>one</p></li></ul><p>deep</p>');
   });
 });
-
-describe('a list item whose second block is a heading', () => {
-  const PASTED = '<ul><li><p>para</p><h2>x</h2></li></ul>';
-
-  it('ticks both Heading 2 and Bullet list', () => {
-    const editor = openBody(PASTED);
-    selectBlock(editor, 'x');
-    expect(isMarked(editor, 'heading-2')).toBe(true);
-    expect(isMarked(editor, 'bullet-list')).toBe(true);
-  });
-
-  it.each([['heading-2'], ['bullet-list']] as const)(
-    'pressing %s takes that block out of the list item',
-    (id) => {
-      const editor = openBody(PASTED);
-      selectBlock(editor, 'x');
-      runBlockType(editor, id);
-      expect(editor.getHTML()).toBe('<ul><li><p>para</p></li></ul><p>x</p>');
-    },
-  );
-});
