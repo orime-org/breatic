@@ -150,6 +150,24 @@ describe("Assets routes", () => {
 
       expect(res.status).toBe(422);
     });
+
+    it("returns same-origin URLs for local storage behind the dev proxy", async () => {
+      mocks.getStorageAdapter.mockResolvedValue({
+        publicUrl: (key: string) => `/uploads/${key}`,
+      });
+      const app = createApp();
+      const res = await app.request(
+        "http://192.168.1.50:8000/api/v1/assets/presign?filename=test.png&content_type=image/png&project_id=a0000000-0000-4000-8000-000000000001&size=1&hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        { headers: AUTH },
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { uploadUrl: string; fileUrl: string };
+      };
+      expect(body.data.uploadUrl).toBe("/api/v1/assets/local-upload/issued-key");
+      expect(body.data.fileUrl).toBe("/uploads/issued-key");
+    });
   });
 
   describe("GET /assets/upload-config (#1609 slice 2)", () => {
