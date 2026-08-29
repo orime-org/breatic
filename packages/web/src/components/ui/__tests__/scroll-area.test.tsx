@@ -159,8 +159,13 @@ describe('ScrollArea', () => {
     // transparent even with the pointer inside, which is the same gate that
     // keeps a non-scrollable edge from swallowing clicks.
     expect(rail.getAttribute('data-scrollable')).toBe('false');
+    // Nothing here is scrollable, so the pointer coming in reveals nothing:
+    // a bar that appears over content the reader cannot scroll says something
+    // untrue about that content. Reported on an empty document Space, where
+    // a bar came out on hover with nothing to scroll (user 2026-08-29).
     fireEvent.pointerEnter(root);
-    expect(rail.getAttribute('data-revealed')).toBe('true');
+    expect(rail.getAttribute('data-revealed')).toBe('false');
+    expect(rail.className).toContain('opacity-0');
     expect(rail.className).toContain('pointer-events-none');
     fireEvent.pointerLeave(root);
     expect(rail.getAttribute('data-revealed')).toBe('false');
@@ -289,5 +294,57 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     for (const rail of rails) {
       expect(rail.className).not.toMatch(/group-data-\[scrollable/);
     }
+  });
+  it('a drag that loses its pointer capture still ends (2026-08-29)', () => {
+    // `end` is the only thing that detaches the move listener, clears
+    // data-dragging and releases the capture, and pointerup / pointercancel
+    // both presuppose the capture is still held. Lose it — the capture
+    // element leaves the document, another element takes the same pointer,
+    // the OS releases outside the window — and the release lands on a
+    // sibling, whose pointerup never reaches this rail. The move listener
+    // then outlives the gesture, and pointermove fires whether or not a
+    // button is down: merely sweeping the pointer across the rail scrolls
+    // the content to wherever the cursor is. Measured in a browser before
+    // this was bound: 3393px of travel from hovering alone, with
+    // data-dragging stuck at 'true'.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    const added: string[] = [];
+    const removed: string[] = [];
+    const origAdd = rail.addEventListener.bind(rail);
+    const origRemove = rail.removeEventListener.bind(rail);
+    rail.addEventListener = ((type: string, ...rest: unknown[]) => {
+      added.push(type);
+      return (origAdd as (t: string, ...r: unknown[]) => void)(type, ...rest);
+    }) as typeof rail.addEventListener;
+    rail.removeEventListener = ((type: string, ...rest: unknown[]) => {
+      removed.push(type);
+      return (origRemove as (t: string, ...r: unknown[]) => void)(type, ...rest);
+    }) as typeof rail.removeEventListener;
+
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
+    const thumb = rail.firstElementChild as HTMLElement;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 50 });
+    expect(added).toContain('pointermove');
+    // Every path out of a gesture has to reach `end`, and only this one
+    // fires when the capture goes away without a release on this element.
+    expect(added).toContain('lostpointercapture');
+
+    fireEvent(rail, new Event('lostpointercapture'));
+    expect(removed).toContain('pointermove');
+    expect(rail.dataset.dragging).toBeUndefined();
   });
 });

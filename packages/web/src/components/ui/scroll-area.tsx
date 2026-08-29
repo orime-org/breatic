@@ -202,6 +202,12 @@ const ScrollBar = React.forwardRef<
 ) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
   const setRailRef = useKeepBoth(railRef, ref);
+  // One verdict drives both what the rail looks like and what it answers to.
+  // Splitting them is how an empty document Space came to show a bar on
+  // hover: the pointer gate kept `scrollable`, the opacity did not, so a
+  // scroller with nothing to scroll stayed invisible to clicks while still
+  // painting a bar over content the reader cannot move (user 2026-08-29).
+  const showing = scrollable && revealed;
   /**
    * Input-state contract (user-ratified 2026-07-15): interacting with a
    * scrollbar must never move focus, collapse a selection, or interrupt an
@@ -301,10 +307,23 @@ const ScrollBar = React.forwardRef<
       rail.removeEventListener('pointermove', onMove);
       rail.removeEventListener('pointerup', end);
       rail.removeEventListener('pointercancel', end);
+      rail.removeEventListener('lostpointercapture', end);
     };
     rail.addEventListener('pointermove', onMove);
     rail.addEventListener('pointerup', end);
     rail.addEventListener('pointercancel', end);
+    // pointerup and pointercancel both presuppose the capture is still held.
+    // Every other way a gesture ends — the capture element leaves the
+    // document, another element takes the same pointer, the platform releases
+    // it outside the window — sends the release somewhere else, and this rail
+    // is a sibling of the content it overlays, so that release never
+    // propagates back through it. `onMove` would then outlive the gesture,
+    // and pointermove fires whether or not a button is down: sweeping the
+    // pointer across the rail would scroll the content to wherever the cursor
+    // is. Measured before this line existed: 3393px of travel from hovering
+    // alone, with data-dragging stuck on. lostpointercapture fires on every
+    // release path, and `end` is idempotent.
+    rail.addEventListener('lostpointercapture', end);
   };
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
@@ -312,7 +331,7 @@ const ScrollBar = React.forwardRef<
       orientation={orientation}
       {...props}
       data-scrollable={scrollable ? 'true' : 'false'}
-      data-revealed={revealed ? 'true' : 'false'}
+      data-revealed={showing ? 'true' : 'false'}
       onMouseDown={guardInputState}
       onPointerDownCapture={takeOverDrag}
       className={cn(
@@ -335,7 +354,7 @@ const ScrollBar = React.forwardRef<
         // a stack of `data-[…]:pointer-events-*` utilities: those all carry
         // the same specificity, so which one wins is decided by the order
         // Tailwind happens to emit them in.
-        scrollable && revealed ? 'pointer-events-auto' : 'pointer-events-none',
+        showing ? 'pointer-events-auto' : 'pointer-events-none',
         orientation === 'vertical' && 'h-full w-2',
         orientation === 'horizontal' && 'h-2 flex-col',
         className,
