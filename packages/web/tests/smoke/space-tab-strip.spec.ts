@@ -203,28 +203,116 @@ test('the tabs sit centred in the bar', async () => {
   expect(Math.abs((boxes?.above ?? 0) - (boxes?.below ?? 0))).toBeLessThanOrEqual(1);
 });
 
-test('the scrollbar lies over the tabs, not in a strip of its own', async () => {
-  const seen = await page.evaluate(() => {
+/** Reads the rail, the first tab and the bar in one go. */
+const railAndTab = (): Promise<{
+  railTop: number;
+  railBottom: number;
+  thumbBottom: number;
+  tabTop: number;
+  tabBottom: number;
+  barContentBottom: number;
+} | null> =>
+  page.evaluate(() => {
     const list = document.querySelector('[role="tablist"]');
     const root = list?.closest('[data-scrollbars]') ?? null;
     const rail = root?.querySelector('[data-orientation="horizontal"]') ?? null;
+    const thumb = rail?.firstElementChild ?? null;
+    const bar = document.querySelector('[data-testid="space-tab-bar"]');
     const tab = document.querySelector('[role="tab"]');
-    const r = rail?.getBoundingClientRect();
-    const t = tab?.getBoundingClientRect();
-    return r === undefined || t === undefined
-      ? null
-      : {
-        railTop: Math.round(r.top),
-        railBottom: Math.round(r.bottom),
-        tabTop: Math.round(t.top),
-        tabBottom: Math.round(t.bottom),
-      };
+    if (!rail || !thumb || !bar || !tab) return null;
+    const r = rail.getBoundingClientRect();
+    const th = thumb.getBoundingClientRect();
+    const b = bar.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    const border = parseFloat(getComputedStyle(bar).borderBottomWidth) || 0;
+    return {
+      railTop: Math.round(r.top),
+      railBottom: Math.round(r.bottom),
+      thumbBottom: Math.round(th.bottom),
+      tabTop: Math.round(t.top),
+      tabBottom: Math.round(t.bottom),
+      barContentBottom: Math.round(b.bottom - border),
+    };
   });
+
+test('the scrollbar sits on the bar’s bottom edge and over the tabs', async () => {
+  const seen = await railAndTab();
   expect(seen).not.toBeNull();
-  // The rail's band falls inside the tabs' band rather than below it.
-  expect(seen?.railTop).toBeGreaterThanOrEqual(seen?.tabTop ?? 0);
+  // Flush with the edge, the way every other scroller in the app has its rail
+  // flush with the side it belongs to. The thumb keeps the rail's own 1px of
+  // padding and nothing more.
+  expect(seen?.railBottom).toBe(seen?.barContentBottom);
+  expect((seen?.barContentBottom ?? 0) - (seen?.thumbBottom ?? 0)).toBeLessThanOrEqual(1);
+  // And it lies over the tabs rather than in a reserved strip beneath them.
   expect(seen?.railTop).toBeLessThan(seen?.tabBottom ?? 0);
-  expect(seen?.railBottom).toBeLessThanOrEqual(seen?.tabBottom ?? 0);
+});
+
+test('the rail lets clicks through to the tabs until the pointer is in the strip', async () => {
+  /**
+   * Ask the page what a click on the first tab's lowest band would reach.
+   *
+   * The point is worked out inside the page so that the coordinates the browser
+   * hit-tests with are the same ones it laid the tab out at.
+   * @returns Which of the rail, a tab, or something else is on top.
+   */
+  const topmostOnTabBottom = (): Promise<string> =>
+    page.evaluate(() => {
+      // Sample at the scroller's own midpoint. A tab is wider than the strip
+      // is at this window size, so no tab lies wholly inside it, and earlier
+      // cases leave the strip scrolled — the first tab in the DOM is then off
+      // to the left at a negative x, where hit testing has nothing to return.
+      // Every tab shares the row's top and bottom, so any of them gives the y.
+      const list = document.querySelector('[role="tablist"]');
+      const vp = list?.closest('[data-radix-scroll-area-viewport]');
+      const tab = document.querySelector('[role="tab"]');
+      if (!(vp instanceof HTMLElement) || !tab) return 'no scroller';
+      const v = vp.getBoundingClientRect();
+      const b = tab.getBoundingClientRect();
+      const el = document.elementFromPoint(v.x + v.width / 2, b.bottom - 2);
+      if (!el) return 'none';
+      if (el.closest('[data-orientation="horizontal"]')) return 'rail';
+      if (el.closest('[role="tab"]')) return 'tab';
+      return el.tagName.toLowerCase();
+    });
+
+  /** The rail's own account of whether it is showing and taking events. */
+  const railState = (): Promise<{ revealed: string; pointerEvents: string }> =>
+    page.evaluate(() => {
+      const list = document.querySelector('[role="tablist"]');
+      const root = list?.closest('[data-scrollbars]');
+      const rail = root?.querySelector('[data-orientation="horizontal"]');
+      if (!(rail instanceof HTMLElement)) return { revealed: 'no rail', pointerEvents: '' };
+      return {
+        revealed: rail.dataset.revealed ?? '',
+        pointerEvents: getComputedStyle(rail).pointerEvents,
+      };
+    });
+
+  // The scroller's own box, not the row's: the row is thousands of pixels
+  // wide and, once the strip has been scrolled, starts at a negative x — a
+  // pointer aimed there lands outside the window and enters nothing.
+  const strip = await page.evaluate(() => {
+    const list = document.querySelector('[role="tablist"]');
+    const vp = list?.closest('[data-radix-scroll-area-viewport]');
+    if (!(vp instanceof HTMLElement)) return null;
+    const b = vp.getBoundingClientRect();
+    return { x: b.x + b.width / 2, y: b.y };
+  });
+  expect(strip).not.toBeNull();
+  const x = strip?.x ?? 0;
+
+  // Pointer parked well away from the strip: the whole tab answers to a click,
+  // including the band the hidden rail covers.
+  await page.mouse.move(x, (strip?.y ?? 0) + 300);
+  await page.waitForTimeout(400);
+  expect(await railState()).toEqual({ revealed: 'false', pointerEvents: 'none' });
+  expect(await topmostOnTabBottom()).toBe('tab');
+
+  // Pointer inside the strip: the rail is showing, and it takes its own band
+  // again — the same trade every overlay scrollbar makes once it is visible.
+  await page.mouse.move(x, (strip?.y ?? 0) + 8);
+  await page.waitForTimeout(600);
+  expect(await railState()).toEqual({ revealed: 'true', pointerEvents: 'auto' });
 });
 
 test('the browser draws no scrollbar of its own on the strip', async () => {

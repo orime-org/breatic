@@ -136,24 +136,34 @@ describe('ScrollArea', () => {
     expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
   });
 
-  it('rail idles HIDDEN with its hover zone gated until content is scrollable (ratified visibility contract)', () => {
-    // The rail is force-mounted so its hover zone can reveal a hidden bar
-    // (2026-07-15), but at idle it must be data-state hidden (opacity-0 via
-    // the transition classes) and — in jsdom, where nothing is scrollable —
-    // the per-axis gate must disable its pointer events so a non-scrollable
-    // rail can neither hover-reveal nor swallow edge clicks.
+  it('rail idles hidden AND pointer-transparent, and follows the pointer into the scroller (2026-08-29)', () => {
+    // The rail is force-mounted so it is there to reveal, but until the
+    // pointer is inside the scroller it must be hidden and take no pointer
+    // events at all: it overlays content, and a rail that answers to the
+    // pointer while invisible swallows the clicks meant for whatever is
+    // underneath it. The reveal is therefore watched on the scroller, not on
+    // the rail — a rail cannot notice a hover it is transparent to.
     const { container } = render(
       <ScrollArea data-testid='root'>
         <p>x</p>
       </ScrollArea>,
     );
+    const root = screen.getByTestId('root');
     const rail = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
     expect(rail).not.toBeNull();
     expect(rail.getAttribute('data-state')).toBe('hidden');
     expect(rail.className).toContain('opacity-0');
-    expect(rail.className).toContain('hover:opacity-100');
-    expect(rail.className).toContain('data-[scrollable=false]:pointer-events-none');
+    expect(rail.getAttribute('data-revealed')).toBe('false');
+    expect(rail.className).toContain('pointer-events-none');
+    // jsdom lays nothing out, so nothing is scrollable here: the rail stays
+    // transparent even with the pointer inside, which is the same gate that
+    // keeps a non-scrollable edge from swallowing clicks.
     expect(rail.getAttribute('data-scrollable')).toBe('false');
+    fireEvent.pointerEnter(root);
+    expect(rail.getAttribute('data-revealed')).toBe('true');
+    expect(rail.className).toContain('pointer-events-none');
+    fireEvent.pointerLeave(root);
+    expect(rail.getAttribute('data-revealed')).toBe('false');
   });
 
   it('thumb hover response is opacity-only and the rail carries the fade animation classes (ratified: hover = color, never shape)', () => {

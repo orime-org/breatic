@@ -102,6 +102,7 @@ const ScrollArea = React.forwardRef<
     const viewportRef = React.useRef<HTMLDivElement>(null);
     const setViewportRef = useKeepBoth(viewportRef, forwardedViewportRef);
     const [scrollable, setScrollable] = React.useState({ x: false, y: false });
+    const [pointerInside, setPointerInside] = React.useState(false);
     React.useEffect(() => {
       const viewport = viewportRef.current;
       if (!viewport || typeof ResizeObserver !== 'function') return undefined;
@@ -134,6 +135,16 @@ const ScrollArea = React.forwardRef<
         ref={ref}
         type={type}
         data-scrollbars={scrollbars}
+        // The pointer is tracked here, on the box around the content, because
+        // a rail that only reveals itself when hovered has to take pointer
+        // events to notice that hover — and a rail that takes pointer events
+        // sits on top of whatever it overlays and swallows the clicks meant
+        // for it. Watching the container instead frees each rail to be
+        // pointer-transparent until it is actually showing, which is what
+        // VS Code's scrollable element does and what WebKit and Blink do for
+        // the browser's own overlay scrollbars.
+        onPointerEnter={() => setPointerInside(true)}
+        onPointerLeave={() => setPointerInside(false)}
         className={cn('relative overflow-hidden', className)}
         {...props}
       >
@@ -144,10 +155,20 @@ const ScrollArea = React.forwardRef<
           {children}
         </ScrollAreaPrimitive.Viewport>
         {scrollbars !== 'horizontal' ? (
-          <ScrollBar forceMount orientation='vertical' scrollable={scrollable.y} />
+          <ScrollBar
+            forceMount
+            orientation='vertical'
+            scrollable={scrollable.y}
+            revealed={pointerInside}
+          />
         ) : null}
         {scrollbars !== 'vertical' ? (
-          <ScrollBar forceMount orientation='horizontal' scrollable={scrollable.x} />
+          <ScrollBar
+            forceMount
+            orientation='horizontal'
+            scrollable={scrollable.x}
+            revealed={pointerInside}
+          />
         ) : null}
         <ScrollAreaPrimitive.Corner />
       </ScrollAreaPrimitive.Root>
@@ -165,8 +186,20 @@ const ScrollBar = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar> & {
     scrollable?: boolean;
+    /** Whether the pointer is inside the scroller this rail belongs to. */
+    revealed?: boolean;
   }
->(({ className, orientation = 'vertical', onMouseDown, scrollable = true, ...props }, ref) => {
+>((
+  {
+    className,
+    orientation = 'vertical',
+    onMouseDown,
+    scrollable = true,
+    revealed = false,
+    ...props
+  },
+  ref,
+) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
   const setRailRef = useKeepBoth(railRef, ref);
   /**
@@ -279,6 +312,7 @@ const ScrollBar = React.forwardRef<
       orientation={orientation}
       {...props}
       data-scrollable={scrollable ? 'true' : 'false'}
+      data-revealed={revealed ? 'true' : 'false'}
       onMouseDown={guardInputState}
       onPointerDownCapture={takeOverDrag}
       className={cn(
@@ -296,7 +330,12 @@ const ScrollBar = React.forwardRef<
         // inside the message list — the outer one's answer about an axis it
         // never scrolls reaches the inner rail, and the bar there shows up
         // and cannot be grabbed.
-        'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 hover:opacity-100 hover:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100 data-[scrollable=false]:pointer-events-none',
+        'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 data-[revealed=true]:opacity-100 data-[revealed=true]:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
+        // Hit testing follows the reveal, computed here rather than left to
+        // a stack of `data-[…]:pointer-events-*` utilities: those all carry
+        // the same specificity, so which one wins is decided by the order
+        // Tailwind happens to emit them in.
+        scrollable && revealed ? 'pointer-events-auto' : 'pointer-events-none',
         orientation === 'vertical' && 'h-full w-2',
         orientation === 'horizontal' && 'h-2 flex-col',
         className,
