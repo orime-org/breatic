@@ -272,9 +272,6 @@ test('the scrollbar and the arrows agree after the content width changes', async
       };
     });
 
-  // The narrow window leaves the strip around 114px, too little for narrower
-  // tabs to stop overflowing it. Widen for this one case.
-  await page.setViewportSize({ width: 1400, height: 800 });
   // Start from the left edge: an earlier case leaves the strip scrolled, and
   // the right arrow is disabled at the right end for reasons of its own.
   await page.evaluate(() => {
@@ -288,11 +285,14 @@ test('the scrollbar and the arrows agree after the content width changes', async
 
   // Narrow the tabs themselves, which is what shorter names do. Clipping the
   // row instead would leave every tab laid out where it was, and the boundary
-  // check reads tab rects.
+  // check reads tab rects. One 10px tab fits the 114px strip whatever the
+  // account happens to carry, so the verdict flips for any tab count.
   await page.evaluate(() => {
     const style = document.createElement('style');
     style.id = 'narrow-tabs-probe';
-    style.textContent = '[role="tab"]{max-width:10px !important;padding:0 !important}';
+    style.textContent =
+      '[role="tab"]:not(:first-child){display:none !important}' +
+      '[role="tab"]{max-width:10px !important;padding:0 !important}';
     document.head.appendChild(style);
   });
   await page.waitForTimeout(500);
@@ -303,8 +303,6 @@ test('the scrollbar and the arrows agree after the content width changes', async
   });
   await page.waitForTimeout(500);
   const restored = await verdicts();
-  await page.setViewportSize(NARROW);
-  await page.waitForTimeout(500);
 
   expect(shrunk).toEqual({ railScrollable: 'false', rightLive: false });
   expect(restored).toEqual({ railScrollable: 'true', rightLive: true });
@@ -406,15 +404,21 @@ test('the rail lets clicks through to the tabs until the pointer is in the strip
     });
 
   /** The rail's own account of whether it is showing and taking events. */
-  const railState = (): Promise<{ revealed: string; pointerEvents: string }> =>
+  const railState = (): Promise<{ revealed: string; pointerEvents: string; opacity: string }> =>
     page.evaluate(() => {
       const list = document.querySelector('[role="tablist"]');
       const root = list?.closest('[data-scrollbars]');
       const rail = root?.querySelector('[data-orientation="horizontal"]');
-      if (!(rail instanceof HTMLElement)) return { revealed: 'no rail', pointerEvents: '' };
+      if (!(rail instanceof HTMLElement)) {
+        return { revealed: 'no rail', pointerEvents: '', opacity: '' };
+      }
       return {
         revealed: rail.dataset.revealed ?? '',
         pointerEvents: getComputedStyle(rail).pointerEvents,
+        // The half the stamp does not carry: a rail that answers the pointer
+        // while painting nothing swallows clicks with nothing drawn to explain
+        // it, which is the failure the gate exists to prevent.
+        opacity: getComputedStyle(rail).opacity,
       };
     });
 
@@ -434,15 +438,27 @@ test('the rail lets clicks through to the tabs until the pointer is in the strip
   // Pointer parked well away from the strip: the whole tab answers to a click,
   // including the band the hidden rail covers.
   await page.mouse.move(x, (strip?.y ?? 0) + 300);
-  await page.waitForTimeout(400);
-  expect(await railState()).toEqual({ revealed: 'false', pointerEvents: 'none' });
+  // Long enough for the OTHER reveal to expire: Radix keeps `data-state` at
+  // visible for `scrollHideDelay` (600ms) after the last scroll, and an
+  // earlier case leaves the strip scrolled, so a shorter wait reads a rail
+  // that is painted for a reason that has nothing to do with the pointer.
+  await page.waitForTimeout(1_200);
+  expect(await railState()).toEqual({
+    revealed: 'false',
+    pointerEvents: 'none',
+    opacity: '0',
+  });
   expect(await topmostOnTabBottom()).toBe('tab');
 
   // Pointer inside the strip: the rail is showing, and it takes its own band
   // again — the same trade every overlay scrollbar makes once it is visible.
   await page.mouse.move(x, (strip?.y ?? 0) + 8);
   await page.waitForTimeout(600);
-  expect(await railState()).toEqual({ revealed: 'true', pointerEvents: 'auto' });
+  expect(await railState()).toEqual({
+    revealed: 'true',
+    pointerEvents: 'auto',
+    opacity: '1',
+  });
 });
 
 test('the browser draws no scrollbar of its own on the strip', async () => {
