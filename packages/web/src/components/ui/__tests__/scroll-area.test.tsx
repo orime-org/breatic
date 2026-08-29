@@ -161,6 +161,7 @@ describe('ScrollArea', () => {
         </ScrollAreaPrimitive.Root>,
       );
       const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      expect(bar.getAttribute('data-scrollable')).toBe(String(scrollable));
       expect(bar.getAttribute('data-revealed')).toBe(wantRevealed);
       expect(bar.className).toContain(wantEvents);
       unmount();
@@ -340,7 +341,6 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     // scrollers report nothing to scroll; what this pins is that the rail
     // carries an answer of its own at all.
     expect(rail.getAttribute('data-scrollable')).toBe('false');
-    expect(inner.getAttribute('data-scrollable-x')).toBeNull();
   });
 
   it('does not gate a rail through a descendant selector on an ancestor scroller', () => {

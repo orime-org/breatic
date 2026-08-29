@@ -13,14 +13,17 @@ import { cn } from '@web/lib/utils';
  * Behaviour contract (all of it OURS, none of it browser-dependent — CSS
  * Scrollbars L1 standardizes only thickness + two static colors; native
  * hover geometry/shading is UA-private and varies between browser builds):
- *   - the bar appears while scrolling AND when the pointer hovers its rail
- *     zone (user-ratified 2026-07-15: hover must reveal a hidden bar without
- *     scrolling first), fading in/out; the rails are force-mounted so the
- *     hover zone exists while hidden, and each rail carries its own axis's
- *     scrollability (`data-scrollable`, ResizeObserver-maintained) and turns
- *     its pointer-events off when that axis has nothing to scroll — no
- *     phantom reveals, no swallowed clicks on non-scrollable edges, and a
- *     scroller nested in another one is unaffected by its host's verdict;
+ *   - the bar appears while scrolling AND while the pointer is anywhere
+ *     inside the scroller (user-ratified 2026-07-15: hover must reveal a
+ *     hidden bar without scrolling first), fading in/out. The rails are
+ *     force-mounted, and each one is shown and answers the pointer only while
+ *     its own axis has something to scroll (`data-scrollable`,
+ *     ResizeObserver-maintained) AND the pointer is inside — so a hidden rail
+ *     swallows nothing, an axis with nothing to scroll never paints a bar,
+ *     and a scroller nested in another one is unaffected by its host's
+ *     verdict. The pointer is watched on the scroller rather than on the
+ *     rail, because a rail that is pointer-transparent while hidden cannot
+ *     notice a hover of its own;
  *   - it overlays content — zero layout space;
  *   - hover changes COLOR only (thumb opacity 40% → 60%) and the pointer is
  *     the default arrow (native scrollbar convention — never the text/grab
@@ -119,9 +122,9 @@ const ScrollArea = React.forwardRef<
       const viewport = viewportRef.current;
       if (!viewport || typeof ResizeObserver !== 'function') return undefined;
       /**
-       * Re-measures per-axis scrollability (drives the rails' hover-zone
-       * gating). State identity is kept when nothing changed so the effect
-       * never causes render churn.
+       * Re-measures per-axis scrollability (half of what shows a rail and
+       * lets it answer the pointer). State identity is kept when nothing
+       * changed so the effect never causes render churn.
        */
       const measure = (): void => {
         setScrollable((prev) => {
@@ -378,18 +381,16 @@ const ScrollBar = React.forwardRef<
       className={cn(
         // Always-mounted rail, visibility by opacity TRANSITION (not
         // mount/unmount animation): hidden by default, revealed while
-        // scrolling (Radix flips data-state) OR while the pointer hovers the
-        // rail zone (user-ratified 2026-07-15) — 150ms in, 300ms out, like
+        // scrolling (Radix flips data-state) OR while the pointer is inside
+        // the scroller (user-ratified 2026-07-15) — 150ms in, 300ms out, like
         // the native overlay bar. cursor-default pins the native-scrollbar
         // arrow (otherwise the rail inherits the surroundings' text/grab
-        // cursor). The gate turns pointer-events off when THIS rail's own
-        // axis has nothing to scroll, so a non-scrollable rail can neither
-        // hover-reveal nor swallow edge clicks. The verdict is stamped on
-        // the rail because a `group-data-…/scroller:` variant compiles to a
-        // plain descendant selector: once scrollers nest — a wide table
-        // inside the message list — the outer one's answer about an axis it
-        // never scrolls reaches the inner rail, and the bar there shows up
-        // and cannot be grabbed.
+        // cursor). Each rail answers for its own axis, and the props say so
+        // per rail rather than through a `group-data-…/scroller:` variant:
+        // that compiles to a plain descendant selector, so once scrollers
+        // nest — a wide table inside the message list — the outer one's
+        // answer about an axis it never scrolls reaches the inner rail, and
+        // the bar there shows up and cannot be grabbed.
         'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 data-[revealed=true]:opacity-100 data-[revealed=true]:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
         // Hit testing follows the reveal, computed here rather than left to
         // a stack of `data-[…]:pointer-events-*` utilities: those all carry

@@ -48,11 +48,10 @@ interface SpaceTabProps {
  *
  * A name may run to `SPACE_NAME_MAX_LEN`, and the strip scrolls sideways, so
  * without a cap one long name takes the whole visible width and pushes every
- * other tab behind the scroll arrows. What the name is left with, measured in
- * a browser at 13px: 104px on the current tab — about eight CJK characters or
- * fourteen Latin ones — and 124px on the others, the difference being the
- * close control only the current tab carries (user set 160 on 2026-08-28,
- * #2015).
+ * other tab behind the scroll arrows. What the name is left with on a tab that
+ * has reached the cap, measured in Chrome at 13px: 100px, on every tab whether
+ * it is the current one or not — about seven CJK characters or fourteen Latin
+ * ones (user set 160 on 2026-08-28, #2015).
  *
  * The cap is a width and not a character count because a full-width character
  * is about as wide as the font size while a Latin one is about half that: the

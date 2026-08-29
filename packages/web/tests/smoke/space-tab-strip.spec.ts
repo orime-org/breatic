@@ -22,10 +22,12 @@ const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
 // Not serial, unlike the other smoke specs: those build state a later case
-// depends on, so a failure early makes the rest meaningless. These five only
-// read geometry off the same page and are independent, and serial mode would
-// skip the remaining measurements the moment one of them went red — exactly
-// when knowing which of the others also moved is what locates the cause.
+// depends on, so a failure early makes the rest meaningless. Six of these
+// nine only read geometry off the same page. The rename case types into the
+// live field, the arrows case resizes the window and narrows the tabs, and
+// the hit-test case moves the pointer — each puts back what it touched, so a
+// red one still leaves the other measurements worth having, which serial mode
+// would skip. Knowing which of the others also moved is what locates a cause.
 test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /** Wide enough for the chrome, narrow enough that the strip must scroll. */
