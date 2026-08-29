@@ -306,20 +306,26 @@ const ScrollBar = React.forwardRef<
     const onThumb = vertical
       ? pointer >= thumbRect.top && pointer <= thumbRect.bottom
       : pointer >= thumbRect.left && pointer <= thumbRect.right;
+    // A press on the track sends the thumb to the pointer (the 1 is the rail's
+    // p-px), and that write clamps at either end.
+    if (!onThumb) {
+      const g = geometry();
+      setScroll(((pointer - g.railStart) / g.scale - 1 - g.thumbSize / 2) * g.ratio, g.maxScroll);
+    }
+    // What the gesture holds on to from here is where the pointer is gripping
+    // the thumb, read off where the thumb ACTUALLY is. It is the one quantity a
+    // relayout leaves alone, and reading it after the jump is what keeps a
+    // press past either end honest: ask for more scroll than there is and the
+    // write clamps, so the thumb stops short of the pointer, and a grip
+    // derived from where it was headed instead would leave the drag back doing
+    // nothing for up to half a thumb of travel. Carrying a scroll offset has
+    // the mirror problem — it ties every later position to the ratio in force
+    // at press, and a mid-gesture relayout then parks the thumb a fixed
+    // distance from the cursor for the rest of the drag (measured: 40px).
     const start = geometry();
-    // What the gesture holds on to is where the pointer grabbed INSIDE the
-    // thumb, measured from the thumb's leading edge. It is the one quantity a
-    // relayout leaves alone: carrying a scroll offset instead ties every later
-    // position to the ratio in force at press, so the moment the ratio changes
-    // the thumb settles a fixed distance from the cursor and stays there.
-    // Measured in a browser: growing the content mid-drag left the thumb 40px
-    // away for the rest of the gesture. A press on the track has no grab of
-    // its own — the thumb goes to the pointer, so the pointer is at its centre
-    // (the 1 is the rail's p-px).
-    const grab = onThumb
-      ? (pointer - start.railStart) / start.scale -
-        (vertical ? viewport.scrollTop : viewport.scrollLeft) / start.ratio
-      : 1 + start.thumbSize / 2;
+    const grab =
+      (pointer - start.railStart) / start.scale -
+      (vertical ? viewport.scrollTop : viewport.scrollLeft) / start.ratio;
     /**
      * Puts the thumb where the pointer is holding it, against today's geometry.
      * @param screenPos - The pointer's position on this axis, in screen px.
@@ -328,7 +334,6 @@ const ScrollBar = React.forwardRef<
       const g = geometry();
       setScroll(((screenPos - g.railStart) / g.scale - grab) * g.ratio, g.maxScroll);
     };
-    if (!onThumb) apply(pointer);
     rail.dataset.dragging = 'true';
     rail.setPointerCapture(e.pointerId);
     /**
@@ -377,6 +382,12 @@ const ScrollBar = React.forwardRef<
       {...props}
       data-scrollable={scrollable ? 'true' : 'false'}
       data-revealed={showing ? 'true' : 'false'}
+      // The input-state contract covers every button. `takeOverDrag` cancels
+      // the pointerdown of the primary one, which suppresses the compatibility
+      // mousedown it would otherwise produce, so for a drag this never runs;
+      // the secondary and middle buttons reach the rail as a mousedown of
+      // their own, and moving focus is that event's default action.
+      onMouseDown={(e) => e.preventDefault()}
       onPointerDownCapture={takeOverDrag}
       className={cn(
         // Always-mounted rail, visibility by opacity TRANSITION (not

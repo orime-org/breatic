@@ -262,13 +262,12 @@ describe('ScrollArea', () => {
      * Renders a scroller with a focused textarea and enough stubbed layout for
      * the rail to own a press.
      *
-     * A pointerdown is the only press a real pointer delivers here, and the
-     * rail's handler cancels it before the browser can produce the
-     * compatibility mouse events, so nothing that could move focus is ever
-     * dispatched.
-     * @returns The rail and the textarea that must keep the caret.
+     * What the caret then does is a browser default action, which jsdom does
+     * not run for pointerdown — so the assertion here is the cancellation, and
+     * the caret itself is measured in tests/smoke/space-tab-strip.spec.ts.
+     * @returns The rail, ready to be pressed.
      */
-    function renderScrollableWithInput(): { rail: HTMLElement; input: HTMLElement } {
+    function renderScrollableWithInput(): { rail: HTMLElement } {
       const { container } = render(
         <ScrollArea data-testid='root'>
           <textarea data-testid='input' defaultValue='typing…' />
@@ -286,7 +285,7 @@ describe('ScrollArea', () => {
       ) as HTMLElement;
       Object.defineProperty(viewport, 'scrollHeight', { value: 1000, configurable: true });
       Object.defineProperty(viewport, 'clientHeight', { value: 200, configurable: true });
-      return { rail, input: screen.getByTestId('input') };
+      return { rail };
     }
 
     it('cancels the press on the rail (the action that would move focus)', () => {
@@ -297,13 +296,6 @@ describe('ScrollArea', () => {
       );
     });
 
-    it('keeps focus on a focused textarea when the scrollbar is pressed', () => {
-      const { rail, input } = renderScrollableWithInput();
-      input.focus();
-      expect(document.activeElement).toBe(input);
-      fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientY: 50 });
-      expect(document.activeElement).toBe(input);
-    });
   });
 });
 
@@ -452,6 +444,50 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     expect(rail.dataset.dragging).toBe('true');
     fireEvent(rail, new PointerEvent('pointermove', { clientX: 12 }));
     expect(scrollLeft).toBeGreaterThan(0);
+  });
+
+  it('answers the first move back after a track press that landed at an end (2026-08-29)', () => {
+    // A press past the last position the thumb can reach asks for more scroll
+    // than there is, and the write clamps. Deriving the grab from where the
+    // thumb WOULD have gone then leaves the gesture holding a point outside
+    // the thumb, and the drag back does nothing until the pointer re-enters
+    // the range — up to half a thumb of travel. Measured in Chrome on the tab
+    // strip: 5px of drag with the content still parked at the end.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { value: 200, configurable: true });
+    rail.getBoundingClientRect = (() =>
+      ({ left: 0, top: 0, width: 200, height: 8 })) as typeof rail.getBoundingClientRect;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    thumb.getBoundingClientRect = (() =>
+      ({ left: 0, right: 40, top: 0, bottom: 8 })) as typeof thumb.getBoundingClientRect;
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    // 195 is past the last legal thumb centre (1 + 20 + 158 = 179).
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 195 });
+    expect(scrollLeft).toBe(800);
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 190 }));
+    expect(scrollLeft).toBeLessThan(800);
   });
 
   it('keeps the thumb under the cursor across a mid-gesture relayout (2026-08-29)', () => {

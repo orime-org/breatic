@@ -165,6 +165,65 @@ test('the rename field grows with what is typed, up to the same cap', async () =
   expect(long.tab).toBeLessThanOrEqual(TAB_MAX_WIDTH);
 });
 
+test('pressing the rail with any button leaves the caret where it was', async () => {
+  // The ratified contract is that touching a scrollbar never moves focus,
+  // collapses a selection or interrupts an IME composition, and it names no
+  // button. Only a browser can check it: cancelling the pointerdown is what
+  // keeps it, and jsdom runs no focus default action for pointerdown at all,
+  // so a case there passes whatever the code does.
+  const id = createdSpaceIds[0] as string;
+
+  /**
+   * Press the rail with one button and report what the focused field kept.
+   * @param button - Which mouse button to press.
+   * @returns The focused element's test id and its selection, after the press.
+   */
+  const pressRailWith = async (
+    button: 'left' | 'right' | 'middle',
+  ): Promise<{ active: string | null; selection: string | null }> => {
+    await page.getByTestId(`space-tab-name-${id}`).dblclick();
+    await expect(page.getByTestId(`space-tab-name-input-${id}`)).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.evaluate((tab) => {
+      const el = document.querySelector(`[data-testid="space-tab-name-input-${tab}"]`);
+      if (el instanceof HTMLInputElement) {
+        el.focus();
+        el.setSelectionRange(1, 3);
+      }
+    }, id);
+    const at = await page.evaluate(() => {
+      const list = document.querySelector('[role="tablist"]');
+      const bar = list?.closest('[data-testid="space-tab-bar"]') ?? null;
+      const rail = bar?.querySelector('[data-orientation="horizontal"]') ?? null;
+      if (!(rail instanceof HTMLElement)) return null;
+      const b = rail.getBoundingClientRect();
+      return { x: Math.round(b.left + b.width * 0.6), y: Math.round((b.top + b.bottom) / 2) };
+    });
+    if (!at) throw new Error('no horizontal rail on the strip');
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down({ button });
+    await page.mouse.up({ button });
+    await page.waitForTimeout(150);
+    const kept = await page.evaluate(() => {
+      const el = document.activeElement;
+      return {
+        active: el ? el.getAttribute('data-testid') : null,
+        selection:
+          el instanceof HTMLInputElement ? `${el.selectionStart}-${el.selectionEnd}` : null,
+      };
+    });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    return kept;
+  };
+
+  const held = { active: `space-tab-name-input-${id}`, selection: '1-3' };
+  expect(await pressRailWith('left')).toEqual(held);
+  expect(await pressRailWith('right')).toEqual(held);
+  expect(await pressRailWith('middle')).toEqual(held);
+});
+
 test('the tabs lie in one row and the strip scrolls sideways', async () => {
   const laid = await page.evaluate(() => {
     const list = document.querySelector('[role="tablist"]');
