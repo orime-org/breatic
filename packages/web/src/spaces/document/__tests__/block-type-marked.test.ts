@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { isMarked } from '@web/spaces/document/document-block-model';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
@@ -65,8 +66,17 @@ describe('rule 1: every block in the selection has to be that item', () => {
   it('gives the same answer whichever end the drag started from', () => {
     const editor = openBody('<h1>one</h1><h1>two</h1>');
     selectRange(editor, 'one', 'two');
+    const { from, to } = editor.state.selection;
     const forwards = ticked(editor);
-    selectRange(editor, 'two', 'one');
+
+    // The same stretch with the anchor at the far end, which is what a drag
+    // upwards leaves. `setTextSelection` normalises its two numbers, so the
+    // selection is built directly.
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, to, from)),
+    );
+    expect(editor.state.selection.anchor).toBe(to);
+    expect(editor.state.selection.head).toBe(from);
     expect(ticked(editor)).toEqual(forwards);
   });
 });
