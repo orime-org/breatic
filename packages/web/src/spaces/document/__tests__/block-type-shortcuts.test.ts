@@ -7,7 +7,10 @@
  * Eight bindings arrive from tiptap's own extensions and have to be taken over,
  * so each case here presses the key on a fixture where the old behaviour and
  * the new one differ — a comparison alone would go green with no takeover at
- * all.
+ * all. No single fixture is contested by all eight: a quoted list settles the
+ * six that name a block type, and the two list keys need a quoted heading,
+ * whose own quote the stock list commands strip (measured,
+ * `demo/2026-08-29-impl-adversary-r1-probe-output.txt`).
  *
  * With a caret and no selection a key acts on the whole paragraph the caret is
  * in, and the caret stays where it was.
@@ -67,17 +70,33 @@ const BINDINGS: Array<[BlockTypeId, Chord]> = [
  * A document where the old binding and the new transition disagree.
  *
  * A quoted list: the stock commands strip the quote or the list along with it,
- * while the model keeps whichever the press does not name.
+ * while the model keeps whichever the press does not name. On this one the two
+ * list keys agree with their stock commands, so they take the second fixture.
  */
 const CONTESTED = '<blockquote><ul><li><p>x</p></li></ul></blockquote>';
 
+/**
+ * Where the two list keys disagree with their stock commands.
+ *
+ * A quoted heading: `toggleBulletList` and `toggleOrderedList` take the quote
+ * off along with the heading, while the model keeps it.
+ */
+const CONTESTED_FOR_LISTS = '<blockquote><h1>x</h1></blockquote>';
+
+/** Which fixture each chord is contested on. */
+const FIXTURE_FOR: Partial<Record<BlockTypeId, string>> = {
+  'bullet-list': CONTESTED_FOR_LISTS,
+  'ordered-list': CONTESTED_FOR_LISTS,
+};
+
 describe('the eight bindings are ours', () => {
   it.each(BINDINGS)('%s gives the model result, not the stock one', (id, chord) => {
-    const viaRow = openBody(CONTESTED);
+    const body = FIXTURE_FOR[id] ?? CONTESTED;
+    const viaRow = openBody(body);
     selectWholeBody(viaRow);
     runBlockType(viaRow, id);
 
-    const viaKey = openBody(CONTESTED);
+    const viaKey = openBody(body);
     selectWholeBody(viaKey);
     press(viaKey, chord);
 
@@ -86,28 +105,43 @@ describe('the eight bindings are ours', () => {
 });
 
 describe('a caret with no selection', () => {
-  it('acts on the whole paragraph the caret is in', () => {
+  /**
+   * A two paragraph document with the caret three characters into the second.
+   * @returns The editor and where the caret sits.
+   */
+  function openWithCaret(): { editor: Editor; at: number } {
     const editor = openBody('<p>first</p><p>second</p>');
-    let inSecond = 0;
+    let at = 0;
     editor.state.doc.descendants((node, pos) => {
-      if (node.isTextblock && node.textContent === 'second') inSecond = pos + 3;
+      if (node.isTextblock && node.textContent === 'second') at = pos + 3;
       return true;
     });
-    editor.commands.setTextSelection({ from: inSecond, to: inSecond });
-    press(editor, { key: '1', ctrlKey: true, altKey: true });
-    expect(editor.getHTML()).toBe('<p>first</p><h1>second</h1>');
+    editor.commands.setTextSelection({ from: at, to: at });
+    return { editor, at };
+  }
+
+  const EXPECTED: Record<BlockTypeId, string> = {
+    paragraph: '<p>first</p><p>second</p>',
+    'heading-1': '<p>first</p><h1>second</h1>',
+    'heading-2': '<p>first</p><h2>second</h2>',
+    'heading-3': '<p>first</p><h3>second</h3>',
+    'bullet-list': '<p>first</p><ul><li><p>second</p></li></ul>',
+    'ordered-list': '<p>first</p><ol><li><p>second</p></li></ol>',
+    'code-block': '<p>first</p><pre><code>second</code></pre>',
+    quote: '<p>first</p><blockquote><p>second</p></blockquote>',
+    'task-list': '',
+  };
+
+  it.each(BINDINGS)('%s acts on the whole paragraph the caret is in', (id, chord) => {
+    const { editor } = openWithCaret();
+    press(editor, chord);
+    expect(editor.getHTML()).toBe(EXPECTED[id]);
   });
 
-  it('leaves the caret on the same character', () => {
-    const editor = openBody('<p>first</p><p>second</p>');
-    let inSecond = 0;
-    editor.state.doc.descendants((node, pos) => {
-      if (node.isTextblock && node.textContent === 'second') inSecond = pos + 3;
-      return true;
-    });
-    editor.commands.setTextSelection({ from: inSecond, to: inSecond });
-    const charBefore = editor.state.doc.textBetween(inSecond - 1, inSecond);
-    press(editor, { key: '1', ctrlKey: true, altKey: true });
+  it.each(BINDINGS)('%s leaves the caret on the same character', (id, chord) => {
+    const { editor, at } = openWithCaret();
+    const charBefore = editor.state.doc.textBetween(at - 1, at);
+    press(editor, chord);
     const { selection } = editor.state;
     expect(selection.empty).toBe(true);
     expect(editor.state.doc.textBetween(selection.from - 1, selection.from)).toBe(

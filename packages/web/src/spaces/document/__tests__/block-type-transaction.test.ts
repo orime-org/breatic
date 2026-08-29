@@ -67,29 +67,44 @@ describe('one press, one transaction', () => {
   });
 });
 
-describe('selection shapes other than a plain range', () => {
-  it('gives an AllSelection the same result as the equivalent text selection', () => {
-    const start = '<h1>one</h1><ol><li><p>two</p></li></ol>';
-    const viaText = openBody(start);
-    selectWholeBody(viaText);
-    runBlockType(viaText, 'bullet-list');
+/** Every row the menu draws, in the order it draws them. */
+const ROWS: BlockTypeId[] = [
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+  'bullet-list',
+  'ordered-list',
+  'task-list',
+  'code-block',
+  'quote',
+];
 
-    const viaAll = openBody(start);
+describe('selection shapes other than a plain range', () => {
+  const ALL_START = '<h1>one</h1><ol><li><p>two</p></li></ol>';
+
+  it.each(ROWS)('gives an AllSelection the same result as a text selection: %s', (id) => {
+    const viaText = openBody(ALL_START);
+    selectWholeBody(viaText);
+    runBlockType(viaText, id);
+
+    const viaAll = openBody(ALL_START);
     viaAll.view.dispatch(
       viaAll.state.tr.setSelection(new AllSelection(viaAll.state.doc)),
     );
-    runBlockType(viaAll, 'bullet-list');
+    runBlockType(viaAll, id);
 
     expect(viaAll.getHTML()).toBe(viaText.getHTML());
   });
 
-  it('gives a node selection the same result as selecting that block', () => {
-    const start = '<p>one</p><p>two</p>';
-    const viaText = openBody(start);
-    selectBlock(viaText, 'two');
-    runBlockType(viaText, 'heading-1');
+  const NODE_START = '<p>one</p><p>two</p>';
 
-    const viaNode = openBody(start);
+  it.each(ROWS)('gives a node selection the same result as selecting it: %s', (id) => {
+    const viaText = openBody(NODE_START);
+    selectBlock(viaText, 'two');
+    runBlockType(viaText, id);
+
+    const viaNode = openBody(NODE_START);
     let at = 0;
     viaNode.state.doc.descendants((node, pos) => {
       if (node.isTextblock && node.textContent === 'two') at = pos;
@@ -98,7 +113,7 @@ describe('selection shapes other than a plain range', () => {
     viaNode.view.dispatch(
       viaNode.state.tr.setSelection(NodeSelection.create(viaNode.state.doc, at)),
     );
-    runBlockType(viaNode, 'heading-1');
+    runBlockType(viaNode, id);
 
     expect(viaNode.getHTML()).toBe(viaText.getHTML());
   });
@@ -127,15 +142,32 @@ describe('a selection holding no text block', () => {
 });
 
 describe('a stored heading below level three', () => {
-  it('does not throw when a row is pressed on it', () => {
+  /**
+   * A document whose one block is a level 4 heading.
+   * @returns That editor.
+   */
+  function openLevelFour(): Editor {
     const editor = openBody('<h1>x</h1>');
     const heading = editor.state.schema.nodes.heading;
     if (!heading) throw new Error('no heading node in the schema');
     editor.view.dispatch(editor.state.tr.setNodeMarkup(0, heading, { level: 4 }));
     selectBlock(editor, 'x');
+    return editor;
+  }
+
+  it.each(ROWS)('does not throw when %s is pressed on it', (id) => {
+    const editor = openLevelFour();
     expect(() => {
-      runBlockType(editor, 'heading-1');
+      runBlockType(editor, id);
     }).not.toThrow();
-    expect(editor.getHTML()).toBe('<h1>x</h1>');
+  });
+
+  it('leaves the level alone until a row is pressed', () => {
+    const editor = openLevelFour();
+    // `BODY_HEADING_LEVELS` stops at three, so a stored level 4 renders as the
+    // last one the body knows and the level attribute keeps its own value.
+    expect(editor.state.doc.firstChild?.attrs.level).toBe(4);
+    runBlockType(editor, 'heading-1');
+    expect(editor.state.doc.firstChild?.attrs.level).toBe(1);
   });
 });

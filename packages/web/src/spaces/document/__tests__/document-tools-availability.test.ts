@@ -75,9 +75,6 @@ interface Case {
   readonly body: string;
   readonly place: (e: Editor) => void;
   readonly marks: boolean;
-  /** Both list buttons. */
-  readonly lists: boolean;
-  readonly quote: boolean;
 }
 
 const CASES: readonly Case[] = [
@@ -86,16 +83,12 @@ const CASES: readonly Case[] = [
     body: '<p>body</p>',
     place: (e) => e.commands.setTextSelection(2),
     marks: true,
-    lists: true,
-    quote: true,
   },
   {
     name: 'the caret in a heading',
     body: '<h2>sec</h2>',
     place: (e) => e.commands.setTextSelection(2),
     marks: true,
-    lists: false,
-    quote: true,
   },
   {
     name: 'the caret in a code block',
@@ -103,8 +96,6 @@ const CASES: readonly Case[] = [
     place: (e) => e.commands.setTextSelection(2),
     // A code block refuses marks — the editor's own rule.
     marks: false,
-    lists: false,
-    quote: true,
   },
   {
     // A whole block selected rather than a range inside one. `Mod`-clicking a
@@ -121,29 +112,18 @@ const CASES: readonly Case[] = [
       );
     },
     marks: true,
-    lists: true,
-    quote: true,
   },
   {
-    // A plain list item takes the list commands (they toggle it off) and not
-    // the quote.
     name: 'the caret in a plain list item',
     body: '<ul><li><p>a</p></li></ul>',
     place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 3),
     marks: true,
-    lists: true,
-    quote: false,
   },
   {
-    // A heading nested one level down. The dry run is conservative here for
-    // the same reason as the plain heading above, and for the same reason it
-    // is out of this slice.
     name: 'the caret in a heading inside a quote',
     body: '<blockquote><h2>h</h2></blockquote>',
     place: (e) => e.commands.setTextSelection(e.state.doc.content.size - 2),
     marks: true,
-    lists: false,
-    quote: true,
   },
 ];
 

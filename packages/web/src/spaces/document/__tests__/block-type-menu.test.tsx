@@ -13,79 +13,40 @@
  * the one exception and is greyed for a reason of its own (#13).
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { screen, act, waitFor, fireEvent } from '@testing-library/react';
-import { Editor } from '@tiptap/react';
-import * as Y from 'yjs';
+import type { Editor } from '@tiptap/react';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 
-import { mountDocumentEditor, hoverOpenSlot } from './bubble-bar-harness';
-
-const editors: Editor[] = [];
-let doc: Y.Doc;
-
-beforeEach(() => {
-  doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-});
+import {
+  mountDocumentEditor,
+  hoverOpenSlot,
+  openSharedBody,
+  closeShared,
+} from './bubble-bar-harness';
+import { selectWholeBody } from './block-type-fixtures';
 
 afterEach(() => {
-  editors.splice(0).forEach((e) => {
-    e.destroy();
-  });
-  doc.destroy();
+  closeShared();
   vi.restoreAllMocks();
 });
 
 const SLOT = 'doc-bubble-block-type';
 
 /**
- * A real editor holding the given body, bound to a real Y.Doc.
- * @param bodyHtml - The body's HTML.
- * @returns The editor.
- */
-function open(bodyHtml: string): Editor {
-  const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
-  });
-  editors.push(editor);
-  if (bodyHtml) editor.commands.setContent(bodyHtml);
-  return editor;
-}
-
-/**
  * Select the whole body, with the editor really holding the focus.
  * @param editor - The editor.
  */
 async function selectAll(editor: Editor): Promise<void> {
-  const { doc: pmDoc } = editor.state;
-  let first: number | null = null;
-  let last = 1;
-  pmDoc.descendants((node, pos) => {
-    if (!node.isTextblock) return true;
-    if (first === null) first = pos + 1;
-    last = pos + node.nodeSize - 1;
-    return false;
-  });
   act(() => {
     editor.view.dom.focus();
-    editor.commands.setTextSelection({ from: first ?? 1, to: last });
+    selectWholeBody(editor);
   });
   await waitFor(() => {
     expect(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
     ).toBeGreaterThan(0);
   });
-}
-
-/**
- * Open the block type slot's menu.
- * @returns The opened menu element.
- */
-async function openMenu(): Promise<HTMLElement> {
-  return hoverOpenSlot(SLOT);
 }
 
 /**
@@ -110,10 +71,10 @@ function tickedIds(menu: HTMLElement): string[] {
 
 describe('the menu', () => {
   it('draws the nine in order, the rule after Code block', async () => {
-    const editor = open('<p>the quick brown fox</p>');
+    const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
 
     expect(rowIds(menu)).toEqual([
       'paragraph',
@@ -141,10 +102,10 @@ describe('the menu', () => {
   });
 
   it('keeps the task list row greyed and pressable by no one else', async () => {
-    const editor = open('<p>the quick brown fox</p>');
+    const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
 
     const disabled = rowIds(menu).filter((id) =>
       menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`)
@@ -153,10 +114,10 @@ describe('the menu', () => {
   });
 
   it('carries no row fill and no data-active', async () => {
-    const editor = open('<h1>the quick brown fox</h1>');
+    const editor = openSharedBody('<h1>the quick brown fox</h1>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
 
     for (const id of rowIds(menu)) {
       const row = menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`);
@@ -170,26 +131,26 @@ describe('the menu', () => {
 
 describe('the tick', () => {
   it('marks the one exclusive row the selection is, alongside Quote', async () => {
-    const editor = open('<blockquote><h1>the quick brown fox</h1></blockquote>');
+    const editor = openSharedBody('<blockquote><h1>the quick brown fox</h1></blockquote>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
     expect(tickedIds(menu).sort()).toEqual(['heading-1', 'quote']);
   });
 
   it('marks nothing in the exclusive group over a mixed selection', async () => {
-    const editor = open('<h1>the quick</h1><p>brown fox</p>');
+    const editor = openSharedBody('<h1>the quick</h1><p>brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
     expect(tickedIds(menu)).toEqual([]);
   });
 
   it('has a column of its own on every row, ticked or not', async () => {
-    const editor = open('<h1>the quick brown fox</h1>');
+    const editor = openSharedBody('<h1>the quick brown fox</h1>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
 
     // The demo gives the tick a column on every row
     // (`2026-08-29-block-type-transitions.html`'s `.row .tick`), so the one
@@ -204,10 +165,10 @@ describe('the tick', () => {
   });
 
   it('sits after the shortcut in the row', async () => {
-    const editor = open('<h1>the quick brown fox</h1>');
+    const editor = openSharedBody('<h1>the quick brown fox</h1>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
 
     const shortcut = menu.querySelector(`[data-testid="${SLOT}-shortcut-heading-1"]`);
     const tick = menu.querySelector(`[data-testid="${SLOT}-tick-heading-1"]`);
@@ -220,18 +181,18 @@ describe('the tick', () => {
 
 describe('the face', () => {
   it('shows the block inside a quote rather than the quote', async () => {
-    const editor = open('<blockquote><h1>the quick brown fox</h1></blockquote>');
+    const editor = openSharedBody('<blockquote><h1>the quick brown fox</h1></blockquote>');
     mountDocumentEditor(editor);
     await selectAll(editor);
     expect(screen.getByTestId(SLOT).getAttribute('data-block-type')).toBe('heading-1');
   });
 
   it('answers for the anchor over a mixed selection while no row is ticked', async () => {
-    const editor = open('<h1>the quick</h1><p>brown fox</p>');
+    const editor = openSharedBody('<h1>the quick</h1><p>brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
     expect(screen.getByTestId(SLOT).getAttribute('data-block-type')).toBe('heading-1');
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
     expect(tickedIds(menu)).toEqual([]);
   });
 });
@@ -239,10 +200,10 @@ describe('the face', () => {
 describe('pressing a row', () => {
   it('changes the document and writes nothing to the console', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const editor = open('<p>the quick brown fox</p>');
+    const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
-    const menu = await openMenu();
+    const menu = await hoverOpenSlot(SLOT);
 
     act(() => {
       fireEvent.click(menu.querySelector(`[data-testid="${SLOT}-item-heading-2"]`) as Element);
@@ -251,5 +212,19 @@ describe('pressing a row', () => {
       expect(editor.getHTML()).toBe('<h2>the quick brown fox</h2>');
     });
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('closes the menu', async () => {
+    const editor = openSharedBody('<p>the quick brown fox</p>');
+    mountDocumentEditor(editor);
+    await selectAll(editor);
+    const menu = await hoverOpenSlot(SLOT);
+
+    act(() => {
+      fireEvent.click(menu.querySelector(`[data-testid="${SLOT}-item-heading-2"]`) as Element);
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId(`${SLOT}-menu`)).toBeNull();
+    });
   });
 });
