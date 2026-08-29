@@ -30,6 +30,13 @@ export const SPACE_MIN_WIDTH = 420;
 export const RESIZE_HANDLE_WIDTH = 1;
 
 /**
+ * The Agent column's panel id. Given explicitly so the layout the library
+ * hands `onLayoutChanged` can be read by name. The library renders this id as
+ * the panel's `data-testid` as well, so it stays clear of the column's own.
+ */
+export const AGENT_PANEL_ID = 'agent-column-panel';
+
+/**
  * Narrowest the project page may lay out. Below this the page scrolls
  * horizontally instead of squeezing either side past its minimum. Constant:
  * collapsing the Agent column does not lower it, so the horizontal scrollbar

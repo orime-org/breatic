@@ -60,6 +60,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   AGENT_COLUMN_MAX_WIDTH,
   AGENT_COLUMN_MIN_WIDTH,
+  AGENT_PANEL_ID,
   PAGE_MIN_WIDTH,
   SPACE_MIN_WIDTH,
 } from '@web/pages/project/agent-column-width';
@@ -860,6 +861,7 @@ function ProjectWorkspace({
           <Group
             orientation='horizontal'
             className='flex min-h-0 flex-1'
+            elementRef={agentColumnWidth.groupRef}
             onLayoutChanged={agentColumnWidth.onLayoutChanged}
           >
             {/* Agent column is hidden for viewers (B model — not rendered,
@@ -870,6 +872,7 @@ function ProjectWorkspace({
             {collapsed || isViewer ? null : (
               <>
                 <Panel
+                  id={AGENT_PANEL_ID}
                   panelRef={agentColumnWidth.panelRef}
                   defaultSize={agentColumnWidth.defaultSize}
                   minSize={`${AGENT_COLUMN_MIN_WIDTH}px`}

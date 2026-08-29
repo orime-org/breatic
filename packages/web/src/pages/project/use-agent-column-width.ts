@@ -8,15 +8,19 @@ import type { Layout, LayoutChangedMeta, PanelImperativeHandle } from 'react-res
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import {
   AGENT_COLUMN_MIN_WIDTH,
+  AGENT_PANEL_ID,
+  RESIZE_HANDLE_WIDTH,
   parseStoredWidth,
   resolveWidth,
   shouldRestore,
 } from '@web/pages/project/agent-column-width';
 
-/** What the Agent column's Panel needs from this hook. */
+/** What the Group and the Agent column's Panel need from this hook. */
 export interface AgentColumnWidthControls {
   /** The Panel's `defaultSize`, in pixels. */
   defaultSize: string;
+  /** Attach to the Group as `elementRef`. */
+  groupRef: RefObject<HTMLDivElement | null>;
   /** Attach to the Agent column's Panel as `panelRef`. */
   panelRef: RefObject<PanelImperativeHandle | null>;
   /** Attach to the Group as `onLayoutChanged`. */
@@ -32,7 +36,14 @@ export interface AgentColumnWidthControls {
  * (window resize, constraint recompute, mount) is the library arriving at a
  * width of its own, which we either accept — when it already matches what the
  * window allows — or resize away from.
- * @returns The three props the Group and the Agent Panel need.
+ *
+ * Both branches read the width out of the layout they are handed. The library
+ * reports a layout change synchronously, before React has re-rendered, so the
+ * panel's own `getSize()` is a step behind: a keyboard resize would store the
+ * width from the previous keypress. Only the container width comes from the
+ * DOM, read off the Group, whose size is an input to the layout rather than a
+ * result of it.
+ * @returns The four props the Group and the Agent Panel need.
  */
 export function useAgentColumnWidth(): AgentColumnWidthControls {
   const [initialWidth] = useState(() =>
@@ -40,34 +51,40 @@ export function useAgentColumnWidth(): AgentColumnWidthControls {
   );
   const setWidthRef = useRef<number | null>(initialWidth);
   const panelRef = useRef<PanelImperativeHandle | null>(null);
+  const groupRef = useRef<HTMLDivElement | null>(null);
 
-  const onLayoutChanged = useCallback((_layout: Layout, meta: LayoutChangedMeta): void => {
+  const onLayoutChanged = useCallback((layout: Layout, meta: LayoutChangedMeta): void => {
     const panel = panelRef.current;
-    if (!panel) return;
+    const group = groupRef.current;
+    if (!panel || !group) return;
 
-    const { inPixels, asPercentage } = panel.getSize();
+    // Absent from the layout means the column is collapsed or the reader is a
+    // viewer: no width to keep, nothing to restore.
+    const share = layout[AGENT_PANEL_ID];
+    if (share === undefined) return;
+
+    // The handle is a flex item of the Group but not a panel, so the width the
+    // two columns divide is the Group minus the handle. Zero means the Group
+    // has not been measured yet.
+    const panelsWidth = group.clientWidth - RESIZE_HANDLE_WIDTH;
+    if (panelsWidth <= 0) return;
+    const width = (share / 100) * panelsWidth;
 
     if (meta.isUserInteraction) {
-      // The user let go of the handle here, so this is the width they want —
-      // including when a narrow window is what stopped them there.
-      setWidthRef.current = inPixels;
-      window.localStorage.setItem(STORAGE_KEYS.agentColumnWidth, String(inPixels));
+      // The user moved the handle to here, so this is the width they want —
+      // including when a narrow window is what stopped them.
+      setWidthRef.current = width;
+      window.localStorage.setItem(STORAGE_KEYS.agentColumnWidth, String(Math.round(width)));
       return;
     }
 
-    // The library reports the panel's share of what the two panels divide, so
-    // that share is also how we read the divisible width back out — no DOM
-    // measuring, and the handle is already excluded the same way it is inside
-    // the library. A zero share means the group has not been measured yet.
-    if (asPercentage <= 0) return;
-    const panelsWidth = (inPixels / asPercentage) * 100;
-
     const target = resolveWidth(setWidthRef.current, panelsWidth);
-    if (shouldRestore(inPixels, target)) panel.resize(target);
+    if (shouldRestore(width, target)) panel.resize(target);
   }, []);
 
   return {
     defaultSize: `${initialWidth ?? AGENT_COLUMN_MIN_WIDTH}px`,
+    groupRef,
     panelRef,
     onLayoutChanged,
   };
