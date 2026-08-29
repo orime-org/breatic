@@ -21,6 +21,11 @@ import { toast } from '@web/lib/toast';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@web/spaces';
@@ -117,6 +122,35 @@ export function SpaceTab({
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const nameRef = React.useRef<HTMLSpanElement>(null);
+  const [nameTipOpen, setNameTipOpen] = React.useState(false);
+
+  /**
+   * Whether the tab is showing less than the whole name, asked at the moment
+   * it matters. The cap makes this the common case, and two Spaces whose names
+   * agree over the first hundred pixels then print the same glyphs — the strip
+   * has nowhere else to read the rest.
+   *
+   * Measured on each open instead of kept in state: the name, the lock icon
+   * and the strip's own width all move it, and a value carried between renders
+   * would answer for whichever of them changed last.
+   * @returns True when the name element has more text than it can show.
+   */
+  const nameIsClipped = (): boolean => {
+    const el = nameRef.current;
+    return el !== null && el.scrollWidth > el.clientWidth;
+  };
+
+  /**
+   * Opens the name tooltip only for a name the tab has cut short.
+   *
+   * While the name is being edited the element this reads is not on the page,
+   * so an edit closes the question rather than answering it.
+   * @param next - Whether Radix wants the tooltip open.
+   */
+  const onNameTipOpenChange = (next: boolean): void => {
+    setNameTipOpen(next && nameIsClipped());
+  };
 
   // Keep `draft` aligned with external `name` updates (collab broadcast)
   // when we are not currently editing.
@@ -180,7 +214,7 @@ export function SpaceTab({
     setDraft(name);
   };
 
-  return (
+  const tab = (
     <Button
       // A tab strip, not a standalone labelled button: the active fill is the
       // affordance, and `menu-item` is the one size that leaves the tab's own
@@ -252,6 +286,7 @@ export function SpaceTab({
         />
       ) : (
         <span
+          ref={nameRef}
           onDoubleClick={onNameDoubleClick}
           data-testid={`space-tab-name-${id}`}
           // The name is what gives way when the tab meets its cap: the icon
@@ -295,5 +330,14 @@ export function SpaceTab({
         </span>
       ) : null}
     </Button>
+  );
+  return (
+    <Tooltip open={nameTipOpen} onOpenChange={onNameTipOpenChange}>
+      {/* The whole tab is the anchor, so the gap the tooltip keeps is measured
+          from the edge a person sees rather than from the name inset within
+          it. */}
+      <TooltipTrigger asChild>{tab}</TooltipTrigger>
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
   );
 }

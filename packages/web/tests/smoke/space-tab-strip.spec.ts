@@ -42,6 +42,9 @@ const TAB_HEIGHT = 32;
 /** The cap one tab may reach — SpaceTab's SPACE_TAB_MAX_WIDTH. */
 const TAB_MAX_WIDTH = 160;
 
+/** The gap a tooltip keeps from its anchor — TooltipContent's `sideOffset`. */
+const TOOLTIP_SIDE_OFFSET = 4;
+
 let page: Page;
 const createdSpaceIds: string[] = [];
 
@@ -116,6 +119,59 @@ test('one tab never grows past its cap', async () => {
   );
   expect(widths.length).toBeGreaterThan(0);
   expect(Math.max(...widths)).toBeLessThanOrEqual(TAB_MAX_WIDTH);
+});
+
+test('hands the whole name back above a tab that has clipped it', async () => {
+  const id = createdSpaceIds[0] as string;
+  const nameEl = page.getByTestId(`space-tab-name-${id}`);
+  const full = (await nameEl.textContent()) ?? '';
+  expect(full.length).toBeGreaterThan(0);
+  expect(await nameEl.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+
+  await page.getByTestId(`space-tab-${id}`).hover();
+  const tip = page.getByRole('tooltip').filter({ hasText: full }).first();
+  await expect(tip).toBeVisible({ timeout: 5_000 });
+
+  // The three things jsdom cannot answer: which side of the tab it took, how
+  // far it kept from it, and whether the pixels it claims are really drawn
+  // there. The strip is a scroller whose root and viewport both clip what
+  // overflows them, and the hit test is what says the tooltip cleared them.
+  /** Where the tooltip landed and whether anything is drawn there. */
+  const readGeom = async (): Promise<{
+    gapAboveTab: number;
+    painted: boolean;
+    onScreen: boolean;
+    text: string;
+  } | null> =>
+    page.evaluate((tabId) => {
+      const tabEl = document.querySelector(`[data-testid="space-tab-${tabId}"]`);
+      const tips = [...document.querySelectorAll('[role="tooltip"]')];
+      const tipEl = tips[tips.length - 1];
+      if (!tabEl || !tipEl) return null;
+      const t = tabEl.getBoundingClientRect();
+      const p = tipEl.getBoundingClientRect();
+      const hit = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
+      return {
+        gapAboveTab: Math.round(t.top - p.bottom),
+        painted: hit !== null && (tipEl === hit || tipEl.contains(hit)),
+        onScreen: p.top >= 0 && p.left >= 0 && p.right <= window.innerWidth,
+        text: tipEl.textContent ?? '',
+      };
+    }, id);
+
+  // The entrance animation starts the content 8px lower and slides it up, so
+  // reading the box the moment it turns visible catches it mid-flight
+  // (measured -4 = the 4px offset minus the 8px it still had to travel). The
+  // resting gap is the primitive's own `sideOffset`, and the poll is what says
+  // it got there instead of stopping somewhere else.
+  await expect
+    .poll(async () => (await readGeom())?.gapAboveTab ?? null, { timeout: 5_000 })
+    .toBe(TOOLTIP_SIDE_OFFSET);
+
+  const geom = await readGeom();
+  expect(geom?.text).toBe(full);
+  expect(geom?.painted).toBe(true);
+  expect(geom?.onScreen).toBe(true);
 });
 
 test('the rename field grows with what is typed, up to the same cap', async () => {
@@ -537,4 +593,61 @@ test('the global scrollbar fallback ships inside a cascade layer', async () => {
     return null;
   });
   expect(layer).toBe('base');
+});
+
+test('drops the rail without a fade once nothing is left to scroll', async () => {
+  // The fade belongs to a pointer leaving the scroller. Running it on the
+  // other exit — the content stops overflowing — paints a full-length thumb
+  // over content there is nothing left to scroll, because Radix sizes the
+  // thumb by viewport-over-content and that ratio reaches 1. Measured before
+  // the fix, on this strip: the rail held opacity 1 for 22ms after the gate
+  // shut, hit a 384px thumb in a 386px track at opacity 0.98, and took 272ms
+  // to go (user saw it in a document Space and on a canvas text node).
+  //
+  // Widening the window is what trips the gate here. `measure()` compares
+  // scrollWidth with clientWidth, so a wider container and shorter content
+  // reach it the same way, through the same ResizeObserver, the same state and
+  // the same class.
+  const bar = await page.getByTestId('space-tab-bar').boundingBox();
+  expect(bar).not.toBeNull();
+  await page.mouse.move(
+    (bar as { x: number; width: number }).x + (bar as { width: number }).width / 2,
+    (bar as { y: number; height: number }).y + (bar as { height: number }).height / 2,
+  );
+  await page.waitForTimeout(600);
+
+  await page.evaluate(() => {
+    const strip = document.querySelector('[data-testid="space-tab-bar"]');
+    const rail = strip?.querySelector('[data-orientation="horizontal"][data-scrollable]');
+    const vp = strip?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!rail || !vp) return;
+    const frames: { scrollable: string; opacity: number; overflowX: number }[] = [];
+    (window as unknown as { __railFrames: typeof frames }).__railFrames = frames;
+    const t0 = performance.now();
+    const tick = (): void => {
+      frames.push({
+        scrollable: rail.getAttribute('data-scrollable') ?? '',
+        opacity: Number(getComputedStyle(rail).opacity),
+        overflowX: vp.scrollWidth - vp.clientWidth,
+      });
+      if (performance.now() - t0 < 1_500) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.waitForTimeout(1_800);
+  const frames = await page.evaluate(
+    () => (window as unknown as { __railFrames?: unknown[] }).__railFrames ?? [],
+  );
+  await page.setViewportSize(NARROW);
+  await page.waitForTimeout(600);
+
+  const seen = frames as { scrollable: string; opacity: number; overflowX: number }[];
+  // The run has to have crossed the boundary, and the rail has to have been
+  // lit on the way in — without both, an empty "never lit while unscrollable"
+  // says nothing.
+  expect(seen.some((f) => f.scrollable === 'true' && f.opacity > 0.9)).toBe(true);
+  expect(seen.some((f) => f.scrollable === 'false')).toBe(true);
+  expect(seen.filter((f) => f.scrollable === 'false' && f.opacity > 0.02)).toEqual([]);
 });

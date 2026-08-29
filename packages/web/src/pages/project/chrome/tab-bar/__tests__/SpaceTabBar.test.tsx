@@ -6,6 +6,7 @@ import {
   render as rtlRender,
   screen,
   act,
+  fireEvent,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -454,6 +455,75 @@ describe('SpaceTabBar', () => {
       expect(screen.getByTestId('space-tab-s1').style.maxWidth).toBe(
         '160px',
       );
+    });
+
+    // The cap buys back the rest of the strip by taking the end of the name
+    // away, and until this the name was nowhere else on the strip: two Spaces
+    // whose names agree for the first hundred pixels printed the same glyphs.
+    // Hovering the tab hands the whole name back (user 2026-08-29).
+    describe('reading the clipped name back', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      /**
+       * Give the name span a measured width — jsdom lays nothing out, so both
+       * `scrollWidth` and `clientWidth` are 0 there and no name ever reads as
+       * clipped.
+       * @param scrollWidth - What the name is worth.
+       * @param clientWidth - What the tab leaves it.
+       */
+      const measureName = (scrollWidth: number, clientWidth: number): void => {
+        const el = screen.getByTestId('space-tab-name-s1');
+        Object.defineProperty(el, 'scrollWidth', {
+          configurable: true,
+          value: scrollWidth,
+        });
+        Object.defineProperty(el, 'clientWidth', {
+          configurable: true,
+          value: clientWidth,
+        });
+      };
+
+      /** Point at the tab and let Radix's open delay elapse. */
+      const hoverTab = (): void => {
+        vi.useFakeTimers();
+        fireEvent.pointerMove(screen.getByTestId('space-tab-s1'), {
+          pointerType: 'mouse',
+        });
+        act(() => {
+          vi.advanceTimersByTime(1_000);
+        });
+      };
+
+      /** What the open tooltips say, if any are open. */
+      const tooltipTexts = (): string[] =>
+        screen.queryAllByRole('tooltip').map((el) => el.textContent ?? '');
+
+      it('shows the whole name above a tab that has clipped it', () => {
+        setup(withLongName);
+        measureName(211, 100);
+        hoverTab();
+        expect(tooltipTexts()).toContain(LONG);
+      });
+
+      it('stays quiet on a tab whose name fits', () => {
+        setup(withLongName);
+        measureName(100, 100);
+        hoverTab();
+        expect(tooltipTexts()).toEqual([]);
+      });
+
+      it('stays quiet while the name is being edited', () => {
+        setup({ ...withLongName, onRenameSpace: vi.fn() });
+        measureName(211, 100);
+        fireEvent.dblClick(screen.getByTestId('space-tab-name-s1'));
+        expect(
+          screen.getByTestId('space-tab-name-input-s1'),
+        ).toBeDefined();
+        hoverTab();
+        expect(tooltipTexts()).toEqual([]);
+      });
     });
   });
 });

@@ -168,6 +168,34 @@ describe('ScrollArea', () => {
     },
   );
 
+  it.each([
+    [true, 'transition-opacity', 'transition-none'],
+    [false, 'transition-none', 'transition-opacity'],
+  ])(
+    'takes the fade off a rail with nothing left to scroll (scrollable=%s)',
+    (scrollable, want, unwanted) => {
+      // The fade is a farewell for a pointer leaving the scroller. Content
+      // that stops overflowing is a different exit and cannot use it: the
+      // thumb is sized by viewport-over-content, so the ratio reaching 1 grows
+      // it to the full track, and fading that out shows a full-length bar over
+      // content there is nothing left to scroll. Measured on the tab strip
+      // (user 2026-08-29, document Space and canvas text node): the rail held
+      // opacity 1 for 22ms after the gate shut, reached a 384px thumb in a
+      // 386px track at opacity 0.98, and took 272ms to go.
+      const { container, unmount } = render(
+        <ScrollAreaPrimitive.Root type='always'>
+          <ScrollAreaPrimitive.Viewport />
+          <ScrollBar forceMount orientation='vertical' scrollable={scrollable} revealed />
+        </ScrollAreaPrimitive.Root>,
+      );
+      const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      const classes = [...bar.classList];
+      expect(classes).toContain(want);
+      expect(classes).not.toContain(unwanted);
+      unmount();
+    },
+  );
+
   it('keeps one ref identity for the viewport across renders (2026-08-29)', () => {
     // React detaches and re-attaches a ref whose identity changed, calling the
     // old one with null first, and Radix composes the viewport ref with a state

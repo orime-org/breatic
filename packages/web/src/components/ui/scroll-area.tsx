@@ -416,7 +416,21 @@ const ScrollBar = React.forwardRef<
         // nest — a wide table inside the message list — the outer one's
         // answer about an axis it never scrolls reaches the inner rail, and
         // the bar there shows up and cannot be grabbed.
-        'group/rail flex touch-none select-none p-px cursor-default opacity-0 transition-opacity duration-300 data-[revealed=true]:opacity-100 data-[revealed=true]:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
+        'group/rail flex touch-none select-none p-px cursor-default opacity-0 duration-300 data-[revealed=true]:opacity-100 data-[revealed=true]:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
+        // The fade is a farewell for a pointer leaving the scroller. Content
+        // that stops overflowing is a different exit and gets none: the thumb
+        // is sized by viewport-over-content, so the ratio reaching 1 grows it
+        // to the full track, and fading THAT out draws a full-length bar over
+        // content there is nothing left to scroll. Measured on the tab strip
+        // before this line: the rail held opacity 1 for 22ms after the gate
+        // shut, reached a 384px thumb in a 386px track at opacity 0.98, and
+        // took 272ms to go (user reported it in a document Space and on a
+        // canvas text node, 2026-08-29). Computed here for the same reason the
+        // hit testing below is: `transition-opacity` and a
+        // `data-[scrollable=false]:transition-none` variant set the same
+        // property at the same specificity, so which one wins would be decided
+        // by the order Tailwind happens to emit them in.
+        scrollable ? 'transition-opacity' : 'transition-none',
         // Hit testing follows the reveal, computed here rather than left to
         // a stack of `data-[…]:pointer-events-*` utilities: those all carry
         // the same specificity, so which one wins is decided by the order
