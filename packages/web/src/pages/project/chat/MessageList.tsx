@@ -218,6 +218,24 @@ function MessageListInner({
     bottomRef.current?.scrollIntoView();
   }, [count, lastShape]);
 
+  React.useEffect(() => {
+    const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+
+    // A column that changes width rewraps every line, so the same words take a
+    // different number of them. Nothing above notices: the message count and
+    // the last bubble's shape are both unchanged, and the browser keeps
+    // scrollTop where it was rather than raising a scroll event. A reader who
+    // was watching the last line of a reply is then left looking at the middle
+    // of it — the narrower the column, the further from the end they land.
+    const observer = new ResizeObserver(() => {
+      if (!stickToBottom.current) return;
+      bottomRef.current?.scrollIntoView();
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [count]);
+
   return (
     <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>
       {!ready ? (

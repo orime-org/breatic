@@ -349,6 +349,91 @@ describe('MessageList', () => {
   });
 });
 
+describe('MessageList — when the column itself changes width', () => {
+  /**
+   * Swap in a ResizeObserver whose callbacks the test can fire by hand; the
+   * setup file's stub observes nothing.
+   * @returns The trigger and an undo, to be called before the test ends
+   */
+  function observableResize(): { fire: () => void; restore: () => void } {
+    // Only observers that were actually pointed at something fire, so a
+    // callback registered and then never wired up counts as not observing.
+    const watching: ResizeObserverCallback[] = [];
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      private readonly cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+      }
+      observe(): void {
+        watching.push(this.cb);
+      }
+      unobserve(): void {}
+      disconnect(): void {
+        const i = watching.indexOf(this.cb);
+        if (i >= 0) watching.splice(i, 1);
+      }
+    } as unknown as typeof ResizeObserver;
+    return {
+      fire: () => {
+        for (const cb of [...watching]) cb([], {} as ResizeObserver);
+      },
+      restore: () => {
+        globalThis.ResizeObserver = original;
+      },
+    };
+  }
+
+  it('goes back to the bottom for a reader who was already there', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    // Sitting exactly at the bottom: 1000 - 600 - 400 = 0.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    const restoreGeometry = stateGeometry(geometry);
+    const resize = observableResize();
+
+    render(<MessageList ready messages={[bubble('m1', 'An answer')]} />);
+    scrollIntoView.mockClear();
+
+    // A narrower column rewraps every line, so the same words are taller. The
+    // browser leaves scrollTop where it was, which puts the reader 600px above
+    // the end of a conversation they were reading the last line of.
+    geometry.scrollHeight = 1600;
+    resize.fire();
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    resize.restore();
+    restoreGeometry();
+    scrollIntoView.mockRestore();
+  });
+
+  it('leaves a reader who scrolled up where they are', () => {
+    const scrollIntoView = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    // 1000 - 100 - 400 = 500 from the end: reading something further up.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 100 };
+    const restoreGeometry = stateGeometry(geometry);
+    const resize = observableResize();
+
+    render(<MessageList ready messages={[bubble('m1', 'An answer')]} />);
+    const viewport = screen
+      .getByTestId('message-list')
+      .querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    fireEvent.scroll(viewport);
+    scrollIntoView.mockClear();
+
+    geometry.scrollHeight = 1600;
+    resize.fire();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    resize.restore();
+    restoreGeometry();
+    scrollIntoView.mockRestore();
+  });
+});
+
 describe('the skeleton that stands in while messages are on their way', () => {
   it('is shaped like the lines of a conversation, not like blocks', () => {
     // demo 定的是「形状照着真实消息排」:每组一条右对齐的短行(用户说的),
