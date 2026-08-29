@@ -61,15 +61,39 @@ async function openProject(p: Page): Promise<void> {
   await expect(p.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
 }
 
+/**
+ * How many tabs must be on the strip before it is asked to overflow.
+ *
+ * The narrow window leaves the strip around 114px, so two capped tabs already
+ * exceed it. Three is the same answer with room to spare, and it keeps the
+ * run cheap: every Space created here is deleted again in `afterAll`.
+ */
+const TABS_WANTED = 3;
+
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
   await openProject(page);
-  // A name long enough to push its own tab to the cap.
-  createdSpaceIds.push(
-    await createSpace(page, 'canvas', `strip-${Date.now()}-一个很长很长很长的名字`),
-  );
+  // The strip has to overflow for most of what follows, and how many tabs the
+  // account already carries is not this spec's to assume — a fresh account has
+  // one. So it makes its own up to the number it needs, with names long enough
+  // to push each tab to the cap.
+  const already = await page.locator('[role="tab"]').count();
+  for (let i = already; i < TABS_WANTED; i += 1) {
+    createdSpaceIds.push(
+      await createSpace(page, 'canvas', `strip-${Date.now()}-${i}-一个很长很长很长的名字`),
+    );
+  }
+  // One is created unconditionally: the cap and the rename field are read off
+  // a tab whose name is known to be too long, and an account's own tabs carry
+  // whatever names they carry.
+  if (createdSpaceIds.length === 0) {
+    createdSpaceIds.push(
+      await createSpace(page, 'canvas', `strip-${Date.now()}-一个很长很长很长的名字`),
+    );
+  }
   await page.setViewportSize(NARROW);
   await page.waitForTimeout(500);
+  await expect(page.locator('[role="tab"]')).not.toHaveCount(0);
 });
 
 test.afterAll(async () => {
@@ -88,6 +112,47 @@ test('one tab never grows past its cap', async () => {
   );
   expect(widths.length).toBeGreaterThan(0);
   expect(Math.max(...widths)).toBeLessThanOrEqual(TAB_MAX_WIDTH);
+});
+
+test('the rename field grows with what is typed, up to the same cap', async () => {
+  const id = createdSpaceIds[0] as string;
+  await page.getByTestId(`space-tab-name-${id}`).dblclick();
+  const field = page.getByTestId(`space-tab-name-input-${id}`);
+  await expect(field).toBeVisible({ timeout: 5_000 });
+
+  /**
+   * Put a name in the field and read what the field and its tab are worth.
+   * @param name - What to type.
+   * @returns The two widths, in px.
+   */
+  const widthsFor = async (name: string): Promise<{ field: number; tab: number }> => {
+    await field.fill(name);
+    await page.waitForTimeout(150);
+    return field.evaluate((el) => {
+      const tab = el.closest('[role="tab"]') as HTMLElement;
+      return {
+        field: Math.round(el.getBoundingClientRect().width),
+        tab: Math.round(tab.getBoundingClientRect().width),
+      };
+    });
+  };
+
+  const empty = await widthsFor('');
+  // Long enough to clear the 2ch floor: two latin characters are narrower
+  // than it, so a name that short is held at the floor and says nothing about
+  // whether the field follows its content.
+  const short = await widthsFor('abcdefgh');
+  const long = await widthsFor('这是一个很长很长很长的名字');
+
+  await page.keyboard.press('Escape');
+
+  // Emptied, it still holds a caret's worth of room rather than collapsing.
+  expect(empty.field).toBeGreaterThan(0);
+  // It follows the content — this is what a definite width silently defeats.
+  expect(short.field).toBeGreaterThan(empty.field);
+  expect(long.field).toBeGreaterThan(short.field);
+  // And the tab it lives in still stops where every other tab stops.
+  expect(long.tab).toBeLessThanOrEqual(TAB_MAX_WIDTH);
 });
 
 test('the tabs lie in one row and the strip scrolls sideways', async () => {

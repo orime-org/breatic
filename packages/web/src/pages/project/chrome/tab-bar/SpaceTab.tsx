@@ -243,11 +243,12 @@ export function SpaceTab({
           data-testid={`space-tab-name-input-${id}`}
           aria-label={t('spaces.rename.inputAriaLabel')}
           // Grows with what is typed and stops at the tab's cap, after which
-          // the field scrolls and the caret stays in view. A width worked out
-          // from the character count grows without end instead, which is the
-          // same crowding through the editing state. This is the treatment the
-          // project title already uses (`TitleEditable.tsx`).
-          className='w-[2ch] min-w-[2ch] border-0 bg-transparent p-0 text-sm text-foreground outline-none [field-sizing:content]'
+          // the field scrolls and the caret stays in view. The floor is a
+          // minimum and nothing more: `field-sizing` only replaces the
+          // AUTOMATIC size, so any definite `width` here switches it off and
+          // pins the field at that width whatever is typed. This is the shape
+          // the project title, the node header and the group name all use.
+          className='min-w-[2ch] border-0 bg-transparent p-0 text-sm text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span

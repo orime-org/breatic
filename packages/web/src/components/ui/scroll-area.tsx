@@ -50,19 +50,28 @@ import { cn } from '@web/lib/utils';
  * Both elements this file hands out need their node in two places at once: the
  * component keeps one to measure and drive, and a caller may have asked for
  * the same node.
+ *
+ * The callback is memoised because React detaches and re-attaches a ref whose
+ * identity changed, calling the old one with `null` first. Radix composes the
+ * viewport ref with a state setter of its own, so an unstable callback there
+ * runs that setter to `null` and back on every single render of every scroller
+ * in the app.
  * @param local - The ref this component reads.
  * @param forwarded - The ref a caller passed in, if any.
- * @returns A ref callback that feeds both.
+ * @returns A ref callback that feeds both, stable while `forwarded` is.
  */
-function keepBoth<T>(
+function useKeepBoth<T>(
   local: React.MutableRefObject<T | null>,
   forwarded: React.Ref<T> | undefined,
 ): (node: T | null) => void {
-  return (node) => {
-    local.current = node;
-    if (typeof forwarded === 'function') forwarded(node);
-    else if (forwarded) (forwarded as React.MutableRefObject<T | null>).current = node;
-  };
+  return React.useCallback(
+    (node: T | null) => {
+      local.current = node;
+      if (typeof forwarded === 'function') forwarded(node);
+      else if (forwarded) (forwarded as React.MutableRefObject<T | null>).current = node;
+    },
+    [local, forwarded],
+  );
 }
 
 const ScrollArea = React.forwardRef<
@@ -91,7 +100,7 @@ const ScrollArea = React.forwardRef<
     ref,
   ) => {
     const viewportRef = React.useRef<HTMLDivElement>(null);
-    const setViewportRef = keepBoth(viewportRef, forwardedViewportRef);
+    const setViewportRef = useKeepBoth(viewportRef, forwardedViewportRef);
     const [scrollable, setScrollable] = React.useState({ x: false, y: false });
     React.useEffect(() => {
       const viewport = viewportRef.current;
@@ -159,7 +168,7 @@ const ScrollBar = React.forwardRef<
   }
 >(({ className, orientation = 'vertical', onMouseDown, scrollable = true, ...props }, ref) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
-  const setRailRef = keepBoth(railRef, ref);
+  const setRailRef = useKeepBoth(railRef, ref);
   /**
    * Input-state contract (user-ratified 2026-07-15): interacting with a
    * scrollbar must never move focus, collapse a selection, or interrupt an

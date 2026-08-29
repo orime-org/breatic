@@ -384,7 +384,11 @@ describe('SpaceTabBar', () => {
       const tab = screen.getByTestId('space-tab-s1');
       const row = tab.parentElement;
       expect(row?.getAttribute('role')).toBe('tablist');
-      expect(row?.className).toContain('flex');
+      // classList, not the className string: `flex-col` — the direction the
+      // regression takes — contains "flex" as a substring, so a substring
+      // check reads as satisfied by the very thing it exists to refuse.
+      expect(row?.classList.contains('flex')).toBe(true);
+      expect(row?.classList.contains('flex-col')).toBe(false);
       // The role belongs to the element the tabs sit in, so the same element
       // carries both.
       expect(row?.querySelectorAll('[role="tab"]').length).toBe(3);
@@ -443,6 +447,14 @@ describe('SpaceTabBar', () => {
       // content up to the cap and scrolls after that, so the caret stays in
       // view -- the treatment the project title already uses.
       expect(field.className).toContain('[field-sizing:content]');
+      // `field-sizing` replaces only the AUTOMATIC size, so ANY definite width
+      // switches it off and pins the field at that width whatever is typed --
+      // a `w-[2ch]` floor did exactly that and left the field two characters
+      // wide. Asking only whether the inline style is empty cannot see it: the
+      // pin lives in a class. jsdom does no layout, so what the field is
+      // actually worth once something is typed is measured in a browser
+      // (tests/smoke/space-tab-strip.spec.ts).
+      expect([...field.classList].some((c) => /^w-\[/.test(c))).toBe(false);
       expect(field.style.width).toBe('');
       expect(screen.getByTestId('space-tab-s1').style.maxWidth).toBe(
         '160px',
