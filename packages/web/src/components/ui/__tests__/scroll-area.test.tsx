@@ -177,7 +177,8 @@ describe('ScrollArea', () => {
       // Three separate things raise this rail's opacity — the pointer being
       // inside (`data-revealed`), Radix's own scroll state machine
       // (`data-state`, which `type='scroll'` turns on while scrolling and off
-      // `scrollHideDelay` later) and a drag in progress. Content that stops
+      // about 700ms after it stops — `SCROLL_END` debounced 100ms, then the
+      // 600ms `scrollHideDelay`) and a drag in progress. Content that stops
       // overflowing has to close all three, because the thumb is sized by
       // viewport-over-content and that ratio reaching 1 grows it to the full
       // track: whichever one is still up paints a full-length bar over content
@@ -296,7 +297,7 @@ describe('ScrollArea', () => {
 
   describe('input-state contract (user-ratified 2026-07-15): scrollbar interaction never disturbs focus/selection', () => {
     /**
-     * Renders a scroller with a focused textarea and enough stubbed layout for
+     * Renders a scroller with a textarea in it and enough stubbed layout for
      * the rail to own a press.
      *
      * What the caret then does is a browser default action, which jsdom does
@@ -359,7 +360,7 @@ describe('ScrollArea', () => {
   });
 });
 
-describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', () => {
+describe('ScrollArea — what a rail answers to, and what a drag on it does', () => {
   /**
    * Renders a horizontal scroller nested inside a vertical one — an assistant
    * message's wide table inside the message list.

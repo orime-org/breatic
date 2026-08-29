@@ -433,7 +433,7 @@ describe('SpaceTabBar', () => {
       );
     });
 
-    it('caps the rename field the same way while it is being typed into', async () => {
+    it('leaves the rename field free to grow, and caps it through the tab', async () => {
       const user = userEvent.setup();
       setup({ ...withLongName, onRenameSpace: vi.fn() });
       await user.dblClick(screen.getByTestId('space-tab-name-s1'));

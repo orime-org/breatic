@@ -4,9 +4,12 @@
 /**
  * The tab strip's layout, measured in a browser.
  *
- * Everything here is geometry: how wide one tab may get, whether the strip
- * lies in one row and scrolls sideways, where the tabs sit inside the bar, and
- * where the scrollbar lands. jsdom computes none of it, so a unit test can
+ * Most of it is geometry: how wide one tab may get, whether the strip lies in
+ * one row and scrolls sideways, where the tabs sit inside the bar, and where
+ * the scrollbar lands. The rest is what only a real engine paints — where a
+ * tooltip lands and whether anything is drawn there, and what the rail's
+ * opacity does frame by frame as its axis stops scrolling. jsdom computes
+ * none of it, so a unit test can
  * only look at class names — and class names are what read correct both times
  * this strip broke (#2015: a flex declared on the scroll viewport stopped at
  * Radix's `display:table` wrapper and laid the tabs out one per row, so the
@@ -22,10 +25,12 @@ const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
 
 // Not serial, unlike the other smoke specs: those build state a later case
-// depends on, so a failure early makes the rest meaningless. Six of these ten
-// only read geometry off the same page; the rename and caret cases type into
-// the live field, the arrows case narrows the tabs, and the hit-test case
-// moves the pointer. None of them leaves a name, a window size or a narrowed
+// depends on, so a failure early makes the rest meaningless. Six of these
+// twelve only read geometry off the same page; the other six move something —
+// the tooltip and hit-test cases park the pointer, the rename case types into
+// the live field, the caret case presses the rail, the arrows case hides tabs
+// to change the content width, and the last one wheels and widens the window.
+// None of them leaves a name, a window size or a narrowed
 // tab behind, and the two cases that read a strip an earlier one scrolled say
 // so where they read it — so a red one still leaves the other measurements
 // worth having, which serial mode would skip. Knowing which of the others
@@ -620,8 +625,10 @@ test('leaves the rail no way to be seen once nothing is left to scroll', async (
     (bar as { y: number; height: number }).y + (bar as { height: number }).height / 2,
   );
   await page.waitForTimeout(600);
-  // Radix keeps `data-state` on for `scrollHideDelay` (600ms) after a scroll,
-  // so this wheel is still counting when the viewport widens below.
+  // Radix keeps `data-state` on for about 700ms after a scroll — `SCROLL_END`
+  // is debounced 100ms before the state machine reaches idle, and only then
+  // does the 600ms `scrollHideDelay` timer start. So this wheel is still
+  // counting when the viewport widens below.
   await page.mouse.wheel(60, 0);
   await page.waitForTimeout(60);
   expect(

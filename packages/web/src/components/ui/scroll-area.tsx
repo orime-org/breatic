@@ -218,11 +218,14 @@ const ScrollBar = React.forwardRef<
 ) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
   const setRailRef = useKeepBoth(railRef, ref);
-  // One verdict drives both what the rail looks like and what it answers to.
-  // Splitting them is how an empty document Space came to show a bar on
-  // hover: the pointer gate kept `scrollable`, the opacity did not, so a
-  // scroller with nothing to scroll stayed invisible to clicks while still
-  // painting a bar over content the reader cannot move (user 2026-08-29).
+  // What the rail answers to: the pointer has to be inside the scroller AND
+  // the axis has to still scroll. Appearance answers to more than this — see
+  // the class list below, where the reveal path is one of three and all three
+  // hang off `scrollable`. Letting the pointer path miss that second half is
+  // how an empty document Space came to show a bar on hover: the pointer gate
+  // kept `scrollable`, the opacity did not, so a scroller with nothing to
+  // scroll stayed invisible to clicks while still painting a bar over content
+  // the reader cannot move (user 2026-08-29).
   const showing = scrollable && revealed;
   /**
    * Scale-aware drag takeover (#1773 round-5, user-reported jump). Radix's
@@ -353,7 +356,8 @@ const ScrollBar = React.forwardRef<
     };
     /**
      * Ends the gesture: releases capture and detaches the listeners.
-     * @param ev - The pointerup/pointercancel that ends the drag.
+     * @param ev - Whichever of pointerup, pointercancel or lostpointercapture
+     *   reaches it first; the other two then find it already done.
      */
     const end = (ev: PointerEvent): void => {
       delete rail.dataset.dragging;

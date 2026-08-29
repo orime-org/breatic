@@ -129,10 +129,10 @@ export function SpaceTabBar({
   /**
    * The tabs, read off the scroller.
    *
-   * Radix wraps a viewport's children in a `display:table` div of its own, so
-   * the tabs are one hop further down than the element that scrolls. Asking
-   * for them by their role instead of by child position keeps this true
-   * whichever wrappers the primitive decides to put in between.
+   * Two elements sit between the tabs and the element that scrolls: the
+   * `display:table` div Radix puts inside every viewport, and the row this
+   * file renders inside it. Asking for the tabs by their role instead of by
+   * child position keeps this true however many wrappers either side adds.
    * @param scroller - The element that scrolls, or null before it mounts.
    * @returns The tab elements in document order.
    */
