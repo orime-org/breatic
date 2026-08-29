@@ -70,6 +70,8 @@ export class LocalStorageAdapter implements StorageAdapter {
   /**
    * Resolve the upload directory and public base URL, creating the
    * directory if it does not yet exist.
+   * @param options - Optional local storage URL configuration.
+   * @param options.uploadBaseUrl - Explicit public base URL; an empty value uses the same-origin uploads path.
    */
   constructor(options: { uploadBaseUrl?: string } = {}) {
     // LOCAL_UPLOAD_DIR overrides; default = monorepo root /uploads
