@@ -169,19 +169,25 @@ describe('ScrollArea', () => {
   );
 
   it.each([
-    [true, 'transition-opacity', 'transition-none'],
-    [false, 'transition-none', 'transition-opacity'],
+    [true, 'transition-opacity', 'transition-none', true],
+    [false, 'transition-none', 'transition-opacity', false],
   ])(
-    'takes the fade off a rail with nothing left to scroll (scrollable=%s)',
-    (scrollable, want, unwanted) => {
-      // The fade is a farewell for a pointer leaving the scroller. Content
-      // that stops overflowing is a different exit and cannot use it: the
-      // thumb is sized by viewport-over-content, so the ratio reaching 1 grows
-      // it to the full track, and fading that out shows a full-length bar over
-      // content there is nothing left to scroll. Measured on the tab strip
-      // (user 2026-08-29, document Space and canvas text node): the rail held
-      // opacity 1 for 22ms after the gate shut, reached a 384px thumb in a
-      // 386px track at opacity 0.98, and took 272ms to go.
+    'leaves a rail with nothing to scroll no way to be seen (scrollable=%s)',
+    (scrollable, want, unwanted, wantRaisers) => {
+      // Three separate things raise this rail's opacity — the pointer being
+      // inside (`data-revealed`), Radix's own scroll state machine
+      // (`data-state`, which `type='scroll'` turns on while scrolling and off
+      // `scrollHideDelay` later) and a drag in progress. Content that stops
+      // overflowing has to close all three, because the thumb is sized by
+      // viewport-over-content and that ratio reaching 1 grows it to the full
+      // track: whichever one is still up paints a full-length bar over content
+      // there is nothing left to scroll. Measured on the tab strip (user
+      // 2026-08-29, seen in a document Space and on a canvas text node): the
+      // pointer path held it 272ms, and a wheel just before the shrink held it
+      // 690ms through `data-state` alone.
+      //
+      // The fade goes with them. It is a farewell for a pointer leaving the
+      // scroller; this exit has nothing to say goodbye to.
       const { container, unmount } = render(
         <ScrollAreaPrimitive.Root type='always'>
           <ScrollAreaPrimitive.Viewport />
@@ -192,6 +198,9 @@ describe('ScrollArea', () => {
       const classes = [...bar.classList];
       expect(classes).toContain(want);
       expect(classes).not.toContain(unwanted);
+      // Every class that can put the opacity back up, whatever drives it.
+      const raisers = classes.filter((c) => c.endsWith(':opacity-100'));
+      expect(raisers.length > 0).toBe(wantRaisers);
       unmount();
     },
   );

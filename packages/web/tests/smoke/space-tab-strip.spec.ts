@@ -598,14 +598,16 @@ test('the global scrollbar fallback ships inside a cascade layer', async () => {
   expect(layer).toBe('base');
 });
 
-test('drops the rail without a fade once nothing is left to scroll', async () => {
-  // The fade belongs to a pointer leaving the scroller. Running it on the
-  // other exit — the content stops overflowing — paints a full-length thumb
-  // over content there is nothing left to scroll, because Radix sizes the
-  // thumb by viewport-over-content and that ratio reaches 1. Measured before
-  // the fix, on this strip: the rail held opacity 1 for 22ms after the gate
-  // shut, hit a 384px thumb in a 386px track at opacity 0.98, and took 272ms
-  // to go (user saw it in a document Space and on a canvas text node).
+test('leaves the rail no way to be seen once nothing is left to scroll', async () => {
+  // Three things can raise this rail: the pointer being inside the scroller,
+  // Radix's own scroll state machine, and a drag. Whichever is still up when
+  // the content stops overflowing paints a full-length thumb over content
+  // there is nothing left to scroll, because Radix sizes the thumb by
+  // viewport-over-content and that ratio reaches 1. Both were measured doing
+  // it on this strip (user saw it in a document Space and on a canvas text
+  // node): the pointer held it 272ms, and a wheel just before the shrink held
+  // it 690ms. So this parks the pointer AND wheels, and asks that the rail be
+  // invisible from the moment the gate shuts.
   //
   // Widening the window is what trips the gate here. `measure()` compares
   // scrollWidth with clientWidth, so a wider container and shorter content
@@ -618,18 +620,35 @@ test('drops the rail without a fade once nothing is left to scroll', async () =>
     (bar as { y: number; height: number }).y + (bar as { height: number }).height / 2,
   );
   await page.waitForTimeout(600);
+  // Radix keeps `data-state` on for `scrollHideDelay` (600ms) after a scroll,
+  // so this wheel is still counting when the viewport widens below.
+  await page.mouse.wheel(60, 0);
+  await page.waitForTimeout(60);
+  expect(
+    await page.evaluate(() => {
+      const strip = document.querySelector('[data-testid="space-tab-bar"]');
+      const rail = strip?.querySelector('[data-orientation="horizontal"][data-scrollable]');
+      return rail?.getAttribute('data-state') ?? null;
+    }),
+  ).toBe('visible');
 
   await page.evaluate(() => {
     const strip = document.querySelector('[data-testid="space-tab-bar"]');
     const rail = strip?.querySelector('[data-orientation="horizontal"][data-scrollable]');
     const vp = strip?.querySelector('[data-radix-scroll-area-viewport]');
     if (!rail || !vp) return;
-    const frames: { scrollable: string; opacity: number; overflowX: number }[] = [];
+    const frames: {
+      scrollable: string;
+      state: string;
+      opacity: number;
+      overflowX: number;
+    }[] = [];
     (window as unknown as { __railFrames: typeof frames }).__railFrames = frames;
     const t0 = performance.now();
     const tick = (): void => {
       frames.push({
         scrollable: rail.getAttribute('data-scrollable') ?? '',
+        state: rail.getAttribute('data-state') ?? '',
         opacity: Number(getComputedStyle(rail).opacity),
         overflowX: vp.scrollWidth - vp.clientWidth,
       });
@@ -646,11 +665,17 @@ test('drops the rail without a fade once nothing is left to scroll', async () =>
   await page.setViewportSize(NARROW);
   await page.waitForTimeout(600);
 
-  const seen = frames as { scrollable: string; opacity: number; overflowX: number }[];
-  // The run has to have crossed the boundary, and the rail has to have been
-  // lit on the way in — without both, an empty "never lit while unscrollable"
-  // says nothing.
+  const seen = frames as {
+    scrollable: string;
+    state: string;
+    opacity: number;
+    overflowX: number;
+  }[];
+  // The run has to have crossed the boundary, the rail has to have been lit on
+  // the way in, and Radix's own path has to have still been up on the far side
+  // — without all three, an empty "never lit while unscrollable" says nothing.
   expect(seen.some((f) => f.scrollable === 'true' && f.opacity > 0.9)).toBe(true);
   expect(seen.some((f) => f.scrollable === 'false')).toBe(true);
+  expect(seen.some((f) => f.scrollable === 'false' && f.state === 'visible')).toBe(true);
   expect(seen.filter((f) => f.scrollable === 'false' && f.opacity > 0.02)).toEqual([]);
 });

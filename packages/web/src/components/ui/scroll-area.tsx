@@ -408,7 +408,8 @@ const ScrollBar = React.forwardRef<
         // mount/unmount animation): hidden by default, revealed while
         // scrolling (Radix flips data-state) OR while the pointer is inside
         // the scroller (user-ratified 2026-07-15) — 150ms in, 300ms out, like
-        // the native overlay bar. cursor-default pins the native-scrollbar
+        // the native overlay bar, and only while the axis still scrolls (see
+        // the block below). cursor-default pins the native-scrollbar
         // arrow (otherwise the rail inherits the surroundings' text/grab
         // cursor). Each rail answers for its own axis, and the props say so
         // per rail rather than through a `group-data-…/scroller:` variant:
@@ -416,21 +417,25 @@ const ScrollBar = React.forwardRef<
         // nest — a wide table inside the message list — the outer one's
         // answer about an axis it never scrolls reaches the inner rail, and
         // the bar there shows up and cannot be grabbed.
-        'group/rail flex touch-none select-none p-px cursor-default opacity-0 duration-300 data-[revealed=true]:opacity-100 data-[revealed=true]:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100',
-        // The fade is a farewell for a pointer leaving the scroller. Content
-        // that stops overflowing is a different exit and gets none: the thumb
-        // is sized by viewport-over-content, so the ratio reaching 1 grows it
-        // to the full track, and fading THAT out draws a full-length bar over
-        // content there is nothing left to scroll. Measured on the tab strip
-        // before this line: the rail held opacity 1 for 22ms after the gate
-        // shut, reached a 384px thumb in a 386px track at opacity 0.98, and
-        // took 272ms to go (user reported it in a document Space and on a
-        // canvas text node, 2026-08-29). Computed here for the same reason the
-        // hit testing below is: `transition-opacity` and a
-        // `data-[scrollable=false]:transition-none` variant set the same
-        // property at the same specificity, so which one wins would be decided
-        // by the order Tailwind happens to emit them in.
-        scrollable ? 'transition-opacity' : 'transition-none',
+        'group/rail flex touch-none select-none p-px cursor-default opacity-0 duration-300',
+        // Every way this rail can be seen hangs off whether its axis still has
+        // something to scroll, and the fade goes with them. The thumb is sized
+        // by viewport-over-content, so the ratio reaching 1 grows it to the
+        // full track: any path still up when the content stops overflowing
+        // paints a full-length bar over content there is nothing left to
+        // scroll. Both paths were measured doing exactly that on the tab strip
+        // (user reported it in a document Space and on a canvas text node,
+        // 2026-08-29) — the pointer held it 272ms, and a wheel just before the
+        // shrink held it 690ms through `data-state`, which belongs to Radix's
+        // scroll state machine and answers to nothing here.
+        //
+        // Computed rather than written as `data-[scrollable=false]:` variants
+        // for the same reason the hit testing below is: those set the same
+        // properties at the same specificity as the ones they must beat, so
+        // which one wins would be decided by the order Tailwind emits them in.
+        scrollable
+          ? 'transition-opacity data-[revealed=true]:opacity-100 data-[revealed=true]:duration-150 data-[state=visible]:opacity-100 data-[state=visible]:duration-150 data-[dragging=true]:opacity-100'
+          : 'transition-none',
         // Hit testing follows the reveal, computed here rather than left to
         // a stack of `data-[…]:pointer-events-*` utilities: those all carry
         // the same specificity, so which one wins is decided by the order
