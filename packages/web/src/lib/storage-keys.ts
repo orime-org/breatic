@@ -39,6 +39,8 @@ export const STORAGE_KEYS = {
   railMyStudios: 'breatic.myStudios',
   /** Rail "Joined studios" section collapsed flag. */
   railJoinedStudios: 'breatic.joinedStudios',
+  /** Width in pixels the user dragged the Agent column to. One value for every project. */
+  agentColumnWidth: 'breatic.agentColumnWidth',
 } as const;
 
 /** Union of every valid persisted key value. */

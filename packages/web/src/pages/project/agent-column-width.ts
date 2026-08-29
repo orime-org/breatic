@@ -63,16 +63,23 @@ function clamp(value: number, low: number, high: number): number {
  *   them. This EXCLUDES the drag handle: the library sums the panels'
  *   `offsetWidth` and the handle is not one of them, so a page sitting at
  *   `PAGE_MIN_WIDTH` gives the panels `PAGE_MIN_WIDTH - RESIZE_HANDLE_WIDTH`.
- * @returns A width inside `[320, 640]` that leaves the space region at least 420.
+ * @returns A width inside `[320, 640]` that leaves the space region at least
+ *   420 whenever the row width is known.
  */
 export function resolveWidth(setWidth: number | null, panelsWidth: number): number {
-  // A stored value that survived the read gate can still be non-finite here if
-  // a caller hands one over; Math.min(NaN, x) is NaN and clamp passes NaN
-  // straight through, so the entrance is the only place that can stop it.
+  // Both arguments are checked here because Math.min(NaN, x) is NaN and clamp
+  // passes NaN straight through, so a NaN from either one would land in the
+  // layout as the panel's new width.
   const wanted =
     setWidth !== null && Number.isFinite(setWidth) ? setWidth : AGENT_COLUMN_MIN_WIDTH;
+  // An unmeasured panel reports a zero share of its group, and the width read
+  // back out of that share is NaN. The row constraint is then unknown rather
+  // than zero, so it is not applied at all.
+  const roomBesideSpace = Number.isFinite(panelsWidth)
+    ? panelsWidth - SPACE_MIN_WIDTH
+    : Number.POSITIVE_INFINITY;
   return clamp(
-    Math.min(wanted, panelsWidth - SPACE_MIN_WIDTH),
+    Math.min(wanted, roomBesideSpace),
     AGENT_COLUMN_MIN_WIDTH,
     AGENT_COLUMN_MAX_WIDTH,
   );
