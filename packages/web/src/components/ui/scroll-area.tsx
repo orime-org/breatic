@@ -74,6 +74,18 @@ function useKeepBoth<T>(
   );
 }
 
+/**
+ * How far this viewport can travel on one axis.
+ * @param viewport - The element that scrolls.
+ * @param vertical - Whether the axis in question is the vertical one.
+ * @returns The travel in layout px, zero when there is nothing to scroll.
+ */
+function maxScrollOf(viewport: HTMLElement, vertical: boolean): number {
+  return vertical
+    ? viewport.scrollHeight - viewport.clientHeight
+    : viewport.scrollWidth - viewport.clientWidth;
+}
+
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
@@ -248,41 +260,66 @@ const ScrollBar = React.forwardRef<
     const vertical = orientation === 'vertical';
     const thumb = rail.firstElementChild as HTMLElement | null;
     if (!thumb) return;
-    const maxScroll = vertical
-      ? viewport.scrollHeight - viewport.clientHeight
-      : viewport.scrollWidth - viewport.clientWidth;
-    const thumbSize = vertical ? thumb.offsetHeight : thumb.offsetWidth;
-    // p-px padding on the rail: the thumb travels inside the content box.
-    const trackRange = (vertical ? rail.clientHeight : rail.clientWidth) - 2 - thumbSize;
-    if (maxScroll <= 0 || trackRange <= 0) return;
+    if (maxScrollOf(viewport, vertical) <= 0) return;
+    // Ownership is claimed here, before any judgement about the geometry. The
+    // thumb has a size floor, so on a very short rail the travel left for it
+    // goes negative while the content is still fully scrollable; letting the
+    // press fall through there hands the gesture to the primitive underneath,
+    // whose model is jump-to-point in screen space and which writes body and
+    // viewport styles behind this component's back.
     e.stopPropagation();
     e.preventDefault();
-    const railRect = rail.getBoundingClientRect();
-    const railScreen = vertical ? railRect.height : railRect.width;
-    const railLayout = vertical ? rail.offsetHeight : rail.offsetWidth;
-    const scale = railLayout > 0 && railScreen > 0 ? railScreen / railLayout : 1;
-    const pointer = vertical ? e.clientY : e.clientX;
-    const thumbRect = thumb.getBoundingClientRect();
-    const onThumb = vertical
-      ? pointer >= thumbRect.top && pointer <= thumbRect.bottom
-      : pointer >= thumbRect.left && pointer <= thumbRect.right;
+    /**
+     * Reads the numbers this drag runs on, at the moment it needs them.
+     *
+     * Freezing them at press survives only while nothing relayouts, and a
+     * strip relayouts readily — a collaborator renames something, the scroll
+     * arrows appear. The frozen formula then stays internally consistent
+     * while drifting away from the cursor, with no recovery for the rest of
+     * the gesture.
+     * @returns Travel, ratio and the ambient scale as they are right now.
+     */
+    const geometry = (): { maxScroll: number; ratio: number; scale: number } => {
+      const maxScroll = maxScrollOf(viewport, vertical);
+      const thumbSize = vertical ? thumb.offsetHeight : thumb.offsetWidth;
+      // p-px padding on the rail: the thumb travels inside the content box.
+      const trackRange = (vertical ? rail.clientHeight : rail.clientWidth) - 2 - thumbSize;
+      const railRect = rail.getBoundingClientRect();
+      const railScreen = vertical ? railRect.height : railRect.width;
+      const railLayout = vertical ? rail.offsetHeight : rail.offsetWidth;
+      return {
+        maxScroll,
+        // A degenerate track has no travel to map onto, so the whole content
+        // range answers to the rail's own length instead.
+        ratio: trackRange > 0 ? maxScroll / trackRange : maxScroll / Math.max(1, railLayout),
+        scale: railLayout > 0 && railScreen > 0 ? railScreen / railLayout : 1,
+      };
+    };
     /**
      * Writes a clamped scroll position to the viewport axis.
      * @param next - Target scroll offset in layout px.
+     * @param maxScroll - The travel available at the moment of the write.
      * @returns The clamped value actually applied.
      */
-    const setScroll = (next: number): number => {
+    const setScroll = (next: number, maxScroll: number): number => {
       const clamped = Math.max(0, Math.min(maxScroll, next));
       if (vertical) viewport.scrollTop = clamped;
       else viewport.scrollLeft = clamped;
       return clamped;
     };
+    const pointer = vertical ? e.clientY : e.clientX;
+    const thumbRect = thumb.getBoundingClientRect();
+    const onThumb = vertical
+      ? pointer >= thumbRect.top && pointer <= thumbRect.bottom
+      : pointer >= thumbRect.left && pointer <= thumbRect.right;
     let startScroll = vertical ? viewport.scrollTop : viewport.scrollLeft;
     if (!onThumb) {
-      const pointerInRail = (pointer - (vertical ? railRect.top : railRect.left)) / scale;
-      startScroll = setScroll(((pointerInRail - 1 - thumbSize / 2) / trackRange) * maxScroll);
+      const g = geometry();
+      const railRect = rail.getBoundingClientRect();
+      const thumbSize = vertical ? thumb.offsetHeight : thumb.offsetWidth;
+      const pointerInRail = (pointer - (vertical ? railRect.top : railRect.left)) / g.scale;
+      startScroll = setScroll((pointerInRail - 1 - thumbSize / 2) * g.ratio, g.maxScroll);
     }
-    const ratio = maxScroll / trackRange;
     rail.dataset.dragging = 'true';
     rail.setPointerCapture(e.pointerId);
     /**
@@ -290,8 +327,9 @@ const ScrollBar = React.forwardRef<
      * @param ev - A captured pointermove on the rail.
      */
     const onMove = (ev: PointerEvent): void => {
-      const delta = ((vertical ? ev.clientY : ev.clientX) - pointer) / scale;
-      setScroll(startScroll + delta * ratio);
+      const g = geometry();
+      const delta = ((vertical ? ev.clientY : ev.clientX) - pointer) / g.scale;
+      setScroll(startScroll + delta * g.ratio, g.maxScroll);
     };
     /**
      * Ends the gesture: releases capture and detaches the listeners.

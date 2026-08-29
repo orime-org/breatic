@@ -347,4 +347,102 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     expect(removed).toContain('pointermove');
     expect(rail.dataset.dragging).toBeUndefined();
   });
+  it('owns a press on a scrollable rail even when the track is degenerate (2026-08-29)', () => {
+    // The thumb has a floor, so on a very short rail the travel left for it
+    // goes negative while the content is still fully scrollable. Refusing the
+    // press there hands the gesture to the primitive underneath, whose model
+    // is jump-to-point in SCREEN space — a different drag on the one geometry
+    // where the two disagree most, and it also writes body and viewport
+    // styles behind this component's back. Ownership is claimed before the
+    // geometry is judged.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    // 14px rail, 18px thumb floor: track range is negative.
+    Object.defineProperty(rail, 'clientWidth', { value: 14, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { value: 14, configurable: true });
+    Object.defineProperty(thumb, 'offsetWidth', { value: 18, configurable: true });
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    Object.defineProperty(viewport, 'scrollWidth', { value: 3693, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 14, configurable: true });
+
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 7 });
+    // Ownership shows in the gesture being ours: the rail is stamped and the
+    // moves that follow are the ones this file writes.
+    expect(rail.dataset.dragging).toBe('true');
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 12 }));
+    expect(scrollLeft).toBeGreaterThan(0);
+  });
+
+  it('reads the geometry it drags against on every move (2026-08-29)', () => {
+    // Measuring once at press and deriving every later position from those
+    // numbers survives only while nothing relayouts. This strip relayouts
+    // readily — a collaborator renames a Space, the scroll arrows appear —
+    // and the frozen formula stays internally consistent while drifting from
+    // the cursor, with no recovery for the rest of the gesture. Measured in a
+    // browser before this: widening the window mid-drag without moving the
+    // pointer put the thumb 251px from the cursor, permanently.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    let railWidth = 200;
+    Object.defineProperty(rail, 'clientWidth', { get: () => railWidth, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { get: () => railWidth, configurable: true });
+    rail.getBoundingClientRect = (() =>
+      ({ left: 0, top: 0, width: railWidth, height: 8 })) as typeof rail.getBoundingClientRect;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    thumb.getBoundingClientRect = (() =>
+      ({ left: 0, right: 40, top: 0, bottom: 8 })) as typeof thumb.getBoundingClientRect;
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    // Press on the thumb so the press itself moves nothing.
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 20 });
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 40 }));
+    const beforeRelayout = scrollLeft;
+    expect(beforeRelayout).toBeGreaterThan(0);
+
+    // The rail doubles in width without the pointer moving. Track range and
+    // the ratio both change; a handler that froze them keeps using the old
+    // ones for the rest of the gesture.
+    railWidth = 400;
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 40 }));
+    const ratioBefore = beforeRelayout / (40 - 20);
+    const ratioAfter = scrollLeft / (40 - 20);
+    expect(ratioAfter).toBeLessThan(ratioBefore);
+  });
 });
