@@ -136,13 +136,72 @@ describe('ScrollArea', () => {
     expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
   });
 
-  it('rail idles hidden AND pointer-transparent, and follows the pointer into the scroller (2026-08-29)', () => {
+  it.each([
+    [true, true, 'true', 'pointer-events-auto'],
+    [true, false, 'false', 'pointer-events-none'],
+    [false, true, 'false', 'pointer-events-none'],
+    [false, false, 'false', 'pointer-events-none'],
+  ])(
+    'shows and answers the pointer only when its axis scrolls AND the pointer is inside (scrollable=%s revealed=%s)',
+    (scrollable, revealed, wantRevealed, wantEvents) => {
+      // Both halves of the gate, driven directly. Through ScrollArea this
+      // composition is unreachable under jsdom: `scrollable` comes from a
+      // ResizeObserver measurement and jsdom lays nothing out, so a case that
+      // renders the whole component can only ever observe the hidden state and
+      // says nothing about what the pointer half does.
+      const { container, unmount } = render(
+        <ScrollAreaPrimitive.Root type='always'>
+          <ScrollAreaPrimitive.Viewport />
+          <ScrollBar
+            forceMount
+            orientation='vertical'
+            scrollable={scrollable}
+            revealed={revealed}
+          />
+        </ScrollAreaPrimitive.Root>,
+      );
+      const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      expect(bar.getAttribute('data-revealed')).toBe(wantRevealed);
+      expect(bar.className).toContain(wantEvents);
+      unmount();
+    },
+  );
+
+  it('keeps one ref identity for the viewport across renders (2026-08-29)', () => {
+    // React detaches and re-attaches a ref whose identity changed, calling the
+    // old one with null first, and Radix composes the viewport ref with a state
+    // setter of its own — so an unstable callback here runs that setter null
+    // and back on every render of every scroller in the app.
+    const seen: (HTMLElement | null)[] = [];
+    /**
+     * Records every node this ref is handed.
+     * @param node - The viewport, or null when React detaches the ref.
+     */
+    const keep = (node: HTMLDivElement | null): void => {
+      seen.push(node);
+    };
+    const { rerender } = render(
+      <ScrollArea viewportRef={keep}>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    rerender(
+      <ScrollArea viewportRef={keep}>
+        <p>y</p>
+      </ScrollArea>,
+    );
+    expect(seen).toEqual([expect.any(HTMLElement)]);
+  });
+
+  it('rail idles hidden and pointer-transparent, and stays that way with nothing to scroll (2026-08-29)', () => {
     // The rail is force-mounted so it is there to reveal, but until the
     // pointer is inside the scroller it must be hidden and take no pointer
     // events at all: it overlays content, and a rail that answers to the
     // pointer while invisible swallows the clicks meant for whatever is
     // underneath it. The reveal is therefore watched on the scroller, not on
-    // the rail — a rail cannot notice a hover it is transparent to.
+    // the rail — a rail cannot notice a hover it is transparent to. What the
+    // Root-to-rail wiring does with a real pointer needs layout, and is
+    // measured in tests/smoke/space-tab-strip.spec.ts.
     const { container } = render(
       <ScrollArea data-testid='root'>
         <p>x</p>

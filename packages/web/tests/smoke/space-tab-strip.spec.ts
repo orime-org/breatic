@@ -123,9 +123,11 @@ test('the rename field grows with what is typed, up to the same cap', async () =
   /**
    * Put a name in the field and read what the field and its tab are worth.
    * @param name - What to type.
-   * @returns The two widths, in px.
+   * @returns The two widths and the field's own floor, in px.
    */
-  const widthsFor = async (name: string): Promise<{ field: number; tab: number }> => {
+  const widthsFor = async (
+    name: string,
+  ): Promise<{ field: number; tab: number; floor: number }> => {
     await field.fill(name);
     await page.waitForTimeout(150);
     return field.evaluate((el) => {
@@ -133,6 +135,8 @@ test('the rename field grows with what is typed, up to the same cap', async () =
       return {
         field: Math.round(el.getBoundingClientRect().width),
         tab: Math.round(tab.getBoundingClientRect().width),
+        // `auto` parses to NaN, which is the answer when no floor is declared.
+        floor: parseFloat(getComputedStyle(el).minWidth) || 0,
       };
     });
   };
@@ -146,8 +150,12 @@ test('the rename field grows with what is typed, up to the same cap', async () =
 
   await page.keyboard.press('Escape');
 
-  // Emptied, it still holds a caret's worth of room rather than collapsing.
-  expect(empty.field).toBeGreaterThan(0);
+  // Emptied, it still holds the room its floor declares rather than
+  // collapsing. Asserting merely non-zero is satisfied by the browser's
+  // one-pixel caret slot, which is what an emptied field is worth with no
+  // floor at all — measured: 1px without the floor, 17px with it.
+  expect(empty.floor).toBeGreaterThan(0);
+  expect(empty.field).toBeGreaterThanOrEqual(Math.floor(empty.floor));
   // It follows the content — this is what a definite width silently defeats.
   expect(short.field).toBeGreaterThan(empty.field);
   expect(long.field).toBeGreaterThan(short.field);

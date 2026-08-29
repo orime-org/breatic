@@ -224,15 +224,10 @@ describe('SpaceTabBar', () => {
 
     it('disables the left arrow when no tab is off-screen-left, regardless of scrollLeft (DOM-rect, PR #140)', () => {
       setup();
-      const scroller = screen.getByRole('tablist');
-      Object.defineProperty(scroller, 'scrollWidth', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroller, 'clientWidth', {
-        value: 200,
-        configurable: true,
-      });
+      // The element that scrolls is the viewport, and `scroll` does not
+      // bubble: stubbing the row instead leaves every rect below unread and
+      // the assertion reading the mount-time default.
+      const scroller = makeOverflow();
       // Smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft
       // at scroller padding-left (~8 px), NOT zero. The prior
       // scrollLeft-based atStart check (commit 626ec56) failed here
