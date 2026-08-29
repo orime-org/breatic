@@ -367,11 +367,23 @@ export function SpaceTabBar({
         disabled={scrollState.atStart}
       />
 
+      {/*
+        The scroller is as tall as the tabs, not as tall as the bar, and the
+        bar's own `items-center` centres it. Stretching it to the full height
+        instead leaves the tabs sitting against the top edge — Radix's
+        `display:table` wrapper inside the viewport is auto-height, so a
+        percentage height on anything under it resolves to auto and collapses
+        back to the tabs' 32px, parked at the top with the bar's spare height
+        below them. It also puts the rail where it belongs: the rail is
+        absolutely positioned along this element's bottom edge, so a
+        tabs-tall scroller overlays it on the tabs (user 2026-08-29) instead
+        of banishing it to a reserved strip underneath.
+      */}
       <ScrollArea
         scrollbars='horizontal'
         viewportRef={scrollerRef}
         className='flex-1'
-        style={{ minWidth: 0, height: '100%' }}
+        style={{ minWidth: 0 }}
       >
         {/*
           The row is ours and the tabs are its own flex children. Radix puts a
@@ -384,7 +396,7 @@ export function SpaceTabBar({
         <div
           role='tablist'
           aria-label={t('chrome.aria.openSpaces')}
-          className='flex h-full w-max items-center'
+          className='flex w-max items-center'
           style={{ gap: 'var(--space-1)', padding: '0 var(--space-2)' }}
         >
           {spaces.map((s) => (
