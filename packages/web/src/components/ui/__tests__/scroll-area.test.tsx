@@ -391,14 +391,18 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     expect(scrollLeft).toBeGreaterThan(0);
   });
 
-  it('reads the geometry it drags against on every move (2026-08-29)', () => {
-    // Measuring once at press and deriving every later position from those
-    // numbers survives only while nothing relayouts. This strip relayouts
-    // readily — a collaborator renames a Space, the scroll arrows appear —
-    // and the frozen formula stays internally consistent while drifting from
-    // the cursor, with no recovery for the rest of the gesture. Measured in a
-    // browser before this: widening the window mid-drag without moving the
-    // pointer put the thumb 251px from the cursor, permanently.
+  it('keeps the thumb under the cursor across a mid-gesture relayout (2026-08-29)', () => {
+    // What a drag has to hold on to is the point the pointer grabbed INSIDE
+    // the thumb: it is the one quantity a relayout cannot invalidate. Carrying
+    // a scroll offset instead ties the gesture to the ratio in force when it
+    // started, and the moment the ratio changes the thumb settles a fixed
+    // distance from the cursor and stays there for the rest of the drag.
+    // Measured in a browser before this: growing the strip's content mid-drag
+    // put the thumb 40px from the cursor and it never came back — four
+    // consecutive samples all read −40. This strip relayouts readily (a
+    // collaborator renames a Space) and so does every other scroller in the
+    // app (the node-history panel loads a page while its bar is being
+    // dragged).
     const { container } = render(
       <ScrollArea data-testid='root' scrollbars='horizontal'>
         <p>x</p>
@@ -411,14 +415,16 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     const viewport = container.querySelector(
       '[data-radix-scroll-area-viewport]',
     ) as HTMLElement;
+    const THUMB = 40;
+    const MAX_SCROLL = 800;
     let railWidth = 200;
     Object.defineProperty(rail, 'clientWidth', { get: () => railWidth, configurable: true });
     Object.defineProperty(rail, 'offsetWidth', { get: () => railWidth, configurable: true });
     rail.getBoundingClientRect = (() =>
       ({ left: 0, top: 0, width: railWidth, height: 8 })) as typeof rail.getBoundingClientRect;
-    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    Object.defineProperty(thumb, 'offsetWidth', { value: THUMB, configurable: true });
     thumb.getBoundingClientRect = (() =>
-      ({ left: 0, right: 40, top: 0, bottom: 8 })) as typeof thumb.getBoundingClientRect;
+      ({ left: 0, right: THUMB, top: 0, bottom: 8 })) as typeof thumb.getBoundingClientRect;
     let scrollLeft = 0;
     Object.defineProperty(viewport, 'scrollLeft', {
       get: () => scrollLeft,
@@ -430,19 +436,24 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
     Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
 
-    // Press on the thumb so the press itself moves nothing.
-    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 20 });
-    fireEvent(rail, new PointerEvent('pointermove', { clientX: 40 }));
-    const beforeRelayout = scrollLeft;
-    expect(beforeRelayout).toBeGreaterThan(0);
+    /**
+     * Where the pointer is holding the thumb, in the rail's own coordinates.
+     * @param pointerX - The pointer's x, which is also its offset into the rail here.
+     * @returns The distance from the thumb's leading edge to the pointer.
+     */
+    const grabAt = (pointerX: number): number =>
+      pointerX - scrollLeft / (MAX_SCROLL / (railWidth - 2 - THUMB));
 
-    // The rail doubles in width without the pointer moving. Track range and
-    // the ratio both change; a handler that froze them keeps using the old
-    // ones for the rest of the gesture.
+    // Press the track, which starts the gesture from a non-zero offset — the
+    // state in which the frozen offset and the live ratio disagree.
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 150 });
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 160 }));
+    const grabBefore = grabAt(160);
+    expect(grabBefore).toBeCloseTo(1 + THUMB / 2, 5);
+
+    // The rail doubles without the pointer moving: same cursor, new ratio.
     railWidth = 400;
-    fireEvent(rail, new PointerEvent('pointermove', { clientX: 40 }));
-    const ratioBefore = beforeRelayout / (40 - 20);
-    const ratioAfter = scrollLeft / (40 - 20);
-    expect(ratioAfter).toBeLessThan(ratioBefore);
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 160 }));
+    expect(grabAt(160)).toBeCloseTo(grabBefore, 5);
   });
 });

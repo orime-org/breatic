@@ -274,12 +274,17 @@ const ScrollBar = React.forwardRef<
      *
      * Freezing them at press survives only while nothing relayouts, and a
      * strip relayouts readily — a collaborator renames something, the scroll
-     * arrows appear. The frozen formula then stays internally consistent
-     * while drifting away from the cursor, with no recovery for the rest of
-     * the gesture.
-     * @returns Travel, ratio and the ambient scale as they are right now.
+     * arrows appear, an infinite list lands a page.
+     * @returns Where the rail starts, how big the thumb is, the travel left,
+     *   the content-per-track-pixel ratio and the ambient scale, right now.
      */
-    const geometry = (): { maxScroll: number; ratio: number; scale: number } => {
+    const geometry = (): {
+      maxScroll: number;
+      ratio: number;
+      scale: number;
+      railStart: number;
+      thumbSize: number;
+    } => {
       const maxScroll = maxScrollOf(viewport, vertical);
       const thumbSize = vertical ? thumb.offsetHeight : thumb.offsetWidth;
       // p-px padding on the rail: the thumb travels inside the content box.
@@ -293,43 +298,56 @@ const ScrollBar = React.forwardRef<
         // range answers to the rail's own length instead.
         ratio: trackRange > 0 ? maxScroll / trackRange : maxScroll / Math.max(1, railLayout),
         scale: railLayout > 0 && railScreen > 0 ? railScreen / railLayout : 1,
+        railStart: vertical ? railRect.top : railRect.left,
+        thumbSize,
       };
     };
     /**
      * Writes a clamped scroll position to the viewport axis.
      * @param next - Target scroll offset in layout px.
      * @param maxScroll - The travel available at the moment of the write.
-     * @returns The clamped value actually applied.
      */
-    const setScroll = (next: number, maxScroll: number): number => {
+    const setScroll = (next: number, maxScroll: number): void => {
       const clamped = Math.max(0, Math.min(maxScroll, next));
       if (vertical) viewport.scrollTop = clamped;
       else viewport.scrollLeft = clamped;
-      return clamped;
     };
     const pointer = vertical ? e.clientY : e.clientX;
     const thumbRect = thumb.getBoundingClientRect();
     const onThumb = vertical
       ? pointer >= thumbRect.top && pointer <= thumbRect.bottom
       : pointer >= thumbRect.left && pointer <= thumbRect.right;
-    let startScroll = vertical ? viewport.scrollTop : viewport.scrollLeft;
-    if (!onThumb) {
+    const start = geometry();
+    // What the gesture holds on to is where the pointer grabbed INSIDE the
+    // thumb, measured from the thumb's leading edge. It is the one quantity a
+    // relayout leaves alone: carrying a scroll offset instead ties every later
+    // position to the ratio in force at press, so the moment the ratio changes
+    // the thumb settles a fixed distance from the cursor and stays there.
+    // Measured in a browser: growing the content mid-drag left the thumb 40px
+    // away for the rest of the gesture. A press on the track has no grab of
+    // its own — the thumb goes to the pointer, so the pointer is at its centre
+    // (the 1 is the rail's p-px).
+    const grab = onThumb
+      ? (pointer - start.railStart) / start.scale -
+        (vertical ? viewport.scrollTop : viewport.scrollLeft) / start.ratio
+      : 1 + start.thumbSize / 2;
+    /**
+     * Puts the thumb where the pointer is holding it, against today's geometry.
+     * @param screenPos - The pointer's position on this axis, in screen px.
+     */
+    const apply = (screenPos: number): void => {
       const g = geometry();
-      const railRect = rail.getBoundingClientRect();
-      const thumbSize = vertical ? thumb.offsetHeight : thumb.offsetWidth;
-      const pointerInRail = (pointer - (vertical ? railRect.top : railRect.left)) / g.scale;
-      startScroll = setScroll((pointerInRail - 1 - thumbSize / 2) * g.ratio, g.maxScroll);
-    }
+      setScroll(((screenPos - g.railStart) / g.scale - grab) * g.ratio, g.maxScroll);
+    };
+    if (!onThumb) apply(pointer);
     rail.dataset.dragging = 'true';
     rail.setPointerCapture(e.pointerId);
     /**
-     * Applies the scale-corrected relative drag on every captured move.
+     * Tracks the pointer on every captured move.
      * @param ev - A captured pointermove on the rail.
      */
     const onMove = (ev: PointerEvent): void => {
-      const g = geometry();
-      const delta = ((vertical ? ev.clientY : ev.clientX) - pointer) / g.scale;
-      setScroll(startScroll + delta * g.ratio, g.maxScroll);
+      apply(vertical ? ev.clientY : ev.clientX);
     };
     /**
      * Ends the gesture: releases capture and detaches the listeners.
