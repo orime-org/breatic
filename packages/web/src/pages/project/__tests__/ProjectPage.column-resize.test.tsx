@@ -162,4 +162,16 @@ describe('ProjectPage — the two columns and the handle between them', () => {
     const page = await screen.findByTestId('project-page');
     expect(page.style.minWidth).toBe(`${PAGE_MIN_WIDTH}px`);
   });
+
+  it('scrolls sideways inside our own scroller, not the document', async () => {
+    setup('owner');
+    const page = await screen.findByTestId('project-page');
+
+    // Left to the document, the bar down the bottom of the window is the one
+    // the browser draws, and every engine draws it differently.
+    const scroller = page.closest('[data-scrollbars]');
+    expect(scroller).not.toBeNull();
+    expect(scroller?.getAttribute('data-scrollbars')).toBe('horizontal');
+    expect(scroller?.querySelector('[data-radix-scroll-area-viewport]')).toContainElement(page);
+  });
 });
