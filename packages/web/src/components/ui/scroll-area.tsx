@@ -16,21 +16,22 @@ import { cn } from '@web/lib/utils';
  *   - the bar appears while scrolling AND while the pointer is anywhere
  *     inside the scroller (user-ratified 2026-07-15: hover must reveal a
  *     hidden bar without scrolling first), fading in/out. The rails are
- *     force-mounted, and each one is shown and answers the pointer only while
- *     its own axis has something to scroll (`data-scrollable`,
- *     ResizeObserver-maintained) AND the pointer is inside — so a hidden rail
- *     swallows nothing, an axis with nothing to scroll never paints a bar,
- *     and a scroller nested in another one is unaffected by its host's
- *     verdict. The pointer is watched on the scroller rather than on the
- *     rail, because a rail that is pointer-transparent while hidden cannot
- *     notice a hover of its own;
+ *     force-mounted, and each one answers the pointer only while its own axis
+ *     has something to scroll (`data-scrollable`, ResizeObserver-maintained)
+ *     AND the pointer is inside — so a hidden rail swallows nothing, and a
+ *     scroller nested in another one is unaffected by its host's verdict.
+ *     Scroll activity paints a rail on its own, pointer or no pointer (Radix
+ *     flips `data-state`, and holds it for its hide delay afterwards). The
+ *     pointer is watched on the scroller rather than on the rail, because a
+ *     rail that is pointer-transparent while hidden cannot notice a hover of
+ *     its own;
  *   - it overlays content — zero layout space;
  *   - hover changes COLOR only (thumb opacity 40% → 60%) and the pointer is
  *     the default arrow (native scrollbar convention — never the text/grab
  *     cursor of the surroundings); shape never changes;
  *   - scrollbar interaction NEVER disturbs input state: no focus move, no
- *     selection change, no IME interruption (see ScrollBar's mousedown
- *     handling below).
+ *     selection change, no IME interruption, whichever button is pressed (see
+ *     the two cancelled presses on ScrollBar's rail below).
  *
  * `scrollbars` picks the axes ('vertical' default · 'horizontal' · 'both');
  * `viewportClassName` styles the Radix Viewport — the element that actually
