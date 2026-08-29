@@ -49,13 +49,49 @@ const ScrollArea = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
     viewportClassName?: string;
     scrollbars?: 'vertical' | 'horizontal' | 'both';
+    /**
+     * The element that actually scrolls, for a caller that has to drive it.
+     * The Root this component forwards `ref` to is the box around it — reading
+     * `scrollLeft` or calling `scrollBy` there does nothing.
+     */
+    viewportRef?: React.Ref<HTMLDivElement>;
+    /**
+     * Anything else the viewport has to carry. A role that owns its children
+     * (`tablist`, `listbox`) belongs on the element the children sit in, and
+     * after this wrapper that element is the viewport — putting it on the Root
+     * would leave the viewport and Radix's content wrapper standing between
+     * the role and the items it owns.
+     */
+    viewportProps?: Omit<
+      React.ComponentPropsWithoutRef<'div'>,
+      'ref' | 'className' | 'children'
+    >;
   }
 >(
   (
-    { className, viewportClassName, children, type = 'scroll', scrollbars = 'vertical', ...props },
+    {
+      className,
+      viewportClassName,
+      children,
+      type = 'scroll',
+      scrollbars = 'vertical',
+      viewportRef: forwardedViewportRef,
+      viewportProps,
+      ...props
+    },
     ref,
   ) => {
     const viewportRef = React.useRef<HTMLDivElement>(null);
+    /**
+     * Keeps the local viewport ref while handing the same node to a caller
+     * that asked for it — the same merge the rail below does.
+     * @param node - The viewport element, or null on unmount.
+     */
+    const setViewportRef = (node: HTMLDivElement | null): void => {
+      viewportRef.current = node;
+      if (typeof forwardedViewportRef === 'function') forwardedViewportRef(node);
+      else if (forwardedViewportRef) forwardedViewportRef.current = node;
+    };
     const [scrollable, setScrollable] = React.useState({ x: false, y: false });
     React.useEffect(() => {
       const viewport = viewportRef.current;
@@ -93,8 +129,9 @@ const ScrollArea = React.forwardRef<
         {...props}
       >
         <ScrollAreaPrimitive.Viewport
-          ref={viewportRef}
+          ref={setViewportRef}
           className={cn('h-full w-full rounded-[inherit]', viewportClassName)}
+          {...viewportProps}
         >
           {children}
         </ScrollAreaPrimitive.Viewport>

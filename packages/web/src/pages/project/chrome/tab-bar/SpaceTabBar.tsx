@@ -12,6 +12,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
@@ -125,6 +126,23 @@ export function SpaceTabBar({
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
 
+  /**
+   * The tabs, read off the scroller.
+   *
+   * Radix wraps a viewport's children in a `display:table` div of its own, so
+   * the tabs are one hop further down than the element that scrolls. Asking
+   * for them by their role instead of by child position keeps this true
+   * whichever wrappers the primitive decides to put in between.
+   * @param scroller - The element that scrolls, or null before it mounts.
+   * @returns The tab elements in document order.
+   */
+  const tabsIn = (scroller: HTMLElement | null): HTMLElement[] =>
+    scroller === null
+      ? []
+      : Array.from(scroller.querySelectorAll('[role="tab"]')).filter(
+        (el): el is HTMLElement => el instanceof HTMLElement,
+      );
+
   // Track scroll overflow + boundaries to drive the smart-hide/disabled
   // states for the left / right scroll arrows (mock v4.27 / v4.29).
   const [scrollState, setScrollState] = React.useState({
@@ -152,9 +170,7 @@ export function SpaceTabBar({
     // arithmetic entirely.
     const overflow = el.scrollWidth > el.clientWidth + 1;
     const scrollerRect = el.getBoundingClientRect();
-    const tabs = Array.from(el.children).filter(
-      (c): c is HTMLElement => c instanceof HTMLElement,
-    );
+    const tabs = tabsIn(el);
     const atStart = !tabs.some(
       (t) => t.getBoundingClientRect().left < scrollerRect.left - 1,
     );
@@ -224,9 +240,7 @@ export function SpaceTabBar({
   const scrollOneTab = (direction: 'left' | 'right'): void => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const tabs = Array.from(scroller.children).filter(
-      (el): el is HTMLElement => el instanceof HTMLElement,
-    );
+    const tabs = tabsIn(scroller);
     if (tabs.length === 0) return;
     const scrollerRect = scroller.getBoundingClientRect();
 
@@ -353,17 +367,23 @@ export function SpaceTabBar({
         disabled={scrollState.atStart}
       />
 
-      <div
-        ref={scrollerRef}
-        className='flex flex-1 items-center overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-        style={{
-          gap: 'var(--space-1)',
-          minWidth: 0,
-          height: '100%',
-          padding: '0 var(--space-2)',
+      <ScrollArea
+        scrollbars='horizontal'
+        viewportRef={scrollerRef}
+        className='flex-1'
+        style={{ minWidth: 0, height: '100%' }}
+        viewportClassName='flex items-center'
+        // The tablist is the element the tabs sit in, which after this is the
+        // viewport: a role between a tablist and its tabs would break the
+        // relationship a reader depends on.
+        viewportProps={{
+          role: 'tablist',
+          'aria-label': t('chrome.aria.openSpaces'),
+          style: {
+            gap: 'var(--space-1)',
+            padding: '0 var(--space-2)',
+          },
         }}
-        role='tablist'
-        aria-label={t('chrome.aria.openSpaces')}
       >
         {spaces.map((s) => (
           <SpaceTab
@@ -382,7 +402,7 @@ export function SpaceTabBar({
             }
           />
         ))}
-      </div>
+      </ScrollArea>
 
       <ArrowButton
         direction='right'

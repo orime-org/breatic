@@ -366,6 +366,21 @@ describe('SpaceTabBar', () => {
     );
   });
 
+  describe('the strip that scrolls sideways', () => {
+    it('scrolls through the shared component, not a native bar', () => {
+      setup();
+      // Every visible scroller in the app is the ScrollArea component
+      // (web/CLAUDE.md), which draws its own bar: appears while scrolling,
+      // takes no layout room, and hover changes colour without changing
+      // shape. A native bar delivers none of that -- the interaction states
+      // are UA-private and differ between browser builds.
+      const tab = screen.getByTestId('space-tab-s1');
+      const strip = tab.closest('[data-scrollbars]');
+      expect(strip).not.toBeNull();
+      expect(strip?.getAttribute('data-scrollbars')).toBe('horizontal');
+    });
+  });
+
   describe('a name too long for the strip', () => {
     // The strip scrolls sideways, so a long name never breaks the layout --
     // it takes the whole visible width for itself and pushes every other tab
