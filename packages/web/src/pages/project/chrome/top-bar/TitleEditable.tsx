@@ -7,10 +7,12 @@ interface TitleEditableProps {
   value: string;
   onChange: (next: string) => void;
   /**
-   * Visible width cap (px). Defaults to 320 (= Agent column width) for
-   * the TopBar project title; callers in tighter containers (e.g. Agent
-   * column header sharing 40px row with icons + chip + button) should
-   * pass a smaller value so truncation kicks in at the right boundary.
+   * Visible width cap (px). Defaults to 320, which is what the Agent column
+   * was fixed at when this box was written; the column can now be dragged
+   * between 320 and 640, so the default no longer stands for anything but the
+   * TopBar project title's own cap. Callers in tighter containers (e.g. the
+   * Agent column header sharing a 40px row with icons + chip + button) pass a
+   * smaller value so truncation kicks in at the right boundary.
    */
   maxWidth?: number;
   /**
@@ -64,9 +66,9 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * Two visual modes:
  *
  *   - **Static**         → `<span>` with `truncate` + ellipsis. Over-long
- *     text is left-aligned and clipped with "…". Width capped at 320px.
+ *     text is left-aligned and clipped with "…". Width capped at `maxWidth`.
  *   - **Edit** (focus)   → `<input>`. Native caret + horizontal scroll
- *     follows the cursor; no ellipsis. Width still capped at 320px.
+ *     follows the cursor; no ellipsis. Width still capped at `maxWidth`.
  *
  * Edit trigger (2026-05-25, PR #140): **double-click** the static span
  * enters edit mode. Single-click does nothing — consistent with the
@@ -81,7 +83,7 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  *
  * Why dual mode (not `<span contenteditable>`): contenteditable's caret
  * position ignores `overflow:hidden`, so an editing user sees the cursor
- * drift outside the 320 cap. A native `<input>` keeps caret + content in
+ * drift outside the width cap. A native `<input>` keeps caret + content in
  * the visible window via horizontal scroll, which is exactly what user
  * expects (content scrolls right-to-left while the caret stays put).
  *
@@ -92,7 +94,7 @@ const DEFAULT_TITLE_MAX_WIDTH = 320;
  * @param root0 - Editable title props.
  * @param root0.value - Current project title shown in static mode and seeded as the edit draft.
  * @param root0.onChange - Called with the trimmed, length-capped new title once the user commits a rename.
- * @param root0.maxWidth - Visible width cap in pixels; defaults to the Agent column width.
+ * @param root0.maxWidth - Visible width cap in pixels; defaults to 320.
  * @param root0.maxLength - How many characters the name may run to; defaults to what a project name may hold.
  * @param root0.placeholder - What to show while the thing has no name of its own.
  * @param root0.editable - Whether the title can be edited; defaults to true. When false the span is read-only.
