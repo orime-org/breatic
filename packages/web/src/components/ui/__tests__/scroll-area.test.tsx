@@ -198,47 +198,51 @@ describe('ScrollArea', () => {
   });
 
   describe('input-state contract (user-ratified 2026-07-15): scrollbar interaction never disturbs focus/selection', () => {
-    it('prevents mousedown default on the scrollbar rail (the focus/selection-changing action)', () => {
+    /**
+     * Renders a scroller with a focused textarea and enough stubbed layout for
+     * the rail to own a press.
+     *
+     * A pointerdown is the only press a real pointer delivers here, and the
+     * rail's handler cancels it before the browser can produce the
+     * compatibility mouse events, so nothing that could move focus is ever
+     * dispatched.
+     * @returns The rail and the textarea that must keep the caret.
+     */
+    function renderScrollableWithInput(): { rail: HTMLElement; input: HTMLElement } {
       const { container } = render(
-        <ScrollAreaPrimitive.Root type='always'>
-          <ScrollAreaPrimitive.Viewport />
-          <ScrollBar forceMount orientation='vertical' />
-        </ScrollAreaPrimitive.Root>,
+        <ScrollArea data-testid='root'>
+          <textarea data-testid='input' defaultValue='typing…' />
+        </ScrollArea>,
       );
-      const bar = container.querySelector('[data-orientation="vertical"]');
-      expect(bar).not.toBeNull();
+      const rail = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      rail.setPointerCapture = vi.fn();
+      rail.releasePointerCapture = vi.fn();
+      Object.defineProperty(rail, 'clientHeight', { value: 200, configurable: true });
+      Object.defineProperty(rail, 'offsetHeight', { value: 200, configurable: true });
+      const thumb = rail.firstElementChild as HTMLElement;
+      Object.defineProperty(thumb, 'offsetHeight', { value: 40, configurable: true });
+      const viewport = container.querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      Object.defineProperty(viewport, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(viewport, 'clientHeight', { value: 200, configurable: true });
+      return { rail, input: screen.getByTestId('input') };
+    }
+
+    it('cancels the press on the rail (the action that would move focus)', () => {
+      const { rail } = renderScrollableWithInput();
       // fireEvent returns false when preventDefault was called.
-      expect(fireEvent.mouseDown(bar as HTMLElement)).toBe(false);
+      expect(fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientY: 50 })).toBe(
+        false,
+      );
     });
 
     it('keeps focus on a focused textarea when the scrollbar is pressed', () => {
-      const { container } = render(
-        <ScrollAreaPrimitive.Root type='always'>
-          <ScrollAreaPrimitive.Viewport>
-            <textarea data-testid='input' defaultValue='typing…' />
-          </ScrollAreaPrimitive.Viewport>
-          <ScrollBar forceMount orientation='vertical' />
-        </ScrollAreaPrimitive.Root>,
-      );
-      const input = screen.getByTestId('input');
+      const { rail, input } = renderScrollableWithInput();
       input.focus();
       expect(document.activeElement).toBe(input);
-      const bar = container.querySelector('[data-orientation="vertical"]');
-      fireEvent.mouseDown(bar as HTMLElement);
+      fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientY: 50 });
       expect(document.activeElement).toBe(input);
-    });
-
-    it('a caller-supplied onMouseDown cannot remove the contract (chained after preventDefault)', () => {
-      const spy = vi.fn();
-      const { container } = render(
-        <ScrollAreaPrimitive.Root type='always'>
-          <ScrollAreaPrimitive.Viewport />
-          <ScrollBar forceMount orientation='vertical' onMouseDown={spy} />
-        </ScrollAreaPrimitive.Root>,
-      );
-      const bar = container.querySelector('[data-orientation="vertical"]');
-      expect(fireEvent.mouseDown(bar as HTMLElement)).toBe(false);
-      expect(spy).toHaveBeenCalledTimes(1);
     });
   });
 });

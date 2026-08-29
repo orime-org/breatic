@@ -202,14 +202,7 @@ const ScrollBar = React.forwardRef<
     revealed?: boolean;
   }
 >((
-  {
-    className,
-    orientation = 'vertical',
-    onMouseDown,
-    scrollable = true,
-    revealed = false,
-    ...props
-  },
+  { className, orientation = 'vertical', scrollable = true, revealed = false, ...props },
   ref,
 ) => {
   const railRef = React.useRef<HTMLDivElement | null>(null);
@@ -220,20 +213,6 @@ const ScrollBar = React.forwardRef<
   // scroller with nothing to scroll stayed invisible to clicks while still
   // painting a bar over content the reader cannot move (user 2026-08-29).
   const showing = scrollable && revealed;
-  /**
-   * Input-state contract (user-ratified 2026-07-15): interacting with a
-   * scrollbar must never move focus, collapse a selection, or interrupt an
-   * IME composition — exactly like a native scrollbar. Focus/selection
-   * changes are mousedown's DEFAULT action, so preventing it keeps the
-   * focused input/textarea/contenteditable untouched. The contract is
-   * non-negotiable: a caller-supplied onMouseDown is chained AFTER it and
-   * cannot remove the preventDefault.
-   * @param e - The mousedown event on the scrollbar rail.
-   */
-  const guardInputState = (e: React.MouseEvent<HTMLDivElement>): void => {
-    e.preventDefault();
-    onMouseDown?.(e);
-  };
   /**
    * Scale-aware drag takeover (#1773 round-5, user-reported jump). Radix's
    * own drag math mixes SCREEN-space pointer coordinates/rects with
@@ -268,6 +247,13 @@ const ScrollBar = React.forwardRef<
     // whose model is jump-to-point in screen space and which writes body and
     // viewport styles behind this component's back.
     e.stopPropagation();
+    // Input-state contract (user-ratified 2026-07-15): interacting with a
+    // scrollbar must never move focus, collapse a selection, or interrupt an
+    // IME composition — exactly like a native scrollbar. Cancelling the
+    // pointerdown suppresses the compatibility mouse events it would
+    // otherwise produce, and focus and selection changes are mousedown's
+    // DEFAULT action, so the focused input, textarea or contenteditable is
+    // left untouched.
     e.preventDefault();
     /**
      * Reads the numbers this drag runs on, at the moment it needs them.
@@ -388,7 +374,6 @@ const ScrollBar = React.forwardRef<
       {...props}
       data-scrollable={scrollable ? 'true' : 'false'}
       data-revealed={showing ? 'true' : 'false'}
-      onMouseDown={guardInputState}
       onPointerDownCapture={takeOverDrag}
       className={cn(
         // Always-mounted rail, visibility by opacity TRANSITION (not
