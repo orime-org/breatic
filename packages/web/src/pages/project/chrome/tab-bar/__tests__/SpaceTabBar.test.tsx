@@ -344,6 +344,27 @@ describe('SpaceTabBar', () => {
       expect(scrollTo).toHaveBeenCalledWith({ left: 0, behavior: 'smooth' });
     });
 
+    it('leaves a tab hanging a fraction of a pixel over the edge alone', () => {
+      // The same 1px tolerance the arrows and their enabled predicate use: a
+      // column whose width is a percentage of a fractional container puts every
+      // edge on a fraction, and without it the two answer differently inside
+      // that band — the arrow says there is nothing off-screen while this says
+      // there is, and the strip creeps on every space switch.
+      const { setActiveSpace } = setup();
+      const scroller = makeOverflow();
+      mockRect(scroller, { left: 0, right: 200 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 140, right: 200.5 });
+      flushScrollState(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+
+      act(() => setActiveSpace('s3'));
+
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
     it('leaves a tab that is already whole on screen exactly where it is', () => {
       const { setActiveSpace } = setup();
       const scroller = makeOverflow();

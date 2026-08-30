@@ -31,6 +31,17 @@ import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/Project
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 
 /**
+ * How far past an edge a tab may sit and still count as fully on screen.
+ *
+ * Absorbs the sub-pixel rounding CSS gap and padding leave behind, and the
+ * fractions a percentage-sized Agent column puts on every edge beside it.
+ * Every question of the form "is this tab cut off?" is answered against this
+ * one number, so the arrow's enabled state and what the arrow then does can
+ * never disagree inside that band.
+ */
+const EDGE_TOLERANCE = 1;
+
+/**
  * Brings a tab flush against one edge of the strip, moving the strip alone.
  *
  * `scrollIntoView` moves every scroller between the tab and the document, and
@@ -197,10 +208,10 @@ export function SpaceTabBar({
     const scrollerRect = el.getBoundingClientRect();
     const tabs = tabsIn(el);
     const atStart = !tabs.some(
-      (t) => t.getBoundingClientRect().left < scrollerRect.left - 1,
+      (t) => t.getBoundingClientRect().left < scrollerRect.left - EDGE_TOLERANCE,
     );
     const atEnd = !tabs.some(
-      (t) => t.getBoundingClientRect().right > scrollerRect.right + 1,
+      (t) => t.getBoundingClientRect().right > scrollerRect.right + EDGE_TOLERANCE,
     );
     setScrollState({ overflow, atStart, atEnd });
   }, []);
@@ -243,9 +254,9 @@ export function SpaceTabBar({
     if (!(activeTab instanceof HTMLElement)) return;
     const stripRect = scroller.getBoundingClientRect();
     const tabRect = activeTab.getBoundingClientRect();
-    if (tabRect.right > stripRect.right) {
+    if (tabRect.right > stripRect.right + EDGE_TOLERANCE) {
       scrollTabToEdge(scroller, activeTab, 'end');
-    } else if (tabRect.left < stripRect.left) {
+    } else if (tabRect.left < stripRect.left - EDGE_TOLERANCE) {
       scrollTabToEdge(scroller, activeTab, 'start');
     }
   }, [activeSpaceId]);
@@ -279,13 +290,13 @@ export function SpaceTabBar({
       direction === 'right'
         ? tabs.find(
           (tab) =>
-            tab.getBoundingClientRect().right > scrollerRect.right + 1,
+            tab.getBoundingClientRect().right > scrollerRect.right + EDGE_TOLERANCE,
         )
         : [...tabs]
           .reverse()
           .find(
             (tab) =>
-              tab.getBoundingClientRect().left < scrollerRect.left - 1,
+              tab.getBoundingClientRect().left < scrollerRect.left - EDGE_TOLERANCE,
           );
 
     if (target) {
