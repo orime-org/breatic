@@ -18,6 +18,12 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         wrangler: { configPath: "./wrangler.toml" },
+        // Every test here addresses a storage key nothing else uses, so the
+        // per-test rollback buys nothing — and the runner cannot always undo
+        // it: a test that reaches one Durable Object instance twice leaves a
+        // SQLite -shm file behind, which the rollback asserts on
+        // (cloudflare/workers-sdk#11031).
+        isolatedStorage: false,
         miniflare: {
           bindings: {
             // The secret wrangler holds in production. Tests sign their own

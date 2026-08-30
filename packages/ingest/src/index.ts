@@ -17,8 +17,15 @@
  */
 
 import { verifyUploadTicket } from "@breatic/shared";
+import { verifySessionToken } from "@ingest/session-token.js";
 
 export { UploadSession } from "@ingest/upload-session.js";
+
+/**
+ * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
+ * a path that is not a number never reaches the layout check as NaN.
+ */
+const PART_PATH = /^\/uploads\/([^/]+)\/parts\/(\d+)$/;
 
 /** What wrangler binds into the Worker. */
 export interface Env {
@@ -76,6 +83,48 @@ async function startUpload(request: Request, env: Env): Promise<Response> {
   );
 }
 
+/**
+ * Write one part's bytes into R2 and have the instance record it.
+ *
+ * The bytes do not pass through the Durable Object. An instance runs one
+ * request at a time, so streaming a part through it would serialise every
+ * part of every upload it owns; what goes to the instance is the part number
+ * and its etag, once the bytes are already in R2.
+ * @param request - The browser's request, carrying the token and the bytes.
+ * @param env - The Worker's bindings.
+ * @param uploadId - The upload from the path.
+ * @param partNumber - The part number from the path.
+ * @returns A fresh token for the next part, or why the part was refused.
+ */
+async function uploadPart(
+  request: Request,
+  env: Env,
+  uploadId: string,
+  partNumber: number,
+): Promise<Response> {
+  const token = request.headers.get("x-upload-token");
+  if (token === null) return new Response("Unauthorized", { status: 401 });
+
+  const session = await verifySessionToken(
+    token,
+    env.INGEST_SHARED_SECRET,
+    Date.now(),
+  );
+  // The upload id is inside the signature as well as in the path, so a token
+  // names the one upload it may write into rather than any upload at all.
+  if (session === null || session.uploadId !== uploadId) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const body = await request.arrayBuffer();
+  return sessionFor(env, session.storageKey).fetch(
+    new Request(`https://session/part/${partNumber}`, {
+      method: "PUT",
+      body,
+    }),
+  );
+}
+
 export default {
   /**
    * Route one request.
@@ -90,6 +139,11 @@ export default {
 
     if (request.method === "POST" && pathname === "/uploads") {
       return startUpload(request, env);
+    }
+
+    const part = PART_PATH.exec(pathname);
+    if (request.method === "PUT" && part) {
+      return uploadPart(request, env, part[1] ?? "", Number(part[2]));
     }
 
     return new Response("Not found", { status: 404 });

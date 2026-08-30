@@ -33,6 +33,12 @@ interface OpenUpload {
   uploadId: string;
 }
 
+/** A part R2 has accepted, in the form completing the upload needs back. */
+interface RecordedPart {
+  partNumber: number;
+  etag: string;
+}
+
 /** The Durable Object holding one upload's parts, ticket context and alarm. */
 export class UploadSession implements DurableObject {
   readonly #state: DurableObjectState;
@@ -60,7 +66,79 @@ export class UploadSession implements DurableObject {
     if (pathname === "/open") {
       return this.#open(await request.json<UploadTicketPayload>());
     }
+    const part = /^\/part\/(\d+)$/.exec(pathname);
+    if (part) {
+      return this.#part(Number(part[1]), await request.arrayBuffer());
+    }
     return new Response("Not found", { status: 404 });
+  }
+
+  /**
+   * Take one part: check it against the layout, write it, record its etag.
+   *
+   * Only the last part may be short. Every earlier one must be exactly
+   * `partSize`, which is what makes "have they all arrived?" a matter of
+   * counting — and R2 refuses a non-final part under 5 MiB in any case.
+   * @param partNumber - Which part this is, one-based.
+   * @param body - The bytes.
+   * @returns A token for the next part, or why this one was refused.
+   */
+  async #part(partNumber: number, body: ArrayBuffer): Promise<Response> {
+    const upload = await this.#state.storage.get<OpenUpload>("upload");
+    if (upload === undefined) return new Response("Gone", { status: 410 });
+
+    const { partSize, totalParts } = upload.ticket;
+    if (partNumber < 1 || partNumber > totalParts) {
+      return new Response("Part number outside the signed layout", { status: 400 });
+    }
+    const isFinal = partNumber === totalParts;
+    const fits = isFinal
+      ? body.byteLength <= partSize
+      : body.byteLength === partSize;
+    if (!fits) {
+      return new Response("Part length does not match the signed layout", {
+        status: 400,
+      });
+    }
+
+    const resumed = this.#env.BUCKET.resumeMultipartUpload(
+      upload.ticket.storageKey,
+      upload.uploadId,
+    );
+    const written = await resumed.uploadPart(partNumber, body);
+
+    const parts = (await this.#state.storage.get<RecordedPart[]>("parts")) ?? [];
+    // Keyed on the part number rather than appended: a part the browser
+    // retried is the same part, and counting it twice would make an incomplete
+    // upload look complete.
+    const next = parts
+      .filter((p) => p.partNumber !== partNumber)
+      .concat({ partNumber, etag: written.etag });
+    await this.#state.storage.put("parts", next);
+    // Push the deadline out. An upload that keeps moving is never cut off,
+    // however large the file; one that stops is judged dead this long after
+    // its last part.
+    await this.#state.storage.setAlarm(
+      Date.now() + upload.ticket.alarmIdleSeconds * 1000,
+    );
+
+    return Response.json({ token: await this.#issueToken(upload) });
+  }
+
+  /**
+   * Issue a token for the next part of this upload.
+   * @param upload - What is open.
+   * @returns The signed token.
+   */
+  async #issueToken(upload: OpenUpload): Promise<string> {
+    return signSessionToken(
+      {
+        storageKey: upload.ticket.storageKey,
+        uploadId: upload.uploadId,
+        expiresAt: Date.now() + SESSION_TOKEN_TTL_MS,
+      },
+      this.#env.INGEST_SHARED_SECRET,
+    );
   }
 
   /**
@@ -79,16 +157,10 @@ export class UploadSession implements DurableObject {
       existing ??
       (await this.#createUpload(ticket));
 
-    const token = await signSessionToken(
-      {
-        storageKey: upload.ticket.storageKey,
-        uploadId: upload.uploadId,
-        expiresAt: Date.now() + SESSION_TOKEN_TTL_MS,
-      },
-      this.#env.INGEST_SHARED_SECRET,
-    );
-
-    return Response.json({ uploadId: upload.uploadId, token });
+    return Response.json({
+      uploadId: upload.uploadId,
+      token: await this.#issueToken(upload),
+    });
   }
 
   /**
