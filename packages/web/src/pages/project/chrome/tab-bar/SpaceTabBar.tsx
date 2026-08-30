@@ -128,8 +128,8 @@ interface SpaceTabBarProps {
   onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
   /**
    * A tab was dragged to a new place. `beforeSpaceId` names the tab it now
-   * sits in front of, null when it landed at the end. Omitted when the caller
-   * has nowhere to send it, and the strip is then not draggable.
+   * sits in front of, null when it landed at the end. Omitting it leaves the
+   * strip draggable and the landing unreported.
    */
   onReorder?: (spaceId: string, beforeSpaceId: string | null) => void;
 }
