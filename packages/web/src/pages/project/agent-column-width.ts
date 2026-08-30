@@ -74,19 +74,9 @@ function clamp(value: number, low: number, high: number): number {
  *   420 whenever the row width is known.
  */
 export function resolveWidth(setWidth: number | null, panelsWidth: number): number {
-  // Both arguments are checked here because Math.min(NaN, x) is NaN and clamp
-  // passes NaN straight through, so a NaN from either one would land in the
-  // layout as the panel's new width.
-  const wanted =
-    setWidth !== null && Number.isFinite(setWidth) ? setWidth : AGENT_COLUMN_MIN_WIDTH;
-  // An unmeasured panel reports a zero share of its group, and the width read
-  // back out of that share is NaN. The row constraint is then unknown rather
-  // than zero, so it is not applied at all.
-  const roomBesideSpace = Number.isFinite(panelsWidth)
-    ? panelsWidth - SPACE_MIN_WIDTH
-    : Number.POSITIVE_INFINITY;
+  const wanted = setWidth ?? AGENT_COLUMN_MIN_WIDTH;
   return clamp(
-    Math.min(wanted, roomBesideSpace),
+    Math.min(wanted, panelsWidth - SPACE_MIN_WIDTH),
     AGENT_COLUMN_MIN_WIDTH,
     AGENT_COLUMN_MAX_WIDTH,
   );

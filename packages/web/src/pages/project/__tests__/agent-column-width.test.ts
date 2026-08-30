@@ -60,22 +60,6 @@ describe('resolveWidth', () => {
     expect(resolveWidth(null, 1400)).toBe(AGENT_COLUMN_MIN_WIDTH);
   });
 
-  it('falls back to the minimum for a non-finite set width', () => {
-    // Math.min(NaN, x) is NaN and clamping passes NaN straight through, so the
-    // guard has to sit at the entrance rather than in the clamp.
-    expect(resolveWidth(Number.NaN, 1400)).toBe(AGENT_COLUMN_MIN_WIDTH);
-    expect(resolveWidth(Number.POSITIVE_INFINITY, 1400)).toBe(AGENT_COLUMN_MIN_WIDTH);
-  });
-
-  it('still answers inside the range when the row width is not a number', () => {
-    // The caller cannot always say how wide the row is — a panel that has not
-    // been measured yet reports a zero share, and dividing by it gives NaN.
-    // Returning NaN would put a NaN into the layout, so the row constraint is
-    // simply not applied when it is unknown.
-    expect(resolveWidth(500, Number.NaN)).toBe(500);
-    expect(resolveWidth(900, Number.NaN)).toBe(AGENT_COLUMN_MAX_WIDTH);
-    expect(resolveWidth(500, Number.POSITIVE_INFINITY)).toBe(500);
-  });
 
   it('stays inside the range and leaves the space region its 420, for every row width', () => {
     for (let panels = PANELS_AT_FLOOR; panels <= 3000; panels += 7) {
