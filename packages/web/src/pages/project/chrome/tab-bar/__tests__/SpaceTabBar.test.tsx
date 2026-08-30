@@ -68,8 +68,19 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
 }
 
 describe('SpaceTabBar', () => {
+  // Every browser has `Element.scrollTo`; jsdom leaves it undefined, so a
+  // component that scrolls a box of its own throws here and nowhere else.
+  // Put back exactly what was there — a stub left on the prototype follows
+  // the whole suite into every file that runs after this one.
+  const noScrollTo = Element.prototype.scrollTo;
+
   beforeEach(() => {
     useUIStore.getState().setChatPanelCollapsed(false);
+    Element.prototype.scrollTo = vi.fn();
+  });
+
+  afterEach(() => {
+    Element.prototype.scrollTo = noScrollTo;
   });
 
   function mockRect(el: HTMLElement, rect: Pick<DOMRect, 'left' | 'right'>) {
