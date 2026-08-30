@@ -39,6 +39,11 @@ export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 // ── Asset (physical asset registry: within-studio dedup + attribution + usage) ──
 export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
+export {
+  VIDEO_COVER_QUEUE,
+  VIDEO_COVER_JOB,
+  type VideoCoverJobData,
+} from "@domain/asset/video-cover-job.js";
 
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider } from "@domain/agent/llm.js";
