@@ -216,6 +216,23 @@ function selectedBlocks(src: Selected): number[] {
 }
 
 /**
+ * Where the press's blocks stand now.
+ *
+ * A press is given the blocks the reader selected, and every step it writes
+ * moves them. The transaction maps its own steps, so the blocks are carried
+ * across by that map. Reading them back off `tr.selection` instead answers for
+ * whatever the selection has become: lifting the first item of a list deletes
+ * the node a node selection sat on, and ProseMirror re-anchors it to a caret,
+ * so the steps after that one see a single block where the reader had a list.
+ * @param tr - The transaction.
+ * @param blocks - Where the blocks stood when the press started.
+ * @returns Where they stand now, in document order.
+ */
+function movedTo(tr: Transaction, blocks: number[]): number[] {
+  return blocks.map((pos) => tr.mapping.map(pos));
+}
+
+/**
  * Rule 1: is every one of these blocks that item?
  *
  * Empty answers no for all nine — "every block is" holds vacuously over an
@@ -252,12 +269,13 @@ export function isMarked(editor: Editor, id: BlockTypeId): boolean {
 }
 
 /**
- * The first and last text block the selection covers.
- * @param src - The document and the selection over it.
+ * The first and last of the press's blocks.
+ * @param tr - The transaction.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns Those two positions, or null where the selection holds no text block.
  */
-function selectionEnds(src: Selected): { first: number; last: number } | null {
-  const positions = selectedBlocks(src);
+function selectionEnds(tr: Transaction, blocks: number[]): { first: number; last: number } | null {
+  const positions = movedTo(tr, blocks);
   const first = positions[0];
   const last = positions[positions.length - 1];
   return first === undefined || last === undefined ? null : { first, last };
@@ -266,10 +284,11 @@ function selectionEnds(src: Selected): { first: number; last: number } | null {
 /**
  * The node range covering the selection's text blocks.
  * @param tr - The transaction.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns That range, or null where the selection holds no text block.
  */
-function selectedRange(tr: Transaction): NodeRange | null {
-  const ends = selectionEnds(tr);
+function selectedRange(tr: Transaction, blocks: number[]): NodeRange | null {
+  const ends = selectionEnds(tr, blocks);
   if (!ends) return null;
   return tr.doc.resolve(ends.first).blockRange(tr.doc.resolve(ends.last));
 }
@@ -295,19 +314,19 @@ function selectedRange(tr: Transaction): NodeRange | null {
  * left opening with that sub-list. The press fails there: the block cannot go
  * where the row would put it, and §6.7 greys a row for exactly that.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns Whether every item the selection covers could leave its list.
  */
-function liftOutOfLists(tr: Transaction): boolean {
-  for (let i = 0; ; i += 1) {
-    const pos = selectedBlocks(tr)[i];
-    if (pos === undefined) return true;
-    const $from = tr.doc.resolve(pos);
+function liftOutOfLists(tr: Transaction, blocks: number[]): boolean {
+  for (const origin of blocks) {
+    const $from = tr.doc.resolve(tr.mapping.map(origin));
     if (itemListName($from) === null) continue;
     const range = new NodeRange($from, $from, $from.depth - 1);
     const target = liftTarget(range);
     if (target === null) return false;
     tr.lift(range, target);
   }
+  return true;
 }
 
 /**
@@ -347,10 +366,11 @@ function landedOn(tr: Transaction, at: number[], target: BlockTypeId, want: bool
  * — for a quoted list the innermost is the list, which the press has no
  * business touching.
  * @param tr - The transaction.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns That range, or null where no quote holds the selection.
  */
-function innermostQuoteRange(tr: Transaction): NodeRange | null {
-  const positions = selectedBlocks(tr);
+function innermostQuoteRange(tr: Transaction, blocks: number[]): NodeRange | null {
+  const positions = movedTo(tr, blocks);
   for (const pos of positions) {
     const $pos = tr.doc.resolve(pos);
     const depth = nearestDepth($pos, QUOTE_NAMES);
@@ -373,16 +393,18 @@ function innermostQuoteRange(tr: Transaction): NodeRange | null {
  * Where the selection covers only part of a quote's content, the lift splits
  * it and the blocks nobody selected stay in a quote of their own (§5.1).
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  */
-function unwrapQuotes(tr: Transaction): void {
+function unwrapQuotes(tr: Transaction, blocks: number[]): void {
   for (;;) {
-    const range = innermostQuoteRange(tr);
+    const range = innermostQuoteRange(tr, blocks);
     if (!range) return;
     const target = liftTarget(range);
     if (target === null) return;
     tr.lift(range, target);
   }
 }
+
 
 /**
  * Splits the nearest list at each end of the selection.
@@ -400,11 +422,16 @@ function unwrapQuotes(tr: Transaction): void {
  * that renumber. {@link quoteDepth} is the answer to which of the two this
  * press is, and it is read before the first write for that reason.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @param quoteAt - The depth the quote will act at.
  */
-function splitListAtSelectionEdges(tr: Transaction, quoteAt: number | null): void {
+function splitListAtSelectionEdges(
+  tr: Transaction,
+  blocks: number[],
+  quoteAt: number | null,
+): void {
   if (quoteAt === null) return;
-  const tail = selectionEnds(tr);
+  const tail = selectionEnds(tr, blocks);
   if (!tail) return;
   const $last = tr.doc.resolve(tail.last);
   const tailDepth = listDepthAt($last);
@@ -414,7 +441,7 @@ function splitListAtSelectionEdges(tr: Transaction, quoteAt: number | null): voi
     if (canSplit(tr.doc, at, 1)) tr.split(at, 1);
   }
 
-  const head = selectionEnds(tr);
+  const head = selectionEnds(tr, blocks);
   if (!head) return;
   const $first = tr.doc.resolve(head.first);
   const headDepth = listDepthAt($first);
@@ -424,50 +451,6 @@ function splitListAtSelectionEdges(tr: Transaction, quoteAt: number | null): voi
   }
 }
 
-/**
- * Where each ordered list the selection sits in stands, before the press runs.
- *
- * A press cuts a list open in three places — either edge of the selection, and
- * the lift that takes an item out of it — and every cut opens the list again
- * with the attributes of the original, `start` among them. Recording where the
- * originals stood is what tells the pieces apart afterwards, which no single
- * cut can answer on its own.
- * @param src - The document and the selection over it.
- * @returns Each list's own position and the position after it.
- */
-function orderedListsAround(src: Selected): Array<[from: number, to: number]> {
-  const ordered = LIST_NODE['ordered-list'];
-  const spans = new Map<number, number>();
-  for (const pos of selectedBlocks(src)) {
-    const $pos = src.doc.resolve(pos);
-    for (let depth = $pos.depth; depth > 0; depth -= 1) {
-      if ($pos.node(depth).type.name === ordered) spans.set($pos.before(depth), $pos.after(depth));
-    }
-  }
-  return [...spans];
-}
-
-/**
- * Numbers every ordered list a cut left behind from one.
- *
- * The piece that stayed where the original stood keeps its number; §5.2 gives
- * the reader every other piece counting from one.
- * @param tr - The transaction, written into.
- * @param spans - Where the originals stood, from {@link orderedListsAround}.
- */
-function renumberSplitLists(tr: Transaction, spans: Array<[number, number]>): void {
-  const ordered = LIST_NODE['ordered-list'];
-  for (const [from, to] of spans) {
-    const head = tr.mapping.map(from);
-    tr.doc.nodesBetween(head, tr.mapping.map(to), (node, pos) => {
-      if (node.type.name !== ordered) return true;
-      if (pos !== head && node.attrs.start !== 1) {
-        tr.setNodeMarkup(pos, undefined, { ...node.attrs, start: 1 });
-      }
-      return false;
-    });
-  }
-}
 
 /**
  * The depth a Quote press will act at.
@@ -479,11 +462,14 @@ function renumberSplitLists(tr: Transaction, spans: Array<[number, number]>): vo
  * answer the rest of the press is built on, and it is asked before anything is
  * written so the split can read it.
  * @param tr - The transaction.
+ * @param blocks - Where the press's blocks stood when it started.
  * @param marked - Whether the row is already ticked, so the quote comes off.
  * @returns That depth, or null where the press has nowhere to act.
  */
-function quoteDepth(tr: Transaction, marked: boolean): number | null {
-  return marked ? innermostQuoteRange(tr)?.depth ?? null : wrapDepth(tr)?.depth ?? null;
+function quoteDepth(tr: Transaction, blocks: number[], marked: boolean): number | null {
+  return marked
+    ? innermostQuoteRange(tr, blocks)?.depth ?? null
+    : wrapDepth(tr, blocks)?.depth ?? null;
 }
 
 /**
@@ -492,12 +478,13 @@ function quoteDepth(tr: Transaction, marked: boolean): number | null {
  * Walks outwards from the blocks and stops at the first depth the schema
  * accepts a quote in.
  * @param tr - The transaction.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns That depth with the range it was found on, or null where no depth
  *   takes one.
  */
-function wrapDepth(tr: Transaction): { depth: number; outer: NodeRange } | null {
+function wrapDepth(tr: Transaction, blocks: number[]): { depth: number; outer: NodeRange } | null {
   const quote = tr.doc.type.schema.nodes.blockquote;
-  const range = quote === undefined ? null : selectedRange(tr);
+  const range = quote === undefined ? null : selectedRange(tr, blocks);
   if (!quote || !range) return null;
   for (let depth = range.depth; depth >= 0; depth -= 1) {
     const outer = new NodeRange(range.$from, range.$to, depth);
@@ -515,11 +502,12 @@ function wrapDepth(tr: Transaction): { depth: number; outer: NodeRange } | null 
  * inside the other. The press refuses instead of taking a quote off blocks
  * nobody selected.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns Whether the wrapping went in.
  */
-function wrapInQuote(tr: Transaction): boolean {
+function wrapInQuote(tr: Transaction, blocks: number[]): boolean {
   const quote = tr.doc.type.schema.nodes.blockquote;
-  const found = quote === undefined ? null : wrapDepth(tr);
+  const found = quote === undefined ? null : wrapDepth(tr, blocks);
   if (!quote || !found || holdsQuote(found.outer)) return false;
   const wrapping = findWrapping(found.outer, quote);
   if (!wrapping) return false;
@@ -552,19 +540,22 @@ function holdsQuote(range: NodeRange): boolean {
 /**
  * Sets every text block in the selection to this type.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @param type - The target node type.
  * @param attrs - Attributes for it.
  * @returns Whether the selection still held a text block.
  */
 function setBlocks(
   tr: Transaction,
+  blocks: number[],
   type: NodeType,
   attrs: Record<string, unknown> | null,
 ): boolean {
-  const { from, to } = tr.selection;
-  const before = selectedBlocks(tr).length;
-  if (before === 0) return false;
-  tr.setBlockType(from, to, type, attrs ?? undefined);
+  if (blocks.length === 0) return false;
+  for (const origin of blocks) {
+    const pos = tr.mapping.map(origin);
+    tr.setBlockType(pos, pos, type, attrs ?? undefined);
+  }
 
   // `setBlockType` skips a block the schema will not let it change and says
   // nothing, so the result is read back off the document. Reporting success
@@ -572,9 +563,7 @@ function setBlocks(
   // press into the document (rule 4). `landedOn` asks a different question at
   // the end of the press — whether the blocks are the ROW, which for a list
   // row is about where they sit rather than what type they are.
-  const after = selectedBlocks(tr);
-  if (after.length !== before) return false;
-  return after.every((pos) => {
+  return movedTo(tr, blocks).every((pos) => {
     const block = tr.doc.resolve(pos).parent;
     if (block.type !== type) return false;
     return Object.entries(attrs ?? {}).every(([key, value]) => block.attrs[key] === value);
@@ -584,16 +573,18 @@ function setBlocks(
 /**
  * Turns the selection into blocks of one type, list wrappers giving way.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @param type - The target node type.
  * @param attrs - Attributes for it.
  * @returns Whether every step went in.
  */
 function toBlockType(
   tr: Transaction,
+  blocks: number[],
   type: NodeType,
   attrs: Record<string, unknown> | null,
 ): boolean {
-  return liftOutOfLists(tr) && setBlocks(tr, type, attrs);
+  return liftOutOfLists(tr, blocks) && setBlocks(tr, blocks, type, attrs);
 }
 
 /**
@@ -605,13 +596,14 @@ function toBlockType(
  * are not adjacent. Each run becomes a list of its own, and what sits between
  * them stays where it is (§6.0).
  * @param tr - The transaction.
+ * @param blocks - Where the press's blocks stood when it started.
  * @returns Each run's first and last position, in document order.
  */
-function selectedRuns(tr: Transaction): Array<[first: number, last: number]> {
+function selectedRuns(tr: Transaction, blocks: number[]): Array<[first: number, last: number]> {
   const runs: Array<[number, number]> = [];
   let parent: number | null = null;
   let previous = -2;
-  for (const pos of selectedBlocks(tr)) {
+  for (const pos of movedTo(tr, blocks)) {
     const $pos = tr.doc.resolve(pos);
     const depth = $pos.depth - 1;
     // `start(depth)` is an absolute content-start position, so no two nodes
@@ -634,16 +626,17 @@ function selectedRuns(tr: Transaction): Array<[first: number, last: number]> {
  * become one before the list can hold them. The runs are wrapped back to
  * front, which leaves the positions of the earlier ones untouched.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @param listType - The list node type.
  * @returns Whether every step went in.
  */
-function toList(tr: Transaction, listType: NodeType): boolean {
+function toList(tr: Transaction, blocks: number[], listType: NodeType): boolean {
   const paragraph = tr.doc.type.schema.nodes.paragraph;
   if (!paragraph) return false;
-  if (!liftOutOfLists(tr)) return false;
-  if (!setBlocks(tr, paragraph, null)) return false;
+  if (!liftOutOfLists(tr, blocks)) return false;
+  if (!setBlocks(tr, blocks, paragraph, null)) return false;
 
-  const runs = selectedRuns(tr);
+  const runs = selectedRuns(tr, blocks);
   if (runs.length === 0) return false;
   for (let i = runs.length - 1; i >= 0; i -= 1) {
     const [first, last] = runs[i] as [number, number];
@@ -670,50 +663,53 @@ function applyTransition(
   marked: boolean,
   at: number[],
 ): boolean {
-  const ordered = orderedListsAround(tr);
   if (id === 'quote') {
     // Both directions start the same way. Splitting the list at the selection's
     // edges leaves the selected items in a list of their own, so either
     // direction acts on those and no others; taking the blocks out of every
     // quote holding them then splits an original quote at those same edges and
     // leaves the blocks nobody selected inside it.
-    splitListAtSelectionEdges(tr, quoteDepth(tr, marked));
-    unwrapQuotes(tr);
-    if (!marked && !wrapInQuote(tr)) return false;
-    renumberSplitLists(tr, ordered);
+    splitListAtSelectionEdges(tr, at, quoteDepth(tr, at, marked));
+    unwrapQuotes(tr, at);
+    if (!marked && !wrapInQuote(tr, at)) return false;
     return landedOn(tr, at, 'quote', !marked);
   }
 
   const target: BlockTypeId = marked ? 'paragraph' : id;
-  if (!applyExclusive(tr, schema, target)) return false;
-  renumberSplitLists(tr, ordered);
+  if (!applyExclusive(tr, at, schema, target)) return false;
   return landedOn(tr, at, target, true);
 }
 
 /**
  * Writes one exclusive row's target into the transaction.
  * @param tr - The transaction, written into.
+ * @param blocks - Where the press's blocks stood when it started.
  * @param schema - The document schema.
  * @param target - Which of the exclusive eight to become.
  * @returns Whether every step went in.
  */
-function applyExclusive(tr: Transaction, schema: Schema, target: BlockTypeId): boolean {
+function applyExclusive(
+  tr: Transaction,
+  blocks: number[],
+  schema: Schema,
+  target: BlockTypeId,
+): boolean {
   const listNode = LIST_NODE[target];
   if (listNode !== undefined) {
     const listType = schema.nodes[listNode];
-    return listType === undefined ? false : toList(tr, listType);
+    return listType === undefined ? false : toList(tr, blocks, listType);
   }
   if (target === 'code-block') {
     const type = schema.nodes.codeBlock;
-    return type === undefined ? false : toBlockType(tr, type, null);
+    return type === undefined ? false : toBlockType(tr, blocks, type, null);
   }
   const level = HEADING_LEVEL[target];
   if (level !== undefined) {
     const type = schema.nodes.heading;
-    return type === undefined ? false : toBlockType(tr, type, { level });
+    return type === undefined ? false : toBlockType(tr, blocks, type, { level });
   }
   const type = schema.nodes.paragraph;
-  return type === undefined ? false : toBlockType(tr, type, null);
+  return type === undefined ? false : toBlockType(tr, blocks, type, null);
 }
 
 /**

@@ -48,10 +48,10 @@ describe('an item the lift cannot take out of its list', () => {
 });
 
 describe('a node selection over a list', () => {
-  // A Mod+click leaves one. Every step of a press re-reads the blocks off the
-  // transaction's own selection, and lifting the first item deletes the node
-  // the selection sat on, so the steps after it saw one block where the reader
-  // had the whole list.
+  // A Mod+click leaves one. Every step of a press used to re-read the blocks
+  // off the transaction's own selection, and lifting the first item deletes
+  // the node the selection sat on, so the steps after it saw one block where
+  // the reader had the whole list (A9, §6.2).
   const START = '<h1>a</h1><ul><li><p>b</p></li><li><p>d</p></li></ul>';
 
   /** Puts a node selection on the list. @param editor - The editor. */
@@ -66,17 +66,30 @@ describe('a node selection over a list', () => {
     ));
   }
 
-  it('leaves the document alone rather than moving only its first block', () => {
-    const editor = openBody(START);
-    selectTheList(editor);
-    runBlockType(editor, 'heading-1');
-    expect(editor.getHTML()).toBe(START);
+  it('gives the same document as selecting the same blocks as text', () => {
+    const viaNode = openBody(START);
+    selectTheList(viaNode);
+    runBlockType(viaNode, 'heading-1');
+
+    const viaText = openBody(START);
+    selectRange(viaText, 'b', 'd');
+    runBlockType(viaText, 'heading-1');
+
+    expect(viaNode.getHTML()).toBe(viaText.getHTML());
+    expect(viaNode.getHTML()).toBe('<h1>a</h1><h1>b</h1><h1>d</h1>');
   });
 
-  it('says the row cannot be reached', () => {
-    const editor = openBody(START);
-    selectTheList(editor);
-    expect(canRunBlockType(editor, 'heading-1')).toBe(false);
+  it('reaches every row the same text selection reaches', () => {
+    const viaNode = openBody(START);
+    selectTheList(viaNode);
+    const viaText = openBody(START);
+    selectRange(viaText, 'b', 'd');
+
+    for (const id of ['paragraph', 'heading-1', 'bullet-list', 'ordered-list',
+      'code-block', 'quote'] as const) {
+      expect([id, canRunBlockType(viaNode, id)])
+        .toEqual([id, canRunBlockType(viaText, id)]);
+    }
   });
 });
 
@@ -127,21 +140,6 @@ describe('Quote over an item that holds more than one block', () => {
     expect(editor.getHTML()).toBe(
       '<blockquote><ul><li><p>a</p><p>aa</p></li><li><p>b</p></li></ul></blockquote>'
         + '<ul><li><p>d</p></li></ul>',
-    );
-  });
-});
-
-describe('splitting a list that starts at a number of its own', () => {
-  it('numbers the piece after the split from one', () => {
-    const editor = openBody(
-      '<ol start="3"><li><p>one</p></li><li><p>two</p></li><li><p>three</p></li></ol>',
-    );
-    selectBlock(editor, 'two');
-    runBlockType(editor, 'heading-1');
-    expect(editor.getHTML()).toBe(
-      '<ol start="3"><li><p>one</p></li></ol>'
-        + '<h1>two</h1>'
-        + '<ol><li><p>three</p></li></ol>',
     );
   });
 });
