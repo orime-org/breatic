@@ -127,6 +127,145 @@ describe('useTabReorder — a second move while the first is still out', () => {
   });
 });
 
+describe('useTabReorder — a broadcast while moves are still owed', () => {
+  // collab broadcasts the document update inside the transaction and answers
+  // the request afterwards, so the update for move 1 reaches the client before
+  // move 1's own reply. Everything here is about that arriving while the layer
+  // still owes something.
+
+  it('keeps a queued move when the first one broadcasts', async () => {
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as readonly string[] } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    expect(result.current.order).toEqual([C, B, A]);
+
+    rerender({ ids: [C, A, B] });
+    expect(result.current.order).toEqual([C, B, A]);
+
+    await act(async () => {
+      first.resolve(true);
+    });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+    expect(send).toHaveBeenLastCalledWith(A, null);
+  });
+
+  it('keeps the wire busy until the reply for what is on it arrives', async () => {
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as readonly string[] } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    // Somebody else's tab:open lands while the reorder is still out.
+    rerender({ ids: [A, B, C, 'd'] });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a queued move that lands the strip back where it started', async () => {
+    // Drag out and drag back: the layer now reads exactly like the document,
+    // so comparing the two says "done" while two moves are still owed.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(C, null);
+    });
+    expect(result.current.order).toEqual([A, B, C]);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve(true);
+    });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+    expect(send).toHaveBeenLastCalledWith(C, null);
+  });
+
+  it('holds the wire when the broadcast beats its own reply', async () => {
+    // The ordinary case: collab broadcasts inside the transaction and answers
+    // afterwards. The document matches the layer while the reply is still out,
+    // and treating that as done would hand the wire to the next drag.
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as readonly string[] } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    rerender({ ids: [C, A, B] });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the queued move when the first came back idempotent', async () => {
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+
+    await act(async () => {
+      first.resolve(false);
+    });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+    // Nothing is confirmed yet — the second move is still out.
+    expect(result.current.order).toEqual([C, B, A]);
+  });
+});
+
 describe('useTabReorder — when the pending order is let go of', () => {
   it('holds the move on screen until the broadcast lands', async () => {
     const first = deferred();

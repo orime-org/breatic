@@ -45,11 +45,13 @@ function sameIds(
  * relative moves do not commute — the pair could land as an order the user
  * never asked for, persisted.
  *
- * The reply says whether the server changed anything, which is what decides
- * how the pending view ends. It changed something: a broadcast is on its way,
- * so hold the view until the stored order really moves, otherwise the bar
- * flashes back to where it was and forward again. It changed nothing: no
- * broadcast is coming and holding on would strand the view for good.
+ * The view is let go of when the document shows the same order it does, and
+ * only once nothing is queued and nothing is on the wire. Comparing the two
+ * orders rather than counting arrivals is what makes a broadcast that reaches
+ * the client ahead of its own reply — which is the ordinary case, since collab
+ * broadcasts inside the transaction and answers afterwards — cost nothing.
+ * A reply saying the server wrote nothing ends the view outright: no broadcast
+ * is coming, and holding on would strand it for good.
  * @param openTabIds - The order as stored, straight from the meta doc.
  * @param send - Sends one move; resolves with whether the server wrote, and
  *   rejects when the request found no answer.
@@ -71,8 +73,8 @@ export function useTabReorder(
   /** Moves not yet sent. The one on the wire is not in here. */
   const queue = React.useRef<QueuedMove[]>([]);
   const inFlight = React.useRef(false);
-  /** The stored order this layer is waiting to see move. */
-  const awaited = React.useRef<ReadonlyArray<string> | null>(null);
+  /** The stored order as it stands right now, readable from a reply. */
+  const stored = React.useRef<ReadonlyArray<string>>(openTabIds);
 
   const sendRef = React.useRef(send);
   sendRef.current = send;
@@ -80,10 +82,30 @@ export function useTabReorder(
   const clear = React.useCallback((): void => {
     queue.current = [];
     inFlight.current = false;
-    awaited.current = null;
     pendingRef.current = null;
     setPending(null);
   }, []);
+
+  /**
+   * Let go of the view once the document shows what it shows.
+   *
+   * Two things leave a move unaccounted for: one is still travelling, or one
+   * has been written and its broadcast has not arrived. Anything queued is
+   * covered by the first — a move leaves the queue and takes the wire in the
+   * same breath, so a non-empty queue always means something is in flight.
+   * Dropping the layer early snaps the strip back to an order the user has
+   * already moved on from, and takes the queued moves with it.
+   * @param now - The stored order to compare the layer against.
+   */
+  const settleIfConfirmed = React.useCallback(
+    (now: ReadonlyArray<string>): void => {
+      if (inFlight.current) return;
+      const layer = pendingRef.current;
+      if (layer !== null && !sameIds(now, layer)) return;
+      clear();
+    },
+    [clear],
+  );
 
   const pump = React.useCallback((): void => {
     if (inFlight.current) return;
@@ -98,10 +120,13 @@ export function useTabReorder(
           pump();
           return;
         }
-        // Nothing left to send. A server that wrote will broadcast, so keep
-        // the view until that lands; one that wrote nothing never will.
-        if (orderChanged) return;
-        clear();
+        // A server that wrote nothing broadcasts nothing, so there is no
+        // arrival to wait for and the document is already what it will be.
+        if (!orderChanged) {
+          clear();
+          return;
+        }
+        settleIfConfirmed(stored.current);
       })
       .catch(() => {
         // The caller surfaced the failure. Everything shown optimistically
@@ -109,7 +134,7 @@ export function useTabReorder(
         // behind this one, which were computed on top of it.
         clear();
       });
-  }, [clear]);
+  }, [clear, settleIfConfirmed]);
 
   const reorder = React.useCallback(
     (spaceId: string, beforeSpaceId: string | null): void => {
@@ -122,20 +147,20 @@ export function useTabReorder(
       pendingRef.current = next;
       setPending(next);
       queue.current.push({ spaceId, beforeSpaceId });
-      awaited.current = openTabIds;
       pump();
     },
     [openTabIds, pump],
   );
 
-  // The broadcast this layer was waiting for: the stored order really moved.
+  // Every arriving document state is a chance for the layer to be done with.
+  // Presence heartbeats rerun this projection without changing a thing, and
+  // they cost nothing here: an order that already matched was let go of on the
+  // arrival that made it match.
   React.useEffect(() => {
+    stored.current = openTabIds;
     if (pending === null) return;
-    const waitingFor = awaited.current;
-    if (waitingFor === null) return;
-    if (sameIds(openTabIds, waitingFor)) return;
-    clear();
-  }, [openTabIds, pending, clear]);
+    settleIfConfirmed(openTabIds);
+  }, [openTabIds, pending, settleIfConfirmed]);
 
   return { order: pending ?? openTabIds, reorder };
 }
