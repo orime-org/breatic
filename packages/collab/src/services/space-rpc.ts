@@ -1592,15 +1592,12 @@ async function handleTabReorder(
       // whole array would make every id a fresh insert, which a delete another
       // instance issued concurrently can no longer reach — a tab closed there
       // would come back. Copies of the moved id collapse into the one it lands
-      // as, which is what `applyTabMove` computes above.
+      // as, and the landing index is read off `next` so the array this writes
+      // and the array the browser drew cannot describe different orders.
       for (let i = list.length - 1; i >= 0; i -= 1) {
         if (list.get(i) === spaceId) list.delete(i, 1);
       }
-      const rest = list.toArray();
-      list.insert(
-        beforeSpaceId === null ? rest.length : rest.indexOf(beforeSpaceId),
-        [spaceId],
-      );
+      list.insert(next.indexOf(spaceId), [spaceId]);
       orderChanged = true;
     });
     const settled = settlePublish(outcome, () =>

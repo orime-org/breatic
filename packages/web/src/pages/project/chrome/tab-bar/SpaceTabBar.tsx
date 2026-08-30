@@ -64,6 +64,33 @@ const DRAG_START_DISTANCE = 4;
 const EDGE_TOLERANCE = 1;
 
 /**
+ * Where a tab sits along the strip, in the strip's own scroll coordinates.
+ *
+ * Read off the layout, which a transform does not move. A tab being dragged
+ * carries one, and through a rect it reads as wherever the pointer is holding
+ * it — so the strip would answer "is this cut off?" about a position the tab
+ * only has while a hand is on it, and keep that answer once the gesture ends,
+ * since ending one scrolls nothing and resizes nothing.
+ * @param tab - The tab to place.
+ * @returns Its leading and trailing edge.
+ */
+function tabSpan(tab: HTMLElement): { start: number; end: number } {
+  return { start: tab.offsetLeft, end: tab.offsetLeft + tab.offsetWidth };
+}
+
+/**
+ * What stretch of the strip is on screen, in the same coordinates.
+ * @param scroller - The viewport the tabs scroll in.
+ * @returns The visible leading and trailing edge.
+ */
+function visibleSpan(scroller: HTMLElement): { start: number; end: number } {
+  return {
+    start: scroller.scrollLeft,
+    end: scroller.scrollLeft + scroller.clientWidth,
+  };
+}
+
+/**
  * Brings a tab flush against one edge of the strip, moving the strip alone.
  *
  * `scrollIntoView` moves every scroller between the tab and the document, and
@@ -79,13 +106,11 @@ function scrollTabToEdge(
   tab: HTMLElement,
   edge: 'start' | 'end',
 ): void {
-  const stripRect = scroller.getBoundingClientRect();
-  const tabRect = tab.getBoundingClientRect();
-  const travel =
-    edge === 'end'
-      ? tabRect.right - stripRect.right
-      : tabRect.left - stripRect.left;
-  scroller.scrollTo({ left: scroller.scrollLeft + travel, behavior: 'smooth' });
+  const span = tabSpan(tab);
+  scroller.scrollTo({
+    left: edge === 'end' ? span.end - scroller.clientWidth : span.start,
+    behavior: 'smooth',
+  });
 }
 
 interface SpaceTabBarProps {
@@ -270,13 +295,13 @@ export function SpaceTabBar({
     // up via arrow clicks. DOM rects sidestep the scroll-position
     // arithmetic entirely.
     const overflow = el.scrollWidth > el.clientWidth + 1;
-    const scrollerRect = el.getBoundingClientRect();
+    const visible = visibleSpan(el);
     const tabs = tabsIn(el);
     const atStart = !tabs.some(
-      (t) => t.getBoundingClientRect().left < scrollerRect.left - EDGE_TOLERANCE,
+      (t) => tabSpan(t).start < visible.start - EDGE_TOLERANCE,
     );
     const atEnd = !tabs.some(
-      (t) => t.getBoundingClientRect().right > scrollerRect.right + EDGE_TOLERANCE,
+      (t) => tabSpan(t).end > visible.end + EDGE_TOLERANCE,
     );
     // Whole, not merely somewhere on screen: a tab with its name cut off by
     // the edge is exactly what the reveal control exists to finish showing.
@@ -287,11 +312,11 @@ export function SpaceTabBar({
     // gesture ending scrolls nothing and resizes nothing, so that answer is
     // the one this control would keep, disabled, with the tab off screen.
     const active = activeTab();
+    const activeSpan = active === null ? null : tabSpan(active);
     const activeVisible =
-      active === null ||
-      (active.offsetLeft >= el.scrollLeft - EDGE_TOLERANCE &&
-        active.offsetLeft + active.offsetWidth <=
-          el.scrollLeft + el.clientWidth + EDGE_TOLERANCE);
+      activeSpan === null ||
+      (activeSpan.start >= visible.start - EDGE_TOLERANCE &&
+        activeSpan.end <= visible.end + EDGE_TOLERANCE);
     setScrollState({ overflow, atStart, atEnd, activeVisible });
   }, [activeTab]);
 
@@ -334,11 +359,11 @@ export function SpaceTabBar({
     const scroller = scrollerRef.current;
     const tab = activeTab();
     if (!scroller || !tab) return;
-    const stripRect = scroller.getBoundingClientRect();
-    const tabRect = tab.getBoundingClientRect();
-    if (tabRect.right > stripRect.right + EDGE_TOLERANCE) {
+    const visible = visibleSpan(scroller);
+    const span = tabSpan(tab);
+    if (span.end > visible.end + EDGE_TOLERANCE) {
       scrollTabToEdge(scroller, tab, 'end');
-    } else if (tabRect.left < stripRect.left - EDGE_TOLERANCE) {
+    } else if (span.start < visible.start - EDGE_TOLERANCE) {
       scrollTabToEdge(scroller, tab, 'start');
     }
   }, [activeTab]);
@@ -370,19 +395,17 @@ export function SpaceTabBar({
     if (!scroller) return;
     const tabs = tabsIn(scroller);
     if (tabs.length === 0) return;
-    const scrollerRect = scroller.getBoundingClientRect();
+    const visible = visibleSpan(scroller);
 
     const target =
       direction === 'right'
         ? tabs.find(
-          (tab) =>
-            tab.getBoundingClientRect().right > scrollerRect.right + EDGE_TOLERANCE,
+          (tab) => tabSpan(tab).end > visible.end + EDGE_TOLERANCE,
         )
         : [...tabs]
           .reverse()
           .find(
-            (tab) =>
-              tab.getBoundingClientRect().left < scrollerRect.left - EDGE_TOLERANCE,
+            (tab) => tabSpan(tab).start < visible.start - EDGE_TOLERANCE,
           );
 
     if (target) {

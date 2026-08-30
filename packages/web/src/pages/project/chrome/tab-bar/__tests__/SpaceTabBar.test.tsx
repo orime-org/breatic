@@ -113,6 +113,28 @@ describe('SpaceTabBar', () => {
    * rects (defaults to 0 in jsdom, which falsely yields atStart=atEnd=true
    * and disables the arrows before the test can click them).
    */
+  /**
+   * Place a tab along the strip, in the strip's own scroll coordinates.
+   *
+   * That is what the bar measures with — a transform moves a tab's rect and
+   * leaves its layout where it is, and a tab being dragged carries one.
+   * @param el - The tab to place.
+   * @param at - Its leading edge and width.
+   */
+  function setLayout(
+    el: HTMLElement,
+    at: { left: number; width: number },
+  ): void {
+    Object.defineProperty(el, 'offsetLeft', {
+      value: at.left,
+      configurable: true,
+    });
+    Object.defineProperty(el, 'offsetWidth', {
+      value: at.width,
+      configurable: true,
+    });
+  }
+
   function makeOverflow(): HTMLElement {
     // The element that scrolls is the ScrollArea viewport; the tablist is
     // the row of tabs inside it. They are two elements on purpose — a role
@@ -229,11 +251,10 @@ describe('SpaceTabBar', () => {
       const user = userEvent.setup();
       setup();
       const scroller = makeOverflow();
-      mockRect(scroller, { left: 0, right: 200 });
       // s1 fully visible; s2 first off-screen on the right; s3 further.
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 220, right: 320 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 330, right: 430 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 220, width: 100 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 330, width: 100 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
@@ -254,31 +275,44 @@ describe('SpaceTabBar', () => {
       expect(reachesOutward).not.toHaveBeenCalled();
     });
 
-    it('disables the left arrow when no tab is off-screen-left, regardless of scrollLeft (DOM-rect, PR #140)', () => {
+    it('disables the left arrow when the strip starts at its padding', () => {
       setup();
       // The element that scrolls is the viewport, and `scroll` does not
-      // bubble: stubbing the row instead leaves every rect below unread and
-      // the assertion reading the mount-time default.
+      // bubble: stubbing the row instead leaves every measurement below
+      // unread and the assertion reading the mount-time default.
       const scroller = makeOverflow();
       // A scroll can leave scrollLeft at the scroller's padding-left (~8 px)
-      // rather than zero — the smooth `scrollIntoView({ inline: 'start' })`
-      // the arrows used before this change did exactly that. The prior
-      // scrollLeft-based atStart check (commit 626ec56) failed here
-      // — `8 <= 1` false → arrow stayed enabled. The DOM-rect check
-      // looks at tab positions; if all tabs sit inside the viewport
-      // (none cut off the left), atStart is true regardless of
-      // scrollLeft's exact value.
+      // rather than zero. The first tab starts there too, so nothing is cut
+      // off the left and the arrow is disabled — an `atStart` asking whether
+      // scrollLeft itself is near zero (commit 626ec56) left it enabled here.
       Object.defineProperty(scroller, 'scrollLeft', {
         value: 8,
         configurable: true,
         writable: true,
       });
-      mockRect(scroller, { left: 0, right: 200 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 140, right: 200 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 8, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 78, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 148, width: 60 });
       flushScrollState(scroller);
       expect(screen.getByTestId('tabs-scroll-left')).toBeDisabled();
+    });
+
+    it('ignores where a drag is drawing a tab', () => {
+      // A tab being dragged carries a transform, which its rect counts and
+      // its layout does not. Held over the middle of the strip its rect reads
+      // as on screen while its place has scrolled away — and a gesture ending
+      // scrolls nothing and resizes nothing, so a rect-based answer is the one
+      // the arrows would keep.
+      setup();
+      const scroller = makeOverflow();
+      const dragged = screen.getByTestId('space-tab-s3');
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 70, width: 60 });
+      setLayout(dragged, { left: 240, width: 100 });
+      mockRect(dragged, { left: 60, right: 160 });
+      flushScrollState(scroller);
+
+      expect(screen.getByTestId('tabs-scroll-right')).toBeEnabled();
     });
 
     it('left arrow snaps the last off-screen tab flush-left, moving only the strip', async () => {
@@ -293,10 +327,9 @@ describe('SpaceTabBar', () => {
         writable: true,
       });
       // s1 + s2 sit off-screen-left of the scroller viewport.
-      mockRect(scroller, { left: 100, right: 300 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 170 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 180, right: 280 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 70, width: 100 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 180, width: 100 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
@@ -319,10 +352,9 @@ describe('SpaceTabBar', () => {
     it('scrolls a tab cut off on the right just far enough to show it', () => {
       const { setActiveSpace } = setup();
       const scroller = makeOverflow();
-      mockRect(scroller, { left: 0, right: 200 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 70, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 240, width: 100 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
@@ -341,10 +373,9 @@ describe('SpaceTabBar', () => {
         configurable: true,
         writable: true,
       });
-      mockRect(scroller, { left: 100, right: 300 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 120, right: 180 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 190, right: 250 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 120, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 190, width: 60 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
@@ -363,10 +394,9 @@ describe('SpaceTabBar', () => {
       // there is, and the strip creeps on every space switch.
       const { setActiveSpace } = setup();
       const scroller = makeOverflow();
-      mockRect(scroller, { left: 0, right: 200 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 140, right: 200.5 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 70, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 140, width: 60.5 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
@@ -395,10 +425,9 @@ describe('SpaceTabBar', () => {
     it('moves the strip and nothing above it', () => {
       const { setActiveSpace } = setup();
       const scroller = makeOverflow();
-      mockRect(scroller, { left: 0, right: 200 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 70, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 240, width: 100 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
