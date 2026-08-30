@@ -18,6 +18,14 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         wrangler: { configPath: "./wrangler.toml" },
+        miniflare: {
+          bindings: {
+            // The secret wrangler holds in production. Tests sign their own
+            // tickets with it, so what they hand the Worker is the same shape
+            // our server mints rather than a fixture that only looks like one.
+            INGEST_SHARED_SECRET: "test-ingest-secret",
+          },
+        },
       },
     },
   },

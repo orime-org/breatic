@@ -21,6 +21,12 @@ const TSCONFIG = JSON.stringify({
 });
 
 /**
+ * A manifest for a package that builds. Only those are scanned: a Worker is
+ * bundled at deploy time and has no dist of its own.
+ */
+const BUILDS = JSON.stringify({ scripts: { build: "tsup" } });
+
+/**
  * Builds a context holding one package with the given built output.
  * @param bundle Contents of that package's built module.
  * @param name Package directory name.
@@ -28,7 +34,7 @@ const TSCONFIG = JSON.stringify({
  */
 function built(bundle: string, name = "shared") {
   return fakeContext({
-    [`packages/${name}/package.json`]: "{}",
+    [`packages/${name}/package.json`]: BUILDS,
     [`packages/${name}/tsconfig.json`]: TSCONFIG,
     [`packages/${name}/dist/index.js`]: bundle,
   });
@@ -100,7 +106,7 @@ describe("no-unresolved-alias-in-dist", () => {
 
   it("skips source maps, which carry the pre-bundle source verbatim", () => {
     const context = fakeContext({
-      "packages/shared/package.json": "{}",
+      "packages/shared/package.json": BUILDS,
       "packages/shared/tsconfig.json": TSCONFIG,
       "packages/shared/dist/index.js": "const a = 1;\n",
       "packages/shared/dist/index.js.map": '{"sources":["@core/x.ts"]}',
@@ -113,7 +119,7 @@ describe("no-unresolved-alias-in-dist", () => {
     // their runtime, which makes it later and no less broken. The guard
     // this replaces looked only at modules.
     const context = fakeContext({
-      "packages/shared/package.json": "{}",
+      "packages/shared/package.json": BUILDS,
       "packages/shared/tsconfig.json": TSCONFIG,
       "packages/shared/dist/index.js": "const a = 1;\n",
       "packages/shared/dist/index.d.ts": 'import type { A } from "@core/a.js";\n',
@@ -133,7 +139,7 @@ describe("no-unresolved-alias-in-dist", () => {
     // The failure mode this check exists to prevent, one level up: an
     // unbuilt tree must not read as a clean one.
     const context = fakeContext({
-      "packages/shared/package.json": "{}",
+      "packages/shared/package.json": BUILDS,
       "packages/shared/tsconfig.json": TSCONFIG,
     });
     expect(() => noUnresolvedAliasInDist.run(context)).toThrow(/does not exist/);
@@ -150,7 +156,7 @@ describe("no-unresolved-alias-in-dist", () => {
     // prefixes while the tsconfigs declared eight. An alias declared but
     // absent from any hardcoded list must still be caught.
     const context = fakeContext({
-      "packages/shared/package.json": "{}",
+      "packages/shared/package.json": BUILDS,
       "packages/shared/tsconfig.json": JSON.stringify({
         compilerOptions: { paths: { "@invented/*": ["../invented/src/*"] } },
       }),
@@ -164,7 +170,7 @@ describe("no-unresolved-alias-in-dist", () => {
     // showing how to import the package names the alias in prose. Nothing
     // resolves an import that is not one.
     const context = fakeContext({
-      "packages/domain/package.json": "{}",
+      "packages/domain/package.json": BUILDS,
       "packages/domain/tsconfig.json": JSON.stringify({
         compilerOptions: { paths: { "@domain/*": ["./src/*"] } },
       }),
@@ -174,12 +180,26 @@ describe("no-unresolved-alias-in-dist", () => {
     expect(noUnresolvedAliasInDist.run(context)).toEqual([]);
   });
 
+  // wrangler bundles a Worker at deploy time, so that package has no dist. The
+  // check walks it anyway unless it knows to skip, and reports "could not run"
+  // for a directory that was never supposed to exist.
+  it("skips a package that does not build", () => {
+    const context = fakeContext({
+      "packages/ingest/package.json": JSON.stringify({
+        scripts: { deploy: "wrangler deploy" },
+      }),
+      "packages/ingest/tsconfig.json": TSCONFIG,
+    });
+
+    expect(noUnresolvedAliasInDist.run(context)).toEqual([]);
+  });
+
   it("still catches a real import on the line after such a comment", () => {
     // The other half of the same change: stripping comments must not strip
     // the code, and blanking has to keep the line numbering so the report
     // points at the import rather than near it.
     const context = fakeContext({
-      "packages/domain/package.json": "{}",
+      "packages/domain/package.json": BUILDS,
       "packages/domain/tsconfig.json": JSON.stringify({
         compilerOptions: { paths: { "@domain/*": ["./src/*"] } },
       }),
@@ -193,7 +213,7 @@ describe("no-unresolved-alias-in-dist", () => {
 
   it("fails rather than reports clean when no tsconfig declares an alias", () => {
     const context = fakeContext({
-      "packages/shared/package.json": "{}",
+      "packages/shared/package.json": BUILDS,
       "packages/shared/tsconfig.json": "{}",
       "packages/shared/dist/index.js": "const a = 1;\n",
     });

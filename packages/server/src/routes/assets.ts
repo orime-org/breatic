@@ -277,6 +277,7 @@ assets.post(
         contentType: body.content_type,
         expiresAt,
         leaseGen: body.lease_gen,
+        alarmIdleSeconds: ingest.alarm_idle_seconds,
       },
       env.INGEST_SHARED_SECRET,
     );

@@ -16,6 +16,8 @@
  * is against values the browser cannot alter.
  */
 
+import { verifyUploadTicket } from "@breatic/shared";
+
 export { UploadSession } from "@ingest/upload-session.js";
 
 /** What wrangler binds into the Worker. */
@@ -30,6 +32,50 @@ export interface Env {
   ALLOWED_ORIGINS: string;
 }
 
+/**
+ * The instance holding one upload's bookkeeping.
+ *
+ * Addressed by storage key rather than by R2's `uploadId`, because the first
+ * request has no upload id yet — the whole point of that request is to get
+ * one, and getting the same one back on a retry needs somewhere to have
+ * remembered it.
+ * @param env - The Worker's bindings.
+ * @param storageKey - The key this upload writes to.
+ * @returns A stub for that upload's Durable Object.
+ */
+function sessionFor(env: Env, storageKey: string): DurableObjectStub {
+  return env.UPLOAD_SESSION.get(env.UPLOAD_SESSION.idFromName(storageKey));
+}
+
+/**
+ * Open an upload: verify the ticket, then let the Durable Object decide
+ * whether this is a new upload or a retry of one already open.
+ * @param request - The browser's request, carrying the ticket in a header.
+ * @param env - The Worker's bindings.
+ * @returns The instance's answer, or 401 when the ticket does not verify.
+ */
+async function startUpload(request: Request, env: Env): Promise<Response> {
+  const ticket = request.headers.get("x-upload-ticket");
+  if (ticket === null) return new Response("Unauthorized", { status: 401 });
+
+  const verified = await verifyUploadTicket(
+    ticket,
+    env.INGEST_SHARED_SECRET,
+    Date.now(),
+  );
+  if (!verified.ok) return new Response("Unauthorized", { status: 401 });
+
+  // Everything past here depends on what happened before — whether this upload
+  // is already open, already finishing, or already done — so the instance that
+  // remembers decides it.
+  return sessionFor(env, verified.payload.storageKey).fetch(
+    new Request("https://session/open", {
+      method: "POST",
+      body: JSON.stringify(verified.payload),
+    }),
+  );
+}
+
 export default {
   /**
    * Route one request.
@@ -39,9 +85,13 @@ export default {
    * @returns The response.
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    void request;
-    void env;
     void ctx;
+    const { pathname } = new URL(request.url);
+
+    if (request.method === "POST" && pathname === "/uploads") {
+      return startUpload(request, env);
+    }
+
     return new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;

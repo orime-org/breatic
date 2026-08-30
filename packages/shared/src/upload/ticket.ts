@@ -41,6 +41,14 @@ export interface UploadTicketPayload {
   expiresAt: number;
   /** The node's fencing gen, echoed back so the server can CAS its event. */
   leaseGen: number;
+  /**
+   * How long the upload may go without a new part before the Durable Object
+   * judges it dead. Signed in rather than configured on the Worker for the
+   * same reason `partSize` is: the value lives in `config/storage.yaml`, which
+   * the Worker cannot read, and a second copy in the Worker's own deployment
+   * config is a second place for it to drift.
+   */
+  alarmIdleSeconds: number;
 }
 
 /** Why a ticket did not verify. */
