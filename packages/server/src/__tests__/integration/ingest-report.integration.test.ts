@@ -41,7 +41,14 @@ import {
   sessionCookieName,
   loadLocales,
   taskEventsStreamKey,
+  createQueue,
 } from "@breatic/core";
+import {
+  VIDEO_COVER_QUEUE,
+  videoCoverJobId,
+  type VideoCoverJobData,
+} from "@breatic/domain";
+import { canvasSpaceDocName } from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -459,5 +466,191 @@ describe("POST /assets/ingest-report — the same report twice", () => {
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     expect(events).toHaveLength(2);
     expect(events[1]!.update.content).toBe(a.data.fileUrl);
+  });
+});
+
+describe("a video, which needs a cover before the node hears anything", () => {
+  /** The one cover job queued for `storageKey`, or null. */
+  async function coverJobFor(storageKey: string): Promise<{
+    data: VideoCoverJobData;
+  } | null> {
+    const queue = createQueue(VIDEO_COVER_QUEUE);
+    const job = await queue.getJob(videoCoverJobId(storageKey));
+    return job ? { data: job.data as VideoCoverJobData } : null;
+  }
+
+  /** Mint a ticket for a video and report it complete. */
+  async function uploadVideo(
+    seed: Awaited<ReturnType<typeof seedEditor>>,
+    over: Record<string, unknown> = {},
+  ): Promise<{ key: string; nodeId: string }> {
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: nodeId,
+      ...over,
+    });
+    await report(
+      completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
+    );
+    return { key, nodeId };
+  }
+
+  it("registers the video and consumes the grant like any other upload", async () => {
+    const seed = await seedEditor();
+    const { key } = await uploadVideo(seed);
+
+    const assets = await sql<{ kind: string }[]>`
+      SELECT kind FROM studio_assets WHERE storage_key = ${key}
+    `;
+    expect(assets[0]!.kind).toBe("video");
+    const grants = await sql<{ consumed_at: Date | null }[]>`
+      SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.consumed_at).not.toBeNull();
+  });
+
+  // Everything the node sees is written once, after the cover is settled. A
+  // history row now would have no thumbnail and never gain one; an event now
+  // would put a cover-less video on screen and replace it a moment later.
+  it("writes no history row, no feed row and no event yet", async () => {
+    const seed = await seedEditor();
+    const { key, nodeId } = await uploadVideo(seed);
+
+    const history = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM node_history WHERE upload_storage_key = ${key}
+    `;
+    expect(history[0]!.n).toBe("0");
+    const feed = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM project_activities
+      WHERE project_id = ${seed.projectId} AND node_id = ${nodeId}
+    `;
+    expect(feed[0]!.n).toBe("0");
+    const events = await eventsFor(
+      canvasSpaceDocName(seed.projectId, seed.spaceId),
+    );
+    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(0);
+  });
+
+  it("hands the worker the registered video, its studio and the node's lease", async () => {
+    const seed = await seedEditor();
+    const { key, nodeId } = await uploadVideo(seed);
+
+    const job = await coverJobFor(key);
+    expect(job).not.toBeNull();
+    const rows = await sql<{ id: string; file_url: string }[]>`
+      SELECT id, file_url FROM studio_assets WHERE storage_key = ${key}
+    `;
+    expect(job!.data).toMatchObject({
+      storageKey: key,
+      videoAssetId: rows[0]!.id,
+      videoUrl: rows[0]!.file_url,
+      ownerStudioId: seed.studioId,
+      userId: seed.userId,
+      projectId: seed.projectId,
+      spaceId: seed.spaceId,
+      nodeId,
+      leaseGen: 7,
+      mimeType: "video/mp4",
+      filename: "clip.mp4",
+    });
+  });
+
+  // The job id is the storage key, so the Durable Object retrying its report
+  // cannot start a second extraction of the same upload.
+  it("queues one job however many times the report arrives", async () => {
+    const seed = await seedEditor();
+    const { key } = await uploadVideo(seed);
+
+    await report(
+      completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
+    );
+
+    const queue = createQueue(VIDEO_COVER_QUEUE);
+    const waiting = await queue.getJobs(["waiting", "delayed", "active"]);
+    expect(waiting.filter((j) => j.data.storageKey === key)).toHaveLength(1);
+  });
+
+  // The cover job sends the one event this node gets. A video-only event here
+  // would beat it to the node, or undo the cover it already showed.
+  it("stays quiet when the report arrives again", async () => {
+    const seed = await seedEditor();
+    const { key, nodeId } = await uploadVideo(seed);
+
+    await report(
+      completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
+    );
+
+    const events = await eventsFor(
+      canvasSpaceDocName(seed.projectId, seed.spaceId),
+    );
+    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(0);
+  });
+
+  // Within a studio the same bytes are one row, so a second upload of the same
+  // video resolves to the first one's object — and the key this upload just
+  // wrote is what the reclaim job removes. Sending the worker that key would
+  // have it extract from an object about to disappear and pin the node to it.
+  it("hands over the surviving object's URL when the video already existed", async () => {
+    const seed = await seedEditor();
+    const sharedHash = crypto.randomBytes(32).toString("hex");
+
+    const firstKey = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: crypto.randomUUID(),
+    });
+    await report(
+      completed(firstKey, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        sha256: sharedHash,
+      }),
+    );
+
+    const secondKey = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: crypto.randomUUID(),
+    });
+    await report(
+      completed(secondKey, {
+        content_type: "video/mp4",
+        size_bytes: 200_000,
+        sha256: sharedHash,
+      }),
+    );
+
+    const rows = await sql<{ id: string; file_url: string }[]>`
+      SELECT id, file_url FROM studio_assets WHERE storage_key = ${firstKey}
+    `;
+    const job = await coverJobFor(secondKey);
+    expect(job!.data.videoAssetId).toBe(rows[0]!.id);
+    expect(job!.data.videoUrl).toBe(rows[0]!.file_url);
+    expect(job!.data.videoUrl).not.toContain(secondKey);
+  });
+
+  it("queues nothing for an image, which needs no cover", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+    await report(completed(key));
+
+    expect(await coverJobFor(key)).toBeNull();
+  });
+
+  // Without a node there is nobody to show a cover to, and the payload has no
+  // place to put the fields the worker writes its downstreams from.
+  it("queues nothing for a video that no node is waiting on", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+    });
+    await report(
+      completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
+    );
+
+    expect(await coverJobFor(key)).toBeNull();
   });
 });

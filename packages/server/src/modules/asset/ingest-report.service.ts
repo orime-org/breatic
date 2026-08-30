@@ -29,8 +29,14 @@ import {
   nodeHistoryService,
   emitNodeStateDone,
   emitNodeStateFailed,
+  videoCoverJobId,
+  VIDEO_COVER_QUEUE,
+  VIDEO_COVER_JOB,
+  type VideoCoverJobData,
 } from "@breatic/domain";
 import {
+  createQueue,
+  defaultJobOpts,
   getStorageAdapter,
   getStorageConfig,
   getStreamRedis,
@@ -44,6 +50,24 @@ import {
   voidGrant,
   type UploadGrant,
 } from "@server/modules/asset/upload-grant.repo.js";
+
+/**
+ * The queue the worker takes cover extractions off.
+ *
+ * Built on first use, not at import: `createQueue` reads the Redis URL out
+ * of the validated config, and this module is reachable from imports that
+ * run before an entry point has called `initCore`.
+ */
+let coverQueue: ReturnType<typeof createQueue> | null = null;
+
+/**
+ * The cover queue, created on first use.
+ * @returns The shared BullMQ queue handle.
+ */
+function getCoverQueue(): ReturnType<typeof createQueue> {
+  coverQueue ??= createQueue(VIDEO_COVER_QUEUE);
+  return coverQueue;
+}
 
 /** What the Worker says happened. */
 export interface IngestReport {
@@ -126,6 +150,60 @@ async function announceFailure(
 }
 
 /**
+ * Ask the worker to extract this video's cover.
+ *
+ * Refuses when the upload has no node behind it: there is then nobody to show
+ * a cover to, and the job payload has no place for the fields the worker
+ * writes its downstreams from. The caller falls through to the ordinary path,
+ * which for a node-less upload is registration and nothing else.
+ * @param grant - The consumed grant, carrying where the node lives.
+ * @param asset - The registered video row.
+ * @param asset.id - Its ledger id, which the cover is linked back onto.
+ * @param asset.fileUrl - Its canonical URL, which the worker extracts from.
+ * @param asset.sizeBytes - What it weighs, for the history row's metadata.
+ * @param contentType - The video's measured mime type.
+ * @returns Whether the job was queued.
+ */
+async function queueVideoCover(
+  grant: UploadGrant,
+  asset: { id: string; fileUrl: string; sizeBytes: number },
+  contentType: string,
+): Promise<boolean> {
+  if (
+    grant.projectId === null ||
+    grant.spaceId === null ||
+    grant.nodeId === null
+  ) {
+    return false;
+  }
+  await getCoverQueue().add(
+    VIDEO_COVER_JOB,
+    {
+      storageKey: grant.storageKey,
+      videoAssetId: asset.id,
+      // The registered row's URL, which a dedup hit resolves to a different
+      // object than this upload stored.
+      videoUrl: asset.fileUrl,
+      ownerStudioId: grant.studioId,
+      userId: grant.userId,
+      projectId: grant.projectId,
+      spaceId: grant.spaceId,
+      nodeId: grant.nodeId,
+      leaseGen: grant.leaseGen,
+      sizeBytes: asset.sizeBytes,
+      mimeType: contentType,
+      filename: grant.filename,
+      source: grant.source,
+      toolName: grant.toolName,
+    } satisfies VideoCoverJobData,
+    // The id makes a retried report reuse the job already queued rather than
+    // start a second extraction of the same video.
+    { ...defaultJobOpts(), jobId: videoCoverJobId(grant.storageKey) },
+  );
+  return true;
+}
+
+/**
  * Apply one report from the ingest Worker.
  * @param report - What the Worker says happened.
  * @returns What was decided, for the route to answer with.
@@ -149,12 +227,15 @@ export async function applyIngestReport(
       ? await assetRepo.findByStudioAndHash(grant.studioId, report.sha256)
       : null;
     const fileUrl = existing?.fileUrl ?? adapter.publicUrl(grant.storageKey);
-    await announceSuccess(grant, fileUrl);
-    return {
-      status: "already_registered",
-      fileUrl,
-      kind: existing?.kind ?? detectKind(report.contentType ?? ""),
-    };
+    const settledKind = existing?.kind ?? detectKind(report.contentType ?? "");
+    // A video's event belongs to the cover job, which sends one carrying both
+    // URLs. Sending a video-only one here would put a cover-less video on
+    // screen and have the job replace it a moment later — and if the job has
+    // already finished, this would undo the cover it just showed.
+    if (settledKind !== "video") {
+      await announceSuccess(grant, fileUrl);
+    }
+    return { status: "already_registered", fileUrl, kind: settledKind };
   }
 
   if (report.outcome === "aborted") {
@@ -198,6 +279,16 @@ export async function applyIngestReport(
   // After the ledger row exists, so an interrupted registration leaves the
   // grant unconsumed and the retry can finish the job.
   await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
+
+  // A video is not finished here. Its cover has to be pulled out of it first,
+  // which needs ffmpeg and takes longer than a request should wait, so the
+  // worker does that and writes everything the node sees — history row, feed
+  // row, and the one event carrying both URLs. Writing any of them now would
+  // mean a history row with a thumbnail it can never gain and an event putting
+  // a cover-less video on screen a moment before the real one.
+  if (kind === "video" && (await queueVideoCover(grant, asset, contentType))) {
+    return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind, deduped };
+  }
 
   // Whether the node history row is new. It gates the feed write below,
   // which has no key of its own: on this path the grant's `consumedAt` already

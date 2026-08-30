@@ -24,6 +24,22 @@ export const VIDEO_COVER_QUEUE = "video-cover";
 /** The BullMQ job name within that queue. */
 export const VIDEO_COVER_JOB = "extract-cover";
 
+/**
+ * The job id for one upload's cover extraction.
+ *
+ * BullMQ dedups on an explicit job id and assigns a random one otherwise, so
+ * without this the Durable Object retrying its report would start a second
+ * extraction of the same video. The storage key is already unique per upload
+ * (`upload_grants_storage_key_unique`), and BullMQ only forbids `:` in an id,
+ * which a key never contains — so it is used as-is rather than hashed into
+ * something nobody can trace back to an upload.
+ * @param storageKey - The key this upload was granted.
+ * @returns The BullMQ job id.
+ */
+export function videoCoverJobId(storageKey: string): string {
+  return storageKey;
+}
+
 /** What the worker is told about the video it should extract a cover from. */
 export interface VideoCoverJobData {
   /**

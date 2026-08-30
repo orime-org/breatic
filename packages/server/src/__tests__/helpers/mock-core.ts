@@ -458,6 +458,19 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  */
 export const domainMock = () => ({
   assetService: mocks.assetService,
+  assetRepo: {
+    findByStudioAndHash: vi.fn().mockResolvedValue(null),
+    findCoverOf: vi.fn().mockResolvedValue(null),
+    setCoverAsset: vi.fn(),
+  },
+  // The cover queue's contract. Constants rather than doubles: the report
+  // service names them at module scope, so a mock without them fails the
+  // whole suite at import time.
+  VIDEO_COVER_QUEUE: "video-cover",
+  VIDEO_COVER_JOB: "extract-cover",
+  videoCoverJobId: (storageKey: string) => storageKey,
+  emitNodeStateDone: vi.fn(),
+  emitNodeStateFailed: vi.fn(),
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
   creditLotService: mocks.creditLotService,

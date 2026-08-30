@@ -42,6 +42,7 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 export {
   VIDEO_COVER_QUEUE,
   VIDEO_COVER_JOB,
+  videoCoverJobId,
   type VideoCoverJobData,
 } from "@domain/asset/video-cover-job.js";
 
