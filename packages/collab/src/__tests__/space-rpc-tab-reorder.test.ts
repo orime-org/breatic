@@ -274,17 +274,19 @@ describe("tab:reorder — a list holding the same id twice", () => {
     expect(readTabs(ACTOR)).toEqual([B, C, A]);
   });
 
-  it("clears a duplicate that is not the tab being moved", async () => {
+  it("leaves a duplicate of some other tab where it is", async () => {
+    // Only the browser's read-side dedupe hides this one, and a later close
+    // sweeps every copy. Moving C says nothing about B, so B keeps both.
     seedTabs(ACTOR, [A, B, C, B]);
     const res = await reorder(C, A);
     expect(res.ok).toBe(true);
-    expect(readTabs(ACTOR)).toEqual([C, A, B]);
+    expect(readTabs(ACTOR)).toEqual([C, A, B, B]);
   });
 
-  it("reports a change when clearing the duplicate was the only thing it did", async () => {
-    // A is already in front of B, so the move itself is a no-op — but the
-    // list still gets written, and a client waiting on a broadcast has to
-    // be told one is coming.
+  it("reports a change when collapsing the copies was the only thing it did", async () => {
+    // A is already in front of B, so its place does not change — but the
+    // list loses the second copy of A, and a client waiting on a broadcast
+    // has to be told one is coming.
     seedTabs(ACTOR, [A, B, C, A]);
     const res = await reorder(A, B);
     expect(res.ok && res.result).toEqual({ orderChanged: true });

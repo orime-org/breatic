@@ -76,7 +76,6 @@ import {
   type SpaceRpcResponse,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
-  dedupeTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@breatic/shared";
 
@@ -1550,11 +1549,11 @@ function sameOrder(
  * has never seen — one another connection on the account opened while the
  * request was in flight — is not named by the move, so it keeps its place.
  *
- * The list is normalised before the move. Two collab instances that had not
- * synced can each move the same tab and leave the merged list holding it
- * twice; a move that took out the trailing copy would leave the leading one
- * where it was, and a browser showing first occurrences would render no
- * change at all while the RPC reported success.
+ * Two collab instances that had not synced can each move the same tab and
+ * leave the merged list holding it twice. The move takes every copy of the
+ * id out and puts one back, so that case closes here; a duplicate of some
+ * other id stays in the document until a close sweeps it, and the browser
+ * dedupes what it reads so nobody sees it.
  *
  * The reply says whether this call wrote the list, which is what tells an
  * optimistic client whether a broadcast is coming. Seeding counts: it is a
@@ -1593,19 +1592,18 @@ async function handleTabReorder(
       const seeded = existingOpenTabList(doc, caller.userId) === null;
       const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
       const current = list.toArray();
-      const deduped = dedupeTabOrder(current);
 
-      if (!deduped.includes(spaceId)) {
+      if (!current.includes(spaceId)) {
         return err(req.id, "NOT_FOUND", `Tab ${spaceId} is not open`);
       }
-      if (beforeSpaceId !== null && !deduped.includes(beforeSpaceId)) {
+      if (beforeSpaceId !== null && !current.includes(beforeSpaceId)) {
         return err(req.id, "NOT_FOUND", `Tab ${beforeSpaceId} is not open`);
       }
       if (spaceId === beforeSpaceId) {
         return ok(req.id, { orderChanged: seeded });
       }
 
-      const next = applyMove(deduped, spaceId, beforeSpaceId);
+      const next = applyMove(current, spaceId, beforeSpaceId);
       if (sameOrder(next, current)) {
         return ok(req.id, { orderChanged: seeded });
       }
