@@ -32,7 +32,6 @@ function payload(overrides: Partial<UploadTicketPayload> = {}): UploadTicketPayl
     contentType: "video/mp4",
     expiresAt: NOW + 5 * 60_000,
     leaseGen: 6,
-    deadline: NOW + 30 * 60_000,
     ...overrides,
   };
 }
@@ -116,11 +115,5 @@ describe("signUploadTicket / verifyUploadTicket", () => {
       ok: true,
       payload: small,
     });
-  });
-
-  it("refuses to sign a ticket whose deadline does not sit after expiresAt", async () => {
-    const inverted = payload({ deadline: NOW });
-
-    await expect(signUploadTicket(inverted, SECRET)).rejects.toThrow(/deadline/);
   });
 });

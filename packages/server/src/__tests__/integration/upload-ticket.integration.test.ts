@@ -1,0 +1,428 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * `POST /assets/upload-ticket` — the permission slip the browser carries to
+ * the ingest Worker (task #173, design §4.1).
+ *
+ * It runs the gate the presign endpoint used to run: access to the project,
+ * the upload cap, and "no hash, no upload". What is new is the row it leaves
+ * behind. The grant is the only thing that survives until the Worker reports
+ * back, so the context the browser declares here — which node, which project,
+ * which space — is checked against this user's access before it lands, and
+ * from then on it is ours rather than the client's.
+ *
+ * The signed ticket is read back through the same verifier the Worker runs,
+ * so a ticket this endpoint mints and a ticket the Worker accepts cannot
+ * drift apart without failing here.
+ *
+ * A dedup hit sends no bytes at all, and this endpoint is the whole of that
+ * path now that the second round trip through `/uploaded` is gone. So it also
+ * has to leave the record that round trip used to leave: the node's content
+ * changed, and the node history is where that is kept.
+ */
+
+import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({
+    fullStream: (async function* () {})(),
+    text: Promise.resolve(""),
+    usage: Promise.resolve({ totalTokens: 0 }),
+  }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
+}));
+
+import crypto from "node:crypto";
+import postgres from "postgres";
+import {
+  initCore,
+  getRedis,
+  setSession,
+  sessionCookieName,
+  loadLocales,
+} from "@breatic/core";
+import { verifyUploadTicket } from "@breatic/shared";
+import type { Hono } from "hono";
+
+try {
+  initCore(process.env);
+} catch {
+  // already initialised by a sibling suite in this worker — fine.
+}
+loadLocales();
+
+/**
+ * The same secret `integration-setup.ts` hands the server. Read from the
+ * environment rather than repeated as a literal: a ticket the endpoint signs
+ * with one value and this file verifies with another would pass a test that
+ * asserts nothing.
+ */
+const INGEST_SECRET = process.env.INGEST_SHARED_SECRET ?? "";
+
+let sql: ReturnType<typeof postgres>;
+let app: Hono;
+
+beforeAll(async () => {
+  sql = postgres(inject("DATABASE_URL"), {
+    max: 2,
+    prepare: false,
+    connection: { application_name: "upload-ticket-test-driver" },
+  });
+  const { createApp } = await import("@server/app.js");
+  app = createApp();
+});
+
+afterAll(async () => {
+  await sql?.end({ timeout: 1 });
+});
+
+let seq = 0;
+
+/** A fresh user, their personal studio, a project in it, and a session. */
+async function seedEditor(): Promise<{
+  userId: string;
+  studioId: string;
+  projectId: string;
+  cookie: string;
+}> {
+  const users = await sql<{ id: string }[]>`
+    INSERT INTO users (email, email_verified)
+    VALUES (${`ut-${seq++}@example.com`}, true) RETURNING id
+  `;
+  const userId = users[0]!.id;
+  const studios = await sql<{ id: string }[]>`
+    INSERT INTO studios (created_by_user_id, slug, type, name)
+    VALUES (${userId}, ${`ut-s-${seq++}`}, 'personal', 'Personal') RETURNING id
+  `;
+  const studioId = studios[0]!.id;
+  // Every studio has exactly one admin in production, personal ones included;
+  // the storage-ceiling lookup resolves a studio through its current admin and
+  // treats a studio without one as corrupt.
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studioId}, ${userId}, 'admin')
+  `;
+  const slug = `ut-proj-${seq++}`;
+  const projects = await sql<{ id: string }[]>`
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
+    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug}, 'private')
+    RETURNING id
+  `;
+  const projectId = projects[0]!.id;
+  await sql`
+    INSERT INTO project_members (project_id, user_id, role, added_by)
+    VALUES (${projectId}, ${userId}, 'owner', null)
+  `;
+
+  const token = crypto.randomBytes(24).toString("hex");
+  await setSession(getRedis(), token, userId);
+  return {
+    userId,
+    studioId,
+    projectId,
+    cookie: `${sessionCookieName()}=${token}`,
+  };
+}
+
+/** Put one asset in the studio's ledger so the dedup pass can find it. */
+async function registerAsset(
+  studioId: string,
+  producedByUserId: string,
+  contentHash: string,
+  sizeBytes: number,
+): Promise<void> {
+  await sql`
+    INSERT INTO studio_assets
+      (studio_id, content_hash, storage_key, file_url, size_bytes,
+       mime_type, kind, source, produced_by_user_id)
+    VALUES
+      (${studioId}, ${contentHash}, ${`video/${contentHash}.mp4`},
+       ${`https://cdn.test.invalid/${contentHash}.mp4`}, ${sizeBytes},
+       'video/mp4', 'video', 'upload', ${producedByUserId})
+  `;
+}
+
+/** A request body the endpoint should accept, with the pieces a caller varies. */
+function body(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    filename: "clip.mp4",
+    content_type: "video/mp4",
+    size: 40 * 1024 * 1024,
+    client_hash: crypto.randomBytes(32).toString("hex"),
+    lease_gen: 6,
+    ...overrides,
+  };
+}
+
+/** POST the ticket endpoint with `cookie` and the given body. */
+async function requestTicket(
+  cookie: string,
+  payload: Record<string, unknown>,
+): Promise<Response> {
+  return app.request("/api/v1/assets/upload-ticket", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify(payload),
+  });
+}
+
+describe("POST /assets/upload-ticket", () => {
+  it("mints a ticket the ingest Worker's own verifier accepts", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(cookie, body({ project_id: projectId }));
+
+    expect(res.status).toBe(201);
+    const payload = (await res.json()) as {
+      data: { ticket: string; storageKey: string; uploadUrl: string };
+    };
+    expect(payload.data.storageKey).toMatch(/\.mp4$/);
+    expect(payload.data.uploadUrl.startsWith("https://ingest.test.invalid")).toBe(
+      true,
+    );
+
+    const verified = await verifyUploadTicket(
+      payload.data.ticket,
+      INGEST_SECRET,
+      Date.now(),
+    );
+    expect(verified.ok).toBe(true);
+  });
+
+  it("signs the storage key, the lease gen and the expiry into the ticket", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, lease_gen: 42 }),
+    );
+    const payload = (await res.json()) as {
+      data: { ticket: string; storageKey: string };
+    };
+    const verified = await verifyUploadTicket(
+      payload.data.ticket,
+      INGEST_SECRET,
+      Date.now(),
+    );
+
+    expect(verified.ok).toBe(true);
+    if (!verified.ok) return;
+    expect(verified.payload.storageKey).toBe(payload.data.storageKey);
+    expect(verified.payload.leaseGen).toBe(42);
+    expect(verified.payload.contentType).toBe("video/mp4");
+    // The expiry is what the Worker checks when the browser asks to start, so
+    // a ticket has to arrive with room left on it.
+    expect(verified.payload.expiresAt).toBeGreaterThan(Date.now());
+  });
+
+  it("leaves a grant carrying the context the report will need", async () => {
+    const { projectId, cookie, userId } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, node_id: nodeId }),
+    );
+    const payload = (await res.json()) as { data: { storageKey: string } };
+
+    const rows = await sql<
+      {
+        user_id: string;
+        project_id: string;
+        node_id: string | null;
+        lease_gen: number;
+        consumed_at: Date | null;
+        voided_at: Date | null;
+      }[]
+    >`
+      SELECT user_id, project_id, node_id, lease_gen, consumed_at, voided_at
+      FROM upload_grants WHERE storage_key = ${payload.data.storageKey}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.user_id).toBe(userId);
+    expect(rows[0]!.project_id).toBe(projectId);
+    expect(rows[0]!.node_id).toBe(nodeId);
+    expect(rows[0]!.lease_gen).toBe(6);
+    expect(rows[0]!.consumed_at).toBeNull();
+    expect(rows[0]!.voided_at).toBeNull();
+  });
+
+  it("refuses a project this user is not in, and leaves no grant", async () => {
+    const mine = await seedEditor();
+    const theirs = await seedEditor();
+
+    const res = await requestTicket(
+      mine.cookie,
+      body({ project_id: theirs.projectId }),
+    );
+
+    // 404, not 403: `assertAccess` answers a non-member with NotFound so the
+    // reply does not disclose whether that project exists. 403 is reserved for
+    // a member whose role is below editor.
+    expect(res.status).toBe(404);
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM upload_grants WHERE user_id = ${mine.userId}
+    `;
+    expect(rows[0]!.n).toBe("0");
+  });
+
+  it("refuses a file over the upload cap with 413, minting nothing", async () => {
+    const { projectId, cookie, userId } = await seedEditor();
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, size: 3 * 1024 * 1024 * 1024 }),
+    );
+
+    expect(res.status).toBe(413);
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM upload_grants WHERE user_id = ${userId}
+    `;
+    expect(rows[0]!.n).toBe("0");
+  });
+
+  it("refuses a request with no client hash — no hash, no upload", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const withoutHash = body({ project_id: projectId });
+    delete withoutHash.client_hash;
+
+    const res = await requestTicket(cookie, withoutHash);
+
+    // 422: the body parsed as JSON and every field was read, so the request is
+    // well-formed and merely unsatisfiable — which is what `validate` answers.
+    expect(res.status).toBe(422);
+  });
+
+  it("answers content the studio already holds without minting anything", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size);
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, client_hash: hash, size }),
+    );
+
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as {
+      data: { alreadyExists?: boolean; fileUrl?: string; ticket?: string };
+    };
+    expect(payload.data.alreadyExists).toBe(true);
+    expect(payload.data.fileUrl).toBe(`https://cdn.test.invalid/${hash}.mp4`);
+    expect(payload.data.ticket).toBeUndefined();
+
+    const grants = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM upload_grants WHERE studio_id = ${studioId}
+    `;
+    expect(grants[0]!.n).toBe("0");
+  });
+
+  it("records the node's new content in its history on a dedup hit", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    const nodeId = crypto.randomUUID();
+    await registerAsset(studioId, userId, hash, size);
+
+    await requestTicket(
+      cookie,
+      body({ project_id: projectId, client_hash: hash, size, node_id: nodeId }),
+    );
+
+    // No bytes moved, but the node now shows something it did not show before,
+    // and that is what the history is for.
+    const rows = await sql<
+      { entry_type: string; status: string; content: string }[]
+    >`
+      SELECT entry_type, status, content FROM node_history
+      WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.entry_type).toBe("upload");
+    expect(rows[0]!.status).toBe("success");
+    expect(rows[0]!.content).toBe(`https://cdn.test.invalid/${hash}.mp4`);
+  });
+
+  it("distrusts a hash whose declared size disagrees with the stored row", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await registerAsset(studioId, userId, hash, 40 * 1024 * 1024);
+
+    // The hash is the client's claim about content it has not sent. Matching
+    // it against a row of a different length would hand back somebody else's
+    // file, so the mismatch falls through to a real upload.
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, client_hash: hash, size: 40 * 1024 * 1024 + 1 }),
+    );
+
+    expect(res.status).toBe(201);
+    const payload = (await res.json()) as {
+      data: { ticket?: string; alreadyExists?: boolean };
+    };
+    expect(payload.data.alreadyExists).toBeUndefined();
+    expect(typeof payload.data.ticket).toBe("string");
+  });
+
+  it("dedups against the PROJECT's studio, not the uploader's own", async () => {
+    const owner = await seedEditor();
+    const collaborator = await seedEditor();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${owner.projectId}, ${collaborator.userId}, 'editor', null)
+    `;
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    // The content sits in the PROJECT owner's studio. The collaborator has
+    // never stored it anywhere of their own.
+    await registerAsset(owner.studioId, owner.userId, hash, size);
+
+    const res = await requestTicket(
+      collaborator.cookie,
+      body({ project_id: owner.projectId, client_hash: hash, size }),
+    );
+
+    // One project is one dedup domain no matter who uploads into it: the
+    // storage is charged to the project's studio, so that is where a duplicate
+    // has to be looked for.
+    const payload = (await res.json()) as { data: { alreadyExists?: boolean } };
+    expect(payload.data.alreadyExists).toBe(true);
+  });
+
+  it("leaves the activity feed alone on a dedup hit — nothing was uploaded", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size);
+
+    await requestTicket(
+      cookie,
+      body({ project_id: projectId, client_hash: hash, size }),
+    );
+
+    // `asset:uploaded` is the only shape the feed has for this, and it would be
+    // recording something that did not happen. The feed carries no event for
+    // "a node's content changed" — that is what node_history is.
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM project_activities
+      WHERE project_id = ${projectId} AND type = 'asset:uploaded'
+    `;
+    expect(rows[0]!.n).toBe("0");
+  });
+
+  it("refuses an anonymous caller", async () => {
+    const { projectId } = await seedEditor();
+
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body({ project_id: projectId })),
+    });
+
+    expect(res.status).toBe(401);
+  });
+});

@@ -41,8 +41,6 @@ export interface UploadTicketPayload {
   expiresAt: number;
   /** The node's fencing gen, echoed back so the server can CAS its event. */
   leaseGen: number;
-  /** Epoch ms. Absolute end of this upload, enforced at every endpoint. */
-  deadline: number;
 }
 
 /** Why a ticket did not verify. */
@@ -99,16 +97,14 @@ function decodeBase64(value: string): string {
 /**
  * Sign an upload ticket.
  *
- * The two refusals here are configuration errors rather than user input: both
- * values are derived by our own server from `config/storage.yaml`, so a ticket
- * that violates them means the config is wrong and every upload would fail
- * further down the line — at R2 for the part size, at the lease sweeper for
- * the deadline.
+ * The refusal here is a configuration error rather than user input: the part
+ * size is derived by our own server from `config/storage.yaml`, so a ticket
+ * that violates R2's floor means the config is wrong and R2 would reject every
+ * part from the second one on.
  * @param payload - The ticket contents.
  * @param secret - The shared secret the ingest Worker also holds.
  * @returns The signed ticket, as `base64(json).base64(signature)`.
- * @throws {Error} When `partSize` is under R2's floor on a multi-part upload,
- *   or when `deadline` does not sit after `expiresAt`.
+ * @throws {Error} When `partSize` is under R2's floor on a multi-part upload.
  */
 export async function signUploadTicket(
   payload: UploadTicketPayload,
@@ -117,11 +113,6 @@ export async function signUploadTicket(
   if (payload.totalParts > 1 && payload.partSize < MIN_PART_SIZE_BYTES) {
     throw new Error(
       `partSize ${payload.partSize} is under R2's ${MIN_PART_SIZE_BYTES}-byte floor for a multi-part upload`,
-    );
-  }
-  if (payload.deadline <= payload.expiresAt) {
-    throw new Error(
-      `deadline ${payload.deadline} must sit after expiresAt ${payload.expiresAt}`,
     );
   }
   const body = encodeBase64(JSON.stringify(payload));

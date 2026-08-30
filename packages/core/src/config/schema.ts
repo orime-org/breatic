@@ -268,7 +268,15 @@ export const coreConfigSchema = z.object({
   CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
 
   // ── Storage ──────────────────────────────────────
-  STORAGE_PROVIDER: z.enum(["local", "s3", "aliyun_oss"]).default("local"),
+  // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
+  // address or a custom domain, and it is a different host from
+  // R2_S3_ENDPOINT: the S3 API endpoint answers only to SigV4-signed
+  // requests, so a URL built on it is unreadable by a browser. This is
+  // the URL that lands in nodes, in node_history, and in the worker's
+  // ffmpeg input.
+  STORAGE_PROVIDER: z
+    .enum(["local", "s3", "aliyun_oss", "r2"])
+    .default("local"),
   UPLOAD_BASE_URL: z.string().default(""),
   LOCAL_UPLOAD_DIR: z.string().default(""),
   S3_BUCKET: z.string().default(""),
@@ -279,6 +287,24 @@ export const coreConfigSchema = z.object({
   OSS_ENDPOINT: z.string().default(""),
   OSS_ACCESS_KEY: z.string().default(""),
   OSS_SECRET_KEY: z.string().default(""),
+
+  // ── R2 and the ingest Worker ─────────────────────
+  // R2 speaks the S3 API, so the backend reaches it through the same
+  // client as S3, with an account-scoped endpoint instead of a region.
+  R2_ACCOUNT_ID: z.string().default(""),
+  R2_BUCKET: z.string().default(""),
+  R2_ACCESS_KEY: z.string().default(""),
+  R2_SECRET_KEY: z.string().default(""),
+  R2_S3_ENDPOINT: z.string().default(""),
+  // Where the browser sends its parts. The Worker, not the bucket:
+  // it is what computes the content hash over the bytes that really
+  // landed, and what reports the upload back to us.
+  INGEST_BASE_URL: z.string().default(""),
+  // Signs the ticket the browser carries to the Worker, and verifies
+  // the report the Worker sends back. The Worker holds the same value
+  // through `wrangler secret put` (`.dev.vars` locally); both sides
+  // read it from their own runtime's injection point.
+  INGEST_SHARED_SECRET: z.string().default(""),
 
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),

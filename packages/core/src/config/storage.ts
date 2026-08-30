@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { MAX_TIMER_MS, MIN_PART_SIZE_BYTES } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -103,6 +103,37 @@ export const storageConfigSchema = z.object({
         });
       }
     }),
+
+  ingest: z
+    .object({
+      /**
+       * One part of a multipart upload, in bytes. R2 refuses a non-final part
+       * under 5 MiB; `signUploadTicket` enforces the same floor when it signs
+       * a multi-part ticket, so a config below it would fail at request time
+       * rather than at load.
+       */
+      part_size_bytes: z
+        .number()
+        .int()
+        .min(
+          MIN_PART_SIZE_BYTES,
+          `part_size_bytes must be at least ${MIN_PART_SIZE_BYTES} — R2 refuses a non-final part below 5 MiB, so every multi-part upload would be rejected mid-flight.`,
+        )
+        .default(8388608),
+      /**
+       * How long the browser has to START the upload, in seconds. Checked once
+       * by the ingest Worker; an upload already running is never cut off by it.
+       */
+      ticket_expires_seconds: z.number().int().positive().default(300),
+      /**
+       * How long an upload may go without a new part arriving, in seconds. The
+       * Durable Object pushes its alarm out by this much on every part, so an
+       * upload that keeps moving is never cut off however large the file is,
+       * and one that stops is judged dead this long after its last part.
+       */
+      alarm_idle_seconds: z.number().int().positive().default(300),
+    })
+    .prefault({}),
 
   avatar: z
     .object({

@@ -26,6 +26,9 @@ import {
   primaryKey,
   check,
 } from "drizzle-orm/pg-core";
+// A self-referencing FK needs its column type spelled out, since the table is
+// still being defined at the point the reference is written.
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { MessagePart } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -1876,6 +1879,27 @@ export const studioAssets = pgTable(
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
       onDelete: "set null",
     }),
+    /**
+     * A video's cover, backfilled once the worker has extracted and registered
+     * it (#173). Only video rows ever carry one.
+     *
+     * Without this column the relationship exists nowhere: the cover used to
+     * ride along in the upload report and was resolved on the spot, which
+     * worked only because the browser sent a cover with every video. Once the
+     * cover is produced server-side, a dedup hit against an existing video row
+     * has nothing to read it from — the node comes back showing a video that
+     * already has a cover, without it.
+     *
+     * A backfill rather than part of the insert: the video row is written by
+     * the server at report time, and the cover does not exist until the worker
+     * finishes. Between those two the column is null, which reads as "no
+     * cover" — the same thing an extraction failure leaves behind, and the
+     * same Film icon.
+     */
+    coverAssetId: uuid("cover_asset_id").references(
+      (): AnyPgColumn => studioAssets.id,
+      { onDelete: "restrict" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1934,15 +1958,6 @@ export const uploadGrants = pgTable(
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
-    /**
-     * Client-declared sha256 hex — the dedup lookup value at presign. NOT NULL:
-     * an upload without a hash is refused outright (#1826 §0 rule 4, "no hash,
-     * no upload"), because it could never be registered
-     * (`studio_assets.content_hash` is NOT NULL) and whatever pinned its URL
-     * would 404 once the object was reclaimed. The anti-spoof check itself is
-     * (storage_key, user_id) only and never reads this column.
-     */
-    contentHash: varchar("content_hash", { length: 64 }).notNull(),
     /** The tenant-neutral storage key K the server minted (issued at most once). */
     storageKey: text("storage_key").notNull(),
     /**
@@ -1957,6 +1972,46 @@ export const uploadGrants = pgTable(
      * (write-time gate only). A consumed grant no longer resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    /**
+     * Set when this grant died without its bytes ever becoming an asset — the
+     * report said `aborted`, the size came back over the cap, or the sweep
+     * found it past its deadline. Kept apart from `consumed_at` because the
+     * two terminal states demand opposite handling: a consumed grant produced
+     * an asset row, a voided one produced an object nobody owns.
+     */
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    /**
+     * How long the ticket itself stays usable. Checked once, when the browser
+     * asks the ingest Worker to start; an upload already running is never cut
+     * off by it. Judged lazily on read, the way `studioInvite.service.ts:133`
+     * clears stale invites — no background scan.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * The node's fencing gen at the moment handling opened. It is also signed
+     * into the ticket and echoed back by the Worker; keeping it here means the
+     * report handler reads the gen off a row we wrote rather than off anything
+     * the caller supplies. An event published without the right gen is dropped
+     * by collab's CAS and the node hangs in handling until the lease sweeper
+     * reclaims it an hour later.
+     */
+    leaseGen: integer("lease_gen").notNull(),
+    /** Node these bytes land on. Absent for a focus crop, which has no node. */
+    nodeId: uuid("node_id"),
+    /** Project the node belongs to, checked against the user's access at ticket time. */
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    /** Canvas space holding the node — part of the doc name the event addresses. */
+    spaceId: uuid("space_id"),
+    /** What started this upload. node_history and the activity feed both read it. */
+    source: text("source"),
+    /** Mini-tool that produced these bytes, when one did. */
+    toolName: text("tool_name"),
+    /** True when the bytes came out of another asset rather than the user's disk. */
+    derived: boolean("derived"),
+    /** Original file name, shown in history. */
+    filename: text("filename"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -165,3 +165,41 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     expect(getStorageConfig().upload.client_put_min_bytes_per_sec).toBe(65536);
   });
 });
+
+/**
+ * The ingest Worker's two server-side knobs (#173, design §4.1).
+ *
+ * `part_size_bytes` is the one with a hard external floor: R2 rejects any
+ * non-final part under 5 MiB, so a config below it would fail mid-upload
+ * rather than at load, where the operator who typed the number is reading.
+ *
+ * `alarm_idle_seconds` has no such bound. It is how long an upload may go
+ * without a new part before the Durable Object judges it dead, and the object
+ * pushes its alarm out by this much on every part it receives — so there is no
+ * total upload time to keep it under, and nothing to nest it inside.
+ */
+describe("storageConfigSchema — the ingest knobs", () => {
+  it("loads the ingest config from config/storage.yaml", () => {
+    const cfg = getStorageConfig();
+    expect(cfg.ingest.part_size_bytes).toBe(8388608);
+    expect(cfg.ingest.ticket_expires_seconds).toBe(300);
+    expect(cfg.ingest.alarm_idle_seconds).toBe(300);
+  });
+
+  it("refuses a part size R2 would reject as a non-final part", () => {
+    expect(() =>
+      storageConfigSchema.parse({ ingest: { part_size_bytes: 5 * 1024 * 1024 - 1 } }),
+    ).toThrow(/part_size_bytes/);
+
+    expect(() =>
+      storageConfigSchema.parse({ ingest: { part_size_bytes: 5 * 1024 * 1024 } }),
+    ).not.toThrow();
+  });
+
+  it("defaults the whole section whether it is absent or empty", () => {
+    const defaulted = storageConfigSchema.parse({});
+    const empty = storageConfigSchema.parse({ ingest: {} });
+    expect(defaulted.ingest).toEqual(empty.ingest);
+    expect(defaulted.ingest.part_size_bytes).toBe(8388608);
+  });
+});

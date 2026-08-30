@@ -98,41 +98,60 @@ export async function verifyDedupUpload(params: {
  * Mint a tenant-neutral storage key for an upload that missed dedup and record
  * its upload grant (#1826, design §2.2). Called by /presign AFTER the dedup
  * check misses: resolves the owner studio (#1839 — the PROJECT's), mints K,
- * and writes the grant
- * row (user + studio + declared hash + K) that the upload endpoints later
- * re-check for authenticity. The dedup-hit path never calls this (no key, no
- * grant).
+ * and writes the grant row the ingest Worker's report is later checked
+ * against. The dedup-hit path never calls this (no key, no grant).
+ *
+ * The context travels onto the grant rather than being asked of the report,
+ * because the report comes from the Worker, which knows only what the ticket
+ * told it. Checking it here — while we hold the user's session and their
+ * access to the project — is what makes it ours rather than the client's.
  * @param params - The upload claim + key components.
  * @param params.projectId - Project the upload targets.
  * @param params.actingUserId - Authenticated uploader.
- * @param params.contentHash - Client-declared sha256 hex. Mandatory: presign
- *   refuses a request without one (#1826 §0 rule 4). Recorded on the grant so
- *   the later `/uploaded` report can be bound to the SAME content
- *   ({@link resolveGrantForReport}) — ownership checks still ignore it.
  * @param params.declaredSize - Client-declared byte size (UX pre-check only).
  * @param params.taskType - The detected kind, used as the key's task segment.
  * @param params.ext - The dotted file extension for the key.
- * @returns The minted storage key K.
+ * @param params.expiresAt - When the ticket stops being usable.
+ * @param params.leaseGen - The node's fencing gen at the moment handling opened.
+ * @param params.context - Node, space, and provenance for the report to use.
+ * @param params.context.nodeId - Node the bytes land on, when there is one.
+ * @param params.context.spaceId - Canvas space holding that node.
+ * @param params.context.source - What started this upload.
+ * @param params.context.toolName - Mini-tool that produced the bytes, if any.
+ * @param params.context.derived - True when the bytes came out of another asset.
+ * @param params.context.filename - Original file name, shown in history.
+ * @returns The minted storage key K and the owner studio it was attributed to.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
 export async function issueUploadGrant(params: {
   projectId: string;
   actingUserId: string;
-  contentHash: string;
   declaredSize: number;
   taskType: string;
   ext: string;
-}): Promise<{ key: string }> {
+  expiresAt: Date;
+  leaseGen: number;
+  context: {
+    nodeId?: string | null;
+    spaceId?: string | null;
+    source?: string | null;
+    toolName?: string | null;
+    derived?: boolean | null;
+    filename?: string | null;
+  };
+}): Promise<{ key: string; studioId: string }> {
   const studioId = await assetService.resolveOwnerStudioId(params.projectId);
   const key = storageKey({ taskType: params.taskType, ext: params.ext });
   await issueGrant({
     userId: params.actingUserId,
     studioId,
-    contentHash: params.contentHash,
     storageKey: key,
     declaredSize: params.declaredSize,
+    expiresAt: params.expiresAt,
+    leaseGen: params.leaseGen,
+    context: { ...params.context, projectId: params.projectId },
   });
-  return { key };
+  return { key, studioId };
 }
 
 /**
@@ -154,53 +173,6 @@ export async function authorizeUploadWrite(params: {
     userId: params.actingUserId,
   });
   return grant !== null;
-}
-
-/**
- * Authorise an `/uploaded` report and read the AUTHORITATIVE owner studio off
- * the grant (#1826 §2.2 v15). One lookup answers both questions.
- *
- * Two things must hold, and BOTH come from the grant row:
- *
- * 1. Ownership — a live grant for (key, user). The studio was resolved
- *    server-side at presign, so `/uploaded` attributes the asset to THAT
- *    studio rather than re-deriving one from the client's `project_id`. A
- *    member of two studios could otherwise presign inside studio A's project
- *    and report completion with studio B's project id, charging the storage to
- *    B (shifting personal cost onto a team).
- * 2. Content identity — the report's hash must be the one the grant was issued
- *    for. A grant authorises ONE upload of ONE piece of content, and the hash
- *    is what names that content (Gate-2 R7). Without this, two concurrent
- *    reports on a single key can register TWO rows with DIFFERENT hashes:
- *    `studio_assets` is unique on (studio_id, content_hash), NOT on
- *    storage_key, so the second report resolves as a dedup hit against some
- *    unrelated existing row and hands the key to the offline reclaim queue —
- *    while the first report's row is live and a node is pinned to that very
- *    key. The offline job then deletes bytes a node points at: a 404 the
- *    design declares impossible.
- *
- * The write-time gate (`authorizeUploadWrite`) deliberately does NOT check the
- * hash: `/local-upload` is a bare byte PUT with no hash in scope. Authenticity
- * stays (key, user, not-consumed); this adds the report-only binding.
- * @param params - The report's claim.
- * @param params.storageKey - The key being registered.
- * @param params.actingUserId - The authenticated caller.
- * @param params.contentHash - The sha256 the report declares for those bytes.
- * @returns The grant's owner studio id, or null when no live grant matches the
- *   caller or the grant was issued for different content.
- */
-export async function resolveGrantForReport(params: {
-  storageKey: string;
-  actingUserId: string;
-  contentHash: string;
-}): Promise<string | null> {
-  const grant = await findLiveGrant({
-    storageKey: params.storageKey,
-    userId: params.actingUserId,
-  });
-  if (!grant) return null;
-  if (grant.contentHash !== params.contentHash) return null;
-  return grant.studioId;
 }
 
 /**

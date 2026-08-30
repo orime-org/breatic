@@ -31,6 +31,24 @@ upload:
   # no time limit (#1826, design §3.2). Local storage has no presigned URL.
   presign_expires_seconds: 300
 
+# The ingest Worker (#173). The knobs the SERVER decides live here; the
+# Durable Object's session token TTL is configured where that code is deployed,
+# because a Worker cannot read this file.
+ingest:
+  # One part of a multipart upload, in bytes. R2 refuses a non-final part
+  # under 5 MiB, which is the floor `signUploadTicket` enforces.
+  part_size_bytes: 8388608
+  # How long the browser has to START the upload. Checked once, when it asks
+  # the Worker to begin; an upload already running is never cut off by it.
+  ticket_expires_seconds: 300
+  # How long the upload may go without a new part arriving. The Durable Object
+  # pushes its alarm out by this much on every part it receives, so an upload
+  # that keeps moving is never cut off no matter how large the file is, and one
+  # that stops is judged dead this long after its last part. There is no total
+  # time limit: a total would have to be guessed from the file size and the
+  # user's bandwidth, and guessing it low kills uploads that are still running.
+  alarm_idle_seconds: 300
+
 # Studio avatars.
 avatar:
   # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned

@@ -82,14 +82,22 @@ describe("GET /canvas/nodes/:nodeId/history — project_id ownership", () => {
   });
 });
 
-describe("GET /assets/presign — project ownership", () => {
-  it("rejects with 403 for unowned project", async () => {
+describe("POST /assets/upload-ticket — project ownership", () => {
+  it("rejects with 403 for a project this caller may not write to", async () => {
     mocks.projectService.assertAccess.mockRejectedValue(new ForbiddenError("nope"));
     const app = createApp();
-    const res = await app.request(
-      `/api/v1/assets/presign?filename=a.png&content_type=image/png&project_id=${PROJ_UUID}&size=1&hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`,
-      { headers: AUTH },
-    );
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        filename: "a.png",
+        content_type: "image/png",
+        project_id: PROJ_UUID,
+        size: 1,
+        client_hash: "a".repeat(64),
+        lease_gen: 1,
+      }),
+    });
     expect(res.status).toBe(403);
   });
 });
