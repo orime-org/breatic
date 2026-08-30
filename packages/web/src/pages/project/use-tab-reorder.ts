@@ -19,6 +19,14 @@ export interface TabReorderResult {
 
 /** One move the document has not accounted for yet. */
 interface OwedMove {
+  /**
+   * Names this move for as long as it is owed. Two things retire a move —
+   * the document arriving with it applied, and its own reply saying the
+   * server wrote nothing — and they can happen in either order. A name is
+   * what lets both point at the same move; a position into the run cannot,
+   * because retiring one shifts every other.
+   */
+  id: number;
   spaceId: string;
   beforeSpaceId: string | null;
 }
@@ -109,9 +117,15 @@ export function useTabReorder(
    * see the run as it stands right now.
    */
   const owedRef = React.useRef<ReadonlyArray<OwedMove>>([]);
-  /** How many of the owed moves have been sent. The wire holds the last one. */
-  const sent = React.useRef(0);
+  /**
+   * The moves that have gone out. One stays here until it stops being owed,
+   * so the pump never sends the same move twice while it waits for its
+   * broadcast.
+   */
+  const sent = React.useRef<ReadonlySet<number>>(new Set());
+  /** Whether the wire is busy. Requests go out one at a time. */
   const inFlight = React.useRef(false);
+  const lastId = React.useRef(0);
 
   const sendRef = React.useRef(send);
   sendRef.current = send;
@@ -125,14 +139,17 @@ export function useTabReorder(
 
   const commit = React.useCallback((next: ReadonlyArray<OwedMove>): void => {
     owedRef.current = next;
+    sent.current = new Set(
+      [...sent.current].filter((id) => next.some((m) => m.id === id)),
+    );
     setOwed(next);
   }, []);
 
   const pump = React.useCallback((): void => {
     if (inFlight.current) return;
-    const next = owedRef.current[sent.current];
+    const next = owedRef.current.find((m) => !sent.current.has(m.id));
     if (!next) return;
-    sent.current += 1;
+    sent.current = new Set(sent.current).add(next.id);
     inFlight.current = true;
     void sendRef
       .current(next.spaceId, next.beforeSpaceId)
@@ -140,10 +157,9 @@ export function useTabReorder(
         inFlight.current = false;
         if (!orderChanged) {
           // The server wrote nothing, so no arrival will ever account for
-          // this one. It stops being owed here or never.
-          const at = sent.current - 1;
-          sent.current -= 1;
-          commit(owedRef.current.filter((_, i) => i !== at));
+          // this one. It stops being owed here or never — and it may already
+          // have gone, if the same move reached the document another way.
+          commit(owedRef.current.filter((m) => m.id !== next.id));
         }
         pump();
       })
@@ -151,7 +167,7 @@ export function useTabReorder(
         // The caller surfaced the failure. Everything shown optimistically
         // goes back to what the document says — including the moves behind
         // this one, which were computed on top of it.
-        sent.current = 0;
+        inFlight.current = false;
         commit([]);
       });
   }, [commit]);
@@ -163,7 +179,11 @@ export function useTabReorder(
       // do nothing and, when collab is unreachable, raise a failure for an
       // action that needed nothing from it.
       if (sameIds(applyTabMove(base, spaceId, beforeSpaceId), base)) return;
-      commit([...owedRef.current, { spaceId, beforeSpaceId }]);
+      lastId.current += 1;
+      commit([
+        ...owedRef.current,
+        { id: lastId.current, spaceId, beforeSpaceId },
+      ]);
       pump();
     },
     [commit, pump],
@@ -175,7 +195,6 @@ export function useTabReorder(
   React.useEffect(() => {
     const landed = landedCount(openTabIds, owedRef.current);
     if (landed === 0) return;
-    sent.current = Math.max(0, sent.current - landed);
     commit(owedRef.current.slice(landed));
   }, [openTabIds, commit]);
 

@@ -309,4 +309,28 @@ describe('ProjectPage — reordering tabs does not change which Space is shown',
 
     expect(selectedTabId()).toBe(SPACE_A);
   });
+
+  it('keeps the shown Space when the strip emptied before the tab left', async () => {
+    // A meta connection that drops and resyncs shows an empty strip for a
+    // frame. What the page has to answer afterwards is unchanged — the tab
+    // the choice names is gone, so the choice has to become the one on
+    // screen — and an empty frame in between says nothing about that.
+    meta.spaces = [
+      { id: SPACE_A, name: 'Space A', type: 'document' },
+      { id: SPACE_B, name: 'Space B', type: 'document' },
+      { id: SPACE_C, name: 'Space C', type: 'document' },
+    ];
+    meta.openTabIds = [SPACE_A, SPACE_B, SPACE_C];
+    setup();
+    expect(await screen.findByTestId(`space-tab-${SPACE_A}`)).toBeTruthy();
+    expect(selectedTabId()).toBe(SPACE_A);
+
+    await landOrder([]);
+    await landOrder([SPACE_B, SPACE_C]);
+    expect(selectedTabId()).toBe(SPACE_B);
+
+    await landOrder([SPACE_C, SPACE_B]);
+
+    expect(selectedTabId()).toBe(SPACE_B);
+  });
 });

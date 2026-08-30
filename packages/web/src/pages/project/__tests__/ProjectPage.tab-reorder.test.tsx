@@ -343,4 +343,56 @@ describe('ProjectPage — opening a Space that has no tab yet', () => {
 
     expect(barProps.current?.activeSpaceId).toBe(SPACE_C);
   });
+
+  it('settles on what is shown when that tab never arrives', async () => {
+    // The open failed, so C has no tab and never will. Falling back by
+    // position is what the page shows meanwhile — and leaving the choice
+    // pointing at C leaves that fallback standing, which is exactly what a
+    // reorder then moves.
+    sendSpaceRpcMock.mockRejectedValue(new Error('unreachable'));
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B]));
+
+    await act(async () => {
+      barProps.current?.onActivate(SPACE_C);
+    });
+
+    meta.openTabIds = [SPACE_B, SPACE_A];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
+  });
+
+  it('settles on what is shown when that tab is later closed', async () => {
+    // The open landed, so waiting for it is over. Closing the tab afterwards
+    // is the ordinary case again — the choice names a Space with no tab, and
+    // it has to become the one on screen or a reorder will move the body.
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B]));
+
+    await act(async () => {
+      barProps.current?.onActivate(SPACE_C);
+    });
+    meta.openTabIds = [SPACE_A, SPACE_B, SPACE_C];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_C);
+
+    // The user closes it. C is still a Space; only its tab is gone.
+    meta.openTabIds = [SPACE_A, SPACE_B];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: true });
+    });
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
+
+    meta.openTabIds = [SPACE_B, SPACE_A];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
+  });
 });

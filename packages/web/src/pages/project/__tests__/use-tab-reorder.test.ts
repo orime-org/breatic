@@ -438,4 +438,62 @@ describe('useTabReorder — when the pending order is let go of', () => {
       expect(result.current.order).toEqual([A, B, C]);
     });
   });
+
+  it('carries the next drag after a request failed', async () => {
+    // A failure puts the strip back and empties the run. It does not end the
+    // strip's ability to reorder — the user drags again and that one goes out.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    await act(async () => {
+      first.reject(new Error('unreachable'));
+    });
+    act(() => {
+      result.current.reorder(C, A);
+    });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('carries the next drag after a move settled by both routes at once', async () => {
+    // The other connection made this same move: its broadcast settles the one
+    // on the wire, and then that request's own reply says the server found
+    // nothing left to write. Both routes retire the same move, and the strip
+    // still sends what the user drags next.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as ReadonlyArray<string> } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    rerender({ ids: [C, A, B] });
+    await act(async () => {
+      first.resolve(false);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+  });
 });

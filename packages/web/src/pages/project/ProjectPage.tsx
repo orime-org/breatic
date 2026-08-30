@@ -346,6 +346,39 @@ function ProjectWorkspace({
     [callRpc],
   );
 
+  /**
+   * The Space a `tab:open` is out for, or null. Naming a Space and its tab
+   * appearing are two round trips, and between them the choice names a Space
+   * the strip does not hold — which is also what a tab that LEFT looks like.
+   * This says which of the two it is, so pinning can wait for one and settle
+   * the other.
+   */
+  const [openingTab, setOpeningTab] = React.useState<string | null>(null);
+
+  /**
+   * Put a Space on this user's strip.
+   *
+   * Which tabs are OPEN is shared and persisted, so only the server may write
+   * it. The failure is reported and nothing is rolled back: the Space itself
+   * is untouched.
+   * @param spaceId - The Space to open a tab for.
+   * @returns Nothing; the request settles on its own.
+   */
+  const openTab = React.useCallback(
+    (spaceId: string): void => {
+      setOpeningTab(spaceId);
+      void callRpc(
+        { type: 'tab:open', payload: { spaceId } },
+        'project.space.error.openTab',
+      ).catch(() => {
+        // callRpc already surfaced a toast. No tab is coming for this one,
+        // so stop holding the choice open for it.
+        setOpeningTab((cur) => (cur === spaceId ? null : cur));
+      });
+    },
+    [callRpc],
+  );
+
   // What the strip renders: the stored order with a released drag laid over it
   // until the document catches up.
   const { order: tabOrder, reorder } = useTabReorder(openTabIds, sendReorder);
@@ -366,35 +399,29 @@ function ProjectWorkspace({
     activeSpaceId,
   );
 
-  /**
-   * The tab ids the last render had, so this one can tell a tab that LEFT
-   * from a tab that has not arrived yet. Both read as "the choice is not in
-   * the list", and they call for opposite answers.
-   */
-  const tabsLastSeen = React.useRef<ReadonlySet<string>>(new Set());
-
-  // Turn the positional fallback into a choice, at the two moments that
-  // reach it. Leaving the fallback standing lets a reorder swap the body out
-  // from under the user — including remotely, from another connection on the
-  // same account, which is the thing that moving the active tab out of the
-  // shared doc set out to stop.
+  // Hold this invariant: the choice either names a tab on the strip, or names
+  // one a `tab:open` is still travelling for. Anything else leaves the page
+  // falling back by POSITION, and a reorder then swaps the body out from
+  // under the user — including remotely, from another connection on the same
+  // account, which is the thing that moving the active tab out of the shared
+  // doc set out to stop.
   React.useEffect(() => {
     const now = new Set(openTabs.map((s) => s.id));
-    const before = tabsLastSeen.current;
-    tabsLastSeen.current = now;
     // Opening a project: no choice has been made at all.
     if (activeSpaceId === null) {
       if (openTabs.length > 0) setActiveSpaceId(openTabs[0]!.id);
       return;
     }
-    // The chosen tab was on the strip and has left it. Closing a tab does not
-    // delete the Space, so nothing else revises a choice that names it.
-    // A choice naming a tab that has not appeared yet — picked from the
-    // drawer, or just created — is left alone: its tab:open is on its way.
-    if (before.has(activeSpaceId) && !now.has(activeSpaceId) && activeSpace) {
-      setActiveSpaceId(activeSpace.id);
+    if (now.has(activeSpaceId)) {
+      if (openingTab === activeSpaceId) setOpeningTab(null);
+      return;
     }
-  }, [openTabs, activeSpaceId, activeSpace]);
+    // Its tab is on the way. Nobody else revises the choice meanwhile.
+    if (openingTab === activeSpaceId) return;
+    // No tab, and none coming: the tab was closed, or the open failed. Make
+    // what the page is already showing the choice.
+    if (activeSpace) setActiveSpaceId(activeSpace.id);
+  }, [openTabs, activeSpaceId, activeSpace, openingTab]);
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out
@@ -506,16 +533,10 @@ function ProjectWorkspace({
       // It reports as an OPEN failure, not a create failure. The create
       // already succeeded — the entry is in the list and on screen — so
       // saying it failed would send the user off to make a second Space.
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId: mine.id } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast; the Space itself exists, so
-        // there is nothing to roll back and nothing more to say.
-      });
+      openTab(mine.id);
       setActiveSpaceId(mine.id);
     }
-  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, callRpc]);
+  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, openTab]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
   // and surface a toast so the user can retry rather than stare at a
@@ -597,14 +618,7 @@ function ProjectWorkspace({
     // and a switch is instant and local. Sending the redundant open made
     // every switch raise "failed to open the tab" whenever collab was
     // unreachable, for an action that needed nothing from it.
-    if (!openTabIds.includes(id)) {
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId: id } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast.
-      });
-    }
+    if (!openTabIds.includes(id)) openTab(id);
     setActiveSpaceId(id);
   };
 

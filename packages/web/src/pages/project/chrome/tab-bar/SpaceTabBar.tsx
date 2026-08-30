@@ -280,20 +280,9 @@ export function SpaceTabBar({
   const updateScrollState = React.useCallback(() => {
     const el = scrollerRef.current;
     if (!el) return;
-    // atStart / atEnd are DOM-rect-based - same yardstick as the
-    // `scrollOneTab` algorithm below, so the arrow's enabled predicate
-    // ("can we still scroll?") always matches what the arrow click
-    // would actually do ("is there a tab left to bring on-screen?").
-    //
-    // Why not scrollLeft-based (prior approach, commit 626ec56 + 4870de6):
-    // smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft at
-    // the scroller's content-area edge - that's `padding-left` (~8 px
-    // with `padding: 0 var(--space-2)`), NOT zero. A `scrollLeft <= 1`
-    // boundary check therefore stayed false at the visual left edge,
-    // leaving the arrow stuck enabled. Mouse-wheel scroll did snap to
-    // scrollLeft=0 (browser clamp), which is why the bug only showed
-    // up via arrow clicks. DOM rects sidestep the scroll-position
-    // arithmetic entirely.
+    // atStart / atEnd ask the same spans `scrollOneTab` below asks, so the
+    // arrow's enabled state ("can we still scroll?") can never disagree with
+    // what clicking it does ("is there a tab left to bring on screen?").
     const overflow = el.scrollWidth > el.clientWidth + 1;
     const visible = visibleSpan(el);
     const tabs = tabsIn(el);
@@ -305,12 +294,6 @@ export function SpaceTabBar({
     );
     // Whole, not merely somewhere on screen: a tab with its name cut off by
     // the edge is exactly what the reveal control exists to finish showing.
-    //
-    // Read off the layout, which a transform does not move, because a dragged
-    // tab carries one. Through a rect, a tab held over the middle of the strip
-    // reads as on screen however far its place has scrolled away — and the
-    // gesture ending scrolls nothing and resizes nothing, so that answer is
-    // the one this control would keep, disabled, with the tab off screen.
     const active = activeTab();
     const activeSpan = active === null ? null : tabSpan(active);
     const activeVisible =
