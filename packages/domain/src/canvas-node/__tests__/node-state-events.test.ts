@@ -2,97 +2,32 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Unit tests for the NodeStateUpdateEvent emit helpers in handlers/dispatch.ts.
+ * What each node-state event puts on the wire.
  *
- * Covers:
- *  - emitNodeStateDone: success shape (all fields), partial fields, multi-node fanout
- *  - emitNodeStateFailed: failure shape, single and multi-node (via caller loop)
- *  - Guard: no publish when targetNodeIds is empty (caller-level guard simulation)
+ * These three are the whole vocabulary a backend has for telling collab what
+ * happened to a node, and collab applies what arrives without re-deriving it.
+ * So the shape IS the contract: `handlingBy: null` is what clears the actor
+ * badge, `errorMessage: null` is what clears a stale error off a node that has
+ * just succeeded, and `gen` is what stops a write-back that lost its lease
+ * from landing on whoever holds it now.
  *
- * No real Redis — publishNodeEvent from @breatic/core is fully mocked.
+ * `publishNodeEvent` is mocked; what is asserted is the payload handed to it.
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-// ── Mock @breatic/core ──────────────────────────────────────────────
-// Use a hoisted mock so the actual module (which reaches ioredis, postgres
-// and the rest of the infrastructure) is never loaded. Only the symbols that
-// handlers/dispatch.ts actually needs at import time are declared here.
-const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
-
+const { mockPublishNodeEvent } = vi.hoisted(() => ({
+  mockPublishNodeEvent: vi.fn(),
+}));
 vi.mock("@breatic/core", () => ({
   publishNodeEvent: mockPublishNodeEvent,
-  getStreamRedis: vi.fn(),
-  getRedis: vi.fn(),
-  env: { ENV: "test", CREDIT_MULTIPLIER: 1 },
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-  // Other core symbols imported at the top of handlers/dispatch.ts
-  downloadAndStore: vi.fn(),
-  getStorageAdapter: vi.fn(),
-  storageKey: vi.fn(),
 }));
 
-// ── Mock @breatic/domain (AIGC business handlers/dispatch.ts calls) ──────────
-// PR4 moved task / credit / node-history / agent / canvas-lock here.
-// Mocked so loading handlers never pulls the real domain barrel (→ agent
-// llm → the `ai` SDK, plus the MONOREPO_ROOT cascade back into core).
-// Only the symbols handlers/dispatch.ts imports at top level.
-vi.mock("@breatic/domain", () => ({
-  taskService: {
-    getByIdInternal: vi.fn(),
-    markRunning: vi.fn(),
-    markFailed: vi.fn(),
-    markCompletedAndBill: vi.fn(),
-    recordProviderResult: vi.fn(),
-    setResolvedSkills: vi.fn(),
-  },
-  nodeHistoryService: {
-    recordGenerationSuccess: vi.fn(),
-    recordGenerationFailure: vi.fn(),
-  },
-  getModel: vi.fn(),
-  buildToolSet: vi.fn(),
-  getSkillRegistry: vi.fn(),
-  extractPromptText: vi.fn((x: unknown) => String(x ?? "")),
-  verifyCanvasNodeLock: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
-}));
-
-// @breatic/shared is used for canvasSpaceDocName inside handlers/dispatch.ts
-// (v10 multi-doc routing: worker writes to project-{pid}/canvas-{sid}).
-vi.mock("@breatic/shared", () => ({
-  canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
-}));
-
-// ── Also mock the mini-tool-registry which handlers/dispatch.ts imports ──────
-vi.mock("../mini-tool-registry.js", () => ({
-  resolveMiniToolEntry: vi.fn(),
-}));
-
-// ── Also mock the local/index handler ───────────────────────────────
-vi.mock("../handlers/local/index.js", () => ({
-  runLocalHandler: vi.fn(),
-}));
-
-// ── ai (used in runSkillAgent path) ─────────────────────────────────
-vi.mock("ai", () => ({
-  tool: (c: Record<string, unknown>) => c,
-  generateText: vi.fn(),
-  streamText: vi.fn(),
-  stepCountIs: vi.fn(),
-}));
-
-// ── Import the helpers under test AFTER mocks are wired ─────────────
 import {
   emitNodeStateDone,
   emitNodeStateFailed,
   emitNodeLeaseRunning,
-} from "../handlers/dispatch.js";
+} from "@domain/canvas-node/node-state-events.js";
 
 // Dummy streamRedis value — handlers pass it through to publishNodeEvent
 // which is mocked, so any value works.

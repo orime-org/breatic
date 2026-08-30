@@ -32,10 +32,9 @@
  */
 import type { getStreamRedis } from "@breatic/core";
 import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import { taskService } from "@breatic/domain";
+import { taskService, emitNodeStateFailed } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
-  emitNodeStateFailed,
   mediaKindForActivity,
   recordGenerationForNodes,
   type TaskJobData,

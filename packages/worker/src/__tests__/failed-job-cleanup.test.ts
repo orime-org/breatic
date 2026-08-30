@@ -40,7 +40,13 @@ vi.mock("@breatic/core", () => ({
   storageKey: vi.fn(),
 }));
 
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // The real emitter, so what this file asserts stays the shape of the event
+  // rather than the fact that a function was called. It reaches
+  // `publishNodeEvent` through the core mock above.
+  ...(await vi.importActual<Record<string, unknown>>(
+    "@domain/canvas-node/node-state-events.js",
+  )),
   taskService: {
     getByIdInternal: vi.fn(),
     markRunning: vi.fn(),

@@ -73,3 +73,12 @@ export {
   releaseCanvasNodeLock,
   reacquireCanvasNodeLock,
 } from "@domain/canvas-lock/canvas-lock.js";
+
+// ── Canvas node state write-back (worker finishes a generation, server
+//    finishes an upload — one shape, one place) ──
+export {
+  emitNodeStateDone,
+  emitNodeStateFailed,
+  emitNodeLeaseRunning,
+  type NodeStateDoneFields,
+} from "@domain/canvas-node/node-state-events.js";
