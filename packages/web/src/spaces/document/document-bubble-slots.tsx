@@ -13,10 +13,12 @@
  * draws them and writes a line to the console when pressed, the menu closing
  * after them either way (user 2026-08-27).
  *
- * Two things carry the greyed treatment `document-coming-tool.tsx` defines,
+ * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
  * each for a reason of its own: the task list row, which has no schema node to
- * turn anything into (the row the demo greys, #13), and the alignment slot
- * over a selection alignment does not reach (A7).
+ * turn anything into (the row the demo greys, #13); the alignment slot over a
+ * selection alignment does not reach (A7); and any block type row this
+ * selection cannot reach (§6.7), which unlike the other two moves with the
+ * selection and is judged only while the menu is down.
  */
 
 import * as React from 'react';

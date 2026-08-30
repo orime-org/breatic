@@ -24,11 +24,11 @@
  * heading or code block, and R7 does not forbid a dark button that would have
  * worked.
  *
- * The block type menu's nine rows are not here. #904 took the dry run off them
- * altogether: under the model each row has a result waiting for it whatever the
- * selection, so there is no state for a judgement to report. What each press
- * does is pinned in `block-type-transitions.test.ts`, and that every row stays
- * pressable in `block-type-menu.test.tsx`.
+ * The block type menu's nine rows are not here. #904 replaced their dry run
+ * with a judgement that builds the press's own transaction: which rows a
+ * selection reaches is pinned in `block-type-availability.test.ts`, what each
+ * press does in `block-type-transitions.test.ts`, and how the menu draws both
+ * in `block-type-menu.test.tsx`.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

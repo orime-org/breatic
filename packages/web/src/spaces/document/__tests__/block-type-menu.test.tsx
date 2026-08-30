@@ -8,9 +8,9 @@
  * is, and the row fill that used to say the same thing is gone — two marks for
  * one fact, one of them a shade of the hover fill.
  *
- * Every row is pressable. Under the model each of the nine has a result waiting
- * for it, so there is no state where a row reaches nothing; the task list is
- * the one exception and is greyed for a reason of its own (#13).
+ * A row is drawn greyed on two grounds: the task list has no schema node to
+ * turn anything into, so it is greyed on every selection there is (#13), and a
+ * row this selection cannot reach is greyed for as long as it cannot (§6.7).
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';

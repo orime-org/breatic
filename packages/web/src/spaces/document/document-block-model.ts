@@ -137,44 +137,36 @@ function isItemAt(doc: PMNode, pos: number, id: BlockTypeId): boolean {
 }
 
 /**
- * One position inside each text block the range covers.
- * @param doc - The document.
- * @param from - Range start.
- * @param to - Range end.
- * @returns Those positions, in document order.
- */
-function textBlockPositions(doc: PMNode, from: number, to: number): number[] {
-  const found: number[] = [];
-  doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isTextblock) return true;
-    found.push(pos + 1);
-    return false;
-  });
-  return found;
-}
-
-/**
- * The exclusive eight, lists first.
+ * Every row, and where the face asks it.
  *
- * A list item holds `paragraph block*`, so a heading or a code block can sit in
- * one past its first block — and there both the list row and that block's own
- * type answer for it. The list is the row the reader sees, and asking it first
- * is what makes the face say so. Text takes no part in that overlap: it answers
- * only where no list holds the block at all.
+ * A `Record` over `BlockTypeId` rather than an array, so a row joining the
+ * union without joining this table is a compile error and cannot end up drawn
+ * in the menu yet never asked about.
+ *
+ * Lists come first because a list item holds `paragraph block*`: a heading or a
+ * code block can sit in one past its first block, and there both the list row
+ * and that block's own type answer for it. The list is the row the reader sees.
+ * Text takes no part in that overlap — it answers only where no list holds the
+ * block at all.
  */
-const EXCLUSIVE: BlockTypeId[] = [
-  'bullet-list',
-  'ordered-list',
-  'task-list',
-  'paragraph',
-  'heading-1',
-  'heading-2',
-  'heading-3',
-  'code-block',
-];
+const ROW_ORDER: Record<BlockTypeId, number> = {
+  'bullet-list': 0,
+  'ordered-list': 1,
+  'task-list': 2,
+  paragraph: 3,
+  'heading-1': 4,
+  'heading-2': 5,
+  'heading-3': 6,
+  'code-block': 7,
+  quote: 8,
+};
 
-/** All nine rows: the exclusive eight and Quote across them. */
-const ROWS: BlockTypeId[] = [...EXCLUSIVE, 'quote'];
+/** All nine rows, in that order. */
+const ROWS = (Object.keys(ROW_ORDER) as BlockTypeId[])
+  .sort((a, b) => ROW_ORDER[a] - ROW_ORDER[b]);
+
+/** The exclusive eight: every row but Quote, which sits across them. */
+const EXCLUSIVE = ROWS.filter((id) => id !== 'quote');
 
 /**
  * A document and a selection over it, which is all any of the readers below
@@ -191,24 +183,39 @@ interface Selected {
  * @returns Those positions, in document order.
  */
 function selectedBlocks(src: Selected): number[] {
-  return textBlockPositions(src.doc, src.selection.from, src.selection.to);
+  const found: number[] = [];
+  src.doc.nodesBetween(src.selection.from, src.selection.to, (node, pos) => {
+    if (!node.isTextblock) return true;
+    found.push(pos + 1);
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Rule 1: is every one of these blocks that item?
+ *
+ * Empty answers no for all nine — "every block is" holds vacuously over an
+ * empty set, which would tick the whole menu at once. The menu never opens on
+ * such a selection anyway (`SelectionBubbleBar.tsx`'s `isWarranted` wants text
+ * in it), and the shortcuts follow the menu.
+ * @param doc - The document.
+ * @param positions - One position inside each block.
+ * @param id - Which row.
+ * @returns Whether the row is ticked over them.
+ */
+function markedOver(doc: PMNode, positions: number[], id: BlockTypeId): boolean {
+  return positions.length > 0 && positions.every((pos) => isItemAt(doc, pos, id));
 }
 
 /**
  * Every row the selection is, in one walk of it.
- *
- * Empty answers nothing for all nine: "every block is" holds vacuously over an
- * empty set, which would tick the whole menu at once. The menu never opens on
- * such a selection anyway (`SelectionBubbleBar.tsx`'s `isWarranted` wants text
- * in it), and the shortcuts follow the menu.
  * @param editor - The editor.
  * @returns The ticked rows.
  */
 export function markedIds(editor: Editor): Set<BlockTypeId> {
-  const { doc } = editor.state;
   const positions = selectedBlocks(editor.state);
-  if (positions.length === 0) return new Set();
-  return new Set(ROWS.filter((id) => positions.every((pos) => isItemAt(doc, pos, id))));
+  return new Set(ROWS.filter((id) => markedOver(editor.state.doc, positions, id)));
 }
 
 /**
@@ -218,10 +225,7 @@ export function markedIds(editor: Editor): Set<BlockTypeId> {
  * @returns Whether the row is ticked.
  */
 export function isMarked(editor: Editor, id: BlockTypeId): boolean {
-  const { doc } = editor.state;
-  const positions = selectedBlocks(editor.state);
-  if (positions.length === 0) return false;
-  return positions.every((pos) => isItemAt(doc, pos, id));
+  return markedOver(editor.state.doc, selectedBlocks(editor.state), id);
 }
 
 /**
@@ -412,7 +416,7 @@ function setBlocks(
   attrs: Record<string, unknown> | null,
 ): boolean {
   const { from, to } = tr.selection;
-  const before = textBlockPositions(tr.doc, from, to).length;
+  const before = selectedBlocks(tr).length;
   if (before === 0) return false;
   tr.setBlockType(from, to, type, attrs ?? undefined);
 
@@ -420,7 +424,7 @@ function setBlocks(
   // nothing, so the result is read back off the document. Reporting success
   // on a selection where one block moved and another did not would put half a
   // press into the document (rule 4).
-  const after = textBlockPositions(tr.doc, tr.selection.from, tr.selection.to);
+  const after = selectedBlocks(tr);
   if (after.length !== before) return false;
   return after.every((pos) => {
     const block = tr.doc.resolve(pos).parent;
@@ -588,8 +592,15 @@ function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
  *
  * The menu greys the rows this answers false for (§6.7). It builds the very
  * transaction the press would build and looks at whether one came out, so the
- * row's look and the row's effect cannot drift apart — a dry run comparing
- * some other property is how the judgement went wrong before (#85).
+ * two answer off the same work — a dry run comparing some other property is how
+ * the judgement went wrong before (#85).
+ *
+ * It answers about the transaction, which is as far as anything before the
+ * dispatch can see. A plugin appending its own can still take the change back
+ * afterwards: over a body whose blocks are all empty, tiptap's `clearDocument`
+ * runs `clearNodes()` on the result (`@tiptap/core@3.29.2` `dist/index.js`
+ * `clearDocument`), so every row is lit and every press leaves the document as
+ * it was — #931 holds that one.
  * @param editor - The editor.
  * @param id - Which row.
  * @returns Whether the press would change the document.

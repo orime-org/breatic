@@ -59,11 +59,14 @@ export function printedShortcut(id: BlockTypeId): ShortcutSpec | undefined {
 /**
  * The chord in tiptap's own notation, for `addKeyboardShortcuts`.
  *
- * A letter goes down to lower case. prosemirror-keymap names the key by the
- * character the press produces, so a chord holding Shift is matched against the
- * unshifted letter with `Shift-` in front of it (`prosemirror-keymap@1.2.3`
- * `dist/index.js` `keydownHandler`); `Mod-Shift-B` would bind a name no press
- * ever produces. The menu prints the capital either way.
+ * A letter goes down to lower case. prosemirror-keymap looks the press up by
+ * the character it produced first of all — `map[modifiers(keyName(event),
+ * event)]` is `keydownHandler`'s opening line (`prosemirror-keymap@1.2.3`
+ * `dist/index.js`) — and Ctrl+Alt+c produces `c`, so `Mod-Alt-C` misses. The
+ * keyCode fallback below it, which would find the binding anyway, is turned off
+ * on Windows whenever Ctrl and Alt are both held (that combination is AltGr
+ * there), so on Windows an uppercase name is a chord nothing can press. The
+ * menu prints the capital either way.
  * @param spec - The chord.
  * @returns It, written the way tiptap reads chords.
  */
