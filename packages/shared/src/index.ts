@@ -380,3 +380,20 @@ export { MAX_TIMER_MS } from "@shared/http/constants.js";
 // change and one of them will be forgotten — the copy carried a comment
 // saying exactly that, and now neither has to.
 export { exponentialJitterDelay } from "@shared/backoff.js";
+
+// The upload ticket (#173). Its two consumers sit on opposite sides of a
+// runtime boundary: our server mints one, the ingest Worker verifies it, and
+// Cloudflare Workers cannot load `@breatic/core` — every backend package below
+// this one reaches for a `node:` module somewhere in its import graph. The
+// package rule reads "does web use it? no → core", and web does not use this;
+// it is here because it is the one package the Worker can load at all, and
+// because a second copy of a signature format is how the two sides drift into
+// rejecting each other's tickets.
+export {
+  MIN_PART_SIZE_BYTES,
+  signUploadTicket,
+  verifyUploadTicket,
+  type UploadTicketPayload,
+  type UploadTicketRejection,
+  type UploadTicketVerification,
+} from "@shared/upload/ticket.js";
