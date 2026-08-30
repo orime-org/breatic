@@ -63,6 +63,7 @@ import {
   AGENT_COLUMN_MIN_WIDTH,
   AGENT_PANEL_ID,
   PAGE_MIN_WIDTH,
+  RESIZE_HANDLE_WIDTH,
   SPACE_MIN_WIDTH,
 } from '@web/pages/project/agent-column-width';
 import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
@@ -897,15 +898,19 @@ function ProjectWorkspace({
                   >
                     <AgentColumn projectId={projectId} />
                   </Panel>
-                  {/* The 1px line between the two columns, with a 9px pointer
-                  target around it. Double-click is off: the library resizes
-                  imperatively there, which does not count as a user gesture,
-                  so the width would be restored a frame later — the user would
-                  see it flick and come back. */}
+                  {/* The line between the two columns. What answers a pointer
+                  around it is wider than the line twice over: the transparent
+                  ::before reaches 4px to each side, and the library reads a
+                  drag anywhere within its own `resizeTargetMinimumSize` (10px
+                  for a mouse) of the line. Double-click is off: the library
+                  resizes imperatively there, which does not count as a user
+                  gesture, so the width would be restored a frame later — the
+                  user would see it flick and come back. */}
                   <Separator
                     disableDoubleClick
+                    style={{ width: RESIZE_HANDLE_WIDTH }}
                     className={
-                      'relative w-px flex-none cursor-col-resize bg-border transition-colors '
+                      'relative flex-none cursor-col-resize bg-border transition-colors '
                     + 'before:absolute before:inset-y-0 before:-inset-x-1 before:content-[\'\'] '
                     + 'hover:bg-active-border active:bg-active-border '
                     + 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
