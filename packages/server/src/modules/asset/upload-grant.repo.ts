@@ -216,3 +216,55 @@ export async function consumeGrant(params: {
     .returning({ id: uploadGrants.id });
   return rows.length > 0;
 }
+
+/**
+ * Read a grant by its key alone, whatever state it is in.
+ *
+ * The report path needs this rather than {@link findLiveGrant}: a Durable
+ * Object retries until we answer, so the second delivery of a report arrives
+ * against a grant this server already consumed. Seeing that row is what lets
+ * the retry be answered instead of refused.
+ *
+ * There is no user to check against here. The caller is the ingest Worker,
+ * which proves nothing but that it holds the shared secret — every fact about
+ * who this upload belongs to comes off the row itself.
+ * @param storageKey - The key the report names.
+ * @returns The grant, or null when no such key was ever issued.
+ */
+export async function findGrantByKey(
+  storageKey: string,
+): Promise<UploadGrant | null> {
+  const rows = await db
+    .select()
+    .from(uploadGrants)
+    .where(eq(uploadGrants.storageKey, storageKey))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Mark a grant as died-without-an-asset: the upload was aborted, or what
+ * arrived was refused. Single-shot like {@link consumeGrant} — a grant that
+ * already reached either terminal state stays where it is, so a late abort
+ * cannot undo a registration that succeeded.
+ *
+ * The object may well exist in storage at this point. Nothing here deletes it;
+ * this row is what tells the operations-side cleanup that it has no owner.
+ * @param storageKey - The key being written off.
+ * @returns True when this call voided the grant; false when it was already
+ *   consumed or already voided.
+ */
+export async function voidGrant(storageKey: string): Promise<boolean> {
+  const rows = await db
+    .update(uploadGrants)
+    .set({ voidedAt: sql`now()` })
+    .where(
+      and(
+        eq(uploadGrants.storageKey, storageKey),
+        isNull(uploadGrants.consumedAt),
+        isNull(uploadGrants.voidedAt),
+      ),
+    )
+    .returning({ id: uploadGrants.id });
+  return rows.length > 0;
+}

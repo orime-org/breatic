@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import { timingSafeEqual } from "node:crypto";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { signUploadTicket, t } from "@breatic/shared";
@@ -24,6 +25,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   assertStorageAllowance,
   assetUploadService,
+  ingestReportService,
   projectService,
 } from "@server/modules";
 import {
@@ -297,6 +299,102 @@ assets.post(
       },
       201,
     );
+  },
+);
+
+// ── Ingest report (#173) ────────────────────────────────────────────
+
+const ingestReportSchema = z.object({
+  storage_key: z.string().min(1).max(512),
+  outcome: z.enum(["completed", "aborted"]),
+  /** Echoed from the ticket; the event this triggers is CAS-checked on it. */
+  lease_gen: z.coerce.number().int().nonnegative(),
+  /** What the Worker computed over the bytes that landed. */
+  sha256: z.string().regex(SHA256_HEX).optional(),
+  /** What actually landed, which is the authority over what was declared. */
+  size_bytes: z.coerce.number().int().nonnegative().optional(),
+  content_type: z.string().min(1).max(100).optional(),
+  reason: z.string().max(200).optional(),
+});
+
+/**
+ * Compare two secrets without leaking where they diverge.
+ * @param a - The value the caller sent.
+ * @param b - The value we hold.
+ * @returns True when they are the same string.
+ */
+function secretsMatch(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  // `timingSafeEqual` throws on a length mismatch, which would itself be a
+  // signal, so the lengths are compared first and the result folded in.
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+/**
+ * `POST /assets/ingest-report` — the ingest Worker telling us how an upload
+ * went (design §4.6).
+ *
+ * No user session: the caller is our own Worker, and all it can prove is that
+ * it holds the shared secret. Everything that decides consequences is read off
+ * the grant row, so a report can name a key and say what landed, and nothing
+ * else.
+ */
+assets.post(
+  "/ingest-report",
+  validate("json", ingestReportSchema),
+  async (c) => {
+    const presented = c.req.header("x-ingest-secret") ?? "";
+    if (
+      !env.INGEST_SHARED_SECRET ||
+      !secretsMatch(presented, env.INGEST_SHARED_SECRET)
+    ) {
+      logger.warn(
+        { hasSecret: presented.length > 0 },
+        "ingest_report_unauthorized",
+      );
+      return c.json(
+        { error: { code: 401, message: t("server.auth.not_authenticated") } },
+        401,
+      );
+    }
+
+    const body = c.req.valid("json");
+    const outcome = await ingestReportService.applyIngestReport({
+      storageKey: body.storage_key,
+      outcome: body.outcome,
+      leaseGen: body.lease_gen,
+      ...(body.sha256 !== undefined && { sha256: body.sha256 }),
+      ...(body.size_bytes !== undefined && { sizeBytes: body.size_bytes }),
+      ...(body.content_type !== undefined && { contentType: body.content_type }),
+      ...(body.reason !== undefined && { reason: body.reason }),
+    });
+
+    if (outcome.status === "rejected") {
+      logger.info(
+        { key: body.storage_key, size: body.size_bytes },
+        "ingest_report_over_cap",
+      );
+      return c.json(
+        { error: { message: t("server.error.upload_too_large") } },
+        413,
+      );
+    }
+    if (outcome.status === "voided") {
+      logger.info(
+        { key: body.storage_key, reason: body.reason },
+        "ingest_report_aborted",
+      );
+      return c.json({ data: { ok: true } });
+    }
+    logger.info(
+      { key: body.storage_key, status: outcome.status },
+      "ingest_report_registered",
+    );
+    return c.json({
+      data: { ok: true, fileUrl: outcome.fileUrl, kind: outcome.kind },
+    });
   },
 );
 
