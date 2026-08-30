@@ -270,6 +270,18 @@ function ProjectWorkspace({
     activeSpaceId,
   );
 
+  // Turn the implicit "first open tab" into an explicit choice as soon as
+  // there are tabs. With no local choice the effective active Space is
+  // decided by POSITION, so reordering the bar would swap the body out from
+  // under a user who never clicked a tab — including remotely, from another
+  // connection on the same account, which is the thing that moving the
+  // active tab out of the shared doc set out to stop.
+  React.useEffect(() => {
+    if (activeSpaceId === null && openTabs.length > 0) {
+      setActiveSpaceId(openTabs[0]!.id);
+    }
+  }, [activeSpaceId, openTabs]);
+
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out
   // of `openTabs` above without going through `onCloseTab`, so its cached undo
