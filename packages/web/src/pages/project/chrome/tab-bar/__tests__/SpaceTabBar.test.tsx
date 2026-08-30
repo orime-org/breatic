@@ -218,11 +218,12 @@ describe('SpaceTabBar', () => {
     });
   });
 
-  // PR #140 (2026-05-25): scroll arrows use point-and-scroll (one tab per
-  // click via `scrollIntoView`), not fixed `scrollBy(±120)`. A fixed delta
-  // under-shoots long-name tabs (took 2–3 clicks to fully reveal). These
-  // two tests pin the contract: right-arrow snaps the first off-screen
-  // tab flush-right, left-arrow snaps the last off-screen tab flush-left.
+  // PR #140 (2026-05-25): scroll arrows snap one tab per click rather than
+  // moving a fixed `scrollBy(±120)`, which under-shoots long-name tabs (took
+  // 2–3 clicks to fully reveal). The strip moves itself — the arrows write
+  // `scroller.scrollTo`. These two tests pin the contract: right-arrow snaps
+  // the first off-screen tab flush-right, left-arrow snaps the last
+  // off-screen tab flush-left.
   describe('scroll arrows (point-and-scroll, PR #140)', () => {
     it('right arrow snaps the first off-screen tab flush-right, moving only the strip', async () => {
       const user = userEvent.setup();
@@ -259,8 +260,9 @@ describe('SpaceTabBar', () => {
       // bubble: stubbing the row instead leaves every rect below unread and
       // the assertion reading the mount-time default.
       const scroller = makeOverflow();
-      // Smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft
-      // at scroller padding-left (~8 px), NOT zero. The prior
+      // A scroll can leave scrollLeft at the scroller's padding-left (~8 px)
+      // rather than zero — the smooth `scrollIntoView({ inline: 'start' })`
+      // the arrows used before this change did exactly that. The prior
       // scrollLeft-based atStart check (commit 626ec56) failed here
       // — `8 <= 1` false → arrow stayed enabled. The DOM-rect check
       // looks at tab positions; if all tabs sit inside the viewport
@@ -398,7 +400,8 @@ describe('SpaceTabBar', () => {
       mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
       mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
       flushScrollState(scroller);
-      scroller.scrollTo = vi.fn();
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
       const reachesOutward = vi.spyOn(
         screen.getByTestId('space-tab-s3'),
         'scrollIntoView',
@@ -406,6 +409,8 @@ describe('SpaceTabBar', () => {
 
       act(() => setActiveSpace('s3'));
 
+      // 340 - 200: the strip moves by what hangs off its right edge.
+      expect(scrollTo).toHaveBeenCalledWith({ left: 140, behavior: 'smooth' });
       expect(reachesOutward).not.toHaveBeenCalled();
     });
   });
