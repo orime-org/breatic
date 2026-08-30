@@ -105,6 +105,10 @@ async function dragTabOnto(
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
+  // Wide, because a drag aims at two boxes and a tab behind a scroll arrow
+  // has none to aim at. How many tabs the account already carries is not this
+  // spec's to assume — a full suite run leaves more of them than a single one.
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const already = await page.locator('[role="tab"]').count();
   for (let i = already; i < TABS_WANTED; i += 1) {
@@ -126,7 +130,9 @@ test.describe.serial('a tab dragged to a new place', () => {
   test('lands where it was dropped', async () => {
     const before = await tabOrder(page);
     expect(before.length).toBeGreaterThanOrEqual(3);
-    const moved = before[before.length - 1] as string;
+    // The two leftmost, which are on screen however many tabs the strip
+    // carries. Dragging the last one works too, and only while it is visible.
+    const moved = before[1] as string;
     const anchor = before[0] as string;
 
     await dragTabOnto(page, moved, anchor);
