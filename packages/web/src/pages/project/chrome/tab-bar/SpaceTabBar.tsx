@@ -4,6 +4,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  LocateFixed,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -201,7 +202,19 @@ export function SpaceTabBar({
     overflow: false,
     atStart: true,
     atEnd: true,
+    activeVisible: true,
   });
+
+  /**
+   * The tab of the Space the page is showing.
+   * @returns That tab, or null before it is on screen.
+   */
+  const activeTab = React.useCallback((): HTMLElement | null => {
+    const found = scrollerRef.current?.querySelector(
+      `[data-testid="space-tab-${activeSpaceId}"]`,
+    );
+    return found instanceof HTMLElement ? found : null;
+  }, [activeSpaceId]);
 
   const updateScrollState = React.useCallback(() => {
     const el = scrollerRef.current;
@@ -229,8 +242,15 @@ export function SpaceTabBar({
     const atEnd = !tabs.some(
       (t) => t.getBoundingClientRect().right > scrollerRect.right + 1,
     );
-    setScrollState({ overflow, atStart, atEnd });
-  }, []);
+    // Whole, not merely somewhere on screen: a tab with its name cut off by
+    // the edge is exactly what the reveal control exists to finish showing.
+    const active = activeTab()?.getBoundingClientRect();
+    const activeVisible =
+      active === undefined ||
+      (active.left >= scrollerRect.left - 1 &&
+        active.right <= scrollerRect.right + 1);
+    setScrollState({ overflow, atStart, atEnd, activeVisible });
+  }, [activeTab]);
 
   React.useEffect(() => {
     updateScrollState();
@@ -250,7 +270,12 @@ export function SpaceTabBar({
       el.removeEventListener('scroll', updateScrollState);
       ro.disconnect();
     };
-  }, [updateScrollState, spaces.length]);
+    // The order the tabs render in is the fourth signal, and the one neither
+    // listener above can carry: a drag moves a tab without scrolling the strip
+    // or resizing anything, and it is precisely what can push the current tab
+    // out of sight. `tabIds` is the order actually painted — the pending layer
+    // included — so this fires when the user lets go, not a round trip later.
+  }, [updateScrollState, tabIds]);
 
   // When the active space changes (e.g. user picks a space from the
   // drawer), make sure the corresponding tab is visible inside the
@@ -261,20 +286,17 @@ export function SpaceTabBar({
   // `inline: 'nearest'` is the key choice: it scrolls only as much
   // as needed (the tab snaps to the nearest edge of the scroller),
   // matching the standard IDE / browser tab strip behavior.
+  const scrollActiveIntoView = React.useCallback((): void => {
+    activeTab()?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [activeTab]);
+
   React.useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller || !activeSpaceId) return;
-    const activeTab = scroller.querySelector(
-      `[data-testid="space-tab-${activeSpaceId}"]`,
-    );
-    if (activeTab instanceof HTMLElement) {
-      activeTab.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest',
-      });
-    }
-  }, [activeSpaceId]);
+    scrollActiveIntoView();
+  }, [scrollActiveIntoView]);
 
   /**
    * Scroll one tab into view (point-and-scroll model, IDE / browser tab
@@ -501,6 +523,35 @@ export function SpaceTabBar({
         onClick={() => scrollOneTab('right')}
         disabled={scrollState.atEnd}
       />
+
+      {/*
+        Reordering does not chase the current tab (user 2026-08-30), so this is
+        how it is brought back. Disabled rather than hidden, also by that
+        decision: a control that appears and disappears with the tab count is
+        harder to find than one that is always in the same place.
+      */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant='chrome-ghost'
+            size='chrome'
+            aria-label={t('chrome.tooltip.revealActiveTab')}
+            onClick={scrollActiveIntoView}
+            disabled={!scrollState.overflow || scrollState.activeVisible}
+            data-testid='tabs-reveal-active'
+            className={cn(
+              (!scrollState.overflow || scrollState.activeVisible) &&
+                'opacity-35',
+            )}
+            style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+          >
+            <LocateFixed className='h-3.5 w-3.5' />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>
+          {t('chrome.tooltip.revealActiveTab')}
+        </TooltipContent>
+      </Tooltip>
 
       <div
         className='flex shrink-0 items-center border-l border-border'

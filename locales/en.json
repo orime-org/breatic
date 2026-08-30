@@ -1163,6 +1163,7 @@
       "share": "Invite",
       "notifications": "Notifications",
       "newSpace": "New space",
+      "revealActiveTab": "Show the current Space",
       "allSpaces": "All spaces",
       "agentHide": "Hide agent panel",
       "agentShow": "Show agent panel",

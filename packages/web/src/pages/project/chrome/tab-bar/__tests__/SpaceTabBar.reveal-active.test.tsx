@@ -1,0 +1,241 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * The control that brings the current Space's tab back into view.
+ *
+ * Reordering deliberately does not chase the current tab (user 2026-08-30),
+ * so a drag can leave it behind the arrows with nothing pointing at it. This
+ * button is what the user has instead, and it is offered only when it has
+ * something to do: the strip has to overflow, and the tab has to be at least
+ * partly out of sight.
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render as rtlRender, screen, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type * as React from 'react';
+
+import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { useUIStore } from '@web/stores';
+
+const SPACES: ReadonlyArray<ProjectSpace> = [
+  { id: 's1', name: 'First', type: 'canvas' },
+  { id: 's2', name: 'Second', type: 'canvas' },
+  { id: 's3', name: 'Third', type: 'canvas' },
+];
+
+/**
+ * Providers the bar expects from App.tsx at runtime.
+ * @param root0 - Wrapper props.
+ * @param root0.children - The bar under test.
+ * @returns The wrapped subtree.
+ */
+function Providers({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Render the bar with the given active Space and tab order.
+ * @param activeSpaceId - Which Space the page is showing.
+ * @param spaces - The tabs, in the order the strip renders them.
+ * @returns The rerender function, for changing either of those.
+ */
+function setup(
+  activeSpaceId = 's2',
+  spaces: ReadonlyArray<ProjectSpace> = SPACES,
+): (next: {
+  activeSpaceId?: string;
+  spaces?: ReadonlyArray<ProjectSpace>;
+}) => void {
+  const props = {
+    allSpaces: SPACES,
+    openTabIds: SPACES.map((s) => s.id),
+    projectId: 'p1',
+    onActivate: vi.fn(),
+    onCreate: vi.fn(),
+    onViewSpace: vi.fn(),
+  };
+  const view = rtlRender(
+    <SpaceTabBar {...props} spaces={spaces} activeSpaceId={activeSpaceId} />,
+    { wrapper: Providers },
+  );
+  return (next) => {
+    act(() => {
+      view.rerender(
+        <SpaceTabBar
+          {...props}
+          spaces={next.spaces ?? spaces}
+          activeSpaceId={next.activeSpaceId ?? activeSpaceId}
+        />,
+      );
+    });
+  };
+}
+
+/**
+ * Give an element a horizontal extent, which jsdom otherwise reports as zero.
+ * @param el - The element to measure.
+ * @param rect - Its left and right edges.
+ */
+function mockRect(
+  el: HTMLElement,
+  rect: Pick<DOMRect, 'left' | 'right'>,
+): void {
+  vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+    ...rect,
+    top: 0,
+    bottom: 40,
+    width: rect.right - rect.left,
+    height: 40,
+    x: rect.left,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+}
+
+/**
+ * Put the strip in the state where it scrolls, and hand back the scroller.
+ * @returns The viewport that scrolls.
+ */
+function makeOverflow(): HTMLElement {
+  const scroller = screen
+    .getByRole('tablist')
+    .closest('[data-radix-scroll-area-viewport]');
+  if (!(scroller instanceof HTMLElement)) {
+    throw new Error('the tab row is not inside a scroll-area viewport');
+  }
+  Object.defineProperty(scroller, 'scrollWidth', {
+    value: 600,
+    configurable: true,
+  });
+  Object.defineProperty(scroller, 'clientWidth', {
+    value: 200,
+    configurable: true,
+  });
+  mockRect(scroller, { left: 0, right: 200 });
+  return scroller;
+}
+
+/**
+ * Recompute the strip's measurements, the way a scroll would.
+ * @param scroller - The viewport that scrolls.
+ */
+function flush(scroller: HTMLElement): void {
+  act(() => {
+    scroller.dispatchEvent(new Event('scroll'));
+  });
+}
+
+/**
+ * The reveal button.
+ * @returns That button.
+ */
+function revealButton(): HTMLElement {
+  return screen.getByTestId('tabs-reveal-active');
+}
+
+describe('SpaceTabBar — bringing the current tab back into view', () => {
+  beforeEach(() => {
+    useUIStore.getState().setChatPanelCollapsed(false);
+  });
+
+  it('is offered, and disabled, when every tab fits', () => {
+    // Disabled rather than hidden (user 2026-08-30): a control that comes and
+    // goes as tabs are opened is harder to find than one that is always there.
+    setup();
+    expect(revealButton()).toBeInTheDocument();
+    expect(revealButton()).toBeDisabled();
+  });
+
+  it('is disabled while the current tab is fully in sight', () => {
+    setup();
+    const scroller = makeOverflow();
+    mockRect(screen.getByTestId('space-tab-s2'), { left: 40, right: 140 });
+    flush(scroller);
+
+    expect(revealButton()).toBeDisabled();
+  });
+
+  it('is offered when the current tab runs past the right edge', () => {
+    setup();
+    const scroller = makeOverflow();
+    mockRect(screen.getByTestId('space-tab-s2'), { left: 150, right: 280 });
+    flush(scroller);
+
+    expect(revealButton()).toBeEnabled();
+  });
+
+  it('is offered when the current tab starts before the left edge', () => {
+    setup();
+    const scroller = makeOverflow();
+    mockRect(screen.getByTestId('space-tab-s2'), { left: -60, right: 40 });
+    flush(scroller);
+
+    expect(revealButton()).toBeEnabled();
+  });
+
+  it('scrolls the current tab just far enough to show it', async () => {
+    const user = userEvent.setup();
+    setup();
+    const scroller = makeOverflow();
+    const tab = screen.getByTestId('space-tab-s2');
+    mockRect(tab, { left: 150, right: 280 });
+    flush(scroller);
+    const scrollIntoView = vi.fn();
+    tab.scrollIntoView = scrollIntoView;
+
+    await user.click(revealButton());
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  });
+
+  it('answers again when the shown order changes', () => {
+    // A drag is what puts the current tab out of sight, and it changes neither
+    // the scroll position nor any element's size — so neither of the two
+    // signals the arrows listen on fires.
+    const rerender = setup();
+    const scroller = makeOverflow();
+    mockRect(screen.getByTestId('space-tab-s2'), { left: 40, right: 140 });
+    flush(scroller);
+    expect(revealButton()).toBeDisabled();
+
+    mockRect(screen.getByTestId('space-tab-s2'), { left: 150, right: 280 });
+    rerender({ spaces: [SPACES[1]!, SPACES[0]!, SPACES[2]!] });
+
+    expect(revealButton()).toBeEnabled();
+  });
+
+  it('answers again when the page switches Space', () => {
+    // Switching to a tab already in sight scrolls nothing, so nothing else
+    // tells the button its answer just changed.
+    const rerender = setup();
+    const scroller = makeOverflow();
+    mockRect(screen.getByTestId('space-tab-s2'), { left: 40, right: 140 });
+    mockRect(screen.getByTestId('space-tab-s3'), { left: 150, right: 280 });
+    flush(scroller);
+    expect(revealButton()).toBeDisabled();
+
+    rerender({ activeSpaceId: 's3' });
+
+    expect(revealButton()).toBeEnabled();
+  });
+});
