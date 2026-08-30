@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
+    "paths": {
+      "@shared/*": ["../shared/src/*"],
+      "@ingest/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

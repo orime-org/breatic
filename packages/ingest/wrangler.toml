@@ -1,0 +1,57 @@
+name = "breatic-ingest"
+main = "src/index.ts"
+# Pinned to what the workerd bundled with @cloudflare/vitest-pool-workers
+# supports. A later date deploys under runtime flags the tests never ran
+# against — miniflare says so out loud ("Falling back to...") and then
+# tests the older behaviour anyway. Raise both together.
+compatibility_date = "2026-03-10"
+
+# The bucket the browser's bytes land in. Bound directly rather than reached
+# over the S3 API: a binding needs no credentials in the Worker, and reading an
+# object back through it never leaves Cloudflare's network, which is what makes
+# hashing a finished 2 GiB upload free.
+#
+# `bucket_name` must match what R2_BUCKET names on the server side — the server
+# mints the keys and resolves their public URLs, and a Worker writing into a
+# different bucket produces keys that resolve to nothing.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "breatic-assets"
+
+# One instance per upload, addressed by its storage key. It is what makes
+# "have all the parts arrived?" answerable at all: R2 itself has no view of a
+# multipart upload's progress that survives between requests.
+[[durable_objects.bindings]]
+name = "UPLOAD_SESSION"
+class_name = "UploadSession"
+
+# SQLite-backed. Cloudflare no longer creates key-value backed namespaces for
+# accounts without existing ones, so this is the only kind a new deployment
+# gets: https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UploadSession"]
+
+[vars]
+# Where the Worker reports an upload's outcome. The server's own base URL,
+# which differs per deployment, so each environment below sets its own.
+SERVER_REPORT_URL = "http://localhost:3000/api/v1/assets/ingest-report"
+# Comma-separated origins allowed to send parts. The browser talks to this
+# Worker directly, so the Worker answers preflight itself; the bucket is never
+# reached from a page and needs no CORS rules of its own.
+ALLOWED_ORIGINS = "http://localhost:5173"
+
+[env.production]
+name = "breatic-ingest"
+
+[env.production.vars]
+SERVER_REPORT_URL = "https://api.breatic.ai/api/v1/assets/ingest-report"
+ALLOWED_ORIGINS = "https://breatic.ai"
+
+[[env.production.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "breatic-assets"
+
+[[env.production.durable_objects.bindings]]
+name = "UPLOAD_SESSION"
+class_name = "UploadSession"
