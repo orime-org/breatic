@@ -49,7 +49,24 @@ export async function runVideoCover(job: VideoCoverJobLike): Promise<void> {
   const data = job.data;
   const adapter = await getStorageAdapter();
   const coverUrl = await resolveCover(data, adapter.publicUrl.bind(adapter));
+  await announceUpload(data, coverUrl);
+}
 
+/**
+ * Write the two downstreams and tell the node, given whatever cover there is.
+ *
+ * Shared with the failure net, which reaches this same point holding a cover
+ * it read out of the database rather than one it just extracted. Both are
+ * announcing the same fact — the video is ready, here is its cover if it has
+ * one — so they say it the same way.
+ * @param data - The job payload.
+ * @param coverUrl - The cover's canonical URL, when there is one.
+ * @throws {Error} When the node write-back cannot be published.
+ */
+export async function announceUpload(
+  data: VideoCoverJobData,
+  coverUrl: string | undefined,
+): Promise<void> {
   // Written before the event so a publish failure retries into a history row
   // that already exists — the key makes the second write return the first.
   const recorded = await nodeHistoryService.recordUpload({

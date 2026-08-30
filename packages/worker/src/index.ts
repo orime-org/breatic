@@ -30,7 +30,7 @@ import {
   runGracefulShutdown,
   getSkillRouting,
 } from "@breatic/core";
-import { modelCatalog } from "@breatic/domain";
+import { modelCatalog, VIDEO_COVER_QUEUE } from "@breatic/domain";
 
 initLogger("worker");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
@@ -82,13 +82,70 @@ try {
 }
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
+import { runVideoCover } from "@worker/handlers/video-cover-job.js";
+import { reclaimFailedCoverJobById } from "@worker/handlers/video-cover-cleanup.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import type { VideoCoverJobData } from "@breatic/domain";
 
 // Health probe port from the validated config (default 9101).
 const HEALTH_PORT = env.WORKER_HEALTH_PORT;
+
+/**
+ * Start consuming the video-cover queue.
+ *
+ * Separate from the `tasks` worker because the two disagree about what a
+ * terminal failure means: `tasks` stamps its target nodes failed, while a
+ * cover that never came out still leaves a video the node should show. The
+ * queue's own net (`reclaimFailedCoverJobById`) announces that instead.
+ */
+function startVideoCoverWorker(): void {
+  const worker = createWorker<VideoCoverJobData>(VIDEO_COVER_QUEUE, runVideoCover);
+
+  worker.on("completed", (job) => {
+    logger.info(
+      { jobId: job.id, storageKey: job.data.storageKey },
+      "video_cover_job_completed",
+    );
+  });
+
+  // Local telemetry only; the announcement is driven by QueueEvents below,
+  // which reaches every live instance rather than dying with this process.
+  worker.on("failed", (job, err) => {
+    logger.error(
+      {
+        jobId: job?.id,
+        storageKey: job?.data?.storageKey,
+        error: err.message,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "video_cover_job_failed",
+    );
+  });
+
+  const coverQueue = createQueue(VIDEO_COVER_QUEUE);
+  const coverEvents = createQueueEvents(VIDEO_COVER_QUEUE);
+  coverEvents.on("failed", ({ jobId }) => {
+    void reclaimFailedCoverJobById(coverQueue, jobId)
+      .then((announced) => {
+        if (announced) {
+          logger.warn(
+            { jobId, reason: "cover_job_terminal_failure" },
+            "video_cover_upload_announced_without_job",
+          );
+        }
+      })
+      .catch((cleanupErr) => {
+        logger.error(
+          { err: cleanupErr, jobId },
+          "video_cover_cleanup_error",
+        );
+      });
+  });
+}
 
 /**
  * Start the worker process: install production error logging on the shared
@@ -159,7 +216,9 @@ export function startWorker(): void {
       });
   });
 
-  logger.info("BullMQ worker started, listening on 'tasks' queue");
+  startVideoCoverWorker();
+
+  logger.info("BullMQ worker started, listening on 'tasks' and 'video-cover' queues");
 
   // Health probe - docker / LB / k8s healthcheck kills the
   // instance on N consecutive 503s so a worker whose Redis or
