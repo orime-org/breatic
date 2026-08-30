@@ -20,29 +20,30 @@ afterEach(() => {
   closeAll();
 });
 
-describe('an item the lift cannot take out of its list', () => {
-  // A list item has to open with a paragraph, so taking the first block out of
-  // an item that also holds a sub-list would leave the item opening with the
-  // sub-list. `liftTarget` refuses, and every exclusive row is out of reach
-  // for as long as it does (§6.7, the greyed set pinned in the menu's tests).
-  const STUCK = '<ul><li><p>a</p></li><li><p>b</p><ul><li><p>c</p></li></ul></li></ul>';
+describe('an item that opens a sub-list', () => {
+  // The item cannot give up its first block on its own — an item opens with a
+  // paragraph, and what would be left opens with the sub-list. The item comes
+  // apart, its blocks land where it stood, and the sub-list becomes a list of
+  // its own.
+  const NESTED = '<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>';
 
-  it.each(['paragraph', 'heading-1', 'bullet-list', 'ordered-list'] as const)(
-    'leaves the document alone when %s is pressed',
-    (id) => {
-      const editor = openBody(STUCK);
-      selectBlock(editor, 'b');
-      runBlockType(editor, id);
-      expect(editor.getHTML()).toBe(STUCK);
-    },
-  );
+  it.each([
+    ['paragraph', '<p>one</p><ul><li><p>deep</p></li></ul>'],
+    ['heading-1', '<h1>one</h1><ul><li><p>deep</p></li></ul>'],
+    ['ordered-list', '<ol><li><p>one</p></li></ol><ul><li><p>deep</p></li></ul>'],
+  ] as const)('takes it apart when %s is pressed', (id, expected) => {
+    const editor = openBody(NESTED);
+    selectBlock(editor, 'one');
+    runBlockType(editor, id);
+    expect(editor.getHTML()).toBe(expected);
+  });
 
-  it.each(['paragraph', 'heading-1', 'bullet-list', 'ordered-list'] as const)(
-    'says %s cannot be reached',
-    (id) => {
-      const editor = openBody(STUCK);
-      selectBlock(editor, 'b');
-      expect(canRunBlockType(editor, id)).toBe(false);
+  it.each(['paragraph', 'heading-1', 'heading-2', 'heading-3',
+    'bullet-list', 'ordered-list', 'code-block', 'quote'] as const)(
+    'reaches %s', (id) => {
+      const editor = openBody(NESTED);
+      selectBlock(editor, 'one');
+      expect(canRunBlockType(editor, id)).toBe(true);
     },
   );
 });
@@ -180,5 +181,41 @@ describe('a selection covering both levels of a nested list', () => {
     expect(editor.getHTML()).toBe(
       '<ul><li><p>one</p><p>deep</p><ul><li><p>sib</p></li></ul></li></ul>',
     );
+  });
+});
+
+describe('an item that cannot be cut open', () => {
+  // A list item opens with a paragraph, so an item holding `<p>note</p>` and a
+  // heading cannot give up its first block on its own: what would be left
+  // opens with the heading. The item comes apart instead and its blocks land
+  // in the body, which leaves the reader with the line they pressed on plus
+  // the block that was riding along in the same item.
+  const STUCK = '<ul><li><p>note</p><h2>aside</h2></li><li><p>next</p></li></ul>';
+
+  it('lets the first block become a heading, and the rest of the item comes with it', () => {
+    const editor = openBody(STUCK);
+    selectBlock(editor, 'note');
+    runBlockType(editor, 'heading-1');
+    expect(editor.getHTML()).toBe(
+      '<h1>note</h1><h2>aside</h2><ul><li><p>next</p></li></ul>',
+    );
+  });
+
+  it.each(['paragraph', 'heading-1', 'heading-2', 'heading-3',
+    'bullet-list', 'ordered-list', 'code-block', 'quote'] as const)(
+    'reaches %s', (id) => {
+      const editor = openBody(STUCK);
+      selectBlock(editor, 'note');
+      expect(canRunBlockType(editor, id)).toBe(true);
+    },
+  );
+
+  it('keeps cutting the item open where what is left can still be one', () => {
+    // Two paragraphs: taking the first leaves a paragraph, which an item can
+    // open with, so only the selected block moves and `b` takes the marker.
+    const editor = openBody('<ul><li><p>a</p><p>b</p></li></ul>');
+    selectBlock(editor, 'a');
+    runBlockType(editor, 'paragraph');
+    expect(editor.getHTML()).toBe('<p>a</p><ul><li><p>b</p></li></ul>');
   });
 });

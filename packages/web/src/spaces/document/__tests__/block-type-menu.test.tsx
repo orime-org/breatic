@@ -8,9 +8,10 @@
  * is, and the row fill that used to say the same thing is gone — two marks for
  * one fact, one of them a shade of the hover fill.
  *
- * A row is drawn greyed on two grounds: the task list has no schema node to
- * turn anything into, so it is greyed on every selection there is (#13), and a
- * row this selection cannot reach is greyed for as long as it cannot (§6.7).
+ * One row is drawn greyed: the task list, which has no schema node to turn
+ * anything into (#13). Every other row answers for what it can do to the
+ * selection, and a block the schema will not let move is one it leaves alone
+ * (user 2026-08-30).
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -152,43 +153,27 @@ describe('the menu', () => {
     expect(greyedIds(menu)).toEqual(['task-list']);
   });
 
-  // §6.7's three selections, each with the rows it cannot reach. The first
-  // block of an item has to be a paragraph and cannot leave the item; a later
-  // block can leave for another list but not become a heading or a code block,
-  // which would leave two rows answering for it (§6.0).
-  const STUCK: Array<[name: string, body: string, pick: string, greyed: string[]]> = [
-    [
-      'the first block of an item holding a sub-list',
-      '<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>',
-      'one',
-      ['paragraph', 'heading-1', 'heading-2', 'heading-3',
-        'bullet-list', 'ordered-list', 'task-list', 'code-block'],
-    ],
-  ];
-
-  it.each(STUCK)('greys the rows %s cannot reach', async (_name, body, pick, greyed) => {
-    const editor = openSharedBody(body);
-    mountDocumentEditor(editor);
-    await selectFirstBlock(editor, pick);
-    const menu = await hoverOpenSlot(SLOT);
-    expect(greyedIds(menu)).toEqual(greyed);
-  });
-
-  it('draws a row it cannot reach exactly as it draws the task list', async () => {
+  it('greys the task list and nothing else on a nested list item too', async () => {
+    // The one row without a schema node is the one row greyed, whatever the
+    // selection is (user 2026-08-30). An item that opens a sub-list comes
+    // apart rather than holding its first block back.
     const editor = openSharedBody('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
     mountDocumentEditor(editor);
-    await selectFirstBlock(editor);
+    await selectFirstBlock(editor, 'one');
+    const menu = await hoverOpenSlot(SLOT);
+    expect(greyedIds(menu)).toEqual(['task-list']);
+  });
+
+  it('draws the greyed task list apart from the rows that are lit', async () => {
+    const editor = openSharedBody('<p>the quick brown fox</p>');
+    mountDocumentEditor(editor);
+    await selectAll(editor);
     const menu = await hoverOpenSlot(SLOT);
     const row = (id: string): Element | null =>
       menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`);
-    // The task list is greyed for a reason of its own and is the treatment
-    // every other greyed row has to match (§6.7).
-    expect(row('heading-1')?.className).toBe(row('task-list')?.className);
-    expect(row('heading-1')?.getAttribute('aria-disabled')).toBe('true');
-    // Quote is the one row this selection can reach, so it says the two
-    // treatments really are different rather than one class for every row.
-    expect(row('quote')?.className).not.toBe(row('task-list')?.className);
-    expect(row('quote')?.getAttribute('aria-disabled')).not.toBe('true');
+    expect(row('task-list')?.getAttribute('aria-disabled')).toBe('true');
+    expect(row('paragraph')?.className).not.toBe(row('task-list')?.className);
+    expect(row('paragraph')?.getAttribute('aria-disabled')).not.toBe('true');
   });
 
   it('carries no row fill and no data-active', async () => {

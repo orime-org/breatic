@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which rows a selection can reach (§6.7).
+ * Which rows a selection can reach.
  *
- * A row is lit when every block in the selection can become that item, and
- * greyed when any of them cannot — the same judgement rule 4 makes about
- * dispatching, so the menu cannot say one thing and do another.
+ * ONE block reaching the row lights it (user 2026-08-30). A block the schema
+ * will not let move is one the row leaves alone; the row still answers for
+ * what it can do to the rest. `prosemirror-commands`' own `setBlockType` makes
+ * the same judgement — its `applicable` stops at the first block that can take
+ * the type — and `Transform.setBlockType` skips the others one at a time.
+ *
+ * The only row greyed on every selection is the task list, which has no schema
+ * node to turn anything into.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -59,36 +64,22 @@ const REACHABLE: Array<[name: string, body: string, place: Place]> = [
     '<ul><li><p>b</p><p>c</p><ul><li><p>d</p></li></ul></li></ul>',
     (e) => { selectBlock(e, 'c'); },
   ],
-];
-
-/**
- * Selections where some rows reach nothing, with the rows that do (§6.7).
- *
- * A list item's content is `paragraph block*`: its first block has to be a
- * paragraph, so a first block with a sub-list under it can neither leave the
- * item nor change type.
- */
-const STUCK: Array<[name: string, body: string, place: Place, lit: BlockTypeId[]]> = [
+  // An item opening a sub-list cannot give up its first block on its own, so
+  // the whole item comes apart and its blocks land where it stood.
   [
     'the first block of an item holding a sub-list',
     '<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>',
     (e) => { selectBlock(e, 'one'); },
-    ['quote'],
   ],
   [
-    'a selection running from a paragraph into a stuck item',
+    'a selection running from a paragraph into such an item',
     '<p>tail</p><ul><li><p>a</p><ul><li><p>a1</p></li></ul></li></ul>',
     (e) => { selectRange(e, 'tail', 'a'); },
-    ['quote'],
   ],
-  // One block can change and the other cannot: rule 2 turns EVERY block into
-  // the row that was pressed, so a press moving only the heading is half of
-  // what it promised and the row is dark (rule 4).
   [
-    'a selection running from a heading into a stuck item',
+    'a selection running from a heading into such an item',
     '<h1>tail</h1><ul><li><p>a</p><ul><li><p>a1</p></li></ul></li></ul>',
     (e) => { selectRange(e, 'tail', 'a'); },
-    ['quote'],
   ],
 ];
 
@@ -101,38 +92,8 @@ describe('a selection every row reaches', () => {
   });
 });
 
-describe('a selection some rows cannot reach', () => {
-  it.each(STUCK)('lights only what it can reach on %s', (_name, body, place, lit) => {
-    const editor = openBody(body);
-    place(editor);
-    expect(ROWS.filter((id) => canRunBlockType(editor, id))).toEqual(lit);
-  });
-
-  it.each(STUCK)('leaves the document alone when a dark row is pressed on %s', (
-    _name,
-    body,
-    place,
-    lit,
-  ) => {
-    for (const id of ROWS.filter((row) => !lit.includes(row))) {
-      const editor = openBody(body);
-      place(editor);
-      const before = editor.getHTML();
-      let dispatched = 0;
-      const original = editor.view.dispatch.bind(editor.view);
-      editor.view.dispatch = (tr): void => {
-        dispatched += 1;
-        original(tr);
-      };
-      runBlockType(editor, id);
-      expect(dispatched, `${id} dispatched on a dark row`).toBe(0);
-      expect(editor.getHTML(), `${id} changed the document`).toBe(before);
-    }
-  });
-});
-
 describe('a greyed row never writes anything', () => {
-  const CASES = [...REACHABLE, ...STUCK.map(([n, b, p]) => [n, b, p] as const)];
+  const CASES = REACHABLE;
 
   // One direction only. Text on a block that is already Text stays lit and
   // writes nothing: the target is the state it is in, so there is nothing to

@@ -314,41 +314,64 @@ function selectedRange(tr: Transaction, blocks: number[]): NodeRange | null {
  * first and takes over its marker, which is the marker staying on the item it
  * has always been drawn beside.
  *
- * An item has to open with a paragraph, so `liftTarget` refuses to take the
- * first block out of an item that also holds a heading or a code block. The
- * press reports failure there: the block cannot go where the row would put it,
- * and §6.7 greys a row for exactly that.
+ * An item has to open with a paragraph, so an item holding a heading or a code
+ * block below its first line cannot give that line up on its own — what would
+ * be left opens with the heading. The whole item comes apart there and its
+ * blocks land where the item stood, which leaves the reader the line they
+ * pressed on plus whatever was riding along in the same item.
+ * A block that cannot leave stays where it is and the press carries on with
+ * the rest: the row acts on what it can reach.
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
- * @returns Whether every one of them ended up outside a list item.
  */
-function liftOutOfLists(tr: Transaction, blocks: number[]): boolean {
+function liftOutOfLists(tr: Transaction, blocks: number[]): void {
   for (;;) {
     let moved = false;
     for (const origin of blocks) {
       const $from = tr.doc.resolve(tr.mapping.map(origin));
       if (itemListName($from) === null) continue;
-      const range = new NodeRange($from, $from, $from.depth - 1);
-      const target = liftTarget(range);
-      if (target === null) continue;
-      tr.lift(range, target);
+      const lift = itemLift($from);
+      if (!lift) continue;
+      tr.lift(lift.range, lift.target);
       moved = true;
     }
     if (!moved) break;
   }
-  return blocks.every(
-    (origin) => itemListName(tr.doc.resolve(tr.mapping.map(origin))) === null,
-  );
 }
 
 /**
- * Did the press land the blocks it was given on the row it aimed at?
+ * How this list item's first block leaves the list.
  *
- * Rule 2 says an unticked press turns EVERY block into that row and a ticked
- * one takes every block back to Text, so a press that moved some and left
- * others is half of what it promised (rule 4). Reading the result back off the
- * document is what catches a block the schema would not let move: nothing on
- * the way there reports it.
+ * The block alone where the item can still be one without it, the item's whole
+ * content where it cannot.
+ * @param $from - A resolved position inside the first block of a list item.
+ * @returns The range to lift and where to lift it to, or null where neither
+ *   range can move.
+ */
+function itemLift($from: Resolved): { range: NodeRange; target: number } | null {
+  const itemDepth = $from.depth - 1;
+  const alone = new NodeRange($from, $from, itemDepth);
+  const aloneTarget = liftTarget(alone);
+  if (aloneTarget !== null) return { range: alone, target: aloneTarget };
+
+  const whole = new NodeRange(
+    $from.doc.resolve($from.start(itemDepth)),
+    $from.doc.resolve($from.end(itemDepth)),
+    itemDepth,
+  );
+  const wholeTarget = liftTarget(whole);
+  return wholeTarget === null ? null : { range: whole, target: wholeTarget };
+}
+
+/**
+ * Did the press reach any of the blocks it was given?
+ *
+ * ONE is enough (user 2026-08-30). A row answers for what it can do to the
+ * selection, and a block the schema will not let move is a block the row
+ * leaves alone rather than a reason to call the whole press off. This is the
+ * judgement `prosemirror-commands`' own `setBlockType` makes — `applicable`
+ * there stops at the first block that can take the type — and `Transform`
+ * skips the ones that cannot, one at a time, without failing.
  *
  * The blocks are the ones the press was given, carried across the steps by the
  * transaction's own mapping. Reading them off the selection instead answered
@@ -362,8 +385,7 @@ function liftOutOfLists(tr: Transaction, blocks: number[]): boolean {
  * @returns Whether the press arrived.
  */
 function landedOn(tr: Transaction, at: number[], target: BlockTypeId, want: boolean): boolean {
-  if (at.length === 0) return false;
-  return at.every((pos) => {
+  return at.some((pos) => {
     const now = tr.mapping.map(pos);
     const $now = tr.doc.resolve(now);
     return $now.parent.isTextblock && isItemAt(tr.doc, now, target) === want;
@@ -570,12 +592,12 @@ function setBlocks(
   }
 
   // `setBlockType` skips a block the schema will not let it change and says
-  // nothing, so the result is read back off the document. Reporting success
-  // on a selection where one block moved and another did not would put half a
-  // press into the document (rule 4). `landedOn` asks a different question at
-  // the end of the press — whether the blocks are the ROW, which for a list
-  // row is about where they sit rather than what type they are.
-  return movedTo(tr, blocks).every((pos) => {
+  // nothing, so the result is read back off the document. One block arriving
+  // is what makes the press worth dispatching; the ones the schema refused
+  // stay as they were. `landedOn` asks the same question of the row at the end
+  // of the press, which for a list row is about where the blocks sit rather
+  // than what type they are.
+  return movedTo(tr, blocks).some((pos) => {
     const block = tr.doc.resolve(pos).parent;
     if (block.type !== type) return false;
     return Object.entries(attrs ?? {}).every(([key, value]) => block.attrs[key] === value);
@@ -596,7 +618,8 @@ function toBlockType(
   type: NodeType,
   attrs: Record<string, unknown> | null,
 ): boolean {
-  return liftOutOfLists(tr, blocks) && setBlocks(tr, blocks, type, attrs);
+  liftOutOfLists(tr, blocks);
+  return setBlocks(tr, blocks, type, attrs);
 }
 
 /**
@@ -645,7 +668,7 @@ function selectedRuns(tr: Transaction, blocks: number[]): Array<[first: number, 
 function toList(tr: Transaction, blocks: number[], listType: NodeType): boolean {
   const paragraph = tr.doc.type.schema.nodes.paragraph;
   if (!paragraph) return false;
-  if (!liftOutOfLists(tr, blocks)) return false;
+  liftOutOfLists(tr, blocks);
   if (!setBlocks(tr, blocks, paragraph, null)) return false;
 
   const runs = selectedRuns(tr, blocks);

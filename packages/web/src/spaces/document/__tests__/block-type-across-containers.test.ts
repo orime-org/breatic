@@ -14,7 +14,6 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { Editor } from '@tiptap/react';
 
 import { runBlockType } from '@web/spaces/document/document-block-model';
-import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import { openBody, closeAll, selectBlock, selectRange, selectWholeBody } from './block-type-fixtures';
 
@@ -182,28 +181,30 @@ describe('a block that is not a text block', () => {
   });
 });
 
-describe('a press that changes nothing', () => {
-  // A list item's content is `paragraph block*`, so this item's first block
-  // cannot become a heading and cannot leave the item on its own. The press
-  // reports failure and the transaction stays home (rule 4).
+describe('an item whose first block cannot be given up alone', () => {
+  // A list item's content is `paragraph block*`, so an item holding a heading
+  // below its first line cannot hand that line over on its own — what would be
+  // left opens with the heading. The item comes apart and its blocks land
+  // where it stood.
   const STUCK = '<ul><li><p>para</p><h2>x</h2></li></ul>';
-  const ROWS: BlockTypeId[] = [
-    'paragraph', 'heading-1', 'heading-2', 'heading-3',
-    'bullet-list', 'ordered-list', 'code-block',
-  ];
 
-  it.each(ROWS)('dispatches nothing for %s', (id) => {
+  it.each([
+    ['paragraph', '<p>para</p><h2>x</h2>'],
+    ['heading-1', '<h1>para</h1><h2>x</h2>'],
+    ['heading-3', '<h3>para</h3><h2>x</h2>'],
+    ['code-block', '<pre><code>para</code></pre><h2>x</h2>'],
+  ] as const)('takes the item apart when %s is pressed', (id, expected) => {
     const editor = openBody(STUCK);
     selectBlock(editor, 'para');
-    let dispatched = 0;
-    const original = editor.view.dispatch.bind(editor.view);
-    editor.view.dispatch = (tr): void => {
-      dispatched += 1;
-      original(tr);
-    };
     runBlockType(editor, id);
-    expect(dispatched).toBe(0);
-    expect(editor.getHTML()).toBe(STUCK);
+    expect(editor.getHTML()).toBe(expected);
+  });
+
+  it('leaves the block a list item where the row it was pressed is a list', () => {
+    const editor = openBody(STUCK);
+    selectBlock(editor, 'para');
+    runBlockType(editor, 'ordered-list');
+    expect(editor.getHTML()).toBe('<ol><li><p>para</p></li></ol><h2>x</h2>');
   });
 });
 
