@@ -30,6 +30,42 @@ import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 
+/**
+ * How far past an edge a tab may sit and still count as fully on screen.
+ *
+ * Absorbs the sub-pixel rounding CSS gap and padding leave behind, and the
+ * fractions a percentage-sized Agent column puts on every edge beside it.
+ * Every question of the form "is this tab cut off?" is answered against this
+ * one number, so the arrow's enabled state and what the arrow then does can
+ * never disagree inside that band.
+ */
+const EDGE_TOLERANCE = 1;
+
+/**
+ * Brings a tab flush against one edge of the strip, moving the strip alone.
+ *
+ * `scrollIntoView` moves every scroller between the tab and the document, and
+ * once the window is narrower than the project page's floor the page itself is
+ * one of them: measured in a browser at 700px, a page the reader had scrolled
+ * to 41 was dragged back to 0 by a single arrow click.
+ * @param scroller - The viewport the tabs scroll in.
+ * @param tab - The tab to bring into view.
+ * @param edge - Which edge of the strip the tab should end up flush against.
+ */
+function scrollTabToEdge(
+  scroller: HTMLElement,
+  tab: HTMLElement,
+  edge: 'start' | 'end',
+): void {
+  const stripRect = scroller.getBoundingClientRect();
+  const tabRect = tab.getBoundingClientRect();
+  const travel =
+    edge === 'end'
+      ? tabRect.right - stripRect.right
+      : tabRect.left - stripRect.left;
+  scroller.scrollTo({ left: scroller.scrollLeft + travel, behavior: 'smooth' });
+}
+
 interface SpaceTabBarProps {
   /** Tabs currently open in the bar (resolved from per-user openTabIds). */
   spaces: ReadonlyArray<ProjectSpace>;
@@ -172,10 +208,10 @@ export function SpaceTabBar({
     const scrollerRect = el.getBoundingClientRect();
     const tabs = tabsIn(el);
     const atStart = !tabs.some(
-      (t) => t.getBoundingClientRect().left < scrollerRect.left - 1,
+      (t) => t.getBoundingClientRect().left < scrollerRect.left - EDGE_TOLERANCE,
     );
     const atEnd = !tabs.some(
-      (t) => t.getBoundingClientRect().right > scrollerRect.right + 1,
+      (t) => t.getBoundingClientRect().right > scrollerRect.right + EDGE_TOLERANCE,
     );
     setScrollState({ overflow, atStart, atEnd });
   }, []);
@@ -206,21 +242,22 @@ export function SpaceTabBar({
   // from the drawer left the tab bar frozen and the user with no
   // visual confirmation that the selection landed.
   //
-  // `inline: 'nearest'` is the key choice: it scrolls only as much
-  // as needed (the tab snaps to the nearest edge of the scroller),
-  // matching the standard IDE / browser tab strip behavior.
+  // Only as far as needed, and only when the tab is actually cut off: a tab
+  // already whole on screen stays where it is, matching the standard IDE /
+  // browser tab strip behavior.
   React.useEffect(() => {
     const scroller = scrollerRef.current;
     if (!scroller || !activeSpaceId) return;
     const activeTab = scroller.querySelector(
       `[data-testid="space-tab-${activeSpaceId}"]`,
     );
-    if (activeTab instanceof HTMLElement) {
-      activeTab.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest',
-      });
+    if (!(activeTab instanceof HTMLElement)) return;
+    const stripRect = scroller.getBoundingClientRect();
+    const tabRect = activeTab.getBoundingClientRect();
+    if (tabRect.right > stripRect.right + EDGE_TOLERANCE) {
+      scrollTabToEdge(scroller, activeTab, 'end');
+    } else if (tabRect.left < stripRect.left - EDGE_TOLERANCE) {
+      scrollTabToEdge(scroller, activeTab, 'start');
     }
   }, [activeSpaceId]);
 
@@ -235,11 +272,9 @@ export function SpaceTabBar({
    *
    * Algorithm:
    *   - **right**: find the first tab whose right edge sits beyond the
-   *     scroller's right edge → `scrollIntoView({ inline: 'end' })` snaps
-   *     it flush right.
+   *     scroller's right edge → snap it flush right.
    *   - **left**: find the last tab whose left edge sits before the
-   *     scroller's left edge → `scrollIntoView({ inline: 'start' })`
-   *     snaps it flush left.
+   *     scroller's left edge → snap it flush left.
    *
    * A 1-px tolerance absorbs sub-pixel rounding from CSS gap / padding.
    * @param direction - Which way to scroll: bring the next off-screen tab in from the left or right.
@@ -255,20 +290,18 @@ export function SpaceTabBar({
       direction === 'right'
         ? tabs.find(
           (tab) =>
-            tab.getBoundingClientRect().right > scrollerRect.right + 1,
+            tab.getBoundingClientRect().right > scrollerRect.right + EDGE_TOLERANCE,
         )
         : [...tabs]
           .reverse()
           .find(
             (tab) =>
-              tab.getBoundingClientRect().left < scrollerRect.left - 1,
+              tab.getBoundingClientRect().left < scrollerRect.left - EDGE_TOLERANCE,
           );
 
-    target?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: direction === 'right' ? 'end' : 'start',
-    });
+    if (target) {
+      scrollTabToEdge(scroller, target, direction === 'right' ? 'end' : 'start');
+    }
   };
 
   /**

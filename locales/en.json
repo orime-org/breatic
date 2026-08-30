@@ -1177,6 +1177,7 @@
       "scrollTabsRight": "Scroll tabs right",
       "spacesToolbar": "Spaces",
       "openSpaces": "Open spaces",
+      "agentColumnWidth": "Adjust agent panel width",
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
     }
