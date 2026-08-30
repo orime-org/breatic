@@ -261,8 +261,70 @@ describe('useTabReorder — a broadcast while moves are still owed', () => {
     await waitFor(() => {
       expect(send).toHaveBeenCalledTimes(2);
     });
-    // Nothing is confirmed yet — the second move is still out.
-    expect(result.current.order).toEqual([C, B, A]);
+    // The server wrote nothing for the first move, so the document will never
+    // show it and the strip stops showing it either. The second is still owed
+    // and stays laid over what the document does say.
+    expect(result.current.order).toEqual([B, C, A]);
+  });
+});
+
+describe('useTabReorder — the document changing under a move', () => {
+  // The document is shared: a collaborator deleting a Space strips its id from
+  // every tab list, and this account's other machine opens and closes tabs.
+  // Any of those can merge into the arrival that carries this move.
+
+  it('shows a tab somebody else opened while the move is out', async () => {
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as readonly string[] } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    // The move lands in the document alongside somebody else's tab:open.
+    rerender({ ids: [C, A, B, 'd'] });
+    await act(async () => {
+      first.resolve(true);
+    });
+
+    expect(result.current.order).toEqual([C, A, B, 'd']);
+  });
+
+  it('lets a tab go the moment the document drops it', async () => {
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as readonly string[] } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    // A collaborator deletes B before this move has been answered.
+    rerender({ ids: [A, C] });
+
+    expect(result.current.order).toEqual([C, A]);
+  });
+
+  it('keeps showing a move the document has not caught up with', () => {
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as readonly string[] } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    rerender({ ids: [A, B, C, 'd'] });
+
+    // The move is still owed, so it is still laid over whatever arrived.
+    expect(result.current.order).toEqual([C, A, B, 'd']);
   });
 });
 

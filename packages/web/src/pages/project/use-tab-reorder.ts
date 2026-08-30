@@ -7,7 +7,7 @@ import { applyTabMove } from '@breatic/shared';
 
 /** What the tab bar renders, and how a drag tells this layer about itself. */
 export interface TabReorderResult {
-  /** The order to render: the stored one, or the pending one laid over it. */
+  /** The order to render: the stored one with the owed moves laid over it. */
   order: ReadonlyArray<string>;
   /**
    * Called when a drag lands. Shows the move at once and sends it.
@@ -17,8 +17,8 @@ export interface TabReorderResult {
   reorder: (spaceId: string, beforeSpaceId: string | null) => void;
 }
 
-/** One move waiting for its turn on the wire. */
-interface QueuedMove {
+/** One move the document has not accounted for yet. */
+interface OwedMove {
   spaceId: string;
   beforeSpaceId: string | null;
 }
@@ -37,21 +37,62 @@ function sameIds(
 }
 
 /**
- * Show a tab move the moment the user lets go, and let go of that view once
- * the document has caught up.
+ * Lay a run of moves over an order.
+ * @param stored - The order to start from.
+ * @param moves - The moves to apply, oldest first.
+ * @returns The order those moves produce.
+ */
+function withMoves(
+  stored: ReadonlyArray<string>,
+  moves: ReadonlyArray<OwedMove>,
+): ReadonlyArray<string> {
+  return moves.reduce<ReadonlyArray<string>>(
+    (ids, m) => applyTabMove(ids, m.spaceId, m.beforeSpaceId),
+    stored,
+  );
+}
+
+/**
+ * How many moves at the front of the run the document already shows.
+ *
+ * A move is accounted for when applying it to the stored order changes
+ * nothing — the tab is where the move asked for it to be. Counting only from
+ * the front is what keeps a run meaningful: each move was computed against
+ * the one before it.
+ * @param stored - The order as the document has it.
+ * @param moves - The moves still owed, oldest first.
+ * @returns How many to drop.
+ */
+function landedCount(
+  stored: ReadonlyArray<string>,
+  moves: ReadonlyArray<OwedMove>,
+): number {
+  let n = 0;
+  while (n < moves.length) {
+    const m = moves[n] as OwedMove;
+    if (!sameIds(applyTabMove(stored, m.spaceId, m.beforeSpaceId), stored)) {
+      break;
+    }
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Show a tab move the moment the user lets go, and stop showing it once the
+ * document says the same thing.
+ *
+ * What is held is the run of moves the document has not accounted for, not a
+ * copy of the order. Everything else about the tab list — a Space a
+ * collaborator deleted, a tab this account opened on another machine — reaches
+ * the strip the moment it arrives, with the owed moves laid back over it. A
+ * move stops being owed when applying it to the arriving order changes
+ * nothing, which is the same question whatever else came with it.
  *
  * Requests go out one at a time. Collab dispatches stateless messages without
  * awaiting, so two reorders in flight together finish in no fixed order, and
  * relative moves do not commute — the pair could land as an order the user
  * never asked for, persisted.
- *
- * The view is let go of when the document shows the same order it does, and
- * only once nothing is queued and nothing is on the wire. Comparing the two
- * orders rather than counting arrivals is what makes a broadcast that reaches
- * the client ahead of its own reply — which is the ordinary case, since collab
- * broadcasts inside the transaction and answers afterwards — cost nothing.
- * A reply saying the server wrote nothing ends the view outright: no broadcast
- * is coming, and holding on would strand it for good.
  * @param openTabIds - The order as stored, straight from the meta doc.
  * @param send - Sends one move; resolves with whether the server wrote, and
  *   rejects when the request found no answer.
@@ -61,106 +102,82 @@ export function useTabReorder(
   openTabIds: ReadonlyArray<string>,
   send: (spaceId: string, beforeSpaceId: string | null) => Promise<boolean>,
 ): TabReorderResult {
-  const [pending, setPending] = React.useState<ReadonlyArray<string> | null>(
-    null,
-  );
+  const [owed, setOwed] = React.useState<ReadonlyArray<OwedMove>>([]);
   /**
-   * What `pending` holds, readable without going through a stale closure.
-   * A second drag lands on top of the first one's result, so the callback
-   * has to see the layer as it stands right now.
+   * What `owed` holds, readable without going through a stale closure. A
+   * second drag lands on top of the first one's result, and a reply has to
+   * see the run as it stands right now.
    */
-  const pendingRef = React.useRef<ReadonlyArray<string> | null>(null);
-  /** Moves not yet sent. The one on the wire is not in here. */
-  const queue = React.useRef<QueuedMove[]>([]);
+  const owedRef = React.useRef<ReadonlyArray<OwedMove>>([]);
+  /** How many of the owed moves have been sent. The wire holds the last one. */
+  const sent = React.useRef(0);
   const inFlight = React.useRef(false);
-  /** The stored order as it stands right now, readable from a reply. */
-  const stored = React.useRef<ReadonlyArray<string>>(openTabIds);
 
   const sendRef = React.useRef(send);
   sendRef.current = send;
 
-  const clear = React.useCallback((): void => {
-    queue.current = [];
-    inFlight.current = false;
-    pendingRef.current = null;
-    setPending(null);
-  }, []);
-
-  /**
-   * Let go of the view once the document shows what it shows.
-   *
-   * Two things leave a move unaccounted for: one is still travelling, or one
-   * has been written and its broadcast has not arrived. Anything queued is
-   * covered by the first — a move leaves the queue and takes the wire in the
-   * same breath, so a non-empty queue always means something is in flight.
-   * Dropping the layer early snaps the strip back to an order the user has
-   * already moved on from, and takes the queued moves with it.
-   * @param now - The stored order to compare the layer against.
-   */
-  const settleIfConfirmed = React.useCallback(
-    (now: ReadonlyArray<string>): void => {
-      if (inFlight.current) return;
-      const layer = pendingRef.current;
-      if (layer !== null && !sameIds(now, layer)) return;
-      clear();
-    },
-    [clear],
+  const order = React.useMemo(
+    () => withMoves(openTabIds, owed),
+    [openTabIds, owed],
   );
+  const orderRef = React.useRef(order);
+  orderRef.current = order;
+
+  const commit = React.useCallback((next: ReadonlyArray<OwedMove>): void => {
+    owedRef.current = next;
+    setOwed(next);
+  }, []);
 
   const pump = React.useCallback((): void => {
     if (inFlight.current) return;
-    const next = queue.current.shift();
+    const next = owedRef.current[sent.current];
     if (!next) return;
+    sent.current += 1;
     inFlight.current = true;
     void sendRef
       .current(next.spaceId, next.beforeSpaceId)
       .then((orderChanged) => {
         inFlight.current = false;
-        if (queue.current.length > 0) {
-          pump();
-          return;
-        }
-        // A server that wrote nothing broadcasts nothing, so there is no
-        // arrival to wait for and the document is already what it will be.
         if (!orderChanged) {
-          clear();
-          return;
+          // The server wrote nothing, so no arrival will ever account for
+          // this one. It stops being owed here or never.
+          const at = sent.current - 1;
+          sent.current -= 1;
+          commit(owedRef.current.filter((_, i) => i !== at));
         }
-        settleIfConfirmed(stored.current);
+        pump();
       })
       .catch(() => {
         // The caller surfaced the failure. Everything shown optimistically
-        // goes back to what the document says — including moves queued
-        // behind this one, which were computed on top of it.
-        clear();
+        // goes back to what the document says — including the moves behind
+        // this one, which were computed on top of it.
+        sent.current = 0;
+        commit([]);
       });
-  }, [clear, settleIfConfirmed]);
+  }, [commit]);
 
   const reorder = React.useCallback(
     (spaceId: string, beforeSpaceId: string | null): void => {
-      const base = pendingRef.current ?? openTabIds;
-      const next = applyTabMove(base, spaceId, beforeSpaceId);
+      const base = orderRef.current;
       // The tab landed where it already was. Sending it would ask collab to
       // do nothing and, when collab is unreachable, raise a failure for an
       // action that needed nothing from it.
-      if (sameIds(next, base)) return;
-      pendingRef.current = next;
-      setPending(next);
-      queue.current.push({ spaceId, beforeSpaceId });
+      if (sameIds(applyTabMove(base, spaceId, beforeSpaceId), base)) return;
+      commit([...owedRef.current, { spaceId, beforeSpaceId }]);
       pump();
     },
-    [openTabIds, pump],
+    [commit, pump],
   );
 
-  // Every arriving document state is a chance for the layer to be done with.
-  // Presence heartbeats rerun this projection without changing a thing, and
-  // they cost nothing here: an order that already matched was let go of on the
-  // arrival that made it match.
+  // Every arriving document state settles what it can. Presence heartbeats
+  // rerun this projection without changing the order, and they cost nothing:
+  // a move the order already shows was dropped on the arrival that made it so.
   React.useEffect(() => {
-    stored.current = openTabIds;
-    if (pending === null) return;
-    settleIfConfirmed(openTabIds);
-  }, [openTabIds, pending, settleIfConfirmed]);
+    const landed = landedCount(openTabIds, owedRef.current);
+    if (landed === 0) return;
+    sent.current = Math.max(0, sent.current - landed);
+    commit(owedRef.current.slice(landed));
+  }, [openTabIds, commit]);
 
-  return { order: pending ?? openTabIds, reorder };
+  return { order, reorder };
 }
