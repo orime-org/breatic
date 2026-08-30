@@ -294,14 +294,19 @@ function selectedRange(tr: Transaction, blocks: number[]): NodeRange | null {
 }
 
 /**
- * Takes each list item in the selection one level out of its list.
+ * Takes the selection's list items out of their lists.
  *
  * ONE level per block, then stop (user 2026-08-30,
  * `demo/2026-08-30-nested-list-lift-decision.html`). An item of a nested list
  * lands in the item above as a plain paragraph, and an item of a top level
- * list lands in the body — one level takes it out either way. Lifting until
- * nothing moves instead read the answer off whether the block happened to land
- * mid-item, so two adjacent items of one list took opposite paths.
+ * list lands in the body — one level takes it out either way.
+ *
+ * A block can be made an item again by the lift of another one: taking the
+ * outer item of a nested list out leaves the inner one opening what is left,
+ * so it carries the marker now. That block has still moved one level of its
+ * own, and rule 2 wants every selected block to become the row that was
+ * pressed, which a list item cannot be. The rounds run until no selected block
+ * is an item, which for a block nothing else disturbs is one lift.
  *
  * Only blocks that ARE list items move: a later block of an item carries no
  * marker and is nothing the exclusive rows have to make way for. Where the
@@ -310,23 +315,30 @@ function selectedRange(tr: Transaction, blocks: number[]): NodeRange | null {
  * has always been drawn beside.
  *
  * An item has to open with a paragraph, so `liftTarget` refuses to take the
- * first block out of an item that also holds a sub-list — the item would be
- * left opening with that sub-list. The press fails there: the block cannot go
- * where the row would put it, and §6.7 greys a row for exactly that.
+ * first block out of an item that also holds a heading or a code block. The
+ * press reports failure there: the block cannot go where the row would put it,
+ * and §6.7 greys a row for exactly that.
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
- * @returns Whether every item the selection covers could leave its list.
+ * @returns Whether every one of them ended up outside a list item.
  */
 function liftOutOfLists(tr: Transaction, blocks: number[]): boolean {
-  for (const origin of blocks) {
-    const $from = tr.doc.resolve(tr.mapping.map(origin));
-    if (itemListName($from) === null) continue;
-    const range = new NodeRange($from, $from, $from.depth - 1);
-    const target = liftTarget(range);
-    if (target === null) return false;
-    tr.lift(range, target);
+  for (;;) {
+    let moved = false;
+    for (const origin of blocks) {
+      const $from = tr.doc.resolve(tr.mapping.map(origin));
+      if (itemListName($from) === null) continue;
+      const range = new NodeRange($from, $from, $from.depth - 1);
+      const target = liftTarget(range);
+      if (target === null) continue;
+      tr.lift(range, target);
+      moved = true;
+    }
+    if (!moved) break;
   }
-  return true;
+  return blocks.every(
+    (origin) => itemListName(tr.doc.resolve(tr.mapping.map(origin))) === null,
+  );
 }
 
 /**

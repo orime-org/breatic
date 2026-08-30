@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { NodeSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 
 import { canRunBlockType, runBlockType } from '@web/spaces/document/document-block-model';
 
@@ -140,6 +140,45 @@ describe('Quote over an item that holds more than one block', () => {
     expect(editor.getHTML()).toBe(
       '<blockquote><ul><li><p>a</p><p>aa</p></li><li><p>b</p></li></ul></blockquote>'
         + '<ul><li><p>d</p></li></ul>',
+    );
+  });
+});
+
+describe('a selection covering both levels of a nested list', () => {
+  // Taking the outer item out of its list makes the inner one the first block
+  // of what is left, so it is a list item again — a block cannot become the
+  // row that was pressed while it is one (rule 2). Each block still leaves one
+  // level of its own: `deep` starts two levels in and ends in the body because
+  // the item that held it went there too, which is where a one-level lift puts
+  // it (user 2026-08-30).
+  const NESTED = '<p>lead</p><ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>';
+
+  it('turns every block into the row that was pressed', () => {
+    const editor = openBody(NESTED);
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+    runBlockType(editor, 'heading-1');
+    expect(editor.getHTML()).toBe('<h1>lead</h1><h1>one</h1><h1>deep</h1>');
+  });
+
+  it.each(['paragraph', 'heading-1', 'heading-2', 'heading-3',
+    'bullet-list', 'ordered-list', 'code-block', 'quote'] as const)(
+    'reaches %s', (id) => {
+      const editor = openBody(NESTED);
+      editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+      expect(canRunBlockType(editor, id)).toBe(true);
+    },
+  );
+
+  it('leaves a block that is only an item because a sibling was lifted alone', () => {
+    // `sib` is nobody's selection, and it is the second item of the inner
+    // list, so lifting `deep` does not make it the first block of anything.
+    const editor = openBody(
+      '<ul><li><p>one</p><ul><li><p>deep</p></li><li><p>sib</p></li></ul></li></ul>',
+    );
+    selectBlock(editor, 'deep');
+    runBlockType(editor, 'paragraph');
+    expect(editor.getHTML()).toBe(
+      '<ul><li><p>one</p><p>deep</p><ul><li><p>sib</p></li></ul></li></ul>',
     );
   });
 });
