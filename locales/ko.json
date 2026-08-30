@@ -1177,7 +1177,7 @@
       "scrollTabsRight": "탭 오른쪽으로 스크롤",
       "spacesToolbar": "Spaces",
       "openSpaces": "열려 있는 Space",
-      "agentColumnWidth": "Agent 패널 너비 조정",
+      "agentColumnWidth": "에이전트 패널 너비 조정",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
     }

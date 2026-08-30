@@ -1177,7 +1177,7 @@
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",
       "openSpaces": "開いている Space",
-      "agentColumnWidth": "Agent パネルの幅を調整",
+      "agentColumnWidth": "エージェントパネルの幅を調整",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
     }
