@@ -577,10 +577,10 @@ export function SpaceTabBar({
             onClick={scrollActiveIntoView}
             disabled={!scrollState.overflow || scrollState.activeVisible}
             data-testid='tabs-reveal-active'
-            className={cn(
-              (!scrollState.overflow || scrollState.activeVisible) &&
-                'opacity-35',
-            )}
+            // Disabled dimming is the Button primitive's, measured at 0.5. The
+            // arrows next door ask for `opacity-35` and get 0.5 anyway — their
+            // class has no pseudo-class where `disabled:opacity-50` does, so
+            // the primitive wins on specificity (task #2037).
             style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
           >
             <LocateFixed className='h-3.5 w-3.5' />
