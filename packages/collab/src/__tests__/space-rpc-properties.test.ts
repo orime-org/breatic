@@ -174,7 +174,7 @@ async function createSpace(
     },
   );
   expect(r.ok).toBe(true);
-  const id = r.ok ? r.result?.spaceId : undefined;
+  const id = r.ok && r.result && "spaceId" in r.result ? r.result.spaceId : undefined;
   expect(id).toBeTruthy();
   return id as string;
 }

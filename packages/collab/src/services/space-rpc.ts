@@ -76,6 +76,8 @@ import {
   type SpaceRpcResponse,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
+  dedupeTabOrder,
+  sortSpaceIdsForTabOrder,
 } from "@breatic/shared";
 
 const logger = createLogger("space-rpc");
@@ -95,15 +97,15 @@ const SYSTEM_SOURCE = "space-rpc";
 /**
  * Compact reply builder so handlers stay one-liner-y.
  * @param id - Request id echoed back so the client can demultiplex concurrent RPCs.
- * @param result - Optional Space payload returned on success (only `space:create` populates it).
- * @param result.spaceId - Id of the created Space.
- * @param result.type - Doc kind of the created Space.
- * @param result.name - Display name of the created Space.
+ * @param result - Optional payload: the Space entry for `space:create`, or
+ *   whether the caller's tab order was written for `tab:reorder`.
  * @returns A success `SpaceRpcResponse` echoing the request id.
  */
 function ok(
   id: string,
-  result?: { spaceId: string; type: "canvas" | "document" | "timeline"; name: string },
+  result?:
+    | { spaceId: string; type: "canvas" | "document" | "timeline"; name: string }
+    | { orderChanged: boolean },
 ): SpaceRpcResponse {
   return { id, ok: true, result };
 }
@@ -1353,8 +1355,31 @@ function ensureOpenTabList(
   mark();
   const list = new Y.Array<string>();
   userMap.set(OPEN_TAB_IDS_KEY, list);
-  list.push(Array.from(spaces.keys()));
+  list.push(seedOrder(spaces));
   return list;
+}
+
+/**
+ * The order a project's Spaces go into a freshly seeded tab list.
+ *
+ * `Y.Map` iteration order is integration order, and two replicas can
+ * disagree on it, so seeding straight from `spaces.keys()` would put a
+ * different order in the document than the one the browser was already
+ * showing this user from its own replica — their untouched tabs would jump
+ * the first time they moved one. Both sides call the same rule instead.
+ * @param spaces - The meta doc's `spaces` map.
+ * @returns The Space ids, oldest first.
+ */
+function seedOrder(spaces: Y.Map<unknown>): string[] {
+  const entries: { id: string; createdAt: number | undefined }[] = [];
+  spaces.forEach((entry, id) => {
+    const createdAt = entry instanceof Y.Map ? entry.get("createdAt") : undefined;
+    entries.push({
+      id,
+      createdAt: typeof createdAt === "number" ? createdAt : undefined,
+    });
+  });
+  return sortSpaceIdsForTabOrder(entries);
 }
 
 /**
@@ -1483,6 +1508,122 @@ async function handleTabClose(
   }
 }
 
+/**
+ * Apply one relative move to a list of tab ids.
+ *
+ * Both ids are known to be present and different, which the caller's guards
+ * establish — so the anchor is still there after the moved id is taken out.
+ * @param ids - The list as it stands, already free of duplicates.
+ * @param spaceId - The tab being moved.
+ * @param beforeSpaceId - The tab it lands in front of, null for the end.
+ * @returns A new list with the move applied.
+ */
+function applyMove(
+  ids: ReadonlyArray<string>,
+  spaceId: string,
+  beforeSpaceId: string | null,
+): string[] {
+  const without = ids.filter((id) => id !== spaceId);
+  if (beforeSpaceId === null) return [...without, spaceId];
+  const at = without.indexOf(beforeSpaceId);
+  return [...without.slice(0, at), spaceId, ...without.slice(at)];
+}
+
+/**
+ * Whether two id lists hold the same ids in the same places.
+ * @param a - One list.
+ * @param b - The other.
+ * @returns True when writing `b` over `a` would change nothing.
+ */
+function sameOrder(
+  a: ReadonlyArray<string>,
+  b: ReadonlyArray<string>,
+): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+/**
+ * Move one tab inside the caller's own tab bar.
+ *
+ * The request says which tab moves and which one it lands in front of, and
+ * this reads the list as it stands right now to apply it. A tab this caller
+ * has never seen — one another connection on the account opened while the
+ * request was in flight — is not named by the move, so it keeps its place.
+ *
+ * The list is normalised before the move. Two collab instances that had not
+ * synced can each move the same tab and leave the merged list holding it
+ * twice; a move that took out the trailing copy would leave the leading one
+ * where it was, and a browser showing first occurrences would render no
+ * change at all while the RPC reported success.
+ *
+ * The reply says whether this call wrote the list, which is what tells an
+ * optimistic client whether a broadcast is coming. Seeding counts: it is a
+ * write, and it changes what the tab bar reads back.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc holds the tab lists.
+ * @param caller - Authenticated caller; the userId comes from here, never from the request.
+ * @param req - The `tab:reorder` request.
+ * @returns Success carrying `orderChanged`, or `NOT_FOUND` when either id is not an open tab.
+ */
+async function handleTabReorder(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "tab:reorder" }>,
+): Promise<SpaceRpcResponse> {
+  const { spaceId, beforeSpaceId } = req.payload;
+  const conn = await ctx.hocuspocus.openDirectConnection(
+    projectMetaDocName(projectId),
+    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
+  );
+  const logCtx = {
+    projectId,
+    spaceId,
+    callerId: caller.userId,
+    during: "tab:reorder",
+  };
+  let orderChanged = false;
+  try {
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+      const spaces = doc.getMap("spaces");
+      // Seeding has to come first: the guard below asks whether the tab is
+      // in this caller's list, and a caller who has never opened or closed
+      // anything does not have one yet. So a refused reorder can still have
+      // broadcast the seed — `tab:close` carries the same shape.
+      const seeded = existingOpenTabList(doc, caller.userId) === null;
+      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
+      const current = list.toArray();
+      const deduped = dedupeTabOrder(current);
+
+      if (!deduped.includes(spaceId)) {
+        return err(req.id, "NOT_FOUND", `Tab ${spaceId} is not open`);
+      }
+      if (beforeSpaceId !== null && !deduped.includes(beforeSpaceId)) {
+        return err(req.id, "NOT_FOUND", `Tab ${beforeSpaceId} is not open`);
+      }
+      if (spaceId === beforeSpaceId) {
+        return ok(req.id, { orderChanged: seeded });
+      }
+
+      const next = applyMove(deduped, spaceId, beforeSpaceId);
+      if (sameOrder(next, current)) {
+        return ok(req.id, { orderChanged: seeded });
+      }
+      mark();
+      list.delete(0, list.length);
+      list.push(next);
+      orderChanged = true;
+    });
+    const settled = settlePublish(outcome, () =>
+      err(req.id, "INTERNAL", "Could not move the tab"),
+    );
+    if (settled.response) return settled.response;
+    return ok(req.id, { orderChanged });
+  } finally {
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+  }
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────
 
 /**
@@ -1517,6 +1658,8 @@ export async function handleSpaceRpc(
         return await handleTabOpen(ctx, projectId, caller, request);
       case "tab:close":
         return await handleTabClose(ctx, projectId, caller, request);
+      case "tab:reorder":
+        return await handleTabReorder(ctx, projectId, caller, request);
     }
   } catch (e) {
     // Last resort for programmer errors only — every anticipated failure is
