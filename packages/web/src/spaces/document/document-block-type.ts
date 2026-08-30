@@ -92,9 +92,6 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
   },
 ];
 
-/** The row the separator sits after. */
-export const BLOCK_TYPE_SEPARATOR_AFTER: BlockTypeId = 'code-block';
-
 /** Finds a row by id; the paragraph row stands in when nothing matches. */
 const BY_ID = new Map(BLOCK_TYPE_ITEMS.map((item) => [item.id, item]));
 

@@ -45,13 +45,13 @@ import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
 import {
   BLOCK_TYPE_ITEMS,
-  BLOCK_TYPE_SEPARATOR_AFTER,
   blockTypeItem,
 } from '@web/spaces/document/document-block-type';
 import { printedShortcut } from '@web/spaces/document/document-block-type-shortcuts';
 import {
   canRunBlockType,
   currentBlockType,
+  isExclusiveRow,
   markedIds,
   runBlockType,
   selectionCanAlign,
@@ -261,7 +261,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       openId={openId}
       onOpenChange={onOpenChange}
     >
-      {BLOCK_TYPE_ITEMS.map((item) => {
+      {BLOCK_TYPE_ITEMS.map((item, index) => {
         const Icon = item.Icon;
         const shortcut = printedShortcut(item.id);
         return (
@@ -307,7 +307,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               </span>
             </BubbleMenuRow>
             {/* The demo's `.menu-sep`, ruling the exclusive eight off Quote. */}
-            {item.id === BLOCK_TYPE_SEPARATOR_AFTER ? <BubbleMenuRule /> : null}
+            {isExclusiveRow(item.id) && !isExclusiveRow(BLOCK_TYPE_ITEMS[index + 1]?.id ?? 'quote')
+              ? <BubbleMenuRule />
+              : null}
           </React.Fragment>
         );
       })}

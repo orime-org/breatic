@@ -153,10 +153,11 @@ function isItemAt(doc: PMNode, pos: number, id: BlockTypeId): boolean {
  * union without joining this table is a compile error and cannot end up drawn
  * in the menu yet never asked about.
  *
- * The line order is the order `blockTypeAt` asks the rows in. No two of them
- * can answer for one block — a list item's own node is a paragraph and
- * `paragraph` excludes items — so the order settles nothing today; it is the
- * order the menu reads in, kept here so the face and the menu cannot disagree.
+ * The line order is the order `blockTypeAt` asks the rows in, which is its own
+ * order and not the menu's — `BLOCK_TYPE_ITEMS` draws them in the order the
+ * reader sees. No two rows can answer for one block, a list item's own node
+ * being a paragraph and `paragraph` excluding items, so what the order settles
+ * is which answer comes back first if that ever stops holding.
  */
 const ROW_ORDER: Record<BlockTypeId, true> = {
   'bullet-list': true,
@@ -175,6 +176,20 @@ const ROWS = Object.keys(ROW_ORDER) as BlockTypeId[];
 
 /** The exclusive eight: every row but Quote, which sits across them. */
 const EXCLUSIVE = ROWS.filter((id) => id !== 'quote');
+
+/**
+ * Does this row belong to the exclusive group?
+ *
+ * The one boundary in the nine: an exclusive row replaces whichever other one
+ * the block is, and Quote sits across all of them. The menu rules the two
+ * groups apart on this answer rather than on the name of the row the rule
+ * happens to follow today.
+ * @param id - Which row.
+ * @returns Whether it is one of the exclusive eight.
+ */
+export function isExclusiveRow(id: BlockTypeId): boolean {
+  return id !== 'quote';
+}
 
 /**
  * A document and a selection over it, which is all any of the readers below
@@ -518,18 +533,20 @@ function wrapInQuote(tr: Transaction): boolean {
  * @returns Whether a blockquote sits inside it.
  */
 function holdsQuote(range: NodeRange): boolean {
-  let found = false;
-  range.parent.forEach((child, offset) => {
-    const start = range.$from.start(range.depth) + offset;
-    if (found || start + child.nodeSize <= range.start || start >= range.end) return;
-    if (QUOTE_NAMES.has(child.type.name)) { found = true; return; }
+  // A NodeRange always covers whole children of its parent and names them,
+  // so the children it covers are read off those indices.
+  for (let i = range.startIndex; i < range.endIndex; i += 1) {
+    const child = range.parent.child(i);
+    if (QUOTE_NAMES.has(child.type.name)) return true;
+    let nested = false;
     child.descendants((node) => {
-      if (found) return false;
-      if (QUOTE_NAMES.has(node.type.name)) { found = true; return false; }
-      return true;
+      if (nested) return false;
+      if (QUOTE_NAMES.has(node.type.name)) nested = true;
+      return !nested;
     });
-  });
-  return found;
+    if (nested) return true;
+  }
+  return false;
 }
 
 /**
@@ -552,7 +569,9 @@ function setBlocks(
   // `setBlockType` skips a block the schema will not let it change and says
   // nothing, so the result is read back off the document. Reporting success
   // on a selection where one block moved and another did not would put half a
-  // press into the document (rule 4).
+  // press into the document (rule 4). `landedOn` asks a different question at
+  // the end of the press — whether the blocks are the ROW, which for a list
+  // row is about where they sit rather than what type they are.
   const after = selectedBlocks(tr);
   if (after.length !== before) return false;
   return after.every((pos) => {
@@ -590,12 +609,14 @@ function toBlockType(
  */
 function selectedRuns(tr: Transaction): Array<[first: number, last: number]> {
   const runs: Array<[number, number]> = [];
-  let parent: string | null = null;
+  let parent: number | null = null;
   let previous = -2;
   for (const pos of selectedBlocks(tr)) {
     const $pos = tr.doc.resolve(pos);
     const depth = $pos.depth - 1;
-    const here = `${depth}:${$pos.start(depth)}`;
+    // `start(depth)` is an absolute content-start position, so no two nodes
+    // share one and it names the parent on its own.
+    const here = $pos.start(depth);
     const index = $pos.index(depth);
     const run = runs[runs.length - 1];
     if (run !== undefined && here === parent && index === previous + 1) run[1] = pos;
@@ -697,9 +718,6 @@ function applyExclusive(tr: Transaction, schema: Schema, target: BlockTypeId): b
 
 /**
  * Builds the press's transaction, leaving it undispatched.
- *
- * A node selection is turned into the text range covering the same blocks
- * first, so every shape reaches the same transition (A9).
  *
  * Rule 4, both halves. `applyTransition` reports whether every step went in,
  * which keeps half a press out of the document; `docChanged` answers the other

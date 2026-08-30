@@ -185,6 +185,10 @@ describe('the menu', () => {
     // every other greyed row has to match (§6.7).
     expect(row('heading-1')?.className).toBe(row('task-list')?.className);
     expect(row('heading-1')?.getAttribute('aria-disabled')).toBe('true');
+    // Quote is the one row this selection can reach, so it says the two
+    // treatments really are different rather than one class for every row.
+    expect(row('quote')?.className).not.toBe(row('task-list')?.className);
+    expect(row('quote')?.getAttribute('aria-disabled')).not.toBe('true');
   });
 
   it('carries no row fill and no data-active', async () => {
