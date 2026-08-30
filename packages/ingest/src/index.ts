@@ -27,6 +27,15 @@ export { UploadSession } from "@ingest/upload-session.js";
  */
 const PART_PATH = /^\/uploads\/([^/]+)\/parts\/(\d+)$/;
 
+/**
+ * What a part sends beyond a simple request. The browser preflights on account
+ * of these, and will not send the bytes if the answer does not list them.
+ */
+const ALLOWED_HEADERS = "content-type, x-upload-ticket, x-upload-token";
+
+/** The methods the three endpoints use. */
+const ALLOWED_METHODS = "POST, PUT, OPTIONS";
+
 /** `/uploads/{uploadId}/complete`. */
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
@@ -162,6 +171,47 @@ async function completeUpload(
   );
 }
 
+/**
+ * The origin to echo back, or null when the caller is not one we serve.
+ *
+ * Echoed rather than answered with `*`, because `*` and a specific origin are
+ * not interchangeable to a browser: the wildcard is refused outright once a
+ * request carries credentials, and a page that has to re-check its own origin
+ * against a wildcard cannot.
+ * @param request - The incoming request.
+ * @param env - The Worker's bindings.
+ * @returns The allowed origin, or null.
+ */
+function allowedOrigin(request: Request, env: Env): string | null {
+  const origin = request.headers.get("origin");
+  if (origin === null) return null;
+  const allowed = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  return allowed.includes(origin) ? origin : null;
+}
+
+/**
+ * Put the cross-origin headers on a response.
+ *
+ * `Vary: Origin` on every answer, allowed or not: caches key on it, and a
+ * preflight answered from another origin's cached response is how a page that
+ * should have been refused gets in.
+ * @param response - What the route produced.
+ * @param origin - The allowed origin, or null.
+ * @returns The response with its headers set.
+ */
+function withCors(response: Response, origin: string | null): Response {
+  const headers = new Headers(response.headers);
+  headers.append("Vary", "Origin");
+  if (origin !== null) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   /**
    * Route one request.
@@ -172,22 +222,44 @@ export default {
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     void ctx;
-    const { pathname } = new URL(request.url);
+    const origin = allowedOrigin(request, env);
 
-    if (request.method === "POST" && pathname === "/uploads") {
-      return startUpload(request, env);
+    if (request.method === "OPTIONS") {
+      const preflight = new Response(null, { status: 204 });
+      if (origin !== null) {
+        preflight.headers.set("Access-Control-Allow-Methods", ALLOWED_METHODS);
+        preflight.headers.set("Access-Control-Allow-Headers", ALLOWED_HEADERS);
+        preflight.headers.set("Access-Control-Max-Age", "86400");
+      }
+      return withCors(preflight, origin);
     }
 
-    const part = PART_PATH.exec(pathname);
-    if (request.method === "PUT" && part) {
-      return uploadPart(request, env, part[1] ?? "", Number(part[2]));
-    }
-
-    const finish = COMPLETE_PATH.exec(pathname);
-    if (request.method === "POST" && finish) {
-      return completeUpload(request, env, finish[1] ?? "");
-    }
-
-    return new Response("Not found", { status: 404 });
+    return withCors(await route(request, env), origin);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Match one request to its endpoint.
+ * @param request - The incoming request.
+ * @param env - The bound resources and configuration.
+ * @returns The endpoint's response.
+ */
+async function route(request: Request, env: Env): Promise<Response> {
+  const { pathname } = new URL(request.url);
+
+  if (request.method === "POST" && pathname === "/uploads") {
+    return startUpload(request, env);
+  }
+
+  const part = PART_PATH.exec(pathname);
+  if (request.method === "PUT" && part) {
+    return uploadPart(request, env, part[1] ?? "", Number(part[2]));
+  }
+
+  const finish = COMPLETE_PATH.exec(pathname);
+  if (request.method === "POST" && finish) {
+    return completeUpload(request, env, finish[1] ?? "");
+  }
+
+  return new Response("Not found", { status: 404 });
+}
