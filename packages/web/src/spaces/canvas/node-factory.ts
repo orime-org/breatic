@@ -9,13 +9,6 @@ import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 /** The 4 content modalities a user can create as an empty node. */
 export type CreatableNodeType = 'text' | 'image' | 'audio' | 'video';
 
-/**
- * The fixed footprint of an empty / handling content node — the empty-state box
- * (`NodeContent`: 288 × 192). Used to place a new node CENTERED on a drop point
- * (its top-left = point − size/2) so it appears centred where the user dropped
- * it, not offset to the bottom-right.
- */
-export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
 
 /**
  * Convert a desired CENTER point into the node's top-left, given the node's

@@ -6,277 +6,11 @@ import type { Edge, Node } from '@xyflow/react';
 
 import {
   mergeMirroredEdgeSelection,
-  mergeMirroredSelection,
   reconcileGroupNodes,
+  reconcilePlainNodes,
   reconcileSelection,
   sameGroupResizeBounds,
 } from '@web/spaces/canvas/mirror-selection';
-
-describe('mergeMirroredSelection', () => {
-  it('carries forward selected + dragging by id while taking data/position from the fresh nodes', () => {
-    const prev = [
-      {
-        id: 'a',
-        type: 'text',
-        position: { x: 0, y: 0 },
-        data: {},
-        selected: true,
-        dragging: true,
-      },
-      { id: 'b', type: 'image', position: { x: 0, y: 0 }, data: {}, selected: false },
-    ] as Node[];
-    // Fresh nodes come straight from the Yjs mirror — no selection field, and
-    // `a` has moved (a collaborator dragged it).
-    const fresh = [
-      { id: 'a', type: 'text', position: { x: 9, y: 9 }, data: { name: 'A' } },
-      { id: 'b', type: 'image', position: { x: 0, y: 0 }, data: {} },
-      { id: 'c', type: 'audio', position: { x: 5, y: 5 }, data: {} },
-    ] as Node[];
-
-    const merged = mergeMirroredSelection(prev, fresh);
-
-    const a = merged.find((n) => n.id === 'a');
-    expect(a?.selected).toBe(true); // selection survives the mirror rebuild
-    expect(a?.dragging).toBe(true);
-    expect(a?.position).toEqual({ x: 9, y: 9 }); // position still from Yjs
-    expect((a?.data as { name?: string }).name).toBe('A');
-
-    expect(merged.find((n) => n.id === 'b')?.selected).toBe(false);
-    // A brand-new node (just created) is left unselected here; the auto-select
-    // effect selects it explicitly once it appears.
-    expect(merged.find((n) => n.id === 'c')?.selected).toBeUndefined();
-  });
-});
-
-describe('mergeMirroredSelection reference stability (#1647 — React.memo needs stable refs)', () => {
-  // The Yjs mirror rebuilds the whole node array on every doc change, so every
-  // node gets a fresh object. Without reference stability, a change to one node
-  // hands ALL nodes new `data` references, defeating React.memo (every node
-  // re-renders). The merge must reuse the previous object reference for any node
-  // whose render inputs (type / parentId / position / size / selection / data)
-  // are unchanged, so only the node that actually changed re-renders.
-
-  it('reuses the previous object reference when nothing render-relevant changed', () => {
-    const prev = [
-      {
-        id: 'a',
-        type: 'text',
-        position: { x: 0, y: 0 },
-        data: { content: 'hi', status: 'idle' },
-        selected: false,
-      },
-    ] as Node[];
-    // A different node changed elsewhere → the mirror rebuilt `a` fresh, but `a`
-    // itself is identical.
-    const fresh = [
-      {
-        id: 'a',
-        type: 'text',
-        position: { x: 0, y: 0 },
-        data: { content: 'hi', status: 'idle' },
-      },
-    ] as Node[];
-
-    const merged = mergeMirroredSelection(prev, fresh);
-    expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
-  });
-
-  it('sees a generation changing hands', () => {
-    // The starter's id rides in `data` alongside the derived status, and a
-    // handover keeps that status at `handling` — so the status compare says
-    // nothing changed and only the id itself can catch it. Reuse the previous
-    // reference here and the node keeps naming the wrong person.
-    //
-    // The comparison is by own keys, so a flat field on `data` is covered the
-    // moment it exists; this pins that the projection keeps putting it there.
-    const at = (userId: string): Node[] =>
-      [
-        {
-          id: 'a',
-          type: 'image',
-          position: { x: 0, y: 0 },
-          data: { status: 'handling', handlingByUserId: userId },
-          selected: false,
-        },
-      ] as Node[];
-    const prev = at('alice');
-    expect(mergeMirroredSelection(prev, at('bob'))[0]).not.toBe(prev[0]);
-    expect(mergeMirroredSelection(prev, at('alice'))[0]).toBe(prev[0]);
-  });
-
-  it('carries the holders a re-mirror brings with it', () => {
-    // The canvas re-mirrors on every document change and bakes the current
-    // holders onto each node on the way through, so the merge has to let a
-    // `data` that gained or lost them count as changed. Compared by own keys,
-    // which is what makes the presence field visible here at all.
-    const held = (holders?: readonly string[]): Node[] =>
-      [
-        {
-          id: 'a',
-          type: 'image',
-          position: { x: 0, y: 0 },
-          data: holders === undefined ? { status: 'idle' } : { status: 'idle', occupants: holders },
-          selected: false,
-        },
-      ] as Node[];
-    const unheld = held();
-
-    const nowHeld = mergeMirroredSelection(unheld, held(['alice']));
-    expect(nowHeld[0]).not.toBe(unheld[0]);
-    expect((nowHeld[0]?.data as { occupants?: readonly string[] }).occupants).toEqual(['alice']);
-
-    expect(mergeMirroredSelection(nowHeld, held())[0]).not.toBe(nowHeld[0]);
-  });
-
-  it('a fresh-but-equal focusImages array does not defeat reference reuse (Y.Array toJSON freshness)', () => {
-    // The Yjs mirror serializes the focusImages Y.Array to a FRESH plain
-    // array on every dataMap.toJSON() call (Y.Array.toJSON maps a new
-    // array; its ELEMENTS keep their stored references). Whole-array
-    // Object.is would read every eager-seeded node as changed on every
-    // doc change — reverting #1647 R1 canvas-wide (encoding adversary
-    // 2026-07-17).
-    const cropRef = { id: 'f1', url: 'u', name: 'n', width: 1, height: 1 };
-    const prev = [
-      {
-        id: 'a',
-        type: 'image',
-        position: { x: 0, y: 0 },
-        data: { content: 'x.png', status: 'idle', focusImages: [cropRef] },
-        selected: false,
-      },
-    ] as Node[];
-    const fresh = [
-      {
-        id: 'a',
-        type: 'image',
-        position: { x: 0, y: 0 },
-        // A fresh array wrapper around the SAME element references —
-        // exactly what toJSON hands the mirror when nothing changed.
-        data: { content: 'x.png', status: 'idle', focusImages: [cropRef] },
-      },
-    ] as Node[];
-    const merged = mergeMirroredSelection(prev, fresh);
-    expect(merged[0]).toBe(prev[0]);
-    // The eager-seeded EMPTY array is the canvas-wide case: every content
-    // node carries focusImages: [], rebuilt fresh each doc change.
-    const prevEmpty = [
-      {
-        id: 'b',
-        type: 'image',
-        position: { x: 0, y: 0 },
-        data: { content: 'y.png', focusImages: [] },
-        selected: false,
-      },
-    ] as Node[];
-    const freshEmpty = [
-      {
-        id: 'b',
-        type: 'image',
-        position: { x: 0, y: 0 },
-        data: { content: 'y.png', focusImages: [] },
-      },
-    ] as Node[];
-    expect(mergeMirroredSelection(prevEmpty, freshEmpty)[0]).toBe(prevEmpty[0]);
-  });
-
-  it('returns a new reference when a crop was actually added / removed / replaced', () => {
-    const cropA = { id: 'f1', url: 'u1', name: 'n', width: 1, height: 1 };
-    const cropB = { id: 'f2', url: 'u2', name: 'n', width: 1, height: 1 };
-    const at = (focusImages: unknown): Node[] =>
-      [
-        {
-          id: 'a',
-          type: 'image',
-          position: { x: 0, y: 0 },
-          data: { focusImages },
-        },
-      ] as Node[];
-    // Added.
-    expect(mergeMirroredSelection(at([cropA]), at([cropA, cropB]))[0]).not.toBe(
-      at([cropA])[0],
-    );
-    const prevAdd = at([cropA]);
-    expect(mergeMirroredSelection(prevAdd, at([cropA, cropB]))[0]).not.toBe(
-      prevAdd[0],
-    );
-    // Removed.
-    const prevRemove = at([cropA, cropB]);
-    expect(mergeMirroredSelection(prevRemove, at([cropB]))[0]).not.toBe(
-      prevRemove[0],
-    );
-    // Replaced element (a different stored object at the same slot).
-    const prevReplace = at([cropA]);
-    expect(mergeMirroredSelection(prevReplace, at([cropB]))[0]).not.toBe(
-      prevReplace[0],
-    );
-  });
-
-  it('returns a new reference when the node data changed', () => {
-    const prev = [
-      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: { content: 'hi' } },
-    ] as Node[];
-    const fresh = [
-      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: { content: 'bye' } },
-    ] as Node[];
-
-    const merged = mergeMirroredSelection(prev, fresh);
-    expect(merged[0]).not.toBe(prev[0]);
-    expect((merged[0].data as { content: string }).content).toBe('bye');
-  });
-
-  it('returns a new reference when the position changed', () => {
-    const prev = [
-      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} },
-    ] as Node[];
-    const fresh = [
-      { id: 'a', type: 'text', position: { x: 5, y: 7 }, data: {} },
-    ] as Node[];
-
-    const merged = mergeMirroredSelection(prev, fresh);
-    expect(merged[0]).not.toBe(prev[0]);
-    expect(merged[0].position).toEqual({ x: 5, y: 7 });
-  });
-
-  it('returns a new reference when a group node was resized (width/height changed)', () => {
-    const prev = [
-      {
-        id: 'g',
-        type: 'group',
-        position: { x: 0, y: 0 },
-        width: 200,
-        height: 100,
-        data: {},
-      },
-    ] as Node[];
-    const fresh = [
-      {
-        id: 'g',
-        type: 'group',
-        position: { x: 0, y: 0 },
-        width: 300,
-        height: 100,
-        data: {},
-      },
-    ] as Node[];
-
-    const merged = mergeMirroredSelection(prev, fresh);
-    expect(merged[0]).not.toBe(prev[0]);
-    expect(merged[0].width).toBe(300);
-  });
-
-  it('returns a new reference when a node was reparented into a group', () => {
-    const prev = [
-      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {} },
-    ] as Node[];
-    const fresh = [
-      { id: 'a', type: 'text', position: { x: 0, y: 0 }, data: {}, parentId: 'g' },
-    ] as Node[];
-
-    const merged = mergeMirroredSelection(prev, fresh);
-    expect(merged[0]).not.toBe(prev[0]);
-    expect(merged[0].parentId).toBe('g');
-  });
-});
 
 describe('mergeMirroredEdgeSelection', () => {
   it('carries forward the edge selected flag by id across a Yjs re-mirror', () => {
@@ -400,6 +134,59 @@ describe('sameGroupResizeBounds (#1783)', () => {
     ).toBe(false);
     expect(sameGroupResizeBounds([{ a: 1 }], [{ a: 1 }, { a: 2 }])).toBe(false);
     expect(sameGroupResizeBounds([{ a: 1 }], undefined)).toBe(false);
+  });
+});
+
+/** One data object shared across a pass, the way the merge hands it down. */
+const DATA = { kind: 'image' };
+
+describe('reconcilePlainNodes reference stability (#2010 — 30 frames a second)', () => {
+  // A locked node and the focus target come out of `renderNodes` as fresh
+  // objects carrying a flag. During a gesture that pass runs every frame, so
+  // without reuse those nodes get a new reference 30 times a second while
+  // nothing about them changed.
+  const plain = (over: Partial<Node> = {}): Node =>
+    ({
+      id: 'n1',
+      type: 'image',
+      position: { x: 10, y: 20 },
+      draggable: false,
+      zIndex: 5,
+      data: DATA,
+      ...over,
+    }) as Node;
+
+  it('reuses the previous reference when nothing render-relevant changed', () => {
+    const prev = [plain()];
+    expect(reconcilePlainNodes(prev, [plain()])[0]).toBe(prev[0]);
+  });
+
+  it('returns a new reference when the flag itself changed', () => {
+    const prev = [plain()];
+    expect(reconcilePlainNodes(prev, [plain({ zIndex: 9 })])[0]).not.toBe(prev[0]);
+  });
+
+  it('returns a new reference when the node moved', () => {
+    const prev = [plain()];
+    const moved = plain({ position: { x: 11, y: 20 } });
+    expect(reconcilePlainNodes(prev, [moved])[0]).toBe(moved);
+  });
+
+  it('returns a new reference once the node measures', () => {
+    // A plain node carries its rendered size in `measured`, and every consumer
+    // sizes it as `measured?.width ?? width` — reusing the previous object
+    // across that change would drop the size the node just reported.
+    const prev = [plain({ measured: { width: 0, height: 0 } })];
+    const sized = plain({ measured: { width: 288, height: 192 } });
+    expect(reconcilePlainNodes(prev, [sized])[0]).toBe(sized);
+  });
+
+  it('returns a new reference when the data object changed', () => {
+    // A plain node's data is handed down whole, so a new object means new
+    // content — the merge already reuses it when nothing changed.
+    const prev = [plain()];
+    const fresh = plain({ data: { ...DATA } });
+    expect(reconcilePlainNodes(prev, [fresh])[0]).toBe(fresh);
   });
 });
 

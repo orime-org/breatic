@@ -17,9 +17,9 @@ import {
 import {
   centerToTopLeft,
   createEmptyNode,
-  EMPTY_NODE_SIZE,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
+import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 export interface NodeCreation {

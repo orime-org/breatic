@@ -5,6 +5,8 @@ import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
+import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
+import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { createPublishThrottle } from '@web/spaces/canvas/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
@@ -53,21 +55,62 @@ interface Presence {
   activeNodeIds: readonly string[] | null;
   /** Where this client's pointer is on the canvas, or null while it is away. */
   pointer: Point | null;
+  /** The geometry this client's gesture is showing, or null while it has none. */
+  gesture: GestureBatch | null;
+}
+
+/** The commands a gesture drives the publisher with. */
+export interface GesturePublisher {
+  /** Publish this batch, folded into the write rate like the other fields. */
+  publishGesture: (geometry: GestureBatch) => void;
+  /**
+   * Publish this batch straight away, past the rate limit and the
+   * de-duplication. The final position of a fast gesture can be one the limiter
+   * never got to send, and the value has to be on the wire before the document
+   * write follows it (design §5.6).
+   */
+  publishGestureNow: (geometry: GestureBatch) => void;
+  /**
+   * Take the whole field back down, written on the spot rather than scheduled.
+   * A withdrawal has to land (`packages/web/CLAUDE.md`), and the moment it is
+   * called can be the moment the page stops getting animation frames.
+   */
+  clearGesture: () => void;
 }
 
 /**
  * Read back what this client last got into the awareness state.
  * @param awareness - The awareness to read.
- * @returns The two published fields.
+ * @returns The three published fields.
  */
 function readPublished(awareness: Awareness): Presence {
   const state = awareness.getLocalState() as Record<string, unknown> | null;
   const ids = state?.activeNodeIds;
   const pointer = state?.pointer;
+  const gesture = state?.gesture;
   return {
     activeNodeIds: Array.isArray(ids) ? (ids as string[]) : null,
     pointer: (pointer as Point | undefined) ?? null,
+    gesture: (gesture as GestureBatch | undefined) ?? null,
   };
+}
+
+/**
+ * Compare two gesture batches by value, so a gesture that produced no movement
+ * is not republished.
+ * @param a - The previously published batch.
+ * @param b - The freshly built batch.
+ * @returns True when the two show the same nodes at the same geometry.
+ */
+function sameBatch(a: GestureBatch | null, b: GestureBatch | null): boolean {
+  if (a === null || b === null) return a === b;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((id) => {
+    const one = a[id];
+    const other = b[id];
+    return one !== undefined && other !== undefined && sameGeometry(one, other);
+  });
 }
 
 /**
@@ -83,13 +126,13 @@ function samePoint(a: Point | null, b: Point | null): boolean {
 
 /**
  * Publish what this client is doing into awareness — the single writer of
- * `activeNodeIds` and `pointer`.
+ * `activeNodeIds`, `pointer` and `gesture`.
  *
  * Writes are rate-limited by {@link createPublishThrottle}: the frame folds
  * together a rubber-band drag, where the holding genuinely changes on every
  * pointer move and comparing values damps nothing, and the interval caps the
- * rate. Both fields go through the same limiter and land in one write, because
- * awareness resends the whole state whatever field you touch.
+ * rate. All three fields go through the same limiter and land in one write,
+ * because awareness resends the whole state whatever field you touch.
  *
  * The de-duplication compares against the values read back out of awareness
  * rather than a local copy, so a state removed from the outside reads as a
@@ -110,8 +153,9 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * A pointer that has left the canvas keeps no screen point, which is what stops
  * a later pan from reviving the arrow at a stale spot.
  * @param input - The awareness, the sources, the sync state, and the canvas.
+ * @returns The commands a gesture publishes its geometry with.
  */
-export function usePublishPresence(input: PublishPresenceInput): void {
+export function usePublishPresence(input: PublishPresenceInput): GesturePublisher {
   const { awareness, sources, synced, containerRef, toFlowPosition } = input;
   const { selectedIds, pickSession, focusTargetId } = sources;
 
@@ -131,21 +175,29 @@ export function usePublishPresence(input: PublishPresenceInput): void {
   // state so setting it never schedules a render of its own.
   const force = React.useRef(false);
 
+  // The gesture's own batch. A ref rather than state: it is rewritten on every
+  // pointer move of a drag and no render reads it — what reaches the peers goes
+  // straight into awareness.
+  const gesture = React.useRef<GestureBatch | null>(null);
+
   const publish = React.useCallback((): void => {
     if (!awareness) return;
     const at = screenPoint.current;
     const next: Presence = {
       activeNodeIds: deriveActiveNodeIds(latestSources.current),
       pointer: at === null ? null : latestConvert.current(at),
+      gesture: gesture.current,
     };
     const prev = readPublished(awareness);
     const unchanged =
-      sameIdList(prev.activeNodeIds, next.activeNodeIds) && samePoint(prev.pointer, next.pointer);
+      sameIdList(prev.activeNodeIds, next.activeNodeIds) &&
+      samePoint(prev.pointer, next.pointer) &&
+      sameBatch(prev.gesture, next.gesture);
     const skip = !force.current && unchanged;
     force.current = false;
     if (skip) return;
-    // One write for both fields: awareness resends the whole state per field,
-    // so two writes would double the traffic to say one thing.
+    // One write for all of them: awareness resends the whole state per field,
+    // so writing them separately would send the same thing several times.
     awareness.setLocalState({ ...awareness.getLocalState(), ...next });
   }, [awareness]);
 
@@ -248,11 +300,34 @@ export function usePublishPresence(input: PublishPresenceInput): void {
     if (!awareness) return undefined;
     return (): void => {
       screenPoint.current = null;
+      gesture.current = null;
       awareness.setLocalState({
         ...awareness.getLocalState(),
         activeNodeIds: null,
         pointer: null,
+        gesture: null,
       });
     };
   }, [awareness]);
+
+  return React.useMemo(
+    (): GesturePublisher => ({
+      publishGesture: (geometry: GestureBatch): void => {
+        gesture.current = geometry;
+        throttle.schedule();
+      },
+      publishGestureNow: (geometry: GestureBatch): void => {
+        gesture.current = geometry;
+        throttle.cancel();
+        force.current = true;
+        publish();
+      },
+      clearGesture: (): void => {
+        gesture.current = null;
+        throttle.cancel();
+        publish();
+      },
+    }),
+    [throttle, publish],
+  );
 }

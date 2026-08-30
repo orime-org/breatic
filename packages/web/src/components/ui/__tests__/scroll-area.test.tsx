@@ -136,24 +136,137 @@ describe('ScrollArea', () => {
     expect((viewport as HTMLElement).style.overflowY).toBe('scroll');
   });
 
-  it('rail idles HIDDEN with its hover zone gated until content is scrollable (ratified visibility contract)', () => {
-    // The rail is force-mounted so its hover zone can reveal a hidden bar
-    // (2026-07-15), but at idle it must be data-state hidden (opacity-0 via
-    // the transition classes) and — in jsdom, where nothing is scrollable —
-    // the per-axis gate must disable its pointer events so a non-scrollable
-    // rail can neither hover-reveal nor swallow edge clicks.
+  it.each([
+    [true, true, 'true', 'pointer-events-auto'],
+    [true, false, 'false', 'pointer-events-none'],
+    [false, true, 'false', 'pointer-events-none'],
+    [false, false, 'false', 'pointer-events-none'],
+  ])(
+    'shows and answers the pointer only when its axis scrolls AND the pointer is inside (scrollable=%s revealed=%s)',
+    (scrollable, revealed, wantRevealed, wantEvents) => {
+      // Both halves of the gate, driven directly. Through ScrollArea this
+      // composition is unreachable under jsdom: `scrollable` comes from a
+      // ResizeObserver measurement and jsdom lays nothing out, so a case that
+      // renders the whole component can only ever observe the hidden state and
+      // says nothing about what the pointer half does.
+      const { container, unmount } = render(
+        <ScrollAreaPrimitive.Root type='always'>
+          <ScrollAreaPrimitive.Viewport />
+          <ScrollBar
+            forceMount
+            orientation='vertical'
+            scrollable={scrollable}
+            revealed={revealed}
+          />
+        </ScrollAreaPrimitive.Root>,
+      );
+      const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      expect(bar.getAttribute('data-scrollable')).toBe(String(scrollable));
+      expect(bar.getAttribute('data-revealed')).toBe(wantRevealed);
+      expect(bar.className).toContain(wantEvents);
+      unmount();
+    },
+  );
+
+  it.each([
+    [true, 'transition-opacity', 'transition-none', true],
+    [false, 'transition-none', 'transition-opacity', false],
+  ])(
+    'leaves a rail with nothing to scroll no way to be seen (scrollable=%s)',
+    (scrollable, want, unwanted, wantRaisers) => {
+      // Three separate things raise this rail's opacity — the pointer being
+      // inside (`data-revealed`), Radix's own scroll state machine
+      // (`data-state`, which `type='scroll'` turns on while scrolling and off
+      // about 700ms after it stops — `SCROLL_END` debounced 100ms, then the
+      // 600ms `scrollHideDelay`) and a drag in progress. Content that stops
+      // overflowing has to close all three, because the thumb is sized by
+      // viewport-over-content and that ratio reaching 1 grows it to the full
+      // track: whichever one is still up paints a full-length bar over content
+      // there is nothing left to scroll. Measured on the tab strip (user
+      // 2026-08-29, seen in a document Space and on a canvas text node): the
+      // pointer path held it 272ms, and a wheel just before the shrink held it
+      // 690ms through `data-state` alone.
+      //
+      // The fade goes with them. It is a farewell for a pointer leaving the
+      // scroller; this exit has nothing to say goodbye to.
+      const { container, unmount } = render(
+        <ScrollAreaPrimitive.Root type='always'>
+          <ScrollAreaPrimitive.Viewport />
+          <ScrollBar forceMount orientation='vertical' scrollable={scrollable} revealed />
+        </ScrollAreaPrimitive.Root>,
+      );
+      const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      const classes = [...bar.classList];
+      expect(classes).toContain(want);
+      expect(classes).not.toContain(unwanted);
+      // Every class that can put the opacity back up, whatever drives it.
+      const raisers = classes.filter((c) => c.endsWith(':opacity-100'));
+      expect(raisers.length > 0).toBe(wantRaisers);
+      unmount();
+    },
+  );
+
+  it('keeps one ref identity for the viewport across renders (2026-08-29)', () => {
+    // React detaches and re-attaches a ref whose identity changed, calling the
+    // old one with null first, and Radix composes the viewport ref with a state
+    // setter of its own — so an unstable callback here runs that setter null
+    // and back on every render of every scroller in the app.
+    const seen: (HTMLElement | null)[] = [];
+    /**
+     * Records every node this ref is handed.
+     * @param node - The viewport, or null when React detaches the ref.
+     */
+    const keep = (node: HTMLDivElement | null): void => {
+      seen.push(node);
+    };
+    const { rerender } = render(
+      <ScrollArea viewportRef={keep}>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    rerender(
+      <ScrollArea viewportRef={keep}>
+        <p>y</p>
+      </ScrollArea>,
+    );
+    expect(seen).toEqual([expect.any(HTMLElement)]);
+  });
+
+  it('rail idles hidden and pointer-transparent, and stays that way with nothing to scroll (2026-08-29)', () => {
+    // The rail is force-mounted so it is there to reveal, but until the
+    // pointer is inside the scroller it must be hidden and take no pointer
+    // events at all: it overlays content, and a rail that answers to the
+    // pointer while invisible swallows the clicks meant for whatever is
+    // underneath it. The reveal is therefore watched on the scroller, not on
+    // the rail — a rail cannot notice a hover it is transparent to. What the
+    // Root-to-rail wiring does with a real pointer needs layout, and is
+    // measured in tests/smoke/space-tab-strip.spec.ts.
     const { container } = render(
       <ScrollArea data-testid='root'>
         <p>x</p>
       </ScrollArea>,
     );
+    const root = screen.getByTestId('root');
     const rail = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
     expect(rail).not.toBeNull();
     expect(rail.getAttribute('data-state')).toBe('hidden');
     expect(rail.className).toContain('opacity-0');
-    expect(rail.className).toContain('hover:opacity-100');
-    expect(rail.className).toContain('data-[scrollable=false]:pointer-events-none');
+    expect(rail.getAttribute('data-revealed')).toBe('false');
+    expect(rail.className).toContain('pointer-events-none');
+    // jsdom lays nothing out, so nothing is scrollable here: the rail stays
+    // transparent even with the pointer inside, which is the same gate that
+    // keeps a non-scrollable edge from swallowing clicks.
     expect(rail.getAttribute('data-scrollable')).toBe('false');
+    // Nothing here is scrollable, so the pointer coming in reveals nothing:
+    // a bar that appears over content the reader cannot scroll says something
+    // untrue about that content. Reported on an empty document Space, where
+    // a bar came out on hover with nothing to scroll (user 2026-08-29).
+    fireEvent.pointerEnter(root);
+    expect(rail.getAttribute('data-revealed')).toBe('false');
+    expect(rail.className).toContain('opacity-0');
+    expect(rail.className).toContain('pointer-events-none');
+    fireEvent.pointerLeave(root);
+    expect(rail.getAttribute('data-revealed')).toBe('false');
   });
 
   it('thumb hover response is opacity-only and the rail carries the fade animation classes (ratified: hover = color, never shape)', () => {
@@ -183,37 +296,55 @@ describe('ScrollArea', () => {
   });
 
   describe('input-state contract (user-ratified 2026-07-15): scrollbar interaction never disturbs focus/selection', () => {
-    it('prevents mousedown default on the scrollbar rail (the focus/selection-changing action)', () => {
+    /**
+     * Renders a scroller with a textarea in it and enough stubbed layout for
+     * the rail to own a press.
+     *
+     * What the caret then does is a browser default action, which jsdom does
+     * not run for pointerdown — so the assertion here is the cancellation, and
+     * the caret itself is measured in tests/smoke/space-tab-strip.spec.ts.
+     * @returns The rail, ready to be pressed.
+     */
+    function renderScrollableWithInput(): { rail: HTMLElement } {
       const { container } = render(
-        <ScrollAreaPrimitive.Root type='always'>
-          <ScrollAreaPrimitive.Viewport />
-          <ScrollBar forceMount orientation='vertical' />
-        </ScrollAreaPrimitive.Root>,
+        <ScrollArea data-testid='root'>
+          <textarea data-testid='input' defaultValue='typing…' />
+        </ScrollArea>,
       );
-      const bar = container.querySelector('[data-orientation="vertical"]');
-      expect(bar).not.toBeNull();
+      const rail = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      rail.setPointerCapture = vi.fn();
+      rail.releasePointerCapture = vi.fn();
+      Object.defineProperty(rail, 'clientHeight', { value: 200, configurable: true });
+      Object.defineProperty(rail, 'offsetHeight', { value: 200, configurable: true });
+      const thumb = rail.firstElementChild as HTMLElement;
+      Object.defineProperty(thumb, 'offsetHeight', { value: 40, configurable: true });
+      const viewport = container.querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      Object.defineProperty(viewport, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(viewport, 'clientHeight', { value: 200, configurable: true });
+      return { rail };
+    }
+
+    it('cancels the press on the rail (the action that would move focus)', () => {
+      const { rail } = renderScrollableWithInput();
       // fireEvent returns false when preventDefault was called.
-      expect(fireEvent.mouseDown(bar as HTMLElement)).toBe(false);
-    });
-
-    it('keeps focus on a focused textarea when the scrollbar is pressed', () => {
-      const { container } = render(
-        <ScrollAreaPrimitive.Root type='always'>
-          <ScrollAreaPrimitive.Viewport>
-            <textarea data-testid='input' defaultValue='typing…' />
-          </ScrollAreaPrimitive.Viewport>
-          <ScrollBar forceMount orientation='vertical' />
-        </ScrollAreaPrimitive.Root>,
+      expect(fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientY: 50 })).toBe(
+        false,
       );
-      const input = screen.getByTestId('input');
-      input.focus();
-      expect(document.activeElement).toBe(input);
-      const bar = container.querySelector('[data-orientation="vertical"]');
-      fireEvent.mouseDown(bar as HTMLElement);
-      expect(document.activeElement).toBe(input);
     });
 
-    it('a caller-supplied onMouseDown cannot remove the contract (chained after preventDefault)', () => {
+    it('cancels a secondary press too — the contract names no button', () => {
+      // The drag takeover returns early for anything but the primary button,
+      // so a secondary or middle press arrives at the rail as a mousedown of
+      // its own, and moving focus is that event's default action. Deleting the
+      // rail's mousedown handler leaves the primary case above green.
+      const { rail } = renderScrollableWithInput();
+      expect(fireEvent.mouseDown(rail, { button: 2 })).toBe(false);
+      expect(fireEvent.mouseDown(rail, { button: 1 })).toBe(false);
+    });
+
+    it('runs a caller-supplied onMouseDown after the cancel', () => {
       const spy = vi.fn();
       const { container } = render(
         <ScrollAreaPrimitive.Root type='always'>
@@ -221,14 +352,15 @@ describe('ScrollArea', () => {
           <ScrollBar forceMount orientation='vertical' onMouseDown={spy} />
         </ScrollAreaPrimitive.Root>,
       );
-      const bar = container.querySelector('[data-orientation="vertical"]');
-      expect(fireEvent.mouseDown(bar as HTMLElement)).toBe(false);
+      const bar = container.querySelector('[data-orientation="vertical"]') as HTMLElement;
+      expect(fireEvent.mouseDown(bar, { button: 2 })).toBe(false);
       expect(spy).toHaveBeenCalledTimes(1);
     });
+
   });
 });
 
-describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', () => {
+describe('ScrollArea — what a rail answers to, and what a drag on it does', () => {
   /**
    * Renders a horizontal scroller nested inside a vertical one — an assistant
    * message's wide table inside the message list.
@@ -262,7 +394,6 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     // scrollers report nothing to scroll; what this pins is that the rail
     // carries an answer of its own at all.
     expect(rail.getAttribute('data-scrollable')).toBe('false');
-    expect(inner.getAttribute('data-scrollable-x')).toBeNull();
   });
 
   it('does not gate a rail through a descendant selector on an ancestor scroller', () => {
@@ -279,5 +410,254 @@ describe('ScrollArea — a rail is gated by its own axis, not by an ancestor', (
     for (const rail of rails) {
       expect(rail.className).not.toMatch(/group-data-\[scrollable/);
     }
+  });
+  it('a drag that loses its pointer capture still ends (2026-08-29)', () => {
+    // `end` is the only thing that detaches the move listener, clears
+    // data-dragging and releases the capture, and pointerup / pointercancel
+    // both presuppose the capture is still held. Lose it — the capture
+    // element leaves the document, another element takes the same pointer,
+    // the OS releases outside the window — and the release lands on a
+    // sibling, whose pointerup never reaches this rail. The move listener
+    // then outlives the gesture, and pointermove fires whether or not a
+    // button is down: merely sweeping the pointer across the rail scrolls
+    // the content to wherever the cursor is. Measured in a browser before
+    // this was bound: 3393px of travel from hovering alone, with
+    // data-dragging stuck at 'true'.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    const added: string[] = [];
+    const removed: string[] = [];
+    const origAdd = rail.addEventListener.bind(rail);
+    const origRemove = rail.removeEventListener.bind(rail);
+    rail.addEventListener = ((type: string, ...rest: unknown[]) => {
+      added.push(type);
+      return (origAdd as (t: string, ...r: unknown[]) => void)(type, ...rest);
+    }) as typeof rail.addEventListener;
+    rail.removeEventListener = ((type: string, ...rest: unknown[]) => {
+      removed.push(type);
+      return (origRemove as (t: string, ...r: unknown[]) => void)(type, ...rest);
+    }) as typeof rail.removeEventListener;
+
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
+    const thumb = rail.firstElementChild as HTMLElement;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 50 });
+    expect(added).toContain('pointermove');
+    // Every path out of a gesture has to reach `end`, and only this one
+    // fires when the capture goes away without a release on this element.
+    expect(added).toContain('lostpointercapture');
+
+    fireEvent(rail, new Event('lostpointercapture'));
+    expect(removed).toContain('pointermove');
+    expect(rail.dataset.dragging).toBeUndefined();
+  });
+  it('owns a press on a scrollable rail even when the track is degenerate (2026-08-29)', () => {
+    // The thumb has a floor, so on a very short rail the travel left for it
+    // goes negative while the content is still fully scrollable. Refusing the
+    // press there hands the gesture to the primitive underneath, whose model
+    // is jump-to-point in SCREEN space — a different drag on the one geometry
+    // where the two disagree most, and it also writes body and viewport
+    // styles behind this component's back. Ownership is claimed before the
+    // geometry is judged.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    // 14px rail, 18px thumb floor: track range is negative.
+    Object.defineProperty(rail, 'clientWidth', { value: 14, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { value: 14, configurable: true });
+    Object.defineProperty(thumb, 'offsetWidth', { value: 18, configurable: true });
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    Object.defineProperty(viewport, 'scrollWidth', { value: 3693, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 14, configurable: true });
+
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 7 });
+    // Ownership shows in the gesture being ours: the rail is stamped and the
+    // moves that follow are the ones this file writes.
+    expect(rail.dataset.dragging).toBe('true');
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 12 }));
+    expect(scrollLeft).toBeGreaterThan(0);
+  });
+
+  it('drags in layout space when an ancestor is scaled (2026-08-29)', () => {
+    // A CSS transform changes what the rail is painted at without changing
+    // what it reports for `offsetWidth`, while pointer coordinates arrive in
+    // screen px. Dividing by the measured ratio between the two is what keeps
+    // the content under the cursor inside the zoomed canvas — where six
+    // scrollers live (the text node, the node-history panel, the model and
+    // mini-tool pickers, the prompt editor and the mention list).
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    // Layout says 200; a 0.5-scaled ancestor paints it 100 wide.
+    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { value: 200, configurable: true });
+    rail.getBoundingClientRect = (() =>
+      ({ left: 0, top: 0, width: 100, height: 4 })) as typeof rail.getBoundingClientRect;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    thumb.getBoundingClientRect = (() =>
+      ({ left: 0, right: 20, top: 0, bottom: 4 })) as typeof thumb.getBoundingClientRect;
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    // The rail's midpoint on screen is 50; in layout it is 100, which is the
+    // middle of the track, so the content lands halfway.
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 50 });
+    expect(scrollLeft).toBe(400);
+  });
+
+  it('answers the first move back after a track press that landed at an end (2026-08-29)', () => {
+    // A press past the last position the thumb can reach asks for more scroll
+    // than there is, and the write clamps. Deriving the grab from where the
+    // thumb WOULD have gone then leaves the gesture holding a point outside
+    // the thumb, and the drag back does nothing until the pointer re-enters
+    // the range — up to half a thumb of travel. Measured in Chrome on the tab
+    // strip: 5px of drag with the content still parked at the end.
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    Object.defineProperty(rail, 'clientWidth', { value: 200, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { value: 200, configurable: true });
+    rail.getBoundingClientRect = (() =>
+      ({ left: 0, top: 0, width: 200, height: 8 })) as typeof rail.getBoundingClientRect;
+    Object.defineProperty(thumb, 'offsetWidth', { value: 40, configurable: true });
+    thumb.getBoundingClientRect = (() =>
+      ({ left: 0, right: 40, top: 0, bottom: 8 })) as typeof thumb.getBoundingClientRect;
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    // 195 is past the last legal thumb centre (1 + 20 + 158 = 179).
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 195 });
+    expect(scrollLeft).toBe(800);
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 190 }));
+    expect(scrollLeft).toBeLessThan(800);
+  });
+
+  it('keeps the thumb under the cursor across a mid-gesture relayout (2026-08-29)', () => {
+    // What a drag has to hold on to is the point the pointer grabbed INSIDE
+    // the thumb: it is the one quantity a relayout cannot invalidate. Carrying
+    // a scroll offset instead ties the gesture to the ratio in force when it
+    // started, and the moment the ratio changes the thumb settles a fixed
+    // distance from the cursor and stays there for the rest of the drag.
+    // Measured in a browser before this: growing the strip's content mid-drag
+    // put the thumb 40px from the cursor and it never came back — four
+    // consecutive samples all read −40. This strip relayouts readily (a
+    // collaborator renames a Space) and so does every other scroller in the
+    // app (the node-history panel loads a page while its bar is being
+    // dragged).
+    const { container } = render(
+      <ScrollArea data-testid='root' scrollbars='horizontal'>
+        <p>x</p>
+      </ScrollArea>,
+    );
+    const rail = container.querySelector('[data-orientation="horizontal"]') as HTMLElement;
+    rail.setPointerCapture = vi.fn();
+    rail.releasePointerCapture = vi.fn();
+    const thumb = rail.firstElementChild as HTMLElement;
+    const viewport = container.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLElement;
+    const THUMB = 40;
+    const MAX_SCROLL = 800;
+    let railWidth = 200;
+    Object.defineProperty(rail, 'clientWidth', { get: () => railWidth, configurable: true });
+    Object.defineProperty(rail, 'offsetWidth', { get: () => railWidth, configurable: true });
+    rail.getBoundingClientRect = (() =>
+      ({ left: 0, top: 0, width: railWidth, height: 8 })) as typeof rail.getBoundingClientRect;
+    Object.defineProperty(thumb, 'offsetWidth', { value: THUMB, configurable: true });
+    thumb.getBoundingClientRect = (() =>
+      ({ left: 0, right: THUMB, top: 0, bottom: 8 })) as typeof thumb.getBoundingClientRect;
+    let scrollLeft = 0;
+    Object.defineProperty(viewport, 'scrollLeft', {
+      get: () => scrollLeft,
+      set: (v: number) => {
+        scrollLeft = v;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(viewport, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(viewport, 'clientWidth', { value: 200, configurable: true });
+
+    /**
+     * Where the pointer is holding the thumb, in the rail's own coordinates.
+     * @param pointerX - The pointer's x, which is also its offset into the rail here.
+     * @returns The distance from the thumb's leading edge to the pointer.
+     */
+    const grabAt = (pointerX: number): number =>
+      pointerX - scrollLeft / (MAX_SCROLL / (railWidth - 2 - THUMB));
+
+    // Press the track, which starts the gesture from a non-zero offset — the
+    // state in which the frozen offset and the live ratio disagree.
+    fireEvent.pointerDown(rail, { button: 0, pointerId: 1, clientX: 150 });
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 160 }));
+    const grabBefore = grabAt(160);
+    expect(grabBefore).toBeCloseTo(1 + THUMB / 2, 5);
+
+    // The rail doubles without the pointer moving: same cursor, new ratio.
+    railWidth = 400;
+    fireEvent(rail, new PointerEvent('pointermove', { clientX: 160 }));
+    expect(grabAt(160)).toBeCloseTo(grabBefore, 5);
   });
 });

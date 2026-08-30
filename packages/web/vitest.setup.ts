@@ -10,7 +10,7 @@ import '@testing-library/jest-dom/vitest';
 // silently does nothing and tests fail with "Invalid Chai property:
 // toHaveNoViolations". Wiring the matcher by hand is the documented
 // workaround until vitest-axe ships a fixed dist.
-import { afterEach, beforeAll, expect } from 'vitest';
+import { afterEach, beforeAll, expect, vi } from 'vitest';
 // Namespace import: vitest-axe v0.1.0's `dist/matchers.d.ts` mis-types
 // `toHaveNoViolations` as a type-only re-export (it is actually a
 // runtime function), so a named import errors at tsc. Importing as a
@@ -59,6 +59,17 @@ afterEach(() => {
   // exception in the sweep must not be able to skip them. Under one process
   // per package a skipped `cleanup()` or locale reset does not stay inside
   // the test that broke — it reaches every file that runs afterwards.
+  //
+  // The clock goes back first, before `cleanup()` unmounts anything. A fake
+  // clock is process-wide the same way the online state below is, and it is
+  // the most damaging one to leave standing: React's scheduler stops
+  // advancing, so nothing flushes and every render in every later file yields
+  // an empty body. The failures then land nowhere near the file that installed
+  // it — CI showed 68 files failing on `Unable to find an element` while the
+  // same suite was green locally, because the file order differed. Restoring
+  // it here rather than in each of the files that install one means a test can
+  // end any way it likes, including throwing mid-way.
+  vi.useRealTimers();
   cleanup();
   setLocale('en');
   // React Query's online state is a process-wide singleton, so a test that

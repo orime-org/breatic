@@ -40,8 +40,8 @@ const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
- * the account's own entries: who is signed in, credits, membership, account
- * settings, and sign out.
+ * the account's own entries: who is signed in, account settings, membership,
+ * credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -224,9 +224,9 @@ export function StudioAccountMenu(): React.JSX.Element {
             </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={handleCredits}>
-            <Star className='h-4 w-4' />
-            {t('studio.topBar.credits')}
+          <DropdownMenuItem onSelect={handleAccountSettings}>
+            <Settings className='h-4 w-4' />
+            {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleMembership}>
             <Sparkles className='h-4 w-4' />
@@ -238,9 +238,9 @@ export function StudioAccountMenu(): React.JSX.Element {
               {user === null ? null : t(`membership.tier.${user.membershipTier}`)}
             </span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleAccountSettings}>
-            <Settings className='h-4 w-4' />
-            {t('studio.topBar.accountSettings')}
+          <DropdownMenuItem onSelect={handleCredits}>
+            <Star className='h-4 w-4' />
+            {t('studio.topBar.credits')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleSignOut}>
