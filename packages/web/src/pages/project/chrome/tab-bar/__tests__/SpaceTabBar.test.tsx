@@ -47,27 +47,99 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const onCreate = vi.fn();
   const onClose = vi.fn();
   const onViewSpace = vi.fn();
-  render(
-    <SpaceTabBar
-      spaces={SPACES}
-      allSpaces={SPACES}
-      openTabIds={SPACES.map((s) => s.id)}
-      activeSpaceId='s1'
-      projectId='p1'
-      onActivate={onActivate}
-      onCreate={onCreate}
-      onClose={onClose}
-      onViewSpace={onViewSpace}
-      {...overrides}
-    />,
-  );
-  return { onActivate, onCreate, onClose, onViewSpace };
+  const props = {
+    spaces: SPACES,
+    allSpaces: SPACES,
+    openTabIds: SPACES.map((s) => s.id),
+    activeSpaceId: 's1',
+    projectId: 'p1',
+    onActivate,
+    onCreate,
+    onClose,
+    onViewSpace,
+    ...overrides,
+  };
+  const view = render(<SpaceTabBar {...props} />);
+  /** Render again with one prop changed, keeping this bar mounted. */
+  const setActiveSpace = (id: string): void => {
+    view.rerender(<SpaceTabBar {...props} activeSpaceId={id} />);
+  };
+  return { onActivate, onCreate, onClose, onViewSpace, setActiveSpace };
 }
 
 describe('SpaceTabBar', () => {
+  // Every browser has `Element.scrollTo`; jsdom leaves the prototype without
+  // it, so a component that scrolls a box of its own throws here and nowhere
+  // else. Taking the descriptor and deleting when there was none puts the
+  // prototype back as it was: assigning the saved `undefined` would leave an
+  // own property behind, and `'scrollTo' in element` answers differently for
+  // every file that runs after this one.
+  const realScrollTo = Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    'scrollTo',
+  );
+
   beforeEach(() => {
     useUIStore.getState().setChatPanelCollapsed(false);
+    Element.prototype.scrollTo = vi.fn();
   });
+
+  afterEach(() => {
+    if (realScrollTo) {
+      Object.defineProperty(Element.prototype, 'scrollTo', realScrollTo);
+    } else {
+      delete (Element.prototype as unknown as Record<string, unknown>).scrollTo;
+    }
+  });
+
+  function mockRect(el: HTMLElement, rect: Pick<DOMRect, 'left' | 'right'>) {
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      ...rect,
+      top: 0,
+      bottom: 40,
+      width: rect.right - rect.left,
+      height: 40,
+      x: rect.left,
+      y: 0,
+      toJSON: () => ({}),
+    });
+  }
+
+  /**
+   * Mock the scroller into the overflow state (scrollWidth > clientWidth).
+   * Does NOT dispatch the scroll event — the test must call
+   * `flushScrollState` AFTER all rect mocks are in place, because the
+   * post-PR #140 DOM-rect-based `updateScrollState` reads tab + scroller
+   * rects (defaults to 0 in jsdom, which falsely yields atStart=atEnd=true
+   * and disables the arrows before the test can click them).
+   */
+  function makeOverflow(): HTMLElement {
+    // The element that scrolls is the ScrollArea viewport; the tablist is
+    // the row of tabs inside it. They are two elements on purpose — a role
+    // that owns the tabs belongs on the element they sit in, and the
+    // scrolling belongs to the viewport around it.
+    const scroller = screen
+      .getByRole('tablist')
+      .closest('[data-radix-scroll-area-viewport]');
+    if (!(scroller instanceof HTMLElement)) {
+      throw new Error('the tab row is not inside a scroll-area viewport');
+    }
+    Object.defineProperty(scroller, 'scrollWidth', {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scroller, 'clientWidth', {
+      value: 200,
+      configurable: true,
+    });
+    return scroller;
+  }
+
+  function flushScrollState(scroller: HTMLElement) {
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+  }
 
   it('has no a11y violations', async () => {
     setup();
@@ -146,65 +218,14 @@ describe('SpaceTabBar', () => {
     });
   });
 
-  // PR #140 (2026-05-25): scroll arrows use point-and-scroll (one tab per
-  // click via `scrollIntoView`), not fixed `scrollBy(±120)`. A fixed delta
-  // under-shoots long-name tabs (took 2–3 clicks to fully reveal). These
-  // two tests pin the contract: right-arrow snaps the first off-screen
-  // tab flush-right, left-arrow snaps the last off-screen tab flush-left.
+  // PR #140 (2026-05-25): scroll arrows snap one tab per click rather than
+  // moving a fixed `scrollBy(±120)`, which under-shoots long-name tabs (took
+  // 2–3 clicks to fully reveal). The strip moves itself — the arrows write
+  // `scroller.scrollTo`. These two tests pin the contract: right-arrow snaps
+  // the first off-screen tab flush-right, left-arrow snaps the last
+  // off-screen tab flush-left.
   describe('scroll arrows (point-and-scroll, PR #140)', () => {
-    function mockRect(
-      el: HTMLElement,
-      rect: Pick<DOMRect, 'left' | 'right'>,
-    ) {
-      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
-        ...rect,
-        top: 0,
-        bottom: 40,
-        width: rect.right - rect.left,
-        height: 40,
-        x: rect.left,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect);
-    }
-
-    /**
-     * Mock the scroller into the overflow state (scrollWidth > clientWidth).
-     * Does NOT dispatch the scroll event — the test must call
-     * `flushScrollState` AFTER all rect mocks are in place, because the
-     * post-PR #140 DOM-rect-based `updateScrollState` reads tab + scroller
-     * rects (defaults to 0 in jsdom, which falsely yields atStart=atEnd=true
-     * and disables the arrows before the test can click them).
-     */
-    function makeOverflow(): HTMLElement {
-      // The element that scrolls is the ScrollArea viewport; the tablist is
-      // the row of tabs inside it. They are two elements on purpose — a role
-      // that owns the tabs belongs on the element they sit in, and the
-      // scrolling belongs to the viewport around it.
-      const scroller = screen
-        .getByRole('tablist')
-        .closest('[data-radix-scroll-area-viewport]');
-      if (!(scroller instanceof HTMLElement)) {
-        throw new Error('the tab row is not inside a scroll-area viewport');
-      }
-      Object.defineProperty(scroller, 'scrollWidth', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroller, 'clientWidth', {
-        value: 200,
-        configurable: true,
-      });
-      return scroller;
-    }
-
-    function flushScrollState(scroller: HTMLElement) {
-      act(() => {
-        scroller.dispatchEvent(new Event('scroll'));
-      });
-    }
-
-    it('right arrow snaps the first off-screen tab flush-right (inline: end)', async () => {
+    it('right arrow snaps the first off-screen tab flush-right, moving only the strip', async () => {
       const user = userEvent.setup();
       setup();
       const scroller = makeOverflow();
@@ -214,13 +235,23 @@ describe('SpaceTabBar', () => {
       mockRect(screen.getByTestId('space-tab-s2'), { left: 220, right: 320 });
       mockRect(screen.getByTestId('space-tab-s3'), { left: 330, right: 430 });
       flushScrollState(scroller);
-      const s2 = screen.getByTestId('space-tab-s2');
-      const scrollSpy = vi.spyOn(s2, 'scrollIntoView');
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+      const reachesOutward = vi.spyOn(
+        screen.getByTestId('space-tab-s2'),
+        'scrollIntoView',
+      );
 
       await user.click(screen.getByTestId('tabs-scroll-right'));
-      expect(scrollSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ inline: 'end', block: 'nearest' }),
-      );
+
+      // s2's right edge sits 120px past the strip's, so the strip travels
+      // exactly that far and s2 lands flush against the right edge.
+      expect(scrollTo).toHaveBeenCalledWith({ left: 120, behavior: 'smooth' });
+      // Every scroller between the tab and the document moves along with
+      // `scrollIntoView`, and the project page is one of them once the window
+      // is narrower than its floor: a reader who had scrolled the page
+      // sideways lost that position on every arrow click.
+      expect(reachesOutward).not.toHaveBeenCalled();
     });
 
     it('disables the left arrow when no tab is off-screen-left, regardless of scrollLeft (DOM-rect, PR #140)', () => {
@@ -229,8 +260,9 @@ describe('SpaceTabBar', () => {
       // bubble: stubbing the row instead leaves every rect below unread and
       // the assertion reading the mount-time default.
       const scroller = makeOverflow();
-      // Smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft
-      // at scroller padding-left (~8 px), NOT zero. The prior
+      // A scroll can leave scrollLeft at the scroller's padding-left (~8 px)
+      // rather than zero — the smooth `scrollIntoView({ inline: 'start' })`
+      // the arrows used before this change did exactly that. The prior
       // scrollLeft-based atStart check (commit 626ec56) failed here
       // — `8 <= 1` false → arrow stayed enabled. The DOM-rect check
       // looks at tab positions; if all tabs sit inside the viewport
@@ -249,7 +281,7 @@ describe('SpaceTabBar', () => {
       expect(screen.getByTestId('tabs-scroll-left')).toBeDisabled();
     });
 
-    it('left arrow snaps the last off-screen tab flush-left (inline: start)', async () => {
+    it('left arrow snaps the last off-screen tab flush-left, moving only the strip', async () => {
       const user = userEvent.setup();
       setup();
       const scroller = makeOverflow();
@@ -266,13 +298,120 @@ describe('SpaceTabBar', () => {
       mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 170 });
       mockRect(screen.getByTestId('space-tab-s3'), { left: 180, right: 280 });
       flushScrollState(scroller);
-      const s2 = screen.getByTestId('space-tab-s2');
-      const scrollSpy = vi.spyOn(s2, 'scrollIntoView');
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+      const reachesOutward = vi.spyOn(
+        screen.getByTestId('space-tab-s2'),
+        'scrollIntoView',
+      );
 
       await user.click(screen.getByTestId('tabs-scroll-left'));
-      expect(scrollSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ inline: 'start', block: 'nearest' }),
+
+      // s2 starts 30px left of the strip's edge, so 100 - 30 brings it flush.
+      expect(scrollTo).toHaveBeenCalledWith({ left: 70, behavior: 'smooth' });
+      expect(reachesOutward).not.toHaveBeenCalled();
+    });
+  });
+
+  // Picking a space from the drawer can name one whose tab is off-screen, and
+  // then nothing on screen says the pick landed — the strip has to bring it in.
+  describe('bringing the newly active tab into the strip', () => {
+    it('scrolls a tab cut off on the right just far enough to show it', () => {
+      const { setActiveSpace } = setup();
+      const scroller = makeOverflow();
+      mockRect(scroller, { left: 0, right: 200 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
+      flushScrollState(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+
+      act(() => setActiveSpace('s3'));
+
+      // s3's right edge is 140px past the strip's.
+      expect(scrollTo).toHaveBeenCalledWith({ left: 140, behavior: 'smooth' });
+    });
+
+    it('scrolls a tab cut off on the left back to the strip edge', () => {
+      const { setActiveSpace } = setup({ activeSpaceId: 's2' });
+      const scroller = makeOverflow();
+      Object.defineProperty(scroller, 'scrollLeft', {
+        value: 100,
+        configurable: true,
+        writable: true,
+      });
+      mockRect(scroller, { left: 100, right: 300 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 120, right: 180 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 190, right: 250 });
+      flushScrollState(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+
+      act(() => setActiveSpace('s1'));
+
+      // s1 starts 100px left of the strip's edge, so 100 - 100 lands at 0.
+      expect(scrollTo).toHaveBeenCalledWith({ left: 0, behavior: 'smooth' });
+    });
+
+    it('leaves a tab hanging a fraction of a pixel over the edge alone', () => {
+      // The same 1px tolerance the arrows and their enabled predicate use: a
+      // column whose width is a percentage of a fractional container puts every
+      // edge on a fraction, and without it the two answer differently inside
+      // that band — the arrow says there is nothing off-screen while this says
+      // there is, and the strip creeps on every space switch.
+      const { setActiveSpace } = setup();
+      const scroller = makeOverflow();
+      mockRect(scroller, { left: 0, right: 200 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 140, right: 200.5 });
+      flushScrollState(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+
+      act(() => setActiveSpace('s3'));
+
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('leaves a tab that is already whole on screen exactly where it is', () => {
+      const { setActiveSpace } = setup();
+      const scroller = makeOverflow();
+      mockRect(scroller, { left: 0, right: 200 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
+      flushScrollState(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+
+      act(() => setActiveSpace('s2'));
+
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('moves the strip and nothing above it', () => {
+      const { setActiveSpace } = setup();
+      const scroller = makeOverflow();
+      mockRect(scroller, { left: 0, right: 200 });
+      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
+      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
+      mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
+      flushScrollState(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo;
+      const reachesOutward = vi.spyOn(
+        screen.getByTestId('space-tab-s3'),
+        'scrollIntoView',
       );
+
+      act(() => setActiveSpace('s3'));
+
+      // 340 - 200: the strip moves by what hangs off its right edge.
+      expect(scrollTo).toHaveBeenCalledWith({ left: 140, behavior: 'smooth' });
+      expect(reachesOutward).not.toHaveBeenCalled();
     });
   });
 

@@ -11,7 +11,7 @@
  * partly out of sight.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render as rtlRender, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -150,8 +150,25 @@ function revealButton(): HTMLElement {
 }
 
 describe('SpaceTabBar — bringing the current tab back into view', () => {
+  // Every browser has `Element.scrollTo`; jsdom leaves the prototype without
+  // it, so the strip throws here and nowhere else. Deleting when there was no
+  // descriptor puts the prototype back as it was.
+  const realScrollTo = Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    'scrollTo',
+  );
+
   beforeEach(() => {
     useUIStore.getState().setChatPanelCollapsed(false);
+    Element.prototype.scrollTo = vi.fn();
+  });
+
+  afterEach(() => {
+    if (realScrollTo) {
+      Object.defineProperty(Element.prototype, 'scrollTo', realScrollTo);
+    } else {
+      delete (Element.prototype as unknown as Record<string, unknown>).scrollTo;
+    }
   });
 
   it('is offered, and disabled, when every tab fits', () => {
@@ -189,23 +206,22 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     expect(revealButton()).toBeEnabled();
   });
 
-  it('scrolls the current tab just far enough to show it', async () => {
+  it('scrolls the strip alone, and only as far as the tab is cut off', async () => {
+    // The strip is what moves, not every scroller up to the document: below
+    // the project page's width floor the page is one of those, and a click
+    // here would drag what the reader was looking at.
     const user = userEvent.setup();
     setup();
     const scroller = makeOverflow();
-    const tab = screen.getByTestId('space-tab-s2');
-    mockRect(tab, { left: 150, right: 280 });
+    mockRect(screen.getByTestId('space-tab-s2'), { left: 150, right: 280 });
     flush(scroller);
-    const scrollIntoView = vi.fn();
-    tab.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
 
     await user.click(revealButton());
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest',
-    });
+    // 80px past the right edge, so 80px of travel and not a pixel more.
+    expect(scrollTo).toHaveBeenCalledWith({ left: 80, behavior: 'smooth' });
   });
 
   it('answers again when the shown order changes', () => {

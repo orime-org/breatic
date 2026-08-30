@@ -686,3 +686,50 @@ test('leaves the rail no way to be seen once nothing is left to scroll', async (
   expect(seen.some((f) => f.scrollable === 'false' && f.state === 'visible')).toBe(true);
   expect(seen.filter((f) => f.scrollable === 'false' && f.opacity > 0.02)).toEqual([]);
 });
+
+test('scrolling the strip leaves the page where the reader put it', async () => {
+  // NARROW is below the project page's floor, so the page itself scrolls
+  // sideways. Every scroller between a tab and the document moves when the
+  // strip brings a tab into view through `scrollIntoView`, and the page is
+  // one of them — a reader who had scrolled it lost that place on every
+  // arrow click.
+  const read = (): Promise<{ page: number; strip: number; canScroll: boolean }> =>
+    page.evaluate(() => {
+      let pageViewport = document.querySelector('[data-testid="project-page"]')
+        ?.parentElement ?? null;
+      while (
+        pageViewport
+        && !pageViewport.hasAttribute('data-radix-scroll-area-viewport')
+      ) {
+        pageViewport = pageViewport.parentElement;
+      }
+      const strip = document
+        .querySelector('[role="tablist"]')
+        ?.closest('[data-radix-scroll-area-viewport]');
+      return {
+        page: pageViewport?.scrollLeft ?? -1,
+        strip: strip instanceof HTMLElement ? strip.scrollLeft : -1,
+        canScroll: pageViewport
+          ? pageViewport.scrollWidth > pageViewport.clientWidth
+          : false,
+      };
+    });
+
+  await page.evaluate(() => {
+    let v = document.querySelector('[data-testid="project-page"]')?.parentElement ?? null;
+    while (v && !v.hasAttribute('data-radix-scroll-area-viewport')) v = v.parentElement;
+    if (v) v.scrollLeft = v.scrollWidth;
+  });
+  const before = await read();
+  // Without both of these the assertion below passes on a page that never
+  // scrolled and an arrow that never did anything.
+  expect(before.canScroll).toBe(true);
+  expect(before.page).toBeGreaterThan(0);
+
+  await page.getByTestId('tabs-scroll-right').click();
+  await page.waitForTimeout(800);
+  const after = await read();
+
+  expect(after.strip).not.toBe(before.strip);
+  expect(after.page).toBe(before.page);
+});

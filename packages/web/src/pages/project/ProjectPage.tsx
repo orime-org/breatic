@@ -57,10 +57,32 @@ import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
+import {
+  Group,
+  Panel,
+  Separator as ResizeSeparator,
+} from 'react-resizable-panels';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import {
+  AGENT_COLUMN_MAX_WIDTH,
+  AGENT_COLUMN_MIN_WIDTH,
+  AGENT_PANEL_ID,
+  PAGE_MIN_WIDTH,
+  RESIZE_HANDLE_WIDTH,
+  SPACE_MIN_WIDTH,
+} from '@web/pages/project/agent-column-width';
+import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
+
+/**
+ * Undoes the library's inner wrapper, which is a block box with
+ * `overflow: auto` hard-coded. Both columns lay their children out with flex
+ * and own their scrolling, so the wrapper has to hand both back.
+ */
+const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
 
 /**
  * Project page shell - TopBar above two columns:
- *   - left:  Agent column (320 px, collapsible) - AgentColumn
+ *   - left:  Agent column (320..640 px, drag to resize, collapsible) - AgentColumn
  *   - right: SpaceTabBar + Space body + floating menus
  *
  * State model (2026-05-21 redesign):
@@ -517,6 +539,9 @@ function ProjectWorkspace({
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
+  // Called unconditionally: the width outlives the column being collapsed, and
+  // a collapsed column is exactly the case where nothing may write it.
+  const agentColumnWidth = useAgentColumnWidth();
   // Zoom is owned by the canvas (the ReactFlow viewport): the canvas mirrors the
   // live zoom into the store for this read-out, and the toolbar posts zoom
   // commands back through the store mailbox (consumed inside the canvas).
@@ -787,35 +812,67 @@ function ProjectWorkspace({
     // anywhere below gets it without a single layer in between having to know
     // it exists, which is the property the prop chain could not give us.
     <CollaboratorNamesProvider value={collaboratorNames}>
-      <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
-        {/* Confirm before an in-app leave (back link / logo / browser back) while
+      {/*
+        The floor is what keeps both regions usable: below it neither side may
+        be squeezed further, so the page scrolls sideways and the top bar goes
+        with it. It is a constant — collapsing the Agent column does not lower
+        it, or the scrollbar would appear and disappear every time the column
+        is toggled.
+
+        That sideways scrolling happens in our own scroller rather than in the
+        document, which is the rule for every visible scroller in the app: the
+        bar the browser draws down the bottom of a window looks different in
+        every engine. It also keeps `documentElement` from overflowing at all,
+        so the page below is sized off the viewport without a horizontal bar
+        eating into the bottom of it.
+      */}
+      <ScrollArea scrollbars='horizontal' className='h-full w-full'>
+        {/*
+          Sized off the viewport rather than off its parent. Radix wraps the
+          children in a `display: table` div, and a table takes its size from
+          its content — a percentage height inside it resolves against a height
+          the table does not have yet, so the whole `flex-1 min-h-0` chain
+          below loses its bound and the page grows to whatever its content
+          happens to add up to (measured: 2283px tall in an 800px window).
+
+          `100vw` and `100vh` are exact here because the document itself no
+          longer scrolls in either direction: the scroller above owns the
+          sideways overflow, so neither a horizontal bar eats into the height
+          nor a vertical one into the width.
+        */}
+        <div
+          className='flex h-screen w-screen flex-col bg-background text-foreground'
+          style={{ minWidth: `${PAGE_MIN_WIDTH}px` }}
+          data-testid='project-page'
+        >
+          {/* Confirm before an in-app leave (back link / logo / browser back) while
           a front-end operation is still syncing (#1787) — the in-app companion
           to the beforeunload guard. Renders nothing while not blocked. */}
-        <LeaveProjectGuard />
-        {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
+          <LeaveProjectGuard />
+          {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
           socket. Attach follows tab open / close — NOT the active tab — so
           background tabs stay live and re-activating one is instant (user
           requirement 2026-06-18). Renders nothing. */}
-        {openTabs.map((tab) => (
-          <SpaceDocSync
-            key={tab.id}
-            projectId={projectId}
-            spaceId={tab.id}
-            type={tab.type}
-          />
-        ))}
-        <ConnectionBanner
-          status={connectionStatus}
-          onReload={() => window.location.reload()}
-          onReLogin={() => {
-          // Carry the current path as `?next=` so the login page can
-          // bounce back to the project after a successful re-auth.
-            navigate(
+          {openTabs.map((tab) => (
+            <SpaceDocSync
+              key={tab.id}
+              projectId={projectId}
+              spaceId={tab.id}
+              type={tab.type}
+            />
+          ))}
+          <ConnectionBanner
+            status={connectionStatus}
+            onReload={() => window.location.reload()}
+            onReLogin={() => {
+              // Carry the current path as `?next=` so the login page can
+              // bounce back to the project after a successful re-auth.
+              navigate(
             `/login?next=${encodeURIComponent(window.location.pathname)}`,
-            );
-          }}
-        />
-        {/*
+              );
+            }}
+          />
+          {/*
         Nothing reaches INTO this element to disable it when the connection
         drops — no `inert`, no `aria-hidden`, no `disabled`. The first two were
         tried and removed: `inert` stops the whole subtree receiving input,
@@ -841,161 +898,224 @@ function ProjectWorkspace({
         selected on when absent, and a class list would pin the assertion to
         styling.
       */}
-        <div
-          className='relative flex min-h-0 flex-1 flex-col'
-          data-workspace=''
-          data-workspace-disabled={workspaceDisabled || undefined}
-        >
-          <TopBar
-            projectId={projectId}
-            projectName={projectName}
-            role={role}
-            credits={credits}
-            onRename={(next) => renameMutation.mutate(next)}
-            members={members}
-            currentUserId={userId}
-          />
-          <div className='flex min-h-0 flex-1'>
-            {/* Agent column is hidden for viewers (B model — not rendered,
+          <div
+            className='relative flex min-h-0 flex-1 flex-col'
+            data-workspace=''
+            data-workspace-disabled={workspaceDisabled || undefined}
+          >
+            <TopBar
+              projectId={projectId}
+              projectName={projectName}
+              role={role}
+              credits={credits}
+              onRename={(next) => renameMutation.mutate(next)}
+              members={members}
+              currentUserId={userId}
+            />
+            {/* Both panels are given `display: flex` and `overflow: visible`
+            because the library's inner wrapper is a block box that hard-codes
+            `overflow: auto`: left alone it breaks each side's height chain and
+            adds a scroll container we never wrote. */}
+            <Group
+              orientation='horizontal'
+              className='flex min-h-0 flex-1'
+              elementRef={agentColumnWidth.groupRef}
+              onLayoutChanged={agentColumnWidth.onLayoutChanged}
+            >
+              {/* Agent column is hidden for viewers (B model — not rendered,
               not just disabled) AND when the user has collapsed it. The
-              backend gates agent chat on role; this hide is UX only. */}
-            {collapsed || isViewer ? null : <AgentColumn projectId={projectId} />}
-            {/* The other of the two regions a keyboard or clipboard event can
+              backend gates agent chat on role; this hide is UX only. The
+              handle goes with it: there is nothing to drag against once the
+              column is gone, and the space region then has the row to itself. */}
+              {collapsed || isViewer ? null : (
+                <>
+                  <Panel
+                    id={AGENT_PANEL_ID}
+                    panelRef={agentColumnWidth.panelRef}
+                    defaultSize={agentColumnWidth.defaultSize}
+                    minSize={`${AGENT_COLUMN_MIN_WIDTH}px`}
+                    maxSize={`${AGENT_COLUMN_MAX_WIDTH}px`}
+                    groupResizeBehavior='preserve-pixel-size'
+                    style={PANEL_STYLE}
+                  >
+                    <AgentColumn projectId={projectId} />
+                  </Panel>
+                  {/* The line between the two columns. What answers a pointer
+                  around it is wider than the line twice over: the transparent
+                  ::before reaches 4px to each side, and the library grows the
+                  1px hit rect to a total of `resizeTargetMinimumSize` (10px
+                  for a mouse), which is about 4.5px to each side.
+
+                  The `z-10` is what makes the right-hand half of that reach
+                  real: the canvas pane is `position:absolute; z-index:1`, so
+                  without it the pane paints over the half of the ::before that
+                  hangs into the space region, and a press there lands on the
+                  canvas in the DOM while the library still reads it as a drag.
+                  The canvas then began a box selection, the library took the
+                  pointer capture away, and the `pointerup` the canvas was
+                  waiting for went to the handle instead — leaving a selection
+                  box being drawn under a pointer with no button held.
+
+                  Double-click is off: the library
+                  resizes imperatively there, which does not count as a user
+                  gesture, so the width would be restored a frame later — the
+                  user would see it flick and come back. */}
+                  <ResizeSeparator
+                    disableDoubleClick
+                    aria-label={t('chrome.aria.agentColumnWidth')}
+                    style={{ width: RESIZE_HANDLE_WIDTH }}
+                    className={
+                      'relative z-10 flex-none cursor-col-resize bg-border '
+                    + 'transition-colors duration-[var(--duration-fast)] '
+                    + 'before:absolute before:inset-y-0 before:-inset-x-1 before:content-[\'\'] '
+                    + 'hover:bg-active-border active:bg-active-border '
+                    + 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                    }
+                  />
+                </>
+              )}
+              {/* The other of the two regions a keyboard or clipboard event can
               belong to. The tab bar sits inside it, which is what makes the
               tabs part of the space region without a rule of their own. */}
-            <section
-              className='flex min-w-0 flex-1 flex-col'
-              data-region='space'
-            >
-              <SpaceTabBar
-                spaces={openTabs}
-                allSpaces={spaces}
-                openTabIds={openTabIds}
-                activeSpaceId={activeSpace?.id ?? ''}
-                projectId={projectId}
-                onActivate={onActivate}
-                onCreate={onCreateSpace}
-                onClose={onCloseTab}
-                onViewSpace={onViewSpace}
-                onDeleteSpace={onDeleteSpace}
-                onSetSpaceLocked={onSetSpaceLocked}
-                onRenameSpace={onRenameSpace}
-                onReorder={reorder}
-                metaProvider={provider}
-                currentUserRole={role}
-                onRestoreSpace={onRestoreSpace}
-              />
-              {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
+              <Panel
+                minSize={`${SPACE_MIN_WIDTH}px`}
+                style={PANEL_STYLE}
+              >
+                <section
+                  className='flex min-w-0 flex-1 flex-col'
+                  data-region='space'
+                >
+                  <SpaceTabBar
+                    spaces={openTabs}
+                    allSpaces={spaces}
+                    openTabIds={openTabIds}
+                    activeSpaceId={activeSpace?.id ?? ''}
+                    projectId={projectId}
+                    onActivate={onActivate}
+                    onCreate={onCreateSpace}
+                    onClose={onCloseTab}
+                    onViewSpace={onViewSpace}
+                    onDeleteSpace={onDeleteSpace}
+                    onSetSpaceLocked={onSetSpaceLocked}
+                    onRenameSpace={onRenameSpace}
+                    onReorder={reorder}
+                    metaProvider={provider}
+                    currentUserRole={role}
+                    onRestoreSpace={onRestoreSpace}
+                  />
+                  {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
                 13) must exit THROUGH this section's edges — without the clip
                 the left menu slides on top of the chat sidebar instead of
                 disappearing (caught by the real-browser screenshot). Floating
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
-              <div className='relative flex-1 overflow-hidden'>
-                {activeSpace ? (
-                // key on the Space id so switching tabs REMOUNTS the body —
-                // ReactFlow re-runs fitView so the camera frames the new
-                // Space's nodes (#1378). Cheap now: remount only re-binds the
-                // already-attached doc, it does not rebuild a WebSocket.
-                  <SpaceOutlet
-                    key={activeSpace.id}
-                    projectId={projectId}
-                    spaceId={activeSpace.id}
-                    type={activeSpace.type}
-                    readOnly={isViewer}
-                  />
-                ) : (
-                  <div
-                    data-testid='no-active-space'
-                    className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-                  >
-                    {t('project.space.noActive')}
+                  <div className='relative flex-1 overflow-hidden'>
+                    {activeSpace ? (
+                    // key on the Space id so switching tabs REMOUNTS the body —
+                    // ReactFlow re-runs fitView so the camera frames the new
+                    // Space's nodes (#1378). Cheap now: remount only re-binds the
+                    // already-attached doc, it does not rebuild a WebSocket.
+                      <SpaceOutlet
+                        key={activeSpace.id}
+                        projectId={projectId}
+                        spaceId={activeSpace.id}
+                        type={activeSpace.type}
+                        readOnly={isViewer}
+                      />
+                    ) : (
+                      <div
+                        data-testid='no-active-space'
+                        className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+                      >
+                        {t('project.space.noActive')}
+                      </div>
+                    )}
+                    {activeSpace?.type === 'canvas' ? (
+                      <>
+                        <input
+                          ref={uploadInputRef}
+                          type='file'
+                          multiple
+                          accept='image/*,video/*,audio/*,text/*'
+                          hidden
+                          data-testid='canvas-upload-input'
+                          onChange={(e) => {
+                            const files = e.target.files;
+                            if (files && files.length > 0) {
+                              requestUpload([...files]);
+                            }
+                            // Reset so picking the same file again re-fires change.
+                            e.target.value = '';
+                          }}
+                        />
+                        <LeftFloatingMenu
+                          disabled={isViewer}
+                          concealed={picking}
+                          onCreateNode={requestNodeCreate}
+                          onPick={(tool) => {
+                          // Open the file picker synchronously inside the click so
+                          // the browser keeps user-activation; the canvas fulfils
+                          // the picked files via the upload mailbox.
+                            if (tool === 'upload') uploadInputRef.current?.click();
+                          // comment    - enter annotation mode (later slice)
+                          // collection - placeholder (M1+)
+                          // help       - placeholder (M1+)
+                          // feedback   - placeholder (M1+)
+                          // Buttons never store a "selected" state - fire and forget.
+                          // The node-library (`nodes`) button owns its own dropdown.
+                          }}
+                        />
+                        <ViewportToolbar
+                          zoom={zoom}
+                          concealed={picking}
+                          minimapVisible={minimapVisible}
+                          snapToGrid={snapToGrid}
+                          canUndo={canUndo}
+                          canRedo={canRedo}
+                          onZoomIn={() => requestViewportCommand('zoomIn')}
+                          onZoomOut={() => requestViewportCommand('zoomOut')}
+                          onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
+                          onFit={() => requestViewportCommand('fit')}
+                          onToggleSnap={toggleSnapToGrid}
+                          onToggleMinimap={toggleMinimap}
+                          onUndo={() => requestHistoryCommand('undo')}
+                          onRedo={() => requestHistoryCommand('redo')}
+                        />
+                      </>
+                    ) : null}
                   </div>
-                )}
-                {activeSpace?.type === 'canvas' ? (
-                  <>
-                    <input
-                      ref={uploadInputRef}
-                      type='file'
-                      multiple
-                      accept='image/*,video/*,audio/*,text/*'
-                      hidden
-                      data-testid='canvas-upload-input'
-                      onChange={(e) => {
-                        const files = e.target.files;
-                        if (files && files.length > 0) {
-                          requestUpload([...files]);
-                        }
-                        // Reset so picking the same file again re-fires change.
-                        e.target.value = '';
-                      }}
-                    />
-                    <LeftFloatingMenu
-                      disabled={isViewer}
-                      concealed={picking}
-                      onCreateNode={requestNodeCreate}
-                      onPick={(tool) => {
-                      // Open the file picker synchronously inside the click so
-                      // the browser keeps user-activation; the canvas fulfils
-                      // the picked files via the upload mailbox.
-                        if (tool === 'upload') uploadInputRef.current?.click();
-                      // comment    - enter annotation mode (later slice)
-                      // collection - placeholder (M1+)
-                      // help       - placeholder (M1+)
-                      // feedback   - placeholder (M1+)
-                      // Buttons never store a "selected" state - fire and forget.
-                      // The node-library (`nodes`) button owns its own dropdown.
-                      }}
-                    />
-                    <ViewportToolbar
-                      zoom={zoom}
-                      concealed={picking}
-                      minimapVisible={minimapVisible}
-                      snapToGrid={snapToGrid}
-                      canUndo={canUndo}
-                      canRedo={canRedo}
-                      onZoomIn={() => requestViewportCommand('zoomIn')}
-                      onZoomOut={() => requestViewportCommand('zoomOut')}
-                      onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
-                      onFit={() => requestViewportCommand('fit')}
-                      onToggleSnap={toggleSnapToGrid}
-                      onToggleMinimap={toggleMinimap}
-                      onUndo={() => requestHistoryCommand('undo')}
-                      onRedo={() => requestHistoryCommand('redo')}
-                    />
-                  </>
-                ) : null}
-              </div>
-            </section>
-          </div>
-          {/* A visual signal that something is wrong — that is the whole job, and
+                </section>
+              </Panel>
+            </Group>
+            {/* A visual signal that something is wrong — that is the whole job, and
             once the user can see it the job is done. Being opaque, it does also
             take the pointer, so the workspace is not clickable while it shows.
             That is a side effect of covering the screen, not a goal: nothing
             here works to block input, and nothing here works to let it
             through either. */}
-          {workspaceDisabled ? (
-            <div
-              className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
-              data-testid='workspace-disabled-overlay'
+            {workspaceDisabled ? (
+              <div
+                className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+                data-testid='workspace-disabled-overlay'
+              />
+            ) : null}
+          </div>
+          <SpaceReadOnlySheet
+            open={roSheetOpen}
+            space={readOnlySpace}
+            onClose={() => {
+              setRoSheetOpen(false);
+              setReadOnlyViewSpaceId(null);
+            }}
+          />
+          {spaceOpInProgress === 'creating' ? (
+            <LoadingOverlay
+              message={t('project.space.loading.create')}
+              testId='creating-space-overlay'
             />
           ) : null}
         </div>
-        <SpaceReadOnlySheet
-          open={roSheetOpen}
-          space={readOnlySpace}
-          onClose={() => {
-            setRoSheetOpen(false);
-            setReadOnlyViewSpaceId(null);
-          }}
-        />
-        {spaceOpInProgress === 'creating' ? (
-          <LoadingOverlay
-            message={t('project.space.loading.create')}
-            testId='creating-space-overlay'
-          />
-        ) : null}
-      </div>
+      </ScrollArea>
     </CollaboratorNamesProvider>
   );
 }
