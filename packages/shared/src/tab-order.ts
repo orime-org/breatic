@@ -16,7 +16,7 @@ export interface TabOrderEntry {
   /** The Space's id. */
   id: string;
   /** Epoch milliseconds from the Space entry, absent on entries written before the field existed. */
-  createdAt: number | undefined;
+  createdAt?: number;
 }
 
 /**

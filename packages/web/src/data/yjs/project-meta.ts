@@ -5,6 +5,8 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
+import { dedupeTabOrder, sortSpaceIdsForTabOrder } from '@breatic/shared';
+
 import type { SpaceType } from '@web/spaces';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
@@ -85,6 +87,13 @@ export interface ProjectSpace {
    * the requester never knew it in advance.
    */
   claimToken?: string;
+  /**
+   * Epoch milliseconds from the Space entry. Absent on entries written
+   * before the field existed, which makes them older than every
+   * timestamped one. It orders the tab bar a user has not arranged yet,
+   * and both sides sort by it so the browser and collab agree.
+   */
+  createdAt?: number;
 }
 
 /**
@@ -254,12 +263,14 @@ function readSpaces(doc: Y.Doc): ReadonlyArray<ProjectSpace> {
   const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
   const out: ProjectSpace[] = [];
   spacesMap.forEach((m) => {
+    const createdAt = m.get('createdAt');
     out.push({
       id: String(m.get('id') ?? ''),
       name: String(m.get('name') ?? ''),
       type: (m.get('type') as SpaceType) ?? 'canvas',
       locked: Boolean(m.get('locked') ?? false),
       claimToken: (m.get('claimToken') as string | undefined) ?? undefined,
+      createdAt: typeof createdAt === 'number' ? createdAt : undefined,
     });
   });
   return out;
@@ -306,9 +317,14 @@ function readMetaState(
 } {
   const spaces = readSpaces(doc);
   const users = readUsers(doc);
+  // Every path that has no stored list shows the same order, and it is the
+  // one collab seeds the first time this user touches a tab. Reading it off
+  // `spaces` would be Y.Map iteration order, which two replicas can disagree
+  // on — the untouched tabs would jump the first time anyone moved one.
+  const defaultOrder = sortSpaceIdsForTabOrder(spaces);
   if (!userId) {
     // Pre-auth fallback: open every space.
-    return { spaces, openTabIds: spaces.map((s) => s.id), users };
+    return { spaces, openTabIds: defaultOrder, users };
   }
   const perUser = doc.getMap<Y.Map<unknown>>(PER_USER_KEY);
   const userMap = perUser.get(userId);
@@ -322,11 +338,17 @@ function readMetaState(
     // default only; the server writes the same set into `perUser` the
     // first time the user opens or closes anything (`ensureOpenTabList`
     // in collab's space-rpc), so the two agree from then on.
-    return { spaces, openTabIds: spaces.map((s) => s.id), users };
+    return { spaces, openTabIds: defaultOrder, users };
   }
   const openTabIdsArr = userMap.get(OPEN_TAB_IDS_KEY) as
     | Y.Array<string>
     | undefined;
-  const openTabIds = openTabIdsArr ? openTabIdsArr.toArray() : [];
+  // A stored list can hold an id twice: a Y.Array move is a delete plus an
+  // insert, so two collab instances that had not synced can each move the
+  // same tab. Both replicas agree on the merged array, so deduping it the
+  // same way on both leaves them showing the same bar.
+  const openTabIds = openTabIdsArr
+    ? dedupeTabOrder(openTabIdsArr.toArray())
+    : [];
   return { spaces, openTabIds, users };
 }

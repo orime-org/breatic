@@ -75,9 +75,11 @@ describe('sendSpaceRpc', () => {
     );
     const res = await promise;
     expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.result?.spaceId).toBe('sp-1');
-    }
+    const created =
+      res.ok && res.result && 'spaceId' in res.result
+        ? res.result.spaceId
+        : undefined;
+    expect(created).toBe('sp-1');
   });
 
   it('ignores responses with a non-matching id (concurrent in-flight)', async () => {
