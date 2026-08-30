@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Layout, PanelImperativeHandle } from 'react-resizable-panels';
 
@@ -231,6 +231,62 @@ describe('useAgentColumnWidth', () => {
       act(() => result.current.onLayoutChanged({ [AGENT_PANEL_ID]: 50, space: 50 }, BY_LIBRARY));
 
       expect(handle.resize).not.toHaveBeenCalled();
+    });
+  });
+
+  // Reading and writing storage both throw outright in a browser told to keep
+  // nothing — Safari's private mode, a filled quota, site data switched off.
+  // A width worth remembering across sessions is not worth taking the project
+  // page down with it.
+  describe('when the browser refuses to store anything', () => {
+    // Replacing the whole object is the only stub that takes here: jsdom's
+    // `localStorage` keeps serving its own methods through a spy on either the
+    // instance or `Storage.prototype`, so a test written that way asserts
+    // against storage that never actually failed.
+    const refuse = (methods: Partial<Storage>): void => {
+      vi.stubGlobal('localStorage', {
+        getItem: () => null,
+        setItem: () => undefined,
+        ...methods,
+      });
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('starts at the minimum instead of throwing on the way up', () => {
+      refuse({
+        getItem: () => {
+          throw new DOMException('denied', 'SecurityError');
+        },
+      });
+
+      const { result } = renderHook(() => useAgentColumnWidth());
+
+      expect(result.current.defaultSize).toBe('320px');
+    });
+
+    it('still knows the width the user dragged to, for as long as they stay', () => {
+      refuse({
+        setItem: () => {
+          throw new DOMException('quota', 'QuotaExceededError');
+        },
+      });
+      const { result } = renderHook(() => useAgentColumnWidth());
+      const handle = fakeHandle();
+      result.current.panelRef.current = handle;
+      result.current.groupRef.current = fakeGroup(GROUP);
+
+      act(() =>
+        result.current.onLayoutChanged(layoutWithAgentAt(500, PANELS), BY_USER),
+      );
+      // The library then lands on some other width of its own accord.
+      act(() =>
+        result.current.onLayoutChanged(layoutWithAgentAt(320, PANELS), BY_LIBRARY),
+      );
+
+      expect(handle.resize).toHaveBeenCalledWith(500);
     });
   });
 });

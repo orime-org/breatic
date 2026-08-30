@@ -46,9 +46,18 @@ export interface AgentColumnWidthControls {
  * @returns The four props the Group and the Agent Panel need.
  */
 export function useAgentColumnWidth(): AgentColumnWidthControls {
-  const [initialWidth] = useState(() =>
-    parseStoredWidth(window.localStorage.getItem(STORAGE_KEYS.agentColumnWidth)),
-  );
+  const [initialWidth] = useState(() => {
+    try {
+      return parseStoredWidth(
+        window.localStorage.getItem(STORAGE_KEYS.agentColumnWidth),
+      );
+    } catch {
+      // Reading throws outright where the browser keeps nothing — Safari's
+      // private mode, site data switched off. This runs during render, so
+      // letting it out takes the whole project page down for a width.
+      return null;
+    }
+  });
   const setWidthRef = useRef<number | null>(initialWidth);
   const panelRef = useRef<PanelImperativeHandle | null>(null);
   const groupRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +83,15 @@ export function useAgentColumnWidth(): AgentColumnWidthControls {
       // The user moved the handle to here, so this is the width they want —
       // including when a narrow window is what stopped them.
       setWidthRef.current = width;
-      window.localStorage.setItem(STORAGE_KEYS.agentColumnWidth, String(Math.round(width)));
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEYS.agentColumnWidth,
+          String(Math.round(width)),
+        );
+      } catch {
+        // A full quota or a browser told to store nothing costs the width its
+        // place in the next session; it is already held for this one above.
+      }
       return;
     }
 
