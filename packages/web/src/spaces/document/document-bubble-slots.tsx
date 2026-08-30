@@ -48,6 +48,7 @@ import {
   blockTypeItem,
 } from '@web/spaces/document/document-block-type';
 import {
+  canRunBlockType,
   currentBlockType,
   isMarked,
   runBlockType,
@@ -227,6 +228,19 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
         e ? BLOCK_TYPE_ITEMS.filter((item) => isMarked(e, item.id)).map((i) => i.id) : [],
       ),
   });
+  // The rows this selection cannot reach (§6.7). The judgement builds the very
+  // transaction the press would build, so the row's look and the row's effect
+  // are one answer.
+  const unreachable = useEditorState({
+    editor,
+    selector: ({ editor: e }) =>
+      new Set<BlockTypeId>(
+        e
+          ? BLOCK_TYPE_ITEMS.filter((item) => !item.greyed && !canRunBlockType(e, item.id))
+            .map((i) => i.id)
+          : [],
+      ),
+  });
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -247,8 +261,8 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
           <React.Fragment key={item.id}>
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
-              aria-disabled={item.greyed ? 'true' : undefined}
-              className={cn(item.greyed && UNAVAILABLE)}
+              aria-disabled={item.greyed || unreachable.has(item.id) ? 'true' : undefined}
+              className={cn((item.greyed || unreachable.has(item.id)) && UNAVAILABLE)}
               onSelect={() => {
                 if (item.greyed) {
                   pressedWithNothingBehindIt(`block type ${item.id}`);

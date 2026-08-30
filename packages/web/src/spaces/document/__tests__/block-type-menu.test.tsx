@@ -37,6 +37,30 @@ const SLOT = 'doc-bubble-block-type';
  * Select the whole body, with the editor really holding the focus.
  * @param editor - The editor.
  */
+async function selectFirstBlock(editor: Editor): Promise<void> {
+  let from = 1;
+  let to = 1;
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock || to > 1) return to <= 1;
+    from = pos + 1;
+    to = pos + node.nodeSize - 1;
+    return false;
+  });
+  act(() => {
+    editor.view.dom.focus();
+    editor.commands.setTextSelection({ from, to });
+  });
+  await waitFor(() => {
+    expect(
+      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
+    ).toBeGreaterThan(0);
+  });
+}
+
+/**
+ * Select the whole body, with the editor really holding the focus.
+ * @param editor - The editor.
+ */
 async function selectAll(editor: Editor): Promise<void> {
   act(() => {
     editor.view.dom.focus();
@@ -101,16 +125,41 @@ describe('the menu', () => {
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it('keeps the task list row greyed and pressable by no one else', async () => {
-    const editor = openSharedBody('<p>the quick brown fox</p>');
+  /**
+   * The rows the open menu greys, in the order they are drawn.
+   * @param menu - The menu element.
+   * @returns Their block type ids.
+   */
+  function greyedIds(menu: HTMLElement): string[] {
+    return rowIds(menu).filter((id) =>
+      menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`)
+        ?.getAttribute('aria-disabled') === 'true');
+  }
+
+  it.each([
+    ['a plain paragraph', '<p>the quick brown fox</p>'],
+    ['a list item', '<ul><li><p>an item</p></li></ul>'],
+    ['a quoted line', '<blockquote><p>a quoted line</p></blockquote>'],
+    ['a selection across two blocks', '<h1>a heading</h1><p>a paragraph</p>'],
+  ])('greys the task list row and nothing else on %s', async (_name, body) => {
+    const editor = openSharedBody(body);
     mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await hoverOpenSlot(SLOT);
+    expect(greyedIds(menu)).toEqual(['task-list']);
+  });
 
-    const disabled = rowIds(menu).filter((id) =>
-      menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`)
-        ?.getAttribute('aria-disabled') === 'true');
-    expect(disabled).toEqual(['task-list']);
+  it('greys the rows this selection cannot reach', async () => {
+    // A list item's first block has to be a paragraph, so this one can neither
+    // leave the item nor change type (§6.7). Quote wraps it either way.
+    const editor = openSharedBody('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
+    mountDocumentEditor(editor);
+    await selectFirstBlock(editor);
+    const menu = await hoverOpenSlot(SLOT);
+    expect(greyedIds(menu)).toEqual([
+      'paragraph', 'heading-1', 'heading-2', 'heading-3',
+      'bullet-list', 'ordered-list', 'task-list', 'code-block',
+    ]);
   });
 
   it('carries no row fill and no data-active', async () => {

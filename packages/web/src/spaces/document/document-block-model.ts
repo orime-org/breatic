@@ -335,9 +335,21 @@ function setBlocks(
   attrs: Record<string, unknown> | null,
 ): boolean {
   const { from, to } = tr.selection;
-  if (textBlockPositions(tr.doc, from, to).length === 0) return false;
+  const before = textBlockPositions(tr.doc, from, to).length;
+  if (before === 0) return false;
   tr.setBlockType(from, to, type, attrs ?? undefined);
-  return true;
+
+  // `setBlockType` skips a block the schema will not let it change and says
+  // nothing, so the result is read back off the document. Reporting success
+  // on a selection where one block moved and another did not would put half a
+  // press into the document (rule 4).
+  const after = textBlockPositions(tr.doc, tr.selection.from, tr.selection.to);
+  if (after.length !== before) return false;
+  return after.every((pos) => {
+    const block = tr.doc.resolve(pos).parent;
+    if (block.type !== type) return false;
+    return Object.entries(attrs ?? {}).every(([key, value]) => block.attrs[key] === value);
+  });
 }
 
 /**
@@ -457,35 +469,66 @@ function applyTransition(
 }
 
 /**
- * Runs the row's transition against the selection, as one transaction.
+ * Builds the press's transaction, leaving it undispatched.
  *
  * A node selection is turned into the text range covering the same blocks
  * first, so every shape reaches the same transition (A9).
+ *
+ * Rule 4, both halves. `applyTransition` reports whether every step went in,
+ * which keeps half a press out of the document; `docChanged` answers the other
+ * way round — a press the schema left nowhere to go writes no step at all.
  * @param editor - The editor.
  * @param id - Which row.
+ * @returns The transaction where the press does something, null where it does not.
  */
-export function runBlockType(editor: Editor, id: BlockTypeId): void {
+function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
   const { state } = editor;
   const positions = textBlockPositions(state.doc, state.selection.from, state.selection.to);
   const first = positions[0];
   const last = positions[positions.length - 1];
-  if (first === undefined || last === undefined) return;
+  if (first === undefined || last === undefined) return null;
 
   const listNode = LIST_NODE[id];
-  if (listNode !== undefined && state.schema.nodes[listNode] === undefined) return;
+  if (listNode !== undefined && state.schema.nodes[listNode] === undefined) return null;
 
   const marked = isMarked(editor, id);
   const tr = state.tr;
   if (!(state.selection instanceof TextSelection)) {
     tr.setSelection(TextSelection.create(tr.doc, first, last));
   }
-  // Rule 4, both halves. `applyTransition` reports whether every step went in,
-  // which keeps half a press out of the document; `docChanged` answers the
-  // other way round — a press the schema left nowhere to go writes no step at
-  // all, and an empty transaction has no business being dispatched.
-  if (applyTransition(tr, state.schema, id, marked) && tr.docChanged) {
-    editor.view.dispatch(tr);
-  }
+  if (!applyTransition(tr, state.schema, id, marked)) return null;
+  return tr.docChanged ? tr : null;
+}
+
+/**
+ * Would pressing this row reach anything on this selection?
+ *
+ * The menu greys the rows this answers false for (§6.7). It builds the very
+ * transaction the press would build and looks at whether one came out, so the
+ * row's look and the row's effect cannot drift apart — a dry run comparing
+ * some other property is how the judgement went wrong before (#85).
+ * @param editor - The editor.
+ * @param id - Which row.
+ * @returns Whether the press would change the document.
+ */
+export function canRunBlockType(editor: Editor, id: BlockTypeId): boolean {
+  // Text on blocks that are already Text asks for the state they are in, and
+  // rule 2 makes that the only row where the target can equal the current
+  // state: pressing a ticked row aims at Text, so target and current coincide
+  // only for Text itself. The tick already says "you are here"; greying it as
+  // well would be two marks for one fact.
+  if (id === 'paragraph' && isMarked(editor, 'paragraph')) return true;
+  return buildPress(editor, id) !== null;
+}
+
+/**
+ * Runs the row's transition against the selection, as one transaction.
+ * @param editor - The editor.
+ * @param id - Which row.
+ */
+export function runBlockType(editor: Editor, id: BlockTypeId): void {
+  const tr = buildPress(editor, id);
+  if (tr) editor.view.dispatch(tr);
 }
 
 /**
