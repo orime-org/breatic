@@ -26,14 +26,14 @@ export interface BlockTypeShortcut {
 }
 
 /**
- * The eight chords.
+ * The eight chords, printed the way the demo prints them.
  *
- * Text's is bound like the rest and is the one the demo leaves off the row:
- * the binding exists in the editor either way, so leaving it to Paragraph's own
- * command would make one of the nine behave differently from the row naming it.
+ * The demo draws a chord on all eight exclusive rows and leaves only the task
+ * list blank (`demo/2026-08-29-block-type-transitions.html:211-218`), and the
+ * task list has no chord because it has no command.
  */
 export const BLOCK_TYPE_SHORTCUTS: BlockTypeShortcut[] = [
-  { id: 'paragraph', spec: { mod: true, alt: true, key: '0' }, printed: false },
+  { id: 'paragraph', spec: { mod: true, alt: true, key: '0' }, printed: true },
   { id: 'heading-1', spec: { mod: true, alt: true, key: '1' }, printed: true },
   { id: 'heading-2', spec: { mod: true, alt: true, key: '2' }, printed: true },
   { id: 'heading-3', spec: { mod: true, alt: true, key: '3' }, printed: true },

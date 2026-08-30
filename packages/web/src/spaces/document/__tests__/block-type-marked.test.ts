@@ -13,7 +13,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { isMarked } from '@web/spaces/document/document-block-model';
+import { isMarked, runBlockType } from '@web/spaces/document/document-block-model';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import {
@@ -124,6 +124,31 @@ describe('a selection holding no text block ticks nothing', () => {
     const editor = openBody('');
     editor.commands.setTextSelection({ from: 0, to: 0 });
     expect(ticked(editor)).toEqual([]);
+  });
+});
+
+describe('at most one exclusive row is ever ticked (A13)', () => {
+  // Rule 1 makes a block exactly one of the eight, and §6.0 judges a list by
+  // the nearest list ancestor while the block itself stays a paragraph. So a
+  // press that leaves a heading or a code block inside a list item has two
+  // rows answering for one block. Both starting states below are ones the menu
+  // itself writes: §5.3 row 5 (A35) for the first, row 6 (A36) for the second.
+  const EXCLUSIVE_ROWS = NINE.filter((id) => id !== 'quote');
+
+  it.each(EXCLUSIVE_ROWS)('holds after %s on a block that cannot leave its item', (id) => {
+    const editor = openBody('<ul><li><p>one</p><p>d1</p><ul><li><p>d2</p></li></ul></li></ul>');
+    selectBlock(editor, 'd1');
+    runBlockType(editor, id);
+    selectBlock(editor, 'd1');
+    expect(ticked(editor).filter((row) => row !== 'quote')).toHaveLength(1);
+  });
+
+  it.each(EXCLUSIVE_ROWS)('holds after %s on a quoted block inside an item', (id) => {
+    const editor = openBody('<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>');
+    selectBlock(editor, 'b');
+    runBlockType(editor, id);
+    selectBlock(editor, 'b');
+    expect(ticked(editor).filter((row) => row !== 'quote')).toHaveLength(1);
   });
 });
 

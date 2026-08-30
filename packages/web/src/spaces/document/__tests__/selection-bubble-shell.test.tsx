@@ -650,14 +650,15 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-quote',
       ]);
 
-      // The demo draws a shortcut column on seven of the items. This
-      // environment reports a non-Mac platform, so they read in the Windows
-      // spelling; the Mac one is asserted below.
+      // The demo draws a shortcut on all eight exclusive rows and leaves the
+      // task list blank, which is the row with no command. This environment
+      // reports a non-Mac platform, so they read in the Windows spelling; the
+      // Mac one is asserted below.
       const shortcuts = items.map(
         (n) => n.querySelector('[data-testid^="doc-bubble-block-type-shortcut-"]')?.textContent?.trim() ?? null,
       );
       expect(shortcuts).toEqual([
-        null,
+        'Ctrl+Alt+0',
         'Ctrl+Alt+1',
         'Ctrl+Alt+2',
         'Ctrl+Alt+3',

@@ -37,13 +37,16 @@ const SLOT = 'doc-bubble-block-type';
  * Select the whole body, with the editor really holding the focus.
  * @param editor - The editor.
  */
-async function selectFirstBlock(editor: Editor): Promise<void> {
+async function selectFirstBlock(editor: Editor, text?: string): Promise<void> {
   let from = 1;
   let to = 1;
+  let found = false;
   editor.state.doc.descendants((node, pos) => {
-    if (!node.isTextblock || to > 1) return to <= 1;
+    if (!node.isTextblock || found) return !found;
+    if (text !== undefined && node.textContent !== text) return false;
     from = pos + 1;
     to = pos + node.nodeSize - 1;
+    found = true;
     return false;
   });
   act(() => {
@@ -149,17 +152,46 @@ describe('the menu', () => {
     expect(greyedIds(menu)).toEqual(['task-list']);
   });
 
-  it('greys the rows this selection cannot reach', async () => {
-    // A list item's first block has to be a paragraph, so this one can neither
-    // leave the item nor change type (§6.7). Quote wraps it either way.
+  // §6.7's three selections, each with the rows it cannot reach. The first
+  // block of an item has to be a paragraph and cannot leave the item; a later
+  // block can leave for another list but not become a heading or a code block,
+  // which would leave two rows answering for it (§6.0).
+  const STUCK: Array<[name: string, body: string, pick: string, greyed: string[]]> = [
+    [
+      'the first block of an item holding a sub-list',
+      '<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>',
+      'one',
+      ['paragraph', 'heading-1', 'heading-2', 'heading-3',
+        'bullet-list', 'ordered-list', 'task-list', 'code-block'],
+    ],
+    [
+      'a later block of an item holding a sub-list',
+      '<ul><li><p>b</p><p>c</p><ul><li><p>d</p></li></ul></li></ul>',
+      'c',
+      ['paragraph', 'heading-1', 'heading-2', 'heading-3',
+        'bullet-list', 'task-list', 'code-block'],
+    ],
+  ];
+
+  it.each(STUCK)('greys the rows %s cannot reach', async (_name, body, pick, greyed) => {
+    const editor = openSharedBody(body);
+    mountDocumentEditor(editor);
+    await selectFirstBlock(editor, pick);
+    const menu = await hoverOpenSlot(SLOT);
+    expect(greyedIds(menu)).toEqual(greyed);
+  });
+
+  it('draws a row it cannot reach exactly as it draws the task list', async () => {
     const editor = openSharedBody('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
     mountDocumentEditor(editor);
     await selectFirstBlock(editor);
     const menu = await hoverOpenSlot(SLOT);
-    expect(greyedIds(menu)).toEqual([
-      'paragraph', 'heading-1', 'heading-2', 'heading-3',
-      'bullet-list', 'ordered-list', 'task-list', 'code-block',
-    ]);
+    const row = (id: string): Element | null =>
+      menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`);
+    // The task list is greyed for a reason of its own and is the treatment
+    // every other greyed row has to match (§6.7).
+    expect(row('heading-1')?.className).toBe(row('task-list')?.className);
+    expect(row('heading-1')?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('carries no row fill and no data-active', async () => {

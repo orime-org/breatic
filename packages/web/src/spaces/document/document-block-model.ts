@@ -250,12 +250,13 @@ function selectedRange(tr: Transaction): NodeRange | null {
 /**
  * Lifts every text block in the selection out of the lists holding it.
  *
- * The range is the block's own, so what comes out is the text block itself and
- * the list structure around it falls away. Runs until a pass lifts nothing:
- * each lift drops one block one level, so the summed depth of the covered
- * blocks strictly decreases and the loop ends — a pass count would instead
- * leave the items beyond it in their old list while the transaction went out
- * anyway.
+ * The range sits on what the list item holds, not on what holds the block, so
+ * a quote between the two comes out with the block instead of being taken off
+ * it — Quote is orthogonal to the exclusive rows (rule 3, A4) and §6.1's
+ * measured path leaves blockquote alone. Runs until a pass lifts nothing: each
+ * lift drops one block one level, so the summed depth of the covered blocks
+ * strictly decreases and the loop ends — a pass count would instead leave the
+ * items beyond it in their old list while the transaction went out anyway.
  *
  * Coming out one level is as far as some blocks go, and that is the answer the
  * design gives them: an item indented under another, with a sibling on its own
@@ -268,9 +269,9 @@ function liftOutOfLists(tr: Transaction): void {
     let lifted = false;
     for (const pos of selectedBlocks(tr)) {
       const $from = tr.doc.resolve(pos);
-      if (listDepthAt($from) === null) continue;
-      const range = $from.blockRange();
-      if (!range) continue;
+      const listDepth = listDepthAt($from);
+      if (listDepth === null) continue;
+      const range = new NodeRange($from, $from, listDepth + 1);
       const target = liftTarget(range);
       if (target === null) continue;
       tr.lift(range, target);
@@ -279,6 +280,23 @@ function liftOutOfLists(tr: Transaction): void {
     }
     if (!lifted) return;
   }
+}
+
+/**
+ * Is this block exactly one of the exclusive eight?
+ *
+ * A list holding a block makes that block the list's row, and its own node has
+ * to stay a paragraph for that to be the only row answering (§6.0's four
+ * judgements). Where a press leaves a heading or a code block inside a list
+ * item, both the list row and the block's own type answer for it and rule 1 no
+ * longer holds — two ticks for one block (A13).
+ * @param doc - The document.
+ * @param pos - A position inside a text block.
+ * @returns Whether one row and no more answers for it.
+ */
+function isOneExclusive(doc: PMNode, pos: number): boolean {
+  const $pos = doc.resolve(pos);
+  return listDepthAt($pos) === null || $pos.parent.type.name === 'paragraph';
 }
 
 /**
@@ -424,7 +442,8 @@ function toBlockType(
   attrs: Record<string, unknown> | null,
 ): boolean {
   liftOutOfLists(tr);
-  return setBlocks(tr, type, attrs);
+  if (!setBlocks(tr, type, attrs)) return false;
+  return selectedBlocks(tr).every((pos) => isOneExclusive(tr.doc, pos));
 }
 
 /**
@@ -550,10 +569,17 @@ function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
 
   const marked = isMarked(editor, id);
   const tr = state.tr;
-  if (!(state.selection instanceof TextSelection)) {
+  const substituted = !(state.selection instanceof TextSelection);
+  if (substituted) {
     tr.setSelection(TextSelection.create(tr.doc, ends.first, ends.last));
   }
   if (!applyTransition(tr, state.schema, id, marked)) return null;
+  // The substitute is a working range, not what the reader is holding: its end
+  // is the start of the last block's content, so leaving it in place would drop
+  // that block out of the highlight, and over a one-block document it collapses
+  // and takes the bubble bar with it. §6.2's second promise is that the press
+  // does not change the selection.
+  if (substituted) tr.setSelection(state.selection.map(tr.doc, tr.mapping));
   return tr.docChanged ? tr : null;
 }
 

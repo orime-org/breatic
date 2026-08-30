@@ -279,7 +279,12 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               }}
             >
               <Icon />
-              {t(item.labelKey)}
+              {/* The demo gives the label the row's spare width
+                  (`.row .name { flex: 1 }`), so the shortcut and the tick sit
+                  at the right edge on every row. Leaving it to
+                  `DropdownMenuShortcut`'s own `ml-auto` would right-align only
+                  the rows that print a chord. */}
+              <span className='flex-1 text-left'>{t(item.labelKey)}</span>
               {shortcut ? (
                 <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
                   {formatShortcut(shortcut)}

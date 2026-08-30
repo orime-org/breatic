@@ -119,6 +119,34 @@ describe('selection shapes other than a plain range', () => {
   });
 });
 
+describe('the selection a press leaves behind (§6.2)', () => {
+  // The press works off a pair of text block endpoints, so a selection that is
+  // not already a text range gets one put in its place; §6.2's second promise
+  // is that the reader's own selection comes back at the end. Two tiers of
+  // `Mod-a` are shipped, so a select-all is an ordinary way to be holding one.
+  it.each(ROWS)('keeps a select-all over three paragraphs whole: %s', (id) => {
+    const editor = openBody('<p>one</p><p>two</p><p>three</p>');
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+    runBlockType(editor, id);
+    const { from, to } = editor.state.selection;
+    expect(editor.state.doc.textBetween(from, to, '|')).toBe('one|two|three');
+  });
+
+  it.each(ROWS)('leaves a select-all over one paragraph selected: %s', (id) => {
+    const editor = openBody('<p>one</p>');
+    editor.view.dispatch(editor.state.tr.setSelection(new AllSelection(editor.state.doc)));
+    runBlockType(editor, id);
+    // An empty selection takes the bubble bar off screen with it
+    // (`SelectionBubbleBar.tsx`'s `isWarranted`), so the reader would have to
+    // select the paragraph again to press a second row.
+    expect(editor.state.selection.empty).toBe(false);
+  });
+
+  // A node selection over a text block is left out: nothing in the document
+  // space builds one, so no reader is holding one when a row is pressed. A9
+  // still pins that such a selection reaches the same result.
+});
+
 describe('a selection holding no text block', () => {
   it.each([
     ['paragraph'],

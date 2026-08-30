@@ -22,10 +22,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** The eight rows that carry a command. */
+/**
+ * All nine rows.
+ *
+ * The task list is in: it has no schema node, so it is the one row greyed on
+ * every selection there is, and leaving it out would leave the always-grey row
+ * the one row nothing pins.
+ */
 const ROWS: BlockTypeId[] = [
   'paragraph', 'heading-1', 'heading-2', 'heading-3',
-  'bullet-list', 'ordered-list', 'code-block', 'quote',
+  'bullet-list', 'ordered-list', 'task-list', 'code-block', 'quote',
 ];
 
 /** A selection a case puts on the editor. */
@@ -40,6 +46,13 @@ const REACHABLE: Array<[name: string, body: string, place: Place]> = [
     'a selection across two blocks',
     '<h1>a heading</h1><p>a paragraph</p>',
     (e) => { selectWholeBody(e); },
+  ],
+  // The quote comes out of the list with the block rather than being taken off
+  // it (§6.1, A4), so every exclusive row reaches something here too.
+  [
+    'a quoted block a list item holds',
+    '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>',
+    (e) => { selectBlock(e, 'b'); },
   ],
 ];
 
@@ -61,7 +74,11 @@ const STUCK: Array<[name: string, body: string, place: Place, lit: BlockTypeId[]
     'an indented item already taken back to a paragraph',
     '<ul><li><p>b</p><p>c</p><ul><li><p>d</p></li></ul></li></ul>',
     (e) => { selectBlock(e, 'c'); },
-    ['heading-1', 'heading-2', 'heading-3', 'ordered-list', 'code-block', 'quote'],
+    // A heading or a code block staying inside the item would have both the
+    // list row and its own type answering for it (§6.0), so those rows reach
+    // nothing here. Ordered list is reachable because a list item can hold a
+    // sub-list of another kind.
+    ['ordered-list', 'quote'],
   ],
   [
     'a selection running from a paragraph into a stuck item',
@@ -72,11 +89,11 @@ const STUCK: Array<[name: string, body: string, place: Place, lit: BlockTypeId[]
 ];
 
 describe('a selection every row reaches', () => {
-  it.each(REACHABLE)('lights every row on %s', (_name, body, place) => {
+  it.each(REACHABLE)('lights every row but the task list on %s', (_name, body, place) => {
     const editor = openBody(body);
     place(editor);
     const dark = ROWS.filter((id) => !canRunBlockType(editor, id));
-    expect(dark).toEqual([]);
+    expect(dark).toEqual(['task-list']);
   });
 });
 
