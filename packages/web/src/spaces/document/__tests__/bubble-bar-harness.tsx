@@ -22,12 +22,15 @@ const live: Editor[] = [];
 let doc: Y.Doc | null = null;
 
 /**
- * An editor holding the given body, bound to a Y.Doc shared with its siblings.
+ * An editor holding the given body, bound to a Y.Doc.
  *
- * The body arrives after construction: the editor is bound to a Y.Doc, and
- * content given at construction collides with the collaboration extension's
- * initial sync — the body never lands and the selection falls on an empty
- * document.
+ * A real Y.Doc rather than a plain editor, so {@link sharedBodyMarkup} can read
+ * a command's effect off the shared document. `closeShared` takes the doc down
+ * with the editors, so each case gets its own.
+ *
+ * The body arrives after construction: content given at construction collides
+ * with the collaboration extension's initial sync — the body never lands and
+ * the selection falls on an empty document.
  * @param bodyHtml - The body's HTML, or an empty string for an empty document.
  * @returns The editor.
  */
@@ -45,7 +48,7 @@ export function openSharedBody(bodyHtml: string): Editor {
 }
 
 /**
- * The shared body as Yjs wrote it down, markup and all.
+ * The body as Yjs wrote it down, markup and all.
  *
  * Read off the Y.Doc rather than the editor: whether a command really ran is a
  * question about the shared document, and `getHTML()` answers about one

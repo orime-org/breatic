@@ -28,7 +28,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { NodeRange, type Node as PMNode, type NodeType, type Schema } from '@tiptap/pm/model';
-import { TextSelection, type Transaction } from '@tiptap/pm/state';
+import { TextSelection, type Selection, type Transaction } from '@tiptap/pm/state';
 import { canSplit, findWrapping, liftTarget } from '@tiptap/pm/transform';
 import { wrapRangeInList } from '@tiptap/pm/schema-list';
 
@@ -64,17 +64,42 @@ const HEADING_LEVEL: Partial<Record<BlockTypeId, number>> = {
   'heading-3': 3,
 };
 
+/** A resolved position, which is what every ancestor question is asked of. */
+type Resolved = ReturnType<PMNode['resolve']>;
+
+/**
+ * The depth of the nearest ancestor going outwards whose node is one of these.
+ *
+ * Depth 0 is the document, which no caller is asking about, so the walk stops
+ * above it.
+ * @param $pos - A resolved position.
+ * @param names - The node names being looked for.
+ * @returns That depth, or null where no ancestor is one of them.
+ */
+function nearestDepth($pos: Resolved, names: Set<string>): number | null {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if (names.has($pos.node(depth).type.name)) return depth;
+  }
+  return null;
+}
+
+/**
+ * The depth of the nearest list holding this position.
+ * @param $pos - A resolved position inside a text block.
+ * @returns That depth, or null where no list holds it.
+ */
+function listDepthAt($pos: Resolved): number | null {
+  return nearestDepth($pos, LIST_NAMES);
+}
+
 /**
  * The name of the nearest list holding this position.
  * @param $pos - A resolved position inside a text block.
  * @returns The list's node name, or null where no list holds it.
  */
-function nearestListName($pos: ReturnType<PMNode['resolve']>): string | null {
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    const name = $pos.node(depth).type.name;
-    if (LIST_NAMES.has(name)) return name;
-  }
-  return null;
+function nearestListName($pos: Resolved): string | null {
+  const depth = listDepthAt($pos);
+  return depth === null ? null : $pos.node(depth).type.name;
 }
 
 /**
@@ -82,11 +107,8 @@ function nearestListName($pos: ReturnType<PMNode['resolve']>): string | null {
  * @param $pos - A resolved position inside a text block.
  * @returns Whether a blockquote holds it.
  */
-function insideQuote($pos: ReturnType<PMNode['resolve']>): boolean {
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (QUOTE_NAMES.has($pos.node(depth).type.name)) return true;
-  }
-  return false;
+function insideQuote($pos: Resolved): boolean {
+  return nearestDepth($pos, QUOTE_NAMES) !== null;
 }
 
 /**
@@ -132,30 +154,83 @@ function textBlockPositions(doc: PMNode, from: number, to: number): number[] {
 }
 
 /**
- * Is every text block in the selection this item?
+ * The exclusive eight, lists first.
  *
- * Empty answers false for all nine: "every block is" holds vacuously over an
+ * A list item holds `paragraph block*`, so a heading or a code block can sit in
+ * one past its first block — and there both the list row and that block's own
+ * type answer for it. The list is the row the reader sees, and asking it first
+ * is what makes the face say so. Text takes no part in that overlap: it answers
+ * only where no list holds the block at all.
+ */
+const EXCLUSIVE: BlockTypeId[] = [
+  'bullet-list',
+  'ordered-list',
+  'task-list',
+  'paragraph',
+  'heading-1',
+  'heading-2',
+  'heading-3',
+  'code-block',
+];
+
+/** All nine rows: the exclusive eight and Quote across them. */
+const ROWS: BlockTypeId[] = [...EXCLUSIVE, 'quote'];
+
+/**
+ * A document and a selection over it, which is all any of the readers below
+ * want. Both `EditorState` and `Transaction` are one.
+ */
+interface Selected {
+  doc: PMNode;
+  selection: Selection;
+}
+
+/**
+ * One position inside each text block the selection covers.
+ * @param src - The document and the selection over it.
+ * @returns Those positions, in document order.
+ */
+function selectedBlocks(src: Selected): number[] {
+  return textBlockPositions(src.doc, src.selection.from, src.selection.to);
+}
+
+/**
+ * Every row the selection is, in one walk of it.
+ *
+ * Empty answers nothing for all nine: "every block is" holds vacuously over an
  * empty set, which would tick the whole menu at once. The menu never opens on
  * such a selection anyway (`SelectionBubbleBar.tsx`'s `isWarranted` wants text
  * in it), and the shortcuts follow the menu.
+ * @param editor - The editor.
+ * @returns The ticked rows.
+ */
+export function markedIds(editor: Editor): Set<BlockTypeId> {
+  const { doc } = editor.state;
+  const positions = selectedBlocks(editor.state);
+  if (positions.length === 0) return new Set();
+  return new Set(ROWS.filter((id) => positions.every((pos) => isItemAt(doc, pos, id))));
+}
+
+/**
+ * Is every text block in the selection this item?
  * @param editor - The editor.
  * @param id - Which row.
  * @returns Whether the row is ticked.
  */
 export function isMarked(editor: Editor, id: BlockTypeId): boolean {
-  const { doc, selection } = editor.state;
-  const positions = textBlockPositions(doc, selection.from, selection.to);
+  const { doc } = editor.state;
+  const positions = selectedBlocks(editor.state);
   if (positions.length === 0) return false;
   return positions.every((pos) => isItemAt(doc, pos, id));
 }
 
 /**
  * The first and last text block the selection covers.
- * @param tr - The transaction.
+ * @param src - The document and the selection over it.
  * @returns Those two positions, or null where the selection holds no text block.
  */
-function selectionEnds(tr: Transaction): { first: number; last: number } | null {
-  const positions = textBlockPositions(tr.doc, tr.selection.from, tr.selection.to);
+function selectionEnds(src: Selected): { first: number; last: number } | null {
+  const positions = selectedBlocks(src);
   const first = positions[0];
   const last = positions[positions.length - 1];
   return first === undefined || last === undefined ? null : { first, last };
@@ -191,19 +266,17 @@ function selectedRange(tr: Transaction): NodeRange | null {
 function liftOutOfLists(tr: Transaction): void {
   for (;;) {
     let lifted = false;
-    const { from, to } = tr.selection;
-    tr.doc.nodesBetween(from, to, (node, pos) => {
-      if (lifted || !node.isTextblock) return !lifted;
-      const $from = tr.doc.resolve(pos + 1);
-      if (nearestListName($from) === null) return false;
-      const range = $from.blockRange(tr.doc.resolve(pos + node.nodeSize - 1));
-      if (!range) return false;
+    for (const pos of selectedBlocks(tr)) {
+      const $from = tr.doc.resolve(pos);
+      if (listDepthAt($from) === null) continue;
+      const range = $from.blockRange();
+      if (!range) continue;
       const target = liftTarget(range);
-      if (target === null) return false;
+      if (target === null) continue;
       tr.lift(range, target);
       lifted = true;
-      return false;
-    });
+      break;
+    }
     if (!lifted) return;
   }
 }
@@ -219,21 +292,19 @@ function liftOutOfLists(tr: Transaction): void {
  * @returns That range, or null where no quote holds the selection.
  */
 function innermostQuoteRange(tr: Transaction): NodeRange | null {
-  const positions = textBlockPositions(tr.doc, tr.selection.from, tr.selection.to);
+  const positions = selectedBlocks(tr);
   for (const pos of positions) {
     const $pos = tr.doc.resolve(pos);
-    for (let depth = $pos.depth; depth > 0; depth -= 1) {
-      if (!QUOTE_NAMES.has($pos.node(depth).type.name)) continue;
-      const quoteStart = $pos.start(depth);
-      const shared = positions.filter((other) => {
-        const $other = tr.doc.resolve(other);
-        return $other.depth >= depth && $other.start(depth) === quoteStart;
-      });
-      const first = shared[0];
-      const last = shared[shared.length - 1];
-      if (first === undefined || last === undefined) continue;
-      return new NodeRange(tr.doc.resolve(first), tr.doc.resolve(last), depth);
-    }
+    const depth = nearestDepth($pos, QUOTE_NAMES);
+    if (depth === null) continue;
+    const quoteStart = $pos.start(depth);
+    // `pos` itself is one of these, so the run is never empty.
+    const shared = positions.filter((other) => {
+      const $other = tr.doc.resolve(other);
+      return $other.depth >= depth && $other.start(depth) === quoteStart;
+    });
+    const last = shared[shared.length - 1] ?? pos;
+    return new NodeRange(tr.doc.resolve(shared[0] ?? pos), tr.doc.resolve(last), depth);
   }
   return null;
 }
@@ -253,18 +324,6 @@ function unwrapQuotes(tr: Transaction): void {
     if (target === null) return;
     tr.lift(range, target);
   }
-}
-
-/**
- * The depth of the nearest list holding this position.
- * @param $pos - A resolved position inside a text block.
- * @returns That depth, or null where no list holds it.
- */
-function listDepthAt($pos: ReturnType<PMNode['resolve']>): number | null {
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (LIST_NAMES.has($pos.node(depth).type.name)) return depth;
-  }
-  return null;
 }
 
 /**
@@ -383,7 +442,7 @@ function selectedRuns(tr: Transaction): Array<[first: number, last: number]> {
   const runs: Array<[number, number]> = [];
   let parent: string | null = null;
   let previous = -2;
-  for (const pos of textBlockPositions(tr.doc, tr.selection.from, tr.selection.to)) {
+  for (const pos of selectedBlocks(tr)) {
     const $pos = tr.doc.resolve(pos);
     const depth = $pos.depth - 1;
     const here = `${depth}:${$pos.start(depth)}`;
@@ -483,10 +542,8 @@ function applyTransition(
  */
 function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
   const { state } = editor;
-  const positions = textBlockPositions(state.doc, state.selection.from, state.selection.to);
-  const first = positions[0];
-  const last = positions[positions.length - 1];
-  if (first === undefined || last === undefined) return null;
+  const ends = selectionEnds(state);
+  if (!ends) return null;
 
   const listNode = LIST_NODE[id];
   if (listNode !== undefined && state.schema.nodes[listNode] === undefined) return null;
@@ -494,7 +551,7 @@ function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
   const marked = isMarked(editor, id);
   const tr = state.tr;
   if (!(state.selection instanceof TextSelection)) {
-    tr.setSelection(TextSelection.create(tr.doc, first, last));
+    tr.setSelection(TextSelection.create(tr.doc, ends.first, ends.last));
   }
   if (!applyTransition(tr, state.schema, id, marked)) return null;
   return tr.docChanged ? tr : null;
@@ -532,24 +589,6 @@ export function runBlockType(editor: Editor, id: BlockTypeId): void {
 }
 
 /**
- * The exclusive eight, lists first.
- *
- * A block held by a list is a paragraph of its own type, so both the list row
- * and Text answer for it; the list is the row the reader sees, and asking it
- * first is what makes the face say so.
- */
-const EXCLUSIVE: BlockTypeId[] = [
-  'bullet-list',
-  'ordered-list',
-  'task-list',
-  'paragraph',
-  'heading-1',
-  'heading-2',
-  'heading-3',
-  'code-block',
-];
-
-/**
  * Which block a position counts as, for the slot's face.
  *
  * The exclusive item it is, judged by the same `isItemAt` the ticks use. A
@@ -580,8 +619,8 @@ const ALIGNABLE = new Set<BlockTypeId>([
  * @returns Whether the selection holds at least one alignable block.
  */
 export function selectionCanAlign(editor: Editor): boolean {
-  const { doc, selection } = editor.state;
-  return textBlockPositions(doc, selection.from, selection.to).some((pos) => {
+  const { doc } = editor.state;
+  return selectedBlocks(editor.state).some((pos) => {
     const type = blockTypeAt(doc, pos);
     return type !== null && ALIGNABLE.has(type);
   });
@@ -602,7 +641,7 @@ export function currentBlockType(editor: Editor): BlockTypeId {
   const { doc, selection } = editor.state;
   const anchored = blockTypeAt(doc, selection.anchor);
   if (anchored !== null) return anchored;
-  const first = textBlockPositions(doc, selection.from, selection.to)[0];
+  const first = selectedBlocks(editor.state)[0];
   if (first === undefined) return 'paragraph';
   return blockTypeAt(doc, first) ?? 'paragraph';
 }

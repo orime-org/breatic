@@ -47,10 +47,11 @@ import {
   BLOCK_TYPE_SEPARATOR_AFTER,
   blockTypeItem,
 } from '@web/spaces/document/document-block-type';
+import { printedShortcut } from '@web/spaces/document/document-block-type-shortcuts';
 import {
   canRunBlockType,
   currentBlockType,
-  isMarked,
+  markedIds,
   runBlockType,
   selectionCanAlign,
 } from '@web/spaces/document/document-block-model';
@@ -223,10 +224,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   // every read costs nothing and the reference stays put.
   const marked = useEditorState({
     editor,
-    selector: ({ editor: e }) =>
-      new Set<BlockTypeId>(
-        e ? BLOCK_TYPE_ITEMS.filter((item) => isMarked(e, item.id)).map((i) => i.id) : [],
-      ),
+    selector: ({ editor: e }) => (e ? markedIds(e) : new Set<BlockTypeId>()),
   });
   // The rows this selection cannot reach (§6.7). The judgement builds the very
   // transaction the press would build, so the row's look and the row's effect
@@ -257,6 +255,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     >
       {BLOCK_TYPE_ITEMS.map((item) => {
         const Icon = item.Icon;
+        const shortcut = printedShortcut(item.id);
         return (
           <React.Fragment key={item.id}>
             <BubbleMenuRow
@@ -273,9 +272,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
             >
               <Icon />
               {t(item.labelKey)}
-              {item.shortcut ? (
+              {shortcut ? (
                 <DropdownMenuShortcut data-testid={`${id}-shortcut-${item.id}`}>
-                  {formatShortcut(item.shortcut)}
+                  {formatShortcut(shortcut)}
                 </DropdownMenuShortcut>
               ) : null}
               {/* The tick goes after the shortcut, where the demo draws it,

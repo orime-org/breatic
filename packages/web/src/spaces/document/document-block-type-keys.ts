@@ -19,25 +19,14 @@ import { Extension } from '@tiptap/core';
 
 import { runBlockType } from '@web/spaces/document/document-block-model';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
+import {
+  BLOCK_TYPE_SHORTCUTS,
+  shortcutChord,
+} from '@web/spaces/document/document-block-type-shortcuts';
 
-/**
- * The eight chords, in tiptap's own notation.
- *
- * `Mod-Alt-0` is here although the menu prints no key beside Text: the binding
- * exists in the editor either way and runs the same transition, so leaving it
- * to Paragraph's own command would make one of the nine behave differently
- * from the row that names it.
- */
-const BINDINGS: Array<[chord: string, id: BlockTypeId]> = [
-  ['Mod-Alt-0', 'paragraph'],
-  ['Mod-Alt-1', 'heading-1'],
-  ['Mod-Alt-2', 'heading-2'],
-  ['Mod-Alt-3', 'heading-3'],
-  ['Mod-Shift-8', 'bullet-list'],
-  ['Mod-Shift-7', 'ordered-list'],
-  ['Mod-Alt-c', 'code-block'],
-  ['Mod-Shift-b', 'quote'],
-];
+/** The eight chords, off the same table the menu prints from. */
+const BINDINGS: Array<[chord: string, id: BlockTypeId]> = BLOCK_TYPE_SHORTCUTS
+  .map(({ id, spec }) => [shortcutChord(spec), id]);
 
 /** Binds the menu's keys to the menu's transitions. */
 export const DocumentBlockTypeKeys = Extension.create({
