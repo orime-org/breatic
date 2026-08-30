@@ -44,7 +44,7 @@ export const AGENT_PANEL_ID = 'agent-column-panel';
  */
 export const PAGE_MIN_WIDTH = AGENT_COLUMN_MIN_WIDTH + RESIZE_HANDLE_WIDTH + SPACE_MIN_WIDTH;
 
-/** Half a device pixel either way is not a change worth acting on. */
+/** A pixel either way is not a change worth resizing the column for. */
 const RESTORE_TOLERANCE = 1;
 
 /**
