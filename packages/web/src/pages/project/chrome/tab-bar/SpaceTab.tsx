@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import * as React from 'react';
+import { useSortable } from '@dnd-kit/sortable';
 import { toast } from '@web/lib/toast';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
@@ -124,6 +125,15 @@ export function SpaceTab({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [nameTipOpen, setNameTipOpen] = React.useState(false);
 
+  // `attributes` is left on the floor on purpose. Nothing in it carries the
+  // drag — that is `listeners` — and what it does carry describes a keyboard
+  // gesture this strip does not offer: `role='button'` and `tabIndex=0` would
+  // rename the tab out of its tablist, and `aria-roledescription='sortable'`
+  // would announce a reorder to the one group of people who cannot perform it
+  // (design §4.5: pointer only).
+  const { setNodeRef, listeners, transform, transition, isDragging } =
+    useSortable({ id, disabled: editing });
+
   // Keep `draft` aligned with external `name` updates (collab broadcast)
   // when we are not currently editing.
   React.useEffect(() => {
@@ -193,6 +203,8 @@ export function SpaceTab({
       // 32px chrome height alone.
       variant={null}
       size={null}
+      ref={setNodeRef}
+      {...listeners}
       type='button'
       role='tab'
       aria-selected={active}
@@ -220,6 +232,15 @@ export function SpaceTab({
         gap: 'var(--space-3)',
         borderRadius: 4,
         maxWidth: SPACE_TAB_MAX_WIDTH,
+        // Only the x of what dnd-kit offers. The strip runs left to right and
+        // that is the whole gesture; carrying the y would lift a dragged tab
+        // clear of the 40px bar it belongs to.
+        transform: transform
+          ? `translate3d(${transform.x}px, 0, 0)`
+          : undefined,
+        transition,
+        // Above the tabs it slides past, so it stays whole while it travels.
+        zIndex: isDragging ? 1 : undefined,
       }}
     >
       <Icon
@@ -286,6 +307,10 @@ export function SpaceTab({
           role='button'
           tabIndex={0}
           aria-label={t('spaces.tab.closeAria')}
+          // The tab around this span starts a drag on pointerdown, and a hand
+          // that shifts while pressing × would drag the tab away instead of
+          // closing it.
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={onCloseClick}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -312,7 +337,13 @@ export function SpaceTab({
     // The rename field is the one state that closes it — the whole name is
     // already in the field, selected, and a tooltip over it would be labelling
     // the old name while a new one is being typed.
-    <Tooltip open={nameTipOpen && !editing} onOpenChange={setNameTipOpen}>
+    // A tab under a pointer that is dragging it is the other state that closes
+    // it: the name would ride along across the strip, over whatever the tab is
+    // passing.
+    <Tooltip
+      open={nameTipOpen && !editing && !isDragging}
+      onOpenChange={setNameTipOpen}
+    >
       {/* The whole tab is the anchor, so the gap the tooltip keeps is measured
           from the edge a person sees rather than from the name inset within
           it. */}

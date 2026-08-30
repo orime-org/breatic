@@ -9,6 +9,18 @@ import {
   Plus,
 } from 'lucide-react';
 import * as React from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
 
 import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -29,6 +41,15 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
+import { resolveTabDrop } from '@web/pages/project/chrome/tab-bar/tab-drop';
+
+/**
+ * How far the pointer travels before a press becomes a drag (px).
+ *
+ * Without a distance the press itself starts one, and dnd-kit calls
+ * `preventDefault` on it — the click that switches Space never happens.
+ */
+const DRAG_START_DISTANCE = 4;
 
 interface SpaceTabBarProps {
   /** Tabs currently open in the bar (resolved from per-user openTabIds). */
@@ -68,6 +89,12 @@ interface SpaceTabBarProps {
    * ProjectPage wraps `space:rename` RPC via callRpc.
    */
   onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
+  /**
+   * A tab was dragged to a new place. `beforeSpaceId` names the tab it now
+   * sits in front of, null when it landed at the end. Omitted when the caller
+   * has nowhere to send it, and the strip is then not draggable.
+   */
+  onReorder?: (spaceId: string, beforeSpaceId: string | null) => void;
 }
 
 /**
@@ -101,6 +128,7 @@ interface SpaceTabBarProps {
  * @param root0.onDeleteSpace - Handler to soft-delete a space (drawer row delete button).
  * @param root0.onSetSpaceLocked - Handler to toggle a space's lock (drawer row lock button).
  * @param root0.onRenameSpace - Handler to rename a space inline from the tab strip.
+ * @param root0.onReorder - Handler for a tab dragged to a new place in the strip.
  * @returns The space tab bar toolbar.
  */
 export function SpaceTabBar({
@@ -119,12 +147,36 @@ export function SpaceTabBar({
   onDeleteSpace,
   onSetSpaceLocked,
   onRenameSpace,
+  onReorder,
 }: SpaceTabBarProps): React.JSX.Element {
   const t = useTranslation();
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
+
+  // Pointer only, and deliberately so: dnd-kit's keyboard sensor starts a drag
+  // on Space and Enter, which are how a keyboard user switches Space on a tab
+  // today (design §4.5).
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: DRAG_START_DISTANCE },
+    }),
+  );
+  const tabIds = React.useMemo(() => spaces.map((s) => s.id), [spaces]);
+
+  const onDragEnd = React.useCallback(
+    (event: DragEndEvent): void => {
+      const over = event.over;
+      const drop = resolveTabDrop(
+        tabIds,
+        String(event.active.id),
+        over ? String(over.id) : null,
+      );
+      if (drop) onReorder?.(drop.spaceId, drop.beforeSpaceId);
+    },
+    [tabIds, onReorder],
+  );
 
   /**
    * The tabs, read off the scroller.
@@ -387,14 +439,24 @@ export function SpaceTabBar({
         viewport, puts that wrapper in the middle instead, and the tabs with
         it (user 2026-08-29).
       */}
-      <ScrollArea
-        scrollbars='horizontal'
-        viewportRef={scrollerRef}
-        className='flex-1'
-        viewportClassName='flex items-center'
-        style={{ minWidth: 0, height: '100%' }}
+      {/*
+        Auto-scroll stays on its default, which is on: with more tabs than fit,
+        dragging one past the edge is the ordinary way to move it far, and the
+        viewport below is the scrollable ancestor dnd-kit finds.
+      */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onDragEnd}
       >
-        {/*
+        <ScrollArea
+          scrollbars='horizontal'
+          viewportRef={scrollerRef}
+          className='flex-1'
+          viewportClassName='flex items-center'
+          style={{ minWidth: 0, height: '100%' }}
+        >
+          {/*
           The row is ours and the tabs are its own flex children. Radix puts a
           `display:table` div inside every viewport, so a flex declared on the
           viewport reaches that div and stops: the tabs would lay out one per
@@ -402,31 +464,37 @@ export function SpaceTabBar({
           the arrows would ever appear. Carrying the row here also puts the
           tablist role on the element the tabs actually sit in.
         */}
-        <div
-          role='tablist'
-          aria-label={t('chrome.aria.openSpaces')}
-          className='flex w-max items-center'
-          style={{ gap: 'var(--space-1)', padding: '0 var(--space-2)' }}
-        >
-          {spaces.map((s) => (
-            <SpaceTab
-              key={s.id}
-              id={s.id}
-              name={s.name}
-              type={s.type}
-              active={s.id === activeSpaceId}
-              locked={s.locked}
-              onActivate={() => onActivate(s.id)}
-              onClose={onClose ? () => onClose(s.id) : undefined}
-              onRename={
-                onRenameSpace
-                  ? (next) => onRenameSpace(s.id, next)
-                  : undefined
-              }
-            />
-          ))}
-        </div>
-      </ScrollArea>
+          <div
+            role='tablist'
+            aria-label={t('chrome.aria.openSpaces')}
+            className='flex w-max items-center'
+            style={{ gap: 'var(--space-1)', padding: '0 var(--space-2)' }}
+          >
+            <SortableContext
+              items={tabIds}
+              strategy={horizontalListSortingStrategy}
+            >
+              {spaces.map((s) => (
+                <SpaceTab
+                  key={s.id}
+                  id={s.id}
+                  name={s.name}
+                  type={s.type}
+                  active={s.id === activeSpaceId}
+                  locked={s.locked}
+                  onActivate={() => onActivate(s.id)}
+                  onClose={onClose ? () => onClose(s.id) : undefined}
+                  onRename={
+                    onRenameSpace
+                      ? (next) => onRenameSpace(s.id, next)
+                      : undefined
+                  }
+                />
+              ))}
+            </SortableContext>
+          </div>
+        </ScrollArea>
+      </DndContext>
 
       <ArrowButton
         direction='right'
