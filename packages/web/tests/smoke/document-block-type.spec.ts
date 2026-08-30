@@ -259,3 +259,66 @@ test('对勾在快捷键右边，分隔线在 Code block 之后', async () => {
   // 行底色没了，勾是唯一的标记。
   expect(geometry.activeRows).toBe(0);
 });
+
+/**
+ * 菜单里画灰的那些行。
+ * @param p - 页面。
+ * @returns 它们的 id，按菜单画的顺序。
+ */
+async function greyedRows(p: Page): Promise<string[]> {
+  return p.evaluate((slot) => {
+    const rows = document.querySelectorAll(`[data-testid^="${slot}-item-"]`);
+    return Array.from(rows)
+      .filter((row) => row.getAttribute('aria-disabled') === 'true')
+      .map((row) => row.getAttribute('data-testid')?.replace(`${slot}-item-`, '') ?? '');
+  }, SLOT);
+}
+
+test('正文里有缩进列表时，全选之后除 To-do list 外九行都点得动', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('lead');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('deep');
+  await expect
+    .poll(async () => bodyHtml(page), { timeout: 10_000 })
+    .toBe('<p>lead</p><ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
+
+  // 全选分两档：第一次收当前块，第二次才是整篇（`select-all-tiers-and-keys`）。
+  await page.keyboard.press(`${MOD}+a`);
+  await page.keyboard.press(`${MOD}+a`);
+  await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
+  await openBlockTypeMenu(page);
+  expect(await greyedRows(page)).toEqual(['task-list']);
+
+  await page.getByTestId(`${SLOT}-item-heading-1`).click();
+  await expect
+    .poll(async () => bodyHtml(page), { timeout: 10_000 })
+    .toBe('<h1>lead</h1><h1>one</h1><h1>deep</h1>');
+});
+
+test('挂着子列表的那一项，只选它的第一行也点得动', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('- one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('deep');
+  await expect
+    .poll(async () => bodyHtml(page), { timeout: 10_000 })
+    .toBe('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
+
+  // 只收「one」那一行。它是那一项的第一块，而那一项底下挂着子列表，所以它
+  // 交不出这一块 —— 整项的内容一起出来。
+  await page.locator(`${EDITOR} p`).first().click();
+  await page.keyboard.press(`${MOD}+a`);
+  await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
+  await openBlockTypeMenu(page);
+  expect(await greyedRows(page)).toEqual(['task-list']);
+
+  await page.getByTestId(`${SLOT}-item-heading-1`).click();
+  await expect
+    .poll(async () => bodyHtml(page), { timeout: 10_000 })
+    .toBe('<h1>one</h1><ul><li><p>deep</p></li></ul>');
+});

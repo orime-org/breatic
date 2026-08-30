@@ -650,9 +650,11 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
 
   const blockType = await hoverOpenSlot('doc-bubble-block-type');
   expect(await rowsOf(blockType)).toHaveLength(9);
+  // 八个：互斥七行加 Quote。To-do list 是九行里唯一没有命令的，也就没有
+  // 快捷键可印（`document-block-type-shortcuts.ts`）。
   expect(
     await blockType.locator('[data-testid^="doc-bubble-block-type-shortcut-"]').count(),
-  ).toBe(7);
+  ).toBe(8);
 
   const align = await hoverOpenSlot('doc-bubble-align');
   expect(await rowsOf(align)).toHaveLength(3);
