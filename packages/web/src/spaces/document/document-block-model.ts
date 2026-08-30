@@ -153,26 +153,25 @@ function isItemAt(doc: PMNode, pos: number, id: BlockTypeId): boolean {
  * union without joining this table is a compile error and cannot end up drawn
  * in the menu yet never asked about.
  *
- * The numbers are the order `blockTypeAt` asks the rows in. No two of them can
- * answer for one block — a list item's own node is a paragraph and `paragraph`
- * excludes items — so the order settles nothing today; it is the order the
- * menu reads in, kept here so the face and the menu cannot disagree.
+ * The line order is the order `blockTypeAt` asks the rows in. No two of them
+ * can answer for one block — a list item's own node is a paragraph and
+ * `paragraph` excludes items — so the order settles nothing today; it is the
+ * order the menu reads in, kept here so the face and the menu cannot disagree.
  */
-const ROW_ORDER: Record<BlockTypeId, number> = {
-  'bullet-list': 0,
-  'ordered-list': 1,
-  'task-list': 2,
-  paragraph: 3,
-  'heading-1': 4,
-  'heading-2': 5,
-  'heading-3': 6,
-  'code-block': 7,
-  quote: 8,
+const ROW_ORDER: Record<BlockTypeId, true> = {
+  'bullet-list': true,
+  'ordered-list': true,
+  'task-list': true,
+  paragraph: true,
+  'heading-1': true,
+  'heading-2': true,
+  'heading-3': true,
+  'code-block': true,
+  quote: true,
 };
 
 /** All nine rows, in that order. */
-const ROWS = (Object.keys(ROW_ORDER) as BlockTypeId[])
-  .sort((a, b) => ROW_ORDER[a] - ROW_ORDER[b]);
+const ROWS = Object.keys(ROW_ORDER) as BlockTypeId[];
 
 /** The exclusive eight: every row but Quote, which sits across them. */
 const EXCLUSIVE = ROWS.filter((id) => id !== 'quote');
@@ -612,13 +611,16 @@ function applyExclusive(tr: Transaction, schema: Schema, target: BlockTypeId): b
  */
 function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
   const { state } = editor;
-  const ends = selectionEnds(state);
-  if (!ends) return null;
+  // One reading of the selection answers both questions this needs.
+  const at = selectedBlocks(state);
+  const first = at[0];
+  const last = at[at.length - 1];
+  if (first === undefined || last === undefined) return null;
 
   const listNode = LIST_NODE[id];
   if (listNode !== undefined && state.schema.nodes[listNode] === undefined) return null;
 
-  const marked = isMarked(editor, id);
+  const marked = markedOver(state.doc, at, id);
   const tr = state.tr;
   if (!applyTransition(tr, state.schema, id, marked)) return null;
   if (!tr.docChanged) return null;
@@ -631,9 +633,9 @@ function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
   // bubble bar off screen (`SelectionBubbleBar.tsx`'s `isWarranted`), so the
   // blocks the press acted on carry the selection instead.
   if (tr.selection.empty && !state.selection.empty) {
-    const first = tr.mapping.map(ends.first);
-    const last = tr.mapping.map(ends.last);
-    tr.setSelection(TextSelection.create(tr.doc, first, tr.doc.resolve(last).end()));
+    const head = tr.mapping.map(first);
+    const tail = tr.mapping.map(last);
+    tr.setSelection(TextSelection.create(tr.doc, head, tr.doc.resolve(tail).end()));
   }
   return tr;
 }

@@ -13,12 +13,11 @@
  * draws them and writes a line to the console when pressed, the menu closing
  * after them either way (user 2026-08-27).
  *
- * Three things carry the greyed treatment `document-coming-tool.tsx` defines,
- * each for a reason of its own: the task list row, which has no schema node to
- * turn anything into (the row the demo greys, #13); the alignment slot over a
- * selection alignment does not reach (A7); and any block type row this
- * selection cannot reach (§6.7), which unlike the other two moves with the
- * selection and is judged only while the menu is down.
+ * Two things carry the greyed treatment `document-coming-tool.tsx` defines:
+ * any block type row this selection cannot reach (§6.7), judged only while the
+ * menu is down, and the alignment slot over a selection alignment does not
+ * reach (A7). The task list is the first of those — the schema has no node for
+ * it (#13), so no selection reaches it and it is greyed on every one.
  */
 
 import * as React from 'react';
@@ -203,7 +202,7 @@ function SlotShell({
  * The block type slot.
  *
  * Its icon tracks the current block (user 2026-08-26); the menu's nine rows
- * follow the demo's block type menu, seven of them carrying a shortcut column.
+ * follow the demo's block type menu, eight of them carrying a shortcut column.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */
@@ -244,8 +243,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
     selector: ({ editor: e }) =>
       new Set<BlockTypeId>(
         e && open
-          ? BLOCK_TYPE_ITEMS.filter((item) => !item.greyed && !canRunBlockType(e, item.id))
-            .map((i) => i.id)
+          ? BLOCK_TYPE_ITEMS.filter((item) => !canRunBlockType(e, item.id)).map((i) => i.id)
           : [],
       ),
   });
@@ -270,13 +268,9 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
           <React.Fragment key={item.id}>
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
-              aria-disabled={item.greyed || unreachable.has(item.id) ? 'true' : undefined}
-              className={cn((item.greyed || unreachable.has(item.id)) && UNAVAILABLE)}
+              aria-disabled={unreachable.has(item.id) ? 'true' : undefined}
+              className={cn(unreachable.has(item.id) && UNAVAILABLE)}
               onSelect={() => {
-                if (item.greyed) {
-                  pressedWithNothingBehindIt(`block type ${item.id}`);
-                  return;
-                }
                 runBlockType(editor, item.id);
               }}
             >

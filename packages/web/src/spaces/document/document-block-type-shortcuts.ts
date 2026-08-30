@@ -17,43 +17,40 @@
 import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
-/** One row's chord, and whether the menu draws it. */
+/** One row's chord. */
 export interface BlockTypeShortcut {
   id: BlockTypeId;
   spec: ShortcutSpec;
-  /** Drawn in the row's shortcut column, the way the demo draws it. */
-  printed: boolean;
 }
 
 /**
- * The eight chords, printed the way the demo prints them.
+ * The eight chords: seven exclusive rows and Quote.
  *
- * The demo draws a chord on all eight exclusive rows and leaves only the task
- * list blank (`demo/2026-08-29-block-type-transitions.html:211-218`), and the
- * task list has no chord because it has no command.
+ * The task list is the row with neither — it has no command, so it has nothing
+ * to bind and nothing to print. The demo draws the same eight
+ * (`demo/2026-08-29-block-type-transitions.html:211-219`).
  */
 export const BLOCK_TYPE_SHORTCUTS: BlockTypeShortcut[] = [
-  { id: 'paragraph', spec: { mod: true, alt: true, key: '0' }, printed: true },
-  { id: 'heading-1', spec: { mod: true, alt: true, key: '1' }, printed: true },
-  { id: 'heading-2', spec: { mod: true, alt: true, key: '2' }, printed: true },
-  { id: 'heading-3', spec: { mod: true, alt: true, key: '3' }, printed: true },
-  { id: 'bullet-list', spec: { mod: true, shift: true, key: '8' }, printed: true },
-  { id: 'ordered-list', spec: { mod: true, shift: true, key: '7' }, printed: true },
-  { id: 'code-block', spec: { mod: true, alt: true, key: 'C' }, printed: true },
-  { id: 'quote', spec: { mod: true, shift: true, key: 'B' }, printed: true },
+  { id: 'paragraph', spec: { mod: true, alt: true, key: '0' } },
+  { id: 'heading-1', spec: { mod: true, alt: true, key: '1' } },
+  { id: 'heading-2', spec: { mod: true, alt: true, key: '2' } },
+  { id: 'heading-3', spec: { mod: true, alt: true, key: '3' } },
+  { id: 'bullet-list', spec: { mod: true, shift: true, key: '8' } },
+  { id: 'ordered-list', spec: { mod: true, shift: true, key: '7' } },
+  { id: 'code-block', spec: { mod: true, alt: true, key: 'C' } },
+  { id: 'quote', spec: { mod: true, shift: true, key: 'B' } },
 ];
 
 /** Looked up by row, for the menu. */
 const BY_ID = new Map(BLOCK_TYPE_SHORTCUTS.map((entry) => [entry.id, entry]));
 
 /**
- * The chord a row prints, if it prints one.
+ * The chord a row prints, if it has one.
  * @param id - Which row.
  * @returns That chord, or undefined where the row's column is empty.
  */
 export function printedShortcut(id: BlockTypeId): ShortcutSpec | undefined {
-  const entry = BY_ID.get(id);
-  return entry?.printed === true ? entry.spec : undefined;
+  return BY_ID.get(id)?.spec;
 }
 
 /**

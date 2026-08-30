@@ -38,15 +38,6 @@ export interface BlockTypeItem {
   id: BlockTypeId;
   labelKey: string;
   Icon: LucideIcon;
-  /**
-   * Drawn greyed out, the way the demo draws that row.
-   *
-   * The demo greys one row, and for a reason of its own: the task list has no
-   * schema node at all yet (#13). It has a place in the menu because a
-   * paragraph could be turned into one; it does not read as available because
-   * there is nothing to turn into.
-   */
-  greyed?: true;
 }
 
 /**
@@ -88,7 +79,6 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     id: 'task-list',
     labelKey: 'spaces.document.commands.taskList',
     Icon: ListTodo,
-    greyed: true,
   },
   {
     id: 'code-block',
