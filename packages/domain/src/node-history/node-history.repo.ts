@@ -9,7 +9,7 @@
  * ordered by created_at desc.
  */
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { nodeHistory, studios } from "@breatic/core";
 import type { NodeHistoryEntity } from "@breatic/shared";
@@ -173,7 +173,7 @@ export async function createGenerationSuccessIfAbsent(data: {
  * @param data.thumbnailUrl - Cover URL for a video; the asset's own URL for an image.
  * @param data.storageKey - The granted storage key, when this upload has one.
  * @param data.metadata - Filename, byte size and mime type.
- * @returns The inserted entity, or the pre-existing one on conflict.
+ * @returns The stored entry plus whether this call is the one that wrote it.
  */
 export async function createUploadSuccessIfAbsent(data: {
   projectId: string;
@@ -183,8 +183,8 @@ export async function createUploadSuccessIfAbsent(data: {
   thumbnailUrl?: string;
   storageKey?: string;
   metadata?: Record<string, unknown>;
-}): Promise<NodeHistoryEntity> {
-  const inserted = await db
+}): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
+  const rows = await db
     .insert(nodeHistory)
     .values({
       projectId: data.projectId,
@@ -209,8 +209,17 @@ export async function createUploadSuccessIfAbsent(data: {
         thumbnailUrl: sql`COALESCE(${nodeHistory.thumbnailUrl}, EXCLUDED.thumbnail_url)`,
       },
     })
-    .returning();
-  return toEntity(inserted[0]!);
+    // `xmax = 0` on a returned row means this statement inserted it; a row the
+    // DO UPDATE touched carries the updating transaction's id there instead.
+    // The caller needs this because the OTHER downstream of an upload — the
+    // project activity feed — has no key of its own to dedup on, and gets its
+    // answer from here rather than from a second idempotency column.
+    .returning({
+      ...getTableColumns(nodeHistory),
+      inserted: sql<boolean>`(xmax = 0)`,
+    });
+  const first = rows[0]!;
+  return { entry: toEntity(first), inserted: first.inserted };
 }
 
 /**

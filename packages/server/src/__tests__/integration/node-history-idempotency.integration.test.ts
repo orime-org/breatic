@@ -299,7 +299,7 @@ describe("node_history upload idempotency (#173)", () => {
     const first = await nodeHistoryService.recordUpload(opts);
     const second = await nodeHistoryService.recordUpload(opts);
 
-    expect(second.id).toBe(first.id);
+    expect(second.entry.id).toBe(first.entry.id);
   });
 
   // The replay writes the thumbnail the second time round when the first
@@ -372,5 +372,42 @@ describe("node_history upload idempotency (#173)", () => {
     });
 
     expect(await countUploads(nodeId)).toBe(2);
+  });
+});
+
+describe("knowing whether the upload row was newly written (#173)", () => {
+  // The video cover job writes two downstreams: this row and the project
+  // activity feed. Only this one has a key of its own, so the feed learns
+  // from it whether the replay is writing something new — one flag instead of
+  // a second idempotency column on a second table.
+  it("reports the first write as inserted and the replay as not", async () => {
+    const userId = await insertUser("Insert Flag");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/flag.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+    };
+
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(false);
+  });
+
+  it("reports every keyless upload as inserted", async () => {
+    const userId = await insertUser("Keyless Flag");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const opts = {
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/keyless.png",
+    };
+
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
+    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
   });
 });

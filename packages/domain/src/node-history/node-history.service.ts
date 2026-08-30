@@ -114,7 +114,9 @@ export async function recordGenerationFailure(opts: {
  * @param opts.metadata.filename - Original filename of the upload.
  * @param opts.metadata.size - Size of the uploaded file in bytes.
  * @param opts.metadata.mimeType - MIME type of the uploaded file.
- * @returns The created `NodeHistoryEntity`.
+ * @returns The stored entry plus whether this call is the one that wrote it.
+ *   The project activity feed, which has no key of its own, uses that flag
+ *   to skip its write on a replay.
  */
 export async function recordUpload(opts: {
   projectId: string;
@@ -128,7 +130,7 @@ export async function recordUpload(opts: {
     size?: number;
     mimeType?: string;
   };
-}): Promise<NodeHistoryEntity> {
+}): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
   return repo.createUploadSuccessIfAbsent({
     projectId: opts.projectId,
     nodeId: opts.nodeId,

@@ -199,23 +199,31 @@ export async function applyIngestReport(
   // grant unconsumed and the retry can finish the job.
   await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
 
+  // Whether the node history row is new. It gates the feed write below,
+  // which has no key of its own: on this path the grant's `consumedAt` already
+  // turns a repeat report away long before here, so it is only ever true —
+  // but the video job writes the same two downstreams and does get replayed,
+  // and reading the flag in both places keeps one rule instead of two.
+  let historyIsNew = true;
   if (grant.nodeId !== null && grant.projectId !== null) {
-    await nodeHistoryService.recordUpload({
+    const recorded = await nodeHistoryService.recordUpload({
       projectId: grant.projectId,
       nodeId: grant.nodeId,
       userId: grant.userId,
       content: asset.fileUrl,
+      storageKey: grant.storageKey,
       metadata: {
         ...(grant.filename !== null && { filename: grant.filename }),
         size: sizeBytes,
         mimeType: contentType,
       },
     });
+    historyIsNew = recorded.inserted;
   }
 
   // The project feed. A derived byproduct (a video's cover) is in the ledger
   // but is not an event anyone watching the project wants announced.
-  if (grant.projectId !== null && grant.derived !== true) {
+  if (historyIsNew && grant.projectId !== null && grant.derived !== true) {
     await recordProjectActivity({
       projectId: grant.projectId,
       actorUserId: grant.userId,
