@@ -906,8 +906,19 @@ function ProjectWorkspace({
                   around it is wider than the line twice over: the transparent
                   ::before reaches 4px to each side, and the library grows the
                   1px hit rect to a total of `resizeTargetMinimumSize` (10px
-                  for a mouse), which is about 4.5px to each side. Double-click
-                  is off: the library
+                  for a mouse), which is about 4.5px to each side.
+
+                  The `z-10` is what makes the right-hand half of that reach
+                  real: the canvas pane is `position:absolute; z-index:1`, so
+                  without it the pane paints over the half of the ::before that
+                  hangs into the space region, and a press there lands on the
+                  canvas in the DOM while the library still reads it as a drag.
+                  The canvas then began a box selection, the library took the
+                  pointer capture away, and the `pointerup` the canvas was
+                  waiting for went to the handle instead — leaving a selection
+                  box being drawn under a pointer with no button held.
+
+                  Double-click is off: the library
                   resizes imperatively there, which does not count as a user
                   gesture, so the width would be restored a frame later — the
                   user would see it flick and come back. */}
@@ -916,7 +927,7 @@ function ProjectWorkspace({
                     aria-label={t('chrome.aria.agentColumnWidth')}
                     style={{ width: RESIZE_HANDLE_WIDTH }}
                     className={
-                      'relative flex-none cursor-col-resize bg-border '
+                      'relative z-10 flex-none cursor-col-resize bg-border '
                     + 'transition-colors duration-[var(--duration-fast)] '
                     + 'before:absolute before:inset-y-0 before:-inset-x-1 before:content-[\'\'] '
                     + 'hover:bg-active-border active:bg-active-border '
