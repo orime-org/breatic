@@ -93,16 +93,6 @@ function listDepthAt($pos: Resolved): number | null {
 }
 
 /**
- * The name of the nearest list holding this position.
- * @param $pos - A resolved position inside a text block.
- * @returns The list's node name, or null where no list holds it.
- */
-function nearestListName($pos: Resolved): string | null {
-  const depth = listDepthAt($pos);
-  return depth === null ? null : $pos.node(depth).type.name;
-}
-
-/**
  * Is a quote holding this position?
  * @param $pos - A resolved position inside a text block.
  * @returns Whether a blockquote holds it.
@@ -112,11 +102,31 @@ function insideQuote($pos: Resolved): boolean {
 }
 
 /**
+ * The list this block is an item of.
+ *
+ * A block is a list item only where it is its item's FIRST block (user
+ * 2026-08-30). The marker is drawn on the list item and sits beside its first
+ * line, so a later block of the same item carries none: the reader sees a
+ * plain paragraph, and a judgement reading "some list is above me" would have
+ * the menu report a list where there is no bullet.
+ * @param $pos - A resolved position inside a text block.
+ * @returns That list's node name, or null where the block is not an item.
+ */
+function itemListName($pos: Resolved): string | null {
+  const listDepth = listDepthAt($pos);
+  // The block sits at `listDepth + 2`: list, item, block.
+  if (listDepth === null || $pos.depth !== listDepth + 2) return null;
+  if ($pos.index(listDepth + 1) !== 0) return null;
+  return $pos.node(listDepth).type.name;
+}
+
+/**
  * Does the text block at this position count as the given item?
  *
- * The four kinds are judged differently. A list is the nearest list ancestor
- * while the block itself is a paragraph, so judging a list by the block's own
- * type would tick Text and leave the list blank.
+ * The four kinds are judged differently. A list is judged by the block's place
+ * — see {@link itemListName} — while the block itself is a paragraph, so
+ * judging a list by the block's own type would tick Text and leave the list
+ * blank.
  * @param doc - The document.
  * @param pos - A position inside a text block.
  * @param id - Which row.
@@ -128,9 +138,9 @@ function isItemAt(doc: PMNode, pos: number, id: BlockTypeId): boolean {
   if (!block.isTextblock) return false;
   if (id === 'quote') return insideQuote($pos);
   const list = LIST_NODE[id];
-  if (list !== undefined) return nearestListName($pos) === list;
+  if (list !== undefined) return itemListName($pos) === list;
   if (id === 'paragraph') {
-    return block.type.name === 'paragraph' && nearestListName($pos) === null;
+    return block.type.name === 'paragraph' && itemListName($pos) === null;
   }
   if (id === 'code-block') return block.type.name === 'codeBlock';
   return block.type.name === 'heading' && block.attrs.level === HEADING_LEVEL[id];
@@ -143,11 +153,10 @@ function isItemAt(doc: PMNode, pos: number, id: BlockTypeId): boolean {
  * union without joining this table is a compile error and cannot end up drawn
  * in the menu yet never asked about.
  *
- * Lists come first because a list item holds `paragraph block*`: a heading or a
- * code block can sit in one past its first block, and there both the list row
- * and that block's own type answer for it. The list is the row the reader sees.
- * Text takes no part in that overlap — it answers only where no list holds the
- * block at all.
+ * The numbers are the order `blockTypeAt` asks the rows in. No two of them can
+ * answer for one block — a list item's own node is a paragraph and `paragraph`
+ * excludes items — so the order settles nothing today; it is the order the
+ * menu reads in, kept here so the face and the menu cannot disagree.
  */
 const ROW_ORDER: Record<BlockTypeId, number> = {
   'bullet-list': 0,
@@ -252,55 +261,55 @@ function selectedRange(tr: Transaction): NodeRange | null {
 }
 
 /**
- * Lifts every text block in the selection out of the lists holding it.
+ * Takes each list item in the selection one level out of its list.
+ *
+ * ONE level per block, then stop (user 2026-08-30,
+ * `demo/2026-08-30-nested-list-lift-decision.html`). An item of a nested list
+ * lands in the item above as a plain paragraph, and an item of a top level
+ * list lands in the body — one level takes it out either way. Lifting until
+ * nothing moves instead read the answer off whether the block happened to land
+ * mid-item, so two adjacent items of one list took opposite paths.
+ *
+ * Only blocks that ARE list items move: a later block of an item carries no
+ * marker and is nothing the exclusive rows have to make way for, so leaving it
+ * alone is what keeps the blocks nobody selected where they stand.
  *
  * The range sits on what the list item holds, not on what holds the block, so
  * a quote between the two comes out with the block instead of being taken off
  * it — Quote is orthogonal to the exclusive rows (rule 3, A4) and §6.1's
- * measured path leaves blockquote alone. Runs until a pass lifts nothing: each
- * lift drops one block one level, so the summed depth of the covered blocks
- * strictly decreases and the loop ends — a pass count would instead leave the
- * items beyond it in their old list while the transaction went out anyway.
- *
- * Coming out one level is as far as some blocks go, and that is the answer the
- * design gives them: an item indented under another, with a sibling on its own
- * level, ends up a paragraph inside the item above rather than at the top
- * (§5.3, measured).
+ * measured path leaves blockquote alone.
  * @param tr - The transaction, written into.
  */
 function liftOutOfLists(tr: Transaction): void {
-  for (;;) {
-    let lifted = false;
-    for (const pos of selectedBlocks(tr)) {
-      const $from = tr.doc.resolve(pos);
-      const listDepth = listDepthAt($from);
-      if (listDepth === null) continue;
-      const range = new NodeRange($from, $from, listDepth + 1);
-      const target = liftTarget(range);
-      if (target === null) continue;
-      tr.lift(range, target);
-      lifted = true;
-      break;
-    }
-    if (!lifted) return;
+  for (let i = 0; ; i += 1) {
+    const pos = selectedBlocks(tr)[i];
+    if (pos === undefined) return;
+    const $from = tr.doc.resolve(pos);
+    const listDepth = listDepthAt($from);
+    if (listDepth === null || itemListName($from) === null) continue;
+    const range = new NodeRange($from, $from, listDepth + 1);
+    const target = liftTarget(range);
+    if (target === null) continue;
+    tr.lift(range, target);
   }
 }
 
 /**
- * Is this block exactly one of the exclusive eight?
+ * Did the press land every selected block on the row it aimed at?
  *
- * A list holding a block makes that block the list's row, and its own node has
- * to stay a paragraph for that to be the only row answering (§6.0's four
- * judgements). Where a press leaves a heading or a code block inside a list
- * item, both the list row and the block's own type answer for it and rule 1 no
- * longer holds — two ticks for one block (A13).
- * @param doc - The document.
- * @param pos - A position inside a text block.
- * @returns Whether one row and no more answers for it.
+ * Rule 2 says an unticked press turns EVERY block into that row and a ticked
+ * one takes every block back to Text, so a press that moved some and left
+ * others is half of what it promised (rule 4). Reading the result back off the
+ * document is what catches a block the schema would not let move: nothing on
+ * the way there reports it.
+ * @param tr - The transaction.
+ * @param target - The row the press aimed at.
+ * @param want - Whether every block should be that row, or none of them.
+ * @returns Whether the press arrived.
  */
-function isOneExclusive(doc: PMNode, pos: number): boolean {
-  const $pos = doc.resolve(pos);
-  return listDepthAt($pos) === null || $pos.parent.type.name === 'paragraph';
+function landedOn(tr: Transaction, target: BlockTypeId, want: boolean): boolean {
+  const positions = selectedBlocks(tr);
+  return positions.length > 0 && positions.every((pos) => isItemAt(tr.doc, pos, target) === want);
 }
 
 /**
@@ -446,8 +455,7 @@ function toBlockType(
   attrs: Record<string, unknown> | null,
 ): boolean {
   liftOutOfLists(tr);
-  if (!setBlocks(tr, type, attrs)) return false;
-  return selectedBlocks(tr).every((pos) => isOneExclusive(tr.doc, pos));
+  return setBlocks(tr, type, attrs);
 }
 
 /**
@@ -528,10 +536,23 @@ function applyTransition(
     // leaves the blocks nobody selected inside it.
     splitListAtSelectionEdges(tr);
     unwrapQuotes(tr);
-    return marked ? true : wrapInQuote(tr);
+    if (!marked && !wrapInQuote(tr)) return false;
+    return landedOn(tr, 'quote', !marked);
   }
 
   const target: BlockTypeId = marked ? 'paragraph' : id;
+  if (!applyExclusive(tr, schema, target)) return false;
+  return landedOn(tr, target, true);
+}
+
+/**
+ * Writes one exclusive row's target into the transaction.
+ * @param tr - The transaction, written into.
+ * @param schema - The document schema.
+ * @param target - Which of the exclusive eight to become.
+ * @returns Whether every step went in.
+ */
+function applyExclusive(tr: Transaction, schema: Schema, target: BlockTypeId): boolean {
   const listNode = LIST_NODE[target];
   if (listNode !== undefined) {
     const listType = schema.nodes[listNode];

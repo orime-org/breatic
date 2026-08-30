@@ -47,12 +47,17 @@ const REACHABLE: Array<[name: string, body: string, place: Place]> = [
     '<h1>a heading</h1><p>a paragraph</p>',
     (e) => { selectWholeBody(e); },
   ],
-  // The quote comes out of the list with the block rather than being taken off
-  // it (§6.1, A4), so every exclusive row reaches something here too.
+  // Neither of these is a list item — a later block of an item carries no
+  // marker (§6.0) — so nothing has to make way and every row reaches something.
   [
     'a quoted block a list item holds',
     '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>',
     (e) => { selectBlock(e, 'b'); },
+  ],
+  [
+    'a later block of an item holding a sub-list',
+    '<ul><li><p>b</p><p>c</p><ul><li><p>d</p></li></ul></li></ul>',
+    (e) => { selectBlock(e, 'c'); },
   ],
 ];
 
@@ -69,16 +74,6 @@ const STUCK: Array<[name: string, body: string, place: Place, lit: BlockTypeId[]
     '<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>',
     (e) => { selectBlock(e, 'one'); },
     ['quote'],
-  ],
-  [
-    'an indented item already taken back to a paragraph',
-    '<ul><li><p>b</p><p>c</p><ul><li><p>d</p></li></ul></li></ul>',
-    (e) => { selectBlock(e, 'c'); },
-    // A heading or a code block staying inside the item would have both the
-    // list row and its own type answering for it (§6.0), so those rows reach
-    // nothing here. Ordered list is reachable because a list item can hold a
-    // sub-list of another kind.
-    ['ordered-list', 'quote'],
   ],
   [
     'a selection running from a paragraph into a stuck item',

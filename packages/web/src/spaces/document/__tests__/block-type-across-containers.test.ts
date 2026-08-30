@@ -208,29 +208,29 @@ describe('a press that changes nothing', () => {
 });
 
 describe('a quote between the block and the list holding it', () => {
-  // §6.1's measured path takes a block out of the list containers and leaves
-  // blockquote alone, and A4 has the quote survive every exclusive press. Both
-  // starting states are ones the menu writes itself: §5.3 row 6 (A36) puts a
-  // quote around the inner list, and pressing Quote on a later block of an item
-  // puts one inside the item.
-  const CASES: Array<[name: string, body: string, expected: string]> = [
-    [
-      'a quoted inner list',
-      '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>',
-      '<ul><li><p>a</p></li></ul><blockquote><p>b</p></blockquote>',
-    ],
-    [
-      'a quoted later block of an item',
-      '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>',
-      '<ul><li><p>a</p></li></ul><blockquote><p>b</p></blockquote>',
-    ],
-  ];
+  // §6.1's measured path takes a list item one level out of its list and
+  // leaves blockquote alone, and A4 has the quote survive every exclusive
+  // press. A block a quote holds inside a list item is not a list item itself
+  // (no marker on screen), so nothing has to make way for it: it changes type
+  // where it stands and both containers survive.
+  it('keeps the quote and the item when a heading is pressed on a quoted block', () => {
+    const editor = openBody('<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>');
+    selectBlock(editor, 'b');
+    runBlockType(editor, 'heading-1');
+    expect(editor.getHTML()).toBe(
+      '<ul><li><p>a</p><blockquote><h1>b</h1></blockquote></li></ul>',
+    );
+  });
 
-  it.each(CASES)('keeps the quote when Text is pressed on %s', (_name, body, expected) => {
-    const editor = openBody(body);
+  it('takes a quoted inner list one level out and keeps the quote', () => {
+    const editor = openBody(
+      '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>',
+    );
     selectBlock(editor, 'b');
     runBlockType(editor, 'paragraph');
-    expect(editor.getHTML()).toBe(expected);
+    expect(editor.getHTML()).toBe(
+      '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>',
+    );
   });
 
   it('keeps the quote when a heading is pressed on a quoted inner list', () => {
@@ -239,7 +239,9 @@ describe('a quote between the block and the list holding it', () => {
     );
     selectBlock(editor, 'b');
     runBlockType(editor, 'heading-1');
-    expect(editor.getHTML()).toBe('<ul><li><p>a</p></li></ul><blockquote><h1>b</h1></blockquote>');
+    expect(editor.getHTML()).toBe(
+      '<ul><li><p>a</p><blockquote><h1>b</h1></blockquote></li></ul>',
+    );
   });
 });
 

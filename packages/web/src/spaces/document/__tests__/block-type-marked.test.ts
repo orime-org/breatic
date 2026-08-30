@@ -127,6 +127,36 @@ describe('a selection holding no text block ticks nothing', () => {
   });
 });
 
+describe('a list is the row of its item\'s FIRST block only (user 2026-08-30)', () => {
+  // The bullet is drawn on the list item and sits beside its first line, so a
+  // later block of the same item carries no marker on screen. Judging it by
+  // "is a list somewhere above me" would have the menu report a list where the
+  // reader sees none.
+  it('ticks the list on the first block', () => {
+    const editor = openBody('<ul><li><p>a</p><p>b</p></li></ul>');
+    selectBlock(editor, 'a');
+    expect(ticked(editor)).toEqual(['bullet-list']);
+  });
+
+  it('ticks Text on a later block of the same item', () => {
+    const editor = openBody('<ul><li><p>a</p><p>b</p></li></ul>');
+    selectBlock(editor, 'b');
+    expect(ticked(editor)).toEqual(['paragraph']);
+  });
+
+  it('ticks the heading alone where a later block is one', () => {
+    const editor = openBody('<ul><li><p>a</p><h1>b</h1></li></ul>');
+    selectBlock(editor, 'b');
+    expect(ticked(editor)).toEqual(['heading-1']);
+  });
+
+  it('ticks the quote and Text on a later block held by a quote', () => {
+    const editor = openBody('<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>');
+    selectBlock(editor, 'b');
+    expect(ticked(editor)).toEqual(['paragraph', 'quote']);
+  });
+});
+
 describe('at most one exclusive row is ever ticked (A13)', () => {
   // Rule 1 makes a block exactly one of the eight, and §6.0 judges a list by
   // the nearest list ancestor while the block itself stays a paragraph. So a

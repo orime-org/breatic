@@ -164,13 +164,6 @@ describe('the menu', () => {
       ['paragraph', 'heading-1', 'heading-2', 'heading-3',
         'bullet-list', 'ordered-list', 'task-list', 'code-block'],
     ],
-    [
-      'a later block of an item holding a sub-list',
-      '<ul><li><p>b</p><p>c</p><ul><li><p>d</p></li></ul></li></ul>',
-      'c',
-      ['paragraph', 'heading-1', 'heading-2', 'heading-3',
-        'bullet-list', 'task-list', 'code-block'],
-    ],
   ];
 
   it.each(STUCK)('greys the rows %s cannot reach', async (_name, body, pick, greyed) => {
