@@ -51,6 +51,7 @@ import {
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useTabReorder } from '@web/pages/project/use-tab-reorder';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
@@ -254,15 +255,88 @@ function ProjectWorkspace({
     null,
   );
 
+  /**
+   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
+   * connection. Always throws on failure, and always shows a toast first —
+   * every caller relies on that, ending in an empty `.catch()` because the
+   * user has already been told. There are three ways to fail and all three
+   * go through here: the provider is not mounted yet (the UI gates actions
+   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
+   * its 10s timeout, or the transport throws), or the server answered no.
+   */
+  const callRpc = React.useCallback(
+    async (
+      req: Parameters<typeof sendSpaceRpc>[1],
+      errorToastKey: string,
+    ): Promise<SpaceRpcResponse> => {
+      if (!provider) {
+        // Surface a toast on the "no provider yet" path too - without this
+        // the catch block in callers received a silent `Error('notSynced')`
+        // and (because `err.message.length > 0`) the fallback toast was
+        // skipped, leaving the user staring at a dismissed dialog and no
+        // explanation (2026-05-25 P0 silent-fail).
+        const msg = t('project.space.error.notSynced');
+        toast.error(t(errorToastKey), { description: msg });
+        throw new Error(msg);
+      }
+      let res: SpaceRpcResponse;
+      try {
+        res = await sendSpaceRpc(provider, req);
+      } catch (err) {
+        // A rejection means the request never got an answer — the 10s
+        // timeout, or the socket refusing to carry it. Without this the
+        // rejection travelled straight out of the await, past both toasts
+        // below, into a caller's empty catch: with the network down a user
+        // could close a tab and never hear anything back (real-browser
+        // smoke, 2026-08-03). The thrown message is a developer string, so
+        // the user gets a written one instead.
+        toast.error(t(errorToastKey), {
+          description: t('project.space.error.unreachable'),
+        });
+        throw err;
+      }
+      if (!res.ok) {
+        toast.error(t(errorToastKey), { description: res.error.message });
+        throw new Error(res.error.message);
+      }
+      return res;
+    },
+    [provider, t],
+  );
+
+  /**
+   * Send one tab move and say whether the server wrote anything.
+   * @param spaceId - The tab that moved.
+   * @param beforeSpaceId - The tab it landed in front of, null for the end.
+   * @returns Whether the order on the server changed, so a broadcast is coming.
+   * @throws {Error} When the request found no answer or the server said no.
+   */
+  const sendReorder = React.useCallback(
+    async (spaceId: string, beforeSpaceId: string | null): Promise<boolean> => {
+      const res = await callRpc(
+        { type: 'tab:reorder', payload: { spaceId, beforeSpaceId } },
+        'project.space.error.reorderTab',
+      );
+      return res.ok && res.result && 'orderChanged' in res.result
+        ? res.result.orderChanged
+        : false;
+    },
+    [callRpc],
+  );
+
+  // What the strip renders: the stored order with a released drag laid over it
+  // until the document catches up.
+  const { order: tabOrder, reorder } = useTabReorder(openTabIds, sendReorder);
+
   // Tabs shown in the tab bar = each open tab id resolved against the
   // shared spaces list (drop missing ids - happens if another user
   // deleted a Space while we had it open).
   const openTabs: ReadonlyArray<ProjectSpace> = React.useMemo(
     () =>
-      openTabIds
+      tabOrder
         .map((id) => spaces.find((s) => s.id === id))
         .filter((s): s is ProjectSpace => Boolean(s)),
-    [openTabIds, spaces],
+    [tabOrder, spaces],
   );
 
   const activeSpace: ProjectSpace | undefined = resolveEffectiveActiveSpace(
@@ -359,54 +433,6 @@ function ProjectWorkspace({
     'space-readonly-sheet',
   );
 
-  /**
-   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
-   * connection. Always throws on failure, and always shows a toast first —
-   * every caller relies on that, ending in an empty `.catch()` because the
-   * user has already been told. There are three ways to fail and all three
-   * go through here: the provider is not mounted yet (the UI gates actions
-   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
-   * its 10s timeout, or the transport throws), or the server answered no.
-   */
-  const callRpc = React.useCallback(
-    async (
-      req: Parameters<typeof sendSpaceRpc>[1],
-      errorToastKey: string,
-    ): Promise<SpaceRpcResponse> => {
-      if (!provider) {
-        // Surface a toast on the "no provider yet" path too - without this
-        // the catch block in callers received a silent `Error('notSynced')`
-        // and (because `err.message.length > 0`) the fallback toast was
-        // skipped, leaving the user staring at a dismissed dialog and no
-        // explanation (2026-05-25 P0 silent-fail).
-        const msg = t('project.space.error.notSynced');
-        toast.error(t(errorToastKey), { description: msg });
-        throw new Error(msg);
-      }
-      let res: SpaceRpcResponse;
-      try {
-        res = await sendSpaceRpc(provider, req);
-      } catch (err) {
-        // A rejection means the request never got an answer — the 10s
-        // timeout, or the socket refusing to carry it. Without this the
-        // rejection travelled straight out of the await, past both toasts
-        // below, into a caller's empty catch: with the network down a user
-        // could close a tab and never hear anything back (real-browser
-        // smoke, 2026-08-03). The thrown message is a developer string, so
-        // the user gets a written one instead.
-        toast.error(t(errorToastKey), {
-          description: t('project.space.error.unreachable'),
-        });
-        throw err;
-      }
-      if (!res.ok) {
-        toast.error(t(errorToastKey), { description: res.error.message });
-        throw new Error(res.error.message);
-      }
-      return res;
-    },
-    [provider, t],
-  );
 
   const pendingCreateTokenRef = React.useRef<string | null>(null);
 
@@ -854,6 +880,7 @@ function ProjectWorkspace({
                 onDeleteSpace={onDeleteSpace}
                 onSetSpaceLocked={onSetSpaceLocked}
                 onRenameSpace={onRenameSpace}
+                onReorder={reorder}
                 metaProvider={provider}
                 currentUserRole={role}
                 onRestoreSpace={onRestoreSpace}

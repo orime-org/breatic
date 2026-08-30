@@ -591,6 +591,7 @@
         "create": "Space 创建失败",
         "openTab": "打开标签失败",
         "closeTab": "关闭标签失败",
+        "reorderTab": "移动标签失败",
         "unreachable": "服务器没有响应,请检查网络后重试",
         "notSynced": "Project 正在同步,请稍后再试"
       },
