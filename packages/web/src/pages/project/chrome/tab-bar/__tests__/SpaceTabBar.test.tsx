@@ -68,11 +68,16 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
 }
 
 describe('SpaceTabBar', () => {
-  // Every browser has `Element.scrollTo`; jsdom leaves it undefined, so a
-  // component that scrolls a box of its own throws here and nowhere else.
-  // Put back exactly what was there — a stub left on the prototype follows
-  // the whole suite into every file that runs after this one.
-  const noScrollTo = Element.prototype.scrollTo;
+  // Every browser has `Element.scrollTo`; jsdom leaves the prototype without
+  // it, so a component that scrolls a box of its own throws here and nowhere
+  // else. Taking the descriptor and deleting when there was none puts the
+  // prototype back as it was: assigning the saved `undefined` would leave an
+  // own property behind, and `'scrollTo' in element` answers differently for
+  // every file that runs after this one.
+  const realScrollTo = Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    'scrollTo',
+  );
 
   beforeEach(() => {
     useUIStore.getState().setChatPanelCollapsed(false);
@@ -80,7 +85,11 @@ describe('SpaceTabBar', () => {
   });
 
   afterEach(() => {
-    Element.prototype.scrollTo = noScrollTo;
+    if (realScrollTo) {
+      Object.defineProperty(Element.prototype, 'scrollTo', realScrollTo);
+    } else {
+      delete (Element.prototype as unknown as Record<string, unknown>).scrollTo;
+    }
   });
 
   function mockRect(el: HTMLElement, rect: Pick<DOMRect, 'left' | 'right'>) {

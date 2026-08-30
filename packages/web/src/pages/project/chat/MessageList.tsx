@@ -138,7 +138,7 @@ function MessageListInner({
   navigating = false,
 }: MessageListProps): React.JSX.Element {
   const t = useTranslation();
-  const bottomRef = React.useRef<HTMLDivElement>(null);
+  const viewportRef = React.useRef<HTMLDivElement>(null);
   // Whether the reader was at the end last time they moved. Recorded as they
   // scroll rather than measured when new content arrives, because by then the
   // content has already made the column taller and there is no way left to
@@ -182,8 +182,8 @@ function MessageListInner({
    * until it lands, which would switch following off mid-turn.
    */
   const goToBottom = React.useCallback((): void => {
-    const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
-    if (viewport instanceof HTMLElement) viewport.scrollTop = viewport.scrollHeight;
+    const viewport = viewportRef.current;
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, []);
 
   // Before the effect that follows, so a message the reader just sent is
@@ -212,7 +212,7 @@ function MessageListInner({
   }, [sentCount, conversationId, goToBottom]);
 
   React.useEffect(() => {
-    const viewport = bottomRef.current?.closest('[data-radix-scroll-area-viewport]');
+    const viewport = viewportRef.current;
     if (!viewport) return;
 
     /** Record where the reader put themselves, while it is still true. */
@@ -237,16 +237,18 @@ function MessageListInner({
       viewport.removeEventListener('scroll', remember);
       observer.disconnect();
     };
-    // The anchor only exists once there are messages, so this has to be able
-    // to run again when the first one arrives.
-  }, [count, goToBottom]);
+  }, [goToBottom]);
 
   React.useEffect(() => {
     if (stickToBottom.current) goToBottom();
   }, [count, lastShape, goToBottom]);
 
   return (
-    <ScrollArea className='min-h-0 flex-1' data-testid='message-list'>
+    <ScrollArea
+      className='min-h-0 flex-1'
+      viewportRef={viewportRef}
+      data-testid='message-list'
+    >
       {!ready ? (
         skeleton ? <MessageSkeleton /> : null
       ) : count === 0 ? (
@@ -271,7 +273,6 @@ function MessageListInner({
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
-          <div ref={bottomRef} />
         </div>
       )}
     </ScrollArea>

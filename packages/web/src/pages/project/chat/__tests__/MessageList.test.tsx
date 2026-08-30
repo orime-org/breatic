@@ -1,11 +1,26 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import type { ChatMessage } from '@web/pages/project/chat/types';
+
+/**
+ * Undos owed at the end of the current test, newest first.
+ *
+ * The stand-ins below sit on `HTMLElement.prototype` and on
+ * `globalThis.ResizeObserver`, so an undo written at the end of a test body
+ * is skipped the moment an assertion above it fails — and every later test in
+ * the file then runs against geometry that was never put back, turning one
+ * real failure into a column of them.
+ */
+const undos: Array<() => void> = [];
+
+afterEach(() => {
+  for (const undo of undos.splice(0).reverse()) undo();
+});
 
 /**
  * State the scroll geometry jsdom does not lay out, live.
@@ -14,13 +29,13 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
  * way appending content does in a browser — which is the moment the whole
  * question turns on.
  * @param geometry - The values to report, mutated by the caller as it goes
- * @returns Undo, to be called before the test ends
+ * @returns The write counter and its reset
  */
 function stateGeometry(geometry: {
   scrollHeight: number;
   clientHeight: number;
   scrollTop: number;
-}): { restore: () => void; writes: () => number; reset: () => void } {
+}): { writes: () => number; reset: () => void } {
   let writes = 0;
   const keys = ['scrollHeight', 'clientHeight', 'scrollTop'] as const;
   const originals = keys.map((k) => [k, Object.getOwnPropertyDescriptor(HTMLElement.prototype, k)] as const);
@@ -43,13 +58,13 @@ function stateGeometry(geometry: {
       configurable: true,
     });
   }
+  undos.push(() => {
+    for (const [k, d] of originals) {
+      if (d) Object.defineProperty(HTMLElement.prototype, k, d);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[k];
+    }
+  });
   return {
-    restore: () => {
-      for (const [k, d] of originals) {
-        if (d) Object.defineProperty(HTMLElement.prototype, k, d);
-        else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[k];
-      }
-    },
     writes: () => writes,
     reset: () => {
       writes = 0;
@@ -102,7 +117,6 @@ describe('MessageList', () => {
     // never changes. Watching only the count leaves any answer taller than
     // the column growing out of sight while the user waits for it.
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 
   it('opens on the newest message, not the oldest', () => {
@@ -124,7 +138,6 @@ describe('MessageList', () => {
     // content counts as distance, and the reader is left looking at the start
     // of a conversation they have already read.
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 
   it('keeps following a reader who never left the bottom', () => {
@@ -144,7 +157,6 @@ describe('MessageList', () => {
     );
 
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 
   it('follows the bottom again in the conversation switched to', () => {
@@ -165,7 +177,6 @@ describe('MessageList', () => {
     );
 
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 
   it('stops following once the user has scrolled up to read', () => {
@@ -185,7 +196,6 @@ describe('MessageList', () => {
     // Dragging them back down once per token makes the column unreadable for
     // the whole turn, which is the window a long answer is worth reading in.
     expect(follow.writes()).toBe(0);
-    follow.restore();
   });
 
   it('follows the end of a turn, not only the words in it', () => {
@@ -215,7 +225,6 @@ describe('MessageList', () => {
     // Without this the reader sits at the bottom and cannot see the thing
     // that just told them what happened to their answer.
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 
   it('does not read a background refetch as the reader sending something', () => {
@@ -255,7 +264,6 @@ describe('MessageList', () => {
     );
 
     expect(follow.writes()).toBe(0);
-    follow.restore();
   });
 
   it('does not read messages arriving from elsewhere as the reader sending', () => {
@@ -290,7 +298,6 @@ describe('MessageList', () => {
     );
 
     expect(follow.writes()).toBe(0);
-    follow.restore();
   });
 
   it('comes back to the bottom when the reader sends something themselves', () => {
@@ -320,7 +327,6 @@ describe('MessageList', () => {
     // changes at all: not their own message, not a word of the reply. They
     // have no way to tell it went anywhere.
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 
   it('picks following back up when the user returns to the bottom', () => {
@@ -339,7 +345,6 @@ describe('MessageList', () => {
 
     // Scrolling back down is how a reader says they want to follow again.
     expect(follow.writes()).toBeGreaterThan(0);
-    follow.restore();
   });
 });
 
@@ -347,17 +352,19 @@ describe('MessageList — when the column itself changes width', () => {
   /**
    * Swap in a ResizeObserver whose callbacks the test can fire by hand; the
    * setup file's stub observes nothing.
-   * @returns The trigger and an undo, to be called before the test ends
+   * @returns The trigger and how many observers have been built
    */
-  function observableResize(): { fire: () => void; restore: () => void } {
+  function observableResize(): { fire: () => void; built: () => number } {
     // Only observers that were actually pointed at something fire, so a
     // callback registered and then never wired up counts as not observing.
     const watching: ResizeObserverCallback[] = [];
+    let built = 0;
     const original = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class {
       private readonly cb: ResizeObserverCallback;
       constructor(cb: ResizeObserverCallback) {
         this.cb = cb;
+        built += 1;
       }
       observe(): void {
         watching.push(this.cb);
@@ -367,16 +374,41 @@ describe('MessageList — when the column itself changes width', () => {
         const i = watching.indexOf(this.cb);
         if (i >= 0) watching.splice(i, 1);
       }
-    } as unknown as typeof ResizeObserver;
+    };
+    undos.push(() => {
+      globalThis.ResizeObserver = original;
+    });
     return {
       fire: () => {
         for (const cb of [...watching]) cb([], {} as ResizeObserver);
       },
-      restore: () => {
-        globalThis.ResizeObserver = original;
-      },
+      built: () => built,
     };
   }
+
+  it('watches the column through one observer, however many messages arrive', () => {
+    // The column asks the ScrollArea for its scroller instead of reaching for
+    // it through a sentinel rendered after the last message. Reading it that
+    // way tied the observer's lifetime to the message count: every message
+    // tore it down and built another, and each new one fires once on being
+    // pointed at something.
+    const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
+    stateGeometry(geometry);
+    const resize = observableResize();
+
+    const { rerender } = render(<MessageList ready messages={[bubble('m1', 'a')]} />);
+    const afterFirstMessage = resize.built();
+
+    rerender(<MessageList ready messages={[bubble('m1', 'a'), bubble('m2', 'b')]} />);
+    rerender(
+      <MessageList
+        ready
+        messages={[bubble('m1', 'a'), bubble('m2', 'b'), bubble('m3', 'c')]}
+      />,
+    );
+
+    expect(resize.built()).toBe(afterFirstMessage);
+  });
 
   it('goes back to the bottom for a reader who was already there', () => {
     // Sitting exactly at the bottom: 1000 - 600 - 400 = 0.
@@ -394,8 +426,6 @@ describe('MessageList — when the column itself changes width', () => {
     resize.fire();
 
     expect(follow.writes()).toBeGreaterThan(0);
-    resize.restore();
-    follow.restore();
   });
 
   it('gets there by writing its own viewport, not by asking to be scrolled into view', () => {
@@ -407,7 +437,7 @@ describe('MessageList — when the column itself changes width', () => {
     // an API that also moves everything above it. Leaving the page alone is
     // verified on the real app.
     const geometry = { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 };
-    const follow = stateGeometry(geometry);
+    stateGeometry(geometry);
     const resize = observableResize();
     render(<MessageList ready messages={[bubble('m1', 'An answer')]} />);
     const viewport = screen
@@ -418,8 +448,6 @@ describe('MessageList — when the column itself changes width', () => {
     resize.fire();
 
     expect(viewport.scrollTop).toBe(viewport.scrollHeight);
-    resize.restore();
-    follow.restore();
   });
 
   it('leaves a reader who scrolled up where they are', () => {
@@ -442,8 +470,6 @@ describe('MessageList — when the column itself changes width', () => {
     resize.fire();
 
     expect(follow.writes()).toBe(0);
-    resize.restore();
-    follow.restore();
   });
 });
 
