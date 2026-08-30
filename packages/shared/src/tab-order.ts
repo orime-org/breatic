@@ -42,6 +42,35 @@ export function dedupeTabOrder(ids: ReadonlyArray<string>): string[] {
 }
 
 /**
+ * Apply one relative move to a list of tab ids.
+ *
+ * Both sides run this: collab to work out what to store, and the browser to
+ * show the move the moment the user lets go. A difference between the two
+ * would put an order on screen that the server never agreed to.
+ *
+ * Every copy of the moved id comes out and one goes back, so a list that
+ * held it twice comes out of a move holding it once.
+ * @param ids - The list as it stands.
+ * @param spaceId - The tab being moved.
+ * @param beforeSpaceId - The tab it lands in front of, null for the end.
+ * @returns A new list with the move applied, unchanged when `spaceId` is not
+ *   in the list or `beforeSpaceId` is neither null nor in it.
+ */
+export function applyTabMove(
+  ids: ReadonlyArray<string>,
+  spaceId: string,
+  beforeSpaceId: string | null,
+): string[] {
+  if (!ids.includes(spaceId)) return [...ids];
+  if (beforeSpaceId !== null && !ids.includes(beforeSpaceId)) return [...ids];
+  if (spaceId === beforeSpaceId) return [...ids];
+  const without = ids.filter((id) => id !== spaceId);
+  if (beforeSpaceId === null) return [...without, spaceId];
+  const at = without.indexOf(beforeSpaceId);
+  return [...without.slice(0, at), spaceId, ...without.slice(at)];
+}
+
+/**
  * Put a project's Spaces in the order a tab bar shows them before the user
  * has arranged anything.
  *

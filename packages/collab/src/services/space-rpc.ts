@@ -76,6 +76,7 @@ import {
   type SpaceRpcResponse,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
+  applyTabMove,
   sortSpaceIdsForTabOrder,
 } from "@breatic/shared";
 
@@ -1508,27 +1509,6 @@ async function handleTabClose(
 }
 
 /**
- * Apply one relative move to a list of tab ids.
- *
- * Both ids are known to be present and different, which the caller's guards
- * establish — so the anchor is still there after the moved id is taken out.
- * @param ids - The list as it stands, already free of duplicates.
- * @param spaceId - The tab being moved.
- * @param beforeSpaceId - The tab it lands in front of, null for the end.
- * @returns A new list with the move applied.
- */
-function applyMove(
-  ids: ReadonlyArray<string>,
-  spaceId: string,
-  beforeSpaceId: string | null,
-): string[] {
-  const without = ids.filter((id) => id !== spaceId);
-  if (beforeSpaceId === null) return [...without, spaceId];
-  const at = without.indexOf(beforeSpaceId);
-  return [...without.slice(0, at), spaceId, ...without.slice(at)];
-}
-
-/**
  * Whether two id lists hold the same ids in the same places.
  * @param a - One list.
  * @param b - The other.
@@ -1603,7 +1583,7 @@ async function handleTabReorder(
         return ok(req.id, { orderChanged: seeded });
       }
 
-      const next = applyMove(current, spaceId, beforeSpaceId);
+      const next = applyTabMove(current, spaceId, beforeSpaceId);
       if (sameOrder(next, current)) {
         return ok(req.id, { orderChanged: seeded });
       }

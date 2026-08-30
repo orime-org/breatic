@@ -306,6 +306,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // reads and builds the first-visit default. Same rules, or the two put a
 // different order on screen than the one in the document.
 export {
+  applyTabMove,
   dedupeTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@shared/tab-order.js";

@@ -3,7 +3,55 @@
 
 import { describe, it, expect } from "vitest";
 
-import { dedupeTabOrder, sortSpaceIdsForTabOrder } from "@shared/tab-order.js";
+import {
+  applyTabMove,
+  dedupeTabOrder,
+  sortSpaceIdsForTabOrder,
+} from "@shared/tab-order.js";
+
+describe("applyTabMove", () => {
+  it("puts the moved id in front of the anchor", () => {
+    expect(applyTabMove(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
+  });
+
+  it("moves forwards, past the anchor it used to sit in front of", () => {
+    expect(applyTabMove(["a", "b", "c"], "a", "c")).toEqual(["b", "a", "c"]);
+  });
+
+  it("moves to the end when there is no anchor", () => {
+    expect(applyTabMove(["a", "b", "c"], "a", null)).toEqual(["b", "c", "a"]);
+  });
+
+  it("leaves the list alone when the move lands where the id already is", () => {
+    expect(applyTabMove(["a", "b", "c"], "a", "b")).toEqual(["a", "b", "c"]);
+  });
+
+  it("leaves the list alone when the id is not in it", () => {
+    expect(applyTabMove(["a", "b"], "zz", "a")).toEqual(["a", "b"]);
+  });
+
+  it("leaves the list alone when the anchor is not in it", () => {
+    expect(applyTabMove(["a", "b"], "a", "zz")).toEqual(["a", "b"]);
+  });
+
+  it("leaves the list alone when a tab is moved onto itself", () => {
+    expect(applyTabMove(["a", "b"], "a", "a")).toEqual(["a", "b"]);
+  });
+
+  it("collapses copies of the moved id into the one it lands as", () => {
+    expect(applyTabMove(["a", "b", "c", "a"], "a", null)).toEqual([
+      "b",
+      "c",
+      "a",
+    ]);
+  });
+
+  it("does not mutate its input", () => {
+    const input = ["a", "b", "c"];
+    applyTabMove(input, "c", "a");
+    expect(input).toEqual(["a", "b", "c"]);
+  });
+});
 
 describe("dedupeTabOrder", () => {
   it("keeps the first occurrence of a repeated id and drops the rest", () => {
