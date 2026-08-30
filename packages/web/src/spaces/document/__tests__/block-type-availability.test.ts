@@ -81,6 +81,15 @@ const STUCK: Array<[name: string, body: string, place: Place, lit: BlockTypeId[]
     (e) => { selectRange(e, 'tail', 'a'); },
     ['quote'],
   ],
+  // One block can change and the other cannot: rule 2 turns EVERY block into
+  // the row that was pressed, so a press moving only the heading is half of
+  // what it promised and the row is dark (rule 4).
+  [
+    'a selection running from a heading into a stuck item',
+    '<h1>tail</h1><ul><li><p>a</p><ul><li><p>a1</p></li></ul></li></ul>',
+    (e) => { selectRange(e, 'tail', 'a'); },
+    ['quote'],
+  ],
 ];
 
 describe('a selection every row reaches', () => {
