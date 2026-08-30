@@ -366,19 +366,35 @@ function ProjectWorkspace({
     activeSpaceId,
   );
 
-  // Whenever the fallback answered, write that answer down as the choice.
-  // The fallback picks by POSITION, so leaving it in place lets a reorder
-  // swap the body out from under the user — including remotely, from another
-  // connection on the same account, which is the thing that moving the active
-  // tab out of the shared doc set out to stop. Two states reach it: opening a
-  // project, which starts with no choice at all, and closing the tab that was
-  // chosen, after which the choice names a Space with no tab (the Space is
-  // still there, so nothing else revises it).
+  /**
+   * The tab ids the last render had, so this one can tell a tab that LEFT
+   * from a tab that has not arrived yet. Both read as "the choice is not in
+   * the list", and they call for opposite answers.
+   */
+  const tabsLastSeen = React.useRef<ReadonlySet<string>>(new Set());
+
+  // Turn the positional fallback into a choice, at the two moments that
+  // reach it. Leaving the fallback standing lets a reorder swap the body out
+  // from under the user — including remotely, from another connection on the
+  // same account, which is the thing that moving the active tab out of the
+  // shared doc set out to stop.
   React.useEffect(() => {
-    if (activeSpace && activeSpace.id !== activeSpaceId) {
+    const now = new Set(openTabs.map((s) => s.id));
+    const before = tabsLastSeen.current;
+    tabsLastSeen.current = now;
+    // Opening a project: no choice has been made at all.
+    if (activeSpaceId === null) {
+      if (openTabs.length > 0) setActiveSpaceId(openTabs[0]!.id);
+      return;
+    }
+    // The chosen tab was on the strip and has left it. Closing a tab does not
+    // delete the Space, so nothing else revises a choice that names it.
+    // A choice naming a tab that has not appeared yet — picked from the
+    // drawer, or just created — is left alone: its tab:open is on its way.
+    if (before.has(activeSpaceId) && !now.has(activeSpaceId) && activeSpace) {
       setActiveSpaceId(activeSpace.id);
     }
-  }, [activeSpace, activeSpaceId]);
+  }, [openTabs, activeSpaceId, activeSpace]);
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out

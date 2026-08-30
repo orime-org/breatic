@@ -99,6 +99,8 @@ const barProps = vi.hoisted(
     ({ current: null }) as {
       current: {
         spaces: ReadonlyArray<{ id: string }>;
+        activeSpaceId: string;
+        onActivate: (id: string) => void;
         onReorder?: (spaceId: string, beforeSpaceId: string | null) => void;
       } | null;
     },
@@ -106,6 +108,8 @@ const barProps = vi.hoisted(
 vi.mock('@web/pages/project/chrome/tab-bar/SpaceTabBar', () => ({
   SpaceTabBar: (props: {
     spaces: ReadonlyArray<{ id: string }>;
+    activeSpaceId: string;
+    onActivate: (id: string) => void;
     onReorder?: (spaceId: string, beforeSpaceId: string | null) => void;
   }): null => {
     barProps.current = props;
@@ -285,5 +289,58 @@ describe('ProjectPage — a tab dropped somewhere new', () => {
     });
 
     expect(shownOrder()).toEqual([SPACE_C, SPACE_A, SPACE_B]);
+  });
+});
+
+describe('ProjectPage — opening a Space that has no tab yet', () => {
+  // The pinning effect exists so a reorder cannot move which Space is shown.
+  // Picking a Space from the drawer reaches the same shape from the other
+  // direction: the choice names a Space the tab list does not hold YET,
+  // because tab:open is still travelling.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    barProps.current = null;
+    meta.spaces = [
+      { id: SPACE_A, name: 'Space A', type: 'document' },
+      { id: SPACE_B, name: 'Space B', type: 'document' },
+      { id: SPACE_C, name: 'Space C', type: 'document' },
+    ];
+    // C exists in the project but is not on this user's strip.
+    meta.openTabIds = [SPACE_A, SPACE_B];
+    sendSpaceRpcMock.mockResolvedValue({ id: 'r1', ok: true });
+    useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
+    useCurrentUserStore.setState({
+      user: {
+        id: 'u-me',
+        name: 'Me',
+        email: 'me@e.com',
+        personalStudio: { name: 'Me', slug: 'me', avatarUrl: null },
+        membershipTier: 'base',
+      },
+    });
+  });
+
+  it('keeps the choice while its tab is still on the way', async () => {
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B]));
+
+    await act(async () => {
+      barProps.current?.onActivate(SPACE_C);
+    });
+
+    // tab:open is out. Until it lands there is no tab for C and the page
+    // shows what it showed before.
+    expect(sendSpaceRpcMock).toHaveBeenCalledWith(fakeProvider, {
+      type: 'tab:open',
+      payload: { spaceId: SPACE_C },
+    });
+
+    // The broadcast lands and the tab appears — on the Space that was picked.
+    meta.openTabIds = [SPACE_A, SPACE_B, SPACE_C];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_C);
   });
 });
