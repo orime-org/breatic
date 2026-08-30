@@ -20,9 +20,11 @@ export const AGENT_COLUMN_MIN_WIDTH = 320;
 export const AGENT_COLUMN_MAX_WIDTH = 640;
 
 /**
- * Narrowest the space region may render. Measured on the real app rather than
- * taken from a standard: the canvas toolbar is 317px and does not shrink, and
- * at 320 its undo control was clipped by 13px.
+ * Narrowest the space region may render (user 2026-08-28). What the app makes
+ * measurable is that a floor has to exist at all: the canvas toolbar is 317px,
+ * does not shrink, and sits 16px off the right edge, so anything under 333
+ * clips its undo control — at 320 by the 13px that were measured. 420 is the
+ * floor chosen above that, not a number the measurement produces.
  */
 export const SPACE_MIN_WIDTH = 420;
 
@@ -70,8 +72,10 @@ function clamp(value: number, low: number, high: number): number {
  *   them. This EXCLUDES the drag handle: the library sums the panels'
  *   `offsetWidth` and the handle is not one of them, so a page sitting at
  *   `PAGE_MIN_WIDTH` gives the panels `PAGE_MIN_WIDTH - RESIZE_HANDLE_WIDTH`.
- * @returns A width inside `[320, 640]` that leaves the space region at least
- *   420 whenever the row width is known.
+ * @returns A width inside `[320, 640]`. The space region is left its own 420
+ *   as long as the panels have at least `PAGE_MIN_WIDTH - RESIZE_HANDLE_WIDTH`
+ *   to divide, which the page's own floor is what guarantees; below that the
+ *   320 lower bound wins and space takes what is left.
  */
 export function resolveWidth(setWidth: number | null, panelsWidth: number): number {
   const wanted = setWidth ?? AGENT_COLUMN_MIN_WIDTH;
@@ -103,8 +107,10 @@ export function shouldRestore(current: number, target: number): boolean {
  * finite number. `Number` is used rather than `parseFloat` so that trailing
  * junk ("640abc") is rejected instead of silently truncated.
  *
- * The 320..640 range is NOT applied here — `resolveWidth` is the single place
- * that decides it, and it needs the container width to do so.
+ * The 320..640 range is NOT applied here — a stored width is handed to the
+ * Panel as its `defaultSize`, where the library's own `minSize` / `maxSize`
+ * (both read from the constants above) clamp it, and `resolveWidth` clamps it
+ * again from then on, which is where the container width comes in.
  * @param raw - The raw string from storage, or null when the key is absent.
  * @returns The stored width, or null when nothing usable is stored.
  */

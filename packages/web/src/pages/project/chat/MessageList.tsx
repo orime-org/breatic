@@ -222,11 +222,12 @@ function MessageListInner({
     };
 
     // A column that changes width rewraps every line, so the same words take a
-    // different number of them. Nothing else notices: the message count and
-    // the last bubble's shape are both unchanged, and the browser keeps
-    // scrollTop where it was rather than raising a scroll event. A reader who
-    // was watching the last line of a reply is then left looking at the middle
-    // of it — the narrower the column, the further from the end they land.
+    // different number of them. Nothing else notices a column that narrows:
+    // the message count and the last bubble's shape are both unchanged, the
+    // content only grows taller, and scrollTop stays where it was with no
+    // scroll event to say so. A reader who was watching the last line of a
+    // reply is then left looking at the middle of it — the narrower the
+    // column, the further from the end they land.
     const observer = new ResizeObserver(() => {
       if (stickToBottom.current) goToBottom();
     });

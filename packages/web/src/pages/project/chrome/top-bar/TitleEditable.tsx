@@ -11,8 +11,9 @@ interface TitleEditableProps {
    * was fixed at when this box was written; the column can now be dragged
    * between 320 and 640, so the default no longer stands for anything but the
    * TopBar project title's own cap. Callers in tighter containers (e.g. the
-   * Agent column header sharing a 40px row with icons + chip + button) pass a
-   * smaller value so truncation kicks in at the right boundary.
+   * Agent column header, where the title shares a 40px row with two icon
+   * buttons) pass a smaller value so truncation kicks in at the right
+   * boundary.
    */
   maxWidth?: number;
   /**

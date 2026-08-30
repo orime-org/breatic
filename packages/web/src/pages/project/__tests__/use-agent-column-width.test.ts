@@ -234,15 +234,16 @@ describe('useAgentColumnWidth', () => {
     });
   });
 
-  // Reading and writing storage both throw outright in a browser told to keep
-  // nothing — Safari's private mode, a filled quota, site data switched off.
-  // A width worth remembering across sessions is not worth taking the project
-  // page down with it.
+  // Storage throws outright in a browser told to keep nothing: reaching
+  // `localStorage` where site data is switched off, writing into a filled
+  // quota. A width worth remembering across sessions is not worth taking the
+  // project page down with it.
   describe('when the browser refuses to store anything', () => {
-    // Replacing the whole object is the only stub that takes here: jsdom's
-    // `localStorage` keeps serving its own methods through a spy on either the
-    // instance or `Storage.prototype`, so a test written that way asserts
-    // against storage that never actually failed.
+    // Replacing the whole object, because jsdom's `localStorage` keeps serving
+    // its own methods through a spy on the instance — that spy is never called
+    // and never throws, so a test written that way asserts against storage
+    // that did not fail. (A spy on `Storage.prototype` is served; replacing
+    // the object covers both methods in one place either way.)
     const refuse = (methods: Partial<Storage>): void => {
       vi.stubGlobal('localStorage', {
         getItem: () => null,

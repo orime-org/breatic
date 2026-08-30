@@ -52,9 +52,10 @@ export function useAgentColumnWidth(): AgentColumnWidthControls {
         window.localStorage.getItem(STORAGE_KEYS.agentColumnWidth),
       );
     } catch {
-      // Reading throws outright where the browser keeps nothing — Safari's
-      // private mode, site data switched off. This runs during render, so
-      // letting it out takes the whole project page down for a width.
+      // Reading throws outright where site data is switched off: reaching
+      // `window.localStorage` at all is a SecurityError there. This runs
+      // during render, so letting it out takes the whole project page down
+      // for a width.
       return null;
     }
   });

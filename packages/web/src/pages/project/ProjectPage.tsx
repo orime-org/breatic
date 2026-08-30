@@ -904,9 +904,10 @@ function ProjectWorkspace({
                   </Panel>
                   {/* The line between the two columns. What answers a pointer
                   around it is wider than the line twice over: the transparent
-                  ::before reaches 4px to each side, and the library reads a
-                  drag anywhere within its own `resizeTargetMinimumSize` (10px
-                  for a mouse) of the line. Double-click is off: the library
+                  ::before reaches 4px to each side, and the library grows the
+                  1px hit rect to a total of `resizeTargetMinimumSize` (10px
+                  for a mouse), which is about 4.5px to each side. Double-click
+                  is off: the library
                   resizes imperatively there, which does not count as a user
                   gesture, so the width would be restored a frame later — the
                   user would see it flick and come back. */}
