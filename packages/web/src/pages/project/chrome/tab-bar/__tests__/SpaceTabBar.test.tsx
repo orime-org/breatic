@@ -6,6 +6,7 @@ import {
   render as rtlRender,
   screen,
   act,
+  fireEvent,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -176,7 +177,16 @@ describe('SpaceTabBar', () => {
      * and disables the arrows before the test can click them).
      */
     function makeOverflow(): HTMLElement {
-      const scroller = screen.getByRole('tablist');
+      // The element that scrolls is the ScrollArea viewport; the tablist is
+      // the row of tabs inside it. They are two elements on purpose — a role
+      // that owns the tabs belongs on the element they sit in, and the
+      // scrolling belongs to the viewport around it.
+      const scroller = screen
+        .getByRole('tablist')
+        .closest('[data-radix-scroll-area-viewport]');
+      if (!(scroller instanceof HTMLElement)) {
+        throw new Error('the tab row is not inside a scroll-area viewport');
+      }
       Object.defineProperty(scroller, 'scrollWidth', {
         value: 600,
         configurable: true,
@@ -215,15 +225,10 @@ describe('SpaceTabBar', () => {
 
     it('disables the left arrow when no tab is off-screen-left, regardless of scrollLeft (DOM-rect, PR #140)', () => {
       setup();
-      const scroller = screen.getByRole('tablist');
-      Object.defineProperty(scroller, 'scrollWidth', {
-        value: 600,
-        configurable: true,
-      });
-      Object.defineProperty(scroller, 'clientWidth', {
-        value: 200,
-        configurable: true,
-      });
+      // The element that scrolls is the viewport, and `scroll` does not
+      // bubble: stubbing the row instead leaves every rect below unread and
+      // the assertion reading the mount-time default.
+      const scroller = makeOverflow();
       // Smooth `scrollIntoView({ inline: 'start' })` lands scrollLeft
       // at scroller padding-left (~8 px), NOT zero. The prior
       // scrollLeft-based atStart check (commit 626ec56) failed here
@@ -363,5 +368,160 @@ describe('SpaceTabBar', () => {
         expect(field.className).not.toContain('text-muted-foreground');
       },
     );
+  });
+
+  describe('the strip that scrolls sideways', () => {
+    it('lays the tabs out in one row that can overflow sideways', () => {
+      setup();
+      // Radix puts a `display:table` div of its own inside a viewport, so a
+      // flex declared ON the viewport reaches that div and stops. The tabs
+      // would then stack one per row, the strip would never overflow
+      // sideways, and both the bar and the arrows would never appear.
+      const tab = screen.getByTestId('space-tab-s1');
+      const row = tab.parentElement;
+      expect(row?.getAttribute('role')).toBe('tablist');
+      // classList, not the className string: `flex-col` — the direction the
+      // regression takes — contains "flex" as a substring, so a substring
+      // check reads as satisfied by the very thing it exists to refuse.
+      expect(row?.classList.contains('flex')).toBe(true);
+      expect(row?.classList.contains('flex-col')).toBe(false);
+      // The role belongs to the element the tabs sit in, so the same element
+      // carries both.
+      expect(row?.querySelectorAll('[role="tab"]').length).toBe(3);
+    });
+
+    it('scrolls through the shared component, not a native bar', () => {
+      setup();
+      // Every visible scroller in the app is the ScrollArea component
+      // (web/CLAUDE.md), which draws its own bar: appears while scrolling,
+      // takes no layout room, and hover changes colour without changing
+      // shape. A native bar delivers none of that -- the interaction states
+      // are UA-private and differ between browser builds.
+      const tab = screen.getByTestId('space-tab-s1');
+      const strip = tab.closest('[data-scrollbars]');
+      expect(strip).not.toBeNull();
+      expect(strip?.getAttribute('data-scrollbars')).toBe('horizontal');
+    });
+  });
+
+  describe('a name too long for the strip', () => {
+    // The strip scrolls sideways, so a long name never breaks the layout --
+    // it takes the whole visible width for itself and pushes every other tab
+    // behind the scroll arrows. A cap on the tab is what keeps the rest
+    // reachable (#2015; user set 160px on 2026-08-28).
+    //
+    // jsdom does no layout, so `getBoundingClientRect` here is all zeroes and
+    // these assertions can only say the cap is declared, not that it renders
+    // at 160px. The rendered width is measured in a real browser.
+    const LONG = '素材分镜脚本第一版终稿请勿删除';
+    const withLongName = {
+      spaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
+      allSpaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
+      openTabIds: ['s1'],
+    };
+
+    it('caps the tab and clips the name that overflows it', () => {
+      setup(withLongName);
+      const tab = screen.getByTestId('space-tab-s1');
+      // The literal is the point: restating the constant would let the
+      // assertion follow the number wherever it was changed to.
+      expect(tab.style.maxWidth).toBe('160px');
+      // The clip belongs to the name, not the tab: the icon and the close
+      // control keep their room and the name gives up what is left.
+      expect(screen.getByTestId('space-tab-name-s1').className).toContain(
+        'truncate',
+      );
+    });
+
+    it('leaves the rename field free to grow, and caps it through the tab', async () => {
+      const user = userEvent.setup();
+      setup({ ...withLongName, onRenameSpace: vi.fn() });
+      await user.dblClick(screen.getByTestId('space-tab-name-s1'));
+      const field = screen.getByTestId('space-tab-name-input-s1');
+      // A width computed from the character count grows without end, which is
+      // the same overflow through the editing state. The field grows with its
+      // content up to the cap and scrolls after that, so the caret stays in
+      // view -- the treatment the project title already uses.
+      expect(field.className).toContain('[field-sizing:content]');
+      // `field-sizing` replaces only the AUTOMATIC size, so ANY definite width
+      // switches it off and pins the field at that width whatever is typed --
+      // a `w-[2ch]` floor did exactly that and left the field two characters
+      // wide. Asking only whether the inline style is empty cannot see it: the
+      // pin lives in a class. jsdom does no layout, so what the field is
+      // actually worth once something is typed is measured in a browser
+      // (tests/smoke/space-tab-strip.spec.ts).
+      expect([...field.classList].some((c) => /^w-\[/.test(c))).toBe(false);
+      expect(field.style.width).toBe('');
+      expect(screen.getByTestId('space-tab-s1').style.maxWidth).toBe(
+        '160px',
+      );
+    });
+
+    // The cap buys back the rest of the strip by taking the end of the name
+    // away, and until this the name was nowhere else on the strip: two Spaces
+    // whose names agree for the first hundred pixels printed the same glyphs.
+    // Hovering a tab hands the whole name back — EVERY tab, whatever its name
+    // is worth (user 2026-08-29): someone who has learnt to hover for the full
+    // name must not find that gesture silently dead on the short ones.
+    describe('reading the name back', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      /**
+       * Give the name span a measured width — jsdom lays nothing out, so both
+       * `scrollWidth` and `clientWidth` are 0 there and no name ever reads as
+       * clipped.
+       * @param scrollWidth - What the name is worth.
+       * @param clientWidth - What the tab leaves it.
+       */
+      const measureName = (scrollWidth: number, clientWidth: number): void => {
+        const el = screen.getByTestId('space-tab-name-s1');
+        Object.defineProperty(el, 'scrollWidth', {
+          configurable: true,
+          value: scrollWidth,
+        });
+        Object.defineProperty(el, 'clientWidth', {
+          configurable: true,
+          value: clientWidth,
+        });
+      };
+
+      /** Point at the tab and let Radix's open delay elapse. */
+      const hoverTab = (): void => {
+        vi.useFakeTimers();
+        fireEvent.pointerMove(screen.getByTestId('space-tab-s1'), {
+          pointerType: 'mouse',
+        });
+        act(() => {
+          vi.advanceTimersByTime(1_000);
+        });
+      };
+
+      /** What the open tooltips say, if any are open. */
+      const tooltipTexts = (): string[] =>
+        screen.queryAllByRole('tooltip').map((el) => el.textContent ?? '');
+
+      it.each([
+        ['the strip cut it short', 211, 100],
+        ['it fits as it is', 100, 100],
+      ])('shows the whole name above a tab when %s', (_case, scrollWidth, clientWidth) => {
+        setup(withLongName);
+        measureName(scrollWidth, clientWidth);
+        hoverTab();
+        expect(tooltipTexts()).toContain(LONG);
+      });
+
+      it('stays quiet while the name is being edited', () => {
+        setup({ ...withLongName, onRenameSpace: vi.fn() });
+        measureName(211, 100);
+        fireEvent.dblClick(screen.getByTestId('space-tab-name-s1'));
+        expect(
+          screen.getByTestId('space-tab-name-input-s1'),
+        ).toBeDefined();
+        hoverTab();
+        expect(tooltipTexts()).toEqual([]);
+      });
+    });
   });
 });

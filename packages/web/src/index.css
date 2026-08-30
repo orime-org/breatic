@@ -71,11 +71,20 @@ body {
    rules, and per CSS Scrollbars L1 a non-auto standard property DISABLES
    webkit styling — real-engine probes (archived in inner
    2026-07-14-scrollbar-probe) confirmed those webkit rules were dead code
-   in BOTH engines. Hiding a native scrollbar entirely (SpaceTabBar) stays
-   allowed via scrollbar-width: none (class specificity beats this * rule). */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-muted-foreground) 50%, transparent) transparent;
+   in BOTH engines.
+
+   The rule sits in `@layer base` so a utility can still win. Cascade layers
+   sort before specificity: an unlayered rule beats every layered one, and
+   Tailwind's utilities all live in `@layer utilities`, so unlayered here
+   meant `[scrollbar-width:none]` on a scroller lost to this `*` and the
+   author never saw why — measured on the tab strip, whose class said `none`
+   while the computed value stayed `thin`. This is the same reason KaTeX is
+   imported with `layer(base)` above. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-muted-foreground) 50%, transparent) transparent;
+  }
 }
 
 /* Scroller component internals (#1773): Radix wraps viewport children in an

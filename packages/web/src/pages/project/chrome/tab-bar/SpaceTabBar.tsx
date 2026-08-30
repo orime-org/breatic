@@ -12,6 +12,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Button } from '@web/components/ui/button';
 import {
   Tooltip,
@@ -125,6 +126,23 @@ export function SpaceTabBar({
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
 
+  /**
+   * The tabs, read off the scroller.
+   *
+   * Two elements sit between the tabs and the element that scrolls: the
+   * `display:table` div Radix puts inside every viewport, and the row this
+   * file renders inside it. Asking for the tabs by their role instead of by
+   * child position keeps this true however many wrappers either side adds.
+   * @param scroller - The element that scrolls, or null before it mounts.
+   * @returns The tab elements in document order.
+   */
+  const tabsIn = (scroller: HTMLElement | null): HTMLElement[] =>
+    scroller === null
+      ? []
+      : Array.from(scroller.querySelectorAll('[role="tab"]')).filter(
+        (el): el is HTMLElement => el instanceof HTMLElement,
+      );
+
   // Track scroll overflow + boundaries to drive the smart-hide/disabled
   // states for the left / right scroll arrows (mock v4.27 / v4.29).
   const [scrollState, setScrollState] = React.useState({
@@ -152,9 +170,7 @@ export function SpaceTabBar({
     // arithmetic entirely.
     const overflow = el.scrollWidth > el.clientWidth + 1;
     const scrollerRect = el.getBoundingClientRect();
-    const tabs = Array.from(el.children).filter(
-      (c): c is HTMLElement => c instanceof HTMLElement,
-    );
+    const tabs = tabsIn(el);
     const atStart = !tabs.some(
       (t) => t.getBoundingClientRect().left < scrollerRect.left - 1,
     );
@@ -171,6 +187,13 @@ export function SpaceTabBar({
     el.addEventListener('scroll', updateScrollState);
     const ro = new ResizeObserver(updateScrollState);
     ro.observe(el);
+    // The row of tabs grows and shrinks — a name is edited here or by a
+    // collaborator — while the box it scrolls in keeps the width the bar gives
+    // it, and a resize observer watching only that box never hears about it.
+    // ScrollArea watches the same wrapper for the same reason, so watching it
+    // here too is what keeps the arrows and the rail from answering the same
+    // question differently.
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => {
       el.removeEventListener('scroll', updateScrollState);
       ro.disconnect();
@@ -224,9 +247,7 @@ export function SpaceTabBar({
   const scrollOneTab = (direction: 'left' | 'right'): void => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const tabs = Array.from(scroller.children).filter(
-      (el): el is HTMLElement => el instanceof HTMLElement,
-    );
+    const tabs = tabsIn(scroller);
     if (tabs.length === 0) return;
     const scrollerRect = scroller.getBoundingClientRect();
 
@@ -353,36 +374,59 @@ export function SpaceTabBar({
         disabled={scrollState.atStart}
       />
 
-      <div
-        ref={scrollerRef}
-        className='flex flex-1 items-center overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-        style={{
-          gap: 'var(--space-1)',
-          minWidth: 0,
-          height: '100%',
-          padding: '0 var(--space-2)',
-        }}
-        role='tablist'
-        aria-label={t('chrome.aria.openSpaces')}
+      {/*
+        The scroller is as tall as the bar, because the rail is positioned
+        along the scroller's bottom edge and belongs on the bar's bottom edge
+        — the same place every other scroller in the app puts its rail.
+
+        The tabs are then centred by the viewport itself. Radix's
+        `display:table` wrapper inside the viewport is auto-height, so a
+        percentage height on anything under it resolves to auto: a row asking
+        for the full height collapses back to the tabs' own 32px and parks
+        against the top edge. Declaring the centring one level up, on the
+        viewport, puts that wrapper in the middle instead, and the tabs with
+        it (user 2026-08-29).
+      */}
+      <ScrollArea
+        scrollbars='horizontal'
+        viewportRef={scrollerRef}
+        className='flex-1'
+        viewportClassName='flex items-center'
+        style={{ minWidth: 0, height: '100%' }}
       >
-        {spaces.map((s) => (
-          <SpaceTab
-            key={s.id}
-            id={s.id}
-            name={s.name}
-            type={s.type}
-            active={s.id === activeSpaceId}
-            locked={s.locked}
-            onActivate={() => onActivate(s.id)}
-            onClose={onClose ? () => onClose(s.id) : undefined}
-            onRename={
-              onRenameSpace
-                ? (next) => onRenameSpace(s.id, next)
-                : undefined
-            }
-          />
-        ))}
-      </div>
+        {/*
+          The row is ours and the tabs are its own flex children. Radix puts a
+          `display:table` div inside every viewport, so a flex declared on the
+          viewport reaches that div and stops: the tabs would lay out one per
+          row, the strip would never overflow sideways, and neither the bar nor
+          the arrows would ever appear. Carrying the row here also puts the
+          tablist role on the element the tabs actually sit in.
+        */}
+        <div
+          role='tablist'
+          aria-label={t('chrome.aria.openSpaces')}
+          className='flex w-max items-center'
+          style={{ gap: 'var(--space-1)', padding: '0 var(--space-2)' }}
+        >
+          {spaces.map((s) => (
+            <SpaceTab
+              key={s.id}
+              id={s.id}
+              name={s.name}
+              type={s.type}
+              active={s.id === activeSpaceId}
+              locked={s.locked}
+              onActivate={() => onActivate(s.id)}
+              onClose={onClose ? () => onClose(s.id) : undefined}
+              onRename={
+                onRenameSpace
+                  ? (next) => onRenameSpace(s.id, next)
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      </ScrollArea>
 
       <ArrowButton
         direction='right'

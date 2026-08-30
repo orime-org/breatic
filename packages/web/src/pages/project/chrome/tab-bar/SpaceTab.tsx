@@ -21,6 +21,11 @@ import { toast } from '@web/lib/toast';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@web/spaces';
@@ -42,6 +47,24 @@ interface SpaceTabProps {
    */
   onRename?: (name: string) => Promise<void> | void;
 }
+
+/**
+ * How wide one tab may get (px).
+ *
+ * A name may run to `SPACE_NAME_MAX_LEN`, and the strip scrolls sideways, so
+ * without a cap one long name takes the whole visible width and pushes every
+ * other tab behind the scroll arrows. What the name is left with on a tab that
+ * has reached the cap, measured in Chrome at 13px: 100px on every tab, current
+ * or not, and 84px once a Space is locked and the lock icon joins the row —
+ * about seven CJK characters or fourteen Latin ones, six and eleven when
+ * locked (user set 160 on 2026-08-28, #2015).
+ *
+ * The cap is a width and not a character count because a full-width character
+ * is about as wide as the font size while a Latin one is about half that: the
+ * same count would render a Chinese tab close to twice the width of an English
+ * one, which is the crowding this exists to stop.
+ */
+export const SPACE_TAB_MAX_WIDTH = 160;
 
 const TYPE_ICON: Record<SpaceType, typeof FileText> = {
   canvas: Palette,
@@ -99,6 +122,7 @@ export function SpaceTab({
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const [nameTipOpen, setNameTipOpen] = React.useState(false);
 
   // Keep `draft` aligned with external `name` updates (collab broadcast)
   // when we are not currently editing.
@@ -162,7 +186,7 @@ export function SpaceTab({
     setDraft(name);
   };
 
-  return (
+  const tab = (
     <Button
       // A tab strip, not a standalone labelled button: the active fill is the
       // affordance, and `menu-item` is the one size that leaves the tab's own
@@ -195,6 +219,7 @@ export function SpaceTab({
         padding: '0 var(--space-4)',
         gap: 'var(--space-3)',
         borderRadius: 4,
+        maxWidth: SPACE_TAB_MAX_WIDTH,
       }}
     >
       <Icon
@@ -223,13 +248,22 @@ export function SpaceTab({
           onDoubleClick={(e) => e.stopPropagation()}
           data-testid={`space-tab-name-input-${id}`}
           aria-label={t('spaces.rename.inputAriaLabel')}
-          className='border-0 bg-transparent p-0 text-sm text-foreground outline-none'
-          style={{ width: `${Math.max(draft.length, 1) + 1}ch` }}
+          // Grows with what is typed and stops at the tab's cap, after which
+          // the field scrolls and the caret stays in view. The floor is a
+          // minimum and nothing more: `field-sizing` only replaces the
+          // AUTOMATIC size, so any definite `width` here switches it off and
+          // pins the field at that width whatever is typed. This is the shape
+          // the project title, the node header and the group name all use.
+          className='min-w-[2ch] border-0 bg-transparent p-0 text-sm text-foreground outline-none [field-sizing:content]'
         />
       ) : (
         <span
           onDoubleClick={onNameDoubleClick}
           data-testid={`space-tab-name-${id}`}
+          // The name is what gives way when the tab meets its cap: the icon
+          // and the close control keep their room, and `min-w-0` is what lets
+          // this shrink below its text inside the flex row.
+          className='min-w-0 truncate'
         >
           {name}
         </span>
@@ -261,11 +295,29 @@ export function SpaceTab({
             }
           }}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+          className='ml-[2px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>
       ) : null}
     </Button>
+  );
+  return (
+    // Every tab hands its whole name back, whatever the name is worth (user
+    // 2026-08-29). Someone who has learnt that hovering a tab shows the full
+    // name must get the same answer on the short ones: asking first whether
+    // the strip had cut this one short leaves that gesture silently dead on
+    // some tabs and alive on others.
+    //
+    // The rename field is the one state that closes it — the whole name is
+    // already in the field, selected, and a tooltip over it would be labelling
+    // the old name while a new one is being typed.
+    <Tooltip open={nameTipOpen && !editing} onOpenChange={setNameTipOpen}>
+      {/* The whole tab is the anchor, so the gap the tooltip keeps is measured
+          from the edge a person sees rather than from the name inset within
+          it. */}
+      <TooltipTrigger asChild>{tab}</TooltipTrigger>
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
   );
 }
