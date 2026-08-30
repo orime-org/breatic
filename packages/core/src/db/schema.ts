@@ -581,6 +581,19 @@ export const nodeHistory = pgTable(
     errorMessage: text("error_message"),                         // if failed
 
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    /**
+     * Upload idempotency key: the storage key the upload was granted (#173).
+     * Null on generations, and null on the first-pass dedup hit, which records
+     * an upload without ever issuing a grant.
+     *
+     * A video's history row is written from inside a BullMQ job that gets
+     * replayed whole (design §6.4.1), so the write needs a key that identifies
+     * the upload rather than the attempt. One upload is one storage key —
+     * `upload_grants_storage_key_unique` already holds that — so it doubles as
+     * this one. The partial UNIQUE lives in migration 0069, like the
+     * generation key above.
+     */
+    uploadStorageKey: text("upload_storage_key"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
 
     createdAt: timestamp("created_at", { withTimezone: true })
