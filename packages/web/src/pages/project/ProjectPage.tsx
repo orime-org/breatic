@@ -56,7 +56,11 @@ import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
-import { Group, Panel, Separator } from 'react-resizable-panels';
+import {
+  Group,
+  Panel,
+  Separator as ResizeSeparator,
+} from 'react-resizable-panels';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   AGENT_COLUMN_MAX_WIDTH,
@@ -906,11 +910,13 @@ function ProjectWorkspace({
                   resizes imperatively there, which does not count as a user
                   gesture, so the width would be restored a frame later — the
                   user would see it flick and come back. */}
-                  <Separator
+                  <ResizeSeparator
                     disableDoubleClick
+                    aria-label={t('chrome.aria.agentColumnWidth')}
                     style={{ width: RESIZE_HANDLE_WIDTH }}
                     className={
-                      'relative flex-none cursor-col-resize bg-border transition-colors '
+                      'relative flex-none cursor-col-resize bg-border '
+                    + 'transition-colors duration-[var(--duration-fast)] '
                     + 'before:absolute before:inset-y-0 before:-inset-x-1 before:content-[\'\'] '
                     + 'hover:bg-active-border active:bg-active-border '
                     + 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'

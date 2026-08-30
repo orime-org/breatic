@@ -1177,6 +1177,7 @@
       "scrollTabsRight": "向右滚动标签",
       "spacesToolbar": "Spaces",
       "openSpaces": "已打开的 Space",
+      "agentColumnWidth": "调整 Agent 面板宽度",
       "language": "语言：{name}",
       "theme": "主题：{theme}"
     }
