@@ -229,11 +229,19 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   // The rows this selection cannot reach (§6.7). The judgement builds the very
   // transaction the press would build, so the row's look and the row's effect
   // are one answer.
+  //
+  // Only while the menu is down. Building eight transactions is what makes the
+  // answer trustworthy, and it costs with the selection: measured over a
+  // select-all, one pass is 1.5ms at 50 blocks, 14ms at 200 and 197ms at 800.
+  // This selector runs on every transaction the editor sees, so paying that
+  // with the menu shut would freeze a long document while a co-editor typed
+  // into it — and freeze it over nine rows nobody is looking at.
+  const open = openId === id;
   const unreachable = useEditorState({
     editor,
     selector: ({ editor: e }) =>
       new Set<BlockTypeId>(
-        e
+        e && open
           ? BLOCK_TYPE_ITEMS.filter((item) => !item.greyed && !canRunBlockType(e, item.id))
             .map((i) => i.id)
           : [],
