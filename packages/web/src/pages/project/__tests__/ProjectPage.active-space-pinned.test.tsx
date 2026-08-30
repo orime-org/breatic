@@ -33,6 +33,7 @@ import { useCurrentUserStore, useUIStore } from '@web/stores';
 const PID = '11111111-1111-4111-8111-111111111111';
 const SPACE_A = '22222222-2222-4222-8222-222222222222';
 const SPACE_B = '33333333-3333-4333-8333-333333333333';
+const SPACE_C = '44444444-4444-4444-8444-444444444444';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -265,6 +266,34 @@ describe('ProjectPage — reordering tabs does not change which Space is shown',
     await landOrder([SPACE_B, SPACE_A]);
 
     expect(selectedTabId()).toBe(SPACE_B);
+  });
+
+  it('keeps the shown Space after the tab the user picked was closed', async () => {
+    // Closing a tab leaves the Space alive, so `activeSpaceId` goes on naming
+    // it and resolving falls back to position — which a reorder then moves.
+    meta.spaces = [
+      { id: SPACE_A, name: 'Space A', type: 'document' },
+      { id: SPACE_B, name: 'Space B', type: 'document' },
+      { id: SPACE_C, name: 'Space C', type: 'document' },
+    ];
+    meta.openTabIds = [SPACE_A, SPACE_B, SPACE_C];
+    setup();
+
+    const tabC = await screen.findByTestId(`space-tab-${SPACE_C}`);
+    await act(async () => {
+      tabC.click();
+    });
+    expect(selectedTabId()).toBe(SPACE_C);
+
+    // The user closes that tab. C is still a Space; only its tab is gone.
+    await landOrder([SPACE_A, SPACE_B]);
+    expect(selectedTabId()).toBe(SPACE_A);
+    const mountsBefore = [...outletMounts];
+
+    await landOrder([SPACE_B, SPACE_A]);
+
+    expect(selectedTabId()).toBe(SPACE_A);
+    expect(outletMounts).toEqual(mountsBefore);
   });
 
   it('shows the first tab once tabs arrive, having had none to show', async () => {

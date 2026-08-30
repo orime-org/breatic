@@ -366,17 +366,19 @@ function ProjectWorkspace({
     activeSpaceId,
   );
 
-  // Turn the implicit "first open tab" into an explicit choice as soon as
-  // there are tabs. With no local choice the effective active Space is
-  // decided by POSITION, so reordering the bar would swap the body out from
-  // under a user who never clicked a tab — including remotely, from another
-  // connection on the same account, which is the thing that moving the
-  // active tab out of the shared doc set out to stop.
+  // Whenever the fallback answered, write that answer down as the choice.
+  // The fallback picks by POSITION, so leaving it in place lets a reorder
+  // swap the body out from under the user — including remotely, from another
+  // connection on the same account, which is the thing that moving the active
+  // tab out of the shared doc set out to stop. Two states reach it: opening a
+  // project, which starts with no choice at all, and closing the tab that was
+  // chosen, after which the choice names a Space with no tab (the Space is
+  // still there, so nothing else revises it).
   React.useEffect(() => {
-    if (activeSpaceId === null && openTabs.length > 0) {
-      setActiveSpaceId(openTabs[0]!.id);
+    if (activeSpace && activeSpace.id !== activeSpaceId) {
+      setActiveSpaceId(activeSpace.id);
     }
-  }, [activeSpaceId, openTabs]);
+  }, [activeSpace, activeSpaceId]);
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out
