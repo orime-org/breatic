@@ -109,10 +109,31 @@ function mockRect(
 }
 
 /**
+ * Give an element a place in the strip's layout, which jsdom reports as zero
+ * and which a transform does not move.
+ * @param el - The tab to place.
+ * @param at - Where it sits and how wide it is, in scroll coordinates.
+ */
+function setLayout(
+  el: HTMLElement,
+  at: { left: number; width: number },
+): void {
+  Object.defineProperty(el, 'offsetLeft', {
+    value: at.left,
+    configurable: true,
+  });
+  Object.defineProperty(el, 'offsetWidth', {
+    value: at.width,
+    configurable: true,
+  });
+}
+
+/**
  * Put the strip in the state where it scrolls, and hand back the scroller.
+ * @param scrollLeft - How far along the strip is scrolled.
  * @returns The viewport that scrolls.
  */
-function makeOverflow(): HTMLElement {
+function makeOverflow(scrollLeft = 0): HTMLElement {
   const scroller = screen
     .getByRole('tablist')
     .closest('[data-radix-scroll-area-viewport]');
@@ -126,6 +147,11 @@ function makeOverflow(): HTMLElement {
   Object.defineProperty(scroller, 'clientWidth', {
     value: 200,
     configurable: true,
+  });
+  Object.defineProperty(scroller, 'scrollLeft', {
+    value: scrollLeft,
+    configurable: true,
+    writable: true,
   });
   mockRect(scroller, { left: 0, right: 200 });
   return scroller;
@@ -182,7 +208,7 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
   it('is disabled while the current tab is fully in sight', () => {
     setup();
     const scroller = makeOverflow();
-    mockRect(screen.getByTestId('space-tab-s2'), { left: 40, right: 140 });
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 40, width: 100 });
     flush(scroller);
 
     expect(revealButton()).toBeDisabled();
@@ -191,7 +217,7 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
   it('is offered when the current tab runs past the right edge', () => {
     setup();
     const scroller = makeOverflow();
-    mockRect(screen.getByTestId('space-tab-s2'), { left: 150, right: 280 });
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 150, width: 130 });
     flush(scroller);
 
     expect(revealButton()).toBeEnabled();
@@ -199,8 +225,24 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
 
   it('is offered when the current tab starts before the left edge', () => {
     setup();
-    const scroller = makeOverflow();
-    mockRect(screen.getByTestId('space-tab-s2'), { left: -60, right: 40 });
+    const scroller = makeOverflow(100);
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 40, width: 100 });
+    flush(scroller);
+
+    expect(revealButton()).toBeEnabled();
+  });
+
+  it('reads where the tab sits, not where a drag is drawing it', () => {
+    // dnd-kit moves a dragged tab with a transform, which getBoundingClientRect
+    // counts and the layout does not. Measured through the rect, a tab held
+    // over the middle of the strip reads as on screen however far its place has
+    // scrolled away — and when the gesture ends nothing scrolls or resizes, so
+    // that answer is the one the control keeps.
+    setup();
+    const scroller = makeOverflow(400);
+    const tab = screen.getByTestId('space-tab-s2');
+    setLayout(tab, { left: 40, width: 100 });
+    mockRect(tab, { left: 50, right: 150 });
     flush(scroller);
 
     expect(revealButton()).toBeEnabled();
@@ -214,6 +256,7 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     setup();
     const scroller = makeOverflow();
     mockRect(screen.getByTestId('space-tab-s2'), { left: 150, right: 280 });
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 150, width: 130 });
     flush(scroller);
     const scrollTo = vi.fn();
     scroller.scrollTo = scrollTo;
@@ -230,11 +273,11 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     // signals the arrows listen on fires.
     const rerender = setup();
     const scroller = makeOverflow();
-    mockRect(screen.getByTestId('space-tab-s2'), { left: 40, right: 140 });
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 40, width: 100 });
     flush(scroller);
     expect(revealButton()).toBeDisabled();
 
-    mockRect(screen.getByTestId('space-tab-s2'), { left: 150, right: 280 });
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 150, width: 130 });
     rerender({ spaces: [SPACES[1]!, SPACES[0]!, SPACES[2]!] });
 
     expect(revealButton()).toBeEnabled();
@@ -245,8 +288,8 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     // tells the button its answer just changed.
     const rerender = setup();
     const scroller = makeOverflow();
-    mockRect(screen.getByTestId('space-tab-s2'), { left: 40, right: 140 });
-    mockRect(screen.getByTestId('space-tab-s3'), { left: 150, right: 280 });
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 40, width: 100 });
+    setLayout(screen.getByTestId('space-tab-s3'), { left: 150, width: 130 });
     flush(scroller);
     expect(revealButton()).toBeDisabled();
 

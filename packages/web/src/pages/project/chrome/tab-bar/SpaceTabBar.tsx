@@ -280,11 +280,18 @@ export function SpaceTabBar({
     );
     // Whole, not merely somewhere on screen: a tab with its name cut off by
     // the edge is exactly what the reveal control exists to finish showing.
-    const active = activeTab()?.getBoundingClientRect();
+    //
+    // Read off the layout, which a transform does not move, because a dragged
+    // tab carries one. Through a rect, a tab held over the middle of the strip
+    // reads as on screen however far its place has scrolled away — and the
+    // gesture ending scrolls nothing and resizes nothing, so that answer is
+    // the one this control would keep, disabled, with the tab off screen.
+    const active = activeTab();
     const activeVisible =
-      active === undefined ||
-      (active.left >= scrollerRect.left - EDGE_TOLERANCE &&
-        active.right <= scrollerRect.right + EDGE_TOLERANCE);
+      active === null ||
+      (active.offsetLeft >= el.scrollLeft - EDGE_TOLERANCE &&
+        active.offsetLeft + active.offsetWidth <=
+          el.scrollLeft + el.clientWidth + EDGE_TOLERANCE);
     setScrollState({ overflow, atStart, atEnd, activeVisible });
   }, [activeTab]);
 
