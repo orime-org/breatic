@@ -39,10 +39,35 @@ interface RecordedPart {
   etag: string;
 }
 
+/**
+ * How far the finishing sequence has got.
+ *
+ * Kept because the alarm re-enters it: a report the server did not accept
+ * leaves the alarm set, and the next attempt must not complete an upload that
+ * is already complete or read a 2 GiB object back a second time to hash it
+ * again.
+ */
+interface FinishProgress {
+  /** R2 has assembled the object, or the upload was aborted. */
+  settled: boolean;
+  /** What was computed over the stored bytes, once it has been.  */
+  sha256?: string;
+  /** What the assembled object weighs. */
+  sizeBytes?: number;
+  /** Why it was given up on, when it was. */
+  abortedReason?: string;
+  /** The server has accepted the outcome; nothing more is owed. */
+  reported: boolean;
+}
+
 /** The Durable Object holding one upload's parts, ticket context and alarm. */
 export class UploadSession implements DurableObject {
   readonly #state: DurableObjectState;
-  readonly #env: { BUCKET: R2Bucket; INGEST_SHARED_SECRET: string };
+  readonly #env: {
+    BUCKET: R2Bucket;
+    INGEST_SHARED_SECRET: string;
+    SERVER_REPORT_URL: string;
+  };
 
   /**
    * @param state - The instance's own storage and alarm.
@@ -50,7 +75,11 @@ export class UploadSession implements DurableObject {
    */
   constructor(
     state: DurableObjectState,
-    env: { BUCKET: R2Bucket; INGEST_SHARED_SECRET: string },
+    env: {
+      BUCKET: R2Bucket;
+      INGEST_SHARED_SECRET: string;
+      SERVER_REPORT_URL: string;
+    },
   ) {
     this.#state = state;
     this.#env = env;
@@ -70,7 +99,158 @@ export class UploadSession implements DurableObject {
     if (part) {
       return this.#part(Number(part[1]), await request.arrayBuffer());
     }
+    if (pathname === "/complete") {
+      return this.#finish();
+    }
     return new Response("Not found", { status: 404 });
+  }
+
+  /**
+   * The alarm going off.
+   *
+   * Same work as the browser asking, because the question is the same one:
+   * did every part arrive? The browser only ever gets there sooner. A browser
+   * that stopped sending never asks at all, and this is what notices.
+   */
+  async alarm(): Promise<void> {
+    await this.#finish();
+  }
+
+  /**
+   * Settle the upload and tell the server.
+   *
+   * Re-entrant by construction: each step records that it happened, so the
+   * alarm coming back after a report the server refused re-sends the report
+   * without completing an already-complete upload or hashing its bytes twice.
+   * @returns 200 once the server has accepted the outcome, 502 while it has not.
+   */
+  async #finish(): Promise<Response> {
+    const upload = await this.#state.storage.get<OpenUpload>("upload");
+    if (upload === undefined) return new Response("Gone", { status: 410 });
+
+    const progress: FinishProgress = (await this.#state.storage.get<FinishProgress>(
+      "finish",
+    )) ?? { settled: false, reported: false };
+    if (progress.reported) return new Response(null, { status: 200 });
+
+    const settled = progress.settled
+      ? progress
+      : await this.#settle(upload, progress);
+
+    const accepted = await this.#report(upload, settled);
+    if (!accepted) {
+      // The alarm stays set. Nothing else will tell the node what happened, so
+      // the only way this upload reaches the user is by trying again.
+      return new Response("Report not accepted", { status: 502 });
+    }
+
+    await this.#state.storage.put("finish", { ...settled, reported: true });
+    await this.#state.storage.deleteAlarm();
+    return new Response(null, { status: 200 });
+  }
+
+  /**
+   * Assemble the object if every part arrived, otherwise drop what was written.
+   *
+   * Counting is enough because a non-final part is only accepted at exactly
+   * `partSize` and each part is recorded once under its own number, so the
+   * count answers "is the file whole?" on its own.
+   * @param upload - What is open.
+   * @param progress - How far finishing has got.
+   * @returns The progress after settling, already persisted.
+   */
+  async #settle(
+    upload: OpenUpload,
+    progress: FinishProgress,
+  ): Promise<FinishProgress> {
+    const parts = (await this.#state.storage.get<RecordedPart[]>("parts")) ?? [];
+    const resumed = this.#env.BUCKET.resumeMultipartUpload(
+      upload.ticket.storageKey,
+      upload.uploadId,
+    );
+
+    if (parts.length < upload.ticket.totalParts) {
+      await resumed.abort();
+      const aborted: FinishProgress = {
+        ...progress,
+        settled: true,
+        abortedReason: `only ${parts.length} of ${upload.ticket.totalParts} parts arrived`,
+      };
+      await this.#state.storage.put("finish", aborted);
+      return aborted;
+    }
+
+    const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+    const object = await resumed.complete(ordered);
+    const settled: FinishProgress = {
+      ...progress,
+      settled: true,
+      sha256: await this.#hashStored(upload.ticket.storageKey),
+      sizeBytes: object.size,
+    };
+    await this.#state.storage.put("finish", settled);
+    return settled;
+  }
+
+  /**
+   * Hash the object R2 assembled.
+   *
+   * Streamed rather than buffered: an upload may be gigabytes, and the read
+   * stays inside Cloudflare's network where it costs nothing.
+   * @param storageKey - The assembled object's key.
+   * @returns Its SHA-256 as lowercase hex.
+   * @throws {Error} When the object is not readable, which leaves the alarm set.
+   */
+  async #hashStored(storageKey: string): Promise<string> {
+    const stored = await this.#env.BUCKET.get(storageKey);
+    if (stored === null) throw new Error(`completed object ${storageKey} is missing`);
+    const digestStream = new crypto.DigestStream("SHA-256");
+    await stored.body.pipeTo(digestStream);
+    const digest = await digestStream.digest;
+    return [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * Tell the server how this upload ended.
+   * @param upload - What was uploaded, carrying the context the server reads back.
+   * @param progress - The settled outcome.
+   * @returns Whether the server accepted it.
+   */
+  async #report(upload: OpenUpload, progress: FinishProgress): Promise<boolean> {
+    const body =
+      progress.abortedReason === undefined
+        ? {
+            storage_key: upload.ticket.storageKey,
+            outcome: "completed",
+            lease_gen: upload.ticket.leaseGen,
+            sha256: progress.sha256,
+            size_bytes: progress.sizeBytes,
+            content_type: upload.ticket.contentType,
+          }
+        : {
+            storage_key: upload.ticket.storageKey,
+            outcome: "aborted",
+            lease_gen: upload.ticket.leaseGen,
+            reason: progress.abortedReason,
+          };
+
+    try {
+      const response = await fetch(this.#env.SERVER_REPORT_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-ingest-secret": this.#env.INGEST_SHARED_SECRET,
+        },
+        body: JSON.stringify(body),
+      });
+      return response.ok;
+    } catch {
+      // Unreachable server, DNS, TLS — all the same answer here: not accepted,
+      // so the alarm keeps this upload alive for another try.
+      return false;
+    }
   }
 
   /**

@@ -27,6 +27,9 @@ export { UploadSession } from "@ingest/upload-session.js";
  */
 const PART_PATH = /^\/uploads\/([^/]+)\/parts\/(\d+)$/;
 
+/** `/uploads/{uploadId}/complete`. */
+const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
+
 /** What wrangler binds into the Worker. */
 export interface Env {
   BUCKET: R2Bucket;
@@ -125,6 +128,40 @@ async function uploadPart(
   );
 }
 
+/**
+ * Ask the instance to finish the upload.
+ *
+ * Only ever early: the alarm reaches the same place on its own, so a browser
+ * that never asks still gets an outcome. That is also why a failure here
+ * changes nothing — the alarm is what guarantees the attempt, this is what
+ * makes it prompt.
+ * @param request - The browser's request, carrying the session token.
+ * @param env - The Worker's bindings.
+ * @param uploadId - The upload from the path.
+ * @returns The instance's answer, or 401 when the token does not verify.
+ */
+async function completeUpload(
+  request: Request,
+  env: Env,
+  uploadId: string,
+): Promise<Response> {
+  const token = request.headers.get("x-upload-token");
+  if (token === null) return new Response("Unauthorized", { status: 401 });
+
+  const session = await verifySessionToken(
+    token,
+    env.INGEST_SHARED_SECRET,
+    Date.now(),
+  );
+  if (session === null || session.uploadId !== uploadId) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  return sessionFor(env, session.storageKey).fetch(
+    new Request("https://session/complete", { method: "POST" }),
+  );
+}
+
 export default {
   /**
    * Route one request.
@@ -144,6 +181,11 @@ export default {
     const part = PART_PATH.exec(pathname);
     if (request.method === "PUT" && part) {
       return uploadPart(request, env, part[1] ?? "", Number(part[2]));
+    }
+
+    const finish = COMPLETE_PATH.exec(pathname);
+    if (request.method === "POST" && finish) {
+      return completeUpload(request, env, finish[1] ?? "");
     }
 
     return new Response("Not found", { status: 404 });
