@@ -142,9 +142,19 @@ describe('the selection a press leaves behind (§6.2)', () => {
     expect(editor.state.selection.empty).toBe(false);
   });
 
-  // A node selection over a text block is left out: nothing in the document
-  // space builds one, so no reader is holding one when a row is pressed. A9
-  // still pins that such a selection reaches the same result.
+  // A node selection over a text block is what a Mod+click leaves: with
+  // `selectNodeModifier` held, prosemirror-view builds one (`prosemirror-view`
+  // `MouseDown`), and `document-click-to-write` lets a modified click through.
+  // Every exclusive press replaces the node it was on, so prosemirror has
+  // nothing to map the selection onto and hands back a caret.
+  it.each(ROWS)('leaves a node selection holding something: %s', (id) => {
+    const editor = openBody('<h2>one</h2><p>two</p>');
+    editor.view.dispatch(
+      editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, 0)),
+    );
+    runBlockType(editor, id);
+    expect(editor.state.selection.empty).toBe(false);
+  });
 });
 
 describe('a selection holding no text block', () => {

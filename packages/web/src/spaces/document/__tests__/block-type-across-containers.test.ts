@@ -245,6 +245,64 @@ describe('a quote between the block and the list holding it', () => {
   });
 });
 
+describe('a Quote press that leaves the list shell alone', () => {
+  // §5.2 splits the list at the selection's edges so a quote can take the
+  // shell along. Where the selected block is not a list item the shell never
+  // moves, and splitting it there renumbers an ordered list nobody touched.
+  it('leaves the numbering of the list it never entered', () => {
+    const editor = openBody(
+      '<ol><li><p>a</p><blockquote><p>b</p></blockquote></li><li><p>d</p></li></ol>',
+    );
+    selectBlock(editor, 'b');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<ol><li><p>a</p><p>b</p></li><li><p>d</p></li></ol>',
+    );
+  });
+
+  it('leaves the numbering when the quote goes on', () => {
+    const editor = openBody(
+      '<ol><li><p>a</p><p>b</p></li><li><p>d</p></li></ol>',
+    );
+    selectBlock(editor, 'b');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<ol><li><p>a</p><blockquote><p>b</p></blockquote></li><li><p>d</p></li></ol>',
+    );
+  });
+});
+
+describe('a document holds one level of quote (rule 5)', () => {
+  it('refuses a press that would put a quote around a quote', () => {
+    const editor = openBody(
+      '<ul><li><p>one</p><blockquote><ul><li><p>deep</p></li></ul></blockquote></li>'
+        + '<li><p>tail</p></li></ul>',
+    );
+    const before = editor.getHTML();
+    selectBlock(editor, 'one');
+    let dispatched = 0;
+    const original = editor.view.dispatch.bind(editor.view);
+    editor.view.dispatch = (tr): void => {
+      dispatched += 1;
+      original(tr);
+    };
+    runBlockType(editor, 'quote');
+    expect(dispatched).toBe(0);
+    expect(editor.getHTML()).toBe(before);
+  });
+
+  it('never nests over the two presses that used to reach it', () => {
+    const editor = openBody(
+      '<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li><li><p>tail</p></li></ul>',
+    );
+    selectBlock(editor, 'deep');
+    runBlockType(editor, 'quote');
+    selectBlock(editor, 'one');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).not.toMatch(/<blockquote>(?:(?!<\/blockquote>)[\s\S])*<blockquote>/);
+  });
+});
+
 describe('a long list', () => {
   it('lifts every one of a hundred items', () => {
     const items = Array.from({ length: 100 }, (_, i) => `<li><p>item ${i}</p></li>`).join('');

@@ -372,7 +372,7 @@ function splitListAtSelectionEdges(tr: Transaction): void {
   const tail = selectionEnds(tr);
   if (!tail) return;
   const $last = tr.doc.resolve(tail.last);
-  const tailDepth = listDepthAt($last);
+  const tailDepth = itemListName($last) === null ? null : listDepthAt($last);
   if (tailDepth !== null && $last.index(tailDepth) + 1 < $last.node(tailDepth).childCount) {
     const at = $last.after(tailDepth + 1);
     if (canSplit(tr.doc, at, 1)) tr.split(at, 1);
@@ -381,7 +381,7 @@ function splitListAtSelectionEdges(tr: Transaction): void {
   const head = selectionEnds(tr);
   if (!head) return;
   const $first = tr.doc.resolve(head.first);
-  const headDepth = listDepthAt($first);
+  const headDepth = itemListName($first) === null ? null : listDepthAt($first);
   if (headDepth !== null && $first.index(headDepth) > 0) {
     const at = $first.before(headDepth + 1);
     if (canSplit(tr.doc, at, 1)) tr.split(at, 1);
@@ -403,6 +403,12 @@ function wrapInQuote(tr: Transaction): boolean {
   if (!range) return false;
   for (let depth = range.depth; depth >= 0; depth -= 1) {
     const outer = new NodeRange(range.$from, range.$to, depth);
+    // A document holds one level of quote (rule 5). Walking out far enough to
+    // find a wrapping can reach a range that already holds a quote of its own
+    // — a list item whose later block is quoted, say — and wrapping that would
+    // stack one inside the other. The press refuses instead of taking a quote
+    // off blocks nobody selected.
+    if (holdsQuote(outer)) return false;
     const wrapping = findWrapping(outer, quote);
     if (wrapping) {
       tr.wrap(outer, wrapping);
@@ -410,6 +416,26 @@ function wrapInQuote(tr: Transaction): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Does anything inside this range carry a quote?
+ * @param range - The range about to be wrapped.
+ * @returns Whether a blockquote sits inside it.
+ */
+function holdsQuote(range: NodeRange): boolean {
+  let found = false;
+  range.parent.forEach((child, offset) => {
+    const start = range.$from.start(range.depth) + offset;
+    if (found || start + child.nodeSize <= range.start || start >= range.end) return;
+    if (QUOTE_NAMES.has(child.type.name)) { found = true; return; }
+    child.descendants((node) => {
+      if (found) return false;
+      if (QUOTE_NAMES.has(node.type.name)) { found = true; return false; }
+      return true;
+    });
+  });
+  return found;
 }
 
 /**
@@ -594,18 +620,22 @@ function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
 
   const marked = isMarked(editor, id);
   const tr = state.tr;
-  const substituted = !(state.selection instanceof TextSelection);
-  if (substituted) {
-    tr.setSelection(TextSelection.create(tr.doc, ends.first, ends.last));
-  }
   if (!applyTransition(tr, state.schema, id, marked)) return null;
-  // The substitute is a working range, not what the reader is holding: its end
-  // is the start of the last block's content, so leaving it in place would drop
-  // that block out of the highlight, and over a one-block document it collapses
-  // and takes the bubble bar with it. §6.2's second promise is that the press
-  // does not change the selection.
-  if (substituted) tr.setSelection(state.selection.map(tr.doc, tr.mapping));
-  return tr.docChanged ? tr : null;
+  if (!tr.docChanged) return null;
+
+  // §6.2's second promise: the press does not change what the reader is
+  // holding. A transaction maps its own selection, which covers a text range
+  // and a select-all; a node selection is the one shape with nothing to map
+  // onto, because every exclusive press replaces the node it sat on and
+  // `Selection.near` then answers with a caret. An empty selection takes the
+  // bubble bar off screen (`SelectionBubbleBar.tsx`'s `isWarranted`), so the
+  // blocks the press acted on carry the selection instead.
+  if (tr.selection.empty && !state.selection.empty) {
+    const first = tr.mapping.map(ends.first);
+    const last = tr.mapping.map(ends.last);
+    tr.setSelection(TextSelection.create(tr.doc, first, tr.doc.resolve(last).end()));
+  }
+  return tr;
 }
 
 /**
