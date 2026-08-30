@@ -370,3 +370,39 @@ describe("tab:reorder — a tab the caller never saw", () => {
     expect(readTabs(ACTOR)).toEqual([C, A, B, fourth]);
   });
 });
+
+describe("tab:reorder — a second collab instance holding the same document", () => {
+  beforeEach(() => {
+    seedSpace(A, 100);
+    seedSpace(B, 200);
+    seedSpace(C, 300);
+  });
+
+  it("leaves a tab the other instance closed closed", async () => {
+    // Production runs more than one collab instance (space-delete-lock exists
+    // for exactly that). A move that rewrites the whole array makes every id a
+    // fresh insert, which the other replica's delete cannot reach — so a tab
+    // closed there comes back, in the document, on both connections.
+    seedTabs(ACTOR, [A, B, C]);
+    const snapshot = Y.encodeStateAsUpdate(metaDoc);
+    const other = new Y.Doc();
+    Y.applyUpdate(other, snapshot);
+
+    const beforeOther = Y.encodeStateVector(other);
+    const otherUser = other
+      .getMap<Y.Map<unknown>>("perUser")
+      .get(ACTOR) as Y.Map<unknown>;
+    const otherList = otherUser.get("openTabIds") as Y.Array<string>;
+    otherList.delete(otherList.toArray().indexOf(B), 1);
+    const otherUpdate = Y.encodeStateAsUpdate(other, beforeOther);
+
+    const beforeThis = Y.encodeStateVector(metaDoc);
+    await reorder(C, A);
+    const thisUpdate = Y.encodeStateAsUpdate(metaDoc, beforeThis);
+
+    Y.applyUpdate(metaDoc, otherUpdate);
+    Y.applyUpdate(other, thisUpdate);
+
+    expect(readTabs(ACTOR)).toEqual([C, A]);
+  });
+});

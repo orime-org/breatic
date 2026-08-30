@@ -1588,8 +1588,19 @@ async function handleTabReorder(
         return ok(req.id, { orderChanged: seeded });
       }
       mark();
-      list.delete(0, list.length);
-      list.push(next);
+      // One element moves and the rest are left where they are. Replacing the
+      // whole array would make every id a fresh insert, which a delete another
+      // instance issued concurrently can no longer reach — a tab closed there
+      // would come back. Copies of the moved id collapse into the one it lands
+      // as, which is what `applyTabMove` computes above.
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        if (list.get(i) === spaceId) list.delete(i, 1);
+      }
+      const rest = list.toArray();
+      list.insert(
+        beforeSpaceId === null ? rest.length : rest.indexOf(beforeSpaceId),
+        [spaceId],
+      );
       orderChanged = true;
     });
     const settled = settlePublish(outcome, () =>
