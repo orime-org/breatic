@@ -212,7 +212,7 @@ describe("tab:reorder — moving a tab", () => {
   it("says the order changed", async () => {
     seedTabs(ACTOR, [A, B, C]);
     const res = await reorder(C, A);
-    expect(res.ok && res.result).toEqual({ orderChanged: true });
+    expect(res.ok && res.result).toEqual({ wrote: true });
   });
 
   it("leaves a tab where it already is and says nothing changed", async () => {
@@ -221,14 +221,14 @@ describe("tab:reorder — moving a tab", () => {
     // reaches the server looking exactly like it.
     seedTabs(ACTOR, [A, B, C]);
     const res = await reorder(A, B);
-    expect(res.ok && res.result).toEqual({ orderChanged: false });
+    expect(res.ok && res.result).toEqual({ wrote: false });
     expect(readTabs(ACTOR)).toEqual([A, B, C]);
   });
 
   it("treats a move onto itself as a success that changes nothing", async () => {
     seedTabs(ACTOR, [A, B, C]);
     const res = await reorder(A, A);
-    expect(res.ok && res.result).toEqual({ orderChanged: false });
+    expect(res.ok && res.result).toEqual({ wrote: false });
     expect(readTabs(ACTOR)).toEqual([A, B, C]);
   });
 });
@@ -250,7 +250,7 @@ describe("tab:reorder — a move with nothing to act on", () => {
     seedTabs(ACTOR, [A, B]);
     const res = await reorder(C, A);
     expect(res.ok).toBe(true);
-    expect(res.ok && res.result).toEqual({ orderChanged: false });
+    expect(res.ok && res.result).toEqual({ wrote: false });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 
@@ -258,7 +258,7 @@ describe("tab:reorder — a move with nothing to act on", () => {
     seedTabs(ACTOR, [A, B]);
     const res = await reorder(A, C);
     expect(res.ok).toBe(true);
-    expect(res.ok && res.result).toEqual({ orderChanged: false });
+    expect(res.ok && res.result).toEqual({ wrote: false });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 });
@@ -295,7 +295,7 @@ describe("tab:reorder — a list holding the same id twice", () => {
     // has to be told one is coming.
     seedTabs(ACTOR, [A, B, C, A]);
     const res = await reorder(A, B);
-    expect(res.ok && res.result).toEqual({ orderChanged: true });
+    expect(res.ok && res.result).toEqual({ wrote: true });
     expect(readTabs(ACTOR)).toEqual([A, B, C]);
   });
 });
@@ -319,7 +319,7 @@ describe("tab:reorder — the caller has no list yet", () => {
     seedSpace(A, 100);
     seedSpace(B, 200);
     const res = await reorder(A, B);
-    expect(res.ok && res.result).toEqual({ orderChanged: true });
+    expect(res.ok && res.result).toEqual({ wrote: true });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 
@@ -332,7 +332,7 @@ describe("tab:reorder — the caller has no list yet", () => {
     seedSpace(B, 200);
     const res = await reorder("not-a-space", null);
     expect(res.ok).toBe(true);
-    expect(res.ok && res.result).toEqual({ orderChanged: true });
+    expect(res.ok && res.result).toEqual({ wrote: true });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 });

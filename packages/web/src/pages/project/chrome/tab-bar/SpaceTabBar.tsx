@@ -47,8 +47,8 @@ import { resolveTabDrop } from '@web/pages/project/chrome/tab-bar/tab-drop';
 /**
  * How far the pointer travels before a press becomes a drag (px).
  *
- * Without a distance the press itself starts one, and dnd-kit calls
- * `preventDefault` on it — the click that switches Space never happens.
+ * Without a distance every press starts one, so a hand that shakes a couple
+ * of pixels while switching Space drops the tab on its neighbour.
  */
 const DRAG_START_DISTANCE = 4;
 

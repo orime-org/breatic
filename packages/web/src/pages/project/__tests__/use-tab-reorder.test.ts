@@ -17,10 +17,10 @@ const C = 'c';
  */
 function deferred(): {
   promise: Promise<boolean>;
-  resolve: (orderChanged: boolean) => void;
+  resolve: (wrote: boolean) => void;
   reject: (err: Error) => void;
   } {
-  let resolve!: (orderChanged: boolean) => void;
+  let resolve!: (wrote: boolean) => void;
   let reject!: (err: Error) => void;
   const promise = new Promise<boolean>((res, rej) => {
     resolve = res;
@@ -412,7 +412,37 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
   });
 
-  it('drops the whole layer when one of several requests failed', async () => {
+  it('keeps a move the server already took when a later one failed', async () => {
+    // The first request came back saying the server wrote, so its broadcast
+    // is on the way and the strip is showing what the document is about to
+    // say. Only the failed move and the ones computed on top of it go back.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    await act(async () => {
+      first.resolve(true);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    await act(async () => {
+      second.reject(new Error('unreachable'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.order).toEqual([C, A, B]);
+    });
+  });
+
+  it('rolls back to the last move the server took when a queued one failed', async () => {
     const first = deferred();
     const second = deferred();
     const send = vi
@@ -435,7 +465,7 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.order).toEqual([A, B, C]);
+      expect(result.current.order).toEqual([C, A, B]);
     });
   });
 

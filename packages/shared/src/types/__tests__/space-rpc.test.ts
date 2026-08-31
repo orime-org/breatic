@@ -279,21 +279,21 @@ describe("SpaceRpcRequestSchema — tab:reorder", () => {
 });
 
 describe("SpaceRpcResponseSchema — did the reorder change anything", () => {
-  it("carries orderChanged on a success", () => {
+  it("carries wrote on a success", () => {
     const changed = SpaceRpcResponseSchema.parse({
       id: "r1",
       ok: true,
-      result: { orderChanged: true },
+      result: { wrote: true },
     });
-    expect(changed.ok && changed.result).toEqual({ orderChanged: true });
+    expect(changed.ok && changed.result).toEqual({ wrote: true });
 
     const idempotent = SpaceRpcResponseSchema.parse({
       id: "r2",
       ok: true,
-      result: { orderChanged: false },
+      result: { wrote: false },
     });
     expect(idempotent.ok && idempotent.result).toEqual({
-      orderChanged: false,
+      wrote: false,
     });
   });
 

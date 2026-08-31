@@ -338,8 +338,8 @@ function ProjectWorkspace({
         { type: 'tab:reorder', payload: { spaceId, beforeSpaceId } },
         'project.space.error.reorderTab',
       );
-      return res.ok && res.result && 'orderChanged' in res.result
-        ? res.result.orderChanged
+      return res.ok && res.result && 'wrote' in res.result
+        ? res.result.wrote
         : false;
     },
     [callRpc],

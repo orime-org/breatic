@@ -228,7 +228,7 @@ describe('ProjectPage — a tab dropped somewhere new', () => {
     sendSpaceRpcMock.mockResolvedValue({
       id: 'r1',
       ok: true,
-      result: { orderChanged: true },
+      result: { wrote: true },
     });
     useUIStore.setState({ chatPanelCollapsed: true, spaceOpInProgress: null });
     useCurrentUserStore.setState({

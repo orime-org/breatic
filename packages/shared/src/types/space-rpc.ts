@@ -229,7 +229,7 @@ export const SpaceRpcResponseSchema = z.discriminatedUnion("ok", [
           name: z.string(),
         }),
         z.object({
-          orderChanged: z.boolean(),
+          wrote: z.boolean(),
         }),
       ])
       .optional(),

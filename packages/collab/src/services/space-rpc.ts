@@ -106,7 +106,7 @@ function ok(
   id: string,
   result?:
     | { spaceId: string; type: "canvas" | "document" | "timeline"; name: string }
-    | { orderChanged: boolean },
+    | { wrote: boolean },
 ): SpaceRpcResponse {
   return { id, ok: true, result };
 }
@@ -1530,7 +1530,7 @@ async function handleTabClose(
  * @param projectId - Project whose meta doc holds the tab lists.
  * @param caller - Authenticated caller; the userId comes from here, never from the request.
  * @param req - The `tab:reorder` request.
- * @returns Success carrying `orderChanged`; a move whose ids are no longer
+ * @returns Success carrying `wrote`; a move whose ids are no longer
  *   both open writes nothing and says so.
  */
 async function handleTabReorder(
@@ -1550,7 +1550,7 @@ async function handleTabReorder(
     callerId: caller.userId,
     during: "tab:reorder",
   };
-  let orderChanged = false;
+  let wrote = false;
   try {
     const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
@@ -1573,12 +1573,12 @@ async function handleTabReorder(
         (beforeSpaceId !== null && !current.includes(beforeSpaceId)) ||
         spaceId === beforeSpaceId
       ) {
-        return ok(req.id, { orderChanged: seeded });
+        return ok(req.id, { wrote: seeded });
       }
 
       const next = applyTabMove(current, spaceId, beforeSpaceId);
       if (sameTabOrder(next, current)) {
-        return ok(req.id, { orderChanged: seeded });
+        return ok(req.id, { wrote: seeded });
       }
       mark();
       // One element moves and the rest are left where they are. Replacing the
@@ -1591,13 +1591,13 @@ async function handleTabReorder(
         if (list.get(i) === spaceId) list.delete(i, 1);
       }
       list.insert(next.indexOf(spaceId), [spaceId]);
-      orderChanged = true;
+      wrote = true;
     });
     const settled = settlePublish(outcome, () =>
       err(req.id, "INTERNAL", "Could not move the tab"),
     );
     if (settled.response) return settled.response;
-    return ok(req.id, { orderChanged });
+    return ok(req.id, { wrote });
   } finally {
     await safeCleanup("disconnect", logCtx, () => conn.disconnect());
   }

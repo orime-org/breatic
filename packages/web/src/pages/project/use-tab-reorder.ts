@@ -140,9 +140,9 @@ export function useTabReorder(
     inFlight.current = true;
     void sendRef
       .current(next.spaceId, next.beforeSpaceId)
-      .then((orderChanged) => {
+      .then((wrote) => {
         inFlight.current = false;
-        if (!orderChanged) {
+        if (!wrote) {
           // The server wrote nothing, so no arrival will ever account for
           // this one. It stops being owed here or never — and it may already
           // have gone, if the same move reached the document another way.
@@ -151,11 +151,13 @@ export function useTabReorder(
         pump();
       })
       .catch(() => {
-        // The caller surfaced the failure. Everything shown optimistically
-        // goes back to what the document says — including the moves behind
-        // this one, which were computed on top of it.
+        // The caller surfaced the failure. This move goes back, and so do the
+        // ones behind it — each was computed on top of the one before. The
+        // ones ahead of it stay: the server took them, and their broadcasts
+        // are on the way.
         inFlight.current = false;
-        commit([]);
+        const at = owedRef.current.findIndex((m) => m.id === next.id);
+        commit(at === -1 ? owedRef.current : owedRef.current.slice(0, at));
       });
   }, [commit]);
 
