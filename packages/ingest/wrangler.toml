@@ -1,4 +1,8 @@
-name = "breatic-ingest"
+# The top level is what `wrangler dev` runs. Its name differs from the
+# production one below so that a deploy without `--env production` lands
+# somewhere else instead of over the live Worker; `pnpm deploy` in this package
+# passes that flag.
+name = "breatic-ingest-dev"
 main = "src/index.ts"
 # Pinned to what the workerd bundled with @cloudflare/vitest-pool-workers
 # supports. A later date deploys under runtime flags the tests never ran
@@ -38,6 +42,7 @@ new_sqlite_classes = ["UploadSession"]
 # over this block: verified against wrangler 4.127.1 by serving one variable
 # from both places (`.dev.vars` answered) and then removing it and restarting
 # (this block answered — removing it without a restart changes nothing).
+# `.dev.vars.example` lists what that file may hold.
 [vars]
 # Where the Worker reports an upload's outcome. The server's own base URL,
 # which differs per deployment, so each environment below sets its own.

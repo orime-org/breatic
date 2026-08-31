@@ -16,7 +16,11 @@
 - ❌ `@server` / `@worker` / `@collab` / `@web` —— 服务之间互不 import
 
 ## 怎么拿配置
-经 fetch handler 的 `env` 参数（wrangler 的 bindings 和 vars），**不读 `process.env`**——workerd 没有它。密钥走 `wrangler secret put`，本地走 `.dev.vars`（已 gitignore）。
+经 fetch handler 的 `env` 参数（wrangler 的 bindings 和 vars），**不读 `process.env`**——workerd 没有它。
+
+配置分两层：`wrangler.toml` 进仓库，装结构（binding 名、DO 类名、`migrations`、`compatibility_date`）和生产环境的值；`.dev.vars` 不进仓库，装密钥和本地要覆盖的那几行，`wrangler dev` 读它并盖过 `wrangler.toml` 的 `[vars]`。`.dev.vars.example` 进仓库，记的是那个文件可以放什么。密钥在线上走 `wrangler secret put`。
+
+部署走 `pnpm deploy`（带 `--env production`）。顶层的 `name` 跟生产那个不同名，漏掉这个 flag 不会盖到线上 Worker。
 
 ## 关键路径
 它站在上传链路上，而上传是**用户看得见的**。三个端点的每一次拒绝都要有明确状态码：ticket 验不过 401，分片长度不合 400，上传已结束再来 409。

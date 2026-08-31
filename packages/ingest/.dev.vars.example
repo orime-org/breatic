@@ -1,0 +1,20 @@
+# Copy to `.dev.vars` and fill in. That file is gitignored; this one is the
+# record of what it may hold.
+#
+# `wrangler dev` reads `.dev.vars` after wrangler.toml and wins over the
+# `[vars]` block there, so only the lines that differ from the checked-in
+# defaults belong here. Deleting a line takes a restart to take effect.
+
+# The value `wrangler secret put INGEST_SHARED_SECRET` sets in production, and
+# the same string as INGEST_SHARED_SECRET in the repo-root `.env`. The server
+# signs upload tickets with it and this Worker verifies them, so a mismatch
+# rejects every upload with 401. Generate one with `openssl rand -hex 32`.
+INGEST_SHARED_SECRET=
+
+# Only for a checkout running on other ports than the `.env.dev` defaults
+# (PORT=3000, VITE_DEV_PORT=8000). Both must match that checkout's own `.env`:
+# the first is where this Worker reports an upload's outcome, the second is the
+# page origin the browser sends parts from, and a browser refused by the second
+# never sends the request at all.
+# SERVER_REPORT_URL=http://localhost:3300/api/v1/assets/ingest-report
+# ALLOWED_ORIGINS=http://localhost:8300
