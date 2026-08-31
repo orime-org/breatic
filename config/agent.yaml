@@ -62,8 +62,10 @@ tool_result_keep: 3
 # Maximum character length for project memory injected into AI calls.
 memory_project_max_size: 3072
 
-# Maximum character length for user memory injected into AI calls.
-memory_user_max_size: 2048
+# Maximum character length for conversation memory injected into AI calls.
+# Consolidation rewrites this layer whole every time it runs, so it is the one
+# segment that grows from its own output.
+memory_conversation_max_size: 3072
 
 # ── Tools ─────────────────────────────────────────────────
 # Maximum characters returned from web_fetch tool output.

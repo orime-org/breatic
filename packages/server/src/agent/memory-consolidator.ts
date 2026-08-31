@@ -4,9 +4,10 @@
 /**
  * Memory consolidator — auto-summarize long conversations.
  *
- * When a conversation exceeds `memory_window` turns, the consolidator
- * asks an LLM to summarize old turns into the three-layer memory:
- * conversation (always), project (if relevant), user (if relevant).
+ * When a conversation exceeds `memory_window` turns, the consolidator asks an
+ * LLM to summarize old turns into the two memory layers: conversation
+ * (always) and project (if relevant). Both belong to the member whose
+ * conversation it read.
  *
  * The consolidated turns are "forgotten" from the LLM context but
  * their essence is preserved in memory. Recent turns (memory_keep_recent_turns)
@@ -30,7 +31,6 @@ You are a memory consolidator for an AI creative assistant. Your job is to analy
 
 Current memory state:
 - Conversation memory: {conversation_memory}
-- User preferences: {user_memory}
 - Project context: {project_memory}
 
 Messages to consolidate:
@@ -39,14 +39,13 @@ Messages to consolidate:
 Produce a JSON object with these fields:
 {
   "conversationUpdate": "Complete rewrite of conversation memory incorporating the new information. Be concise but preserve all important facts, decisions, and context. This replaces the entire conversation memory.",
-  "projectUpdate": "New project-level insights that should be shared across conversations (creative direction, style choices, asset details). Set to null if no project-relevant insights.",
-  "userUpdate": "New user preference insights (preferred styles, working patterns, communication preferences). Set to null if no new user-level insights.",
+  "projectUpdate": "New project-level insights that carry across this member's conversations in this project (creative direction, style choices, asset details). Set to null if no project-relevant insights.",
   "historyEntry": "One-line summary of what was discussed in these messages."
 }
 
 Rules:
 - conversationUpdate REWRITES the full memory — incorporate existing memory + new info
-- projectUpdate/userUpdate only when there are genuine cross-conversation insights
+- projectUpdate only when there are genuine cross-conversation insights
 - Be concise — this text will be injected into future LLM context windows
 - Respond ONLY with the JSON object, no markdown or explanation
 - Respond in the same language as the messages`;
@@ -89,9 +88,8 @@ export async function consolidateIfNeeded(
 
   // Load existing memory context
   const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
-  const existingUserMemory = await memoryRepo.getUserMemory(userId);
   const existingProjectMemory = projectId
-    ? await memoryRepo.getProjectMemory(projectId)
+    ? await memoryRepo.getProjectMemory(userId, projectId)
     : "";
 
   // Build the consolidation prompt from what was said. Only the prose: the
@@ -104,7 +102,6 @@ export async function consolidateIfNeeded(
 
   const prompt = CONSOLIDATION_PROMPT
     .replace("{conversation_memory}", existingConvMemory || "(empty)")
-    .replace("{user_memory}", existingUserMemory || "(empty)")
     .replace("{project_memory}", existingProjectMemory || "(empty)")
     .replace("{messages}", messagesText);
 
@@ -121,7 +118,6 @@ export async function consolidateIfNeeded(
   let parsed: {
     conversationUpdate: string;
     projectUpdate: string | null;
-    userUpdate: string | null;
     historyEntry: string;
   };
 
@@ -138,7 +134,6 @@ export async function consolidateIfNeeded(
   await memoryService.applyConsolidation(userId, conversationId, projectId, {
     conversationUpdate: parsed.conversationUpdate,
     projectUpdate: parsed.projectUpdate ?? undefined,
-    userUpdate: parsed.userUpdate ?? undefined,
     historyEntry: parsed.historyEntry,
   });
 
@@ -152,6 +147,5 @@ export async function consolidateIfNeeded(
     messagesConsolidated: messagesToConsolidate.length,
     newConsolidatedTurn: newTurn,
     hasProjectUpdate: !!parsed.projectUpdate,
-    hasUserUpdate: !!parsed.userUpdate,
   }, "Memory consolidation completed");
 }

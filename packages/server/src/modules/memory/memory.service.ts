@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Memory service — orchestrates the three-layer memory system.
+ * Memory service — orchestrates the two memory layers.
  *
- * Reads and writes across conversation, project, and user memory
- * layers, applying optimistic locking where versioned. Used by the
- * agent system to build LLM context and persist consolidation results.
+ * Reads and writes conversation and project memory, applying optimistic
+ * locking on the versioned one. Used by the agent system to build LLM context
+ * and persist consolidation results.
+ *
+ * Both layers are the reader's own: project memory is keyed by member as well
+ * as project, so nothing one person's agent summarised reaches another's
+ * prompt.
  */
 
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
@@ -21,10 +25,12 @@ type Scenario = "agent_chat" | "canvas_node" | "edit_area";
  * Assemble memory context for injection into an LLM system prompt.
  *
  * Injection strategy by scenario:
- * - `agent_chat`: user + project + conversation memory
- * - `canvas_node` / `edit_area`: user + project only (no conversation)
+ * - `agent_chat`: project + conversation memory
+ * - `canvas_node` / `edit_area`: project only (no conversation)
  *
- * Content is truncated to the max sizes defined in agent config.
+ * Both layers are truncated to the max sizes in agent config. The
+ * conversation layer needs its own ceiling because consolidation rewrites it
+ * whole every time it runs, so it is the one segment that grows itself.
  * @param userId - The current user's ID
  * @param conversationId - The active conversation ID (may be undefined)
  * @param projectId - The associated project ID (may be undefined)
@@ -39,11 +45,9 @@ export async function buildContext(
 ): Promise<MemoryContext> {
   const config = getAgentConfig();
 
-  const userMemoryRaw = await memoryRepo.getUserMemory(userId);
-
   let projectMemory = "";
   if (projectId) {
-    projectMemory = await memoryRepo.getProjectMemory(projectId);
+    projectMemory = await memoryRepo.getProjectMemory(userId, projectId);
   }
 
   let conversationMemory = "";
@@ -53,9 +57,11 @@ export async function buildContext(
   }
 
   return {
-    userMemory: truncate(userMemoryRaw, config.memory_user_max_size),
     projectMemory: truncate(projectMemory, config.memory_project_max_size),
-    conversationMemory,
+    conversationMemory: truncate(
+      conversationMemory,
+      config.memory_conversation_max_size,
+    ),
   };
 }
 
@@ -63,16 +69,15 @@ export async function buildContext(
 interface ConsolidationData {
   conversationUpdate: string;
   projectUpdate?: string;
-  userUpdate?: string;
   historyEntry: string;
 }
 
 /**
- * Persist three-layer consolidation results.
+ * Persist consolidation results across both layers.
  *
  * Always updates conversation memory and appends a history entry.
- * Optionally updates project and user memory with optimistic locking;
- * version conflicts are logged as warnings rather than propagated.
+ * Optionally updates the writer's project memory with optimistic locking;
+ * a lost version race leaves that layer alone.
  * @param userId - The current user's ID
  * @param conversationId - The conversation being consolidated
  * @param projectId - The associated project ID (may be undefined)
@@ -84,14 +89,12 @@ export async function applyConsolidation(
   projectId: string | undefined,
   data: ConsolidationData,
 ): Promise<void> {
-  // (1) Always persist conversation memory + history
   await memoryRepo.upsertConversationMemory(
     conversationId,
     data.conversationUpdate,
   );
   await memoryRepo.appendHistory(conversationId, data.historyEntry);
 
-  // (2) Project memory — optimistic locking with conflict tolerance
   if (data.projectUpdate && projectId) {
     await memoryRepo.appendProjectEntry(
       projectId,
@@ -100,45 +103,21 @@ export async function applyConsolidation(
       conversationId,
     );
     try {
-      const version =
-        await memoryRepo.getProjectMemoryVersion(projectId);
+      const version = await memoryRepo.getProjectMemoryVersion(
+        userId,
+        projectId,
+      );
       await memoryRepo.upsertProjectMemory(
+        userId,
         projectId,
         data.projectUpdate,
         version,
       );
     } catch (error: unknown) {
       if (error instanceof ConflictError) {
-        // Concurrent project-memory upsert lost the optimistic
-        // version race. Swallowing is intentional (consolidator is
-        // background, idempotent retries are safe), but the
-        // application caller can observe the no-op via the missing
-        // `applyConsolidation` follow-up event if needed.
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  // (3) User memory — same optimistic locking pattern
-  if (data.userUpdate) {
-    await memoryRepo.appendUserEntry(
-      userId,
-      data.userUpdate,
-      conversationId,
-    );
-    try {
-      const version =
-        await memoryRepo.getUserMemoryVersion(userId);
-      await memoryRepo.upsertUserMemory(
-        userId,
-        data.userUpdate,
-        version,
-      );
-    } catch (error: unknown) {
-      if (error instanceof ConflictError) {
-        // Same as the project-memory branch — concurrent upsert
-        // lost the version race; intentionally silent.
+        // Another consolidation of this member's memory landed first. Its
+        // content came from the same conversations, so the row already says
+        // what this one would have written.
       } else {
         throw error;
       }

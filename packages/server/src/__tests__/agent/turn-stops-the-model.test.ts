@@ -32,7 +32,7 @@ import type * as DomainModule from "@breatic/domain";
 const dnsLookupMock = vi.fn();
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));

@@ -35,7 +35,7 @@ const webFetchCalledWith = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));

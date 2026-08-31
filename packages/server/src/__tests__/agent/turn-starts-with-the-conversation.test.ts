@@ -28,7 +28,7 @@ const consolidateIfNeeded = vi.fn(async () => undefined);
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 const buildTurnContext = vi.fn(async () => ({
-  memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+  memoryContext: { projectMemory: "", conversationMemory: "" },
   compressedHistory: [],
 }));
 
@@ -129,7 +129,7 @@ describe("the name a turn gives its conversation", () => {
         new Promise((resolve) => {
           releaseTheSlowWork = (): void => {
             resolve({
-              memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+              memoryContext: { projectMemory: "", conversationMemory: "" },
               compressedHistory: [],
             });
           };

@@ -24,7 +24,7 @@ const streamTextRetry = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     // The history is what this case is about: a turn now reads it itself,
     // after storing the message and answering the browser, so this is where
     // it comes from.

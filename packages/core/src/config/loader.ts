@@ -80,7 +80,13 @@ const agentConfigSchema = z.object({
    */
   tool_result_keep: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(3072),
-  memory_user_max_size: z.number().int().positive().default(2048),
+  /**
+   * How much of a conversation's own memory reaches the system prompt.
+   *
+   * Consolidation rewrites this layer whole every time it runs, so it is the
+   * one segment that grows from its own output.
+   */
+  memory_conversation_max_size: z.number().int().positive().default(3072),
   web_fetch_max_chars: z.number().int().positive().default(50000),
   /**
    * How long ONE DELIVERY of a `web_fetch` request may take, in milliseconds.

@@ -1184,10 +1184,21 @@ export const userMemoryEntries = pgTable(
 
 // ── 13. Project Memories ─────────────────────────────────────────────
 
+/**
+ * What one member's agent has summarised about one project.
+ *
+ * Keyed by member as well as project: the content is written by reading that
+ * member's own conversations, so a row shared across a project hands what one
+ * person's agent learned to the next person's system prompt, and the next
+ * consolidation overwrites it.
+ */
 export const projectMemories = pgTable(
   "project_memories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
@@ -1197,7 +1208,10 @@ export const projectMemories = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("project_memories_project_id_idx").on(table.projectId),
+    uniqueIndex("project_memories_user_project_idx").on(
+      table.userId,
+      table.projectId,
+    ),
   ],
 );
 

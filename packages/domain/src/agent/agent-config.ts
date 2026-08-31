@@ -139,9 +139,6 @@ export function buildAgentConfig(
       `## Active Skill: ${skillName}\n${registry.loadSkillContent(skillName)}`,
     );
   }
-  if (memoryContext?.userMemory) {
-    sections.push(`## User Preferences & Style\n${memoryContext.userMemory}`);
-  }
   if (memoryContext?.projectMemory) {
     sections.push(`## Project Context\n${memoryContext.projectMemory}`);
   }

@@ -658,9 +658,13 @@ export interface RecentItem {
   lastOpenedAt: Date;
 }
 
-/** Three-layer memory context for LLM prompts. */
+/**
+ * The two memory layers an LLM prompt carries.
+ *
+ * Both are the reader's own: project memory is keyed by member as well as
+ * project, and conversation memory by conversation.
+ */
 export interface MemoryContext {
-  userMemory: string;
   projectMemory: string;
   conversationMemory: string;
 }

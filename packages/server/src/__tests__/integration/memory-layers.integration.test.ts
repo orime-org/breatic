@@ -164,6 +164,27 @@ describe("project memory belongs to one member, not to the project", () => {
     );
   });
 
+  it("reads the version off the writer's own row", async () => {
+    // Only the other member has a row, so the writer's version is 0 and the
+    // write is a first write. A version read that finds the row by project
+    // alone returns the neighbour's number instead, sending the write down
+    // the update path, where it matches nothing and the optimistic lock
+    // throws. Giving the writer a row of their own would hide that: whichever
+    // of the two rows came back, the number would fit.
+    const { userId: alice, projectId } = await seedProject();
+    const carol = await seedMember(projectId);
+    await seedProjectMemory(carol, projectId, "carol: trailer", 9);
+
+    const version = await memoryRepo.getProjectMemoryVersion(alice, projectId);
+    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: act one", version);
+
+    expect((await readProjectMemory(alice, projectId))?.content).toBe("alice: act one");
+    expect(await readProjectMemory(carol, projectId)).toEqual({
+      content: "carol: trailer",
+      version: 9,
+    });
+  });
+
   it("leaves the other member's row untouched, content and version alike", async () => {
     const { userId: alice, projectId } = await seedProject();
     const carol = await seedMember(projectId);
@@ -233,8 +254,16 @@ describe("the project memory table after the migration", () => {
       "utf8",
     );
 
-    const cleared = migration.indexOf("DELETE FROM project_memories");
-    const added = migration.indexOf("ADD COLUMN");
+    // Comments are stripped first: the note above the statements names both
+    // of them, so matching the whole file finds the prose and reads the two
+    // in whichever order the sentence happens to mention them.
+    const statements = migration
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("--"))
+      .join("\n");
+
+    const cleared = statements.search(/DELETE\s+FROM\s+"?project_memories"?/);
+    const added = statements.indexOf("ADD COLUMN");
     expect(cleared).toBeGreaterThanOrEqual(0);
     expect(added).toBeGreaterThan(cleared);
   });

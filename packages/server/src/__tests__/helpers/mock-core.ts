@@ -159,7 +159,7 @@ export const mocks = {
     consumeTicket: vi.fn(),
   },
   memoryService: {
-    buildContext: vi.fn().mockResolvedValue({ userMemory: "", projectMemory: "", conversationMemory: "" }),
+    buildContext: vi.fn().mockResolvedValue({ projectMemory: "", conversationMemory: "" }),
   },
   // User identity read fns. Routes reach these through `authService`
   // (prohibition #1 — routes call services, not repos); the auth service
@@ -414,7 +414,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Config
     env: { ENV: "dev", PORT: 3000, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "local", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled" },
     MONOREPO_ROOT: "/tmp",
-    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_user_max_size: 1000, memory_project_max_size: 1000, thinking_enabled: true, conversation_page_size: 30 }),
+    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, thinking_enabled: true, conversation_page_size: 30 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
