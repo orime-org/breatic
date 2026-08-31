@@ -111,9 +111,10 @@ function endsAfter(span: { end: number }, visible: { end: number }): boolean {
  * A tab narrower than the strip has to be inside both edges. One wider than
  * the strip can never be, and asking for it leaves the reveal control enabled
  * with nothing that could satisfy it: measured in a browser at 137px of strip
- * and a 160px tab, each click swung scrollLeft between 115 and 92 forever. For
- * such a tab, its start being on screen is the whole of what can be shown —
- * and the start is where the name begins.
+ * and a 160px tab, each click swung scrollLeft between 115 and 92 forever.
+ * What a click does with such a tab is put its start against the leading
+ * edge, so that position is the one this reports as shown — the same place,
+ * asked as a question instead of as a move.
  * @param span - Where the tab sits.
  * @param span.start - Its leading edge.
  * @param span.end - Its trailing edge.
@@ -126,11 +127,10 @@ function spanShown(
   span: { start: number; end: number },
   visible: { start: number; end: number },
 ): boolean {
-  const startShown =
-    !startsBefore(span, visible) &&
-    span.start <= visible.end + EDGE_TOLERANCE;
-  if (span.end - span.start > visible.end - visible.start) return startShown;
-  return startShown && !endsAfter(span, visible);
+  if (span.end - span.start > visible.end - visible.start) {
+    return Math.abs(span.start - visible.start) <= EDGE_TOLERANCE;
+  }
+  return !startsBefore(span, visible) && !endsAfter(span, visible);
 }
 
 /**

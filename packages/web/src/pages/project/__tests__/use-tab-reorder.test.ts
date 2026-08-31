@@ -469,6 +469,37 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
   });
 
+  it('sends the queued move when the failed one had already been retired', async () => {
+    // The document arrived with the first move applied, so it stopped being
+    // owed; its request then failed anyway. There is nothing to roll back and
+    // a move still waiting to go out.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as ReadonlyArray<string> } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    rerender({ ids: [C, A, B] });
+    await act(async () => {
+      first.reject(new Error('unreachable'));
+    });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('carries the next drag after a request failed', async () => {
     // A failure puts the strip back and empties the run. It does not end the
     // strip's ability to reorder — the user drags again and that one goes out.

@@ -312,6 +312,25 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     expect(revealButton()).toBeDisabled();
   });
 
+  it('is offered while an oversized tab still has travel left', async () => {
+    // Its start is inside the strip but not flush against the leading edge,
+    // so there is more of the name to bring in. Answering "shown" anywhere in
+    // that band disagrees with what a click then does, which is to put the
+    // start against the edge.
+    const user = userEvent.setup();
+    setup();
+    const scroller = makeOverflow();
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 60, width: 260 });
+    flush(scroller);
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
+
+    expect(revealButton()).toBeEnabled();
+
+    await user.click(revealButton());
+    expect(scrollTo).toHaveBeenCalledWith({ left: 60, behavior: 'smooth' });
+  });
+
   it('answers again when the page switches Space', () => {
     // Switching to a tab already in sight scrolls nothing, so nothing else
     // tells the button its answer just changed.
