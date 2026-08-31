@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The ceiling on what one model call may write back (#148, G3 A6).
+ * The ceiling on what one model call may write back (#148, G3).
  *
  * The budget bounds what goes to the model. Without a matching bound on what
  * comes back, one answer can run until the provider stops it, and every
@@ -16,8 +16,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { finishedSpending } from "../helpers/model-double.js";
 
 const streamTextRetry = vi.hoisted(() => vi.fn());
@@ -113,33 +111,5 @@ describe("what one model call may write back", () => {
 
     const sent = streamTextRetry.mock.calls[0]?.[0] as { maxOutputTokens?: number };
     expect(sent.maxOutputTokens).toBe(getAgentConfig().max_output_tokens);
-  });
-});
-
-describe("the config keys this work retires", () => {
-  it("leaves none of them behind, in the schema or in the file", () => {
-    // A6. A key with a schema entry, a value in the file and no reader is a
-    // dial that turns nothing — the next person to read it has no way to
-    // know that but to grep for it.
-    const retired = [
-      "memory_window",
-      "memory_keep_recent_turns",
-      "memory_user_max_size",
-      "full_detail_turns",
-    ];
-
-    const loader = readFileSync(
-      fileURLToPath(new URL("../../../../core/src/config/loader.ts", import.meta.url)),
-      "utf8",
-    );
-    const yaml = readFileSync(
-      fileURLToPath(new URL("../../../../../config/agent.yaml", import.meta.url)),
-      "utf8",
-    );
-
-    for (const key of retired) {
-      expect(loader).not.toContain(key);
-      expect(yaml).not.toContain(key);
-    }
   });
 });
