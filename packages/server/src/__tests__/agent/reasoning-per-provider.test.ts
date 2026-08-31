@@ -110,8 +110,8 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({
-  consolidateIfNeeded: vi.fn(async () => undefined),
+vi.mock("@server/agent/turn-budget.js", () => ({
+  foldIfOverBudget: vi.fn(async () => false),
 }));
 
 vi.mock("@server/agent/context.js", () => ({

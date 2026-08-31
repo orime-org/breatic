@@ -34,7 +34,7 @@ import { mocks } from "@server/__tests__/helpers/mock-core.js";
 const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
   billed: true,
   charged: 5,
@@ -120,8 +120,8 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage, getMessages }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({
-  consolidateIfNeeded,
+vi.mock("@server/agent/turn-budget.js", () => ({
+  foldIfOverBudget,
 }));
 
 // What the prompt says is not what this test is about.
@@ -130,7 +130,7 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
+  [addMessage, foldIfOverBudget, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the
@@ -221,7 +221,6 @@ describe("a turn cut short by the client", () => {
           ),
       ),
     ).toBe(true);
-    expect(consolidateIfNeeded).toHaveBeenCalled();
     expect(chargeOnceForGeneration).toHaveBeenCalled();
     // What it billed for is the step the stream actually reported, not the
     // figure the consuming getter would have produced.

@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
+import type { StopCondition, ToolSet, UIMessageChunk } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
@@ -25,7 +25,8 @@ import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
-import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
+import { foldIfOverBudget } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
@@ -263,13 +264,22 @@ export class MainAgent {
      * Ask the model, once everything it needs has been read.
      * @returns The model's answer, as the stream the protocol is made of.
      */
-    const askTheModel = async (): Promise<ReadableStream<UIMessageChunk>> => {
+    /**
+     * Read everything the model is given, and lay it out as it will be sent.
+     *
+     * Repeatable on purpose: a consolidation changes both halves of what this
+     * reads — the watermark shortens the history, the summary lands in memory
+     * — so the turn runs it again afterwards rather than editing the first
+     * result, which would leave the folded turns missing from both places.
+     * @returns The request, and what it was built from.
+     */
+    const assemble = async (): Promise<Assembly> => {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the
       // history would be the same question asked twice -- and it would be a
       // candidate for compression, which could shorten the very thing being
       // asked.
-      const { memoryContext, compressedHistory } = await buildTurnContext(
+      const { memoryContext, compressedHistory, watermark } = await buildTurnContext(
         userId,
         conversationId,
         projectId,
@@ -284,12 +294,39 @@ export class MainAgent {
         memoryContext,
         interactive: true,
       });
-      modelId = agentConfig.modelId;
 
-      const messages: ModelMessage[] = [
-        ...toModelMessages(compressedHistory),
-        { role: "user", content: said },
-      ];
+      return {
+        agentConfig,
+        history: compressedHistory,
+        watermark,
+        messages: [...toModelMessages(compressedHistory), { role: "user", content: said }],
+      };
+    };
+
+    /**
+     * Ask the model, once everything it needs has been read.
+     * @returns The model's answer, as the stream the protocol is made of.
+     */
+    const askTheModel = async (): Promise<ReadableStream<UIMessageChunk>> => {
+      let assembly = await assemble();
+
+      // Measured here rather than inside the assembly because this is where
+      // the request is whole: the instructions carry the persona, the skill
+      // and the memory, and the tool definitions reach the provider as an
+      // argument of their own.
+      if (
+        await foldIfOverBudget(assembly, {
+          userId,
+          conversationId,
+          projectId,
+          ...(signal ? { signal } : {}),
+        })
+      ) {
+        assembly = await assemble();
+      }
+
+      const { agentConfig, messages } = assembly;
+      modelId = agentConfig.modelId;
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
@@ -381,15 +418,6 @@ export class MainAgent {
         return FAILED_TEXT;
       },
       onFinish: async ({ responseMessage, isAborted }) => {
-        // Nobody is waiting for consolidation -- the reader is waiting for
-        // the turn to be over. Started rather than awaited so it stays out
-        // from in front of the ending, and started here so a disconnect
-        // still triggers it. Its failure is logged here because it has
-        // nobody left to return to.
-        void consolidateIfNeeded(userId, conversationId, projectId).catch((err: unknown) =>
-          logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
-        );
-
         const exit = isAborted
           ? "aborted"
           : failure !== undefined

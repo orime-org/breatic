@@ -46,7 +46,7 @@ let providerCalls = 0;
 let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The tools the turn is given, set per test. */
 let turnTools: Record<string, unknown> = {};
@@ -126,7 +126,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const fetchMock = vi.fn();
@@ -181,7 +181,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   dnsLookupMock.mockReset();
   dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
-  [addMessage, consolidateIfNeeded, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => m.mockClear());
 });
 
 afterEach(() => {

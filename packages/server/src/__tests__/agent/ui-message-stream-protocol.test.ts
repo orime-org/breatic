@@ -25,7 +25,7 @@ import { FINISHED } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 
 /** 这一轮模型吐什么，逐个用例改写。 */
 const modelSays = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
@@ -85,7 +85,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 
 // 系统提示词怎么拼不是这个文件要钉的东西，而拼它要走 skill 注册表，
 // 共享的 mock 里那份只有 `get`。这里给一句现成的，把话题留在协议上。

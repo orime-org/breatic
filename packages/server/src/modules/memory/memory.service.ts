@@ -14,8 +14,8 @@
  */
 
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
-import { getAgentConfig } from "@breatic/core";
-import { ConflictError } from "@breatic/core";
+import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import { db, getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 
 /** Scenarios determining which memory layers are loaded. */
@@ -66,63 +66,95 @@ export async function buildContext(
 }
 
 /** Consolidation data from the LLM memory rewriter. */
-interface ConsolidationData {
+export interface ConsolidationData {
   conversationUpdate: string;
   projectUpdate?: string;
   historyEntry: string;
 }
 
-/**
- * Persist consolidation results across both layers.
- *
- * Always updates conversation memory and appends a history entry.
- * Optionally updates the writer's project memory with optimistic locking;
- * a lost version race leaves that layer alone.
- * @param userId - The current user's ID
- * @param conversationId - The conversation being consolidated
- * @param projectId - The associated project ID (may be undefined)
- * @param data - Consolidation payloads from the LLM rewriter
- */
-export async function applyConsolidation(
-  userId: string,
-  conversationId: string,
-  projectId: string | undefined,
-  data: ConsolidationData,
-): Promise<void> {
-  await memoryRepo.upsertConversationMemory(
-    conversationId,
-    data.conversationUpdate,
-  );
-  await memoryRepo.appendHistory(conversationId, data.historyEntry);
+/** One consolidation's results, and how far it says the conversation is folded. */
+export interface ConsolidationCommit {
+  /** Whose memory this is. */
+  userId: string;
+  /** The conversation that was read. */
+  conversationId: string;
+  /** The project it belongs to, when it has one. */
+  projectId: string | undefined;
+  /** What the model produced. */
+  data: ConsolidationData;
+  /** The turn the window ended on. */
+  newWatermark: number;
+}
 
-  if (data.projectUpdate && projectId) {
-    await memoryRepo.appendProjectEntry(
-      projectId,
-      userId,
-      data.projectUpdate,
+/**
+ * Write one consolidation, or nothing at all.
+ *
+ * The memory and the watermark go in one transaction because the invariant
+ * that makes the watermark meaningful spans both: everything under it is
+ * supposed to be in memory. Written separately, a crash between them leaves
+ * turns that are in neither — gone from the history because the watermark
+ * passed them, and absent from memory because that write never happened.
+ *
+ * The watermark moves first and only forwards. Two tabs on one conversation
+ * compute different windows, and the narrower one must not overwrite memory
+ * that already covers more; finding the watermark already further along is
+ * that answer, and it costs the caller a reassembly rather than any data.
+ * @param commit - The results and the watermark they cover.
+ * @returns Whether this call's memory landed.
+ */
+export async function commitConsolidation(
+  commit: ConsolidationCommit,
+): Promise<"written" | "superseded"> {
+  const { userId, conversationId, projectId, data, newWatermark } = commit;
+
+  return db.transaction(async (tx) => {
+    const moved = await conversationRepo.advanceConsolidatedTurn(
       conversationId,
+      newWatermark,
+      tx,
     );
-    try {
-      const version = await memoryRepo.getProjectMemoryVersion(
-        userId,
+    if (!moved) return "superseded";
+
+    await memoryRepo.upsertConversationMemory(conversationId, data.conversationUpdate, tx);
+    await memoryRepo.appendHistory(conversationId, data.historyEntry, tx);
+
+    if (data.projectUpdate && projectId) {
+      await memoryRepo.appendProjectEntry(
         projectId,
+        userId,
+        data.projectUpdate,
+        conversationId,
+        tx,
       );
+      const version = await memoryRepo.getProjectMemoryVersion(userId, projectId, tx);
       await memoryRepo.upsertProjectMemory(
         userId,
         projectId,
         data.projectUpdate,
         version,
+        tx,
       );
-    } catch (error: unknown) {
-      if (error instanceof ConflictError) {
-        // Another consolidation of this member's memory landed first. Its
-        // content came from the same conversations, so the row already says
-        // what this one would have written.
-      } else {
-        throw error;
-      }
     }
-  }
+    return "written";
+  });
+}
+
+/**
+ * Move the watermark past a window whose summary never arrived.
+ *
+ * The turns it covered are lost. Leaving the watermark where it is would be
+ * worse: the consolidating call is `temperature: 0`, so the next turn sends a
+ * strictly larger version of an input that already failed, and does so on
+ * every turn from then on. Nothing the reader can do — refreshing, relogging,
+ * another tab — changes any of the inputs.
+ * @param conversationId - The conversation whose window was discarded.
+ * @param newWatermark - The turn the window ended on.
+ */
+export async function discardConsolidation(
+  conversationId: string,
+  newWatermark: number,
+): Promise<void> {
+  await conversationRepo.advanceConsolidatedTurn(conversationId, newWatermark);
 }
 
 /**

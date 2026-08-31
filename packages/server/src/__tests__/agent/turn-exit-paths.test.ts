@@ -25,7 +25,7 @@ import { FINISHED, finishedSpending } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
@@ -118,7 +118,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 /**
@@ -215,7 +215,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
+  [addMessage, foldIfOverBudget, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -306,25 +306,20 @@ describe("a turn that failed", () => {
     expect(wrapUpMessages()).toHaveLength(1);
   });
 
-  it("does not make the user wait for memory consolidation", async () => {
-    // Consolidation is an LLM call of its own, seconds long, and nobody is
-    // waiting for it -- the user is waiting for the turn to be over. Putting
-    // it in front of the ending leaves the panel spinning on a reply that
-    // has already finished streaming.
-    //
-    // The race is the assertion: a consolidation that never finishes must not
-    // hold the ending. Everything else in this path is mocked, so the only
-    // thing that can take 200ms is an await on that promise.
-    consolidateIfNeeded.mockReturnValueOnce(new Promise<undefined>(() => {}));
-    await Promise.race([
-      runTurn(saidAndSpent("hi", 100)),
-      new Promise<void>((_, reject) =>
-        setTimeout(() => {
-          reject(new Error("the turn waited for consolidation"));
-        }, 200),
-      ),
-    ]);
-    expect(consolidateIfNeeded).toHaveBeenCalled();
+  it("asks about the budget once, before the model and not after it", async () => {
+    // Folding belongs in front of the reply, on the turn whose assembled
+    // request measured over the budget — that is the turn it can shorten. A
+    // second look on the way out would hold the ending of a reply that has
+    // already finished streaming, and shorten nothing until the turn after.
+    await runTurn(saidAndSpent("hi", 100));
+
+    expect(foldIfOverBudget).toHaveBeenCalledTimes(1);
+    // The user's message is stored before the assembly, the reply after the
+    // stream ends. The check sits between them.
+    const [asked, replied] = addMessage.mock.invocationCallOrder;
+    const looked = foldIfOverBudget.mock.invocationCallOrder[0]!;
+    expect(looked).toBeGreaterThan(asked!);
+    expect(looked).toBeLessThan(replied!);
   });
 });
 

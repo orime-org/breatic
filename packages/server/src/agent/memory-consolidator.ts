@@ -2,29 +2,32 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Memory consolidator — auto-summarize long conversations.
+ * Memory consolidator — folds the oldest part of a conversation into memory.
  *
- * When a conversation exceeds `memory_window` turns, the consolidator asks an
- * LLM to summarize old turns into the two memory layers: conversation
- * (always) and project (if relevant). Both belong to the member whose
- * conversation it read.
+ * It runs in front of the reply, on the turn whose assembled request went over
+ * the budget: the caller works out which turns to take, hands them over as the
+ * messages the model would have been sent, and reassembles once this returns.
  *
- * The consolidated turns are "forgotten" from the LLM context but
- * their essence is preserved in memory. Recent turns (memory_keep_recent_turns)
- * are always kept unconsolidated.
+ * There are two results and nothing in between. Either the memory and the
+ * watermark both move, or neither memory is written and the watermark moves
+ * anyway — the window is discarded and the turn goes out regardless. Leaving
+ * the watermark behind for a later retry is what would wedge the conversation:
+ * this call is `temperature: 0`, so the next turn would send a strictly larger
+ * version of an input that already failed, deterministically, on every turn
+ * from then on.
  */
 
 import { stepCountIs } from "ai";
-import { generateTextRetry } from "@breatic/domain";
-import { getModel } from "@breatic/domain";
-import { getAgentConfig } from "@breatic/core";
-import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
-import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import type { ModelMessage } from "ai";
+import {
+  generateTextRetry,
+  getModel,
+  creditLotService,
+  resolveProvider,
+} from "@breatic/domain";
+import { getAgentConfig, env, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
-import { logger } from "@breatic/core";
-
-// Model is configured via config/agent.yaml → consolidation_model
 
 const CONSOLIDATION_PROMPT = `\
 You are a memory consolidator for an AI creative assistant. Your job is to analyze conversation messages and extract key information into a structured memory update.
@@ -50,102 +53,224 @@ Rules:
 - Respond ONLY with the JSON object, no markdown or explanation
 - Respond in the same language as the messages`;
 
+/** One window of a conversation, and where it sits. */
+export interface ConsolidationWindow {
+  /** Whose conversation it is. */
+  userId: string;
+  /** The conversation being folded. */
+  conversationId: string;
+  /** The project it belongs to, when it has one. */
+  projectId?: string;
+  /**
+   * The window, as the model would have been sent it.
+   *
+   * The assembled messages rather than the stored rows: compression has
+   * already replaced the body of every old tool result, and reading storage
+   * would put all of it back — the very bulk this exists to be rid of.
+   */
+  transcript: readonly ModelMessage[];
+  /** Where the watermark stood before this window was taken. */
+  watermarkBefore: number;
+  /** The turn the window ends on. */
+  newWatermark: number;
+  /** Raised when the reader stopped the turn or the client went away. */
+  signal?: AbortSignal;
+}
+
+/** How one consolidation ended. */
+export type ConsolidationOutcome =
+  /** Both layers written, watermark moved. */
+  | "written"
+  /** Nothing written; the watermark moved so the window is not read again. */
+  | "discarded"
+  /** Another request had already folded further; nothing written. */
+  | "superseded"
+  /** The reader left before the model was asked. */
+  | "aborted";
+
+/** What the consolidating model is asked to produce. */
+interface ConsolidationAnswer {
+  conversationUpdate: string;
+  projectUpdate: string | null;
+  historyEntry: string;
+}
+
 /**
- * Check if consolidation is needed and execute if so.
- *
- * Called after each MainAgent response (fire-and-forget).
- * Does nothing if the conversation is under the memory_window turn threshold.
- * @param userId - Current user ID
- * @param conversationId - Current conversation ID
- * @param projectId - Associated project ID (may be undefined)
+ * Render the window the way the prompt reads it.
+ * @param transcript - The window, as assembled messages.
+ * @returns One block of text, speaker by speaker.
  */
-export async function consolidateIfNeeded(
-  userId: string,
-  conversationId: string,
-  projectId?: string,
-): Promise<void> {
-  const config = getAgentConfig();
+function transcribe(transcript: readonly ModelMessage[]): string {
+  return transcript
+    .map((message) => {
+      const said =
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content);
+      return `[${message.role}]: ${said}`;
+    })
+    .join("\n\n");
+}
 
-  // Check if consolidation is needed (by turn count)
-  const unconsolidatedTurns = await messageRepo.getUnconsolidatedTurnCount(conversationId);
-  if (unconsolidatedTurns <= config.memory_window) {
-    return; // Under threshold, nothing to do
+/**
+ * Read the model's answer.
+ * @param text - What the model replied with.
+ * @returns The parsed answer, or null when there is no JSON object in it.
+ */
+function readAnswer(text: string): ConsolidationAnswer | null {
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]) as ConsolidationAnswer;
+  } catch {
+    return null;
   }
+}
 
-  const conv = await conversationRepo.getConversation(conversationId);
-  if (!conv) return;
+/** Who ran one consolidation, over which window, and what it cost. */
+interface ConsolidationBill {
+  /** Who ran it; recorded as the actor and as the payer of last resort. */
+  userId: string;
+  /** The conversation it folded. */
+  conversationId: string;
+  /** Whose studio pays, by way of the project. */
+  projectId: string | undefined;
+  /** Where the watermark stood; half of the idempotency key. */
+  watermarkBefore: number;
+  /** What the call spent. */
+  tokensUsed: number;
+  /** Which model spent it. */
+  model: string;
+}
 
-  const lastTurn = conv.lastConsolidatedTurn;
+/**
+ * Charge the studio for one consolidation.
+ * @param input - Who ran it, over which window, and what it cost.
+ */
+async function bill(input: ConsolidationBill): Promise<void> {
+  const { userId, conversationId, projectId, watermarkBefore, tokensUsed, model } = input;
+  if (tokensUsed === 0) return;
 
-  // Get messages to consolidate (old turns, excluding recent ones to keep)
-  const messagesToConsolidate = await messageRepo.getMessagesForConsolidation(
-    conversationId,
-    lastTurn,
-    config.memory_keep_recent_turns,
+  const outcome = await creditLotService.chargeOnceForGeneration(
+    `consolidate:${conversationId}:${watermarkBefore}`,
+    {
+      projectId: projectId ?? null,
+      actorUserId: userId,
+      amount: Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER),
+      description: "Memory consolidation",
+      tokensUsed,
+      model,
+      provider: resolveProvider(model),
+    },
   );
 
-  if (messagesToConsolidate.length === 0) return;
+  if (outcome && outcome.shortfall > 0) {
+    // The pool ran out, or its credits were reassigned while this ran. The
+    // memory is already written, so what could not be charged goes to
+    // reconciliation.
+    logger.error(
+      {
+        userId,
+        conversationId,
+        studioId: outcome.studioId,
+        charged: outcome.charged,
+        shortfall: outcome.shortfall,
+      },
+      "consolidation_charge_shortfall",
+    );
+  }
+}
 
-  // Load existing memory context
+/**
+ * Fold one window of a conversation into memory.
+ * @param window - The turns to fold and where they sit.
+ * @returns How it ended; the caller reassembles for every outcome but `aborted`.
+ */
+export async function consolidateWindow(
+  window: ConsolidationWindow,
+): Promise<ConsolidationOutcome> {
+  const {
+    userId,
+    conversationId,
+    projectId,
+    transcript,
+    watermarkBefore,
+    newWatermark,
+    signal,
+  } = window;
+
+  // A model call with a bill on it and nobody left to read what it produces.
+  // The watermark stays where it is, so the next turn folds the same window.
+  if (signal?.aborted) return "aborted";
+
+  const config = getAgentConfig();
   const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
   const existingProjectMemory = projectId
     ? await memoryRepo.getProjectMemory(userId, projectId)
     : "";
 
-  // Build the consolidation prompt from what was said. Only the prose: the
-  // reasoning and the tool use live in each message's parts and none of it is
-  // read here, so the summary is drawn from the conversation as a reader
-  // would see it.
-  const messagesText = messagesToConsolidate
-    .map((m) => `[${m.role}]: ${m.content}`)
-    .join("\n\n");
-
-  const prompt = CONSOLIDATION_PROMPT
-    .replace("{conversation_memory}", existingConvMemory || "(empty)")
+  const prompt = CONSOLIDATION_PROMPT.replace(
+    "{conversation_memory}",
+    existingConvMemory || "(empty)",
+  )
     .replace("{project_memory}", existingProjectMemory || "(empty)")
-    .replace("{messages}", messagesText);
+    .replace("{messages}", transcribe(transcript));
 
-  // Call LLM for consolidation (temperature=0: factual extraction, no creativity)
-  const result = await generateTextRetry({
-    model: getModel(config.consolidation_model),
-    messages: [{ role: "user" as const, content: prompt }],
-    stopWhen: stepCountIs(1),
-    temperature: 0,
-  });
-
-  // Parse the JSON response
-  const text = result.text.trim();
-  let parsed: {
-    conversationUpdate: string;
-    projectUpdate: string | null;
-    historyEntry: string;
-  };
-
+  let outcome: ConsolidationOutcome;
+  let tokensUsed = 0;
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON found in response");
-    parsed = JSON.parse(jsonMatch[0]) as typeof parsed;
+    // One call, and the retrying happens inside it: `generateTextRetry` is
+    // handed `llm_max_retries`, so this is one original and two retries.
+    const result = await generateTextRetry({
+      model: getModel(config.consolidation_model),
+      messages: [{ role: "user" as const, content: prompt }],
+      stopWhen: stepCountIs(1),
+      temperature: 0,
+      // Conversation memory is rewritten whole by this call, so an answer
+      // with no ceiling is a segment with no ceiling in every later prompt.
+      maxOutputTokens: config.max_output_tokens,
+      ...(signal ? { abortSignal: signal } : {}),
+    });
+    tokensUsed = result.usage?.totalTokens ?? 0;
+
+    const answer = readAnswer(result.text.trim());
+    if (!answer) {
+      throw new Error(
+        `consolidation answer was not JSON: ${result.text.slice(0, 200)}`,
+      );
+    }
+
+    outcome = await memoryService.commitConsolidation({
+      userId,
+      conversationId,
+      projectId,
+      data: {
+        conversationUpdate: answer.conversationUpdate,
+        ...(answer.projectUpdate ? { projectUpdate: answer.projectUpdate } : {}),
+        historyEntry: answer.historyEntry,
+      },
+      newWatermark,
+    });
   } catch (err) {
-    logger.warn({ err, conversationId, responsePreview: text.slice(0, 200) }, "Memory consolidation: failed to parse LLM response");
-    return;
+    logger.error(
+      { err, userId, conversationId, watermarkBefore, newWatermark },
+      "memory_consolidation_discarded",
+    );
+    await memoryService.discardConsolidation(conversationId, newWatermark);
+    return "discarded";
   }
 
-  // Apply the consolidation
-  await memoryService.applyConsolidation(userId, conversationId, projectId, {
-    conversationUpdate: parsed.conversationUpdate,
-    projectUpdate: parsed.projectUpdate ?? undefined,
-    historyEntry: parsed.historyEntry,
+  // Billed whichever way the write went: the model ran and the tokens were
+  // spent either way. Two tabs that took the same window derive the same key
+  // from the watermark they started at, and the second charge is refused.
+  await bill({
+    userId,
+    conversationId,
+    projectId,
+    watermarkBefore,
+    tokensUsed,
+    model: config.consolidation_model,
   });
 
-  // Advance the consolidation pointer to the highest turn that was consolidated
-  const consolidatedTurns = messagesToConsolidate.map((m) => m.turnIndex);
-  const newTurn = Math.max(...consolidatedTurns);
-  await conversationRepo.updateConsolidatedTurn(conversationId, Math.max(newTurn, lastTurn));
-
-  logger.info({
-    conversationId,
-    messagesConsolidated: messagesToConsolidate.length,
-    newConsolidatedTurn: newTurn,
-    hasProjectUpdate: !!parsed.projectUpdate,
-  }, "Memory consolidation completed");
+  return outcome;
 }

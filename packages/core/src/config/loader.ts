@@ -87,6 +87,37 @@ const agentConfigSchema = z.object({
    * one segment that grows from its own output.
    */
   memory_conversation_max_size: z.number().int().positive().default(3072),
+  /**
+   * The ceiling on one model call's answer, in tokens.
+   *
+   * Per call rather than per turn: `stopWhen: stepCountIs(...)` lets one turn
+   * make many, and each of them is bounded by this.
+   */
+  max_output_tokens: z.number().int().positive().default(16384),
+  /**
+   * How long an assembled request may be before a consolidation runs, in
+   * characters.
+   *
+   * Measured against everything about to go to the model — system prompt,
+   * skill bodies, memory, tool definitions, history and this turn's question
+   * — because those are what fill a context window, and a budget that only
+   * counted the history would be blind to the segments it cannot shorten.
+   *
+   * Characters rather than tokens: no library counts tokens for a model
+   * reached through OpenRouter, and a character is never more than a token in
+   * the tokenizers this build meets, so this can only fire early.
+   */
+  memory_budget_chars: z.number().int().positive().default(850000),
+  /**
+   * What one consolidation leaves behind, in characters.
+   *
+   * A pass takes whole turns from the oldest end until what remains is at or
+   * under this. Written as "what is left" rather than "how much to take"
+   * because a turn has no upper bound — forty model calls, every tool result
+   * stored whole — so no fixed amount can promise the reassembled request
+   * lands under the budget, and that promise is the point.
+   */
+  memory_keep_chars: z.number().int().positive().default(500000),
   web_fetch_max_chars: z.number().int().positive().default(50000),
   /**
    * How long ONE DELIVERY of a `web_fetch` request may take, in milliseconds.

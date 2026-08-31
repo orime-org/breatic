@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gt, max } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -299,89 +299,6 @@ export async function getMessagesForLlm(
     const { thinking: _th, ...rest } = toMessageData(row);
     return rest;
   });
-}
-
-/**
- * Count the turns past the consolidation watermark.
- * @param id - Conversation UUID to inspect
- * @returns Turns not yet folded into memory, 0 when the conversation is gone
- */
-export async function getUnconsolidatedTurnCount(id: string): Promise<number> {
-  const convRows = await db
-    .select({ lastConsolidatedTurn: conversations.lastConsolidatedTurn })
-    .from(conversations)
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-    .limit(1);
-
-  if (!convRows[0]) return 0;
-
-  const turnRows = await db
-    .select({ maxTurn: max(conversationMessages.turnIndex) })
-    .from(conversationMessages)
-    .where(
-      and(
-        eq(conversationMessages.conversationId, id),
-        isNull(conversationMessages.deletedAt),
-      ),
-    );
-
-  return (turnRows[0]?.maxTurn ?? 0) - convRows[0].lastConsolidatedTurn;
-}
-
-/**
- * Get the messages eligible for consolidation.
- *
- * The window runs from the turn after the watermark up to `keepTurns` short of
- * the newest turn, so recent context stays out of the summary. Full step
- * detail is preserved — the summariser reads it.
- * @param id - Conversation UUID
- * @param lastConsolidatedTurn - Turn index already consolidated
- * @param keepTurns - How many recent turns to hold back
- * @returns Messages inside the window, empty when nothing is eligible yet
- */
-export async function getMessagesForConsolidation(
-  id: string,
-  lastConsolidatedTurn: number,
-  keepTurns: number,
-): Promise<MessageData[]> {
-  const turnRows = await db
-    .select({ maxTurn: max(conversationMessages.turnIndex) })
-    .from(conversationMessages)
-    .where(
-      and(
-        eq(conversationMessages.conversationId, id),
-        isNull(conversationMessages.deletedAt),
-      ),
-    );
-
-  const maxTurn = turnRows[0]?.maxTurn;
-  if (maxTurn == null) return [];
-
-  const consolidateUpToTurn = maxTurn - keepTurns;
-  if (consolidateUpToTurn <= lastConsolidatedTurn) return [];
-
-  const rows = await db
-    .select({
-      id: conversationMessages.id,
-      role: conversationMessages.role,
-      turnIndex: conversationMessages.turnIndex,
-      parts: conversationMessages.parts,
-      createdAt: conversationMessages.createdAt,
-    })
-    .from(conversationMessages)
-    .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
-    .where(
-      and(
-        eq(conversationMessages.conversationId, id),
-        gt(conversationMessages.turnIndex, lastConsolidatedTurn),
-        lte(conversationMessages.turnIndex, consolidateUpToTurn),
-        isNull(conversationMessages.deletedAt),
-        isNull(conversations.deletedAt),
-      ),
-    )
-    .orderBy(asc(conversationMessages.turnIndex), asc(conversationMessages.seq));
-
-  return rows.map(toMessageData);
 }
 
 /**

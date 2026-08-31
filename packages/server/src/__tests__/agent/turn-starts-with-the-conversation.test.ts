@@ -22,7 +22,7 @@ import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 7);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 
 /** What the model produces this case. */
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
@@ -66,7 +66,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "已经有名字了"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

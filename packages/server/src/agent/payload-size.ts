@@ -92,6 +92,19 @@ function measureTool(name: string, definition: Tool): number {
 }
 
 /**
+ * How long a run of messages is, in characters.
+ *
+ * The same ruler the budget is read with, applied to one part of what it
+ * measures: a consolidation decides how many turns to take by what each of
+ * them costs the assembled request.
+ * @param messages - The messages to measure.
+ * @returns Their total length.
+ */
+export function measureMessages(messages: readonly ModelMessage[]): number {
+  return messages.reduce((sum, message) => sum + measureMessage(message), 0);
+}
+
+/**
  * How long the assembled request is, in characters.
  * @param payload - The three segments, as they will be sent.
  * @returns The total length.
@@ -102,9 +115,5 @@ export function measurePayload(payload: AssembledPayload): number {
     (sum, [name, definition]) => sum + measureTool(name, definition),
     0,
   );
-  const messages = payload.messages.reduce(
-    (sum, message) => sum + measureMessage(message),
-    0,
-  );
-  return instructions + tools + messages;
+  return instructions + tools + measureMessages(payload.messages);
 }

@@ -16,6 +16,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import {
   conversationMemories,
   memoryHistoryEntries,
@@ -45,12 +46,14 @@ export async function getConversationMemory(conversationId: string): Promise<str
  * Upsert conversation memory (no versioning).
  * @param conversationId - ID of the conversation to write memory for.
  * @param content - New memory content to store, replacing any existing value.
+ * @param tx - The transaction to run inside, when the caller has one.
  */
 export async function upsertConversationMemory(
   conversationId: string,
   content: string,
+  tx?: DbTx,
 ): Promise<void> {
-  await db
+  await (tx ?? db)
     .insert(conversationMemories)
     .values({ conversationId, content })
     .onConflictDoUpdate({
@@ -63,9 +66,14 @@ export async function upsertConversationMemory(
  * Append a consolidation history entry.
  * @param conversationId - ID of the conversation the history entry belongs to.
  * @param entry - Serialized history record describing a consolidation event.
+ * @param tx - The transaction to run inside, when the caller has one.
  */
-export async function appendHistory(conversationId: string, entry: string): Promise<void> {
-  await db.insert(memoryHistoryEntries).values({ conversationId, entry });
+export async function appendHistory(
+  conversationId: string,
+  entry: string,
+  tx?: DbTx,
+): Promise<void> {
+  await (tx ?? db).insert(memoryHistoryEntries).values({ conversationId, entry });
 }
 
 // ── Project Memory (Optimistic Locking) ──────────────────────────────
@@ -97,13 +105,15 @@ export async function getProjectMemory(
  * Get one member's project memory version for optimistic locking.
  * @param userId - Whose memory to read.
  * @param projectId - Which project it belongs to.
+ * @param tx - The transaction to read inside, when the caller has one.
  * @returns The current version number, or 0 if no memory row exists yet.
  */
 export async function getProjectMemoryVersion(
   userId: string,
   projectId: string,
+  tx?: DbTx,
 ): Promise<number> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ version: projectMemories.version })
     .from(projectMemories)
     .where(
@@ -122,6 +132,7 @@ export async function getProjectMemoryVersion(
  * @param projectId - Which project it belongs to.
  * @param content - New memory content to store.
  * @param expectedVersion - Version the caller read; 0 inserts a fresh row, otherwise the update only succeeds if it still matches.
+ * @param tx - The transaction to run inside, when the caller has one.
  * @throws {ConflictError} If the version doesn't match (concurrent update)
  */
 export async function upsertProjectMemory(
@@ -129,12 +140,14 @@ export async function upsertProjectMemory(
   projectId: string,
   content: string,
   expectedVersion: number,
+  tx?: DbTx,
 ): Promise<void> {
+  const handle = tx ?? db;
   if (expectedVersion === 0) {
     // A first write and an update take the same path: two requests that both
     // read version 0 would otherwise have the second break the unique index,
     // and it runs inside the consolidation transaction.
-    await db
+    await handle
       .insert(projectMemories)
       .values({ userId, projectId, content, version: 1 })
       .onConflictDoUpdate({
@@ -144,7 +157,7 @@ export async function upsertProjectMemory(
     return;
   }
 
-  const result = await db.execute(
+  const result = await handle.execute(
     sql`UPDATE project_memories
         SET content = ${content}, version = version + 1, updated_at = NOW()
         WHERE user_id = ${userId} AND project_id = ${projectId} AND version = ${expectedVersion}
@@ -162,14 +175,16 @@ export async function upsertProjectMemory(
  * @param authorId - ID of the collaborator who authored the entry.
  * @param content - Memory text captured for this entry.
  * @param sourceConversationId - Optional ID of the conversation that produced the entry.
+ * @param tx - The transaction to run inside, when the caller has one.
  */
 export async function appendProjectEntry(
   projectId: string,
   authorId: string,
   content: string,
   sourceConversationId?: string,
+  tx?: DbTx,
 ): Promise<void> {
-  await db.insert(projectMemoryEntries).values({
+  await (tx ?? db).insert(projectMemoryEntries).values({
     projectId,
     authorId,
     content,

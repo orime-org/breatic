@@ -18,10 +18,18 @@ import type { MemoryContext, MessageData } from "@breatic/shared";
 
 /** Everything a turn reads before its first token. */
 export interface TurnContext {
-  /** The three memory layers, loaded once for this turn. */
+  /** Both memory layers, loaded once for this turn. */
   memoryContext: MemoryContext;
-  /** What has been said so far, with old turns reduced to their prose. */
+  /** What has been said since the watermark, with old tool results dropped. */
   compressedHistory: MessageData[];
+  /**
+   * How far the conversation is already folded into memory.
+   *
+   * Returned rather than looked up again by the caller: a consolidation's
+   * billing key is derived from the watermark it started at, and reading it a
+   * second time could read one a concurrent request had already moved.
+   */
+  watermark: number;
 }
 
 /**
@@ -30,7 +38,7 @@ export interface TurnContext {
  * @param conversationId - The conversation, already checked as this user's.
  * @param projectId - The project it belongs to.
  * @param runningTurn - The turn being run, left out of the history it builds
- * @returns The memory and the history the turn runs against.
+ * @returns The memory, the history and the watermark the turn runs against.
  */
 export async function buildTurnContext(
   userId: string,
@@ -59,5 +67,6 @@ export async function buildTurnContext(
   return {
     memoryContext,
     compressedHistory: compressForContext(rawHistory, agentCfg.tool_result_keep),
+    watermark: conversation?.lastConsolidatedTurn ?? 0,
   };
 }

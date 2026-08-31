@@ -26,7 +26,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 
 /** What the model produces, and how the tool behaves, for this case. */
 const thisCase = vi.hoisted(() => ({
@@ -189,7 +189,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

@@ -23,11 +23,16 @@ import type { MessageData } from "@breatic/shared";
 import { finishedSpending } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
-const BUDGET = 6000;
-const KEEP = 2000;
+// Above the fixed cost of an assembly — six tool definitions come to about
+// 6,200 characters on their own — so the fixtures decide whether a turn is
+// over the line, rather than the tool set doing it for them. Mutable because
+// one case needs the budget to land exactly on what an assembly measures,
+// and that figure moves whenever a tool is added.
+const limits = vi.hoisted(() => ({ budget: 20_000, keep: 13_000 }));
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 9);
-const consolidateWindow = vi.fn(async (..._args: unknown[]) => "written" as const);
+const consolidateWindow =
+  vi.fn<(...args: unknown[]) => Promise<"written" | "discarded" | "superseded" | "aborted">>();
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
@@ -37,8 +42,15 @@ const thisCase = vi.hoisted(() => ({
 }));
 
 /** What `buildTurnContext` answers with, one call at a time. */
-const contexts = vi.hoisted(() => ({ queue: [] as unknown[] }));
-const buildTurnContext = vi.fn(async () => contexts.queue.shift());
+const contexts = vi.hoisted(() => ({
+  queue: [] as unknown[],
+  lastHistory: [] as never[],
+}));
+const buildTurnContext = vi.fn(async () => {
+  const next = contexts.queue.shift() as { compressedHistory: never[] };
+  contexts.lastHistory = next.compressedHistory;
+  return next;
+});
 
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext }));
 
@@ -52,8 +64,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getContext: actual.getContext,
     getAgentConfig: () => ({
       ...(base.getAgentConfig as () => Record<string, unknown>)(),
-      memory_budget_chars: BUDGET,
-      memory_keep_chars: KEEP,
+      memory_budget_chars: limits.budget,
+      memory_keep_chars: limits.keep,
     }),
   };
 });
@@ -155,8 +167,32 @@ async function runTurn(signal?: AbortSignal): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks();
   contexts.queue = [];
+  limits.budget = 20_000;
+  limits.keep = 13_000;
   consolidateWindow.mockResolvedValue("written");
 });
+
+/**
+ * What the last assembly measured, by the same ruler the budget is read with.
+ * @returns The assembled length in characters.
+ */
+async function lastAssembledLength(): Promise<number> {
+  const { measurePayload } = await import("@server/agent/payload-size.js");
+  const call = buildAgentConfig.mock.calls.at(-1)?.[0] as Parameters<
+    typeof DomainModule.buildAgentConfig
+  >[0];
+  const { buildAgentConfig: real } =
+    await vi.importActual<typeof DomainModule>("@breatic/domain");
+  const resolved = real(call);
+  const sent = (
+    await import("@server/agent/model-messages.js")
+  ).toModelMessages(contexts.lastHistory);
+  return measurePayload({
+    instructions: resolved.instructions,
+    tools: resolved.tools,
+    messages: [...sent, { role: "user", content: "hi" }],
+  });
+}
 
 describe("an ordinary turn", () => {
   it("compresses but does not fold, and pays for nothing extra", async () => {
@@ -164,7 +200,7 @@ describe("an ordinary turn", () => {
     // shortens tool results still runs — that is `buildTurnContext`'s job on
     // every turn — but no consolidating model call happens and no second
     // charge appears.
-    contexts.queue = [context([...turn(1, 200), ...turn(2, 200)])];
+    contexts.queue = [context([...turn(1, 2000), ...turn(2, 2000)])];
 
     await runTurn();
 
@@ -175,11 +211,57 @@ describe("an ordinary turn", () => {
   });
 });
 
-describe("a turn that measured over the budget", () => {
-  it("folds the oldest turns and says which ones it took", async () => {
+describe("a turn that landed exactly on the budget", () => {
+  it("is under the line, because the rule is over it", async () => {
+    // The budget is set to what this very assembly measures, so the case
+    // cannot drift when a tool is added: an implementation reading the line
+    // as "at or over" folds here, and one reading it as "over" does not.
+    contexts.queue = [context([...turn(1, 2000), ...turn(2, 2000)])];
+    await runTurn();
+    const exactly = await lastAssembledLength();
+
+    vi.clearAllMocks();
+    limits.budget = exactly;
+    // The keep line goes below the assembly for both halves of this case.
+    // Left above it, a pass would find itself already under the line and take
+    // nothing — which looks exactly like not folding, and would let an
+    // implementation reading the budget as "at or over" pass here.
+    limits.keep = exactly - 3000;
     contexts.queue = [
-      context([...turn(1, 2500), ...turn(2, 2500), ...turn(3, 2500)]),
-      context([...turn(3, 2500)], "what turns 1 and 2 came to"),
+      context([...turn(1, 2000), ...turn(2, 2000)]),
+      context([...turn(2, 2000)]),
+    ];
+
+    await runTurn();
+
+    expect(consolidateWindow).not.toHaveBeenCalled();
+    expect(buildTurnContext).toHaveBeenCalledTimes(1);
+
+    // One character lower and the same assembly is over. Asserted alongside
+    // the line itself: without it, a figure that came out too high would
+    // leave the case above passing for the wrong reason.
+    vi.clearAllMocks();
+    limits.budget = exactly - 1;
+    limits.keep = exactly - 3000;
+    contexts.queue = [
+      context([...turn(1, 2000), ...turn(2, 2000)]),
+      context([...turn(2, 2000)]),
+    ];
+
+    await runTurn();
+
+    expect(consolidateWindow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a turn that measured over the budget", () => {
+  it("takes whole turns from the oldest end, and stops when enough is gone", async () => {
+    // Three turns of 6,000 on a 6,200 fixed cost is about 24,200 assembled.
+    // Taking the first leaves 18,200 and the second leaves 12,200, which is
+    // under the keep line — so the third stays and the boundary is turn 2.
+    contexts.queue = [
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)], "what turns 1 and 2 came to"),
     ];
 
     await runTurn();
@@ -187,12 +269,17 @@ describe("a turn that measured over the budget", () => {
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
     const asked = consolidateWindow.mock.calls[0]?.[0] as {
       newWatermark: number;
-      transcript: unknown[];
+      watermarkBefore: number;
+      transcript: { content: unknown }[];
       conversationId: string;
     };
     expect(asked.conversationId).toBe("c1");
-    expect(asked.newWatermark).toBeGreaterThanOrEqual(1);
-    expect(asked.transcript.length).toBeGreaterThan(0);
+    expect(asked.newWatermark).toBe(2);
+
+    const folded = JSON.stringify(asked.transcript);
+    expect(folded).toContain("q1");
+    expect(folded).toContain("q2");
+    expect(folded).not.toContain("q3");
   });
 
   it("assembles a second time and sends that one", async () => {
@@ -200,8 +287,8 @@ describe("a turn that measured over the budget", () => {
     // Sending the first assembly would drop those turns from the history
     // without putting anything in their place.
     contexts.queue = [
-      context([...turn(1, 2500), ...turn(2, 2500), ...turn(3, 2500)]),
-      context([...turn(3, 2500)], "what turns 1 and 2 came to"),
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)], "what turns 1 and 2 came to"),
     ];
 
     await runTurn();
@@ -220,8 +307,8 @@ describe("a turn that measured over the budget", () => {
     // way: it still holds turns the watermark has now passed.
     consolidateWindow.mockResolvedValue("discarded");
     contexts.queue = [
-      context([...turn(1, 2500), ...turn(2, 2500), ...turn(3, 2500)]),
-      context([...turn(3, 2500)]),
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)]),
     ];
 
     await runTurn();
@@ -235,8 +322,8 @@ describe("a turn that measured over the budget", () => {
     // winner's watermark and the memory it wrote.
     consolidateWindow.mockResolvedValue("superseded");
     contexts.queue = [
-      context([...turn(1, 2500), ...turn(2, 2500), ...turn(3, 2500)]),
-      context([...turn(3, 2500)], "what the other tab wrote"),
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)], "what the other tab wrote"),
     ];
 
     await runTurn();
@@ -258,8 +345,8 @@ describe("a turn the reader stopped", () => {
     const controller = new AbortController();
     controller.abort();
     contexts.queue = [
-      context([...turn(1, 2500), ...turn(2, 2500), ...turn(3, 2500)]),
-      context([...turn(3, 2500)]),
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)]),
     ];
 
     await runTurn(controller.signal);
@@ -268,5 +355,19 @@ describe("a turn the reader stopped", () => {
       const asked = call[0] as { signal?: AbortSignal };
       expect(asked.signal?.aborted).toBe(true);
     }
+  });
+
+  it("does not assemble again when the fold never ran", async () => {
+    // Nothing moved: no summary, no watermark. Reading it all a second time
+    // would spend three more round trips to arrive at what is already here.
+    consolidateWindow.mockResolvedValue("aborted");
+    contexts.queue = [
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)]),
+    ];
+
+    await runTurn();
+
+    expect(buildTurnContext).toHaveBeenCalledTimes(1);
   });
 });

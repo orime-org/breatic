@@ -23,7 +23,7 @@ import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
-const commitConsolidation = vi.fn(async (..._args: unknown[]) => "written" as const);
+const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock("@breatic/core", async (importOriginal) => {
