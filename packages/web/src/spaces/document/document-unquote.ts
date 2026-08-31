@@ -76,9 +76,11 @@ function packRun(node: PMNode, run: Run): Run[] {
       batch.push(child);
       continue;
     }
+    // Nothing this container refuses beside its siblings is one it takes on its
+    // own: a list refuses whatever is not an item, and an item refuses whatever
+    // cannot open it, both regardless of what came before.
     flush();
-    if (reWrap(node, [child])) batch = [child];
-    else out.push({ freed: run.freed, nodes: [child] });
+    out.push({ freed: run.freed, nodes: [child] });
   }
   flush();
   return out;

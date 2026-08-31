@@ -181,3 +181,35 @@ describe('unquoting keeps what the reader was holding', () => {
     expect(doc.textBetween(selection.from, selection.to, '\n')).toBe('b\nc');
   });
 });
+
+describe('unquoting rebuilds the lists it takes apart', () => {
+  it('keeps the freed items in one list of the type and numbering they had', () => {
+    // `z` and `w` follow an item whose own buried list is freed first, so the
+    // list they belong to has to be rebuilt around them after that one is
+    // handed up. One list, not two, or their numbering restarts.
+    const editor = openBody(
+      '<blockquote><ol start="5"><li><p>a</p><ul><li><p>c</p></li></ul></li>'
+        + '<li><p>z</p></li><li><p>w</p></li></ol></blockquote>',
+    );
+    selectRange(editor, 'c', 'w');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<blockquote><ol start="5"><li><p>a</p></li></ol></blockquote>'
+        + '<ul><li><p>c</p></li></ul>'
+        + '<ol start="5"><li><p>z</p></li><li><p>w</p></li></ol>',
+    );
+  });
+
+  it('keeps a freed item in a list of its own type', () => {
+    const editor = openBody(
+      '<blockquote><ul><li><p>a</p><ol start="3">'
+        + '<li><p>b</p></li><li><p>c</p></li></ol></li></ul></blockquote>',
+    );
+    selectBlock(editor, 'c');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<blockquote><ul><li><p>a</p><ol start="3"><li><p>b</p></li></ol></li></ul></blockquote>'
+        + '<ol start="3"><li><p>c</p></li></ol>',
+    );
+  });
+});
