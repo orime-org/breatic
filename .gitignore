@@ -67,8 +67,11 @@ api-reference/
 # Local dev test-account credentials (throwaway localhost accounts for smoke/e2e; never commit)
 /test_account
 
-# Cloudflare Worker local state and secrets. `.dev.vars` holds the same values
-# `wrangler secret put` sets in production; `.wrangler/` is miniflare's local
-# R2 and Durable Object storage.
+# Cloudflare Worker local configuration and state. Both files are one
+# developer's own copy of a committed template: `wrangler.toml` from
+# `wrangler.toml.template`, `.dev.vars` from `.dev.vars.template`. What the
+# repository carries is the template; what a machine runs on is not committed.
+# `.wrangler/` is miniflare's local R2 and Durable Object storage.
 .dev.vars
+packages/ingest/wrangler.toml
 .wrangler/

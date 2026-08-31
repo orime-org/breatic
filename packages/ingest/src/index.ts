@@ -52,6 +52,30 @@ export interface Env {
 }
 
 /**
+ * The settings this Worker cannot run without, each filled in by hand: the two
+ * vars from `wrangler.toml` (copied from its template), the secret from
+ * `.dev.vars` locally and `wrangler secret put` on a deployment.
+ */
+const REQUIRED_SETTINGS = [
+  "INGEST_SHARED_SECRET",
+  "SERVER_REPORT_URL",
+  "ALLOWED_ORIGINS",
+] as const;
+
+/**
+ * Which required settings this deployment is missing.
+ *
+ * An empty string counts as missing: a name present with nothing after the
+ * equals sign is the same mistake as a name that was never added, and reading
+ * it as configured turns it into a puzzle further down.
+ * @param env - The bound resources and configuration.
+ * @returns The names of the settings that have no value.
+ */
+function missingSettings(env: Env): string[] {
+  return REQUIRED_SETTINGS.filter((name) => !env[name]);
+}
+
+/**
  * The instance holding one upload's bookkeeping.
  *
  * Addressed by storage key rather than by R2's `uploadId`, because the first
@@ -222,6 +246,20 @@ export default {
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     void ctx;
+
+    // Before anything reads a binding. Every one of these comes from a file
+    // somebody fills in by hand, so a missing one is ordinary — and saying
+    // which one is the difference between a one-line fix and a hunt through a
+    // stack trace.
+    const missing = missingSettings(env);
+    if (missing.length > 0) {
+      return new Response(
+        `This Worker is missing configuration: ${missing.join(", ")}. ` +
+          "See packages/ingest/README.md.",
+        { status: 500 },
+      );
+    }
+
     const origin = allowedOrigin(request, env);
 
     if (request.method === "OPTIONS") {
