@@ -7,15 +7,14 @@
  * + B.2 decision 2026-07-07: same studio + same content = the SAME URL).
  *
  * Two rules live here (routes stay translation-only):
- *   - presign dedup check: hash lookup scoped to the PROJECT's studio
- *     (attribution #1839 — never the acting user's own)
- *     with SIZE DISTRUST — a hash claim whose declared size differs from
- *     the ledger row is refused dedup and falls through to a normal
- *     upload (spec §8: never trust the client's content claim alone);
- *   - dedup-report verification: the `/assets/uploaded` dedup path
- *     re-derives the (studio, hash) row server-side instead of trusting
- *     the client's URL — stronger than the key-prefix anti-spoof check
- *     it replaces on this path.
+ *   - the ticket-time dedup check: a hash lookup scoped to the PROJECT's
+ *     studio (attribution #1839 — never the acting user's own) with SIZE
+ *     DISTRUST, so a hash claim whose declared size differs from the ledger
+ *     row is refused dedup and falls through to a real upload (spec §8:
+ *     never trust the client's content claim alone);
+ *   - what a hit means for the node: its history row, and the event that
+ *     ends its handling — no Worker reports on an upload that never
+ *     happened, so nothing else would.
  */
 
 import {
@@ -41,11 +40,10 @@ export interface DedupHit {
 }
 
 /**
- * Presign-time dedup check: does the PROJECT's owner studio already hold
- * this content (#1839 — never the acting user's own studio)? A hit with a
- * MATCHING declared size skips the upload entirely; a size mismatch refuses
- * dedup (content claim not trusted) so the caller falls through to a normal
- * presign.
+ * Ticket-time dedup check: does the PROJECT's owner studio already hold this
+ * content (#1839 — never the acting user's own studio)? A hit with a MATCHING
+ * declared size skips the upload entirely; a size mismatch refuses dedup
+ * (content claim not trusted) so the caller falls through to a real upload.
  * @param params - The dedup claim.
  * @param params.projectId - Project the upload targets; it alone decides the
  *   studio whose content is searched.
@@ -134,40 +132,10 @@ export async function settleDedupHit(params: {
 }
 
 /**
- * Resolve a content hash to the live asset row that holds it in a given
- * studio. Two callers on `/uploaded`, both server-side re-derivations that
- * never trust a client-supplied URL:
- *   - the dedup report ("I am reusing content I already have");
- *   - the video report's cover reference (`cover_hash` → the cover's canonical).
- *
- * The studio is passed IN rather than derived here (Gate-2 R9). The caller
- * already holds the authoritative one — the grant's studio on the regular
- * path, the project-derived one on the dedup path (which has no grant, by
- * design: an instant-dedup report uploads nothing). Deriving it again inside
- * this function meant the cover lookup silently used the CLIENT's project_id
- * while the video beside it used the grant's studio: one report, two studios.
- * @param params - The lookup.
- * @param params.studioId - The AUTHORITATIVE owner studio, resolved by the caller.
- * @param params.contentHash - The claimed content hash.
- * @returns The live asset to reuse, or null when that studio holds no such content.
- */
-export async function verifyDedupUpload(params: {
-  studioId: string;
-  contentHash: string;
-}): Promise<DedupHit | null> {
-  const existing = await assetRepo.findByStudioAndHash(
-    params.studioId,
-    params.contentHash,
-  );
-  return existing
-    ? { fileUrl: existing.fileUrl, kind: existing.kind }
-    : null;
-}
-
-/**
  * Mint a tenant-neutral storage key for an upload that missed dedup and record
- * its upload grant (#1826, design §2.2). Called by /presign AFTER the dedup
- * check misses: resolves the owner studio (#1839 — the PROJECT's), mints K,
+ * its upload grant (#1826, design §2.2). Called by the ticket endpoint AFTER
+ * the dedup check misses: resolves the owner studio (#1839 — the PROJECT's),
+ * mints K,
  * and writes the grant row the ingest Worker's report is later checked
  * against. The dedup-hit path never calls this (no key, no grant).
  *

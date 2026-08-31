@@ -232,7 +232,6 @@ export const mocks = {
   getStorageAdapter: vi.fn(),
   // Upload dedup service (#1609). The real one hits assetService.resolveOwnerStudioId
   // + DB, so override it — route tests that exercise the dedup /uploaded path
-  // (incl. the #1824 dedup-cover decoupling) configure verifyDedupUpload per-test.
   /**
    * The storage gate (#89). Answers with room by default — a route test that
    * did not set it up is not asking about storage, and a gate that refused by
@@ -241,7 +240,6 @@ export const mocks = {
   assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
-    verifyDedupUpload: vi.fn(),
     // #1826 upload-grant anti-spoof: presign issues a grant, the upload
     // endpoints authorise (write-time) + consume (registration terminal).
     issueUploadGrant: vi.fn(),
