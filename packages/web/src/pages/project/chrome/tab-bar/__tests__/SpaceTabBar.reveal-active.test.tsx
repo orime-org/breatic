@@ -283,6 +283,35 @@ describe('SpaceTabBar — bringing the current tab back into view', () => {
     expect(revealButton()).toBeEnabled();
   });
 
+  it('settles on the start of a tab wider than the strip', async () => {
+    // A long name and a narrow window: the tab cannot be inside both edges at
+    // once. Asking for that leaves the control enabled with nothing that can
+    // satisfy it, and each click swings the strip from one edge to the other
+    // — measured in a browser at 137px of strip and a 160px tab, scrollLeft
+    // going 115, 92, 115, 92. Its start is what a reader needs; that is where
+    // the name begins.
+    const user = userEvent.setup();
+    setup();
+    const scroller = makeOverflow();
+    setLayout(screen.getByTestId('space-tab-s2'), { left: 240, width: 260 });
+    flush(scroller);
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
+    expect(revealButton()).toBeEnabled();
+
+    await user.click(revealButton());
+    expect(scrollTo).toHaveBeenCalledWith({ left: 240, behavior: 'smooth' });
+
+    Object.defineProperty(scroller, 'scrollLeft', {
+      value: 240,
+      configurable: true,
+      writable: true,
+    });
+    flush(scroller);
+
+    expect(revealButton()).toBeDisabled();
+  });
+
   it('answers again when the page switches Space', () => {
     // Switching to a tab already in sight scrolls nothing, so nothing else
     // tells the button its answer just changed.

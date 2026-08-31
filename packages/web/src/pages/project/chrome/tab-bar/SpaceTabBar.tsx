@@ -79,6 +79,34 @@ function tabSpan(tab: HTMLElement): { start: number; end: number } {
 }
 
 /**
+ * Whether a tab is shown as far as the strip can show it.
+ *
+ * A tab narrower than the strip has to be inside both edges. One wider than
+ * the strip can never be, and asking for it leaves the reveal control enabled
+ * with nothing that could satisfy it: measured in a browser at 137px of strip
+ * and a 160px tab, each click swung scrollLeft between 115 and 92 forever. For
+ * such a tab, its start being on screen is the whole of what can be shown —
+ * and the start is where the name begins.
+ * @param span - Where the tab sits.
+ * @param span.start - Its leading edge.
+ * @param span.end - Its trailing edge.
+ * @param visible - What stretch of the strip is on screen.
+ * @param visible.start - The strip's leading edge.
+ * @param visible.end - The strip's trailing edge.
+ * @returns True when nothing more can be brought into view.
+ */
+function spanShown(
+  span: { start: number; end: number },
+  visible: { start: number; end: number },
+): boolean {
+  const startShown =
+    span.start >= visible.start - EDGE_TOLERANCE &&
+    span.start <= visible.end + EDGE_TOLERANCE;
+  if (span.end - span.start > visible.end - visible.start) return startShown;
+  return startShown && span.end <= visible.end + EDGE_TOLERANCE;
+}
+
+/**
  * What stretch of the strip is on screen, in the same coordinates.
  * @param scroller - The viewport the tabs scroll in.
  * @returns The visible leading and trailing edge.
@@ -297,9 +325,7 @@ export function SpaceTabBar({
     const active = activeTab();
     const activeSpan = active === null ? null : tabSpan(active);
     const activeVisible =
-      activeSpan === null ||
-      (activeSpan.start >= visible.start - EDGE_TOLERANCE &&
-        activeSpan.end <= visible.end + EDGE_TOLERANCE);
+      activeSpan === null || spanShown(activeSpan, visible);
     setScrollState({ overflow, atStart, atEnd, activeVisible });
   }, [activeTab]);
 
@@ -344,7 +370,9 @@ export function SpaceTabBar({
     if (!scroller || !tab) return;
     const visible = visibleSpan(scroller);
     const span = tabSpan(tab);
-    if (span.end > visible.end + EDGE_TOLERANCE) {
+    if (span.end - span.start > visible.end - visible.start) {
+      scrollTabToEdge(scroller, tab, 'start');
+    } else if (span.end > visible.end + EDGE_TOLERANCE) {
       scrollTabToEdge(scroller, tab, 'end');
     } else if (span.start < visible.start - EDGE_TOLERANCE) {
       scrollTabToEdge(scroller, tab, 'start');
