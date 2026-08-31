@@ -79,6 +79,33 @@ function tabSpan(tab: HTMLElement): { start: number; end: number } {
 }
 
 /**
+ * Whether a tab reaches past the strip's leading edge.
+ * @param span - Where the tab sits.
+ * @param span.start - Its leading edge.
+ * @param visible - What stretch of the strip is on screen.
+ * @param visible.start - The strip's leading edge.
+ * @returns True when part of it is off to the left.
+ */
+function startsBefore(
+  span: { start: number },
+  visible: { start: number },
+): boolean {
+  return span.start < visible.start - EDGE_TOLERANCE;
+}
+
+/**
+ * Whether a tab reaches past the strip's trailing edge.
+ * @param span - Where the tab sits.
+ * @param span.end - Its trailing edge.
+ * @param visible - What stretch of the strip is on screen.
+ * @param visible.end - The strip's trailing edge.
+ * @returns True when part of it is off to the right.
+ */
+function endsAfter(span: { end: number }, visible: { end: number }): boolean {
+  return span.end > visible.end + EDGE_TOLERANCE;
+}
+
+/**
  * Whether a tab is shown as far as the strip can show it.
  *
  * A tab narrower than the strip has to be inside both edges. One wider than
@@ -100,10 +127,10 @@ function spanShown(
   visible: { start: number; end: number },
 ): boolean {
   const startShown =
-    span.start >= visible.start - EDGE_TOLERANCE &&
+    !startsBefore(span, visible) &&
     span.start <= visible.end + EDGE_TOLERANCE;
   if (span.end - span.start > visible.end - visible.start) return startShown;
-  return startShown && span.end <= visible.end + EDGE_TOLERANCE;
+  return startShown && !endsAfter(span, visible);
 }
 
 /**
@@ -139,6 +166,75 @@ function scrollTabToEdge(
     left: edge === 'end' ? span.end - scroller.clientWidth : span.start,
     behavior: 'smooth',
   });
+}
+
+/**
+ * The tabs, read off the scroller.
+ *
+ * Two elements sit between the tabs and the element that scrolls: the
+ * `display:table` div Radix puts inside every viewport, and the row this
+ * file renders inside it. Asking for the tabs by their role instead of by
+ * child position keeps this true however many wrappers either side adds.
+ * @param scroller - The element that scrolls, or null before it mounts.
+ * @returns The tab elements in document order.
+ */
+function tabsIn(scroller: HTMLElement | null): HTMLElement[] {
+  return scroller === null
+    ? []
+    : Array.from(scroller.querySelectorAll('[role="tab"]')).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement,
+    );
+}
+
+/**
+ * Scroll arrow for the tab strip.
+ * @param root0 - Component props.
+ * @param root0.direction - Which end of the strip this arrow scrolls toward.
+ * @param root0.label - Its accessible name.
+ * @param root0.onClick - Scrolls the strip one tab that way.
+ * @param root0.hidden - True while the strip has nothing to scroll.
+ * @param root0.disabled - True at that end of the strip.
+ * @returns The arrow button.
+ */
+function ArrowButton({
+  direction,
+  label,
+  onClick,
+  hidden,
+  disabled,
+}: {
+  direction: 'left' | 'right';
+  label: string;
+  onClick: () => void;
+  hidden: boolean;
+  disabled: boolean;
+}): React.JSX.Element {
+  return (
+    <Button
+      variant='chrome-ghost'
+      size='chrome'
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={
+        direction === 'left' ? 'tabs-scroll-left' : 'tabs-scroll-right'
+      }
+      className={cn(
+        hidden && 'hidden',
+        // Reads as 35% and renders as the Button primitive's 50%: this class
+        // carries no pseudo-class where `disabled:opacity-50` does, so the
+        // primitive wins on specificity. Task #2037 holds that decision.
+        disabled && 'opacity-35',
+      )}
+      style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
+    >
+      {direction === 'left' ? (
+        <ChevronLeft className='h-3.5 w-3.5' />
+      ) : (
+        <ChevronRight className='h-3.5 w-3.5' />
+      )}
+    </Button>
+  );
 }
 
 interface SpaceTabBarProps {
@@ -244,6 +340,7 @@ export function SpaceTabBar({
   const toggleAgent = useUIStore((s) => s.toggleChatPanel);
   const agentOpen = !collapsed;
   const scrollerRef = React.useRef<HTMLDivElement>(null);
+  const rowRef = React.useRef<HTMLDivElement>(null);
 
   // Pointer only, and deliberately so: dnd-kit's keyboard sensor starts a drag
   // on Space and Enter, which are how a keyboard user switches Space on a tab
@@ -254,6 +351,11 @@ export function SpaceTabBar({
     }),
   );
   const tabIds = React.useMemo(() => spaces.map((s) => s.id), [spaces]);
+  // The order as one value. `spaces` is rebuilt on every projection of the
+  // meta doc — a presence heartbeat is enough — so depending on the array
+  // itself tears down and rebuilds the strip's listeners every few seconds.
+  // Space ids are uuids, so no id can carry the separator.
+  const tabKey = tabIds.join(',');
 
   const onDragEnd = React.useCallback(
     (event: DragEndEvent): void => {
@@ -267,23 +369,6 @@ export function SpaceTabBar({
     },
     [tabIds, onReorder],
   );
-
-  /**
-   * The tabs, read off the scroller.
-   *
-   * Two elements sit between the tabs and the element that scrolls: the
-   * `display:table` div Radix puts inside every viewport, and the row this
-   * file renders inside it. Asking for the tabs by their role instead of by
-   * child position keeps this true however many wrappers either side adds.
-   * @param scroller - The element that scrolls, or null before it mounts.
-   * @returns The tab elements in document order.
-   */
-  const tabsIn = (scroller: HTMLElement | null): HTMLElement[] =>
-    scroller === null
-      ? []
-      : Array.from(scroller.querySelectorAll('[role="tab"]')).filter(
-        (el): el is HTMLElement => el instanceof HTMLElement,
-      );
 
   // Track scroll overflow + boundaries to drive the smart-hide/disabled
   // states for the left / right scroll arrows (mock v4.27 / v4.29).
@@ -311,15 +396,11 @@ export function SpaceTabBar({
     // atStart / atEnd ask the same spans `scrollOneTab` below asks, so the
     // arrow's enabled state ("can we still scroll?") can never disagree with
     // what clicking it does ("is there a tab left to bring on screen?").
-    const overflow = el.scrollWidth > el.clientWidth + 1;
+    const overflow = el.scrollWidth > el.clientWidth + EDGE_TOLERANCE;
     const visible = visibleSpan(el);
     const tabs = tabsIn(el);
-    const atStart = !tabs.some(
-      (t) => tabSpan(t).start < visible.start - EDGE_TOLERANCE,
-    );
-    const atEnd = !tabs.some(
-      (t) => tabSpan(t).end > visible.end + EDGE_TOLERANCE,
-    );
+    const atStart = !tabs.some((t) => startsBefore(tabSpan(t), visible));
+    const atEnd = !tabs.some((t) => endsAfter(tabSpan(t), visible));
     // Whole, not merely somewhere on screen: a tab with its name cut off by
     // the edge is exactly what the reveal control exists to finish showing.
     const active = activeTab();
@@ -339,10 +420,9 @@ export function SpaceTabBar({
     // The row of tabs grows and shrinks — a name is edited here or by a
     // collaborator — while the box it scrolls in keeps the width the bar gives
     // it, and a resize observer watching only that box never hears about it.
-    // ScrollArea watches the same wrapper for the same reason, so watching it
-    // here too is what keeps the arrows and the rail from answering the same
-    // question differently.
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    // The row is the element this file renders, so watching it does not rest
+    // on what Radix puts in between.
+    if (rowRef.current) ro.observe(rowRef.current);
     return () => {
       el.removeEventListener('scroll', updateScrollState);
       ro.disconnect();
@@ -352,7 +432,7 @@ export function SpaceTabBar({
     // or resizing anything, and it is precisely what can push the current tab
     // out of sight. `tabIds` is the order actually painted — the pending layer
     // included — so this fires when the user lets go, not a round trip later.
-  }, [updateScrollState, tabIds]);
+  }, [updateScrollState, tabKey]);
 
   // When the active space changes (e.g. user picks a space from the
   // drawer), make sure the corresponding tab is visible inside the
@@ -372,9 +452,9 @@ export function SpaceTabBar({
     const span = tabSpan(tab);
     if (span.end - span.start > visible.end - visible.start) {
       scrollTabToEdge(scroller, tab, 'start');
-    } else if (span.end > visible.end + EDGE_TOLERANCE) {
+    } else if (endsAfter(span, visible)) {
       scrollTabToEdge(scroller, tab, 'end');
-    } else if (span.start < visible.start - EDGE_TOLERANCE) {
+    } else if (startsBefore(span, visible)) {
       scrollTabToEdge(scroller, tab, 'start');
     }
   }, [activeTab]);
@@ -423,50 +503,6 @@ export function SpaceTabBar({
       scrollTabToEdge(scroller, target, direction === 'right' ? 'end' : 'start');
     }
   };
-
-  /**
-   * Scroll arrow button for the tab strip; hidden when tabs don't overflow
-   * and dimmed when disabled at a scroll boundary.
-   * @param root0 - Component props.
-   * @param root0.direction - Whether this is the left or right scroll arrow.
-   * @param root0.onClick - Click handler that scrolls the tab strip one tab in the arrow's direction.
-   * @param root0.disabled - When `true`, the arrow is at a scroll boundary and is disabled/dimmed.
-   * @returns The scroll arrow button.
-   */
-  const ArrowButton = ({
-    direction,
-    onClick,
-    disabled,
-  }: {
-    direction: 'left' | 'right';
-    onClick: () => void;
-    disabled: boolean;
-  }): React.JSX.Element => (
-    <Button
-      variant='chrome-ghost'
-      size='chrome'
-      aria-label={direction === 'left' ? t('chrome.aria.scrollTabsLeft') : t('chrome.aria.scrollTabsRight')}
-      onClick={onClick}
-      disabled={disabled}
-      data-testid={direction === 'left' ? 'tabs-scroll-left' : 'tabs-scroll-right'}
-      className={cn(
-        !scrollState.overflow && 'hidden',
-        // Slight stronger dim (35%) than Button primitive's default
-        // (50%) so a disabled arrow visually recedes against the tab
-        // bar bg. Cursor + click-swallow are handled by the Button
-        // primitive (PR #137 dropped vendor `disabled:pointer-events-
-        // none`; see `components/ui/button.tsx`).
-        disabled && 'opacity-35',
-      )}
-      style={{ height: 'var(--btn-chrome)', width: 'var(--btn-chrome)' }}
-    >
-      {direction === 'left' ? (
-        <ChevronLeft className='h-3.5 w-3.5' />
-      ) : (
-        <ChevronRight className='h-3.5 w-3.5' />
-      )}
-    </Button>
-  );
 
   return (
     // ARIA structure: outer container is a `toolbar` because it mixes
@@ -523,7 +559,9 @@ export function SpaceTabBar({
 
       <ArrowButton
         direction='left'
+        label={t('chrome.aria.scrollTabsLeft')}
         onClick={() => scrollOneTab('left')}
+        hidden={!scrollState.overflow}
         disabled={scrollState.atStart}
       />
 
@@ -566,6 +604,7 @@ export function SpaceTabBar({
           tablist role on the element the tabs actually sit in.
         */}
           <div
+            ref={rowRef}
             role='tablist'
             aria-label={t('chrome.aria.openSpaces')}
             className='flex w-max items-center'
@@ -599,7 +638,9 @@ export function SpaceTabBar({
 
       <ArrowButton
         direction='right'
+        label={t('chrome.aria.scrollTabsRight')}
         onClick={() => scrollOneTab('right')}
+        hidden={!scrollState.overflow}
         disabled={scrollState.atEnd}
       />
 
