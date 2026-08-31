@@ -40,6 +40,13 @@ export interface TurnIdentity {
   projectId: string;
   /** Raised when the reader stopped the turn or the client went away. */
   signal?: AbortSignal;
+  /**
+   * Called once, when a fold is about to run.
+   *
+   * Fires after the decision and before the model call, so it reaches the
+   * reader only on turns that really do stop to fold.
+   */
+  onStart?: () => void;
 }
 
 /**
@@ -100,6 +107,8 @@ export async function foldIfOverBudget(
     keep: config.memory_keep_chars,
   });
   if (!plan.shouldConsolidate || plan.newWatermark === null) return false;
+
+  who.onStart?.();
 
   const taken = new Set(plan.takenTurns);
   const outcome = await consolidateWindow({

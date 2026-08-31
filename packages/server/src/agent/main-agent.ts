@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { StopCondition, ToolSet, UIMessageChunk } from "ai";
+import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
@@ -306,9 +306,13 @@ export class MainAgent {
 
     /**
      * Ask the model, once everything it needs has been read.
+     * @param writer - The stream, for the one thing that happens before the
+     *   answer starts and is worth saying out loud.
      * @returns The model's answer, as the stream the protocol is made of.
      */
-    const askTheModel = async (): Promise<ReadableStream<UIMessageChunk>> => {
+    const askTheModel = async (
+      writer: UIMessageStreamWriter,
+    ): Promise<ReadableStream<UIMessageChunk>> => {
       let assembly = await assemble();
 
       // Measured here rather than inside the assembly because this is where
@@ -321,6 +325,10 @@ export class MainAgent {
           conversationId,
           projectId,
           ...(signal ? { signal } : {}),
+          // A fold is a model call of its own in front of the reply, seconds
+          // long, on a turn where the panel is empty and somebody is watching
+          // it. This does not make the wait shorter; it makes it explainable.
+          onStart: () => writer.write({ type: "data-memory-consolidating", data: {} }),
         })
       ) {
         assembly = await assemble();
@@ -411,7 +419,7 @@ export class MainAgent {
         if (title !== null) {
           writer.write({ type: "data-conversation-titled", data: { title } });
         }
-        writer.merge(await askTheModel());
+        writer.merge(await askTheModel(writer));
       },
       // The one place a failed turn is noticed, whichever way it failed: the
       // SDK hands this callback both an error chunk arriving on the stream
