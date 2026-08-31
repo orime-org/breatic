@@ -40,6 +40,7 @@ import {
   getStorageAdapter,
   getStorageConfig,
   getStreamRedis,
+  logger,
   NotFoundError,
 } from "@breatic/core";
 import { canvasSpaceDocName, t } from "@breatic/shared";
@@ -262,7 +263,7 @@ export async function applyIngestReport(
   // The hash the Worker computed is the one the ledger keys on. The browser's
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
-  const { asset, deduped } = await assetService.register({
+  const { asset, deduped, reclaimQueueFailed } = await assetService.register({
     projectId: grant.projectId ?? "",
     actingUserId: grant.userId,
     // Both come off the same row, and the row got its studio by resolving that
@@ -277,6 +278,17 @@ export async function applyIngestReport(
     kind,
     source: grant.derived === true ? "cover" : "upload",
   });
+
+  // The object this upload wrote is a duplicate of one the studio already
+  // holds, and the row that would have had it collected could not be written.
+  // Nothing else records that, so without this the extra object is simply lost
+  // to whoever has to reclaim it.
+  if (reclaimQueueFailed === true) {
+    logger.error(
+      { storageKey: grant.storageKey, studioId: grant.studioId },
+      "ingest_report_reclaim_queue_failed",
+    );
+  }
 
   // A video is not finished here. Its cover has to be pulled out of it first,
   // which needs ffmpeg and takes longer than a request should wait, so the

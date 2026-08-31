@@ -209,7 +209,8 @@ async function completeUpload(
 function allowedOrigin(request: Request, env: Env): string | null {
   const origin = request.headers.get("origin");
   if (origin === null) return null;
-  const allowed = env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  // Absent when that is the very setting missing; nothing is then allowed.
+  const allowed = (env.ALLOWED_ORIGINS ?? "").split(",").map((o) => o.trim());
   return allowed.includes(origin) ? origin : null;
 }
 
@@ -247,21 +248,11 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     void ctx;
 
-    // Before anything reads a binding. Every one of these comes from a file
-    // somebody fills in by hand, so a missing one is ordinary — and saying
-    // which one is the difference between a one-line fix and a hunt through a
-    // stack trace.
-    const missing = missingSettings(env);
-    if (missing.length > 0) {
-      return new Response(
-        `This Worker is missing configuration: ${missing.join(", ")}. ` +
-          "See packages/ingest/README.md.",
-        { status: 500 },
-      );
-    }
-
     const origin = allowedOrigin(request, env);
 
+    // Answered before the configuration is judged. A refused preflight is a
+    // CORS error in the browser, which says nothing about what is wrong here;
+    // an allowed one lets the request through to the 500 below, which names it.
     if (request.method === "OPTIONS") {
       const preflight = new Response(null, { status: 204 });
       if (origin !== null) {
@@ -270,6 +261,23 @@ export default {
         preflight.headers.set("Access-Control-Max-Age", "86400");
       }
       return withCors(preflight, origin);
+    }
+
+    // Before anything reads a binding. Every one of these comes from a file
+    // somebody fills in by hand, so a missing one is ordinary — and saying
+    // which one is the difference between a one-line fix and a hunt through a
+    // stack trace. It goes out through the same headers as any other answer,
+    // because a cross-origin caller cannot read a response without them.
+    const missing = missingSettings(env);
+    if (missing.length > 0) {
+      return withCors(
+        new Response(
+          `This Worker is missing configuration: ${missing.join(", ")}. ` +
+            "See packages/ingest/README.md.",
+          { status: 500 },
+        ),
+        origin,
+      );
     }
 
     return withCors(await answer(request, env), origin);

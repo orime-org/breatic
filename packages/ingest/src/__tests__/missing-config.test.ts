@@ -57,17 +57,55 @@ describe("a Worker whose configuration is incomplete", () => {
     await expect(response.text()).resolves.toContain("INGEST_SHARED_SECRET");
   });
 
-  // The check runs before anything reads a binding, so a request that would
-  // have thrown deeper in still gets the answer that says what to fix.
-  it("says so before the preflight branch as well", async () => {
-    const partial: Record<string, unknown> = { ...env };
-    delete partial["ALLOWED_ORIGINS"];
+  // The sentence is no use to a browser that cannot read the response, and a
+  // cross-origin caller cannot read one without these headers — it reports a
+  // CORS failure instead, which says nothing about what is wrong here.
+  it("sends the answer through the headers that let it be read", async () => {
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request("https://ingest.example.com/uploads", {
+        method: "POST",
+        headers: { origin: "https://app.test.example" },
+      }),
+      { ...env, SERVER_REPORT_URL: "" },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.test.example",
+    );
+  });
+
+  // The preflight is answered before the configuration is judged, for the same
+  // reason: a refused one is a CORS error, and the browser never sends the
+  // request that would have carried the sentence naming what to fix.
+  it("still lets the preflight through so that answer can arrive", async () => {
     const ctx = createExecutionContext();
     const response = await worker.fetch(
       new Request("https://ingest.example.com/uploads", {
         method: "OPTIONS",
         headers: { origin: "https://app.test.example" },
       }),
+      { ...env, SERVER_REPORT_URL: "" },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("PUT");
+  });
+
+  // Nothing is allowed when the list itself is what is missing, so this one
+  // stays unreadable to a browser — the operator reads it from a log or a
+  // request that carries no origin at all.
+  it("names a missing origin list on a request that can still read it", async () => {
+    const partial: Record<string, unknown> = { ...env };
+    delete partial["ALLOWED_ORIGINS"];
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request("https://ingest.example.com/uploads", { method: "POST" }),
       partial as unknown as typeof env,
       ctx,
     );

@@ -289,9 +289,8 @@ export const coreConfigSchema = z.object({
   OSS_SECRET_KEY: z.string().default(""),
 
   // ── R2 and the ingest Worker ─────────────────────
-  // R2 speaks the S3 API, so the backend reaches it through the same
-  // client as S3, with an account-scoped endpoint instead of a region.
-  R2_ACCOUNT_ID: z.string().default(""),
+  // R2 speaks the S3 API, so the backend reaches it through the same client as
+  // S3, with an account-scoped endpoint instead of a region.
   R2_BUCKET: z.string().default(""),
   R2_ACCESS_KEY: z.string().default(""),
   R2_SECRET_KEY: z.string().default(""),

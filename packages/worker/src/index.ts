@@ -87,6 +87,7 @@ import { reclaimFailedCoverJobById } from "@worker/handlers/video-cover-cleanup.
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
+import type { Worker } from "bullmq";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
 import type { VideoCoverJobData } from "@breatic/domain";
 
@@ -100,8 +101,9 @@ const HEALTH_PORT = env.WORKER_HEALTH_PORT;
  * terminal failure means: `tasks` stamps its target nodes failed, while a
  * cover that never came out still leaves a video the node should show. The
  * queue's own net (`reclaimFailedCoverJobById`) announces that instead.
+ * @returns The worker, which the caller drains on shutdown alongside its own.
  */
-function startVideoCoverWorker(): void {
+function startVideoCoverWorker(): Worker<VideoCoverJobData> {
   const worker = createWorker<VideoCoverJobData>(VIDEO_COVER_QUEUE, runVideoCover);
 
   worker.on("completed", (job) => {
@@ -145,6 +147,8 @@ function startVideoCoverWorker(): void {
         );
       });
   });
+
+  return worker;
 }
 
 /**
@@ -216,7 +220,7 @@ export function startWorker(): void {
       });
   });
 
-  startVideoCoverWorker();
+  const coverWorker = startVideoCoverWorker();
 
   logger.info("BullMQ worker started, listening on 'tasks' and 'video-cover' queues");
 
@@ -295,7 +299,10 @@ export function startWorker(): void {
     await health.stop();
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      drains: [() => worker.close()],
+      // Both of them. A cover extraction runs for as long as ffmpeg takes, and
+      // a deploy that cuts one off leaves a video whose node is still waiting
+      // for the event that job owns.
+      drains: [() => worker.close(), () => coverWorker.close()],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
     logger.info("worker_shutdown_complete");
