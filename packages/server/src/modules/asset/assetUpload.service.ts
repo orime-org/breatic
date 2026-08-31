@@ -88,6 +88,9 @@ export async function checkUploadDedup(params: {
  * @param params.userId - Who asked.
  * @param params.leaseGen - The node's fencing gen, which the event carries.
  * @param params.metadata - The picked file's facts, for the history row.
+ * @param params.metadata.filename - The name the file was picked under.
+ * @param params.metadata.size - The file's byte size as the browser declared it.
+ * @param params.metadata.mimeType - The file's content type.
  * @param params.nodeId - The node, when this upload has one.
  * @param params.spaceId - The space that node lives in.
  * @throws {unknown} When the event cannot be published.
