@@ -110,7 +110,7 @@ export async function sendFileToIngest(
     token = await sendPart(ticket, opened.uploadId, part, bytes, token, cfg);
   }
 
-  return completeUpload(ticket, opened.uploadId, token, file.size, cfg);
+  return completeUpload(ticket, opened.uploadId, token);
 }
 
 /**
@@ -176,8 +176,6 @@ async function sendPart(
  * @param ticket - The signed ticket.
  * @param uploadId - The upload to finish.
  * @param token - The most recently issued session token.
- * @param fileSize - The whole file's size, which sizes the deadline.
- * @param cfg - The upload knobs.
  * @returns What the server filed the upload as.
  * @throws {UploadHttpError} When the upload did not become an object.
  */
@@ -185,8 +183,6 @@ async function completeUpload(
   ticket: UploadTicket,
   uploadId: string,
   token: string,
-  fileSize: number,
-  cfg: UploadClientConfig,
 ): Promise<IngestOutcome> {
   const res = await httpRequest(
     `${ticket.uploadUrl}/uploads/${uploadId}/complete`,
@@ -194,9 +190,12 @@ async function completeUpload(
       method: 'POST',
       headers: { 'x-upload-token': token },
     },
-    // Sized to the whole file: finishing reads the assembled object back to
-    // hash it, so how long it takes follows the file rather than the request.
-    { replaySafe: true, timeoutMs: computePutTimeoutMs(fileSize, cfg) },
+    // The transport's own default. This request carries no bytes, and how long
+    // the Worker spends reading the assembled object back to hash it happens
+    // inside Cloudflare's network, at a rate the browser's upload figures say
+    // nothing about. A deadline reached here loses nothing: the request is
+    // replayed, and the alarm reaches the same outcome on its own.
+    { replaySafe: true },
   );
   if (!res.ok) throw new UploadHttpError(res.status);
   return (await res.json()) as IngestOutcome;

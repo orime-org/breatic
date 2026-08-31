@@ -272,9 +272,28 @@ export default {
       return withCors(preflight, origin);
     }
 
-    return withCors(await route(request, env), origin);
+    return withCors(await answer(request, env), origin);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Run the route and turn anything it throws into an answer.
+ *
+ * An escaping exception is answered by the runtime, whose 500 carries none of
+ * the headers added above — and a cross-origin caller cannot read a response
+ * without them, so the browser reports a network failure and the status saying
+ * this was ours to fix never arrives.
+ * @param request - The incoming request.
+ * @param env - The bound resources and configuration.
+ * @returns The endpoint's response, or a 500.
+ */
+async function answer(request: Request, env: Env): Promise<Response> {
+  try {
+    return await route(request, env);
+  } catch {
+    return new Response("Internal error", { status: 500 });
+  }
+}
 
 /**
  * Match one request to its endpoint.

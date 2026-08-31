@@ -118,34 +118,40 @@ export async function settleDedupHit(params: {
     ...(cover !== null && { coverUrl: cover.fileUrl }),
   };
 
-  if (params.nodeId !== undefined) {
-    try {
-      await nodeHistoryService.recordUpload({
-        projectId: params.projectId,
-        nodeId: params.nodeId,
-        userId: params.userId,
-        content: params.hit.fileUrl,
-        ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
-        metadata: params.metadata,
-      });
-    } catch (err) {
-      logger.warn(
-        { err, projectId: params.projectId, nodeId: params.nodeId },
-        "upload_ticket_dedup_history_failed",
-      );
-    }
-  }
-
+  // The announcement goes first because it is the step that can fail the
+  // request, and the browser's own retry then sends the same request again. A
+  // history row written before that failure records an attempt that did not
+  // happen — and a hit issues no grant, so those rows have no key to dedup on
+  // and the retry adds a second one.
+  //
   // A focus crop asks with no node. It reads its result from this request's
   // own answer, so there is nothing to announce and nowhere to announce it.
-  if (params.nodeId === undefined || params.spaceId === undefined) return;
-  await emitNodeStateDone(
-    getStreamRedis(),
-    canvasSpaceDocName(params.projectId, params.spaceId),
-    params.nodeId,
-    content,
-    params.leaseGen,
-  );
+  if (params.nodeId !== undefined && params.spaceId !== undefined) {
+    await emitNodeStateDone(
+      getStreamRedis(),
+      canvasSpaceDocName(params.projectId, params.spaceId),
+      params.nodeId,
+      content,
+      params.leaseGen,
+    );
+  }
+
+  if (params.nodeId === undefined) return;
+  try {
+    await nodeHistoryService.recordUpload({
+      projectId: params.projectId,
+      nodeId: params.nodeId,
+      userId: params.userId,
+      content: params.hit.fileUrl,
+      ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
+      metadata: params.metadata,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, projectId: params.projectId, nodeId: params.nodeId },
+      "upload_ticket_dedup_history_failed",
+    );
+  }
 }
 
 /**

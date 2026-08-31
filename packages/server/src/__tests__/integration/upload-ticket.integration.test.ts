@@ -564,6 +564,39 @@ describe("POST /assets/upload-ticket", () => {
     expect(rows[0]!.thumbnail_url).toBe(coverUrl);
   });
 
+  // The event is the only thing that brings this node out of handling, so a
+  // failure to publish fails the request — and the browser's own retry sends
+  // the same request again. A history row written before that failure records
+  // an attempt that did not happen, and the retry writes a second one; a hit
+  // has no grant, so there is no key these rows could dedup on.
+  it("leaves no history row behind when the event cannot be published", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size);
+    const nodeId = crypto.randomUUID();
+
+    // The same lazy singleton the service publishes through.
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    const refused = await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+    xadd.mockRestore();
+
+    expect(refused.status).toBe(500);
+    const rows = await sql`SELECT id FROM node_history WHERE node_id = ${nodeId}`;
+    expect(rows).toHaveLength(0);
+  });
+
   // A focus crop asks with no node. There is nothing to announce to, and the
   // answer to this request is how that path hears its result.
   it("announces nothing when the dedup hit has no node behind it", async () => {

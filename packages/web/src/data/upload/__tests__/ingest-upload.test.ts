@@ -180,20 +180,24 @@ describe('what the shared transport is told', () => {
     expect(optionsOf(2).timeoutMs).toBe(computePutTimeoutMs(10, cfg));
   });
 
-  // Finishing reads the assembled object back to hash it, so how long it takes
-  // follows the file rather than the request.
-  it('gives completing the whole file\'s deadline', async () => {
+  // Completing carries no bytes, and the work it waits on — reading the
+  // assembled object back to hash it — happens inside Cloudflare's network, at
+  // a rate the browser's own upload figures say nothing about. So it takes the
+  // transport's default rather than a deadline sized from those figures, which
+  // at the upload cap would have been hours.
+  it('sizes completing by nothing the browser measured', async () => {
     wireHappyPath(3, {});
-    // Big enough that the file's deadline and the plain request timeout are
-    // different numbers; a small file makes both the same and the assertion
-    // stops telling them apart.
     const file = fileOf(PART_SIZE * 2 + 700);
 
     await sendFileToIngest(file, ticketFor(3), cfg);
 
-    const expected = computePutTimeoutMs(file.size, cfg);
-    expect(expected).not.toBe(cfg.clientRequestTimeoutMs);
-    expect(optionsOf(4).timeoutMs).toBe(expected);
+    expect(optionsOf(4).replaySafe).toBe(true);
+    expect(optionsOf(4).timeoutMs).toBeUndefined();
+    // The figure that used to be handed over, kept here so this test says what
+    // it is refusing rather than only that a field is absent.
+    expect(computePutTimeoutMs(file.size, cfg)).toBeGreaterThan(
+      cfg.clientRequestTimeoutMs,
+    );
   });
 });
 
