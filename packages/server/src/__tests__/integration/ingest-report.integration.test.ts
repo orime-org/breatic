@@ -33,6 +33,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { Queue } from "bullmq";
 import {
   initCore,
   getRedis,
@@ -555,6 +556,59 @@ describe("a video, which needs a cover before the node hears anything", () => {
       mimeType: "video/mp4",
       filename: "clip.mp4",
     });
+  });
+
+  // A video's whole outcome hangs on this job: it writes the history row, the
+  // feed row and the one event the node gets. A grant marked consumed before
+  // the job exists turns the next report into the already-registered answer,
+  // and nothing is then left that could still queue it — the upload's bytes
+  // are safe in R2 while its node spins until the sweeper reclaims it.
+  it("leaves the grant unconsumed when the cover job cannot be queued", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: crypto.randomUUID(),
+    });
+
+    const add = vi
+      .spyOn(Queue.prototype, "add")
+      .mockRejectedValueOnce(new Error("the queue's Redis is unreachable"));
+    const refused = await report(
+      completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
+    );
+    add.mockRestore();
+
+    expect(refused.status).toBe(500);
+    const grants = await sql<{ consumed_at: Date | null }[]>`
+      SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.consumed_at).toBeNull();
+  });
+
+  it("queues the job and consumes the grant on the report that follows", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, {
+      filename: "clip.mp4",
+      content_type: "video/mp4",
+      node_id: crypto.randomUUID(),
+    });
+    const add = vi
+      .spyOn(Queue.prototype, "add")
+      .mockRejectedValueOnce(new Error("the queue's Redis is unreachable"));
+    await report(completed(key, { content_type: "video/mp4", size_bytes: 200_000 }));
+    add.mockRestore();
+
+    const second = await report(
+      completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
+    );
+
+    expect(second.status).toBe(200);
+    expect(await coverJobFor(key)).not.toBeNull();
+    const grants = await sql<{ consumed_at: Date | null }[]>`
+      SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.consumed_at).not.toBeNull();
   });
 
   // The job id is the storage key, so the Durable Object retrying its report

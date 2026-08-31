@@ -231,7 +231,9 @@ export async function applyIngestReport(
     // A video's event belongs to the cover job, which sends one carrying both
     // URLs. Sending a video-only one here would put a cover-less video on
     // screen and have the job replace it a moment later — and if the job has
-    // already finished, this would undo the cover it just showed.
+    // already finished, this would undo the cover it just showed. The grant is
+    // only consumed once that job is queued, so reaching here for a video
+    // means one is waiting.
     if (settledKind !== "video") {
       await announceSuccess(grant, fileUrl);
     }
@@ -276,17 +278,22 @@ export async function applyIngestReport(
     source: grant.derived === true ? "cover" : "upload",
   });
 
-  // After the ledger row exists, so an interrupted registration leaves the
-  // grant unconsumed and the retry can finish the job.
-  await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
-
   // A video is not finished here. Its cover has to be pulled out of it first,
   // which needs ffmpeg and takes longer than a request should wait, so the
   // worker does that and writes everything the node sees — history row, feed
   // row, and the one event carrying both URLs. Writing any of them now would
   // mean a history row with a thumbnail it can never gain and an event putting
   // a cover-less video on screen a moment before the real one.
-  if (kind === "video" && (await queueVideoCover(grant, asset, contentType))) {
+  const coverQueued =
+    kind === "video" && (await queueVideoCover(grant, asset, contentType));
+
+  // After the ledger row exists AND the job that owns the rest of a video's
+  // outcome is queued, so an interruption anywhere above leaves the grant
+  // unconsumed and the retry finishes the job. It is also what lets the
+  // already-consumed branch take a queued cover job as given.
+  await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
+
+  if (coverQueued) {
     return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind, deduped };
   }
 
