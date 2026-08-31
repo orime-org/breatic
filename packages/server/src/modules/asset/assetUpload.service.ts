@@ -18,8 +18,14 @@
  *     it replaces on this path.
  */
 
-import { assetRepo, assetService } from "@breatic/domain";
-import { storageKey } from "@breatic/core";
+import {
+  assetRepo,
+  assetService,
+  emitNodeStateDone,
+  nodeHistoryService,
+} from "@breatic/domain";
+import { storageKey, getStreamRedis, logger } from "@breatic/core";
+import { canvasSpaceDocName } from "@breatic/shared";
 import {
   issueGrant,
   findLiveGrant,
@@ -61,6 +67,67 @@ export async function checkUploadDedup(params: {
   if (!existing) return null;
   if (existing.sizeBytes !== params.sizeBytes) return null;
   return { fileUrl: existing.fileUrl, kind: existing.kind };
+}
+
+/**
+ * Carry out what a dedup hit means: nothing uploads, and the node now holds
+ * content it did not hold before (design §7).
+ *
+ * The node opened handling before this request was made, and no Worker will
+ * report on an upload that never happened — so this is the only thing that can
+ * bring it back out. A failure to publish therefore fails the request: the
+ * browser is still the one holding this attempt, and it writes the node's
+ * failure itself (design §5.5).
+ *
+ * The history row is best-effort in the other direction. Its loss costs an
+ * audit line, and turning that into a failed upload would cost the user the
+ * content they can see is already there.
+ * @param params - What was matched and where it lands.
+ * @param params.projectId - The project the node lives in.
+ * @param params.hit - The asset being reused.
+ * @param params.userId - Who asked.
+ * @param params.leaseGen - The node's fencing gen, which the event carries.
+ * @param params.metadata - The picked file's facts, for the history row.
+ * @param params.nodeId - The node, when this upload has one.
+ * @param params.spaceId - The space that node lives in.
+ * @throws {unknown} When the event cannot be published.
+ */
+export async function settleDedupHit(params: {
+  projectId: string;
+  hit: DedupHit;
+  userId: string;
+  leaseGen: number;
+  metadata: { filename: string; size: number; mimeType: string };
+  nodeId?: string | undefined;
+  spaceId?: string | undefined;
+}): Promise<void> {
+  if (params.nodeId !== undefined) {
+    try {
+      await nodeHistoryService.recordUpload({
+        projectId: params.projectId,
+        nodeId: params.nodeId,
+        userId: params.userId,
+        content: params.hit.fileUrl,
+        metadata: params.metadata,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, projectId: params.projectId, nodeId: params.nodeId },
+        "upload_ticket_dedup_history_failed",
+      );
+    }
+  }
+
+  // A focus crop asks with no node. It reads its result from this request's
+  // own answer, so there is nothing to announce and nowhere to announce it.
+  if (params.nodeId === undefined || params.spaceId === undefined) return;
+  await emitNodeStateDone(
+    getStreamRedis(),
+    canvasSpaceDocName(params.projectId, params.spaceId),
+    params.nodeId,
+    { content: params.hit.fileUrl },
+    params.leaseGen,
+  );
 }
 
 /**

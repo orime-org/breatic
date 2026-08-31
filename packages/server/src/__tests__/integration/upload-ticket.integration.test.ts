@@ -40,11 +40,13 @@ import postgres from "postgres";
 import {
   initCore,
   getRedis,
+  getStreamRedis,
   setSession,
   sessionCookieName,
   loadLocales,
+  taskEventsStreamKey,
 } from "@breatic/core";
-import { verifyUploadTicket } from "@breatic/shared";
+import { verifyUploadTicket, canvasSpaceDocName } from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -167,6 +169,31 @@ async function requestTicket(
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify(payload),
   });
+}
+
+/** Every node-state event on the stream for `docName`, oldest first. */
+async function eventsFor(docName: string): Promise<
+  { nodeId: string; gen: number; update: Record<string, unknown> }[]
+> {
+  const raw = (await getStreamRedis().xrange(
+    taskEventsStreamKey(),
+    "-",
+    "+",
+  )) as [string, string[]][];
+  return raw
+    .map(([, fields]) => {
+      const idx = fields.indexOf("payload");
+      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+    })
+    .filter(
+      (e): e is Record<string, unknown> =>
+        e !== null && e.type === "node-state-update" && e.docName === docName,
+    )
+    .map((e) => ({
+      nodeId: e.nodeId as string,
+      gen: e.gen as number,
+      update: e.update as Record<string, unknown>,
+    }));
 }
 
 describe("POST /assets/upload-ticket", () => {
@@ -412,6 +439,61 @@ describe("POST /assets/upload-ticket", () => {
       WHERE project_id = ${projectId} AND type = 'asset:uploaded'
     `;
     expect(rows[0]!.n).toBe("0");
+  });
+
+  // Nothing was uploaded, so nothing reports back — and the node opened
+  // handling before asking. Without an event here it would sit in handling
+  // forever, which is the one thing the upload path promises cannot happen
+  // (design §6.6).
+  it("tells the node what it now holds on a dedup hit", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size);
+    const nodeId = crypto.randomUUID();
+    const spaceId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+        space_id: spaceId,
+        lease_gen: 9,
+      }),
+    );
+
+    const docName = canvasSpaceDocName(projectId, spaceId);
+    const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.gen).toBe(9);
+    expect(events[0]!.update).toMatchObject({
+      content: `https://cdn.test.invalid/${hash}.mp4`,
+    });
+  });
+
+  // A focus crop asks with no node. There is nothing to announce to, and the
+  // answer to this request is how that path hears its result.
+  it("announces nothing when the dedup hit has no node behind it", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size);
+    const spaceId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        space_id: spaceId,
+      }),
+    );
+
+    expect(await eventsFor(canvasSpaceDocName(projectId, spaceId))).toEqual([]);
   });
 
   it("refuses an anonymous caller", async () => {

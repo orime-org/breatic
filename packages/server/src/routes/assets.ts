@@ -35,7 +35,6 @@ import {
   logger,
   ValidationError,
 } from "@breatic/core";
-import { nodeHistoryService } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();
@@ -179,33 +178,22 @@ assets.post(
         "upload_ticket_dedup_hit",
       );
       // No bytes move, but the node now shows something it did not show
-      // before. That change belongs in the node's history — the project
-      // activity feed deliberately gets nothing, because its only shape for
+      // before: it gets its history row and the event that ends its handling.
+      // The project activity feed gets nothing, because its only shape for
       // this is `asset:uploaded` and nothing was uploaded.
-      //
-      // Best-effort, like every other write to this sink: the answer below is
-      // what the browser pins onto the node, and losing an audit row must not
-      // turn a completed operation into a failed one.
-      if (body.node_id !== undefined) {
-        try {
-          await nodeHistoryService.recordUpload({
-            projectId: body.project_id,
-            nodeId: body.node_id,
-            userId: user.id,
-            content: dedupHit.fileUrl,
-            metadata: {
-              filename: body.filename,
-              size: body.size,
-              mimeType: body.content_type,
-            },
-          });
-        } catch (err) {
-          logger.warn(
-            { err, projectId: body.project_id, nodeId: body.node_id },
-            "upload_ticket_dedup_history_failed",
-          );
-        }
-      }
+      await assetUploadService.settleDedupHit({
+        projectId: body.project_id,
+        hit: dedupHit,
+        userId: user.id,
+        leaseGen: body.lease_gen,
+        metadata: {
+          filename: body.filename,
+          size: body.size,
+          mimeType: body.content_type,
+        },
+        nodeId: body.node_id,
+        spaceId: body.space_id,
+      });
       return c.json({
         data: {
           alreadyExists: true,
