@@ -45,6 +45,7 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
+import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import {
   OPENING_BEAT,
   stubChatWire,
@@ -388,5 +389,62 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     // 两轮都顺利，读者一句话都不该收到。
     expect(chat.status).toBe('ready');
     expect(told).toEqual([]);
+  });
+});
+
+describe('这一轮停下来整理记忆', () => {
+  /**
+   * 现在这条会话是不是在整理记忆。
+   * @returns 是就 true。
+   */
+  function folding(): boolean {
+    return useConversationRuntime.getState().consolidatingByConversation['c-1'] === true;
+  }
+
+  it('服务端说在整理，就记下来', async () => {
+    // 会话长到一定程度，发下一句时服务端会先做一次归纳再回答，中间多等一次
+    // 完整的模型调用。面板这时是空的，读者看着它。
+    const wire = stubChatWire();
+    aConversation();
+    void sendInSession('c-1', '那接下来呢？');
+    await settle();
+
+    expect(folding()).toBe(false);
+
+    wire.current()?.push({ type: 'data-memory-consolidating', transient: true, data: {} });
+    await settle();
+
+    expect(folding()).toBe(true);
+  });
+
+  it('回复开始出字就不说了', async () => {
+    // 归纳做完，这一轮进入它本来的样子：等待点自己就够了。
+    const wire = stubChatWire();
+    aConversation();
+    void sendInSession('c-1', '那接下来呢？');
+    await settle();
+    wire.current()?.push({ type: 'data-memory-consolidating', transient: true, data: {} });
+    await settle();
+
+    for (const chunk of turnOpens('t1')) wire.current()?.push(chunk);
+    await settle();
+
+    expect(folding()).toBe(false);
+  });
+
+  it('这一轮结束了也不说了，哪怕一个字都没出', async () => {
+    // 归纳失败、模型报错、读者按停止，都走这条路。留着不清，下一轮打开这条
+    // 会话时那行字还在，而它说的是上一轮的事。
+    const wire = stubChatWire();
+    aConversation();
+    void sendInSession('c-1', '那接下来呢？');
+    await settle();
+    wire.current()?.push({ type: 'data-memory-consolidating', transient: true, data: {} });
+    await settle();
+
+    wire.current()?.close();
+    await settle();
+
+    expect(folding()).toBe(false);
   });
 });
