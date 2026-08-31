@@ -51,17 +51,23 @@ afterEach(() => {
 /** Every report body the Worker sent, in order. */
 const reports: Record<string, unknown>[] = [];
 
+/** What our server answers a completed report with. */
+const REGISTERED = {
+  data: { ok: true, fileUrl: "https://cdn.test.example/stored.mp4", kind: "video" },
+};
+
 /**
  * Expect one report and answer it with `status`.
  * @param status - What our server answers.
+ * @param body - The answer's body.
  */
-function expectReport(status = 200): void {
+function expectReport(status = 200, body: unknown = REGISTERED): void {
   fetchMock
     .get(REPORT_ORIGIN)
     .intercept({ path: REPORT_PATH, method: "POST" })
     .reply(status, (opts: { body?: string }) => {
       reports.push(JSON.parse(opts.body ?? "{}") as Record<string, unknown>);
-      return "";
+      return body;
     });
 }
 
@@ -186,18 +192,67 @@ describe("an upload whose parts all arrived", () => {
   });
 });
 
+// An upload with no node behind it — a focus crop — has nowhere else to learn
+// how it went: the node path hears the outcome through Yjs, and a crop has no
+// node. This answer is that path's only channel (design §9).
+describe("what completing tells the browser", () => {
+  it("carries the URL the server registered", async () => {
+    expectReport();
+    const { uploadId, token } = await uploadedThrough(2);
+
+    const response = await complete(uploadId, token);
+
+    expect(response.status).toBe(200);
+    // Handed on as the server sent it, so a field added there reaches the
+    // browser without the Worker learning about it.
+    await expect(response.json()).resolves.toMatchObject({
+      fileUrl: "https://cdn.test.example/stored.mp4",
+      kind: "video",
+    });
+  });
+
+  // Asking twice is ordinary: a browser that lost the first answer asks again.
+  it("carries it again without asking the server twice", async () => {
+    expectReport();
+    const { uploadId, token } = await uploadedThrough(2);
+    await complete(uploadId, token);
+
+    const again = await complete(uploadId, token);
+
+    await expect(again.json()).resolves.toMatchObject({
+      fileUrl: "https://cdn.test.example/stored.mp4",
+      kind: "video",
+    });
+    expect(reports).toHaveLength(1);
+  });
+});
+
 describe("an upload missing parts", () => {
   it("leaves no object behind and reports that it never finished", async () => {
-    expectReport();
+    expectReport(200, { data: { ok: true } });
     const { storageKey, uploadId, token } = await uploadedThrough(1);
 
-    expect((await complete(uploadId, token)).status).toBe(200);
+    // 409, not 200: this upload will never become the object it was opened
+    // for, and asking again cannot change that — the parts are gone.
+    expect((await complete(uploadId, token)).status).toBe(409);
 
     expect(await env.BUCKET.get(storageKey)).toBeNull();
     expect(reports[0]).toMatchObject({
       storage_key: storageKey,
       outcome: "aborted",
       lease_gen: 7,
+    });
+  });
+
+  it("says why it never finished", async () => {
+    expectReport(200, { data: { ok: true } });
+    const { uploadId, token } = await uploadedThrough(1);
+
+    const response = await complete(uploadId, token);
+
+    await expect(response.json()).resolves.toMatchObject({
+      outcome: "aborted",
+      reason: "only 1 of 2 parts arrived",
     });
   });
 });

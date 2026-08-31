@@ -58,6 +58,38 @@ interface FinishProgress {
   abortedReason?: string;
   /** The server has accepted the outcome; nothing more is owed. */
   reported: boolean;
+  /**
+   * What the server said the upload became. Kept so that asking to complete a
+   * second time answers the same thing without a second report.
+   */
+  registered?: RegisteredAsset;
+}
+
+/** What the server answers a completed report with. */
+interface RegisteredAsset {
+  /** Where the stored object is readable — the canonical URL a node pins. */
+  fileUrl?: string;
+  /** The asset kind the server filed it under. */
+  kind?: string;
+}
+
+/**
+ * Say how a finished upload ended.
+ *
+ * An abort answers 409 rather than 200: the parts that were written are gone,
+ * so this upload will never become the object it was opened for and asking
+ * again cannot change that.
+ * @param progress - The settled, reported outcome.
+ * @returns The answer to give the caller.
+ */
+function outcomeResponse(progress: FinishProgress): Response {
+  if (progress.abortedReason !== undefined) {
+    return Response.json(
+      { outcome: "aborted", reason: progress.abortedReason },
+      { status: 409 },
+    );
+  }
+  return Response.json(progress.registered ?? {});
 }
 
 /** The Durable Object holding one upload's parts, ticket context and alarm. */
@@ -122,31 +154,35 @@ export class UploadSession implements DurableObject {
    * Re-entrant by construction: each step records that it happened, so the
    * alarm coming back after a report the server refused re-sends the report
    * without completing an already-complete upload or hashing its bytes twice.
-   * @returns 200 once the server has accepted the outcome, 502 while it has not.
+   *
+   * The answer carries the outcome because one caller has no other way to hear
+   * it: an upload with no node behind it — a focus crop — is not something the
+   * server can tell through Yjs (design §9). An upload that does have a node
+   * gets its answer that way and needs nothing from here.
+   * @returns The outcome once the server has accepted it, 502 while it has not.
    */
   async #finish(): Promise<Response> {
     const upload = await this.#state.storage.get<OpenUpload>("upload");
     if (upload === undefined) return new Response("Gone", { status: 410 });
 
-    const progress: FinishProgress = (await this.#state.storage.get<FinishProgress>(
+    const stored: FinishProgress = (await this.#state.storage.get<FinishProgress>(
       "finish",
     )) ?? { settled: false, reported: false };
-    if (progress.reported) return new Response(null, { status: 200 });
+    if (stored.reported) return outcomeResponse(stored);
 
-    const settled = progress.settled
-      ? progress
-      : await this.#settle(upload, progress);
+    const settled = stored.settled ? stored : await this.#settle(upload, stored);
 
-    const accepted = await this.#report(upload, settled);
-    if (!accepted) {
+    const reported = await this.#report(upload, settled);
+    if (reported === null) {
       // The alarm stays set. Nothing else will tell the node what happened, so
       // the only way this upload reaches the user is by trying again.
       return new Response("Report not accepted", { status: 502 });
     }
 
-    await this.#state.storage.put("finish", { ...settled, reported: true });
+    const done: FinishProgress = { ...settled, reported: true, registered: reported };
+    await this.#state.storage.put("finish", done);
     await this.#state.storage.deleteAlarm();
-    return new Response(null, { status: 200 });
+    return outcomeResponse(done);
   }
 
   /**
@@ -216,9 +252,12 @@ export class UploadSession implements DurableObject {
    * Tell the server how this upload ended.
    * @param upload - What was uploaded, carrying the context the server reads back.
    * @param progress - The settled outcome.
-   * @returns Whether the server accepted it.
+   * @returns What the server filed, or null when it did not accept the report.
    */
-  async #report(upload: OpenUpload, progress: FinishProgress): Promise<boolean> {
+  async #report(
+    upload: OpenUpload,
+    progress: FinishProgress,
+  ): Promise<RegisteredAsset | null> {
     const body =
       progress.abortedReason === undefined
         ? {
@@ -245,11 +284,19 @@ export class UploadSession implements DurableObject {
         },
         body: JSON.stringify(body),
       });
-      return response.ok;
+      if (!response.ok) return null;
+      // An answer we cannot read still means the server took it. The report is
+      // what the outcome hinges on; the URL only serves the crop path, and
+      // failing the whole upload over an unreadable body would strand a node
+      // whose bytes are safely stored.
+      const answer = await response
+        .json<{ data?: RegisteredAsset }>()
+        .catch(() => null);
+      return answer?.data ?? {};
     } catch {
       // Unreachable server, DNS, TLS — all the same answer here: not accepted,
       // so the alarm keeps this upload alive for another try.
-      return false;
+      return null;
     }
   }
 
