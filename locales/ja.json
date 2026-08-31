@@ -132,6 +132,9 @@
       "consent_heading": "ご購入時に同意いただいた内容",
       "refund_heading": "クレジットパックの返金規定",
       "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
+    },
+    "chat": {
+      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit} 文字までですが、これは {actual} 文字あります。"
     }
   },
   "chat": {

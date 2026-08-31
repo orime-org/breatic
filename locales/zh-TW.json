@@ -132,6 +132,9 @@
       "consent_heading": "你在購買時同意的內容",
       "refund_heading": "點數包退款規則",
       "support": "對這筆購買有疑問，請寫信到 {email}。"
+    },
+    "chat": {
+      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit} 個字元，這則有 {actual} 個。"
     }
   },
   "chat": {

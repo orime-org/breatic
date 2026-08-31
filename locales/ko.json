@@ -132,6 +132,9 @@
       "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
       "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
+    },
+    "chat": {
+      "message_too_long": "이 메시지는 너무 깁니다. 첨부한 내용을 포함해 최대 {limit}자까지이며, 이 메시지는 {actual}자입니다."
     }
   },
   "chat": {

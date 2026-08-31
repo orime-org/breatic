@@ -64,6 +64,14 @@ memory_conversation_max_size: 3072
 # a turn can make many calls and each of them is bounded by this.
 max_output_tokens: 16384
 
+# How long one turn's question may be, in characters. Measured on what
+# reaches the model: the message with the canvas content the reader attached
+# folded in front of it.
+#
+# The browser draws a lower line (10,000) and says so as the reader types;
+# this one is where a client cannot skip it.
+user_message_max_chars: 15000
+
 # How long an assembled request may be before a consolidation runs, in
 # characters. Measured against everything about to go to the model: system
 # prompt, skill bodies, memory, tool definitions, history and this turn's

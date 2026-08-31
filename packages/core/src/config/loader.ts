@@ -105,6 +105,17 @@ const agentConfigSchema = z.object({
    * reached through OpenRouter, and a character is never more than a token in
    * the tokenizers this build meets, so this can only fire early.
    */
+  /**
+   * How long one turn's question may be, in characters.
+   *
+   * Measured on what reaches the model: the message with the canvas content
+   * the reader attached folded in front of it. Per field it would admit a
+   * short message carrying chips worth many times the limit.
+   *
+   * The browser draws a lower line and says so as the reader types; this one
+   * is where a client cannot skip it.
+   */
+  user_message_max_chars: z.number().int().positive().default(15000),
   memory_budget_chars: z.number().int().positive().default(850000),
   /**
    * What one consolidation leaves behind, in characters.

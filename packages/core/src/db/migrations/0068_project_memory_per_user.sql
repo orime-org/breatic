@@ -15,6 +15,8 @@
 -- to the model.
 
 DELETE FROM "project_memories";--> statement-breakpoint
-ALTER TABLE "project_memories" ADD COLUMN "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE RESTRICT;--> statement-breakpoint
+ALTER TABLE "project_memories" ADD COLUMN "user_id" uuid NOT NULL;--> statement-breakpoint
+ALTER TABLE "project_memories" ADD CONSTRAINT "project_memories_user_id_users_id_fk"
+  FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT;--> statement-breakpoint
 DROP INDEX IF EXISTS "project_memories_project_id_idx";--> statement-breakpoint
 CREATE UNIQUE INDEX "project_memories_user_project_idx" ON "project_memories" ("user_id","project_id");

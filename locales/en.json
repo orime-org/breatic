@@ -132,6 +132,9 @@
       "consent_heading": "What you agreed to when you bought",
       "refund_heading": "Refund rules for credit packs",
       "support": "Questions about this purchase? Write to {email}."
+    },
+    "chat": {
+      "message_too_long": "This message is too long. It may hold at most {limit} characters, attached content included; this one holds {actual}."
     }
   },
   "chat": {
