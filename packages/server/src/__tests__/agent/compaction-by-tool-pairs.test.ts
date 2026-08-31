@@ -184,6 +184,67 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     expect(compressForContext(history, KEEP)).toEqual(history);
   });
 
+  it("replaces the reason a failed call gives back, which is what the model reads", () => {
+    // A failed call carries its account in `failure.forModel`; `output` is
+    // never set and never read. Left alone, five failed fetches keep five
+    // full failure texts in the history forever — and an invalid-arguments
+    // failure quotes back everything the model sent.
+    const failing = (n: number): MessagePart => ({
+      type: "tool",
+      toolCallId: `call-${n}`,
+      toolName: "web_fetch",
+      input: { url: `https://example.test/${n}` },
+      status: "error",
+      failure: { forModel: `${BODY} ${n}`.repeat(500), readerKey: "chat.tool.failed" },
+    });
+    const history = Array.from({ length: 5 }, (_, i) => i + 1).flatMap((t) => [
+      msg("user", t, [{ type: "text", text: `question ${t}` }]),
+      msg("assistant", t, [failing(t), { type: "text", text: `answer ${t}` }]),
+    ]);
+
+    const tools = toolPartsOf(compressForContext(history, KEEP));
+
+    expect(tools).toHaveLength(5);
+    for (const part of tools.slice(-KEEP)) {
+      expect(part.type === "tool" && part.failure?.forModel).toContain(BODY);
+    }
+    for (const part of tools.slice(0, -KEEP)) {
+      expect(part.type === "tool" && part.failure?.forModel).not.toContain(BODY);
+    }
+  });
+
+  it("does not spend a keep slot on a call the model is never shown", () => {
+    // `toModelMessages` drops a part that is still pending or whose arguments
+    // never finished arriving. Counting them here shrinks the window the
+    // operator configured, silently and in the direction that hurts.
+    const halfSent: MessagePart = {
+      type: "tool",
+      toolCallId: "call-half",
+      toolName: "web_fetch",
+      input: { url: "https://example.test/half" },
+      status: "error",
+      argumentsIncomplete: true,
+      failure: { forModel: "the call never finished", readerKey: "chat.tool.failed" },
+    };
+    const history = [
+      ...Array.from({ length: 4 }, (_, i) => i + 1).flatMap((t) => [
+        msg("user", t, [{ type: "text", text: `question ${t}` }]),
+        msg("assistant", t, [toolPart(t), { type: "text", text: `answer ${t}` }]),
+      ]),
+      msg("user", 5, [{ type: "text", text: "the one that was cut off" }]),
+      msg("assistant", 5, [halfSent]),
+    ];
+
+    const tools = toolPartsOf(compressForContext(history, KEEP));
+    const shown = tools.filter((p) => p.type === "tool" && p.argumentsIncomplete !== true);
+
+    // Four real uses, three of which keep their body: the incomplete one does
+    // not take a slot from them.
+    expect(shown).toHaveLength(4);
+    const kept = shown.filter((p) => p.type === "tool" && String(p.output ?? "").includes(BODY));
+    expect(kept).toHaveLength(KEEP);
+  });
+
   it("returns nothing for an empty history", () => {
     expect(compressForContext([], KEEP)).toEqual([]);
   });

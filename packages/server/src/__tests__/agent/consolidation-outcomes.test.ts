@@ -116,6 +116,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   generateTextRetry.mockResolvedValue(GOOD_ANSWER);
   commitConsolidation.mockResolvedValue("written");
+  // `clearAllMocks` forgets calls, not implementations: a case that made one
+  // of these reject would otherwise leave it rejecting for every case after.
+  chargeOnceForGeneration.mockResolvedValue(null);
+  discardConsolidation.mockResolvedValue(undefined);
 });
 
 describe("a consolidation that works", () => {
@@ -244,6 +248,57 @@ describe("a consolidation the reader did not wait for", () => {
 
     const call = generateTextRetry.mock.calls[0]?.[0] as { abortSignal?: AbortSignal };
     expect(call.abortSignal).toBe(controller.signal);
+  });
+});
+
+describe("a consolidation the reader walked out on mid-call", () => {
+  it("keeps the window: nothing written, watermark where it was", async () => {
+    // N7. The pre-flight check catches a reader who left before the call
+    // started; this is the one who left during it, which is the likelier
+    // half — the call is seconds long and the panel is showing a line about
+    // it. Discarding here would lose turns that are in neither the history
+    // nor the memory.
+    const abort = Object.assign(new Error("The operation was aborted."), {
+      name: "AbortError",
+    });
+    generateTextRetry.mockRejectedValue(abort);
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("aborted");
+    expect(commitConsolidation).not.toHaveBeenCalled();
+    expect(discardConsolidation).not.toHaveBeenCalled();
+    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+  });
+});
+
+describe("a consolidation that lost a version race", () => {
+  it("keeps the window: the clash is retryable, not a failure", async () => {
+    // The project layer is versioned, and losing that race means somebody
+    // else wrote a moment ago — the next turn folds the same window against
+    // the newer version. Filing it as a failure would throw the window away
+    // over a conflict that resolves itself.
+    const { ConflictError } = await import("@breatic/core");
+    commitConsolidation.mockRejectedValue(new ConflictError("version conflict"));
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("contended");
+    expect(discardConsolidation).not.toHaveBeenCalled();
+  });
+});
+
+describe("a consolidation whose bill could not be settled", () => {
+  it("still counts as written, and says so in the log", async () => {
+    // The memory is already written and the watermark already moved. Letting
+    // the charge take the turn down would fail a reply that has nothing wrong
+    // with it, over bookkeeping the reader never sees.
+    chargeOnceForGeneration.mockRejectedValue(new Error("redis is down"));
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("written");
+    expect(logger.error).toHaveBeenCalled();
   });
 });
 
