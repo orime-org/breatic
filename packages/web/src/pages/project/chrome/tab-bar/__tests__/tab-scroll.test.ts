@@ -82,6 +82,19 @@ describe('scrollTargetFor', () => {
       .toBeNull();
   });
 
+  it('has nothing to do wherever a tab wider than the strip fills the view', () => {
+    // Measured: 137px of strip, a 160px tab. At scrollLeft 0, 10 and 23 the
+    // strip shows 137px of it — everything it can hold. Asking for one
+    // particular resting place among those made the reveal control light up
+    // right after the right arrow had parked the tab at another one, and
+    // clicking it threw the strip back.
+    for (const start of [10, 23]) {
+      expect(
+        scrollTargetFor({ start: 0, end: 160 }, { start, end: start + 137 }),
+      ).toBeNull();
+    }
+  });
+
   it('still has work when a tab wider than the strip sits past the edge', () => {
     expect(scrollTargetFor({ start: 200, end: 360 }, { start: 100, end: 237 }))
       .toBe(200);
