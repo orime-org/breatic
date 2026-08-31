@@ -147,6 +147,40 @@ async function registerAsset(
   `;
 }
 
+/**
+ * Register a video that already carries its extracted cover, the way the first
+ * upload of that file leaves it.
+ * @param studioId - Studio the rows belong to.
+ * @param producedByUserId - Who uploaded it.
+ * @param contentHash - The video's hash, which dedup matches on.
+ * @param sizeBytes - The video's size, which dedup also matches on.
+ * @returns The cover's public URL.
+ */
+async function registerVideoWithCover(
+  studioId: string,
+  producedByUserId: string,
+  contentHash: string,
+  sizeBytes: number,
+): Promise<string> {
+  await registerAsset(studioId, producedByUserId, contentHash, sizeBytes);
+  const coverHash = crypto.randomBytes(32).toString("hex");
+  const coverUrl = `https://cdn.test.invalid/${coverHash}_cover.png`;
+  const rows = await sql<{ id: string }[]>`
+    INSERT INTO studio_assets
+      (studio_id, content_hash, storage_key, file_url, size_bytes,
+       mime_type, kind, source, produced_by_user_id)
+    VALUES
+      (${studioId}, ${coverHash}, ${`image/${coverHash}_cover.png`},
+       ${coverUrl}, 4096, 'image/png', 'image', 'cover', ${producedByUserId})
+    RETURNING id
+  `;
+  await sql`
+    UPDATE studio_assets SET cover_asset_id = ${rows[0]!.id}
+    WHERE studio_id = ${studioId} AND content_hash = ${contentHash}
+  `;
+  return coverUrl;
+}
+
 /** A request body the endpoint should accept, with the pieces a caller varies. */
 function body(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -472,6 +506,62 @@ describe("POST /assets/upload-ticket", () => {
     expect(events[0]!.update).toMatchObject({
       content: `https://cdn.test.invalid/${hash}.mp4`,
     });
+  });
+
+  // Nothing uploads on a hit, so no cover job runs and this event is the only
+  // one this node will get. A video node reads `coverUrl` for its poster, so
+  // an event carrying the video alone leaves the second node showing a
+  // modality icon where the first shows a frame — from the same file.
+  it("hands over the cover as well when the deduped video already has one", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    const coverUrl = await registerVideoWithCover(studioId, userId, hash, size);
+    const nodeId = crypto.randomUUID();
+    const spaceId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+        space_id: spaceId,
+        lease_gen: 9,
+      }),
+    );
+
+    const docName = canvasSpaceDocName(projectId, spaceId);
+    const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
+    expect(events[0]!.update).toMatchObject({
+      content: `https://cdn.test.invalid/${hash}.mp4`,
+      coverUrl,
+    });
+  });
+
+  it("puts that cover on the history row too", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    const coverUrl = await registerVideoWithCover(studioId, userId, hash, size);
+    const nodeId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+
+    const rows = await sql<{ thumbnail_url: string | null }[]>`
+      SELECT thumbnail_url FROM node_history WHERE node_id = ${nodeId}
+    `;
+    expect(rows[0]!.thumbnail_url).toBe(coverUrl);
   });
 
   // A focus crop asks with no node. There is nothing to announce to, and the
