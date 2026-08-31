@@ -6,10 +6,12 @@
  *
  * A quote is 0 or 1 levels and never 2 (user 2026-08-31), so a press has to
  * leave every selected block unquoted however deep the lists go; A8 leaves
- * every block nobody selected in a quote of its own; and rule 3 keeps what each
- * block is — a freed list item is still an item of its own list.
+ * every block nobody selected in a quote of its own; rule 3 keeps what each
+ * block is, so a freed list item is still an item of its own list and a freed
+ * line that carried no marker still carries none; and A21 leaves the reader
+ * holding what they were holding.
  *
- * Three promises over one structure, which is why they are answered together.
+ * Four promises over one structure, which is why they are answered together.
  * Doing them as separate steps — split the list, carry the buried part out,
  * lift what is left — gave each step a part of the selection to act on and
  * nobody the whole, and every shape that broke broke on a seam between two of
@@ -25,10 +27,10 @@ import { TextSelection, type Transaction } from '@tiptap/pm/state';
 
 import { QUOTE_NAMES, isListName } from '@web/spaces/document/document-block-model';
 
-/** The stretch of document the press's blocks span, ends included. */
+/** The content starts of the first and last of the press's blocks. */
 interface Span {
-  from: number;
-  to: number;
+  first: number;
+  last: number;
 }
 
 /** A stretch of nodes that is either wholly selected or wholly not. */
@@ -102,34 +104,67 @@ function intoRuns(pieces: Run[]): Run[] {
 }
 
 /**
+ * The same positions, plus every text block inside this node.
+ *
+ * A list item travelling whole takes everything indented under it, so every
+ * block in it is leaving the quote — a block a second quote holds inside the
+ * item included, which is how that quote comes off too.
+ * @param node - The node whose blocks are all leaving.
+ * @param at - Where that node sits in the document.
+ * @param picked - The positions the press started from.
+ * @returns Those positions widened by the node's own blocks.
+ */
+function withEverythingIn(
+  node: PMNode,
+  at: number,
+  picked: ReadonlySet<number>,
+): ReadonlySet<number> {
+  const wider = new Set(picked);
+  node.descendants((child, pos) => {
+    if (!child.isTextblock) return true;
+    // `pos` is relative to this node's content, which starts at `at + 1`.
+    wider.add(at + pos + 2);
+    return false;
+  });
+  return wider;
+}
+
+/**
  * Cuts one node into runs of selected and unselected content.
  *
- * Four rules, and the whole behaviour follows from them:
+ * Five rules, and the whole behaviour follows from them:
  *
  * A text block is a run of its own, selected or not.
  *
- * A list item whose FIRST block is selected goes as a whole. That block carries
- * the marker the reader sees, and whatever is indented below it belongs to it —
- * the same reading Tab and Shift-Tab take, and what `itemLift`'s second path in
- * `document-block-press.ts` already does for the exclusive rows.
+ * A block with no text in it — an unsupported block a co-editor's version
+ * wrote, a rule — has nothing to be picked, so it goes by where it stands: one
+ * between two selected blocks travels with them (§6.0, user 2026-08-30).
+ *
+ * A list item whose FIRST block is selected goes as a whole, with everything
+ * indented under it. That block carries the marker the reader sees, and what is
+ * indented below belongs to it — the same reading Tab and Shift-Tab take, and
+ * what `itemLift`'s second path in `document-block-press.ts` already does for
+ * the exclusive rows. Every block in it is leaving, so the recursion runs over
+ * it with all of them counted as picked, which takes a quote buried inside it
+ * off as well.
  *
  * A quote keeps the runs nobody selected and hands the selected ones up bare.
  * That is what taking a quote off means, and doing it at every level is what
  * strips a legacy nested quote in one press (A22).
  *
  * Any other container puts each run back under a copy of itself, as far as the
- * schema allows. This is what keeps a freed line a list item: the list it
- * belonged to is rebuilt around it. Where the schema refuses — `listItem` is
- * `paragraph block*`, so it cannot hold a run that opens with a list — the run
+ * schema allows — this is what keeps a freed line a list item, the list it
+ * belonged to being rebuilt around it. Two limits. A list ITEM is the block
+ * that opens it plus what follows, so only its FIRST run is still that item: a
+ * later run put back under a copy would be a new item, carrying a marker the
+ * reader never had (rule 3). And where the schema refuses a run — `listItem` is
+ * `paragraph block*`, so it cannot hold one that opens with a list — the run
  * goes up a level and is offered to the container above.
- *
- * A block with no text in it — an unsupported block a co-editor's version
- * wrote, a rule — has nothing to be picked, so it goes by where it stands: one
- * between two selected blocks travels with them (§6.0, user 2026-08-30).
  * @param node - The node to cut.
  * @param at - Where that node sits in the document.
  * @param picked - The positions of the selected text blocks' content starts.
- * @param span - Where the press's blocks begin and end.
+ * @param span - The first and last of the press's blocks.
+ * @param asItem - Whether a list holds this node, making it one of its items.
  * @returns Its content as runs, in document order.
  */
 function splitForQuote(
@@ -137,98 +172,59 @@ function splitForQuote(
   at: number,
   picked: ReadonlySet<number>,
   span: Span,
+  asItem: boolean,
 ): Run[] {
   if (node.isTextblock) return [{ freed: picked.has(at + 1), nodes: [node] }];
-  if (node.isLeaf) return [{ freed: at > span.from && at < span.to, nodes: [node] }];
-  if (isListName(node.type.name)) return splitList(node, at, picked, span);
+  if (node.isLeaf) return [{ freed: at > span.first && at < span.last, nodes: [node] }];
 
+  const isList = isListName(node.type.name);
   const inside: Run[] = [];
   let offset = at + 1;
   node.forEach((child) => {
-    inside.push(...splitForQuote(child, offset, picked, span));
+    // An item's first block sits two in: the item opens at `offset`, its
+    // content at `offset + 1`, and that block's own content at `offset + 2`.
+    const whole = isList && child.firstChild?.isTextblock === true && picked.has(offset + 2);
+    const reach = whole ? withEverythingIn(child, offset, picked) : picked;
+    inside.push(...splitForQuote(child, offset, reach, span, isList));
     offset += child.nodeSize;
   });
 
   const isQuote = QUOTE_NAMES.has(node.type.name);
   const out: Run[] = [];
-  for (const run of intoRuns(inside)) {
+  intoRuns(inside).forEach((run, index) => {
     if (isQuote && run.freed) out.push(run);
+    else if (asItem && index > 0) out.push(run);
     else out.push(...packRun(node, run));
-  }
-  return out;
-}
-
-/**
- * Cuts a list's items, letting a whole item go where its first block is picked.
- * @param list - The list node.
- * @param at - Where it sits in the document.
- * @param picked - The positions of the selected text blocks' content starts.
- * @param span - Where the press's blocks begin and end.
- * @returns Its items as runs, in document order.
- */
-function splitList(list: PMNode, at: number, picked: ReadonlySet<number>, span: Span): Run[] {
-  const inside: Run[] = [];
-  let offset = at + 1;
-  list.forEach((item) => {
-    const first = item.firstChild;
-    // The item's content start is offset + 1; its first block's is one further.
-    if (first?.isTextblock && picked.has(offset + 2)) inside.push({ freed: true, nodes: [item] });
-    else inside.push(...splitForQuote(item, offset, picked, span));
-    offset += item.nodeSize;
   });
-  const out: Run[] = [];
-  for (const run of intoRuns(inside)) out.push(...packRun(list, run));
   return out;
 }
 
 /**
- * Where each of these blocks stands among the document's text blocks.
+ * Where every text block in the document starts, in document order.
  *
  * Rebuilding a quote's content moves every block in it and adds or removes
- * none, so a block's place in that count is what survives the rewrite — the
+ * none, so a block's place in this list is what survives the rewrite — the
  * transaction's own mapping cannot follow a `replaceWith` back to the blocks
  * inside it.
  * @param doc - The document.
- * @param positions - Content-start positions of the blocks to find.
- * @returns Their ordinals, ascending.
+ * @returns Their content starts.
  */
-function ordinalsOf(doc: PMNode, positions: ReadonlySet<number>): number[] {
+function textBlocks(doc: PMNode): number[] {
   const out: number[] = [];
-  let seen = 0;
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
-    if (positions.has(pos + 1)) out.push(seen);
-    seen += 1;
+    out.push(pos + 1);
     return false;
   });
   return out;
 }
 
 /**
- * The content start of the text block at this ordinal.
- * @param doc - The document.
- * @param ordinal - Which text block, counting from zero.
- * @returns Its content start, or null where the document holds fewer blocks.
- */
-function blockAtOrdinal(doc: PMNode, ordinal: number): number | null {
-  let seen = 0;
-  let found: number | null = null;
-  doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (!node.isTextblock) return true;
-    if (seen === ordinal) found = pos + 1;
-    seen += 1;
-    return false;
-  });
-  return found;
-}
-
-/**
- * The outermost quote holding each block, innermost-last in the document.
+ * The outermost quote holding each block, in reverse document order.
  *
  * The outermost is the one to rebuild: cutting it cuts every quote inside it
- * too, which is what leaves no level behind (A22). They come back in reverse
- * document order so rewriting one does not move the next.
+ * too, which is what leaves no level behind (A22). They come back last-first so
+ * rewriting one does not move the next.
  * @param doc - The document.
  * @param picked - The positions of the selected text blocks' content starts.
  * @returns Where those quotes start, descending.
@@ -248,10 +244,6 @@ function outerQuotes(doc: PMNode, picked: ReadonlySet<number>): number[] {
 
 /**
  * Takes the quotes off the selection, leaving everything else quoted.
- *
- * Rebuilds each quote the selection reaches, then puts the selection back on
- * the blocks the press was given by their place among the document's text
- * blocks. A collapsed selection stays collapsed (A21).
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
  * @returns Whether any quote came off.
@@ -261,26 +253,35 @@ export function unquoteSelection(tr: Transaction, blocks: number[]): boolean {
   const quotes = outerQuotes(tr.doc, picked);
   if (quotes.length === 0) return false;
 
-  const wasCollapsed = tr.selection.empty;
-  const ordinals = ordinalsOf(tr.doc, picked);
+  const collapsed = tr.selection.empty;
+  const heldHead = tr.selection.$from.parentOffset;
+  const heldTail = tr.selection.$to.parentOffset;
+  const ordinals = textBlocks(tr.doc).reduce<number[]>((found, pos, index) => {
+    if (picked.has(pos)) found.push(index);
+    return found;
+  }, []);
   const reach = [...picked].sort((a, b) => a - b);
-  const span = { from: (reach[0] ?? 0) - 1, to: reach[reach.length - 1] ?? 0 };
+  const span = { first: reach[0] ?? 0, last: reach[reach.length - 1] ?? 0 };
 
   for (const at of quotes) {
     const quote = tr.doc.nodeAt(at);
     if (!quote) continue;
-    const runs = splitForQuote(quote, at, picked, span);
+    const runs = splitForQuote(quote, at, picked, span, false);
     tr.replaceWith(at, at + quote.nodeSize, Fragment.fromArray(runs.flatMap((run) => run.nodes)));
   }
 
-  const head = ordinals[0];
-  const tail = ordinals[ordinals.length - 1];
-  if (head === undefined || tail === undefined) return true;
-  const from = blockAtOrdinal(tr.doc, head);
-  const to = blockAtOrdinal(tr.doc, tail);
-  if (from === null || to === null) return true;
-  tr.setSelection(wasCollapsed
-    ? TextSelection.create(tr.doc, from)
-    : TextSelection.create(tr.doc, from, tr.doc.resolve(to).end()));
+  // The selection goes back on the blocks the press acted on, found by their
+  // ordinal since the rebuild moved them, at the offsets the reader held inside
+  // them: A21 asks for the caret to stay on the same character and a range to
+  // stay over the same words. The offsets are clamped, since ProseMirror throws
+  // on a position past a block's end.
+  const after = textBlocks(tr.doc);
+  const from = after[ordinals[0] ?? -1];
+  const to = after[ordinals[ordinals.length - 1] ?? -1];
+  if (from === undefined || to === undefined) return true;
+  const start = Math.min(from + heldHead, tr.doc.resolve(from).end());
+  tr.setSelection(collapsed
+    ? TextSelection.create(tr.doc, start)
+    : TextSelection.create(tr.doc, start, Math.min(to + heldTail, tr.doc.resolve(to).end())));
   return true;
 }

@@ -181,7 +181,7 @@ const ROW_ORDER: Record<BlockTypeId, true> = {
 const ROWS = Object.keys(ROW_ORDER) as BlockTypeId[];
 
 /** The exclusive eight: every row but Quote, which sits across them. */
-const EXCLUSIVE = ROWS.filter((id) => id !== 'quote');
+const EXCLUSIVE = ROWS.filter(isExclusiveRow);
 
 /**
  * Does this row belong to the exclusive group?

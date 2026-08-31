@@ -167,14 +167,13 @@ function itemLift($from: Resolved): { range: NodeRange; target: number } | null 
  * @param tr - The transaction.
  * @param at - Where the blocks stood before the press.
  * @param target - The row the press aimed at.
- * @param want - Whether a block should have become that row, or left it.
  * @returns Whether the press arrived.
  */
-function landedOn(tr: Transaction, at: number[], target: BlockTypeId, want: boolean): boolean {
+function landedOn(tr: Transaction, at: number[], target: BlockTypeId): boolean {
   return at.some((pos) => {
     const now = tr.mapping.map(pos);
     const $now = tr.doc.resolve(now);
-    return $now.parent.isTextblock && isItemAt(tr.doc, now, target) === want;
+    return $now.parent.isTextblock && isItemAt(tr.doc, now, target);
   });
 }
 
@@ -474,12 +473,12 @@ function applyTransition(
     splitListAtSelectionEdges(tr, at, wrapDepth(tr, at)?.depth ?? null);
     liftOutOfQuotes(tr, at);
     if (!wrapInQuote(tr, at)) return false;
-    return landedOn(tr, at, 'quote', true);
+    return landedOn(tr, at, 'quote');
   }
 
   const target: BlockTypeId = marked ? 'paragraph' : id;
   applyExclusive(tr, at, schema, target);
-  return landedOn(tr, at, target, true);
+  return landedOn(tr, at, target);
 }
 
 /**

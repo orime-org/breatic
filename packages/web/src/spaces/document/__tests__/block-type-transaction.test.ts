@@ -46,6 +46,7 @@ describe('one press, one transaction', () => {
     ['heading-1', '<ul><li><p>x</p></li></ul>'],
     ['bullet-list', '<blockquote><h1>x</h1></blockquote>'],
     ['quote', '<ol><li><p>one</p></li><li><p>two</p></li></ol>'],
+    ['quote', '<blockquote><ol><li><p>one</p></li><li><p>two</p></li></ol></blockquote>'],
   ] as const)('pressing %s dispatches once', (id, start) => {
     const editor = openBody(start);
     selectWholeBody(editor);
@@ -56,6 +57,7 @@ describe('one press, one transaction', () => {
     ['heading-1', '<ul><li><p>x</p></li></ul>'],
     ['bullet-list', '<blockquote><h1>x</h1></blockquote>'],
     ['quote', '<ol><li><p>one</p></li><li><p>two</p></li></ol>'],
+    ['quote', '<blockquote><ol><li><p>one</p></li><li><p>two</p></li></ol></blockquote>'],
   ] as const)('one undo puts the document back after pressing %s', (id, start) => {
     const editor = openBody(start);
     selectWholeBody(editor);
@@ -82,41 +84,47 @@ const ROWS: BlockTypeId[] = [
 
 describe('selection shapes other than a plain range', () => {
   const ALL_START = '<h1>one</h1><ol><li><p>two</p></li></ol>';
+  // Quoted twins of both fixtures: without one, the Quote row wraps on every
+  // row of this table and taking a quote off is never exercised here at all.
+  const ALL_QUOTED = `<blockquote>${ALL_START}</blockquote>`;
 
-  it.each(ROWS)('gives an AllSelection the same result as a text selection: %s', (id) => {
-    const viaText = openBody(ALL_START);
-    selectWholeBody(viaText);
-    runBlockType(viaText, id);
+  it.each(ROWS.flatMap((id) => [[id, ALL_START], [id, ALL_QUOTED]] as const))(
+    'gives an AllSelection the same result as a text selection: %s on %s', (id, body) => {
+      const viaText = openBody(body);
+      selectWholeBody(viaText);
+      runBlockType(viaText, id);
 
-    const viaAll = openBody(ALL_START);
-    viaAll.view.dispatch(
-      viaAll.state.tr.setSelection(new AllSelection(viaAll.state.doc)),
-    );
-    runBlockType(viaAll, id);
+      const viaAll = openBody(body);
+      viaAll.view.dispatch(
+        viaAll.state.tr.setSelection(new AllSelection(viaAll.state.doc)),
+      );
+      runBlockType(viaAll, id);
 
-    expect(viaAll.getHTML()).toBe(viaText.getHTML());
-  });
+      expect(viaAll.getHTML()).toBe(viaText.getHTML());
+    });
 
   const NODE_START = '<p>one</p><p>two</p>';
+  const NODE_QUOTED = `<blockquote>${NODE_START}</blockquote>`;
 
-  it.each(ROWS)('gives a node selection the same result as selecting it: %s', (id) => {
-    const viaText = openBody(NODE_START);
-    selectBlock(viaText, 'two');
-    runBlockType(viaText, id);
+  it.each(ROWS.flatMap((id) => [[id, NODE_START], [id, NODE_QUOTED]] as const))(
+    'gives a node selection the same result as selecting it: %s on %s', (id, body) => {
+      const viaText = openBody(body);
+      selectBlock(viaText, 'two');
+      runBlockType(viaText, id);
 
-    const viaNode = openBody(NODE_START);
-    let at = 0;
-    viaNode.state.doc.descendants((node, pos) => {
-      if (node.isTextblock && node.textContent === 'two') at = pos;
-      return true;
+      const viaNode = openBody(body);
+      let at = 0;
+      viaNode.state.doc.descendants((node, pos) => {
+        if (node.isTextblock && node.textContent === 'two') at = pos;
+        return true;
+      });
+      viaNode.view.dispatch(
+        viaNode.state.tr.setSelection(NodeSelection.create(viaNode.state.doc, at)),
+      );
+      runBlockType(viaNode, id);
+
+      expect(viaNode.getHTML()).toBe(viaText.getHTML());
     });
-    viaNode.view.dispatch(
-      viaNode.state.tr.setSelection(NodeSelection.create(viaNode.state.doc, at)),
-    );
-    runBlockType(viaNode, id);
-
-    expect(viaNode.getHTML()).toBe(viaText.getHTML());
-  });
 });
 
 describe('the selection a press leaves behind (§6.2)', () => {

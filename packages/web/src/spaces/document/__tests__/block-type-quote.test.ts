@@ -102,15 +102,11 @@ describe('a nested list item', () => {
 
 describe('taking a quote off lines buried in a nested list', () => {
   // A quote is 0 or 1 levels, never 2 (user 2026-08-31), so a press that leaves
-  // the selection quoted is wrong however deep the lists go. The split at the
-  // selection's edges arranges the ordinary cases: it leaves the selected run in
-  // a list of its own, which the unwrap then takes out alone. A line deeper than
-  // the quote's own child cannot be arranged that way — isolating it means
-  // splitting `li` where the second half would open with a list, and `listItem`
-  // is `paragraph block*`. That stretch is carried out instead: the list holding
-  // it is cut, the quote split after the item that held it, and the cut list put
-  // between the two halves. Of the four editors surveyed only CKEditor 5 ends
-  // here (`demo/2026-08-31-unquote-nested-industry.html`).
+  // the selection quoted is wrong however deep the lists go. Of the four editors
+  // surveyed only CKEditor 5 ends here
+  // (`demo/2026-08-31-unquote-nested-industry.html`). How the press gets there
+  // is `document-unquote.ts`; the shapes it has to hold on are pinned in
+  // `block-type-unquote-shapes.test.ts`.
   const BURIED = '<blockquote><ul><li><p>a</p>'
     + '<ol><li><p>b</p></li><li><p>c</p></li></ol>'
     + '</li><li><p>z</p></li></ul></blockquote>';
