@@ -48,6 +48,18 @@ export const LIST_NODE: Partial<Record<BlockTypeId, string>> = {
 /** Every node name that counts as a list. */
 const LIST_NAMES = new Set<string>(Object.values(LIST_NODE));
 
+/**
+ * Is this node a list?
+ *
+ * Its children are then the items, which is how a list item is recognised
+ * without asking the schema what an item is called.
+ * @param name - A node type name.
+ * @returns Whether it is one of the three lists.
+ */
+export function isListName(name: string): boolean {
+  return LIST_NAMES.has(name);
+}
+
 /** The one node Quote wraps its content in. */
 export const QUOTE_NAMES = new Set<string>(['blockquote']);
 

@@ -21,6 +21,7 @@ import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import { canSplit, findWrapping, liftTarget } from '@tiptap/pm/transform';
 import { wrapRangeInList } from '@tiptap/pm/schema-list';
 
+import { unquoteSelection } from '@web/spaces/document/document-unquote';
 import {
   HEADING_LEVEL,
   LIST_NODE,
@@ -207,75 +208,16 @@ function innermostQuoteRange(tr: Transaction, blocks: number[]): NodeRange | nul
 }
 
 /**
- * Carries the selection's list out of the quote holding it.
+ * Lifts the selected blocks out of the quotes holding them.
  *
- * A quote is 0 or 1 levels, never 2 (user 2026-08-31), so a press has to leave
- * the selection unquoted however deep the lists go. {@link unwrapQuotes} lifts
- * a whole child of the quote, and {@link splitListAtSelectionEdges} is what
- * normally leaves that child holding the selection and nothing else. Blocks
- * DEEPER than the quote's own child cannot be isolated that way: it would mean
- * splitting the `listItem` between at a point where its second half opens with
- * a list, and `listItem` is `paragraph block*`. Lifting then takes the item's
- * other blocks out of the quote as well, which A8 forbids.
- *
- * So that stretch is carried instead of freed in place: the list holding it —
- * already split down to the selected items — is cut out, the quote is split
- * after the item that held it, and the list goes between the two halves. Where
- * that item is the quote's last, there is no second half to make and the list
- * follows the quote. The block type never moves: what comes out is the same
- * list it was an item of.
- *
- * Of the four editors surveyed only CKEditor 5 ends here
- * (`demo/2026-08-31-unquote-nested-industry.html`); the other three leave the
- * line quoted, which this document's rule 5 does not allow.
- * @param tr - The transaction, written into.
- * @param blocks - Where the press's blocks stood when it started.
- * @returns Whether the list came out.
- */
-function carryOutOfQuote(tr: Transaction, blocks: number[]): boolean {
-  const quote = innermostQuoteRange(tr, blocks);
-  const ends = selectionEnds(tr, blocks);
-  if (!quote || !ends) return false;
-  const $first = tr.doc.resolve(ends.first);
-  const listAt = listDepthAt($first);
-  // The quote's own child sits one in; anything at that depth or shallower is
-  // what the split and the lift already handle.
-  const childAt = quote.depth + 1;
-  if (listAt === null || listAt <= childAt) return false;
-
-  const carried = $first.node(listAt);
-  const afterItem = $first.after(childAt + 1);
-  const afterQuote = $first.after(quote.depth);
-  // Read before the cut: taking a list out of an item changes neither the
-  // item's place among its siblings nor how many of them there are.
-  const trailing = $first.index(childAt) + 1 < $first.node(childAt).childCount;
-
-  // Both positions were read off the document as it stands now, so only the
-  // steps from here on may move them — `tr.mapping` covers the whole press.
-  const before = tr.mapping.maps.length;
-  tr.delete($first.before(listAt), $first.after(listAt));
-  const cut = tr.mapping.slice(before);
-  if (!trailing) {
-    tr.insert(cut.map(afterQuote), carried);
-    return true;
-  }
-  const at = cut.map(afterItem);
-  // Two levels: the quote's child closes and reopens, and so does the quote.
-  if (!canSplit(tr.doc, at, 2)) return false;
-  tr.split(at, 2);
-  tr.insert(at + 2, carried);
-  return true;
-}
-
-/**
- * Takes every quote off the selected blocks, however many levels deep.
- *
- * Where the selection covers only part of a quote's content, the lift splits
- * it and the blocks nobody selected stay in a quote of their own (§5.1).
+ * Serves the wrapping direction only: blocks on the two sides of a quote's edge
+ * all have to be outside one before they can go into the same new quote (§5.1).
+ * Taking a quote off on the reader's behalf is `document-unquote.ts`, which
+ * rebuilds the whole quote rather than lifting a range out of it.
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
  */
-function unwrapQuotes(tr: Transaction, blocks: number[]): void {
+function liftOutOfQuotes(tr: Transaction, blocks: number[]): void {
   for (;;) {
     const range = innermostQuoteRange(tr, blocks);
     if (!range) return;
@@ -284,7 +226,6 @@ function unwrapQuotes(tr: Transaction, blocks: number[]): void {
     tr.lift(range, target);
   }
 }
-
 
 /**
  * Splits the nearest list at each end of the selection.
@@ -299,8 +240,8 @@ function unwrapQuotes(tr: Transaction, blocks: number[]): void {
  * The split is worth anything only where the quote acts on the list or outside
  * it. Where the item can hold the quote beside its own paragraph the shell
  * never moves, and splitting it there cuts a list nobody touched into pieces
- * that renumber. {@link quoteDepth} is the answer to which of the two this
- * press is, and it is read before the first write for that reason.
+ * that renumber. `quoteAt` is the answer to which of the two this press is,
+ * and it is read before the first write for that reason.
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
  * @param quoteAt - The depth the quote will act at.
@@ -329,27 +270,6 @@ function splitListAtSelectionEdges(
     const at = $first.before(headDepth + 1);
     if (canSplit(tr.doc, at, 1)) tr.split(at, 1);
   }
-}
-
-
-/**
- * The depth a Quote press will act at.
- *
- * Wrapping walks outwards from the blocks for the first depth a quote can be
- * put in: the block itself where the item can hold one beside its paragraph,
- * the list where it cannot, the document where the blocks sit in no list.
- * Unwrapping acts where the quote already stands. Either way this is the one
- * answer the rest of the press is built on, and it is asked before anything is
- * written so the split can read it.
- * @param tr - The transaction.
- * @param blocks - Where the press's blocks stood when it started.
- * @param marked - Whether the row is already ticked, so the quote comes off.
- * @returns That depth, or null where the press has nowhere to act.
- */
-function quoteDepth(tr: Transaction, blocks: number[], marked: boolean): number | null {
-  return marked
-    ? innermostQuoteRange(tr, blocks)?.depth ?? null
-    : wrapDepth(tr, blocks)?.depth ?? null;
 }
 
 /** Where a quote goes in, with the range and the wrapping found there. */
@@ -543,19 +463,18 @@ function applyTransition(
   at: number[],
 ): boolean {
   if (id === 'quote') {
-    // Both directions start the same way. Splitting the list at the selection's
-    // edges leaves the selected items in a list of their own, so either
-    // direction acts on those and no others; taking the blocks out of every
-    // quote holding them then splits an original quote at those same edges and
-    // leaves the blocks nobody selected inside it.
-    splitListAtSelectionEdges(tr, at, quoteDepth(tr, at, marked));
-    // A carry answers for itself: it moves the blocks out of the document
-    // position `landedOn` would read them back at, and every step of it is
-    // guarded, so getting to the end of one is the press arriving.
-    if (marked && carryOutOfQuote(tr, at)) return true;
-    unwrapQuotes(tr, at);
-    if (!marked && !wrapInQuote(tr, at)) return false;
-    return landedOn(tr, at, 'quote', !marked);
+    // Taking quotes off rebuilds every quote the selection reaches in one pass,
+    // so it answers for the whole selection at once and places the selection
+    // itself (`document-unquote.ts`).
+    if (marked) return unquoteSelection(tr, at);
+    // Putting one on splits the list at the selection's edges, which leaves the
+    // selected items in a list of their own for the wrapping to take, and lifts
+    // the blocks out of any quote already holding some of them so all of them
+    // go into the one new quote (§5.1).
+    splitListAtSelectionEdges(tr, at, wrapDepth(tr, at)?.depth ?? null);
+    liftOutOfQuotes(tr, at);
+    if (!wrapInQuote(tr, at)) return false;
+    return landedOn(tr, at, 'quote', true);
   }
 
   const target: BlockTypeId = marked ? 'paragraph' : id;
