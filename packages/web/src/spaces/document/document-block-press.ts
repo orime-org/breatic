@@ -518,8 +518,10 @@ function toList(tr: Transaction, blocks: number[], listType: NodeType): void {
   for (let i = runs.length - 1; i >= 0; i -= 1) {
     const [first, last] = runs[i] as [number, number];
     const range = tr.doc.resolve(first).blockRange(tr.doc.resolve(last));
-    // A run the schema will not take a list on is one the row leaves alone,
-    // the same way `setBlockType` leaves a block it cannot change (rule 2).
+    // A run the schema will not take a list on keeps the paragraph it was just
+    // made into: rule 2 says the row acts on what it can reach, and half of
+    // this row's reach — becoming a plain block — is already done by here. The
+    // run is not left as it was found.
     if (range) wrapRangeInList(tr, range, listType);
   }
 }

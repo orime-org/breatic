@@ -164,6 +164,35 @@ describe('the menu', () => {
     expect(greyedIds(menu)).toEqual(['task-list']);
   });
 
+  it.each([
+    ['a quote below the item\'s own line', '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>'],
+    ['the same on an ordered list', '<ol><li><p>a</p><blockquote><p>b</p></blockquote></li></ol>'],
+    ['a quote holding a list', '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>'],
+    ['a quote one level further in', '<ul><li><p>a</p><ul><li><p>b</p><blockquote><p>c</p></blockquote></li></ul></li></ul>'],
+  ])('greys Quote as well where the wrapping would stack two of them: %s', async (_name, body) => {
+    // Rule 5: a document holds one level of quote. Wrapping the item would put
+    // one around a quote it already holds, so the row answers that it cannot
+    // reach this selection — and the menu has to draw both rows greyed, not
+    // just the one row that is always greyed.
+    const editor = openSharedBody(body);
+    mountDocumentEditor(editor);
+    await selectFirstBlock(editor, 'a');
+    const menu = await hoverOpenSlot(SLOT);
+    expect(greyedIds(menu)).toEqual(['task-list', 'quote']);
+  });
+
+  it('leaves Quote lit where the quote sits in a sibling item', async () => {
+    // The split at the selection's edges cuts that item away before the
+    // wrapping is looked for, so nothing it holds is in the way.
+    const editor = openSharedBody(
+      '<ul><li><p>a</p></li><li><p>b</p><blockquote><p>c</p></blockquote></li></ul>',
+    );
+    mountDocumentEditor(editor);
+    await selectFirstBlock(editor, 'a');
+    const menu = await hoverOpenSlot(SLOT);
+    expect(greyedIds(menu)).toEqual(['task-list']);
+  });
+
   it('draws the greyed task list apart from the rows that are lit', async () => {
     const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
