@@ -9,11 +9,10 @@
  * 钉住 —— 实现对抗第一轮实测：把 507 的判定改成恒为假，canvas 下 1744 条
  * 测试无一变红。
  *
- * 三个入口共用同一个判定和同一个出口，这里三个都钉：
+ * 两个入口共用同一个判定和同一个出口，这里两个都钉：
  *
- *   1. 拖拽进画布（`runMediaUpload`，presign 直接抛 507）；
- *   2. 双击 / Upload 菜单填充已有节点（`fillNodeFromFile`）；
- *   3. 视频带封面的原子上传（`runVideoUploadWithCover`，两半里任一半被拒）。
+ *   1. 拖拽进画布（`runMediaUpload`，请票时直接抛 507）；
+ *   2. 双击 / Upload 菜单填充已有节点（`fillNodeFromFile`）。
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -21,7 +20,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { ApiException } from '@web/data/api/types';
 import {
   runMediaUpload,
-  runVideoUploadWithCover,
   fillNodeFromFile,
   type MediaUploadDeps,
   type FillNodeDeps,
@@ -51,7 +49,7 @@ function pngFile(name = 'a.png'): File {
 }
 
 /**
- * 一套只到 presign 就被拒的上传依赖。
+ * 一套只到请票就被拒的上传依赖。
  * @param onFailure - 失败出口。
  * @returns 可直接交给 runMediaUpload 的依赖。
  */
@@ -61,10 +59,10 @@ function refusingDeps(
   return {
     getUploadConfig: async () => CONFIG,
     hashFile: async () => 'a'.repeat(64),
-    presign: async () => {
+    requestTicket: async () => {
       throw storageFull();
     },
-    putFile: async () => {},
+    sendToIngest: async () => ({}),
     onSuccess: () => {
       throw new Error('不该成功');
     },
@@ -75,26 +73,19 @@ function refusingDeps(
 describe('507 被认成 storage 而不是普通上传失败', () => {
   it('拖拽进画布这条', async () => {
     const onFailure = vi.fn();
-    await runMediaUpload(pngFile(), 'p1', refusingDeps(onFailure));
-    expect(onFailure).toHaveBeenCalledExactlyOnceWith('storage');
-  });
-
-  it('视频带封面的原子上传这条', async () => {
-    const onFailure = vi.fn();
-    await runVideoUploadWithCover(
-      new File([new Uint8Array([1])], 'v.mp4', { type: 'video/mp4' }),
-      pngFile('cover.png'),
-      'p1',
-      refusingDeps(onFailure) as never,
+    await runMediaUpload(
+      pngFile(),
+      { projectId: 'p1', leaseGen: 0 },
+      refusingDeps(onFailure),
     );
     expect(onFailure).toHaveBeenCalledExactlyOnceWith('storage');
   });
 
   it('其他失败仍然是 upload，没有被 507 那一支吞掉', async () => {
     const onFailure = vi.fn();
-    await runMediaUpload(pngFile(), 'p1', {
+    await runMediaUpload(pngFile(), { projectId: 'p1', leaseGen: 0 }, {
       ...refusingDeps(onFailure),
-      presign: async () => {
+      requestTicket: async () => {
         throw new ApiException({
           status: 503,
           message: 'down',
@@ -108,7 +99,7 @@ describe('507 被认成 storage 而不是普通上传失败', () => {
 
 describe('填充已有节点这条把失败原样交给唯一的出口', () => {
   /**
-   * 一套填充依赖，presign 一律答存储满。
+   * 一套填充依赖，请票一律答存储满。
    * @param extra - 要覆盖或补上的部分。
    * @returns 可直接交给 fillNodeFromFile 的依赖。
    */
@@ -116,10 +107,10 @@ describe('填充已有节点这条把失败原样交给唯一的出口', () => {
     return {
       getUploadConfig: async () => CONFIG,
       hashFile: async () => 'a'.repeat(64),
-      presign: async () => {
+      requestTicket: async () => {
         throw storageFull();
       },
-      putFile: async () => {},
+      sendToIngest: async () => ({}),
       extractText: async () => '',
       isHandling: () => false,
       onTypeMismatch: () => {},

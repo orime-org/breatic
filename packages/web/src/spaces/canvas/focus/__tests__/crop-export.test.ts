@@ -16,8 +16,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   prepareCropSource,
   exportCropBlob,
+  FIRST_FRAME_SEEK_S,
 } from '@web/spaces/canvas/focus/crop-export';
-import { FIRST_FRAME_SEEK_S } from '@web/spaces/canvas/video-cover-extract';
 
 /**
  * An <img> that decodes instantly. jsdom implements neither `decode()` nor

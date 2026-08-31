@@ -12,12 +12,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { httpRequest } from '@breatic/shared';
+import type * as shared from '@breatic/shared';
 import { sendFileToIngest } from '@web/data/upload/ingest-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
-import type { UploadClientConfig } from '@web/data/upload/upload-retry';
+import {
+  computePutTimeoutMs,
+  type UploadClientConfig,
+} from '@web/data/upload/upload-retry';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@breatic/shared')>()),
+  ...(await importOriginal<typeof shared>()),
   httpRequest: vi.fn(),
 }));
 
@@ -101,8 +105,8 @@ describe('sending a file to the ingest Worker', () => {
     await sendFileToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
 
     const sizes = [1, 2, 3].map((n) => {
-      const init = mockedRequest.mock.calls[n]?.[1] as RequestInit;
-      return (init.body as Blob).size;
+      const init = mockedRequest.mock.calls[n]?.[1];
+      return (init?.body as Blob).size;
     });
     expect(sizes).toEqual([PART_SIZE, PART_SIZE, 700]);
   });
@@ -137,6 +141,59 @@ describe('sending a file to the ingest Worker', () => {
     );
     expect(headersOf(2)['x-upload-token']).toBe('token-1');
     expect(outcome).toEqual({ fileUrl: 'https://cdn/x.png', kind: 'image' });
+  });
+});
+
+/** The transport options of the nth call. */
+function optionsOf(nth: number): { replaySafe: boolean; timeoutMs?: number } {
+  const options = mockedRequest.mock.calls[nth]?.[2];
+  if (options === undefined) throw new Error(`no call ${nth}`);
+  return options;
+}
+
+// What the transport is told decides how many times a request is delivered and
+// when one is given up on. Neither is visible in the response, so it is stated
+// here or nowhere.
+describe('what the shared transport is told', () => {
+  // The Durable Object behind this upload answers a repeated open with the
+  // upload already open, records a part under its own number, and completes
+  // once — so delivering any of the three again costs nothing.
+  it('declares every step replay-safe', async () => {
+    wireHappyPath(2, {});
+
+    await sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+
+    expect(optionsOf(0).replaySafe).toBe(true);
+    expect(optionsOf(1).replaySafe).toBe(true);
+    expect(optionsOf(3).replaySafe).toBe(true);
+  });
+
+  // A stall guard sized to the part, so a part that is transferring at all is
+  // never cut off and one that has stopped does not hold the whole file's
+  // budget.
+  it('gives each part a deadline its own size earns', async () => {
+    wireHappyPath(2, {});
+
+    await sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+
+    expect(optionsOf(1).timeoutMs).toBe(computePutTimeoutMs(PART_SIZE, cfg));
+    expect(optionsOf(2).timeoutMs).toBe(computePutTimeoutMs(10, cfg));
+  });
+
+  // Finishing reads the assembled object back to hash it, so how long it takes
+  // follows the file rather than the request.
+  it('gives completing the whole file\'s deadline', async () => {
+    wireHappyPath(3, {});
+    // Big enough that the file's deadline and the plain request timeout are
+    // different numbers; a small file makes both the same and the assertion
+    // stops telling them apart.
+    const file = fileOf(PART_SIZE * 2 + 700);
+
+    await sendFileToIngest(file, ticketFor(3), cfg);
+
+    const expected = computePutTimeoutMs(file.size, cfg);
+    expect(expected).not.toBe(cfg.clientRequestTimeoutMs);
+    expect(optionsOf(4).timeoutMs).toBe(expected);
   });
 });
 

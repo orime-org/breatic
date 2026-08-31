@@ -4,35 +4,23 @@
 /**
  * Browser upload resilience (asset slice 2, #1609; closes resilience gap ⑤).
  *
- * The two halves are no longer resilient in the same way. **Presign** talks to
- * our own backend through the axios client, and {@link retryTransient} is what
- * gives it its 3 attempts and full-jittered backoff; its knobs come from
- * `GET /assets/upload-config` (config/storage.yaml `upload:` section),
- * session-cached by the caller. **The PUT** goes to whatever URL presign
- * returned, so it goes through the shared HTTP transport, which owns its
- * retries — see {@link putFileWithRetry}.
+ * The two halves of an upload are resilient in different ways. **The ticket
+ * request** talks to our own backend through the axios client, and
+ * {@link retryTransient} is what gives it its 3 attempts and full-jittered
+ * backoff; its knobs come from `GET /assets/upload-config`
+ * (config/storage.yaml `upload:` section), session-cached by the caller.
+ * **The parts** go to the ingest Worker through the shared HTTP transport,
+ * which owns how many times each one is delivered.
  *
- * The two halves do not even judge "transient" the same way. Presign keeps
+ * The two do not even judge "transient" the same way. The ticket request keeps
  * the reading below: 5xx, 429, and a network-level failure, with a 4xx taken
  * as a fact rather than weather. The transport reads the protocol instead,
  * retrying 408 and 429 despite both being 4xx.
  *
- * It would also honour `Retry-After`, but nothing on this path ever produces
- * one to read — for a different reason in each of the two storage modes, so
- * both are worth naming rather than generalising over.
- *
- * Under s3 / aliyun_oss the PUT is cross-origin, and a header has to be named
- * in `Access-Control-Expose-Headers` before the browser hands it to JS.
- * Measured against our own bucket, the PUT response exposes ETag,
- * x-oss-request-id and x-oss-version-id, and nothing else. Under
- * `STORAGE_PROVIDER=local` the target is this app's own origin, so no such
- * filter applies — but that endpoint carries only `requireAuth` and no rate
- * limiter, and the rate limiter is the one thing in the server that emits
- * `Retry-After`. Either way the transport reads null and falls back to its own
- * backoff — same three deliveries as before.
+ * The transport would also honour `Retry-After`, and the Worker never sends
+ * one, so it falls back to its own backoff — the same three deliveries either
+ * way.
  */
-
-import { httpRequest } from '@breatic/shared';
 
 /** The upload knobs served by `GET /assets/upload-config` (camelCase wire). */
 export interface UploadClientConfig {
@@ -181,58 +169,4 @@ export function computePutTimeoutMs(
     cfg.clientRequestTimeoutMs,
     Math.ceil((sizeBytes / cfg.clientPutMinBytesPerSec) * 1000),
   );
-}
-
-/**
- * PUT a file to the URL presign handed back, through the shared transport.
- *
- * That URL is not ours to reason about. Under s3 / aliyun_oss it addresses the
- * object store; under `STORAGE_PROVIDER=local` it addresses this very server
- * (`server/src/routes/assets.ts`). The browser is given a string and cannot
- * tell which — and does not need to, because either way this is not an API
- * call made under our own conventions. That is what separates it from
- * presign, which keeps the axios client and its baseURL, credentials and
- * error envelope.
- *
- * `replaySafe`, because the same bytes to the same presigned key produce the
- * same object: a replay costs nothing and changes nothing. Declaring
- * otherwise would drop the 5xx and dropped-connection retries this path has
- * always had.
- *
- * The deadline goes in as `timeoutMs` rather than a signal on the init. It is
- * a stall guard, not a UX deadline — it scales with the file so a legitimately
- * slow big upload never trips it — and the transport replaces whatever signal
- * the caller left behind, so one passed there would silently do nothing.
- *
- * `credentials: 'same-origin'` is the one setting that has to be right in both
- * modes at once, which is why it is neither `include` nor `omit`. The cloud
- * PUT carries its signature in the URL and wants no cookie; sending one would
- * hand our session to a storage vendor. The local endpoint is our own origin
- * and authenticates by cookie, so it needs one. `same-origin` attaches it to
- * ours and never to theirs. (This reasoning used to live on `assetsApi.putFile`,
- * deleted with that function; it is written down here so it does not go with
- * the next thing that gets removed.)
- * @param uploadUrl - The PUT target presign returned.
- * @param file - The file to upload.
- * @param cfg - The upload knobs from `GET /assets/upload-config`.
- * @throws {UploadHttpError} On a non-2xx response.
- * @throws {unknown} The transport's own failure when no delivery produced a
- *   response.
- */
-export async function putFileWithRetry(
-  uploadUrl: string,
-  file: File,
-  cfg: UploadClientConfig,
-): Promise<void> {
-  const res = await httpRequest(
-    uploadUrl,
-    {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type },
-      credentials: 'same-origin',
-    },
-    { replaySafe: true, timeoutMs: computePutTimeoutMs(file.size, cfg) },
-  );
-  if (!res.ok) throw new UploadHttpError(res.status);
 }

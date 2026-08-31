@@ -1,8 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { isDedupHit, type PresignResponse } from '@web/data/api/assets';
 import { validFocusImages } from '@web/data/focus-images';
+import {
+  isAlreadyStored,
+  type IngestOutcome,
+  type UploadTicket,
+  type UploadTicketResponse,
+} from '@web/data/upload/ingest-upload';
 import {
   errorStatus,
   retryTransient,
@@ -14,17 +19,16 @@ import {
   readSlotPick,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlotSpec } from '@web/spaces/canvas/generate/video-slots';
-import { videoCoverFile } from '@web/spaces/canvas/video-cover-extract';
 
 /**
  * Pure canvas-upload classification + the media upload orchestrator. Classify
- * maps a file's MIME type to the canvas node it becomes; the orchestrator runs
- * presign → PUT and reports success (public URL) or failure through injected
- * callbacks (kept dependency-injected so the async flow is unit-tested without
- * the network or Yjs). Media files (image / audio / video) become a media node
- * whose content is the uploaded URL; every non-media file becomes a text node
- * whose content is read or extracted locally (see `text-extract`), so no file
- * is ever rejected.
+ * maps a file's MIME type to the canvas node it becomes; the orchestrator asks
+ * for a ticket, sends the bytes to the ingest Worker, and reports the outcome
+ * through injected callbacks (kept dependency-injected so the async flow is
+ * unit-tested without the network or Yjs). Media files (image / audio / video)
+ * become a media node whose content the server writes through Yjs; every
+ * non-media file becomes a text node whose content is read or extracted
+ * locally (see `text-extract`), so no file is ever rejected.
  */
 
 /** How an uploaded file maps onto the canvas. */
@@ -91,38 +95,32 @@ export function checkFileAdmission(
 }
 
 /**
- * The storage identity a finished upload reports to the activity-feed
- * handshake (#1609): regular path carries the stored key; a dedup hit
- * carries `dedup: true` (nothing was uploaded).
+ * Where an upload lands and what it is for.
+ *
+ * All of it is checked against this user's access when the ticket is issued
+ * and then stored on the grant, so what the Worker reports back is read
+ * against context we hold rather than context a client could restate.
  */
-export interface UploadedInfo {
-  kind: string;
-  fileUrl: string;
+export interface UploadContext {
+  /** Owning project, which gates the ticket. */
+  projectId: string;
   /**
-   * Content sha256 — ALWAYS present. An upload whose hash could not be
-   * computed is refused before presigning (#1826 §0 rule 4), so no upload can
-   * reach this point without one. It was `string | null` while a hashless
-   * upload could still proceed; keeping that shape would let a caller omit
-   * `hash` from the report, which the server answers with a 400 (malformed
-   * request) instead of the fail-closed 422 the policy intends.
+   * The node's fencing gen at the moment handling opened. It rides the ticket
+   * and comes back on the event that ends the node's handling, so a stale
+   * attempt's outcome cannot overwrite a newer one's. An upload with no node
+   * carries zero.
    */
-  hash: string;
-  /** Stored object key (regular path only). */
-  key?: string;
-  /** True when the presign answered `alreadyExists` (B.2 instant dedup). */
-  dedup?: true;
-}
-
-/**
- * What the `/uploaded` report returns to the caller: the REGISTERED row's
- * canonical URL(s). The node pins THESE — never the presign-minted temp key
- * (§0 rule 2 / §4.1 step 7): a concurrent-dedup loser's temp key is an orphan
- * that the offline GC reclaims → 404. `coverUrl` is present only for a video
- * whose cover resolved server-side.
- */
-export interface UploadReportResult {
-  fileUrl: string;
-  coverUrl?: string;
+  leaseGen: number;
+  /** The node the bytes land on, when this upload has one. */
+  nodeId?: string;
+  /** The space that node lives in. */
+  spaceId?: string;
+  /** `mini_tool` for a mini-tool product. */
+  source?: 'mini_tool' | 'cover';
+  /** The mini-tool's name when `source` says so. */
+  toolName?: string;
+  /** True for a byproduct, registered without an activity-feed row of its own. */
+  derived?: true;
 }
 
 /**
@@ -138,32 +136,15 @@ export interface UploadReportResult {
 export type UploadFailureReason = 'hash' | 'storage' | 'upload';
 
 /**
- * Carries an {@link UploadFailureReason} across the Promise boundary of the
- * video/cover sub-uploads, so the atomic orchestrator can report WHY it failed
- * instead of flattening every cause into "upload failed".
- */
-class MediaUploadError extends Error {
-  /**
-   * Build a sub-upload rejection that remembers its cause.
-   * @param reason - Which failure class ended the sub-upload.
-   */
-  constructor(readonly reason: UploadFailureReason) {
-    super(`media upload failed: ${reason}`);
-    this.name = 'MediaUploadError';
-  }
-}
-
-/**
- * Recover the failure reason from a rejected sub-upload.
+ * Say which failure this was.
  *
- * A {@link MediaUploadError} already carries one. Otherwise a 507 answer means
- * the account is out of room, and anything else is a transient failure as far
- * as the user is concerned.
+ * A 507 answer means the account is out of room; anything else is a transient
+ * failure as far as the user is concerned. Hashing is not read off an error at
+ * all — it is refused before anything is sent.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
 function failureReasonOf(err: unknown): UploadFailureReason {
-  if (err instanceof MediaUploadError) return err.reason;
   return isStorageFull(err) ? 'storage' : 'upload';
 }
 
@@ -192,89 +173,96 @@ export interface MediaUploadDeps {
    * {@link runMediaUpload}.
    */
   hashFile: (file: File) => Promise<string | null>;
-  /** Request a presigned upload URL or a dedup hit (`assetsApi.presign`). */
-  presign: (params: {
+  /** Ask for a ticket, or be told the studio already holds this content. */
+  requestTicket: (params: {
     filename: string;
     contentType: string;
     projectId: string;
     size: number;
     /** Mandatory — a hashless upload is refused before it reaches here. */
     hash: string;
-  }) => Promise<PresignResponse>;
-  /** PUT the file with retries + stall guard (`putFileWithRetry`). */
-  putFile: (
-    uploadUrl: string,
+    leaseGen: number;
+    nodeId?: string;
+    spaceId?: string;
+    source?: 'mini_tool' | 'cover';
+    toolName?: string;
+    derived?: true;
+  }) => Promise<UploadTicketResponse>;
+  /** Send the bytes to the ingest Worker and finish the upload. */
+  sendToIngest: (
     file: File,
+    ticket: UploadTicket,
     cfg: UploadClientConfig,
-  ) => Promise<void>;
+  ) => Promise<IngestOutcome>;
   /**
-   * Called with the REGISTERED canonical URL once the report confirms it —
-   * this is what the node pins + exits handling on (§4.1 step 7). Never called
-   * with a presign temp key.
+   * The bytes are delivered and the server has them.
+   *
+   * The URL is what the server filed the content under, when it said. A node
+   * ignores it: the server writes the node's content through Yjs, and pinning
+   * anything here would be a second writer for the one field that has one
+   * (design §6.6). An upload with no node behind it has no other channel and
+   * this is what it reads.
    */
-  onSuccess: (fileUrl: string) => void;
+  onSuccess: (fileUrl: string | undefined) => void;
   /**
    * Called when the upload cannot complete. `reason` tells the caller which
    * message to show: `hash` (we could not fingerprint the file — reload) vs
-   * `upload` (config / presign / PUT / report failed — retry).
+   * `upload` (config / ticket / parts failed — retry).
    */
   onFailure: (reason: UploadFailureReason) => void;
-  /**
-   * Reports the upload to the `/uploaded` handshake and RETURNS the registered
-   * row's canonical URL — the node pins that (§0 rule 2), not the presign temp
-   * key. The orchestrator AWAITS this before `onSuccess`; a rejection (e.g. a
-   * node-bound register 422) propagates → `onFailure` (Retry). The reporting
-   * caller (fillNodeFromFile) returns the canonical; a NON-reporting caller
-   * (the `uploadOneMedia` sub-upload, which defers its report) returns
-   * `undefined`, so `onSuccess` falls back to the presign URL.
-   */
-  onUploaded?: (info: UploadedInfo) => Promise<UploadReportResult> | undefined;
   /** Backoff sleep override (tests only — production uses real timers). */
   sleep?: (ms: number) => Promise<void>;
 }
 
 /**
- * Upload a media file (#1609 orchestration): fetch the knobs → hash the
- * bytes (Web Worker, any size) → presign with size + hash — a dedup hit
- * skips the upload entirely and reuses the existing URL (B.2) — else PUT
- * with retries, then report the public URL. The two halves retry under
- * different rules: presign through `retryTransient` on the knobs above, the
- * PUT inside the shared HTTP transport on its own compiled-in policy. Never throws — both
- * outcomes route through `onSuccess` / `onFailure` so the caller can
- * write them to Yjs (`completeNodeHandling` / `failNodeHandling`).
+ * Upload a media file (#173 design §4): fetch the knobs → hash the bytes
+ * (Web Worker, any size) → ask for a ticket — the studio already holding this
+ * content answers instantly and nothing moves — else send the parts to the
+ * ingest Worker and complete. The two halves retry under different rules: the
+ * ticket request through `retryTransient` on the knobs above, each part inside
+ * the shared HTTP transport on its own compiled-in policy. Never throws — both
+ * outcomes route through `onSuccess` / `onFailure`.
  *
- * NO HASH, NO UPLOAD (user decision 2026-07-26). The content hash is the
- * storage design's ticket — instant dedup, within-studio dedup and the ledger
- * row all key on it, and `studio_assets.content_hash` is NOT NULL — so a
- * hashless upload could never be registered and would pin the node to an
- * object with no live row (an offline-GC orphan → 404). We therefore refuse it
- * BEFORE any network call rather than storing it untracked; the server
- * enforces the same rule independently (a client can be bypassed).
+ * NO HASH, NO UPLOAD (user decision 2026-07-26). The hash the browser computes
+ * answers one question — does this studio already hold this content — and the
+ * server refuses a request without one, so a file that cannot be fingerprinted
+ * is refused here rather than sent and rejected.
+ *
+ * What happens after the bytes land is not this function's to report. The
+ * Worker tells the server, the server writes the node through Yjs, and the
+ * node comes out of handling that way (design §5). This returning is only the
+ * browser's half being over.
  * @param file - The media file to upload.
- * @param projectId - Owning project (authorizes the presign).
+ * @param context - Where it lands and what it is for.
  * @param deps - Injected config / hash / network / result callbacks.
  */
 export async function runMediaUpload(
   file: File,
-  projectId: string,
+  context: UploadContext,
   deps: MediaUploadDeps,
 ): Promise<void> {
   try {
     const cfg = await deps.getUploadConfig();
     const hash = await deps.hashFile(file);
     if (hash === null) {
-      // Refused up front: nothing presigned, nothing PUT, no bandwidth burnt.
+      // Refused up front: nothing asked for, nothing sent, no bandwidth burnt.
       deps.onFailure('hash');
       return;
     }
-    const res = await retryTransient(
+    const answer = await retryTransient(
       () =>
-        deps.presign({
+        deps.requestTicket({
           filename: file.name,
           contentType: file.type,
-          projectId,
+          projectId: context.projectId,
           size: file.size,
           hash,
+          leaseGen: context.leaseGen,
+          ...(context.nodeId !== undefined && { nodeId: context.nodeId }),
+          ...(context.spaceId !== undefined && { spaceId: context.spaceId }),
+          ...(context.source !== undefined && { source: context.source }),
+          ...(context.toolName !== undefined && { toolName: context.toolName }),
+          ...(context.derived !== undefined && { derived: context.derived }),
         }),
       {
         attempts: cfg.clientMaxAttempts,
@@ -282,188 +270,14 @@ export async function runMediaUpload(
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );
-    if (isDedupHit(res)) {
-      // Instant dedup (presign already returned the existing row's canonical).
-      // Still report (registers the audit sinks + re-verifies) → pin the canonical.
-      const report = await deps.onUploaded?.({
-        dedup: true,
-        kind: res.kind,
-        fileUrl: res.fileUrl,
-        hash,
-      });
-      deps.onSuccess(report?.fileUrl ?? res.fileUrl);
+    if (isAlreadyStored(answer)) {
+      // Nothing moves. The server has already written the node's history and
+      // published what ends its handling.
+      deps.onSuccess(answer.fileUrl);
       return;
     }
-    await deps.putFile(res.uploadUrl, file, cfg);
-    // §4.1 step 7: the presign `fileUrl` is a TEMP key — do NOT pin it. Report
-    // → the server returns the REGISTERED row's canonical → pin THAT. The node
-    // stays handling until now; a report rejection → catch → onFailure (Retry).
-    const report = await deps.onUploaded?.({
-      key: res.key,
-      kind: res.kind,
-      fileUrl: res.fileUrl,
-      hash,
-    });
-    deps.onSuccess(report?.fileUrl ?? res.fileUrl);
-  } catch (err) {
-    deps.onFailure(failureReasonOf(err));
-  }
-}
-
-/** The network + result sinks for {@link runVideoUploadWithCover} (#1816). */
-export interface VideoWithCoverDeps {
-  /** Fetch the session-cached upload knobs (shared by both uploads). */
-  getUploadConfig: MediaUploadDeps['getUploadConfig'];
-  /** Hash a file for dedup (shared). */
-  hashFile: MediaUploadDeps['hashFile'];
-  /** Request a presigned URL / dedup hit (shared). */
-  presign: MediaUploadDeps['presign'];
-  /** PUT a file with retries (shared). */
-  putFile: MediaUploadDeps['putFile'];
-  /** Backoff sleep override (tests only). */
-  sleep?: MediaUploadDeps['sleep'];
-  /**
-   * BOTH uploads succeeded → write `content` + `coverUrl` onto the node in one
-   * atomic write (`completeNodeHandling`). The only success path. `coverUrl` is
-   * the cover's REGISTERED canonical, resolved by the server from the cover's
-   * hash — never the cover's presign temp key (§0 rule 2 / §4.5). A cover the
-   * server cannot resolve fails the whole report (422 → `onFailure`, Retry),
-   * so reaching here without one is impossible for a video (#1816 atomicity).
-   */
-  onSuccess: (videoUrl: string, coverUrl: string | undefined) => void;
-  /**
-   * EITHER upload failed → the node stays unwritten (`failNodeHandling`, retry
-   * both). A successfully-uploaded half becomes an accepted orphan asset
-   * (design C2/C5); it is deliberately NOT reported (no phantom node-history
-   * row / attribution for an aborted atomic upload). `reason` distinguishes a
-   * hashing failure (reload) from a transient upload failure (retry).
-   */
-  onFailure: (reason: UploadFailureReason) => void;
-  /**
-   * Video asset ledger report — fired ONLY on full success. Carries BOTH the
-   * video info AND the cover info (#1824): the caller adds the nodeId (the
-   * node-history 'upload' row's source) and rides the cover's verifiable ref
-   * (`cover_hash`) on the video report, so the server reads the cover's
-   * studio_assets row (#1826 §4.5, `cover_key` retired with the tenant-neutral
-   * key) for the node-history + activity-feed thumbnails. RETURNS the registered
-   * canonical (video `fileUrl` + resolved `coverUrl`) — the node pins those, not
-   * the presign temp keys (§0 rule 2). The orchestrator awaits it before
-   * `onSuccess`; a rejection → `onFailure` (Retry).
-   */
-  onVideoUploaded?: (
-    videoInfo: UploadedInfo,
-    coverInfo: UploadedInfo,
-  ) => Promise<UploadReportResult>;
-  /**
-   * Cover asset ledger report — fired ONLY on full success. Carries the cover
-   * File so the caller can build the report metadata (filename / size). The
-   * caller omits the nodeId (F3): a cover is a derived asset, not node content,
-   * so a node_id would write a bogus node-history row (mirrors `runFocusCrop`).
-   * Returns a Promise the orchestrator AWAITS: the cover's studio_assets row
-   * must be committed before the video report reads it by hash (#1826 §4.5).
-   */
-  onCoverUploaded?: (info: UploadedInfo, coverFile: File) => void | Promise<void>;
-}
-
-/**
- * Upload one file through {@link runMediaUpload}, resolving its public URL +
- * storage identity or rejecting on failure — the Promise adapter that lets
- * {@link runVideoUploadWithCover} join the video and cover with `Promise.all`.
- * @param file - The file to upload.
- * @param projectId - Owning project (authorizes the presign).
- * @param shared - The shared upload network deps.
- * @returns The uploaded URL + storage identity.
- * @throws {Error} When config / presign / PUT finally fails.
- */
-function uploadOneMedia(
-  file: File,
-  projectId: string,
-  shared: Pick<
-    VideoWithCoverDeps,
-    'getUploadConfig' | 'hashFile' | 'presign' | 'putFile' | 'sleep'
-  >,
-): Promise<{ url: string; info: UploadedInfo }> {
-  return new Promise((resolve, reject) => {
-    // Capture the storage identity from onUploaded (fires first, non-reporting
-    // here → returns undefined), then resolve on onSuccess (fires last with the
-    // presign URL). runVideoUploadWithCover reports both halves + pins the
-    // registered canonical later; this sub-upload just carries the temp URL.
-    let info: UploadedInfo | undefined;
-    void runMediaUpload(file, projectId, {
-      getUploadConfig: shared.getUploadConfig,
-      hashFile: shared.hashFile,
-      presign: shared.presign,
-      putFile: shared.putFile,
-      onSuccess: (fileUrl) => {
-        if (info) resolve({ url: fileUrl, info });
-      },
-      onFailure: (reason) => reject(new MediaUploadError(reason)),
-      onUploaded: (i) => {
-        info = i;
-        return undefined;
-      },
-      ...(shared.sleep !== undefined && { sleep: shared.sleep }),
-    });
-  });
-}
-
-/**
- * Upload a video and its extracted cover ATOMICALLY (#1816): the two run
- * concurrently, EACH with its own transient retry ({@link runMediaUpload} →
- * presign and PUT, each retried under its own rules). The node is written only when BOTH
- * FINALLY succeed. If either FINALLY fails (after its own retries are
- * exhausted), the whole thing aborts with no write — a video never lands
- * without its cover and a cover never lands without its video; the failed node
- * then offers a manual Retry that re-runs the whole upload from scratch. A
- * single transient hiccup does NOT re-upload the other half — each half only
- * retries itself. Never throws — both outcomes route through `onSuccess` /
- * `onFailure`, and the ledger reports fire only on full success (an aborted
- * half is an accepted orphan, not a phantom node-history row). Mirrors
- * `runFocusCrop`'s injected pipeline.
- * @param videoFile - The video File to upload.
- * @param coverFile - The pre-flight-extracted cover File (PNG).
- * @param projectId - Owning project (authorizes the presigns).
- * @param deps - Injected shared upload network + atomic result sinks.
- */
-export async function runVideoUploadWithCover(
-  videoFile: File,
-  coverFile: File,
-  projectId: string,
-  deps: VideoWithCoverDeps,
-): Promise<void> {
-  const shared = {
-    getUploadConfig: deps.getUploadConfig,
-    hashFile: deps.hashFile,
-    presign: deps.presign,
-    putFile: deps.putFile,
-    ...(deps.sleep !== undefined && { sleep: deps.sleep }),
-  };
-  try {
-    const [video, cover] = await Promise.all([
-      uploadOneMedia(videoFile, projectId, shared),
-      uploadOneMedia(coverFile, projectId, shared),
-    ]);
-    // Both landed. Register the cover FIRST and AWAIT it: the video report rides
-    // only the cover's hash, and the server reads the cover's studio_assets row
-    // by that hash (#1826 §4.5) — so the row must be committed before the video
-    // report fires, else the server cannot resolve it and 422s the video.
-    // A cover-report rejection PROPAGATES (user 2026-07-26): #1816 makes the two
-    // halves atomic, so a cover that cannot be REGISTERED fails the upload
-    // exactly like a cover that could not be PUT.
-    await deps.onCoverUploaded?.(cover.info, coverFile);
-    // §4.1 step 7: the presign video/cover urls are TEMP keys. The video report
-    // returns the REGISTERED canonical (video fileUrl + resolved coverUrl) — pin
-    // THOSE, never the temp keys (§0 rule 2). A report rejection → catch →
-    // onFailure (retry both). The node stays handling until now.
-    const report = await deps.onVideoUploaded?.(video.info, cover.info);
-    // The cover is pinned ONLY from the report's resolved canonical, with NO
-    // `?? cover.url` fallback: that would re-pin the cover's presign TEMP key —
-    // an offline-GC orphan → 404 (§0 rule 2 / §4.5). A cover the server cannot
-    // resolve 422s the report above, so a video that reaches here always has
-    // one. The video half's `?? video.url` is defense-in-depth for the
-    // unwired-reporter case (never in production — the atomic path always wires
-    // the reporter, so `report.fileUrl` is always the registered canonical).
-    deps.onSuccess(report?.fileUrl ?? video.url, report?.coverUrl);
+    const outcome = await deps.sendToIngest(file, answer, cfg);
+    deps.onSuccess(outcome.fileUrl);
   } catch (err) {
     deps.onFailure(failureReasonOf(err));
   }
@@ -489,23 +303,14 @@ export interface FillNodeDeps {
   getUploadConfig: MediaUploadDeps['getUploadConfig'];
   /** Hash the file for dedup (media path). */
   hashFile: MediaUploadDeps['hashFile'];
-  /** Request a presigned upload URL / dedup hit (media path). */
-  presign: MediaUploadDeps['presign'];
-  /** PUT the file with retries (media path). */
-  putFile: MediaUploadDeps['putFile'];
+  /** Ask for an upload ticket, or be told the content is already held. */
+  requestTicket: MediaUploadDeps['requestTicket'];
+  /** Send the bytes to the ingest Worker (media path). */
+  sendToIngest: MediaUploadDeps['sendToIngest'];
   /** Backoff sleep override (tests only). */
   sleep?: MediaUploadDeps['sleep'];
   /** Read / extract a non-media file's text locally (the text path). */
   extractText: (file: File) => Promise<string>;
-  /**
-   * Extract a video's first frame as a cover blob (#1816), or `null` when the
-   * browser cannot decode it. Present only for the video path (production binds
-   * `extractVideoFirstFrame`). When a video file arrives WITH this dep, the fill
-   * runs the PRE-FLIGHT gate below (extract before opening the lease) + the
-   * atomic video-with-cover upload; absent, a video falls back to a plain
-   * cover-less upload (legacy).
-   */
-  extractVideoCover?: (file: File) => Promise<Blob | null>;
   /**
    * Busy gate (#1580 #7, user decision 2026-07-03): true when the node is
    * already handling — a second fill is refused up front instead of
@@ -519,12 +324,6 @@ export interface FillNodeDeps {
   onTypeMismatch: (nodeId: string) => void;
   /** Called (instead of any work) when the busy gate refuses the fill. */
   onBusy: (nodeId: string) => void;
-  /**
-   * Called (instead of any work) when the video pre-flight can't extract a
-   * cover (#1816) — the empty node is left untouched (no lease, no upload). The
-   * caller turns this into a friendly "unsupported codec" toast.
-   */
-  onExtractRejected?: (nodeId: string) => void;
   /**
    * Hand the whole outcome of a failed upload to the caller, reason and all.
    *
@@ -557,42 +356,16 @@ export interface FillNodeDeps {
    */
   setHandling: (nodeId: string) => UploadLease | undefined;
   /**
-   * Leased content write-back; returns false when the lease was superseded
-   * (the node's final content belongs to the final lease owner). `coverUrl`
-   * (#1816) is passed on the atomic video path so `content` + cover land in one
-   * transaction; omitted for image / audio / text.
+   * Leased content write-back for the text path, which has no upload: the
+   * text is read here and there is nobody else to write it. A media node's
+   * content is written by the server through Yjs (design §6.6). Returns false
+   * when the lease was superseded.
    */
-  setContent: (
-    nodeId: string,
-    content: string,
-    lease: UploadLease,
-    coverUrl?: string,
-  ) => boolean;
+  setContent: (nodeId: string, content: string, lease: UploadLease) => boolean;
   /** Leased error write-back (fixed-English wire string — never a toast). */
   setError: (nodeId: string, message: string, lease: UploadLease) => boolean;
-  /**
-   * `/uploaded` handshake reporter (media path) — called after the PUT with the
-   * storage identity + the node it landed on. RETURNS the registered canonical
-   * (`fileUrl` + `coverUrl` for a video) which the node pins (§0 rule 2 / §4.1
-   * step 7), never the presign temp key. The orchestrator AWAITS it before
-   * writing the node; a rejection → the upload fails → Retry. `coverInfo` is
-   * present ONLY on the atomic video path (#1824).
-   */
-  onUploaded?: (
-    nodeId: string,
-    info: UploadedInfo,
-    coverInfo?: UploadedInfo,
-  ) => Promise<UploadReportResult>;
-  /**
-   * Cover asset ledger reporter (#1816 atomic video path) — called after a
-   * successful atomic upload with the COVER's storage identity + File. The
-   * caller reports it WITHOUT a nodeId (F3): a cover is a derived asset, not
-   * node content, so a node_id would write a bogus node-history row. Returns a
-   * Promise the atomic upload AWAITS (the cover row must commit before the video
-   * report reads it by hash, #1826 §4.5) — the type must carry the promise so
-   * the ordering can't be silently dropped through this delegation layer.
-   */
-  onCoverUploaded?: (info: UploadedInfo, coverFile: File) => void | Promise<void>;
+  /** The space the node lives in, which rides the ticket. */
+  spaceId?: string;
 }
 
 /**
@@ -659,54 +432,30 @@ export async function fillNodeFromFile(
     deps.onBusy(nodeId);
     return;
   }
-  // Video pre-flight (#1816): extract the cover BEFORE opening the lease, so a
-  // codec the browser can't decode leaves the empty node untouched (no
-  // handling state) instead of failing mid-upload. Only when the extractor is
-  // wired (production always wires it) — a video without it falls back to a
-  // plain cover-less upload below.
-  let coverFile: File | undefined;
-  if (spec.nodeType === 'video' && deps.extractVideoCover) {
-    const coverBlob = await deps.extractVideoCover(file);
-    if (!coverBlob) {
-      deps.onExtractRejected?.(nodeId);
-      return;
-    }
-    coverFile = videoCoverFile(coverBlob, file.name);
-  }
   const lease = deps.setHandling(nodeId);
   if (!lease) return;
   if (spec.needsUpload) {
-    if (coverFile) {
-      // Atomic video + cover: the node gets content + coverUrl only when BOTH
-      // uploads succeed; either failure retries both (never video-only).
-      await runVideoUploadWithCover(file, coverFile, projectId, {
+    // The node stays in handling when this returns. What it ends up holding —
+    // and whether it succeeded at all — arrives from the server through Yjs
+    // (design §6.6), so nothing is written here on the way out.
+    await runMediaUpload(
+      file,
+      {
+        projectId,
+        leaseGen: lease.gen,
+        nodeId,
+        ...(deps.spaceId !== undefined && { spaceId: deps.spaceId }),
+      },
+      {
         getUploadConfig: deps.getUploadConfig,
         hashFile: deps.hashFile,
-        presign: deps.presign,
-        putFile: deps.putFile,
-        onSuccess: (videoUrl, coverUrl) =>
-          deps.setContent(nodeId, videoUrl, lease, coverUrl),
+        requestTicket: deps.requestTicket,
+        sendToIngest: deps.sendToIngest,
+        onSuccess: () => {},
         onFailure: (reason) => uploadFailed(reason, nodeId, file, lease, deps),
-        onVideoUploaded: (info, coverInfo) =>
-          deps.onUploaded?.(nodeId, info, coverInfo) ??
-          Promise.resolve({ fileUrl: info.fileUrl }),
-        onCoverUploaded: (info, cf) => deps.onCoverUploaded?.(info, cf),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
-      });
-      return;
-    }
-    await runMediaUpload(file, projectId, {
-      getUploadConfig: deps.getUploadConfig,
-      hashFile: deps.hashFile,
-      presign: deps.presign,
-      putFile: deps.putFile,
-      onSuccess: (fileUrl) => deps.setContent(nodeId, fileUrl, lease),
-      onFailure: (reason) => uploadFailed(reason, nodeId, file, lease, deps),
-      onUploaded: (info) =>
-        deps.onUploaded?.(nodeId, info) ??
-        Promise.resolve({ fileUrl: info.fileUrl }),
-      ...(deps.sleep !== undefined && { sleep: deps.sleep }),
-    });
+      },
+    );
     return;
   }
   try {

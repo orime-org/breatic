@@ -21,6 +21,85 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('assetsApi.requestUploadTicket', () => {
+  it('sends what the server signs a ticket from', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      ticket: 'signed',
+      storageKey: 'image/2026-08-31/x.png',
+      uploadUrl: 'https://ingest.example.com',
+      kind: 'image',
+      partSize: 5 * 1024 * 1024,
+      totalParts: 1,
+    });
+
+    await assetsApi.requestUploadTicket({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 1234,
+      hash: 'a'.repeat(64),
+      leaseGen: 6,
+      nodeId: 'n1',
+      spaceId: 's1',
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/assets/upload-ticket', {
+      filename: 'photo.png',
+      content_type: 'image/png',
+      project_id: 'p1',
+      size: 1234,
+      client_hash: 'a'.repeat(64),
+      lease_gen: 6,
+      node_id: 'n1',
+      space_id: 's1',
+    });
+  });
+
+  // A focus crop has no node. Sending the keys as undefined would fail the
+  // server's uuid check on a field the request does not mean to carry.
+  it('leaves out the context a crop does not have', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ alreadyExists: true, fileUrl: 'u', kind: 'image' });
+
+    await assetsApi.requestUploadTicket({
+      filename: 'crop.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 10,
+      hash: 'b'.repeat(64),
+      leaseGen: 0,
+      derived: true,
+    });
+
+    const sent = vi.mocked(apiPost).mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(Object.keys(sent)).not.toContain('node_id');
+    expect(Object.keys(sent)).not.toContain('space_id');
+    expect(sent.derived).toBe(true);
+  });
+
+  it('hands back a dedup hit as it came', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      alreadyExists: true,
+      fileUrl: 'https://cdn/x.png',
+      kind: 'image',
+    });
+
+    const res = await assetsApi.requestUploadTicket({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 1234,
+      hash: 'a'.repeat(64),
+      leaseGen: 6,
+    });
+
+    expect(res).toEqual({
+      alreadyExists: true,
+      fileUrl: 'https://cdn/x.png',
+      kind: 'image',
+    });
+  });
+});
+
 describe('assetsApi.presign — aligned to the backend presign contract', () => {
   it('sends snake_case query params incl. the declared size and optional hash', async () => {
     vi.mocked(apiGet).mockResolvedValue({
