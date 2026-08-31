@@ -5,6 +5,7 @@ import { ArrowUp, Loader2, Square, SquareMousePointer, Wand2 } from 'lucide-reac
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 
@@ -235,6 +236,12 @@ function ChatComposerInner({
           }
         }}
         placeholder={t('chat.composer.placeholder')}
+        // The browser owns the ceiling: it refuses the keystroke past it and
+        // cuts a paste down to it. The line below says the ceiling was
+        // reached, which is the part a reader cannot see for themselves —
+        // a box that has quietly stopped accepting text looks like one that
+        // is working.
+        maxLength={CHAT_MESSAGE_MAX_CHARS}
         rows={3}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
         aria-label={t('chat.composer.inputAria')}
@@ -258,6 +265,14 @@ function ChatComposerInner({
           <Wand2 className='h-4 w-4' />
           <span>{activeSkillLabel ?? 'Skill'}</span>
         </Button>
+        {draft.length >= CHAT_MESSAGE_MAX_CHARS ? (
+          <span
+            data-testid='chat-composer-limit'
+            className='mr-auto truncate text-xs text-muted-foreground'
+          >
+            {t('chat.composer.atLimit')}
+          </span>
+        ) : null}
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
           // to stand here or the press reads as having done nothing -- but it

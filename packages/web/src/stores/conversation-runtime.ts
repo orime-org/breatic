@@ -163,6 +163,19 @@ interface ConversationRuntimeState {
    * is what there is.
    */
   sendingByProject: Record<string, true>;
+  /**
+   * Which conversations are folding memory before they answer.
+   *
+   * A long conversation goes over the budget for what one request may carry,
+   * and the server summarises its oldest part before asking the model
+   * anything. That is a second model call in front of the reply, on a turn
+   * where the panel is empty and the reader is looking at it.
+   *
+   * Kept per conversation rather than on the turn: the panel showing it may
+   * be unmounted when the word arrives (the column collapses, the reader
+   * switches conversations) and mounted again while the same turn runs.
+   */
+  consolidatingByConversation: Record<string, true>;
 }
 
 /**
@@ -310,6 +323,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
+  consolidatingByConversation: {},
 }));
 
 /**
@@ -1602,6 +1616,36 @@ function leaveProject(projectId: string): void {
 }
 
 /**
+ * Record that a conversation is folding memory before it answers.
+ * @param conversationId - The conversation the word came in on.
+ */
+export function noteConsolidating(conversationId: string): void {
+  useStore.setState((s) => ({
+    consolidatingByConversation: {
+      ...s.consolidatingByConversation,
+      [conversationId]: true as const,
+    },
+  }));
+}
+
+/**
+ * Take the word back down.
+ *
+ * Called when the reply starts and when the turn ends however it ended. A
+ * fold that failed, a model that errored and a reader who pressed stop all
+ * leave the same thing behind otherwise: a line about the previous turn,
+ * still on screen the next time this conversation is opened.
+ * @param conversationId - The conversation to clear.
+ */
+export function clearConsolidating(conversationId: string): void {
+  useStore.setState((s) => {
+    if (!s.consolidatingByConversation[conversationId]) return s;
+    const { [conversationId]: _done, ...rest } = s.consolidatingByConversation;
+    return { consolidatingByConversation: rest };
+  });
+}
+
+/**
  * Forget everything, including requests still in flight.
  *
  * For tests, which share this module across every case in a file the way the
@@ -1641,6 +1685,7 @@ export function _resetForTests(): void {
     openStatus: {},
     navigatingByProject: {},
     sendingByProject: {},
+    consolidatingByConversation: {},
   });
 }
 

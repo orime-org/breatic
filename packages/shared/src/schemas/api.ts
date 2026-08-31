@@ -492,6 +492,16 @@ export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationS
 export const CONVERSATION_TITLE_MAX_CHARS = 200;
 
 /**
+ * How long a chat message may be, as the browser enforces it.
+ *
+ * Lower than the server's ceiling on purpose: this one is a `maxLength` on the
+ * box, so it also decides where a paste is cut. The server measures what
+ * reaches the model — the message with its attached canvas content in front —
+ * and has room above this for that content.
+ */
+export const CHAT_MESSAGE_MAX_CHARS = 10_000;
+
+/**
  * Body for naming a conversation.
  *
  * Carries the project as well as the title, because the id in the path came

@@ -13,6 +13,8 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageListProps {
   messages: ReadonlyArray<ChatMessage>;
+  /** Whether the running turn stopped to fold its memory before answering. */
+  consolidating?: boolean;
   /**
    * The conversation has arrived and can be drawn.
    *
@@ -116,6 +118,7 @@ function MessageSkeleton(): React.JSX.Element {
  * are no messages yet (new conversation greeting + quick actions).
  * @param root0 - The component props.
  * @param root0.messages - The messages to render in order.
+ * @param root0.consolidating - Whether the running turn stopped to fold memory.
  * @param root0.ready - The conversation has arrived and can be drawn.
  * @param root0.skeleton - The wait is long enough to be worth showing.
  * @param root0.conversationId - Which conversation these messages belong to.
@@ -128,6 +131,7 @@ function MessageSkeleton(): React.JSX.Element {
  */
 function MessageListInner({
   messages,
+  consolidating,
   ready = false,
   skeleton = false,
   sentCount,
@@ -272,7 +276,7 @@ function MessageListInner({
             </Button>
           ) : null}
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+            <MessageBubble key={m.id} message={m} consolidating={consolidating} />
           ))}
         </div>
       )}

@@ -14,6 +14,13 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  /**
+   * Whether this turn stopped to fold its memory before answering.
+   *
+   * A property of the turn rather than of the message: nothing about it is
+   * stored, and it is true of the reply that has not started yet.
+   */
+  consolidating?: boolean;
 }
 
 /**
@@ -27,10 +34,12 @@ interface MessageBubbleProps {
  * it, several dozen bubbles at a time.
  * @param root0 - The component props.
  * @param root0.message - The chat message to render.
+ * @param root0.consolidating - Whether this turn stopped to fold memory.
  * @returns The message bubble with optional thinking fold and tool-call cards.
  */
 export const MessageBubble = React.memo(function MessageBubble({
   message,
+  consolidating,
 }: MessageBubbleProps): React.JSX.Element {
   const t = useTranslation();
   const isUser = message.role === 'user';
@@ -82,7 +91,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                 rendering, and what the reply is made of never enters into it
                 (user 2026-08-25). The space between the two is in the
                 stylesheet, beside the mark's own figures. */}
-            {message.streaming ? <WaitingDot /> : null}
+            {message.streaming ? <WaitingDot consolidating={consolidating} /> : null}
           </div>
         ) : null}
         {message.interrupted ? (

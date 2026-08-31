@@ -25,6 +25,7 @@ import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
+import { clearConsolidating, noteConsolidating } from '@web/stores/conversation-runtime';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
 /** What starting a conversation's state takes. */
@@ -78,6 +79,9 @@ export interface ChatSessionInit {
 
 /** The chunk the server names a conversation on. */
 const TITLED = 'data-conversation-titled';
+
+/** The chunk the server says a turn stopped to fold memory on. */
+const CONSOLIDATING = 'data-memory-consolidating';
 
 /** Every conversation whose state is being kept, by conversation id. */
 const sessions = new Map<string, Chat<StoredUiMessage>>();
@@ -211,6 +215,8 @@ function transportFor(
         const turn = runningTurn.get(conversationId);
         if (turn === undefined) return;
         answeredTurn.set(conversationId, turn);
+        // Whatever the turn stopped to do before this, it is answering now.
+        clearConsolidating(conversationId);
         onFirstFrame();
       }),
     reconnectToStream: (options) => wire.reconnectToStream(options),
@@ -390,6 +396,10 @@ function settleTurn(
   const gaveUp = givenUpOn.delete(conversationId);
   stopWatching(conversationId);
   runningTurn.delete(conversationId);
+  // A turn that failed, was stopped, or folded and then said nothing would
+  // otherwise leave the line up — and it says something about a turn that is
+  // over, still there the next time this conversation is opened.
+  clearConsolidating(conversationId);
   const chat = sessions.get(conversationId);
   if (!chat) return;
   const projectId = projectOf.get(conversationId) ?? '';
@@ -543,6 +553,10 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
       if (part.type === BEAT) {
         const turn = runningTurn.get(conversationId);
         if (turn !== undefined) void expectAnotherBeat(conversationId, turn, Date.now());
+        return;
+      }
+      if (part.type === CONSOLIDATING) {
+        noteConsolidating(conversationId);
         return;
       }
       if (part.type !== TITLED) return;

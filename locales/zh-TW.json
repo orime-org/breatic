@@ -151,7 +151,8 @@
         "title": "選擇 Skill"
       },
       "send": "傳送",
-      "sending": "傳送中"
+      "sending": "傳送中",
+      "atLimit": "已達 10,000 字上限"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -187,7 +188,8 @@
     },
     "message": {
       "interrupted": "已停止",
-      "waiting": "正在回覆"
+      "waiting": "正在回覆",
+      "consolidating": "正在整理這則對話的記憶…"
     },
     "tool": {
       "unfinished": "已停止",

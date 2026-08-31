@@ -328,7 +328,11 @@ export class MainAgent {
           // A fold is a model call of its own in front of the reply, seconds
           // long, on a turn where the panel is empty and somebody is watching
           // it. This does not make the wait shorter; it makes it explainable.
-          onStart: () => writer.write({ type: "data-memory-consolidating", data: {} }),
+          onStart: () =>
+            // Transient, like the heartbeat: it is a word about the turn,
+            // not a piece of the answer, so it must not become a message
+            // part or count as the turn having started to speak.
+            writer.write({ type: "data-memory-consolidating", transient: true, data: {} }),
         })
       ) {
         assembly = await assemble();

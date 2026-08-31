@@ -151,7 +151,8 @@
         "title": "스킬 선택"
       },
       "send": "전송",
-      "sending": "보내는 중"
+      "sending": "보내는 중",
+      "atLimit": "10,000자 제한에 도달했습니다"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -187,7 +188,8 @@
     },
     "message": {
       "interrupted": "중지됨",
-      "waiting": "응답 중"
+      "waiting": "응답 중",
+      "consolidating": "이 대화의 기억을 정리하는 중…"
     },
     "tool": {
       "unfinished": "중지됨",
