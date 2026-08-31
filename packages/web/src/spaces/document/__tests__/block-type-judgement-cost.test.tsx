@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The greying judgement is asked only while the menu is down (§6.7).
+ * The greying judgement is asked once, when the menu opens (§6.7).
  *
- * It builds the eight transactions the presses would build, which is what makes
- * it trustworthy and what makes it cost with the selection: over a select-all
- * one pass measures 1.5ms at 50 blocks, 14ms at 200 and 197ms at 800. The
- * selector holding it runs on every transaction the editor sees — a co-editor
- * typing into a long document is a stream of them — so asking it with the menu
- * shut would freeze the document over nine rows nobody is looking at.
+ * It builds the nine transactions the presses would build, which is what makes
+ * it trustworthy and what makes it cost with the square of the selection: over
+ * a select-all one pass measures 42ms at 200 list items, 303ms at 600 and 764ms
+ * at 1000. Every transaction the editor sees would re-run an editor selector,
+ * and a co-editor typing into a long document is a stream of them — with the
+ * menu shut that freezes the document over rows nobody is looking at, and with
+ * it open it charges the whole pass to each of their keystrokes.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -70,5 +71,30 @@ describe('the greying judgement', () => {
 
     await hoverOpenSlot(SLOT);
     expect(asked).toHaveBeenCalled();
+  });
+
+  it('is not asked again while the menu stays down', async () => {
+    const editor = openSharedBody('<p>the quick brown fox</p><p>a second line</p>');
+    mountDocumentEditor(editor);
+    act(() => {
+      editor.view.dom.focus();
+      selectWholeBody(editor);
+    });
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
+      ).toBeGreaterThan(0);
+    });
+    await hoverOpenSlot(SLOT);
+
+    // The menu stays down while a co-editor types, and each of their keystrokes
+    // arrives as a transaction. The reader's own press re-reads the state it is
+    // given, so what it does never rests on an answer from earlier.
+    asked.mockClear();
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setMeta('probe', true));
+      editor.view.dispatch(editor.state.tr.setMeta('probe', true));
+    });
+    expect(asked, 'asked again for a transaction nobody pressed').not.toHaveBeenCalled();
   });
 });

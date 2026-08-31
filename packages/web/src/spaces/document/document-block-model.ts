@@ -14,8 +14,8 @@
  *   2. Pressing a ticked exclusive row goes back to Text; pressing an unticked
  *      one turns every block into it, the other exclusive rows giving way.
  *   3. Pressing Quote wraps or unwraps and leaves the block type alone.
- *   4. One press builds one transaction, dispatched once and only where every
- *      step succeeded.
+ *   4. One press builds one transaction, dispatched once and only where it
+ *      reached a block. Blocks the schema will not move stay where they are.
  *   5. A document holds one level of quote.
  *
  * Rule 4 is why nothing here goes through tiptap's command layer: both
@@ -259,16 +259,6 @@ export function markedIds(editor: Editor): Set<BlockTypeId> {
 }
 
 /**
- * Is every text block in the selection this item?
- * @param editor - The editor.
- * @param id - Which row.
- * @returns Whether the row is ticked.
- */
-export function isMarked(editor: Editor, id: BlockTypeId): boolean {
-  return markedOver(editor.state.doc, selectedBlocks(editor.state), id);
-}
-
-/**
  * The first and last of the press's blocks.
  * @param tr - The transaction.
  * @param blocks - Where the press's blocks stood when it started.
@@ -381,7 +371,7 @@ function itemLift($from: Resolved): { range: NodeRange; target: number } | null 
  * @param tr - The transaction.
  * @param at - Where the blocks stood before the press.
  * @param target - The row the press aimed at.
- * @param want - Whether every block should be that row, or none of them.
+ * @param want - Whether a block should have become that row, or left it.
  * @returns Whether the press arrived.
  */
 function landedOn(tr: Transaction, at: number[], target: BlockTypeId, want: boolean): boolean {
@@ -506,23 +496,31 @@ function quoteDepth(tr: Transaction, blocks: number[], marked: boolean): number 
     : wrapDepth(tr, blocks)?.depth ?? null;
 }
 
+/** Where a quote goes in, with the range and the wrapping found there. */
+interface QuoteWrap {
+  depth: number;
+  outer: NodeRange;
+  wrapping: NonNullable<ReturnType<typeof findWrapping>>;
+}
+
 /**
  * The outermost-but-first depth a quote can be put in around the selection.
  *
  * Walks outwards from the blocks and stops at the first depth the schema
- * accepts a quote in.
+ * accepts a quote in, carrying out the wrapping it found there.
  * @param tr - The transaction.
  * @param blocks - Where the press's blocks stood when it started.
- * @returns That depth with the range it was found on, or null where no depth
+ * @returns That depth with the range and the wrapping, or null where no depth
  *   takes one.
  */
-function wrapDepth(tr: Transaction, blocks: number[]): { depth: number; outer: NodeRange } | null {
+function wrapDepth(tr: Transaction, blocks: number[]): QuoteWrap | null {
   const quote = tr.doc.type.schema.nodes.blockquote;
   const range = quote === undefined ? null : selectedRange(tr, blocks);
   if (!quote || !range) return null;
   for (let depth = range.depth; depth >= 0; depth -= 1) {
     const outer = new NodeRange(range.$from, range.$to, depth);
-    if (findWrapping(outer, quote)) return { depth, outer };
+    const wrapping = findWrapping(outer, quote);
+    if (wrapping) return { depth, outer, wrapping };
   }
   return null;
 }
@@ -534,18 +532,18 @@ function wrapDepth(tr: Transaction, blocks: number[]): { depth: number; outer: N
  * a wrapping can reach a range that already holds a quote of its own — a list
  * item whose later block is quoted, say — and wrapping that would stack one
  * inside the other. The press refuses instead of taking a quote off blocks
- * nobody selected.
+ * nobody selected. Upstream answers the same way from a different direction:
+ * `toggleBlockquote` only tries the selection's own `blockRange`, where the
+ * schema takes no quote at all, so `can()` there is false on these shapes too
+ * (`@tiptap/extension-blockquote@3.29.2`, measured 2026-08-31).
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
  * @returns Whether the wrapping went in.
  */
 function wrapInQuote(tr: Transaction, blocks: number[]): boolean {
-  const quote = tr.doc.type.schema.nodes.blockquote;
-  const found = quote === undefined ? null : wrapDepth(tr, blocks);
-  if (!quote || !found || holdsQuote(found.outer)) return false;
-  const wrapping = findWrapping(found.outer, quote);
-  if (!wrapping) return false;
-  tr.wrap(found.outer, wrapping);
+  const found = wrapDepth(tr, blocks);
+  if (!found || holdsQuote(found.outer)) return false;
+  tr.wrap(found.outer, found.wrapping);
   return true;
 }
 
@@ -573,35 +571,26 @@ function holdsQuote(range: NodeRange): boolean {
 
 /**
  * Sets every text block in the selection to this type.
+ *
+ * `setBlockType` skips a block the schema will not let it change and says
+ * nothing about it, which is the behaviour rule 2 wants: the row acts on what
+ * it can reach. Whether anything arrived is read off the document at the end
+ * of the press by `landedOn`, so the steps here report nothing of their own.
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
  * @param type - The target node type.
  * @param attrs - Attributes for it.
- * @returns Whether the selection still held a text block.
  */
 function setBlocks(
   tr: Transaction,
   blocks: number[],
   type: NodeType,
   attrs: Record<string, unknown> | null,
-): boolean {
-  if (blocks.length === 0) return false;
+): void {
   for (const origin of blocks) {
     const pos = tr.mapping.map(origin);
     tr.setBlockType(pos, pos, type, attrs ?? undefined);
   }
-
-  // `setBlockType` skips a block the schema will not let it change and says
-  // nothing, so the result is read back off the document. One block arriving
-  // is what makes the press worth dispatching; the ones the schema refused
-  // stay as they were. `landedOn` asks the same question of the row at the end
-  // of the press, which for a list row is about where the blocks sit rather
-  // than what type they are.
-  return movedTo(tr, blocks).some((pos) => {
-    const block = tr.doc.resolve(pos).parent;
-    if (block.type !== type) return false;
-    return Object.entries(attrs ?? {}).every(([key, value]) => block.attrs[key] === value);
-  });
 }
 
 /**
@@ -610,16 +599,15 @@ function setBlocks(
  * @param blocks - Where the press's blocks stood when it started.
  * @param type - The target node type.
  * @param attrs - Attributes for it.
- * @returns Whether every step went in.
  */
 function toBlockType(
   tr: Transaction,
   blocks: number[],
   type: NodeType,
   attrs: Record<string, unknown> | null,
-): boolean {
+): void {
   liftOutOfLists(tr, blocks);
-  return setBlocks(tr, blocks, type, attrs);
+  setBlocks(tr, blocks, type, attrs);
 }
 
 /**
@@ -663,23 +651,21 @@ function selectedRuns(tr: Transaction, blocks: number[]): Array<[first: number, 
  * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
  * @param listType - The list node type.
- * @returns Whether every step went in.
  */
-function toList(tr: Transaction, blocks: number[], listType: NodeType): boolean {
+function toList(tr: Transaction, blocks: number[], listType: NodeType): void {
   const paragraph = tr.doc.type.schema.nodes.paragraph;
-  if (!paragraph) return false;
+  if (!paragraph) return;
   liftOutOfLists(tr, blocks);
-  if (!setBlocks(tr, blocks, paragraph, null)) return false;
+  setBlocks(tr, blocks, paragraph, null);
 
   const runs = selectedRuns(tr, blocks);
-  if (runs.length === 0) return false;
   for (let i = runs.length - 1; i >= 0; i -= 1) {
     const [first, last] = runs[i] as [number, number];
     const range = tr.doc.resolve(first).blockRange(tr.doc.resolve(last));
-    if (!range) return false;
-    if (!wrapRangeInList(tr, range, listType)) return false;
+    // A run the schema will not take a list on is one the row leaves alone,
+    // the same way `setBlockType` leaves a block it cannot change (rule 2).
+    if (range) wrapRangeInList(tr, range, listType);
   }
-  return true;
 }
 
 /**
@@ -689,7 +675,7 @@ function toList(tr: Transaction, blocks: number[], listType: NodeType): boolean 
  * @param id - Which row.
  * @param marked - Whether the row is already ticked.
  * @param at - Where the selection's blocks stood before the press.
- * @returns Whether every step went in.
+ * @returns Whether the press reached a block.
  */
 function applyTransition(
   tr: Transaction,
@@ -711,7 +697,7 @@ function applyTransition(
   }
 
   const target: BlockTypeId = marked ? 'paragraph' : id;
-  if (!applyExclusive(tr, at, schema, target)) return false;
+  applyExclusive(tr, at, schema, target);
   return landedOn(tr, at, target, true);
 }
 
@@ -721,38 +707,40 @@ function applyTransition(
  * @param blocks - Where the press's blocks stood when it started.
  * @param schema - The document schema.
  * @param target - Which of the exclusive eight to become.
- * @returns Whether every step went in.
  */
 function applyExclusive(
   tr: Transaction,
   blocks: number[],
   schema: Schema,
   target: BlockTypeId,
-): boolean {
+): void {
   const listNode = LIST_NODE[target];
   if (listNode !== undefined) {
     const listType = schema.nodes[listNode];
-    return listType === undefined ? false : toList(tr, blocks, listType);
+    if (listType) toList(tr, blocks, listType);
+    return;
   }
   if (target === 'code-block') {
     const type = schema.nodes.codeBlock;
-    return type === undefined ? false : toBlockType(tr, blocks, type, null);
+    if (type) toBlockType(tr, blocks, type, null);
+    return;
   }
   const level = HEADING_LEVEL[target];
   if (level !== undefined) {
     const type = schema.nodes.heading;
-    return type === undefined ? false : toBlockType(tr, blocks, type, { level });
+    if (type) toBlockType(tr, blocks, type, { level });
+    return;
   }
   const type = schema.nodes.paragraph;
-  return type === undefined ? false : toBlockType(tr, blocks, type, null);
+  if (type) toBlockType(tr, blocks, type, null);
 }
 
 /**
  * Builds the press's transaction, leaving it undispatched.
  *
- * Rule 4, both halves. `applyTransition` reports whether every step went in,
- * which keeps half a press out of the document; `docChanged` answers the other
- * way round — a press the schema left nowhere to go writes no step at all.
+ * Rule 4, both halves. `applyTransition` reads the document at the end of the
+ * press to say whether it reached a block; `docChanged` answers the other way
+ * round — a press the schema left nowhere to go writes no step at all.
  * @param editor - The editor.
  * @param id - Which row.
  * @returns The transaction where the press does something, null where it does not.
@@ -764,9 +752,6 @@ function buildPress(editor: Editor, id: BlockTypeId): Transaction | null {
   const first = at[0];
   const last = at[at.length - 1];
   if (first === undefined || last === undefined) return null;
-
-  const listNode = LIST_NODE[id];
-  if (listNode !== undefined && state.schema.nodes[listNode] === undefined) return null;
 
   const marked = markedOver(state.doc, at, id);
   const tr = state.tr;
@@ -812,7 +797,7 @@ export function canRunBlockType(editor: Editor, id: BlockTypeId): boolean {
   // state: pressing a ticked row aims at Text, so target and current coincide
   // only for Text itself. The tick already says "you are here"; greying it as
   // well would be two marks for one fact.
-  if (id === 'paragraph' && isMarked(editor, 'paragraph')) return true;
+  if (id === 'paragraph' && markedIds(editor).has('paragraph')) return true;
   return buildPress(editor, id) !== null;
 }
 
@@ -836,7 +821,7 @@ export function runBlockType(editor: Editor, id: BlockTypeId): void {
  * @param pos - A position inside a text block.
  * @returns That block's type, or null when it is none of the nine.
  */
-export function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
+function blockTypeAt(doc: PMNode, pos: number): BlockTypeId | null {
   return EXCLUSIVE.find((id) => isItemAt(doc, pos, id)) ?? null;
 }
 

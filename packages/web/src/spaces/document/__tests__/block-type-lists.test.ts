@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
-import { runBlockType, isMarked } from '@web/spaces/document/document-block-model';
+import { runBlockType, markedIds } from '@web/spaces/document/document-block-model';
 
 import { openBody, closeAll, selectBlock, selectWholeBody } from './block-type-fixtures';
 
@@ -80,7 +80,7 @@ describe('switching a nested item to the list type it already is', () => {
   it('becomes a paragraph inside the level above where it has a sibling', () => {
     const editor = openBody(NESTED_SIB);
     selectBlock(editor, 'deep');
-    expect(isMarked(editor, 'bullet-list')).toBe(true);
+    expect(markedIds(editor).has('bullet-list')).toBe(true);
     runBlockType(editor, 'bullet-list');
     expect(editor.getHTML()).toBe(
       '<ul><li><p>one</p><p>deep</p><ul><li><p>sib</p></li></ul></li></ul>',

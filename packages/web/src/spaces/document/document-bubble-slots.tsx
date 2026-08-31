@@ -125,6 +125,9 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  */
 const ROWS = 'flex flex-col gap-1';
 
+/** What a shut block type menu knows about which rows it would grey. */
+const NO_ROWS: ReadonlySet<BlockTypeId> = new Set();
+
 /** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
 const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
 
@@ -231,22 +234,22 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   // transaction the press would build, so the row's look and the row's effect
   // are one answer.
   //
-  // Only while the menu is down. Building eight transactions is what makes the
-  // answer trustworthy, and it costs with the selection: measured over a
-  // select-all, one pass is 1.5ms at 50 blocks, 14ms at 200 and 197ms at 800.
-  // This selector runs on every transaction the editor sees, so paying that
-  // with the menu shut would freeze a long document while a co-editor typed
-  // into it — and freeze it over nine rows nobody is looking at.
+  // Once, when the menu opens. Building nine transactions is what makes the
+  // answer trustworthy, and it costs with the square of the selection: over a
+  // select-all, one pass is 42ms at 200 list items, 303ms at 600 and 764ms at
+  // 1000 (measured 2026-08-31). An editor selector re-runs on every transaction
+  // the editor sees, and the menu stays down while a co-editor types, so that
+  // would charge the whole pass to each of their keystrokes. The reader's own
+  // press re-reads the state it is given, so what it does never rests on this.
   const open = openId === id;
-  const unreachable = useEditorState({
-    editor,
-    selector: ({ editor: e }) =>
-      new Set<BlockTypeId>(
-        e && open
-          ? BLOCK_TYPE_ITEMS.filter((item) => !canRunBlockType(e, item.id)).map((i) => i.id)
-          : [],
-      ),
-  });
+  const unreachable = React.useMemo(
+    () => (open
+      ? new Set<BlockTypeId>(
+        BLOCK_TYPE_ITEMS.filter((item) => !canRunBlockType(editor, item.id)).map((i) => i.id),
+      )
+      : NO_ROWS),
+    [open, editor],
+  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (

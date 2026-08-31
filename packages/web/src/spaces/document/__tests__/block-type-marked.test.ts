@@ -13,7 +13,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { isMarked, runBlockType } from '@web/spaces/document/document-block-model';
+import { markedIds, runBlockType } from '@web/spaces/document/document-block-model';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import {
@@ -47,7 +47,8 @@ const NINE: BlockTypeId[] = [
  * @returns The ticked ids, in menu order.
  */
 function ticked(editor: import('@tiptap/core').Editor): BlockTypeId[] {
-  return NINE.filter((id) => isMarked(editor, id));
+  const marked = markedIds(editor);
+  return NINE.filter((id) => marked.has(id));
 }
 
 describe('rule 1: every block in the selection has to be that item', () => {
