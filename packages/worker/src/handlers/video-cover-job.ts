@@ -115,6 +115,13 @@ async function resolveCover(
   data: VideoCoverJobData,
   publicUrl: (key: string) => string,
 ): Promise<string | undefined> {
+  // A retry reaches here whenever anything after the extraction failed, and
+  // the video's row already names what came out. Extracting again would
+  // download the video, run ffmpeg, and store a second PNG that dedups to the
+  // first — leaving an object for the reclaim job, once per attempt.
+  const linked = await assetRepo.findCoverOf(data.videoAssetId);
+  if (linked !== null) return publicUrl(linked.storageKey);
+
   const { extractVideoCover } = await import(
     "@worker/providers/video-cover.js"
   );

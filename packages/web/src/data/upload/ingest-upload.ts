@@ -114,6 +114,32 @@ export async function sendFileToIngest(
 }
 
 /**
+ * Send one request to the Worker and read what it answered.
+ *
+ * The three endpoints differ only in where they point, what they carry and how
+ * long one delivery may take; everything else — replaying is safe because the
+ * Durable Object answers a repeat with what it already decided, and a non-2xx
+ * is the Worker's refusal rather than weather — is the same for all of them.
+ * @param url - The endpoint.
+ * @param init - Method, headers and body.
+ * @param timeoutMs - One delivery's deadline; the transport's default when absent.
+ * @returns The parsed answer.
+ * @throws {UploadHttpError} When the Worker refuses.
+ */
+async function askWorker<T>(
+  url: string,
+  init: RequestInit,
+  timeoutMs?: number,
+): Promise<T> {
+  const res = await httpRequest(url, init, {
+    replaySafe: true,
+    ...(timeoutMs !== undefined && { timeoutMs }),
+  });
+  if (!res.ok) throw new UploadHttpError(res.status);
+  return (await res.json()) as T;
+}
+
+/**
  * Open the upload, or reopen one already open.
  * @param ticket - The signed ticket.
  * @param cfg - The upload knobs.
@@ -124,16 +150,11 @@ async function openUpload(
   ticket: UploadTicket,
   cfg: UploadClientConfig,
 ): Promise<OpenedUpload> {
-  const res = await httpRequest(
+  return askWorker<OpenedUpload>(
     `${ticket.uploadUrl}/uploads`,
-    {
-      method: 'POST',
-      headers: { 'x-upload-ticket': ticket.ticket },
-    },
-    { replaySafe: true, timeoutMs: cfg.clientRequestTimeoutMs },
+    { method: 'POST', headers: { 'x-upload-ticket': ticket.ticket } },
+    cfg.clientRequestTimeoutMs,
   );
-  if (!res.ok) throw new UploadHttpError(res.status);
-  return (await res.json()) as OpenedUpload;
 }
 
 /**
@@ -155,20 +176,15 @@ async function sendPart(
   token: string,
   cfg: UploadClientConfig,
 ): Promise<string> {
-  const res = await httpRequest(
+  const answer = await askWorker<{ token: string }>(
     `${ticket.uploadUrl}/uploads/${uploadId}/parts/${part}`,
-    {
-      method: 'PUT',
-      body: bytes,
-      headers: { 'x-upload-token': token },
-    },
+    { method: 'PUT', body: bytes, headers: { 'x-upload-token': token } },
     // The deadline is a stall guard sized to this part, not to the file: a
     // part that is transferring at all must not be cut off, and a part that
     // has stopped should not hold the upload for the whole file's budget.
-    { replaySafe: true, timeoutMs: computePutTimeoutMs(bytes.size, cfg) },
+    computePutTimeoutMs(bytes.size, cfg),
   );
-  if (!res.ok) throw new UploadHttpError(res.status);
-  return ((await res.json()) as { token: string }).token;
+  return answer.token;
 }
 
 /**
@@ -184,19 +200,13 @@ async function completeUpload(
   uploadId: string,
   token: string,
 ): Promise<IngestOutcome> {
-  const res = await httpRequest(
+  // No deadline of its own. This request carries no bytes, and how long the
+  // Worker spends reading the assembled object back to hash it happens inside
+  // Cloudflare's network, at a rate the browser's upload figures say nothing
+  // about. A deadline reached here loses nothing: the request is replayed, and
+  // the alarm reaches the same outcome on its own.
+  return askWorker<IngestOutcome>(
     `${ticket.uploadUrl}/uploads/${uploadId}/complete`,
-    {
-      method: 'POST',
-      headers: { 'x-upload-token': token },
-    },
-    // The transport's own default. This request carries no bytes, and how long
-    // the Worker spends reading the assembled object back to hash it happens
-    // inside Cloudflare's network, at a rate the browser's upload figures say
-    // nothing about. A deadline reached here loses nothing: the request is
-    // replayed, and the alarm reaches the same outcome on its own.
-    { replaySafe: true },
+    { method: 'POST', headers: { 'x-upload-token': token } },
   );
-  if (!res.ok) throw new UploadHttpError(res.status);
-  return (await res.json()) as IngestOutcome;
 }
