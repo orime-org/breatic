@@ -50,6 +50,11 @@ afterEach(() => {
 /** Every report body the Worker sent, in order. */
 const reports: Record<string, unknown>[] = [];
 
+/** What our server answers a report it accepted with. */
+const REGISTERED: unknown = {
+  data: { fileUrl: "https://cdn.test.example/stored.mp4", kind: "video" },
+};
+
 /**
  * Expect one report and answer it with `status`.
  * @param status - What our server answers.
@@ -60,7 +65,7 @@ function expectReport(status = 200): void {
     .intercept({ path: REPORT_PATH, method: "POST" })
     .reply(status, (opts: { body?: string }) => {
       reports.push(JSON.parse(opts.body ?? "{}") as Record<string, unknown>);
-      return { data: { fileUrl: "https://cdn.test.example/stored.mp4", kind: "video" } };
+      return REGISTERED;
     });
 }
 
@@ -80,10 +85,8 @@ async function uploadedThrough(
       userId: "user-1",
       totalParts: 2,
       partSize: PART_SIZE,
-      maxBytes: 2 * 1024 * 1024 * 1024,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      leaseGen: 7,
       alarmIdleSeconds: 300,
       sessionTokenTtlSeconds: 900,
     },

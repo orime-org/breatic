@@ -120,12 +120,11 @@ async function startUpload(request: Request, env: Env): Promise<Response> {
 }
 
 /**
- * Write one part's bytes into R2 and have the instance record it.
+ * Hand one part's bytes to the instance that owns this upload.
  *
- * The bytes do not pass through the Durable Object. An instance runs one
- * request at a time, so streaming a part through it would serialise every
- * part of every upload it owns; what goes to the instance is the part number
- * and its etag, once the bytes are already in R2.
+ * The bytes are read into memory here and written to R2 by the instance, so
+ * recording a part and storing it are the same step — which is what makes
+ * "have they all arrived?" a matter of counting rows it wrote itself.
  * @param request - The browser's request, carrying the token and the bytes.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.

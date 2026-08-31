@@ -180,3 +180,30 @@ export async function register(input: {
     return { ...result, reclaimQueueFailed: true };
   }
 }
+
+/**
+ * Classify an upload into the coarse asset kind the ledger stores.
+ *
+ * Matches on the MIME **top-level type** rather than an allow-list of
+ * subtypes: `image/*` / `video/*` / `audio/*` is exactly what the media-type
+ * registry means by those families, and a narrow subtype list silently
+ * mis-files every format not enumerated — it dropped avif / heic / bmp / tiff
+ * back to 'file' (#1825), and the same trap bit Firefox's .ogv (#1824). A new
+ * codec must not need a code change.
+ *
+ * The type it reads is the one the browser declared and our server signed into
+ * the ticket. Nothing on this path opens the bytes to check.
+ * @param contentType - The declared MIME content type.
+ * @returns `image`, `video`, `audio`, `document` (text / PDF), or `file`.
+ */
+export function detectAssetKind(
+  contentType: string,
+): "image" | "video" | "audio" | "document" | "file" {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("audio/")) return "audio";
+  if (contentType.startsWith("text/") || contentType === "application/pdf") {
+    return "document";
+  }
+  return "file";
+}

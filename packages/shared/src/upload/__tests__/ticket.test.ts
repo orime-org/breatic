@@ -28,11 +28,10 @@ function payload(overrides: Partial<UploadTicketPayload> = {}): UploadTicketPayl
     userId: "0198f0c2-bbbb-7c3d-8e4f-5a6b7c8d9e02",
     totalParts: 3,
     partSize: 8 * 1024 * 1024,
-    maxBytes: 2 * 1024 * 1024 * 1024,
     contentType: "video/mp4",
     alarmIdleSeconds: 300,
+    sessionTokenTtlSeconds: 900,
     expiresAt: NOW + 5 * 60_000,
-    leaseGen: 6,
     ...overrides,
   };
 }

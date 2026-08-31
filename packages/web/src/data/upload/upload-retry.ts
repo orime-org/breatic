@@ -30,9 +30,9 @@ export interface UploadClientConfig {
   maxUploadBytes: number;
   /** Presign attempts including the first; the PUT's count lives in the transport. */
   clientMaxAttempts: number;
-  /** Base backoff (ms) between presign attempts; full jitter on base * 2^attemptIndex. */
+  /** Base backoff (ms) between ticket attempts; full jitter on base * 2^attemptIndex. */
   clientRetryBaseDelayMs: number;
-  /** Floor for the PUT stall guard. It times no API request — presign is timed by the axios client. */
+  /** Floor for the part stall guard. It times no API request — the ticket goes through the axios client. */
   clientRequestTimeoutMs: number;
   /** PUT stall guard rate: timeout = max(floor, size / rate). */
   clientPutMinBytesPerSec: number;
@@ -58,7 +58,7 @@ export class UploadHttpError extends Error {
 export const STORAGE_FULL_STATUS = 507;
 
 /**
- * Extract an HTTP status from a presign failure, if it carries one.
+ * Extract an HTTP status from a ticket failure, if it carries one.
  *
  * Exported because two questions are asked of the same answer and they must
  * not drift: whether to retry (below) and, in the canvas upload pipeline,
@@ -66,7 +66,7 @@ export const STORAGE_FULL_STATUS = 507;
  *
  * One shape reaches this now: the project's `ApiException`, whose status is
  * FLAT on `.status` and NOT at `{response:{status}}`. Reading only the axios
- * shape once left presign retries dead, which is why the flat read exists.
+ * shape once left ticket retries dead, which is why the flat read exists.
  *
  * The raw axios shape used to be read here as a fallback and no longer is, on
  * the same ground that removed two branches from the predicate below: apiGet's
@@ -84,7 +84,7 @@ export function errorStatus(err: unknown): number | null {
 }
 
 /**
- * Whether a presign failure is transient (worth retrying): 5xx other than
+ * Whether a ticket failure is transient (worth retrying): 5xx other than
  * 507, 429, and network-level failures, which apiGet reports as status 0.
  * Other 4xx, 507, and unknown programming errors are final — see the 507
  * carve-out in the body for why a full account is not a server hiccup.
@@ -92,7 +92,7 @@ export function errorStatus(err: unknown): number | null {
  * It once also recognised a bare `TypeError` and an `AbortError` /
  * `TimeoutError` — the shapes raw `fetch` throws. Those were for the PUT,
  * which now retries inside the shared transport, and the only caller left is
- * presign: it goes through axios, whose interceptor turns every failure into
+ * the ticket request: it goes through axios, whose interceptor turns every failure into
  * an `ApiException` before this ever sees it. So neither shape can arrive
  * here, and a judgment nobody can reach is worse than no judgment.
  * @param err - The thrown value.

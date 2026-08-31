@@ -19,6 +19,7 @@ import { timingSafeEqual } from "node:crypto";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { signUploadTicket, t } from "@breatic/shared";
+import { assetService } from "@breatic/domain";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -40,28 +41,6 @@ import { recordProjectActivity } from "@server/modules/activity/projectActivity.
 const assets = new Hono<{ Variables: AuthVariables }>();
 
 // ── File kind detection ─────────────────────────────────────────────
-
-/**
- * Classify an upload into a coarse asset kind from its MIME type.
- *
- * Matches on the MIME **top-level type** rather than an allow-list of
- * subtypes. The type is authoritative — sniffed from the bytes (#1826 §4.2,
- * `sniffMimeType` via file-type), and `image/*` / `video/*` / `audio/*` is
- * exactly what the media-type registry means by those families. A narrow
- * subtype allow-list silently mis-files every format not enumerated: it dropped
- * sniffed avif / heic / bmp / tiff back to 'file' (the very #1825 symptom this
- * slice fixes), and the same trap bit us in #1824 when Firefox's .ogv fell
- * outside a video allow-list. New codecs must not require a code change.
- * @param contentType - The MIME content type of the uploaded file.
- * @returns The detected asset kind: `image`, `video`, `audio`, `document` (text/PDF), or `file` for anything else.
- */
-function detectKind(contentType: string): "image" | "video" | "audio" | "document" | "file" {
-  if (contentType.startsWith("image/")) return "image";
-  if (contentType.startsWith("video/")) return "video";
-  if (contentType.startsWith("audio/")) return "audio";
-  if (contentType.startsWith("text/") || contentType === "application/pdf") return "document";
-  return "file";
-}
 
 // ── Upload config (#1609 slice 2) ───────────────────────────────────
 
@@ -117,9 +96,9 @@ const uploadTicketSchema = z.object({
    */
   client_hash: z.string().regex(SHA256_HEX),
   /**
-   * The node's fencing gen at the moment handling opened. Signed into the
-   * ticket, echoed by the Worker, and stored on the grant so a sweep-authored
-   * failure event survives collab's CAS.
+   * The node's fencing gen at the moment handling opened. Stored on the grant,
+   * which is where every consequence of this upload reads it from, so a
+   * sweep-authored failure event survives collab's CAS.
    */
   lease_gen: z.coerce.number().int().nonnegative(),
   /** Where the bytes land. Absent for a focus crop, which has no node. */
@@ -223,7 +202,7 @@ assets.post(
       );
     }
 
-    const kind = detectKind(body.content_type);
+    const kind = assetService.detectAssetKind(body.content_type);
     // storageKey's ext contract is dotted (#1630): the upload filename yields
     // a BARE extension ("png"), so dot it — the caller owns the format.
     const ext = `.${body.filename.split(".").pop() ?? "bin"}`;
@@ -261,10 +240,8 @@ assets.post(
         userId: user.id,
         totalParts,
         partSize: ingest.part_size_bytes,
-        maxBytes: upload.max_upload_bytes,
         contentType: body.content_type,
         expiresAt,
-        leaseGen: body.lease_gen,
         alarmIdleSeconds: ingest.alarm_idle_seconds,
         sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
       },
@@ -297,8 +274,6 @@ assets.post(
 const ingestReportSchema = z.object({
   storage_key: z.string().min(1).max(512),
   outcome: z.enum(["completed", "aborted"]),
-  /** Echoed from the ticket; the event this triggers is CAS-checked on it. */
-  lease_gen: z.coerce.number().int().nonnegative(),
   /** What the Worker computed over the bytes that landed. */
   sha256: z.string().regex(SHA256_HEX).optional(),
   /** What actually landed, which is the authority over what was declared. */
@@ -354,7 +329,6 @@ assets.post(
     const outcome = await ingestReportService.applyIngestReport({
       storageKey: body.storage_key,
       outcome: body.outcome,
-      leaseGen: body.lease_gen,
       ...(body.sha256 !== undefined && { sha256: body.sha256 }),
       ...(body.size_bytes !== undefined && { sizeBytes: body.size_bytes }),
       ...(body.content_type !== undefined && { contentType: body.content_type }),

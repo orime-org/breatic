@@ -70,7 +70,6 @@ describe("storageConfigSchema defaults", () => {
     const cfg = storageConfigSchema.parse({});
 
     expect(cfg.upload.max_upload_bytes).toBe(2147483648);
-    expect(cfg.upload.presign_expires_seconds).toBe(300);
   });
 });
 

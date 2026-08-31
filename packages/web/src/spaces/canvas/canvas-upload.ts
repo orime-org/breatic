@@ -130,7 +130,7 @@ export interface UploadContext {
  * `storage` means the studio's account is out of room (#89), which no retry
  * fixes either — but for the opposite reason: nothing is broken, there is
  * simply nowhere to put the bytes until the admin acts.
- * `upload` is everything else (config / presign / PUT / report), which a retry
+ * `upload` is everything else (the knobs, the ticket, the parts), which a retry
  * can fix.
  */
 export type UploadFailureReason = 'hash' | 'storage' | 'upload';
@@ -307,6 +307,12 @@ export interface FillNodeDeps {
   requestTicket: MediaUploadDeps['requestTicket'];
   /** Send the bytes to the ingest Worker (media path). */
   sendToIngest: MediaUploadDeps['sendToIngest'];
+  /**
+   * The bytes are delivered, so the file no longer needs holding for a Retry
+   * this node is not offered any more. The node's content arrives from the
+   * server through Yjs; this callback has nothing to do with it.
+   */
+  onUploadSettled: (nodeId: string) => void;
   /** Backoff sleep override (tests only). */
   sleep?: MediaUploadDeps['sleep'];
   /** Read / extract a non-media file's text locally (the text path). */
@@ -369,40 +375,17 @@ export interface FillNodeDeps {
 }
 
 /**
- * Hand a failed upload to the caller, reason and all.
- *
- * Shared by the plain and the atomic-video paths so both report identically.
- * It decides nothing itself: what a reason needs — the wording, and whether
- * the file is worth stashing for Retry — is knowable only where the node and
- * the reader's language are, and keeping a second opinion here would be a
- * copy of the answer that could drift from the one users see.
- * @param reason - Why the upload ended.
- * @param nodeId - Node being filled.
- * @param file - The picked file, which the caller needs to stash or name.
- * @param lease - The owner triple guarding the write-back.
- * @param deps - Carries the caller's failure sink.
- */
-function uploadFailed(
-  reason: UploadFailureReason,
-  nodeId: string,
-  file: File,
-  lease: UploadLease,
-  deps: Pick<FillNodeDeps, 'onUploadFailure'>,
-): void {
-  deps.onUploadFailure(reason, nodeId, file, lease);
-}
-
-/**
  * Fill an **existing** (empty) node from a picked file — the double-click /
  * Upload-menu path. Unlike {@link runMediaUpload}'s caller in `processFiles`
  * (which CREATES a node), this writes into a node that already exists:
  * refuse if the node is busy (#1580 #7 gate), open the lease, then media
- * files (image / video / audio) presign → PUT and fill the public URL,
- * while every other file is read / extracted locally and fills the text.
- * Failures write a fixed-English error onto the node (shared doc, so never
- * a locale-frozen toast), matching the create-on-drop path's wire strings.
- * Write-backs carry the lease token so a superseded fill cannot clobber a
- * newer owner's work.
+ * files (image / video / audio) go to the ingest Worker and leave with the
+ * node still in handling — what it ends up holding arrives from the server
+ * through Yjs — while every other file is read or extracted locally and fills
+ * the text here. Failures write a fixed-English error onto the node (shared
+ * doc, so never a locale-frozen toast), matching the create-on-drop path's
+ * wire strings. Write-backs carry the lease token so a superseded fill cannot
+ * clobber a newer owner's work.
  *
  * Type gate (user bug 2026-07-03): the picker's `accept` filter is advisory —
  * macOS lets an `audio/*` picker select `.mp4` (the MP4 container family
@@ -413,7 +396,7 @@ function uploadFailed(
  * @param nodeId - The existing node to fill.
  * @param file - The picked file.
  * @param targetModality - The target node's modality; the file must classify to it.
- * @param projectId - Owning project (authorizes the presign).
+ * @param projectId - Owning project, which gates the ticket.
  * @param deps - Injected upload network + content / error sinks.
  */
 export async function fillNodeFromFile(
@@ -451,8 +434,8 @@ export async function fillNodeFromFile(
         hashFile: deps.hashFile,
         requestTicket: deps.requestTicket,
         sendToIngest: deps.sendToIngest,
-        onSuccess: () => {},
-        onFailure: (reason) => uploadFailed(reason, nodeId, file, lease, deps),
+        onSuccess: () => deps.onUploadSettled(nodeId),
+        onFailure: (reason) => deps.onUploadFailure(reason, nodeId, file, lease),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );

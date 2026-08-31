@@ -399,7 +399,6 @@
       "retry": "다시 업로드",
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
-      "videoCodecUnsupported": "이 동영상 형식은 브라우저에서 읽을 수 없습니다. H.264 / MP4로 변환한 후 다시 시도하세요.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",
       "storageFull": "Studio 저장 공간이 가득 찼습니다. 업로드할 수 없습니다."
     },

@@ -253,7 +253,10 @@ describe("POST /assets/upload-ticket", () => {
     expect(verified.ok).toBe(true);
   });
 
-  it("signs the storage key, the lease gen and the expiry into the ticket", async () => {
+  // What the Worker acts on, and nothing more. The fencing generation is not
+  // among it: the Worker never reads one, and every consequence of this upload
+  // takes it off the grant row instead.
+  it("signs the storage key, the content type and the expiry into the ticket", async () => {
     const { projectId, cookie } = await seedEditor();
 
     const res = await requestTicket(
@@ -272,8 +275,8 @@ describe("POST /assets/upload-ticket", () => {
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
     expect(verified.payload.storageKey).toBe(payload.data.storageKey);
-    expect(verified.payload.leaseGen).toBe(42);
     expect(verified.payload.contentType).toBe("video/mp4");
+    expect(verified.payload).not.toHaveProperty("leaseGen");
     // The expiry is what the Worker checks when the browser asks to start, so
     // a ticket has to arrive with room left on it.
     expect(verified.payload.expiresAt).toBeGreaterThan(Date.now());

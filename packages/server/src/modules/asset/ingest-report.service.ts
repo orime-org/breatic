@@ -6,9 +6,10 @@
  *
  * The Worker holds the bytes and nothing else. It knows the key it was told to
  * write to, what it computed over what landed, and whether the upload finished
- * — so those four facts are all a report may carry. Everything that decides
- * consequences (which studio pays, which node updates, whose upload this was)
- * is read off the grant row the ticket endpoint wrote.
+ * — so those facts are all a report may carry. Everything that decides
+ * consequences (which studio pays, which node updates, whose upload this was,
+ * which generation its event is fenced on) is read off the grant row the ticket
+ * endpoint wrote.
  *
  * Three outcomes, and each one ends with the node hearing about it:
  *
@@ -74,7 +75,6 @@ function getCoverQueue(): ReturnType<typeof createQueue> {
 export interface IngestReport {
   storageKey: string;
   outcome: "completed" | "aborted";
-  leaseGen: number;
   /** Present on `completed`: what the Worker computed over the stored bytes. */
   sha256?: string;
   /** Present on `completed`: what actually landed, which is the authority. */
@@ -90,23 +90,6 @@ export type IngestOutcome =
   | { status: "already_registered"; fileUrl: string; kind: string }
   | { status: "rejected"; reason: "over_cap" }
   | { status: "voided" };
-
-/**
- * Classify an upload into the coarse asset kind the ledger stores.
- * @param contentType - The MIME type signed into the ticket.
- * @returns The asset kind.
- */
-function detectKind(
-  contentType: string,
-): "image" | "video" | "audio" | "document" | "file" {
-  if (contentType.startsWith("image/")) return "image";
-  if (contentType.startsWith("video/")) return "video";
-  if (contentType.startsWith("audio/")) return "audio";
-  if (contentType.startsWith("text/") || contentType === "application/pdf") {
-    return "document";
-  }
-  return "file";
-}
 
 /**
  * Tell the node this upload succeeded, and hand it the URL to pin.
@@ -228,7 +211,7 @@ export async function applyIngestReport(
       ? await assetRepo.findByStudioAndHash(grant.studioId, report.sha256)
       : null;
     const fileUrl = existing?.fileUrl ?? adapter.publicUrl(grant.storageKey);
-    const settledKind = existing?.kind ?? detectKind(report.contentType ?? "");
+    const settledKind = existing?.kind ?? assetService.detectAssetKind(report.contentType ?? "");
     // A video's event belongs to the cover job, which sends one carrying both
     // URLs. Sending a video-only one here would put a cover-less video on
     // screen and have the job replace it a moment later — and if the job has
@@ -259,7 +242,7 @@ export async function applyIngestReport(
   }
 
   const contentType = report.contentType ?? "application/octet-stream";
-  const kind = detectKind(contentType);
+  const kind = assetService.detectAssetKind(contentType);
   // The hash the Worker computed is the one the ledger keys on. The browser's
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
@@ -276,7 +259,7 @@ export async function applyIngestReport(
     sizeBytes,
     mimeType: contentType,
     kind,
-    source: grant.derived === true ? "cover" : "upload",
+    source: grant.source === "cover" ? "cover" : "upload",
   });
 
   // The object this upload wrote is a duplicate of one the studio already

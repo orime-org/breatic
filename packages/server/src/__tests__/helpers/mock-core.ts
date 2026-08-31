@@ -244,7 +244,6 @@ export const mocks = {
     // endpoints authorise (write-time) + consume (registration terminal).
     issueUploadGrant: vi.fn(),
     authorizeUploadWrite: vi.fn(),
-    consumeUploadGrant: vi.fn(),
     // Reads the AUTHORITATIVE owner studio off the grant (#1826 §2.2 v15) —
     // /uploaded attributes the asset to it instead of re-deriving one from the
     // client-supplied project_id.

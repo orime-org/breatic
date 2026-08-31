@@ -22,13 +22,13 @@ import {
   assetService,
   emitNodeStateDone,
   nodeHistoryService,
+  type NodeStateDoneFields,
 } from "@breatic/domain";
 import { storageKey, getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
   issueGrant,
   findLiveGrant,
-  consumeGrant,
 } from "@server/modules/asset/upload-grant.repo.js";
 
 /** A dedup hit: the canonical asset the client should reuse. */
@@ -113,7 +113,7 @@ export async function settleDedupHit(params: {
   // renders its poster from `coverUrl`, and one that never gets it shows a
   // modality icon for a file whose first upload shows a frame.
   const cover = await assetRepo.findCoverOf(params.hit.assetId);
-  const content: Record<string, string> = {
+  const content: NodeStateDoneFields = {
     content: params.hit.fileUrl,
     ...(cover !== null && { coverUrl: cover.fileUrl }),
   };
@@ -216,10 +216,9 @@ export async function issueUploadGrant(params: {
 }
 
 /**
- * /local-upload write-time gate (#1826, design §3.2): is this key issued to
- * this user and not yet consumed? Does NOT consume (a local upload is a two-hop
- * PUT-then-report on ONE grant). Ownership is user-only; the studio is recorded
- * on the grant, not a query condition.
+ * `PUT /assets/local-upload/*` write-time gate: is this key issued to this
+ * user and not yet consumed? Ownership is user-only; the studio is recorded on
+ * the grant rather than being a query condition.
  * @param params - The ownership claim.
  * @param params.storageKey - The key being written to.
  * @param params.actingUserId - The authenticated caller.
@@ -236,22 +235,3 @@ export async function authorizeUploadWrite(params: {
   return grant !== null;
 }
 
-/**
- * /uploaded single-shot consume (#1826, design §3.2 / §4.1 step 6): mark the
- * grant consumed exactly once, AFTER the studio_assets INSERT (so the physical
- * object always has an unconsumed grant as an in-flight signal until it is
- * claimed by its ledger row). Concurrent callers on one key → exactly one wins.
- * @param params - The ownership claim.
- * @param params.storageKey - The key being registered.
- * @param params.actingUserId - The authenticated caller.
- * @returns True when this call consumed the grant; false on replay / foreign.
- */
-export async function consumeUploadGrant(params: {
-  storageKey: string;
-  actingUserId: string;
-}): Promise<boolean> {
-  return consumeGrant({
-    storageKey: params.storageKey,
-    userId: params.actingUserId,
-  });
-}

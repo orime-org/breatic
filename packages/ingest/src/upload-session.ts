@@ -307,7 +307,6 @@ export class UploadSession implements DurableObject {
         ? {
             storage_key: upload.ticket.storageKey,
             outcome: "completed",
-            lease_gen: upload.ticket.leaseGen,
             sha256: progress.sha256,
             size_bytes: progress.sizeBytes,
             content_type: upload.ticket.contentType,
@@ -315,7 +314,6 @@ export class UploadSession implements DurableObject {
         : {
             storage_key: upload.ticket.storageKey,
             outcome: "aborted",
-            lease_gen: upload.ticket.leaseGen,
             reason: progress.abortedReason,
           };
 

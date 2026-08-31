@@ -1975,7 +1975,8 @@ function CanvasSpaceInner({
   // ---- Upload (canvas-level: left button / drag-drop / file paste) ----
   // All three entries funnel here: classify each file, drop a `handling` node
   // at a staggered offset from `origin` (flow coords), then fill its content.
-  // Media (image/video/audio) → presign → PUT → content URL. Everything else →
+  // Media (image/video/audio) → ticket → the ingest Worker, and the server
+  // writes the node's content through Yjs. Everything else →
   // a text node whose content is read or extracted locally (text/* read
   // directly; pdf/docx/xlsx parsed in-browser). Both paths write every step
   // to Yjs so collaborators see the whole lifecycle, and both write a
@@ -2084,7 +2085,7 @@ function CanvasSpaceInner({
         // Upload-cap pre-check (#1609 P7): oversize media is refused ON
         // SELECTION with a toast — no node, zero network. A failed config
         // fetch skips the pre-check instead of blocking uploads (the
-        // presign 413 gate stays authoritative). Session-cached after the
+        // the ticket endpoint's 413 gate stays authoritative). Session-cached after the
         // first call, so this await is normally instant.
         let maxBytes = Infinity;
         try {
@@ -3115,6 +3116,7 @@ function CanvasSpaceInner({
           // decides the stash and says the remedy in the reader's language.
           onUploadFailure: (reason, id, f, lease) =>
             failUploadNode(reason, id, f, lease),
+          onUploadSettled: (id) => clearRetryFile(projectId, spaceId, id),
         });
       })();
       trackOperation(nodeId, work);
@@ -3123,7 +3125,7 @@ function CanvasSpaceInner({
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
-  // then hands it to the SAME fillUpload pipeline (presign → handling → write
+  // then hands it to the SAME fillUpload pipeline (handling → ticket → write
   // back → node-history 'upload' row). No group-aware gating: a group lock does
   // not freeze member content (#350) — only the node's OWN lock does.
   const resetNodeToEmptyImage = React.useCallback(

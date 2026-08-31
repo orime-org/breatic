@@ -324,13 +324,49 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       setHandling: vi.fn().mockReturnValue(LEASE),
       setContent: vi.fn().mockReturnValue(true),
       setError: vi.fn().mockReturnValue(true),
-      // 上传失败的唯一出口。它是必填的：这个模块不再自己留一份用户读到的
-      // 句子，谁失败都把原因交出去，由 CanvasSpace 那一处决定怎么呈现。
+      // The only exit for a failed upload. It is required: this module keeps
+      // no copy of the sentences a user reads, so every failure hands its
+      // reason out and CanvasSpace decides how to present it.
       onUploadFailure: vi.fn(),
+      onUploadSettled: vi.fn(),
       sleep: () => Promise.resolve(),
       ...over,
     };
   }
+
+  // Delivered bytes mean the file is no longer worth holding for a Retry this
+  // node is not offered any more. The drop path says the same thing, and a
+  // stash only one of them clears is a stash that outlives its node.
+  it('media file: says so once the bytes are delivered', async () => {
+    const deps = makeDeps();
+
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
+      'p1',
+      deps,
+    );
+
+    expect(deps.onUploadSettled).toHaveBeenCalledExactlyOnceWith('n1');
+  });
+
+  it('media file: says nothing of the sort when the upload failed', async () => {
+    const deps = makeDeps({
+      sendToIngest: vi.fn().mockRejectedValue(new Error('network')),
+    });
+
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
+      'p1',
+      deps,
+    );
+
+    expect(deps.onUploadSettled).not.toHaveBeenCalled();
+    expect(deps.onUploadFailure).toHaveBeenCalledOnce();
+  });
 
   // The node opens handling and stays there. What it ends up holding comes
   // from the server through Yjs, so this path writes nothing on the way out

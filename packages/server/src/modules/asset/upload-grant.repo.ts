@@ -5,14 +5,14 @@
  * Upload-grant repository (#1826, design §2.2 / §3.2) — the anti-spoof
  * authority that REPLACES the prefix-based `isOwnedKey`.
  *
- * When /presign mints a tenant-neutral storage key K, it records one grant
+ * When the ticket endpoint mints a tenant-neutral storage key K, it records one grant
  * (user + owner studio + declared content_hash + K). The upload endpoints then
  * re-derive ownership from this ledger instead of from a key prefix:
- *   - /local-upload (write-time gate) → {@link findLiveGrant}: a grant issued
+ *   - `PUT /assets/local-upload/*` (write-time gate) → {@link findLiveGrant}: a grant issued
  *     to this user + owner studio and NOT yet consumed authorises the disk
  *     write; it does NOT consume (a local upload is a two-hop PUT-then-report
  *     on ONE grant — consuming on the first hop would 422 the second);
- *   - /uploaded (registration terminal) → {@link consumeGrant}: the same
+ *   - the ingest Worker's report (registration terminal) → {@link consumeGrant}: the same
  *     ownership check, then a single-shot CAS that marks the grant consumed
  *     (anti-replay), run AFTER the studio_assets INSERT.
  *
@@ -151,10 +151,10 @@ export async function issueGrant(input: {
 
 /**
  * Resolve a LIVE grant (issued to this user, not yet consumed) WITHOUT
- * consuming it — the /local-upload write-time gate. Ownership = "was this key
+ * consuming it — the local-upload write-time gate. Ownership = "was this key
  * issued to THIS user"; the storage key is globally unique, so it locates the
  * one row and the user_id decides ownership. The owner studio is READ OUT of
- * that row (recorded at presign), not supplied by the caller — /local-upload
+ * that row (recorded when the ticket was minted), not supplied by the caller — local-upload
  * (a bare byte PUT) has no project/studio. A forged key, a foreign user, or an
  * already-consumed grant resolves to null. No time limit (design v11): the
  * check is ownership + not-consumed only.
@@ -187,7 +187,7 @@ export async function findLiveGrant(params: {
 }
 
 /**
- * Single-shot consume (anti-replay) — the /uploaded registration terminal. An
+ * Single-shot consume (anti-replay) — the ingest report's registration terminal. An
  * atomic CAS marks the grant consumed only if it is issued to this user and
  * still unconsumed; concurrent callers on one key see EXACTLY ONE win (PG row
  * lock re-evaluates the `consumed_at IS NULL` predicate). A replay, a foreign

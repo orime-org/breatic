@@ -70,8 +70,6 @@ export const storageConfigSchema = z
       client_request_timeout_ms: z.number().int().positive().default(30000),
       /** PUT stall guard rate: per-attempt timeout = max(floor, size/rate). */
       client_put_min_bytes_per_sec: z.number().int().positive().default(65536),
-      /** Presigned PUT URL expiry (s); the cloud PUT window (#1826, §3.2). */
-      presign_expires_seconds: z.number().int().positive().default(300),
     })
     .prefault({})
     .superRefine((upload, ctx) => {

@@ -84,10 +84,8 @@ async function uploadedThrough(
       userId: "user-1",
       totalParts: 2,
       partSize: PART_SIZE,
-      maxBytes: 2 * 1024 * 1024 * 1024,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      leaseGen: 7,
       alarmIdleSeconds: 300,
       sessionTokenTtlSeconds: 900,
       ...over,
@@ -188,7 +186,6 @@ describe("an upload whose parts all arrived", () => {
       sha256: hex,
       size_bytes: PART_SIZE + 1024,
       content_type: "video/mp4",
-      lease_gen: 7,
     });
   });
 });
@@ -241,7 +238,6 @@ describe("an upload missing parts", () => {
     expect(reports[0]).toMatchObject({
       storage_key: storageKey,
       outcome: "aborted",
-      lease_gen: 7,
     });
   });
 

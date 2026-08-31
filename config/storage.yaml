@@ -26,10 +26,6 @@ upload:
   # startup with the lowest usable value in the message — at the shipped cap
   # that floor is 1001.
   client_put_min_bytes_per_sec: 65536
-  # Presigned PUT URL expiry (seconds) for cloud storage (S3/OSS). This is the
-  # provider's own PUT window — unrelated to the upload-grant ledger, which has
-  # no time limit (#1826, design §3.2). Local storage has no presigned URL.
-  presign_expires_seconds: 300
 
 # The ingest Worker (#173). Every figure it runs on is decided here and signed
 # into the ticket, because a Worker cannot read this file and a second copy in

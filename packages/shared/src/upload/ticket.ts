@@ -33,14 +33,10 @@ export interface UploadTicketPayload {
   totalParts: number;
   /** Size of every part except the last. */
   partSize: number;
-  /** Upper bound on a single part's length, so the Worker can check statelessly. */
-  maxBytes: number;
   /** Written into the R2 object's httpMetadata. */
   contentType: string;
   /** Epoch ms. Checked once, when the upload starts. */
   expiresAt: number;
-  /** The node's fencing gen, echoed back so the server can CAS its event. */
-  leaseGen: number;
   /**
    * How long the upload may go without a new part before the Durable Object
    * judges it dead. Signed in rather than configured on the Worker for the
