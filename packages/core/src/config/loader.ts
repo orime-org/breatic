@@ -27,7 +27,6 @@ const agentConfigSchema = z.object({
   skill_agent_max_steps: z.number().int().positive().default(15),
   default_model: z.string().default("deepseek/deepseek-v4-pro"),
   consolidation_model: z.string().default("deepseek/deepseek-v4-pro"),
-  memory_window: z.number().int().positive().default(20),
   /**
    * How much of the first message a conversation keeps as its name.
    *
@@ -68,7 +67,6 @@ const agentConfigSchema = z.object({
    * would start killing turns that were doing fine.
    */
   sse_heartbeat_interval_ms: z.number().int().positive().default(5000),
-  memory_keep_recent_turns: z.number().int().positive().default(3),
   /**
    * How many of the most recent tool uses keep their result in the context.
    *

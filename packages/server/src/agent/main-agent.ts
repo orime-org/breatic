@@ -154,11 +154,12 @@ export class MainAgent {
    * result reach the client because the protocol has a place for them, not
    * because we remembered to forward them.
    *
-   * The obligations are unchanged and all of them live in `onFinish`: the
-   * reply is written down, the tokens are charged for, memories are
-   * consolidated, and one line says how it went. That callback runs when the
-   * stream ends *and* when a reader lets go of it -- the SDK attaches it to
-   * both `flush` and `cancel` -- so a closed page still closes the books.
+   * What the turn owes at the end lives in `onFinish`: the reply is written
+   * down, the tokens are charged for, and one line says how it went. That
+   * callback runs when the stream ends *and* when a reader lets go of it --
+   * the SDK attaches it to both `flush` and `cancel` -- so a closed page
+   * still closes the books. Folding memory is not among them: it belongs in
+   * front of the reply, on the turn whose assembled request it can shorten.
    * Assembling what the model is asked happens inside `execute`, not before
    * the stream is built. Everything it takes -- three round trips for memory,
    * the conversation and its history, then the compression -- is time the
@@ -335,6 +336,11 @@ export class MainAgent {
         tools: agentConfig.tools,
         stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
         temperature: 0.2,
+        // Per call, which is the only unit there is: the `stopWhen` above
+        // lets one turn make many, and each of them is bounded by this. An
+        // answer with no ceiling is carried whole by every later turn's
+        // history.
+        maxOutputTokens: agentCfg.max_output_tokens,
         // The middle ring of the stop chain. Without it the route can notice
         // the client leaving and the end of the stream can settle up, and the
         // model keeps running regardless: a signal handed in here ends the

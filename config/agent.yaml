@@ -21,10 +21,6 @@ default_model: deepseek/deepseek-v4-pro
 consolidation_model: deepseek/deepseek-v4-pro
 
 # ── Memory System ─────────────────────────────────────────
-# Number of recent turns (user → agent round-trips) before triggering consolidation.
-# A "turn" = one user message + all agent steps (tool calls + final reply).
-memory_window: 20
-
 # How much of a conversation's first message is kept as its title. The rest is
 # cut with an ellipsis so a list of conversations stays readable.
 conversation_title_max_chars: 60
@@ -45,9 +41,6 @@ message_page_size: 30
 # in code and not here, because the server garbage collects and two misses in
 # a row happen to a stream that is doing fine.
 sse_heartbeat_interval_ms: 5000
-
-# Number of recent turns to keep unconsolidated during memory consolidation.
-memory_keep_recent_turns: 3
 
 # How many of the most recent tool uses keep their result when building LLM
 # context. Older tool results are replaced by a placeholder; the call record
