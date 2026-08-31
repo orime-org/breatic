@@ -16,7 +16,7 @@ compatibility_date = "2026-03-10"
 # different bucket produces keys that resolve to nothing.
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "breatic-assets"
+bucket_name = "breatic-dev"
 
 # One instance per upload, addressed by its storage key. It is what makes
 # "have all the parts arrived?" answerable at all: R2 itself has no view of a
@@ -32,6 +32,12 @@ class_name = "UploadSession"
 tag = "v1"
 new_sqlite_classes = ["UploadSession"]
 
+# Local development. Both values are ports, and this file is checked in, so
+# they carry the defaults `.env.dev` documents — `PORT` and `VITE_DEV_PORT`.
+# A checkout running on other ports overrides them in `.dev.vars`, which wins
+# over this block: verified against wrangler 4.127.1 by serving one variable
+# from both places (`.dev.vars` answered) and then removing it and restarting
+# (this block answered — removing it without a restart changes nothing).
 [vars]
 # Where the Worker reports an upload's outcome. The server's own base URL,
 # which differs per deployment, so each environment below sets its own.
@@ -39,7 +45,7 @@ SERVER_REPORT_URL = "http://localhost:3000/api/v1/assets/ingest-report"
 # Comma-separated origins allowed to send parts. The browser talks to this
 # Worker directly, so the Worker answers preflight itself; the bucket is never
 # reached from a page and needs no CORS rules of its own.
-ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_ORIGINS = "http://localhost:8000"
 
 [env.production]
 name = "breatic-ingest"
@@ -50,7 +56,7 @@ ALLOWED_ORIGINS = "https://breatic.ai"
 
 [[env.production.r2_buckets]]
 binding = "BUCKET"
-bucket_name = "breatic-assets"
+bucket_name = "breatic-dev"
 
 [[env.production.durable_objects.bindings]]
 name = "UPLOAD_SESSION"

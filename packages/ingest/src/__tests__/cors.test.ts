@@ -18,7 +18,8 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { describe, it, expect } from "vitest";
 import worker from "@ingest/index.js";
 
-const ALLOWED = "http://localhost:5173";
+/** What `ALLOWED_ORIGINS` is bound to in vitest.config.ts. */
+const ALLOWED = "https://app.test.example";
 
 /** Send one request with an Origin header. */
 async function fromOrigin(

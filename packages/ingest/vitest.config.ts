@@ -25,11 +25,17 @@ export default defineWorkersConfig({
         // (cloudflare/workers-sdk#11031).
         isolatedStorage: false,
         miniflare: {
+          // All three shadow what `[vars]` in wrangler.toml holds. That block
+          // is deployment configuration — which ports a checkout runs on, which
+          // domain is live — and an assertion written against it turns every
+          // deployment change into a red test about nothing.
           bindings: {
             // The secret wrangler holds in production. Tests sign their own
             // tickets with it, so what they hand the Worker is the same shape
             // our server mints rather than a fixture that only looks like one.
             INGEST_SHARED_SECRET: "test-ingest-secret",
+            ALLOWED_ORIGINS: "https://app.test.example",
+            SERVER_REPORT_URL: "https://api.test.example/api/v1/assets/ingest-report",
           },
         },
       },

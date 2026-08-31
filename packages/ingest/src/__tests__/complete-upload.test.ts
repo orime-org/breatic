@@ -29,7 +29,8 @@ import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
-const REPORT_ORIGIN = "http://localhost:3000";
+/** The two halves of `SERVER_REPORT_URL` as vitest.config.ts binds it. */
+const REPORT_ORIGIN = "https://api.test.example";
 const REPORT_PATH = "/api/v1/assets/ingest-report";
 
 let seq = 0;
