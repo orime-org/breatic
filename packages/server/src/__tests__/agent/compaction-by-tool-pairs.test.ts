@@ -11,9 +11,9 @@
  * counts the same way — `keep: 3 tool uses` — and no implementation surveyed
  * offers a turn-shaped boundary at all.
  *
- * Every fixture here has more turns than the old `full_detail_turns` (3) and
- * more pairs than `tool_result_keep` (3), so a turn-shaped implementation and
- * a pair-shaped one disagree on every assertion below.
+ * Every fixture here has more than three turns and more than three pairs, so
+ * a turn-shaped implementation and a pair-shaped one disagree on every
+ * assertion below.
  */
 
 import { describe, it, expect } from "vitest";
@@ -182,5 +182,9 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     ]);
 
     expect(compressForContext(history, KEEP)).toEqual(history);
+  });
+
+  it("returns nothing for an empty history", () => {
+    expect(compressForContext([], KEEP)).toEqual([]);
   });
 });

@@ -58,7 +58,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getAgentConfig: () => ({
       max_tool_iterations: 5,
       llm_max_retries: 0,
-      full_detail_turns: 3,
+      tool_result_keep: 3,
       web_fetch_timeout_ms: 30_000,
       web_search_timeout_ms: 10_000,
       web_fetch_max_chars: 50_000,

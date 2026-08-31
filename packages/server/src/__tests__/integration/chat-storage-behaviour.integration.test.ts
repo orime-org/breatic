@@ -506,13 +506,12 @@ describe("the memory chain still sees the same messages", () => {
     // Reasoning is the model's own working: sending it back teaches nothing
     // and is paid for every turn.
     expect(forLlm[1]).not.toHaveProperty("thinking");
-    // The turn index stays, because the compressor between here and the model
-    // groups by it. Dropping it left every message in one group and the
-    // compressing branch unreachable.
+    // The turn index stays: it is how the store knows which question a reply
+    // answers, and consolidation moves its watermark by it.
     expect(forLlm[1]?.turnIndex).toBe(turn);
   });
 
-  it("compresses the turns past the detail window, read the way the route reads them", async () => {
+  it("drops the results of tool uses past the window, read the way the route reads them", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
@@ -544,10 +543,16 @@ describe("the memory chain still sees the same messages", () => {
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 0);
     const context = compressForContext(forLlm, 3);
 
-    // Five turns, the last three kept whole. Turns 1 and 2 are old enough to
-    // lose their tool use -- that is the entire point of compressing them, and
-    // the older the conversation the larger the share of the context it saves.
-    const keptToolUse = context.filter((m) => m.parts.some((p) => p.type === "tool"));
-    expect(keptToolUse.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
+    // Every call is still on the record: what the assistant did is small, and
+    // a result with no call in front of it is a page the model cannot place.
+    const called = context.filter((m) => m.parts.some((p) => p.type === "tool"));
+    expect(called.map((m) => m.content)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
+
+    // Five uses, the last three keeping what came back. The first two are past
+    // the window, and their bodies are what the compression saves.
+    const keptResult = context.filter((m) =>
+      m.parts.some((p) => p.type === "tool" && p.output === "page text"),
+    );
+    expect(keptResult.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
   });
 });

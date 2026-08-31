@@ -58,6 +58,6 @@ export async function buildTurnContext(
 
   return {
     memoryContext,
-    compressedHistory: compressForContext(rawHistory, agentCfg.full_detail_turns),
+    compressedHistory: compressForContext(rawHistory, agentCfg.tool_result_keep),
   };
 }
