@@ -8,7 +8,7 @@
  *
  *   - create / delete / lock / unlock / rename - caller role ≥ editor
  *   - restore                                   - caller role = owner
- *   - tab:open / tab:close                      - any role that can reach
+ *   - tab:open / tab:close / tab:reorder        - any role that can reach
  *     the project, viewers included: each caller manages only their OWN
  *     tab bar, and the userId comes from the connection, never the request.
  *

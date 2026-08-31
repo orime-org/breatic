@@ -140,9 +140,9 @@ describe('sendSpaceRpc', () => {
     }
   });
 
-  it('does not mark a schema failure as unanswered', async () => {
-    // An answer arrived; it was the wrong shape. The server spoke, so this
-    // says nothing about whether the request went through.
+  it('keeps waiting on a reply of the wrong shape', async () => {
+    // A malformed reply is not an answer, so the request runs on to its
+    // timeout and is reported the same way as one that drew nothing at all.
     const provider = makeStubProvider();
     const promise = sendSpaceRpc(
       provider as unknown as Parameters<typeof sendSpaceRpc>[0],
@@ -153,7 +153,12 @@ describe('sendSpaceRpc', () => {
     await expect(
       Promise.race([promise, Promise.resolve('still-waiting')]),
     ).resolves.toBe('still-waiting');
-    expect(isUnanswered(new Error('anything else'))).toBe(false);
+    await expect(promise).rejects.toSatisfy(isUnanswered);
+  });
+
+  it('leaves every other failure outside the unanswered class', () => {
+    expect(isUnanswered(new Error('server said no'))).toBe(false);
+    expect(isUnanswered('not even an error')).toBe(false);
   });
 
   it('removes the stateless listener on resolve (no leak)', async () => {

@@ -433,9 +433,7 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
   });
 
-  it('holds the queue while a move is out unanswered', async () => {
-    // Whether the server took the first move decides what the second one
-    // means, so the second waits for the broadcast that would say so.
+  it('carries the queue past a move that went unanswered', async () => {
     const first = deferred();
     const second = deferred();
     const send = vi
@@ -455,18 +453,22 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.order).toEqual([C, B, A]);
+      expect(send).toHaveBeenCalledTimes(2);
     });
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(result.current.order).toEqual([C, B, A]);
+    expect(send).toHaveBeenLastCalledWith(A, null);
   });
 
-  it('sends what queued up once the unanswered move broadcasts', async () => {
+  it('still reorders for the rest of the session after one went unanswered', async () => {
+    // The strip stops working entirely if an unanswered move can gate what
+    // follows it: the arrival that would open the gate is the broadcast for a
+    // move that may never have been written, and one that already retired
+    // leaves the gate shut on a move nobody owes.
     const first = deferred();
-    const second = deferred();
     const send = vi
       .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
       .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise);
+      .mockResolvedValue(true);
     const { result, rerender } = renderHook(
       ({ ids }: { ids: ReadonlyArray<string> }) => useTabReorder(ids, send),
       { initialProps: { ids: [A, B, C] as ReadonlyArray<string> } },
@@ -475,16 +477,16 @@ describe('useTabReorder — when the pending order is let go of', () => {
     act(() => {
       result.current.reorder(C, A);
     });
-    act(() => {
-      result.current.reorder(A, null);
-    });
+    // Collab broadcasts inside the transaction and answers afterwards, so the
+    // document lands first and retires the move.
+    rerender({ ids: [C, A, B] });
     await act(async () => {
       first.reject(new SpaceRpcUnanswered('no answer'));
     });
-    expect(send).toHaveBeenCalledTimes(1);
 
-    // The server had taken it after all.
-    rerender({ ids: [C, A, B] });
+    act(() => {
+      result.current.reorder(A, null);
+    });
 
     await waitFor(() => {
       expect(send).toHaveBeenCalledTimes(2);

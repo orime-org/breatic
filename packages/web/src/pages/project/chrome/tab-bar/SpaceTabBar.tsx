@@ -621,7 +621,9 @@ export function SpaceTabBar({
             size='chrome'
             aria-label={t('chrome.tooltip.revealActiveTab')}
             onClick={scrollActiveIntoView}
-            disabled={!scrollState.overflow || scrollState.activeVisible}
+            // A strip with nothing off either edge holds every tab whole, so
+            // `activeVisible` already answers for that case.
+            disabled={scrollState.activeVisible}
             data-testid='tabs-reveal-active'
             // Disabled dimming is the Button primitive's, measured at 0.5. The
             // arrows next door ask for `opacity-35` and get 0.5 anyway — their

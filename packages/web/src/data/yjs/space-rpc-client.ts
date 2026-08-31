@@ -22,13 +22,13 @@ export interface RpcCapableProvider {
 }
 
 /**
- * The request reached the socket and no answer came back for it.
+ * The request was handed to the transport and no answer came back for it.
  *
- * Nothing recalls a request once it is out: the server may have carried it
- * out and the reply been lost, or it may never have arrived. A caller holding
- * optimistic state has to tell this apart from a server that answered no —
- * undoing a move the server made leaves the two ends disagreeing until the
- * page is reloaded.
+ * What became of it is open: the server may have carried it out and the reply
+ * been lost, it may never have arrived, or it may still be queued for a
+ * reconnect. A caller holding optimistic state has to tell this apart from a
+ * server that answered no — undoing a move the server made leaves the two
+ * ends disagreeing until the page is reloaded.
  */
 export class SpaceRpcUnanswered extends Error {
   /**
@@ -73,7 +73,8 @@ export interface SendSpaceRpcOptions {
  * @param request - The Space RPC request without its correlation id (generated here).
  * @param opts - Optional timeout and correlation-id-generator overrides.
  * @returns The matching Space RPC response from the collab process.
- * @throws {Error} When no response arrives within the round-trip timeout.
+ * @throws {SpaceRpcUnanswered} When no response arrives within the round-trip
+ *   timeout.
  */
 export async function sendSpaceRpc(
   provider: RpcCapableProvider,
