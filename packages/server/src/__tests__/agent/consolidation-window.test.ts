@@ -44,6 +44,19 @@ describe("planning how much a consolidation takes", () => {
     expect(plan.takenTurns).toEqual([]);
   });
 
+  it("leaves the payload alone when it lands exactly on the budget", () => {
+    // The rule is "over the budget", so the line itself passes. 83 turns of
+    // 10,000 plus 20,000 fixed is 850,000 on the nose.
+    const plan = planConsolidation({
+      fixedCost: 20_000,
+      turns: turns(Array.from({ length: 83 }, () => 10_000)),
+      budget: BUDGET,
+      keep: KEEP,
+    });
+
+    expect(plan.shouldConsolidate).toBe(false);
+  });
+
   it("takes from the oldest end until what remains is at or under the keep line", () => {
     // 30 turns of 30,000 = 900,000, plus 20,000 fixed = 920,000 assembled.
     // Taking the oldest 15 leaves 450,000 + 20,000 = 470,000.
@@ -64,7 +77,9 @@ describe("planning how much a consolidation takes", () => {
   it("takes about 350,000 in the ordinary case, which is the difference of the two lines", () => {
     const plan = planConsolidation({
       fixedCost: 20_000,
-      turns: turns(Array.from({ length: 83 }, () => 10_000)),
+      // 85 turns of 10,000 plus 20,000 fixed = 870,000, just over the budget.
+      // Reaching the keep line means taking 370,000, which is 37 turns.
+      turns: turns(Array.from({ length: 85 }, () => 10_000)),
       budget: BUDGET,
       keep: KEEP,
     });

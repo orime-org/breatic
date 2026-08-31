@@ -95,6 +95,23 @@ describe("the payload the budget is measured against", () => {
     expect(longer - base).toBe(300);
   });
 
+  it("counts the parameter schema, not just the description", () => {
+    // Same name, same description, different schema: the only assertion here
+    // that fails when the schema is left out of a tool's measurement.
+    const narrow = measurePayload({
+      instructions: "",
+      tools: { web_fetch: sizedTool("fetches a page", 1) },
+      messages: EMPTY,
+    });
+    const wide = measurePayload({
+      instructions: "",
+      tools: { web_fetch: sizedTool("fetches a page", 12) },
+      messages: EMPTY,
+    });
+
+    expect(wide).toBeGreaterThan(narrow);
+  });
+
   it("counts every tool in the set, not just the first", () => {
     const one = measurePayload({
       instructions: "",
