@@ -108,6 +108,23 @@ describe("a ticket the Worker takes", () => {
     expect(second.uploadId).toBe(first.uploadId);
   });
 
+  // The key's extension comes from the picked file's name, and our server
+  // deliberately admits Unicode there — a file called 截图 has no dot to split
+  // on, so the whole name becomes the extension. Everything this Worker signs
+  // into a session token therefore has to survive being encoded.
+  it("opens an upload whose key carries characters outside latin1", async () => {
+    const { ticket } = await mintTicket({
+      storageKey: `image/2026-08-31/${seq++}_shot.截图`,
+    });
+
+    const response = await open(ticket);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      token: expect.any(String),
+    });
+  });
+
   it("keeps two different uploads apart", async () => {
     const a = await mintTicket();
     const b = await mintTicket();

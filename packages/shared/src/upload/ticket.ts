@@ -59,6 +59,13 @@ export type UploadTicketVerification =
   | { ok: true; payload: UploadTicketPayload }
   | { ok: false; reason: UploadTicketRejection };
 
+import {
+  encodeBase64Utf8,
+  decodeBase64Utf8,
+  encodeBase64Bytes,
+  decodeBase64Bytes,
+} from "@shared/upload/base64.js";
+
 const ALGORITHM = { name: "HMAC", hash: "SHA-256" } as const;
 
 /**
@@ -74,32 +81,6 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
     false,
     ["sign", "verify"],
   );
-}
-
-/**
- * Base64 a UTF-8 string. Goes through bytes rather than handing the string
- * straight to `btoa`, which throws on anything outside latin1.
- * @param value - The string to encode.
- * @returns Its base64 form.
- */
-function encodeBase64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-/**
- * Reverse {@link encodeBase64}.
- * @param value - A base64 string.
- * @returns The decoded UTF-8 string.
- * @throws {Error} When the input is not valid base64.
- */
-function decodeBase64(value: string): string {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
 }
 
 /**
@@ -123,13 +104,13 @@ export async function signUploadTicket(
       `partSize ${payload.partSize} is under R2's ${MIN_PART_SIZE_BYTES}-byte floor for a multi-part upload`,
     );
   }
-  const body = encodeBase64(JSON.stringify(payload));
+  const body = encodeBase64Utf8(JSON.stringify(payload));
   const signature = await crypto.subtle.sign(
     ALGORITHM,
     await hmacKey(secret),
     new TextEncoder().encode(body),
   );
-  return `${body}.${encodeBase64(String.fromCharCode(...new Uint8Array(signature)))}`;
+  return `${body}.${encodeBase64Bytes(signature)}`;
 }
 
 /**
@@ -156,10 +137,8 @@ export async function verifyUploadTicket(
   let signatureBytes: Uint8Array;
   let payload: UploadTicketPayload;
   try {
-    const raw = decodeBase64(signature);
-    signatureBytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i += 1) signatureBytes[i] = raw.charCodeAt(i);
-    payload = JSON.parse(decodeBase64(body)) as UploadTicketPayload;
+    signatureBytes = decodeBase64Bytes(signature);
+    payload = JSON.parse(decodeBase64Utf8(body)) as UploadTicketPayload;
   } catch {
     return { ok: false, reason: "malformed" };
   }

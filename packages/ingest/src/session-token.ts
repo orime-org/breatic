@@ -24,6 +24,13 @@ export interface SessionTokenPayload {
   expiresAt: number;
 }
 
+import {
+  encodeBase64Utf8,
+  decodeBase64Utf8,
+  encodeBase64Bytes,
+  decodeBase64Bytes,
+} from "@breatic/shared";
+
 const ALGORITHM = { name: "HMAC", hash: "SHA-256" } as const;
 
 /**
@@ -42,24 +49,6 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
 }
 
 /**
- * Base64 a string without depending on Node's Buffer.
- * @param value - The text to encode.
- * @returns Its base64 form.
- */
-function encodeBase64(value: string): string {
-  return btoa(value);
-}
-
-/**
- * Decode base64 back to a string.
- * @param value - The base64 text.
- * @returns The decoded string.
- */
-function decodeBase64(value: string): string {
-  return atob(value);
-}
-
-/**
  * Issue a token for the next part of an upload.
  * @param payload - What the token grants.
  * @param secret - The shared secret.
@@ -69,13 +58,13 @@ export async function signSessionToken(
   payload: SessionTokenPayload,
   secret: string,
 ): Promise<string> {
-  const body = encodeBase64(JSON.stringify(payload));
+  const body = encodeBase64Utf8(JSON.stringify(payload));
   const signature = await crypto.subtle.sign(
     ALGORITHM,
     await hmacKey(secret),
     new TextEncoder().encode(body),
   );
-  return `${body}.${encodeBase64(String.fromCharCode(...new Uint8Array(signature)))}`;
+  return `${body}.${encodeBase64Bytes(signature)}`;
 }
 
 /**
@@ -99,10 +88,8 @@ export async function verifySessionToken(
   let signatureBytes: Uint8Array;
   let payload: SessionTokenPayload;
   try {
-    const raw = decodeBase64(signature);
-    signatureBytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i += 1) signatureBytes[i] = raw.charCodeAt(i);
-    payload = JSON.parse(decodeBase64(body)) as SessionTokenPayload;
+    signatureBytes = decodeBase64Bytes(signature);
+    payload = JSON.parse(decodeBase64Utf8(body)) as SessionTokenPayload;
   } catch {
     return null;
   }

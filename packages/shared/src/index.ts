@@ -397,3 +397,12 @@ export {
   type UploadTicketRejection,
   type UploadTicketVerification,
 } from "@shared/upload/ticket.js";
+// The encoding those credentials use, exported for the session token the
+// Worker signs with the same secret. `btoa` refuses anything outside latin1,
+// and a storage key's extension comes from a filename we let be any Unicode.
+export {
+  encodeBase64Utf8,
+  decodeBase64Utf8,
+  encodeBase64Bytes,
+  decodeBase64Bytes,
+} from "@shared/upload/base64.js";
