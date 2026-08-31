@@ -445,7 +445,7 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   out on every client — even when the publish rejected afterwards (§3.2:
  *   the callback runs synchronously and the broadcast leaves inside it).
  *   A callback that neither wrote nor decided would land here too, but
- *   none can: each of the seven either returns a verdict or marks and
+ *   none can: each of the eight either returns a verdict or marks and
  *   writes, so there is no third path to name. The caller carries on to
  *   its success answer.
  * - `failed-before-broadcast`: the transact rejected, no guard had
@@ -480,7 +480,7 @@ type PublishOutcome =
  *    rejection is then classifiable as before or after the broadcast.
  *    Handlers that skip `mark` and write anyway would misreport — which
  *    is why the flag rides through this wrapper instead of being a local
- *    variable seven functions each remember to declare.
+ *    variable eight functions each remember to declare.
  * 3. **A guard's answer outranks a publish rejection it did not cause.** The
  *    callback returns its answer instead of setting a flag the caller
  *    then has to consult in the right order, so `decided` and
@@ -585,7 +585,7 @@ async function publishMetaChange(
  *   handler's own success path; `undo` is true only when nothing reached
  *   any client.
  *
- * Exported for its own unit test. Only three of the seven operations own
+ * Exported for its own unit test. Only three of the eight operations own
  * content rows, and none of their callbacks can both write and settle, so
  * the write-then-settle row of this table is unreachable through any
  * handler — leaving the rule that guards it with nothing to fail against.

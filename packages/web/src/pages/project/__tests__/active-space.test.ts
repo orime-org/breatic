@@ -107,9 +107,9 @@ describe('reviseTabChoice', () => {
     ).toEqual({ activeSpaceId: 'a' });
   });
 
-  it('waits while another Space is still travelling', () => {
-    // The pending open names a different Space, so this choice is stale on its
-    // own account and settles now.
+  it('settles a stale choice even while another Space is travelling', () => {
+    // The guard compares the pending open against the choice itself, so an
+    // open travelling for some other Space holds nothing back.
     expect(
       reviseTabChoice({
         openTabIds,

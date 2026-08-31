@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two rules the per-user tab order needs on both sides of the wire.
+ * The rules the per-user tab order needs on both sides of the wire.
  *
- * Both live here because collab and the browser each apply them and the two
- * have to agree: collab seeds a user's list and normalises it before a
- * reorder, the browser dedupes what it reads and builds the first-visit
- * default. A rule that drifted between the two would put a different order
- * on screen than the one in the document.
+ * They live here because collab and the browser each apply them and the two
+ * have to agree: collab seeds a user's list and moves one tab within it, the
+ * browser dedupes what it reads, builds the first-visit default, and lays a
+ * released drag over what arrives. A rule that drifted between the two would
+ * put a different order on screen than the one in the document.
  */
 
 /** One Space, reduced to what deciding its place in the tab bar needs. */

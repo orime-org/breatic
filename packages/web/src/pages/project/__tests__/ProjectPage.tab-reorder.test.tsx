@@ -392,11 +392,13 @@ describe('ProjectPage — opening a Space that has no tab yet', () => {
     expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
   });
 
-  it('stops waiting for a tab once it arrives, whatever is shown by then', async () => {
-    // Picked C from the drawer, then switched back to A before C's tab
-    // landed. C is no longer the choice when it arrives, and waiting for it
-    // has to end anyway — otherwise closing C's tab later finds the page
-    // still holding its place and the fallback by position comes back.
+  it('goes back to waiting for a tab the user returns to', async () => {
+    // Picked C from the drawer, switched back to A before C's tab landed,
+    // then returned to C. What ends the wait is the choice naming C again
+    // with C's tab on the strip; while the choice sat on A the pending open
+    // held nothing back, because the guard compares it against the choice.
+    // Closing C's tab after that is the ordinary case, and the page settles
+    // on what it shows rather than falling back by position.
     setup();
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B]));
 
