@@ -1542,7 +1542,8 @@ function sameOrder(
  * @param projectId - Project whose meta doc holds the tab lists.
  * @param caller - Authenticated caller; the userId comes from here, never from the request.
  * @param req - The `tab:reorder` request.
- * @returns Success carrying `orderChanged`, or `NOT_FOUND` when either id is not an open tab.
+ * @returns Success carrying `orderChanged`; a move whose ids are no longer
+ *   both open writes nothing and says so.
  */
 async function handleTabReorder(
   ctx: SpaceRpcContext,
@@ -1573,13 +1574,17 @@ async function handleTabReorder(
       const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
       const current = list.toArray();
 
-      if (!current.includes(spaceId)) {
-        return err(req.id, "NOT_FOUND", `Tab ${spaceId} is not open`);
-      }
-      if (beforeSpaceId !== null && !current.includes(beforeSpaceId)) {
-        return err(req.id, "NOT_FOUND", `Tab ${beforeSpaceId} is not open`);
-      }
-      if (spaceId === beforeSpaceId) {
+      // Both ids were read off a list the caller saw a moment ago, and either
+      // can leave it in between — they close that tab, or their other window
+      // does. The move then has no object, which is not a failure: there is
+      // simply nothing to write. The browser reads the same arrival and
+      // retires the move for the same reason, so both sides answer this state
+      // the same way.
+      if (
+        !current.includes(spaceId) ||
+        (beforeSpaceId !== null && !current.includes(beforeSpaceId)) ||
+        spaceId === beforeSpaceId
+      ) {
         return ok(req.id, { orderChanged: seeded });
       }
 

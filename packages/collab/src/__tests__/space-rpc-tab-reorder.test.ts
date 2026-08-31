@@ -233,26 +233,32 @@ describe("tab:reorder — moving a tab", () => {
   });
 });
 
-describe("tab:reorder — what it refuses", () => {
+describe("tab:reorder — a move with nothing to act on", () => {
+  // Both ids are read off a list the caller saw a moment ago, and either can
+  // leave it in between: the user closes that tab from the drawer, or their
+  // other window does. What is left is a move with no object, which is not a
+  // failure — nothing was asked for that could not be given. Answering it as
+  // an error puts a developer sentence carrying a UUID in front of the user
+  // and makes the client throw away moves that are still queued behind it.
   beforeEach(() => {
     seedSpace(A, 100);
     seedSpace(B, 200);
     seedSpace(C, 300);
   });
 
-  it("answers NOT_FOUND when the moved tab is not in the caller's list", async () => {
+  it("writes nothing when the moved tab is not in the caller's list", async () => {
     seedTabs(ACTOR, [A, B]);
     const res = await reorder(C, A);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.result).toEqual({ orderChanged: false });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 
-  it("answers NOT_FOUND when the anchor is not in the caller's list", async () => {
+  it("writes nothing when the anchor is not in the caller's list", async () => {
     seedTabs(ACTOR, [A, B]);
     const res = await reorder(A, C);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.result).toEqual({ orderChanged: false });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 });
@@ -317,15 +323,16 @@ describe("tab:reorder — the caller has no list yet", () => {
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 
-  it("still leaves a seeded list behind when the guard then refuses", async () => {
-    // Seeding is a write and has to happen before the guard can ask whether
-    // the tab is in the list, so a refused reorder still leaves the caller
-    // with the list they were always going to get.
+  it("still leaves a seeded list behind when the move has nothing to act on", async () => {
+    // Seeding is a write and has to happen before anything can ask whether
+    // the tab is in the list, so a move with no object still leaves the
+    // caller with the list they were always going to get — and the reply
+    // reports that write, because a broadcast for it is on its way.
     seedSpace(A, 100);
     seedSpace(B, 200);
     const res = await reorder("not-a-space", null);
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.result).toEqual({ orderChanged: true });
     expect(readTabs(ACTOR)).toEqual([A, B]);
   });
 });
