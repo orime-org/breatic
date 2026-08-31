@@ -207,34 +207,64 @@ function innermostQuoteRange(tr: Transaction, blocks: number[]): NodeRange | nul
 }
 
 /**
- * Would taking the quote off free a block nobody selected?
+ * Carries the selection's list out of the quote holding it.
  *
- * A8 leaves the blocks nobody selected inside the quote they were in, and the
- * split at the selection's edges is what normally arranges that: it puts the
- * selected run in a list of its own, which the lift then takes out alone. A
- * line inside a NESTED list cannot be arranged that way — freeing it means
- * splitting `listItem` where the second half would open with a list, and
- * `listItem` is `paragraph block*`. The range then still covers its neighbours,
- * and lifting it would take them out of the quote too.
+ * A quote is 0 or 1 levels, never 2 (user 2026-08-31), so a press has to leave
+ * the selection unquoted however deep the lists go. {@link unwrapQuotes} lifts
+ * a whole child of the quote, and {@link splitListAtSelectionEdges} is what
+ * normally leaves that child holding the selection and nothing else. Blocks
+ * DEEPER than the quote's own child cannot be isolated that way: it would mean
+ * splitting the `listItem` between at a point where its second half opens with
+ * a list, and `listItem` is `paragraph block*`. Lifting then takes the item's
+ * other blocks out of the quote as well, which A8 forbids.
  *
- * Asked after the split and before the lift, so it reads the range the lift
- * would actually act on.
- * @param tr - The transaction, already split at the selection's edges.
+ * So that stretch is carried instead of freed in place: the list holding it —
+ * already split down to the selected items — is cut out, the quote is split
+ * after the item that held it, and the list goes between the two halves. Where
+ * that item is the quote's last, there is no second half to make and the list
+ * follows the quote. The block type never moves: what comes out is the same
+ * list it was an item of.
+ *
+ * Of the four editors surveyed only CKEditor 5 ends here
+ * (`demo/2026-08-31-unquote-nested-industry.html`); the other three leave the
+ * line quoted, which this document's rule 5 does not allow.
+ * @param tr - The transaction, written into.
  * @param blocks - Where the press's blocks stood when it started.
- * @returns Whether the lift would reach a block outside the selection.
+ * @returns Whether the list came out.
  */
-function quoteWouldFreeOthers(tr: Transaction, blocks: number[]): boolean {
-  const range = innermostQuoteRange(tr, blocks);
-  if (!range) return false;
-  const selected = new Set(movedTo(tr, blocks));
-  let others = false;
-  tr.doc.nodesBetween(range.start, range.end, (node, pos) => {
-    if (others) return false;
-    if (!node.isTextblock) return true;
-    if (!selected.has(pos + 1)) others = true;
-    return false;
-  });
-  return others;
+function carryOutOfQuote(tr: Transaction, blocks: number[]): boolean {
+  const quote = innermostQuoteRange(tr, blocks);
+  const ends = selectionEnds(tr, blocks);
+  if (!quote || !ends) return false;
+  const $first = tr.doc.resolve(ends.first);
+  const listAt = listDepthAt($first);
+  // The quote's own child sits one in; anything at that depth or shallower is
+  // what the split and the lift already handle.
+  const childAt = quote.depth + 1;
+  if (listAt === null || listAt <= childAt) return false;
+
+  const carried = $first.node(listAt);
+  const afterItem = $first.after(childAt + 1);
+  const afterQuote = $first.after(quote.depth);
+  // Read before the cut: taking a list out of an item changes neither the
+  // item's place among its siblings nor how many of them there are.
+  const trailing = $first.index(childAt) + 1 < $first.node(childAt).childCount;
+
+  // Both positions were read off the document as it stands now, so only the
+  // steps from here on may move them — `tr.mapping` covers the whole press.
+  const before = tr.mapping.maps.length;
+  tr.delete($first.before(listAt), $first.after(listAt));
+  const cut = tr.mapping.slice(before);
+  if (!trailing) {
+    tr.insert(cut.map(afterQuote), carried);
+    return true;
+  }
+  const at = cut.map(afterItem);
+  // Two levels: the quote's child closes and reopens, and so does the quote.
+  if (!canSplit(tr.doc, at, 2)) return false;
+  tr.split(at, 2);
+  tr.insert(at + 2, carried);
+  return true;
 }
 
 /**
@@ -517,7 +547,10 @@ function applyTransition(
     // quote holding them then splits an original quote at those same edges and
     // leaves the blocks nobody selected inside it.
     splitListAtSelectionEdges(tr, at, quoteDepth(tr, at, marked));
-    if (marked && quoteWouldFreeOthers(tr, at)) return false;
+    // A carry answers for itself: it moves the blocks out of the document
+    // position `landedOn` would read them back at, and every step of it is
+    // guarded, so getting to the end of one is the press arriving.
+    if (marked && carryOutOfQuote(tr, at)) return true;
     unwrapQuotes(tr, at);
     if (!marked && !wrapInQuote(tr, at)) return false;
     return landedOn(tr, at, 'quote', !marked);

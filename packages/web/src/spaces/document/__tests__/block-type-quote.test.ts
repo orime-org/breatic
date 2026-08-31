@@ -100,35 +100,71 @@ describe('a nested list item', () => {
   });
 });
 
-describe('taking a quote off one line buried in a nested list', () => {
-  // A8 wants the blocks nobody selected left inside the quote they were in.
-  // The split at the selection's edges is what normally arranges that: it
-  // leaves the selected run in a list of its own, which the unwrap then takes
-  // out on its own. A line inside a nested list cannot be arranged that way —
-  // freeing it means splitting `li` at a point where the second half would open
-  // with `<ol>`, and `listItem` is `paragraph block*`.
-  //
-  // Three of the four editors surveyed leave the unselected blocks quoted
-  // (measured 2026-08-31): tiptap lifts the line one level and it stays in the
-  // quote; Lexical lifts it out of both lists into the quote; CKEditor 5 splits
-  // the quote, which its flat list model allows. Ours has tiptap's schema and
-  // rule 3 keeps the block type still, so the row answers that it cannot reach
-  // this selection.
+describe('taking a quote off lines buried in a nested list', () => {
+  // A quote is 0 or 1 levels, never 2 (user 2026-08-31), so a press that leaves
+  // the selection quoted is wrong however deep the lists go. The split at the
+  // selection's edges arranges the ordinary cases: it leaves the selected run in
+  // a list of its own, which the unwrap then takes out alone. A line deeper than
+  // the quote's own child cannot be arranged that way — isolating it means
+  // splitting `li` where the second half would open with a list, and `listItem`
+  // is `paragraph block*`. That stretch is carried out instead: the list holding
+  // it is cut, the quote split after the item that held it, and the cut list put
+  // between the two halves. Of the four editors surveyed only CKEditor 5 ends
+  // here (`demo/2026-08-31-unquote-nested-industry.html`).
   const BURIED = '<blockquote><ul><li><p>a</p>'
     + '<ol><li><p>b</p></li><li><p>c</p></li></ol>'
     + '</li><li><p>z</p></li></ul></blockquote>';
 
-  it('greys the row rather than freeing the whole quote', () => {
+  it('frees the buried line and leaves the other three quoted', () => {
     const editor = openBody(BURIED);
     selectBlock(editor, 'c');
-    expect(canRunBlockType(editor, 'quote')).toBe(false);
+    expect(canRunBlockType(editor, 'quote')).toBe(true);
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<blockquote><ul><li><p>a</p><ol><li><p>b</p></li></ol></li></ul></blockquote>'
+        + '<ol><li><p>c</p></li></ol>'
+        + '<blockquote><ul><li><p>z</p></li></ul></blockquote>',
+    );
   });
 
-  it('writes nothing when the row is pressed anyway', () => {
+  it('frees the whole inner list where the selection covers all of it', () => {
     const editor = openBody(BURIED);
+    selectRange(editor, 'b', 'c');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<blockquote><ul><li><p>a</p></li></ul></blockquote>'
+        + '<ol><li><p>b</p></li><li><p>c</p></li></ol>'
+        + '<blockquote><ul><li><p>z</p></li></ul></blockquote>',
+    );
+  });
+
+  it('puts the line after the quote where its item was the quote\'s last', () => {
+    // Nothing follows the item, so there is no second half of the quote to
+    // make. Splitting anyway would leave an empty one behind.
+    const editor = openBody(
+      '<blockquote><ul><li><p>a</p>'
+        + '<ol><li><p>b</p></li><li><p>c</p></li></ol>'
+        + '</li></ul></blockquote>',
+    );
     selectBlock(editor, 'c');
     runBlockType(editor, 'quote');
-    expect(editor.getHTML()).toBe(BURIED);
+    expect(editor.getHTML()).toBe(
+      '<blockquote><ul><li><p>a</p><ol><li><p>b</p></li></ol></li></ul></blockquote>'
+        + '<ol><li><p>c</p></li></ol>',
+    );
+  });
+
+  it('carries the indented lines along when the item above them is the one picked', () => {
+    // `b` and `c` are indented under `a`, so they go where `a` goes — the same
+    // way Tab and Shift-Tab move an item with everything nested below it. Only
+    // `z`, an item of its own, stays behind.
+    const editor = openBody(BURIED);
+    selectBlock(editor, 'a');
+    runBlockType(editor, 'quote');
+    expect(editor.getHTML()).toBe(
+      '<ul><li><p>a</p><ol><li><p>b</p></li><li><p>c</p></li></ol></li></ul>'
+        + '<blockquote><ul><li><p>z</p></li></ul></blockquote>',
+    );
   });
 
   it('still frees a line the split can isolate', () => {
