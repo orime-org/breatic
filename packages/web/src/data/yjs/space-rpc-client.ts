@@ -21,6 +21,35 @@ export interface RpcCapableProvider {
   off(event: 'stateless', cb: (data: { payload: string }) => void): void;
 }
 
+/**
+ * The request reached the socket and no answer came back for it.
+ *
+ * Nothing recalls a request once it is out: the server may have carried it
+ * out and the reply been lost, or it may never have arrived. A caller holding
+ * optimistic state has to tell this apart from a server that answered no —
+ * undoing a move the server made leaves the two ends disagreeing until the
+ * page is reloaded.
+ */
+export class SpaceRpcUnanswered extends Error {
+  /**
+   * Names the request that drew no answer.
+   * @param message - What went unanswered.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = 'SpaceRpcUnanswered';
+  }
+}
+
+/**
+ * Whether a rejection means the request went out and drew no answer.
+ * @param err - What a caller caught.
+ * @returns True for {@link SpaceRpcUnanswered}.
+ */
+export function isUnanswered(err: unknown): boolean {
+  return err instanceof SpaceRpcUnanswered;
+}
+
 export interface SendSpaceRpcOptions {
   /** Round-trip timeout in ms. Default 10000 (user-confirmed 2026-05-25). */
   timeoutMs?: number;
@@ -92,7 +121,7 @@ export async function sendSpaceRpc(
     timer = setTimeout(() => {
       cleanup();
       reject(
-        new Error(
+        new SpaceRpcUnanswered(
           `Space RPC timeout for type=${request.type} (id=${id}, ${timeoutMs}ms)`,
         ),
       );

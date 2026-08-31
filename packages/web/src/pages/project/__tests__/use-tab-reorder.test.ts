@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { StrictMode } from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
+import { SpaceRpcUnanswered } from '@web/data/yjs/space-rpc-client';
 import { useTabReorder } from '@web/pages/project/use-tab-reorder';
 
 const A = 'a';
@@ -410,6 +411,85 @@ describe('useTabReorder — when the pending order is let go of', () => {
     await waitFor(() => {
       expect(result.current.order).toEqual([A, B, C]);
     });
+  });
+
+  it('keeps the move on screen when the request went out unanswered', async () => {
+    // Nothing recalls a request that timed out, so the server may have
+    // carried it out. Rolling back here would undo a move that happened, and
+    // would put the next drag on top of an order the document never had.
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    await act(async () => {
+      first.reject(new SpaceRpcUnanswered('no answer'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.order).toEqual([C, A, B]);
+    });
+  });
+
+  it('holds the queue while a move is out unanswered', async () => {
+    // Whether the server took the first move decides what the second one
+    // means, so the second waits for the broadcast that would say so.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    await act(async () => {
+      first.reject(new SpaceRpcUnanswered('no answer'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.order).toEqual([C, B, A]);
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends what queued up once the unanswered move broadcasts', async () => {
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result, rerender } = renderHook(
+      ({ ids }: { ids: ReadonlyArray<string> }) => useTabReorder(ids, send),
+      { initialProps: { ids: [A, B, C] as ReadonlyArray<string> } },
+    );
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    await act(async () => {
+      first.reject(new SpaceRpcUnanswered('no answer'));
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // The server had taken it after all.
+    rerender({ ids: [C, A, B] });
+
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+    expect(send).toHaveBeenLastCalledWith(A, null);
   });
 
   it('takes the queued move back with the one that failed', async () => {

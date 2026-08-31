@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { isUnanswered } from '@web/data/yjs/space-rpc-client';
 import {
   changesNothing,
   landedCount,
@@ -64,6 +65,12 @@ export function useTabReorder(
   const sent = React.useRef<ReadonlySet<number>>(new Set());
   /** Whether the wire is busy. Requests go out one at a time. */
   const inFlight = React.useRef(false);
+  /**
+   * Whether a move went out and drew no answer. The moves behind it were
+   * computed on top of it, and only its broadcast says whether the server
+   * took it, so nothing more goes out until an arrival settles the question.
+   */
+  const held = React.useRef(false);
   const lastId = React.useRef(0);
 
   const sendRef = React.useRef(send);
@@ -85,7 +92,7 @@ export function useTabReorder(
   }, []);
 
   const pump = React.useCallback((): void => {
-    if (inFlight.current) return;
+    if (inFlight.current || held.current) return;
     const next = nextUnsent(owedRef.current, sent.current);
     if (!next) return;
     sent.current = new Set(sent.current).add(next.id);
@@ -99,8 +106,18 @@ export function useTabReorder(
           commit(retire(owedRef.current, next.id));
         }
       })
-      .catch(() => {
-        // The caller surfaced the failure.
+      .catch((err: unknown) => {
+        if (isUnanswered(err)) {
+          // The request went out and drew no answer, so the server may have
+          // written this move. Rolling back would undo something that
+          // happened; the strip keeps what the user let go of, and the queue
+          // stays put — whether this move landed decides what the ones behind
+          // it mean, and only its broadcast can say.
+          held.current = true;
+          return;
+        }
+        // The server said no. This move goes back, and so do the ones behind
+        // it — each was computed on top of the one before.
         commit(rollbackFrom(owedRef.current, next.id));
       })
       .finally(() => {
@@ -134,8 +151,13 @@ export function useTabReorder(
   React.useEffect(() => {
     const landed = landedCount(openTabIds, owedRef.current);
     if (landed === 0) return;
+    // An arrival that retires the oldest owed move is the broadcast for
+    // whatever was on the wire, so a move that drew no answer is answered
+    // after all and what queued up behind it can go.
+    held.current = false;
     commit(owedRef.current.slice(landed));
-  }, [openTabIds, commit]);
+    pump();
+  }, [openTabIds, commit, pump]);
 
   return { order, reorder };
 }

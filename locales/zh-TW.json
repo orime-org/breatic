@@ -592,6 +592,7 @@
         "openTab": "開啟標籤失敗",
         "closeTab": "關閉標籤失敗",
         "reorderTab": "移動標籤失敗",
+        "reorderTabUnanswered": "伺服器沒有回應，重新整理頁面可以看到目前的標籤順序",
         "unreachable": "伺服器沒有回應,請檢查網路後重試",
         "notSynced": "Project 正在同步,請稍後再試"
       },

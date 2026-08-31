@@ -592,6 +592,7 @@
         "openTab": "탭을 열지 못했습니다",
         "closeTab": "탭을 닫지 못했습니다",
         "reorderTab": "탭을 옮기지 못했습니다",
+        "reorderTabUnanswered": "서버가 응답하지 않았습니다. 페이지를 새로 고치면 현재 탭 순서를 확인할 수 있습니다",
         "unreachable": "서버가 응답하지 않습니다 — 연결을 확인한 후 다시 시도하세요",
         "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
       },

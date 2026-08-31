@@ -592,6 +592,7 @@
         "openTab": "打开标签失败",
         "closeTab": "关闭标签失败",
         "reorderTab": "移动标签失败",
+        "reorderTabUnanswered": "服务器没有响应，刷新页面可以看到当前的标签顺序",
         "unreachable": "服务器没有响应,请检查网络后重试",
         "notSynced": "Project 正在同步,请稍后再试"
       },

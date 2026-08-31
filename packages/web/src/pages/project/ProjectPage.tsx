@@ -292,6 +292,7 @@ function ProjectWorkspace({
     async (
       req: Parameters<typeof sendSpaceRpc>[1],
       errorToastKey: string,
+      unansweredToastKey?: string,
     ): Promise<SpaceRpcResponse> => {
       if (!provider) {
         // Surface a toast on the "no provider yet" path too - without this
@@ -314,9 +315,17 @@ function ProjectWorkspace({
         // could close a tab and never hear anything back (real-browser
         // smoke, 2026-08-03). The thrown message is a developer string, so
         // the user gets a written one instead.
-        toast.error(t(errorToastKey), {
-          description: t('project.space.error.unreachable'),
-        });
+        //
+        // A caller that keeps showing what the user did while the answer is
+        // missing passes its own line, because "that failed" would contradict
+        // what is on screen and the server may well have done it.
+        if (unansweredToastKey !== undefined) {
+          toast.error(t(unansweredToastKey));
+        } else {
+          toast.error(t(errorToastKey), {
+            description: t('project.space.error.unreachable'),
+          });
+        }
         throw err;
       }
       if (!res.ok) {
@@ -333,13 +342,16 @@ function ProjectWorkspace({
    * @param spaceId - The tab that moved.
    * @param beforeSpaceId - The tab it landed in front of, null for the end.
    * @returns Whether the order on the server changed, so a broadcast is coming.
-   * @throws {Error} When the request found no answer or the server said no.
+   * @throws {SpaceRpcUnanswered} When the request went out and drew no answer,
+   *   which leaves it open whether the server carried it out.
+   * @throws {Error} When the server said no.
    */
   const sendReorder = React.useCallback(
     async (spaceId: string, beforeSpaceId: string | null): Promise<boolean> => {
       const res = await callRpc(
         { type: 'tab:reorder', payload: { spaceId, beforeSpaceId } },
         'project.space.error.reorderTab',
+        'project.space.error.reorderTabUnanswered',
       );
       return res.ok && res.result && 'wrote' in res.result
         ? res.result.wrote

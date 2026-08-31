@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 
 /**
  * Minimal stub of the slice of HocuspocusProvider that
@@ -119,6 +119,41 @@ describe('sendSpaceRpc', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('marks a timeout as a request that went out unanswered', async () => {
+    // The request was handed to the socket and nothing recalls it, so the
+    // server may well have carried it out. A caller that rolls its own state
+    // back here would be undoing something that happened.
+    vi.useFakeTimers();
+    try {
+      const provider = makeStubProvider();
+      const promise = sendSpaceRpc(
+        provider as unknown as Parameters<typeof sendSpaceRpc>[0],
+        { type: 'space:lock', payload: { spaceId: 'sp-1', locked: true } },
+        { idGen: () => 'rpc-U', timeoutMs: 1000 },
+      );
+      vi.advanceTimersByTime(1001);
+      await expect(promise).rejects.toSatisfy(isUnanswered);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not mark a schema failure as unanswered', async () => {
+    // An answer arrived; it was the wrong shape. The server spoke, so this
+    // says nothing about whether the request went through.
+    const provider = makeStubProvider();
+    const promise = sendSpaceRpc(
+      provider as unknown as Parameters<typeof sendSpaceRpc>[0],
+      { type: 'space:lock', payload: { spaceId: 'sp-1', locked: true } },
+      { idGen: () => 'rpc-S', timeoutMs: 1000 },
+    );
+    provider._emit(JSON.stringify({ id: 'rpc-S', ok: 'not-a-boolean' }));
+    await expect(
+      Promise.race([promise, Promise.resolve('still-waiting')]),
+    ).resolves.toBe('still-waiting');
+    expect(isUnanswered(new Error('anything else'))).toBe(false);
   });
 
   it('removes the stateless listener on resolve (no leak)', async () => {
