@@ -14,7 +14,8 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
-import { runBlockType, markedIds } from '@web/spaces/document/document-block-model';
+import { markedIds } from '@web/spaces/document/document-block-model';
+import { runBlockType } from '@web/spaces/document/document-block-press';
 
 import { openBody, closeAll, selectBlock, selectWholeBody } from './block-type-fixtures';
 

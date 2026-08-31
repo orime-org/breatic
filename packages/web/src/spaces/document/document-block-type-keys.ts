@@ -17,7 +17,7 @@
 
 import { Extension } from '@tiptap/core';
 
-import { runBlockType } from '@web/spaces/document/document-block-model';
+import { runBlockType } from '@web/spaces/document/document-block-press';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 import {
   BLOCK_TYPE_SHORTCUTS,

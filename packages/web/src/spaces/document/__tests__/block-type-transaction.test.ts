@@ -13,7 +13,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 import type { Editor } from '@tiptap/core';
 
-import { runBlockType } from '@web/spaces/document/document-block-model';
+import { runBlockType } from '@web/spaces/document/document-block-press';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import { openBody, closeAll, selectBlock, selectWholeBody } from './block-type-fixtures';

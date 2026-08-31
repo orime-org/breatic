@@ -13,7 +13,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { markedIds, runBlockType } from '@web/spaces/document/document-block-model';
+import { markedIds } from '@web/spaces/document/document-block-model';
+import { runBlockType } from '@web/spaces/document/document-block-press';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import {

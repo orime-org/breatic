@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 
-import { canRunBlockType, runBlockType } from '@web/spaces/document/document-block-model';
+import { canRunBlockType, runBlockType } from '@web/spaces/document/document-block-press';
 
 import { openBody, closeAll, selectBlock, selectRange } from './block-type-fixtures';
 

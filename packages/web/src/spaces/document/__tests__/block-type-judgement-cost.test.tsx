@@ -16,7 +16,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, waitFor } from '@testing-library/react';
 
-import { canRunBlockType } from '@web/spaces/document/document-block-model';
+import { canRunBlockType } from '@web/spaces/document/document-block-press';
 
 import {
   mountDocumentEditor,
@@ -26,9 +26,9 @@ import {
 } from './bubble-bar-harness';
 import { selectWholeBody } from './block-type-fixtures';
 
-vi.mock('@web/spaces/document/document-block-model', async (importOriginal) => {
+vi.mock('@web/spaces/document/document-block-press', async (importOriginal) => {
   const real = await importOriginal<
-    typeof import('@web/spaces/document/document-block-model')
+    typeof import('@web/spaces/document/document-block-press')
   >();
   return { ...real, canRunBlockType: vi.fn(real.canRunBlockType) };
 });

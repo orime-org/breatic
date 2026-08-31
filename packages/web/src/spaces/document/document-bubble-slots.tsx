@@ -49,13 +49,12 @@ import {
 } from '@web/spaces/document/document-block-type';
 import { printedShortcut } from '@web/spaces/document/document-block-type-shortcuts';
 import {
-  canRunBlockType,
   currentBlockType,
   isExclusiveRow,
   markedIds,
-  runBlockType,
-  selectionCanAlign,
 } from '@web/spaces/document/document-block-model';
+import { canRunBlockType, runBlockType } from '@web/spaces/document/document-block-press';
+import { selectionCanAlign } from '@web/spaces/document/document-align-model';
 import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
