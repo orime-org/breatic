@@ -144,6 +144,9 @@ function context(history: MessageData[], conversationMemory = "") {
   };
 }
 
+/** Every chunk the last turn put on the wire. */
+let sent: { type: string }[] = [];
+
 /**
  * Run one turn to the end of its stream.
  * @param signal - Raised before the turn starts, for the stopped case.
@@ -157,9 +160,10 @@ async function runTurn(signal?: AbortSignal): Promise<void> {
     { type: "text-end", id: "t1" },
     finishedSpending(10),
   ] satisfies ModelStreamPart[];
+  sent = [];
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    for await (const _chunk of await new MainAgent().chat("hi", signal)) {
-      // drained
+    for await (const chunk of await new MainAgent().chat("hi", signal)) {
+      sent.push(chunk as { type: string });
     }
   });
 }
@@ -280,6 +284,28 @@ describe("a turn that measured over the budget", () => {
     expect(folded).toContain("q1");
     expect(folded).toContain("q2");
     expect(folded).not.toContain("q3");
+  });
+
+  it("tells the reader why this turn is taking longer", async () => {
+    // N3: the fold is a second model call in front of the reply, seconds
+    // long, on a turn where somebody is watching an empty panel. It does not
+    // make the wait shorter; it makes it explainable.
+    contexts.queue = [
+      context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+      context([...turn(3, 6000)], "what turns 1 and 2 came to"),
+    ];
+
+    await runTurn();
+
+    expect(sent.map((c) => c.type)).toContain("data-memory-consolidating");
+  });
+
+  it("says nothing of the sort on a turn that folds nothing", async () => {
+    contexts.queue = [context([...turn(1, 2000), ...turn(2, 2000)])];
+
+    await runTurn();
+
+    expect(sent.map((c) => c.type)).not.toContain("data-memory-consolidating");
   });
 
   it("assembles a second time and sends that one", async () => {
