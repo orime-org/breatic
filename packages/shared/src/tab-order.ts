@@ -103,3 +103,21 @@ export function sortSpaceIdsForTabOrder(
     })
     .map((e) => e.id);
 }
+
+/**
+ * Whether two orders hold the same ids in the same places.
+ *
+ * Both sides of the wire ask this: collab to say whether a move would write
+ * anything, the browser to say whether an arriving order already shows a move
+ * it is holding. One answer, so the two cannot come to disagree about what
+ * "the order changed" means.
+ * @param a - One order.
+ * @param b - The other.
+ * @returns True when writing either over the other would change nothing.
+ */
+export function sameTabOrder(
+  a: ReadonlyArray<string>,
+  b: ReadonlyArray<string>,
+): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}

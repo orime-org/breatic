@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { applyTabMove } from '@breatic/shared';
+import { applyTabMove, sameTabOrder } from '@breatic/shared';
 
 /** What the tab bar renders, and how a drag tells this layer about itself. */
 export interface TabReorderResult {
@@ -29,19 +29,6 @@ interface OwedMove {
   id: number;
   spaceId: string;
   beforeSpaceId: string | null;
-}
-
-/**
- * Whether two id lists hold the same ids in the same places.
- * @param a - One list.
- * @param b - The other.
- * @returns True when they are indistinguishable to a reader.
- */
-function sameIds(
-  a: ReadonlyArray<string>,
-  b: ReadonlyArray<string>,
-): boolean {
-  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 /**
@@ -78,7 +65,7 @@ function landedCount(
   let n = 0;
   while (n < moves.length) {
     const m = moves[n] as OwedMove;
-    if (!sameIds(applyTabMove(stored, m.spaceId, m.beforeSpaceId), stored)) {
+    if (!sameTabOrder(applyTabMove(stored, m.spaceId, m.beforeSpaceId), stored)) {
       break;
     }
     n += 1;
@@ -178,7 +165,7 @@ export function useTabReorder(
       // The tab landed where it already was. Sending it would ask collab to
       // do nothing and, when collab is unreachable, raise a failure for an
       // action that needed nothing from it.
-      if (sameIds(applyTabMove(base, spaceId, beforeSpaceId), base)) return;
+      if (sameTabOrder(applyTabMove(base, spaceId, beforeSpaceId), base)) return;
       lastId.current += 1;
       commit([
         ...owedRef.current,

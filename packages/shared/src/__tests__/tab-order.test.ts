@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   applyTabMove,
   dedupeTabOrder,
+  sameTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@shared/tab-order.js";
 
@@ -126,5 +127,29 @@ describe("sortSpaceIdsForTabOrder", () => {
 
   it("returns an empty list for an empty input", () => {
     expect(sortSpaceIdsForTabOrder([])).toEqual([]);
+  });
+});
+
+describe("sameTabOrder", () => {
+  it("says two orders holding the same ids in the same places are the same", () => {
+    expect(sameTabOrder(["a", "b", "c"], ["a", "b", "c"])).toBe(true);
+  });
+
+  it("says two empty orders are the same", () => {
+    expect(sameTabOrder([], [])).toBe(true);
+  });
+
+  it("separates two orders holding the same ids in other places", () => {
+    expect(sameTabOrder(["a", "b"], ["b", "a"])).toBe(false);
+  });
+
+  it("separates orders of different lengths", () => {
+    expect(sameTabOrder(["a"], ["a", "b"])).toBe(false);
+  });
+
+  it("counts a repeated id as its own place", () => {
+    // Two collab instances that had not synced can leave the same id in the
+    // list twice, so this has to tell that list from the deduped one.
+    expect(sameTabOrder(["a", "a"], ["a"])).toBe(false);
   });
 });

@@ -308,6 +308,7 @@ export { newId, deriveId } from "@shared/ids.js";
 export {
   applyTabMove,
   dedupeTabOrder,
+  sameTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@shared/tab-order.js";
 

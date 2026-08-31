@@ -77,6 +77,7 @@ import {
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
   applyTabMove,
+  sameTabOrder,
   sortSpaceIdsForTabOrder,
 } from "@breatic/shared";
 
@@ -1509,19 +1510,6 @@ async function handleTabClose(
 }
 
 /**
- * Whether two id lists hold the same ids in the same places.
- * @param a - One list.
- * @param b - The other.
- * @returns True when writing `b` over `a` would change nothing.
- */
-function sameOrder(
-  a: ReadonlyArray<string>,
-  b: ReadonlyArray<string>,
-): boolean {
-  return a.length === b.length && a.every((id, i) => id === b[i]);
-}
-
-/**
  * Move one tab inside the caller's own tab bar.
  *
  * The request says which tab moves and which one it lands in front of, and
@@ -1589,7 +1577,7 @@ async function handleTabReorder(
       }
 
       const next = applyTabMove(current, spaceId, beforeSpaceId);
-      if (sameOrder(next, current)) {
+      if (sameTabOrder(next, current)) {
         return ok(req.id, { orderChanged: seeded });
       }
       mark();
