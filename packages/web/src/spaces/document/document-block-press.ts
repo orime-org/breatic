@@ -207,6 +207,37 @@ function innermostQuoteRange(tr: Transaction, blocks: number[]): NodeRange | nul
 }
 
 /**
+ * Would taking the quote off free a block nobody selected?
+ *
+ * A8 leaves the blocks nobody selected inside the quote they were in, and the
+ * split at the selection's edges is what normally arranges that: it puts the
+ * selected run in a list of its own, which the lift then takes out alone. A
+ * line inside a NESTED list cannot be arranged that way — freeing it means
+ * splitting `listItem` where the second half would open with a list, and
+ * `listItem` is `paragraph block*`. The range then still covers its neighbours,
+ * and lifting it would take them out of the quote too.
+ *
+ * Asked after the split and before the lift, so it reads the range the lift
+ * would actually act on.
+ * @param tr - The transaction, already split at the selection's edges.
+ * @param blocks - Where the press's blocks stood when it started.
+ * @returns Whether the lift would reach a block outside the selection.
+ */
+function quoteWouldFreeOthers(tr: Transaction, blocks: number[]): boolean {
+  const range = innermostQuoteRange(tr, blocks);
+  if (!range) return false;
+  const selected = new Set(movedTo(tr, blocks));
+  let others = false;
+  tr.doc.nodesBetween(range.start, range.end, (node, pos) => {
+    if (others) return false;
+    if (!node.isTextblock) return true;
+    if (!selected.has(pos + 1)) others = true;
+    return false;
+  });
+  return others;
+}
+
+/**
  * Takes every quote off the selected blocks, however many levels deep.
  *
  * Where the selection covers only part of a quote's content, the lift splits
@@ -486,6 +517,7 @@ function applyTransition(
     // quote holding them then splits an original quote at those same edges and
     // leaves the blocks nobody selected inside it.
     splitListAtSelectionEdges(tr, at, quoteDepth(tr, at, marked));
+    if (marked && quoteWouldFreeOthers(tr, at)) return false;
     unwrapQuotes(tr, at);
     if (!marked && !wrapInQuote(tr, at)) return false;
     return landedOn(tr, at, 'quote', !marked);

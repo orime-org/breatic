@@ -124,9 +124,6 @@ interface SlotShellProps extends Omit<SlotProps, 'editor'> {
  */
 const ROWS = 'flex flex-col gap-1';
 
-/** What a shut block type menu knows about which rows it would grey. */
-const NO_ROWS: ReadonlySet<BlockTypeId> = new Set();
-
 /** The colour panel's own group label, at the demo's `.color-group-label` size and colour. */
 const COLOUR_GROUP_LABEL = 'px-2 pb-2 text-xs text-muted-foreground';
 
@@ -233,22 +230,25 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   // transaction the press would build, so the row's look and the row's effect
   // are one answer.
   //
-  // Once, when the menu opens. Building nine transactions is what makes the
-  // answer trustworthy, and it costs with the square of the selection: over a
-  // select-all, one pass is 42ms at 200 list items, 303ms at 600 and 764ms at
-  // 1000 (measured 2026-08-31). An editor selector re-runs on every transaction
-  // the editor sees, and the menu stays down while a co-editor types, so that
-  // would charge the whole pass to each of their keystrokes. The reader's own
-  // press re-reads the state it is given, so what it does never rests on this.
+  // Asked on every transaction the menu is down for, and on none of the ones it
+  // is shut for. Both halves matter. The press reads the state it is given at
+  // the moment of the press, so an answer from when the menu opened would draw
+  // a row greyed while the press behind it goes through — a co-editor taking a
+  // quote away is enough (A37, A38). And building nine transactions costs with
+  // the square of the selection — over a select-all, 42ms at 200 list items,
+  // 303ms at 600, 764ms at 1000 (measured 2026-08-31) — which is why the rows
+  // nobody is looking at are not asked about at all. The cost of the open menu
+  // is the price of the row telling the truth; #932 holds the square itself.
   const open = openId === id;
-  const unreachable = React.useMemo(
-    () => (open
-      ? new Set<BlockTypeId>(
-        BLOCK_TYPE_ITEMS.filter((item) => !canRunBlockType(editor, item.id)).map((i) => i.id),
-      )
-      : NO_ROWS),
-    [open, editor],
-  );
+  const unreachable = useEditorState({
+    editor,
+    selector: ({ editor: e }) =>
+      new Set<BlockTypeId>(
+        e && open
+          ? BLOCK_TYPE_ITEMS.filter((item) => !canRunBlockType(e, item.id)).map((i) => i.id)
+          : [],
+      ),
+  });
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
