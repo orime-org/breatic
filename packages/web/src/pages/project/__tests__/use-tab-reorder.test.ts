@@ -433,6 +433,34 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
   });
 
+  it('stops sending once the strip is gone', async () => {
+    // The provider the queue holds is released with the page, so what goes
+    // out after that reaches nothing and reports a failure for a project the
+    // user has already left.
+    const first = deferred();
+    const second = deferred();
+    const send = vi
+      .fn<(spaceId: string, before: string | null) => Promise<boolean>>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result, unmount } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+
+    unmount();
+    await act(async () => {
+      first.resolve(true);
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it('carries the queue past a move that went unanswered', async () => {
     const first = deferred();
     const second = deferred();

@@ -143,17 +143,23 @@ describe('sendSpaceRpc', () => {
   it('keeps waiting on a reply of the wrong shape', async () => {
     // A malformed reply is not an answer, so the request runs on to its
     // timeout and is reported the same way as one that drew nothing at all.
-    const provider = makeStubProvider();
-    const promise = sendSpaceRpc(
-      provider as unknown as Parameters<typeof sendSpaceRpc>[0],
-      { type: 'space:lock', payload: { spaceId: 'sp-1', locked: true } },
-      { idGen: () => 'rpc-S', timeoutMs: 1000 },
-    );
-    provider._emit(JSON.stringify({ id: 'rpc-S', ok: 'not-a-boolean' }));
-    await expect(
-      Promise.race([promise, Promise.resolve('still-waiting')]),
-    ).resolves.toBe('still-waiting');
-    await expect(promise).rejects.toSatisfy(isUnanswered);
+    vi.useFakeTimers();
+    try {
+      const provider = makeStubProvider();
+      const promise = sendSpaceRpc(
+        provider as unknown as Parameters<typeof sendSpaceRpc>[0],
+        { type: 'space:lock', payload: { spaceId: 'sp-1', locked: true } },
+        { idGen: () => 'rpc-S', timeoutMs: 1000 },
+      );
+      provider._emit(JSON.stringify({ id: 'rpc-S', ok: 'not-a-boolean' }));
+      await expect(
+        Promise.race([promise, Promise.resolve('still-waiting')]),
+      ).resolves.toBe('still-waiting');
+      vi.advanceTimersByTime(1001);
+      await expect(promise).rejects.toSatisfy(isUnanswered);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('leaves every other failure outside the unanswered class', () => {

@@ -6,8 +6,9 @@
  *
  * The drag itself belongs to dnd-kit and is exercised in a real browser; what
  * is checked here is the page's half — the move goes out as a `tab:reorder`
- * over the live meta connection, the strip shows it at once, and a request the
- * server never answered leaves the strip where the document says it is. The
+ * over the live meta connection, the strip shows it at once, a refusal puts
+ * the tab back, and a request that drew no answer leaves it where the user
+ * dropped it because the server may have taken it. The
  * tab bar therefore stands in for itself, handing back the order it was given
  * and the callback a landed drag calls.
  */
@@ -137,6 +138,10 @@ vi.mock('@web/data/api', async () => {
 });
 
 import ProjectPage from '@web/pages/project/ProjectPage';
+import { SpaceRpcUnanswered } from '@web/data/yjs/space-rpc-client';
+import { toast } from '@web/lib/toast';
+
+const toastErrorMock = vi.mocked(toast.error);
 
 /**
  * Wraps the page in the providers it needs.
@@ -266,8 +271,12 @@ describe('ProjectPage — a tab dropped somewhere new', () => {
     expect(shownOrder()).toEqual([SPACE_C, SPACE_A, SPACE_B]);
   });
 
-  it('puts the tab back when the request found no answer', async () => {
-    sendSpaceRpcMock.mockRejectedValue(new Error('unreachable'));
+  it('puts the tab back when the server refuses the move', async () => {
+    sendSpaceRpcMock.mockResolvedValue({
+      id: 'r1',
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'forbidden' },
+    });
     setup();
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B, SPACE_C]));
 
@@ -275,6 +284,30 @@ describe('ProjectPage — a tab dropped somewhere new', () => {
 
     await waitFor(() =>
       expect(shownOrder()).toEqual([SPACE_A, SPACE_B, SPACE_C]),
+    );
+    // A refusal is what "that failed" is for. The line reserved for a missing
+    // answer belongs to the case where the tab stays put.
+    expect(toastErrorMock).toHaveBeenLastCalledWith('Failed to move the tab', {
+      description: 'forbidden',
+    });
+  });
+
+  it('leaves the tab where the user dropped it when no answer came back', async () => {
+    // Nothing recalls a request that timed out, so the server may have taken
+    // it. The strip keeps the move and says the server did not answer.
+    sendSpaceRpcMock.mockRejectedValue(new SpaceRpcUnanswered('timeout'));
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B, SPACE_C]));
+
+    await drop(SPACE_C, SPACE_A);
+
+    await waitFor(() =>
+      expect(shownOrder()).toEqual([SPACE_C, SPACE_A, SPACE_B]),
+    );
+    // One argument, and it neither claims the move failed nor asks the user
+    // to try again — the reorder path passes its own line for this case.
+    expect(toastErrorMock).toHaveBeenLastCalledWith(
+      'The server did not answer. Reload to see the current tab order.',
     );
   });
 

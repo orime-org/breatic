@@ -20,7 +20,7 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
-import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import {
@@ -319,7 +319,7 @@ function ProjectWorkspace({
         // A caller that keeps showing what the user did while the answer is
         // missing passes its own line, because "that failed" would contradict
         // what is on screen and the server may well have done it.
-        if (unansweredToastKey !== undefined) {
+        if (unansweredToastKey !== undefined && isUnanswered(err)) {
           toast.error(t(unansweredToastKey));
         } else {
           toast.error(t(errorToastKey), {

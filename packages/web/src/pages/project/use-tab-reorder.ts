@@ -37,10 +37,11 @@ export interface TabReorderResult {
  * move stops being owed when applying it to the arriving order changes
  * nothing, which is the same question whatever else came with it.
  *
- * Requests go out one at a time. Collab dispatches stateless messages without
- * awaiting, so two reorders in flight together finish in no fixed order, and
- * relative moves do not commute — the pair could land as an order the user
- * never asked for, persisted.
+ * One request is awaited at a time. Collab dispatches stateless messages
+ * without awaiting, so two reorders answered in no fixed order could land as
+ * an order the user never asked for — relative moves do not commute. A
+ * request that timed out is no longer awaited and nothing recalls it, so what
+ * this serialises is the moves the server answers for.
  * @param openTabIds - The order as stored, straight from the meta doc.
  * @param send - Sends one move; resolves with whether the server wrote, and
  *   rejects when the request found no answer.
@@ -63,12 +64,27 @@ export function useTabReorder(
    * broadcast.
    */
   const sent = React.useRef<ReadonlySet<number>>(new Set());
-  /** Whether the wire is busy. Requests go out one at a time. */
+  /** Whether a request is being awaited. One goes out at a time. */
   const inFlight = React.useRef(false);
+  /**
+   * Whether the strip is still on screen. The connection these requests ride
+   * is released with the page, so what goes out afterwards reaches nothing
+   * and reports a failure for a project the user has already left.
+   */
+  const mounted = React.useRef(true);
   const lastId = React.useRef(0);
 
   const sendRef = React.useRef(send);
   sendRef.current = send;
+
+  // Set on the way in as well: StrictMode mounts, unmounts and mounts again
+  // on the same instance, so a flag only ever cleared stays cleared.
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const order = React.useMemo(
     () => withMoves(openTabIds, owed),
@@ -86,7 +102,7 @@ export function useTabReorder(
   }, []);
 
   const pump = React.useCallback((): void => {
-    if (inFlight.current) return;
+    if (inFlight.current || !mounted.current) return;
     const next = nextUnsent(owedRef.current, sent.current);
     if (!next) return;
     sent.current = new Set(sent.current).add(next.id);
