@@ -30,7 +30,6 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
-  nextActiveAfterVanish,
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
@@ -437,33 +436,6 @@ function ProjectWorkspace({
     );
   }, [projectId, openTabIds, spaces]);
 
-  // Move off a Space that has VANISHED — deleted by us or by a collaborator.
-  // Delete goes through the `space:delete` RPC, never through `onCloseTab`, so
-  // without this the active id keeps naming a Space that no longer exists.
-  //
-  // Closing a tab is NOT handled here, and must not be: an active id that is
-  // still live but absent from `openTabIds` also describes a Space that is
-  // being opened this instant, whose `tab:open` broadcast has not landed yet.
-  // Reacting to that shape sends the user back to the first tab every time
-  // they pick a Space. Closing needs nothing anyway — `openTabs` drops the id,
-  // `resolveEffectiveActiveSpace` falls back to the first open tab, and line
-  // ~805 hands that fallback's id to the tab strip, so body and highlight move
-  // together. `activeSpaceId` stays pointing at the closed Space until
-  // something else changes it, which is harmless: it only matters again if the
-  // user reopens that same Space, and landing back on it is what they asked
-  // for.
-  //
-  // Per-user + runs on every client, so the person who deleted AND everyone
-  // else each converge their own state.
-  React.useEffect(() => {
-    if (!userId) return;
-    const liveIds = new Set(spaces.map((s) => s.id));
-    const next = nextActiveAfterVanish(openTabIds, liveIds, activeSpaceId);
-    if (next !== undefined) {
-      setActiveSpaceId(next);
-    }
-  }, [userId, openTabIds, spaces, activeSpaceId]);
-
   // Discard the in-memory state of a tab once it has actually left this
   // user's list — whether they closed it, another machine on the account
   // closed it, or the Space was deleted out from under it.
@@ -644,7 +616,7 @@ function ProjectWorkspace({
     // once the tab has actually left it: the in-memory state this tab
     // accumulated (canvas undo manager, document editor with its undo stack
     // and selection) is discarded by the effect that watches openTabIds, and
-    // moving off it is planned by `nextActiveAfterVanish`.
+    // the pinning effect above moves off it.
     //
     // That split matters now that this is a round trip. Anything done here
     // happens whether or not the request succeeds, and a close CAN fail —

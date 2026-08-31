@@ -213,46 +213,6 @@ export function useProjectMeta(
   };
 }
 
-/**
- * Which tab to activate after the project's spaces change, when the active
- * one has VANISHED (deleted locally or by a collaborator — no longer in
- * `liveSpaceIds`).
- *
- * ## It answers one question: has the active Space disappeared?
- *
- * It deliberately does NOT ask whether the active id is in `openTabIds`. An id
- * that is live but missing from that list has two opposite meanings that look
- * identical in the data: a tab that was just closed, and a Space that is being
- * opened right now, whose `tab:open` broadcast has not landed yet — the click
- * handler sets the active id immediately, because which tab is active is local
- * window state and switching stays instant (design §6.6.2). Reacting to that
- * shape throws the user back to the first tab the moment they pick a Space.
- * The closed case needs nothing from here either: `resolveEffectiveActiveSpace`
- * already falls back to the first open tab, and the tab strip highlights the
- * id that fallback returns, so both the body and the highlight follow.
- *
- * It used to also return the vanished ids for the caller to close. That is
- * the server's job now — deleting a Space clears it from everyone's list in
- * the same broadcast — and a client could not do it anyway, since it does not
- * write this document. Which tab is ACTIVE is local window state, never
- * shared, so nobody else can put it right for us; that is the half that
- * stays here. Pure — the caller applies the result.
- * @param openTabIds - This user's open-tab space ids.
- * @param liveSpaceIds - The set of space ids that still exist in the project.
- * @param activeSpaceId - This user's active space id (or null).
- * @returns The id to activate, `null` for the empty state, or `undefined` when
- *   the active space is still live and nothing should move.
- */
-export function nextActiveAfterVanish(
-  openTabIds: ReadonlyArray<string>,
-  liveSpaceIds: ReadonlySet<string>,
-  activeSpaceId: string | null,
-): string | null | undefined {
-  if (activeSpaceId === null || liveSpaceIds.has(activeSpaceId)) {
-    return undefined;
-  }
-  return openTabIds.find((id) => liveSpaceIds.has(id)) ?? null;
-}
 
 /**
  * Read all spaces from the doc's `spaces` map into a plain array.

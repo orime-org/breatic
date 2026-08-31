@@ -278,6 +278,26 @@ describe('ProjectPage — a tab dropped somewhere new', () => {
     );
   });
 
+  it('lands on the first tab the user can see when the shown Space is deleted', async () => {
+    // The strip is showing a drag that the document has not caught up with,
+    // so the stored order and the order on screen disagree about which tab is
+    // first. What the user is looking at is the one to land on.
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B, SPACE_C]));
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
+
+    await drop(SPACE_C, SPACE_A);
+    expect(shownOrder()).toEqual([SPACE_C, SPACE_A, SPACE_B]);
+
+    // A collaborator deletes Space A — the one being shown.
+    meta.spaces = meta.spaces.filter((s) => s.id !== SPACE_A);
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_C);
+  });
+
   it('lets go of the shown order once the broadcast lands', async () => {
     setup();
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B, SPACE_C]));
