@@ -43,6 +43,13 @@ import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import { SpaceTab } from '@web/pages/project/chrome/tab-bar/SpaceTab';
 import { resolveTabDrop } from '@web/pages/project/chrome/tab-bar/tab-drop';
+import {
+  edgeLanding,
+  endsAfter,
+  scrollTargetFor,
+  startsBefore,
+  type Span,
+} from '@web/pages/project/chrome/tab-bar/tab-scroll';
 
 /**
  * How far the pointer travels before a press becomes a drag (px).
@@ -68,17 +75,6 @@ const POINTER_ACTIVATION = {
 };
 
 /**
- * How far past an edge a tab may sit and still count as fully on screen.
- *
- * Absorbs the sub-pixel rounding CSS gap and padding leave behind, and the
- * fractions a percentage-sized Agent column puts on every edge beside it.
- * Every question of the form "is this tab cut off?" is answered against this
- * one number, so the arrow's enabled state and what the arrow then does can
- * never disagree inside that band.
- */
-const EDGE_TOLERANCE = 1;
-
-/**
  * Where a tab sits along the strip, in the strip's own scroll coordinates.
  *
  * Read off the layout, which a transform does not move. A tab being dragged
@@ -89,63 +85,8 @@ const EDGE_TOLERANCE = 1;
  * @param tab - The tab to place.
  * @returns Its leading and trailing edge.
  */
-function tabSpan(tab: HTMLElement): { start: number; end: number } {
+function tabSpan(tab: HTMLElement): Span {
   return { start: tab.offsetLeft, end: tab.offsetLeft + tab.offsetWidth };
-}
-
-/**
- * Whether a tab reaches past the strip's leading edge.
- * @param span - Where the tab sits.
- * @param span.start - Its leading edge.
- * @param visible - What stretch of the strip is on screen.
- * @param visible.start - The strip's leading edge.
- * @returns True when part of it is off to the left.
- */
-function startsBefore(
-  span: { start: number },
-  visible: { start: number },
-): boolean {
-  return span.start < visible.start - EDGE_TOLERANCE;
-}
-
-/**
- * Whether a tab reaches past the strip's trailing edge.
- * @param span - Where the tab sits.
- * @param span.end - Its trailing edge.
- * @param visible - What stretch of the strip is on screen.
- * @param visible.end - The strip's trailing edge.
- * @returns True when part of it is off to the right.
- */
-function endsAfter(span: { end: number }, visible: { end: number }): boolean {
-  return span.end > visible.end + EDGE_TOLERANCE;
-}
-
-/**
- * Whether a tab is shown as far as the strip can show it.
- *
- * A tab narrower than the strip has to be inside both edges. One wider than
- * the strip can never be, and asking for it leaves the reveal control enabled
- * with nothing that could satisfy it: measured in a browser at 137px of strip
- * and a 160px tab, each click swung scrollLeft between 115 and 92 forever.
- * What a click does with such a tab is put its start against the leading
- * edge, so that position is the one this reports as shown — the same place,
- * asked as a question instead of as a move.
- * @param span - Where the tab sits.
- * @param span.start - Its leading edge.
- * @param span.end - Its trailing edge.
- * @param visible - What stretch of the strip is on screen.
- * @param visible.start - The strip's leading edge.
- * @param visible.end - The strip's trailing edge.
- * @returns True when nothing more can be brought into view.
- */
-function spanShown(
-  span: { start: number; end: number },
-  visible: { start: number; end: number },
-): boolean {
-  if (span.end - span.start > visible.end - visible.start) {
-    return Math.abs(span.start - visible.start) <= EDGE_TOLERANCE;
-  }
-  return !startsBefore(span, visible) && !endsAfter(span, visible);
 }
 
 /**
@@ -153,7 +94,7 @@ function spanShown(
  * @param scroller - The viewport the tabs scroll in.
  * @returns The visible leading and trailing edge.
  */
-function visibleSpan(scroller: HTMLElement): { start: number; end: number } {
+function visibleSpan(scroller: HTMLElement): Span {
   return {
     start: scroller.scrollLeft,
     end: scroller.scrollLeft + scroller.clientWidth,
@@ -176,11 +117,19 @@ function scrollTabToEdge(
   tab: HTMLElement,
   edge: 'start' | 'end',
 ): void {
-  const span = tabSpan(tab);
-  scroller.scrollTo({
-    left: edge === 'end' ? span.end - scroller.clientWidth : span.start,
-    behavior: 'smooth',
-  });
+  scrollStripTo(
+    scroller,
+    edgeLanding(tabSpan(tab), visibleSpan(scroller), edge),
+  );
+}
+
+/**
+ * Moves the strip, and the strip alone.
+ * @param scroller - The viewport the tabs scroll in.
+ * @param left - Where it should come to rest.
+ */
+function scrollStripTo(scroller: HTMLElement, left: number): void {
+  scroller.scrollTo({ left, behavior: 'smooth' });
 }
 
 /**
@@ -421,12 +370,12 @@ export function SpaceTabBar({
     // Something is off an edge exactly when there is somewhere to scroll to,
     // so this is those two answers rather than a third measurement.
     const overflow = !atStart || !atEnd;
-    // Whole, not merely somewhere on screen: a tab with its name cut off by
-    // the edge is exactly what the reveal control exists to finish showing.
+    // The reveal control asks `scrollTargetFor` whether it has anywhere to
+    // go, and clicking it moves to that same answer, so being enabled and
+    // having something to do are one question.
     const active = activeTab();
-    const activeSpan = active === null ? null : tabSpan(active);
     const activeVisible =
-      activeSpan === null || spanShown(activeSpan, visible);
+      active === null || scrollTargetFor(tabSpan(active), visible) === null;
     setScrollState((was) =>
       was.overflow === overflow &&
       was.atStart === atStart &&
@@ -469,21 +418,14 @@ export function SpaceTabBar({
   //
   // Only as far as needed, and only when the tab is actually cut off: a tab
   // already whole on screen stays where it is, matching the standard IDE /
-  // browser tab strip behavior. The reveal control calls this too, so the
-  // question it is enabled by and the scroll it performs cannot disagree.
+  // browser tab strip behavior. The reveal control calls this too, and both
+  // it and the enabled state above read the same `scrollTargetFor`.
   const scrollActiveIntoView = React.useCallback((): void => {
     const scroller = scrollerRef.current;
     const tab = activeTab();
     if (!scroller || !tab) return;
-    const visible = visibleSpan(scroller);
-    const span = tabSpan(tab);
-    if (span.end - span.start > visible.end - visible.start) {
-      scrollTabToEdge(scroller, tab, 'start');
-    } else if (endsAfter(span, visible)) {
-      scrollTabToEdge(scroller, tab, 'end');
-    } else if (startsBefore(span, visible)) {
-      scrollTabToEdge(scroller, tab, 'start');
-    }
+    const target = scrollTargetFor(tabSpan(tab), visibleSpan(scroller));
+    if (target !== null) scrollStripTo(scroller, target);
   }, [activeTab]);
 
   React.useEffect(() => {

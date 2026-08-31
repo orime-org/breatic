@@ -3,7 +3,15 @@
 
 import * as React from 'react';
 
-import { applyTabMove, sameTabOrder } from '@breatic/shared';
+import {
+  changesNothing,
+  landedCount,
+  nextUnsent,
+  retire,
+  rollbackFrom,
+  withMoves,
+  type OwedMove,
+} from '@web/pages/project/pending-moves';
 
 /** What the tab bar renders, and how a drag tells this layer about itself. */
 export interface TabReorderResult {
@@ -15,79 +23,6 @@ export interface TabReorderResult {
    * @param beforeSpaceId - The tab it landed in front of, null for the end.
    */
   reorder: (spaceId: string, beforeSpaceId: string | null) => void;
-}
-
-/** One move the document has not accounted for yet. */
-interface OwedMove {
-  /**
-   * Names this move for as long as it is owed. Two things retire a move —
-   * the document arriving with it applied, and its own reply saying the
-   * server wrote nothing — and they can happen in either order. A name is
-   * what lets both point at the same move; a position into the run cannot,
-   * because retiring one shifts every other.
-   */
-  id: number;
-  spaceId: string;
-  beforeSpaceId: string | null;
-}
-
-/**
- * Lay a run of moves over an order.
- * @param stored - The order to start from.
- * @param moves - The moves to apply, oldest first.
- * @returns The order those moves produce.
- */
-function withMoves(
-  stored: ReadonlyArray<string>,
-  moves: ReadonlyArray<OwedMove>,
-): ReadonlyArray<string> {
-  return moves.reduce<ReadonlyArray<string>>(
-    (ids, m) => applyTabMove(ids, m.spaceId, m.beforeSpaceId),
-    stored,
-  );
-}
-
-/**
- * Whether applying a move to an order would leave it as it is.
- *
- * True for a move already applied, and for one whose tab or anchor has since
- * left the list — nothing it asks for can be written either way.
- * @param stored - The order to apply it to.
- * @param move - The move.
- * @returns True when it would write nothing.
- */
-function changesNothing(
-  stored: ReadonlyArray<string>,
-  move: OwedMove | undefined,
-): boolean {
-  if (!move) return true;
-  return sameTabOrder(
-    applyTabMove(stored, move.spaceId, move.beforeSpaceId),
-    stored,
-  );
-}
-
-/**
- * How many moves at the front of the run the document already shows.
- *
- * A move is accounted for when applying it to the stored order changes
- * nothing — the tab is where the move asked for it to be. Counting only from
- * the front is what keeps a run meaningful: each move was computed against
- * the one before it.
- * @param stored - The order as the document has it.
- * @param moves - The moves still owed, oldest first.
- * @returns How many to drop.
- */
-function landedCount(
-  stored: ReadonlyArray<string>,
-  moves: ReadonlyArray<OwedMove>,
-): number {
-  let n = 0;
-  while (n < moves.length) {
-    if (!changesNothing(stored, moves[n])) break;
-    n += 1;
-  }
-  return n;
 }
 
 /**
@@ -151,7 +86,7 @@ export function useTabReorder(
 
   const pump = React.useCallback((): void => {
     if (inFlight.current) return;
-    const next = owedRef.current.find((m) => !sent.current.has(m.id));
+    const next = nextUnsent(owedRef.current, sent.current);
     if (!next) return;
     sent.current = new Set(sent.current).add(next.id);
     inFlight.current = true;
@@ -160,18 +95,13 @@ export function useTabReorder(
       .then((wrote) => {
         if (!wrote) {
           // The server wrote nothing, so no arrival will ever account for
-          // this one. It stops being owed here or never — and it may already
-          // have gone, if the same move reached the document another way.
-          commit(owedRef.current.filter((m) => m.id !== next.id));
+          // this one. It stops being owed here or never.
+          commit(retire(owedRef.current, next.id));
         }
       })
       .catch(() => {
-        // The caller surfaced the failure. This move goes back, and so do the
-        // ones behind it — each was computed on top of the one before. The
-        // ones ahead of it stay: the server took them, and their broadcasts
-        // are on the way.
-        const at = owedRef.current.findIndex((m) => m.id === next.id);
-        commit(at === -1 ? owedRef.current : owedRef.current.slice(0, at));
+        // The caller surfaced the failure.
+        commit(rollbackFrom(owedRef.current, next.id));
       })
       .finally(() => {
         // Both endings free the wire and look for the next move, so neither

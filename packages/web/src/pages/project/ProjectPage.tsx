@@ -33,7 +33,10 @@ import {
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
-import { resolveEffectiveActiveSpace } from '@web/pages/project/active-space';
+import {
+  resolveEffectiveActiveSpace,
+  reviseTabChoice,
+} from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
@@ -398,28 +401,18 @@ function ProjectWorkspace({
     activeSpaceId,
   );
 
-  // Hold this invariant: the choice either names a tab on the strip, or names
-  // one a `tab:open` is still travelling for. Anything else leaves the page
-  // falling back by POSITION, and a reorder then swaps the body out from
-  // under the user — including remotely, from another connection on the same
-  // account, which is the thing that moving the active tab out of the shared
-  // doc set out to stop.
+  // `reviseTabChoice` holds the invariant; this applies what it asks for.
   React.useEffect(() => {
-    const now = new Set(openTabs.map((s) => s.id));
-    // Opening a project: no choice has been made at all.
-    if (activeSpaceId === null) {
-      if (openTabs.length > 0) setActiveSpaceId(openTabs[0]!.id);
-      return;
+    const revision = reviseTabChoice({
+      openTabIds: openTabs.map((s) => s.id),
+      activeSpaceId,
+      shownId: activeSpace?.id,
+      openingTab,
+    });
+    if (revision.activeSpaceId !== undefined) {
+      setActiveSpaceId(revision.activeSpaceId);
     }
-    if (now.has(activeSpaceId)) {
-      if (openingTab === activeSpaceId) setOpeningTab(null);
-      return;
-    }
-    // Its tab is on the way. Nobody else revises the choice meanwhile.
-    if (openingTab === activeSpaceId) return;
-    // No tab, and none coming: the tab was closed, or the open failed. Make
-    // what the page is already showing the choice.
-    if (activeSpace) setActiveSpaceId(activeSpace.id);
+    if (revision.clearOpening === true) setOpeningTab(null);
   }, [openTabs, activeSpaceId, activeSpace, openingTab]);
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by

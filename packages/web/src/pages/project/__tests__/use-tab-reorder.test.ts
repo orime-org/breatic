@@ -412,6 +412,31 @@ describe('useTabReorder — when the pending order is let go of', () => {
     });
   });
 
+  it('takes the queued move back with the one that failed', async () => {
+    // The queued move was computed on top of the failed one, so on its own it
+    // describes a strip that never existed. Sending it would persist that.
+    const first = deferred();
+    const send = vi.fn(() => first.promise);
+    const { result } = renderHook(() => useTabReorder([A, B, C], send));
+
+    act(() => {
+      result.current.reorder(C, A);
+    });
+    act(() => {
+      result.current.reorder(A, null);
+    });
+    expect(result.current.order).toEqual([C, B, A]);
+
+    await act(async () => {
+      first.reject(new Error('unreachable'));
+    });
+
+    await waitFor(() => {
+      expect(result.current.order).toEqual([A, B, C]);
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps a move the server already took when a later one failed', async () => {
     // The first request came back saying the server wrote, so its broadcast
     // is on the way and the strip is showing what the document is about to
