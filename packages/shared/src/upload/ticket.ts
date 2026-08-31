@@ -49,6 +49,14 @@ export interface UploadTicketPayload {
    * config is a second place for it to drift.
    */
   alarmIdleSeconds: number;
+  /**
+   * How long a token issued for the next part stays usable, in seconds. Signed
+   * in for the same reason `alarmIdleSeconds` is: it lives in
+   * `config/storage.yaml`, the Worker cannot read that file, and a second copy
+   * inside the Worker is a second place for the value to drift — one whose
+   * relation to the idle window nothing would then be checking.
+   */
+  sessionTokenTtlSeconds: number;
 }
 
 /** Why a ticket did not verify. */

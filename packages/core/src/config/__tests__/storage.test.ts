@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from "vitest";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { MAX_TIMER_MS, partRetryBudgetMs } from "@breatic/shared";
 
 import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 
@@ -93,10 +93,36 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
   const SHIPPED_CAP = 2147483648;
   const LOWEST_USABLE_RATE = 1001;
 
+  /**
+   * Pair an upload section with ingest windows wide enough to hold whatever
+   * deadline it produces.
+   *
+   * These cases probe one rule by driving the deadline to extremes, and the
+   * other rule — that the idle window outlasts a part's whole delivery — would
+   * then be what they trip on. Sized from the same arithmetic that rule uses,
+   * so it stays right when either figure moves.
+   * @param upload - The upload knobs under test.
+   * @returns A whole config for the schema to parse.
+   */
+  function withRoomToWait(upload: Record<string, number>): Record<string, unknown> {
+    const requestTimeoutMs = upload.client_request_timeout_ms ?? 30000;
+    const minBytesPerSec = upload.client_put_min_bytes_per_sec ?? 65536;
+    const seconds = Math.ceil(
+      partRetryBudgetMs(8388608, { requestTimeoutMs, minBytesPerSec }) / 1000,
+    );
+    return {
+      upload,
+      ingest: {
+        alarm_idle_seconds: seconds,
+        session_token_ttl_seconds: seconds + 1,
+      },
+    };
+  }
+
   it("accepts the lowest rate that still serves the shipped cap", () => {
-    const cfg = storageConfigSchema.parse({
-      upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE },
-    });
+    const cfg = storageConfigSchema.parse(
+      withRoomToWait({ client_put_min_bytes_per_sec: LOWEST_USABLE_RATE }),
+    );
     expect(cfg.upload.client_put_min_bytes_per_sec).toBe(LOWEST_USABLE_RATE);
     // The property behind the number, so this test still means something if
     // either constant moves.
@@ -133,12 +159,12 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     ).toThrow(/client_put_min_bytes_per_sec/);
 
     expect(() =>
-      storageConfigSchema.parse({
-        upload: {
+      storageConfigSchema.parse(
+        withRoomToWait({
           max_upload_bytes: SHIPPED_CAP * 2,
           client_put_min_bytes_per_sec: LOWEST_USABLE_RATE * 2,
-        },
-      }),
+        }),
+      ),
     ).not.toThrow();
   });
 
@@ -154,9 +180,9 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     ).toThrow(/client_request_timeout_ms/);
 
     expect(() =>
-      storageConfigSchema.parse({
-        upload: { client_request_timeout_ms: MAX_TIMER_MS },
-      }),
+      storageConfigSchema.parse(
+        withRoomToWait({ client_request_timeout_ms: MAX_TIMER_MS }),
+      ),
     ).not.toThrow();
   });
 
@@ -173,17 +199,21 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
  * non-final part under 5 MiB, so a config below it would fail mid-upload
  * rather than at load, where the operator who typed the number is reading.
  *
- * `alarm_idle_seconds` has no such bound. It is how long an upload may go
- * without a new part before the Durable Object judges it dead, and the object
- * pushes its alarm out by this much on every part it receives — so there is no
- * total upload time to keep it under, and nothing to nest it inside.
+ * `alarm_idle_seconds` is how long an upload may go without a new part before
+ * the Durable Object judges it dead. There is no total upload time to keep it
+ * under — the object pushes its alarm out on every part — but there is a floor
+ * it has to clear: a part being retried delivers nothing while it goes on, so
+ * a window narrower than one part's whole delivery drops an upload that is
+ * still running. `session_token_ttl_seconds` nests outside that window for the
+ * same kind of reason.
  */
 describe("storageConfigSchema — the ingest knobs", () => {
   it("loads the ingest config from config/storage.yaml", () => {
     const cfg = getStorageConfig();
     expect(cfg.ingest.part_size_bytes).toBe(8388608);
     expect(cfg.ingest.ticket_expires_seconds).toBe(300);
-    expect(cfg.ingest.alarm_idle_seconds).toBe(300);
+    expect(cfg.ingest.alarm_idle_seconds).toBe(600);
+    expect(cfg.ingest.session_token_ttl_seconds).toBe(900);
   });
 
   it("refuses a part size R2 would reject as a non-final part", () => {
@@ -201,5 +231,43 @@ describe("storageConfigSchema — the ingest knobs", () => {
     const empty = storageConfigSchema.parse({ ingest: {} });
     expect(defaulted.ingest).toEqual(empty.ingest);
     expect(defaulted.ingest.part_size_bytes).toBe(8388608);
+  });
+});
+
+// The Durable Object judges an upload dead when no part has arrived for
+// `alarm_idle_seconds`, and a part being retried delivers nothing for as long
+// as the browser keeps trying it. A window narrower than that drops every part
+// already written, from an upload that is doing nothing wrong.
+describe("storageConfigSchema — the windows an upload lives inside", () => {
+  it("leaves the shipped figures alone", () => {
+    expect(() => storageConfigSchema.parse({})).not.toThrow();
+  });
+
+  it("refuses an idle window a single part's retries can outlast", () => {
+    expect(() =>
+      storageConfigSchema.parse({ ingest: { alarm_idle_seconds: 300 } }),
+    ).toThrow(/alarm_idle_seconds/);
+  });
+
+  // The token is re-issued with every part, so it only has to cover the gap
+  // between two of them — and the longest gap the alarm allows is its own
+  // window. A token that expires first turns the part after a long wait into
+  // a 401 on an upload the alarm was still willing to wait for.
+  it("refuses a session token that expires inside the idle window", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        ingest: { session_token_ttl_seconds: 600 },
+      }),
+    ).toThrow(/session_token_ttl_seconds/);
+  });
+
+  // A bigger part takes longer to deliver, so the window it needs grows with
+  // it — the relation is between the two, not a pair of fixed numbers.
+  it("moves the window a part needs when the part size moves", () => {
+    expect(() =>
+      storageConfigSchema.parse({
+        ingest: { part_size_bytes: 64 * 1024 * 1024 },
+      }),
+    ).toThrow(/alarm_idle_seconds/);
   });
 });

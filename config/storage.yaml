@@ -31,9 +31,9 @@ upload:
   # no time limit (#1826, design §3.2). Local storage has no presigned URL.
   presign_expires_seconds: 300
 
-# The ingest Worker (#173). The knobs the SERVER decides live here; the
-# Durable Object's session token TTL is configured where that code is deployed,
-# because a Worker cannot read this file.
+# The ingest Worker (#173). Every figure it runs on is decided here and signed
+# into the ticket, because a Worker cannot read this file and a second copy in
+# its own deployment config is a second place for the value to drift.
 ingest:
   # One part of a multipart upload, in bytes. R2 refuses a non-final part
   # under 5 MiB, which is the floor `signUploadTicket` enforces.
@@ -47,7 +47,16 @@ ingest:
   # that stops is judged dead this long after its last part. There is no total
   # time limit: a total would have to be guessed from the file size and the
   # user's bandwidth, and guessing it low kills uploads that are still running.
-  alarm_idle_seconds: 300
+  #
+  # It has to be wider than the whole worst case for one part — three
+  # deliveries at that part's deadline plus the waits between them — because a
+  # part being retried delivers nothing while it goes on. Loading this file
+  # checks that, so the two cannot drift apart silently.
+  alarm_idle_seconds: 600
+  # How long a session token stays usable. It is re-issued with every part, so
+  # it only has to outlast the longest gap the alarm tolerates. Loading this
+  # file checks that it does.
+  session_token_ttl_seconds: 900
 
 # Studio avatars.
 avatar:

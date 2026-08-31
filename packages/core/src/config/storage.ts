@@ -12,7 +12,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS, MIN_PART_SIZE_BYTES } from "@breatic/shared";
+import {
+  MAX_TIMER_MS,
+  MIN_PART_SIZE_BYTES,
+  assertUploadWindows,
+} from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -52,7 +56,8 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  * Exported for tests only, and not re-exported from the package barrel — the
  * one thing application code should reach for is {@link getStorageConfig}.
  */
-export const storageConfigSchema = z.object({
+export const storageConfigSchema = z
+  .object({
   upload: z
     .object({
       /** Hard upload cap in bytes; presign rejects larger files (413). */
@@ -131,7 +136,14 @@ export const storageConfigSchema = z.object({
        * upload that keeps moving is never cut off however large the file is,
        * and one that stops is judged dead this long after its last part.
        */
-      alarm_idle_seconds: z.number().int().positive().default(300),
+      alarm_idle_seconds: z.number().int().positive().default(600),
+      /**
+       * How long a session token stays usable, in seconds. It is re-issued
+       * with every part, so it only has to outlast the longest gap the alarm
+       * tolerates — which is why the two are checked against each other below
+       * rather than each being picked on its own.
+       */
+      session_token_ttl_seconds: z.number().int().positive().default(900),
     })
     .prefault({}),
 
@@ -149,7 +161,28 @@ export const storageConfigSchema = z.object({
       max_bytes: z.number().int().positive().default(2097152),
     })
     .prefault({}),
-});
+  })
+  .superRefine((cfg, ctx) => {
+    // Across sections, because the part size is an ingest knob while the
+    // deadline each part is delivered under comes from the upload ones. Both
+    // relations fail an upload that is doing nothing wrong when they are the
+    // wrong way round, and neither is visible from inside either section.
+    try {
+      assertUploadWindows({
+        partSizeBytes: cfg.ingest.part_size_bytes,
+        alarmIdleSeconds: cfg.ingest.alarm_idle_seconds,
+        sessionTokenTtlSeconds: cfg.ingest.session_token_ttl_seconds,
+        requestTimeoutMs: cfg.upload.client_request_timeout_ms,
+        minBytesPerSec: cfg.upload.client_put_min_bytes_per_sec,
+      });
+    } catch (err) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: err instanceof Error ? err.message : String(err),
+        path: ["ingest"],
+      });
+    }
+  });
 
 /** Validated storage configuration type. */
 export type StorageConfig = z.infer<typeof storageConfigSchema>;

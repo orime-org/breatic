@@ -89,6 +89,7 @@ async function uploadedThrough(
       expiresAt: Date.now() + 300_000,
       leaseGen: 7,
       alarmIdleSeconds: 300,
+      sessionTokenTtlSeconds: 900,
       ...over,
     },
     env.INGEST_SHARED_SECRET,

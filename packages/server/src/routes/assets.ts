@@ -266,6 +266,7 @@ assets.post(
         expiresAt,
         leaseGen: body.lease_gen,
         alarmIdleSeconds: ingest.alarm_idle_seconds,
+        sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
       },
       env.INGEST_SHARED_SECRET,
     );

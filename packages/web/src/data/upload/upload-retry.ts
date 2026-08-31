@@ -22,6 +22,8 @@
  * way.
  */
 
+import { partDeadlineMs } from '@breatic/shared';
+
 /** The upload knobs served by `GET /assets/upload-config` (camelCase wire). */
 export interface UploadClientConfig {
   /** Hard upload cap in bytes (pre-checked on selection; server 413s). */
@@ -165,8 +167,11 @@ export function computePutTimeoutMs(
   sizeBytes: number,
   cfg: UploadClientConfig,
 ): number {
-  return Math.max(
-    cfg.clientRequestTimeoutMs,
-    Math.ceil((sizeBytes / cfg.clientPutMinBytesPerSec) * 1000),
-  );
+  // The same arithmetic the config reads when it checks that the Durable
+  // Object's idle window outlasts a part's whole delivery. A second copy here
+  // would let the browser's deadline and that check disagree.
+  return partDeadlineMs(sizeBytes, {
+    requestTimeoutMs: cfg.clientRequestTimeoutMs,
+    minBytesPerSec: cfg.clientPutMinBytesPerSec,
+  });
 }

@@ -400,6 +400,16 @@ export {
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
+// The arithmetic both sides of an upload read: the browser sizes each part's
+// deadline with it, and the config refuses windows narrower than what they
+// have to hold.
+export {
+  partDeadlineMs,
+  partRetryBudgetMs,
+  assertUploadWindows,
+  type PartDeadlineConfig,
+  type UploadWindows,
+} from "@shared/upload/windows.js";
 export {
   encodeBase64Utf8,
   decodeBase64Utf8,

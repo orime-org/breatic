@@ -19,6 +19,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { describe, it, expect } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
+import { verifySessionToken } from "@ingest/session-token.js";
 
 let seq = 0;
 
@@ -39,6 +40,7 @@ async function mintTicket(
       expiresAt: Date.now() + 300_000,
       leaseGen: 7,
       alarmIdleSeconds: 300,
+      sessionTokenTtlSeconds: 900,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -123,6 +125,23 @@ describe("a ticket the Worker takes", () => {
     await expect(response.json()).resolves.toMatchObject({
       token: expect.any(String),
     });
+  });
+
+  // The Worker holds no clock of its own for this: the window comes off the
+  // ticket, so the one place it is decided is the config our server reads.
+  it("times the session token by what the ticket signed", async () => {
+    const before = Date.now();
+    const { ticket } = await mintTicket({ sessionTokenTtlSeconds: 42 });
+
+    const { token } = await (await open(ticket)).json<{ token: string }>();
+
+    const payload = await verifySessionToken(
+      token,
+      env.INGEST_SHARED_SECRET,
+      Date.now(),
+    );
+    expect(payload?.expiresAt).toBeGreaterThan(before);
+    expect(payload?.expiresAt).toBeLessThanOrEqual(before + 42_000 + 5_000);
   });
 
   it("keeps two different uploads apart", async () => {

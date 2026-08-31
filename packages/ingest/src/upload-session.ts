@@ -22,9 +22,6 @@
 import type { UploadTicketPayload } from "@breatic/shared";
 import { signSessionToken } from "@ingest/session-token.js";
 
-/** How long a session token stays usable. */
-const SESSION_TOKEN_TTL_MS = 600_000;
-
 /** What the instance remembers about an upload while it is open. */
 interface OpenUpload {
   /** The ticket that opened it; the part layout and ceilings come from here. */
@@ -401,6 +398,11 @@ export class UploadSession implements DurableObject {
 
   /**
    * Issue a token for the next part of this upload.
+   *
+   * Its window comes off the ticket rather than from a figure held here: the
+   * value lives in `config/storage.yaml`, which also checks it against the
+   * idle window, and a copy in this Worker would be a second place for it to
+   * drift out of that relation.
    * @param upload - What is open.
    * @returns The signed token.
    */
@@ -409,7 +411,7 @@ export class UploadSession implements DurableObject {
       {
         storageKey: upload.ticket.storageKey,
         uploadId: upload.uploadId,
-        expiresAt: Date.now() + SESSION_TOKEN_TTL_MS,
+        expiresAt: Date.now() + upload.ticket.sessionTokenTtlSeconds * 1000,
       },
       this.#env.INGEST_SHARED_SECRET,
     );
