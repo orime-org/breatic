@@ -1564,18 +1564,11 @@ async function handleTabReorder(
 
       // Both ids were read off a list the caller saw a moment ago, and either
       // can leave it in between — they close that tab, or their other window
-      // does. The move then has no object, which is not a failure: there is
-      // simply nothing to write. The browser reads the same arrival and
-      // retires the move for the same reason, so both sides answer this state
-      // the same way.
-      if (
-        !current.includes(spaceId) ||
-        (beforeSpaceId !== null && !current.includes(beforeSpaceId)) ||
-        spaceId === beforeSpaceId
-      ) {
-        return ok(req.id, { wrote: seeded });
-      }
-
+      // does. `applyTabMove` hands the list back untouched for that, for a
+      // move onto itself, and for a tab already where it is asked to go, so
+      // one comparison covers every way this call has nothing to write. The
+      // browser retires the move against the same function, so both sides
+      // answer this state alike.
       const next = applyTabMove(current, spaceId, beforeSpaceId);
       if (sameTabOrder(next, current)) {
         return ok(req.id, { wrote: seeded });

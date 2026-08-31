@@ -48,6 +48,26 @@ function withMoves(
 }
 
 /**
+ * Whether applying a move to an order would leave it as it is.
+ *
+ * True for a move already applied, and for one whose tab or anchor has since
+ * left the list — nothing it asks for can be written either way.
+ * @param stored - The order to apply it to.
+ * @param move - The move.
+ * @returns True when it would write nothing.
+ */
+function changesNothing(
+  stored: ReadonlyArray<string>,
+  move: OwedMove | undefined,
+): boolean {
+  if (!move) return true;
+  return sameTabOrder(
+    applyTabMove(stored, move.spaceId, move.beforeSpaceId),
+    stored,
+  );
+}
+
+/**
  * How many moves at the front of the run the document already shows.
  *
  * A move is accounted for when applying it to the stored order changes
@@ -64,10 +84,7 @@ function landedCount(
 ): number {
   let n = 0;
   while (n < moves.length) {
-    const m = moves[n] as OwedMove;
-    if (!sameTabOrder(applyTabMove(stored, m.spaceId, m.beforeSpaceId), stored)) {
-      break;
-    }
+    if (!changesNothing(stored, moves[n])) break;
     n += 1;
   }
   return n;
@@ -170,7 +187,7 @@ export function useTabReorder(
       // The tab landed where it already was. Sending it would ask collab to
       // do nothing and, when collab is unreachable, raise a failure for an
       // action that needed nothing from it.
-      if (sameTabOrder(applyTabMove(base, spaceId, beforeSpaceId), base)) return;
+      if (changesNothing(base, { id: 0, spaceId, beforeSpaceId })) return;
       lastId.current += 1;
       commit([
         ...owedRef.current,

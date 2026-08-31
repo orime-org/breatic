@@ -294,6 +294,13 @@ describe('ProjectPage — a tab dropped somewhere new', () => {
     await act(async () => {
       useUIStore.setState({ chatPanelCollapsed: false });
     });
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_C);
+
+    // Another drag is what tells the two apart: falling back by position lands
+    // on C above too, and only a choice by id survives the order moving under
+    // it.
+    await drop(SPACE_B, SPACE_C);
+    expect(shownOrder()).toEqual([SPACE_B, SPACE_C]);
 
     expect(barProps.current?.activeSpaceId).toBe(SPACE_C);
   });
@@ -376,6 +383,43 @@ describe('ProjectPage — opening a Space that has no tab yet', () => {
     await act(async () => {
       barProps.current?.onActivate(SPACE_C);
     });
+
+    meta.openTabIds = [SPACE_B, SPACE_A];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
+  });
+
+  it('stops waiting for a tab once it arrives, whatever is shown by then', async () => {
+    // Picked C from the drawer, then switched back to A before C's tab
+    // landed. C is no longer the choice when it arrives, and waiting for it
+    // has to end anyway — otherwise closing C's tab later finds the page
+    // still holding its place and the fallback by position comes back.
+    setup();
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_A, SPACE_B]));
+
+    await act(async () => {
+      barProps.current?.onActivate(SPACE_C);
+    });
+    await act(async () => {
+      barProps.current?.onActivate(SPACE_A);
+    });
+    meta.openTabIds = [SPACE_A, SPACE_B, SPACE_C];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: false });
+    });
+
+    // Back to C, then close its tab.
+    await act(async () => {
+      barProps.current?.onActivate(SPACE_C);
+    });
+    meta.openTabIds = [SPACE_A, SPACE_B];
+    await act(async () => {
+      useUIStore.setState({ chatPanelCollapsed: true });
+    });
+    expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
 
     meta.openTabIds = [SPACE_B, SPACE_A];
     await act(async () => {

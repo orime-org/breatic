@@ -215,11 +215,11 @@ export const SpaceRpcResponseSchema = z.discriminatedUnion("ok", [
     ok: z.literal(true),
     /**
      * `space:create` returns the canonical entry. `tab:reorder` returns
-     * whether the server actually changed the order — a client showing the
-     * new order optimistically waits for the broadcast when it did, and
-     * drops that layer at once when it did not, because an idempotent
-     * reorder writes nothing and therefore broadcasts nothing. Every other
-     * request answers with no result at all.
+     * whether this call WROTE the caller's list — seeding it counts, even
+     * when the move itself changed no order. A client showing the move
+     * optimistically keeps it until the broadcast arrives when it did, and
+     * retires it at once when it did not, because nothing was written and
+     * so nothing will arrive. Every other request answers with no result.
      */
     result: z
       .union([

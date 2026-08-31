@@ -33,7 +33,7 @@ export function resolveTabDrop(
   const from = ids.indexOf(activeId);
   const to = ids.indexOf(overId);
   if (from === -1 || to === -1) return null;
+  // arrayMove leaves the dragged id at `to`, so its successor is the anchor.
   const landed = arrayMove([...ids], from, to);
-  const at = landed.indexOf(activeId);
-  return { spaceId: activeId, beforeSpaceId: landed[at + 1] ?? null };
+  return { spaceId: activeId, beforeSpaceId: landed[to + 1] ?? null };
 }

@@ -53,6 +53,21 @@ import { resolveTabDrop } from '@web/pages/project/chrome/tab-bar/tab-drop';
 const DRAG_START_DISTANCE = 4;
 
 /**
+ * Nothing to tell a screen reader about picking a tab up.
+ *
+ * dnd-kit's default says to press space and use the arrow keys. Space on a
+ * tab switches Space (design §4.5), so that instruction describes an
+ * interaction the strip does not have — and it is English in a product that
+ * ships five locales.
+ */
+const DND_ACCESSIBILITY = { screenReaderInstructions: { draggable: '' } };
+
+/** Held still so useSensor's memo has something stable to hold. */
+const POINTER_ACTIVATION = {
+  activationConstraint: { distance: DRAG_START_DISTANCE },
+};
+
+/**
  * How far past an edge a tab may sit and still count as fully on screen.
  *
  * Absorbs the sub-pixel rounding CSS gap and padding leave behind, and the
@@ -346,9 +361,7 @@ export function SpaceTabBar({
   // on Space and Enter, which are how a keyboard user switches Space on a tab
   // today (design §4.5).
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: DRAG_START_DISTANCE },
-    }),
+    useSensor(PointerSensor, POINTER_ACTIVATION),
   );
   const tabIds = React.useMemo(() => spaces.map((s) => s.id), [spaces]);
   // The order as one value. `spaces` is rebuilt on every projection of the
@@ -381,6 +394,11 @@ export function SpaceTabBar({
 
   /**
    * The tab of the Space the page is showing.
+   *
+   * Named by the id rather than found by `aria-selected`, because this is
+   * what carries `activeSpaceId` into the recompute: switching Space scrolls
+   * nothing and resizes nothing, so it is the only signal that the answer
+   * just changed.
    * @returns That tab, or null before it is on screen.
    */
   const activeTab = React.useCallback((): HTMLElement | null => {
@@ -396,18 +414,27 @@ export function SpaceTabBar({
     // atStart / atEnd ask the same spans `scrollOneTab` below asks, so the
     // arrow's enabled state ("can we still scroll?") can never disagree with
     // what clicking it does ("is there a tab left to bring on screen?").
-    const overflow = el.scrollWidth > el.clientWidth + EDGE_TOLERANCE;
     const visible = visibleSpan(el);
     const tabs = tabsIn(el);
     const atStart = !tabs.some((t) => startsBefore(tabSpan(t), visible));
     const atEnd = !tabs.some((t) => endsAfter(tabSpan(t), visible));
+    // Something is off an edge exactly when there is somewhere to scroll to,
+    // so this is those two answers rather than a third measurement.
+    const overflow = !atStart || !atEnd;
     // Whole, not merely somewhere on screen: a tab with its name cut off by
     // the edge is exactly what the reveal control exists to finish showing.
     const active = activeTab();
     const activeSpan = active === null ? null : tabSpan(active);
     const activeVisible =
       activeSpan === null || spanShown(activeSpan, visible);
-    setScrollState({ overflow, atStart, atEnd, activeVisible });
+    setScrollState((was) =>
+      was.overflow === overflow &&
+      was.atStart === atStart &&
+      was.atEnd === atEnd &&
+      was.activeVisible === activeVisible
+        ? was
+        : { overflow, atStart, atEnd, activeVisible },
+    );
   }, [activeTab]);
 
   React.useEffect(() => {
@@ -490,14 +517,8 @@ export function SpaceTabBar({
 
     const target =
       direction === 'right'
-        ? tabs.find(
-          (tab) => tabSpan(tab).end > visible.end + EDGE_TOLERANCE,
-        )
-        : [...tabs]
-          .reverse()
-          .find(
-            (tab) => tabSpan(tab).start < visible.start - EDGE_TOLERANCE,
-          );
+        ? tabs.find((tab) => endsAfter(tabSpan(tab), visible))
+        : [...tabs].reverse().find((tab) => startsBefore(tabSpan(tab), visible));
 
     if (target) {
       scrollTabToEdge(scroller, target, direction === 'right' ? 'end' : 'start');
@@ -584,6 +605,7 @@ export function SpaceTabBar({
         viewport below is the scrollable ancestor dnd-kit finds.
       */}
       <DndContext
+        accessibility={DND_ACCESSIBILITY}
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={onDragEnd}
