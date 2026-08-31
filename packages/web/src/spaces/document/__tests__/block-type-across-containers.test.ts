@@ -14,6 +14,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { Editor } from '@tiptap/react';
 
 import { runBlockType } from '@web/spaces/document/document-block-press';
+import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 
 import { openBody, closeAll, selectBlock, selectRange, selectWholeBody } from './block-type-fixtures';
 
@@ -214,35 +215,47 @@ describe('a quote between the block and the list holding it', () => {
   // press. A block a quote holds inside a list item is not a list item itself
   // (no marker on screen), so nothing has to make way for it: it changes type
   // where it stands and both containers survive.
-  it('keeps the quote and the item when a heading is pressed on a quoted block', () => {
-    const editor = openBody('<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>');
-    selectBlock(editor, 'b');
-    runBlockType(editor, 'heading-1');
-    expect(editor.getHTML()).toBe(
-      '<ul><li><p>a</p><blockquote><h1>b</h1></blockquote></li></ul>',
-    );
-  });
-
-  it('takes a quoted inner list one level out and keeps the quote', () => {
-    const editor = openBody(
+  //
+  // Both shapes against all seven exclusive rows, because the two halves of
+  // the press take different routes to their result — `setBlockType` for the
+  // blocks and rows, `wrapRangeInList` at some depth for the lists — and a
+  // quote in a list item is the shape where taking that depth from the wrong
+  // level loses it. A quote at the top level answers the same either way.
+  const SANDWICHED = [
+    ['a quoted block', '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>'],
+    [
+      'a quoted inner list',
       '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>',
-    );
-    selectBlock(editor, 'b');
-    runBlockType(editor, 'paragraph');
-    expect(editor.getHTML()).toBe(
-      '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>',
-    );
-  });
+    ],
+  ] as const;
 
-  it('keeps the quote when a heading is pressed on a quoted inner list', () => {
-    const editor = openBody(
-      '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>',
-    );
+  /** What each row leaves in the quote, everything around it untouched. */
+  const INSIDE: Record<string, [blockShape: string, listShape: string]> = {
+    paragraph: ['<p>b</p>', '<p>b</p>'],
+    'heading-1': ['<h1>b</h1>', '<h1>b</h1>'],
+    'heading-2': ['<h2>b</h2>', '<h2>b</h2>'],
+    'heading-3': ['<h3>b</h3>', '<h3>b</h3>'],
+    // The inner list is already a bullet list, so pressing that row is the
+    // ticked-row press and goes back to Text (rule 2).
+    'bullet-list': ['<ul><li><p>b</p></li></ul>', '<p>b</p>'],
+    'ordered-list': ['<ol><li><p>b</p></li></ol>', '<ol><li><p>b</p></li></ol>'],
+    'code-block': ['<pre><code>b</code></pre>', '<pre><code>b</code></pre>'],
+  };
+
+  const CELLS = SANDWICHED.flatMap(([shape, body], index) =>
+    Object.entries(INSIDE).map(([row, results]) =>
+      [shape, body, row as BlockTypeId, results[index] as string] as const));
+
+  it.each(CELLS)('keeps the quote and the item on %s pressing %s', (
+    _shape,
+    body,
+    row,
+    inside,
+  ) => {
+    const editor = openBody(body);
     selectBlock(editor, 'b');
-    runBlockType(editor, 'heading-1');
-    expect(editor.getHTML()).toBe(
-      '<ul><li><p>a</p><blockquote><h1>b</h1></blockquote></li></ul>',
-    );
+    runBlockType(editor, row);
+    expect(editor.getHTML()).toBe(`<ul><li><p>a</p><blockquote>${inside}</blockquote></li></ul>`);
   });
 });
 

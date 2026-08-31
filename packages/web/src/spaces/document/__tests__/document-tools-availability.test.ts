@@ -136,7 +136,8 @@ describe('what the buttons claim', () => {
       MARK_TOOLS.forEach((tool) => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });
-      // 行内组装的也是 mark，答案跟 MARK_TOOLS 那一列同源。
+      // What the inline group builds is a mark too, so the answer comes from
+      // the same place as the MARK_TOOLS column above.
       INLINE_TOOLS.forEach((tool) => {
         expect(`${tool.id}=${tool.canRun(editor)}`).toBe(`${tool.id}=${c.marks}`);
       });

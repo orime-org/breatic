@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 块类型菜单的 E2E（任务 #904）。
+ * The block type menu end to end (task #904).
  *
- * 这里放 jsdom 到不了的那半：真的按下八个快捷键、真的用指针打开菜单点一行，
- * 以及对勾和分隔线在真实布局里的位置——jsdom 里每个矩形都是零，位置量不了，
- * 而按键在那儿是手动喂给 `handleKeyDown` 的，浏览器自己那一层没被走过。
+ * The half jsdom cannot reach: the eight chords really held down, the menu
+ * really opened with a pointer and a row really clicked, and where the ticks
+ * and the rule land in a real layout — every rectangle jsdom reports is zero,
+ * and a keystroke there is handed to `handleKeyDown` by hand, so the browser's
+ * own layer never runs.
  *
- * 每一格的产物由单测逐格钉住（`__tests__/block-type-transitions.test.ts` 等
- * 六个文件），这里不重复，只走通路径并抽查关键几格。
+ * What each cell produces is pinned cell by cell in the unit tests
+ * (`__tests__/block-type-transitions.test.ts` and five others).
  *
- * 需要 dev 起着 + smoke 账号：
+ * Wants dev running and a smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
@@ -48,18 +50,18 @@ test.afterEach(async () => {
   }
 });
 
-/** 这一轮在哪个 project 里跑；不给就走 studio 首页最上面那个。 */
+/** Which project this run works in; without one, the top of the studio page. */
 const projectUrl = process.env.SMOKE_PROJECT_URL;
 
 const SLOT = 'doc-bubble-block-type';
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 
-/** macOS 上是 ⌘，别处是 Ctrl。 */
+/** The Cmd key on macOS, Ctrl everywhere else. */
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 /**
- * 进到一个新建的 Document Space，光标已在正文里。
- * @param p - 页面。
+ * Open a freshly made Document Space with the caret in the body.
+ * @param p - The page.
  */
 async function openFreshDocument(p: Page): Promise<void> {
   if (projectUrl === undefined) {
@@ -76,17 +78,17 @@ async function openFreshDocument(p: Page): Promise<void> {
 
   const editor = p.locator(EDITOR);
   await expect(editor).toBeVisible({ timeout: 15_000 });
-  // 新建 Space 的对话框关闭时把焦点异步还给触发按钮；等它还完再动，否则接下来
-  // 的输入会被那个按钮吃掉。
+  // Closing the new-Space dialog hands focus back to the button that opened
+  // it, asynchronously. Wait for that, or the typing below goes to the button.
   await expect(p.getByTestId('new-space-button')).toBeFocused();
   await editor.click();
   await expect(editor).toBeFocused();
 }
 
 /**
- * 打一行字，然后把它整行选中。
- * @param p - 页面。
- * @param text - 要打的字。
+ * Type one line and take the whole of it.
+ * @param p - The page.
+ * @param text - What to type.
  */
 async function typeAndSelectLine(p: Page, text: string): Promise<void> {
   await p.keyboard.type(text);
@@ -95,9 +97,9 @@ async function typeAndSelectLine(p: Page, text: string): Promise<void> {
 }
 
 /**
- * 正文现在的 HTML，去掉占位属性。
- * @param p - 页面。
- * @returns 正文的 HTML。
+ * The body's HTML as it stands, without the placeholder attribute.
+ * @param p - The page.
+ * @returns That HTML.
  */
 async function bodyHtml(p: Page): Promise<string> {
   return p.evaluate(
@@ -108,15 +110,15 @@ async function bodyHtml(p: Page): Promise<string> {
 }
 
 /**
- * 把指针移到块类型格位上，等它的菜单出来。
- * @param p - 页面。
+ * Move the pointer onto the block type slot and wait for its menu.
+ * @param p - The page.
  */
 async function openBlockTypeMenu(p: Page): Promise<void> {
   await p.getByTestId(SLOT).hover();
   await expect(p.getByTestId(`${SLOT}-menu`)).toBeVisible({ timeout: 10_000 });
 }
 
-test('九行各点一次，文档每次都跟着变', async () => {
+test('presses each of the nine rows and the document follows every time', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a line the menu will work on');
 
@@ -137,14 +139,14 @@ test('九行各点一次，文档每次都跟着变', async () => {
     await expect
       .poll(async () => bodyHtml(page), { timeout: 10_000 })
       .toBe(html);
-    // 点第一个块本身，不点编辑器容器：点在末块下方的空白处会让
-    // `DocumentClickToWrite` 在文档末尾补一个新块（既有功能），下一轮的
-    // 全选就多框住一个块。
+    // The first block itself rather than the editor around it: a click in the
+    // space below the last block has `DocumentClickToWrite` add a block at the
+    // end, and the next select-all would take that one in too.
     await page.locator(`${EDITOR} > *`).first().click();
     await page.keyboard.press(`${MOD}+a`);
   }
 
-  // To-do list 是第九行，灰着、没有 schema 节点（#13）。
+  // The task list is the ninth row: greyed, with no schema node (#13).
   await openBlockTypeMenu(page);
   await expect(page.getByTestId(`${SLOT}-item-task-list`)).toHaveAttribute(
     'aria-disabled',
@@ -152,7 +154,7 @@ test('九行各点一次，文档每次都跟着变', async () => {
   );
 });
 
-test('八个快捷键各按一次，结果跟点那一行相同', async () => {
+test('holds each of the eight chords and lands where the row does', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a line the keys will work on');
 
@@ -174,10 +176,10 @@ test('八个快捷键各按一次，结果跟点那一行相同', async () => {
   }
 });
 
-test('引用里的列表：点标题只动块，点引用只脱引用', async () => {
+test('a quoted list: a heading moves the block, Quote takes the quote off', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'quoted list item');
-  // 先做成列表，再套引用。
+  // A list first, then a quote around it.
   await page.keyboard.press(`${MOD}+Shift+8`);
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+Shift+b`);
@@ -198,14 +200,14 @@ test('引用里的列表：点标题只动块，点引用只脱引用', async ()
     .toBe('<h1>quoted list item</h1>');
 });
 
-test('对勾在快捷键右边，分隔线在 Code block 之后', async () => {
+test('draws the tick right of the chord and the rule after Code block', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a heading to tick');
   await page.keyboard.press(`${MOD}+Alt+1`);
   await page.keyboard.press(`${MOD}+a`);
   await openBlockTypeMenu(page);
 
-  // 勾在 Heading 1 那一行，且只在那一行。
+  // The tick is on the Heading 1 row and on no other.
   const ticks = page.locator(`[data-testid^="${SLOT}-tick-"]`);
   await expect(ticks).toHaveCount(1);
   await expect(page.getByTestId(`${SLOT}-tick-heading-1`)).toBeVisible();
@@ -239,31 +241,31 @@ test('对勾在快捷键右边，分隔线在 Code block 之后', async () => {
     };
   }, SLOT);
 
-  // demo 把勾画在快捷键右边，同一行上。
+  // The demo draws the tick right of the chord, on the same line.
   expect(geometry.sameRow).toBe(true);
   expect(geometry.tickLeft).not.toBeNull();
   expect(geometry.shortcutRight).not.toBeNull();
   expect(geometry.tickLeft as number).toBeGreaterThan(geometry.shortcutRight as number);
 
-  // 分隔线夹在 Code block 和 Quote 之间。
+  // The rule sits between Code block and Quote.
   expect(geometry.ruleTop as number).toBeGreaterThanOrEqual(
     geometry.codeBlockBottom as number,
   );
   expect(geometry.quoteTop as number).toBeGreaterThanOrEqual(geometry.ruleTop as number);
 
-  // 每行都留着对勾那一格，所以打勾那行的快捷键跟别的行仍在同一条线上
-  // （demo 的 `.row .tick`）。
+  // Every row keeps the tick's column, so the ticked row's chord stays on the
+  // line the others sit on (the demo's `.row .tick`).
   expect(new Set(geometry.shortcutRights).size).toBe(1);
   expect(geometry.shortcutRights[0]).toBeGreaterThan(0);
 
-  // 行底色没了，勾是唯一的标记。
+  // The row fill is gone; the tick is the only mark.
   expect(geometry.activeRows).toBe(0);
 });
 
 /**
- * 菜单里画灰的那些行。
- * @param p - 页面。
- * @returns 它们的 id，按菜单画的顺序。
+ * The rows the open menu greys.
+ * @param p - The page.
+ * @returns Their ids, in the order the menu draws them.
  */
 async function greyedRows(p: Page): Promise<string[]> {
   return p.evaluate((slot) => {
@@ -274,7 +276,7 @@ async function greyedRows(p: Page): Promise<string[]> {
   }, SLOT);
 }
 
-test('正文里有缩进列表时，全选之后除 To-do list 外九行都点得动', async () => {
+test('a body holding an indented list lights every row but the task list', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('lead');
   await page.keyboard.press('Enter');
@@ -286,7 +288,7 @@ test('正文里有缩进列表时，全选之后除 To-do list 外九行都点�
     .poll(async () => bodyHtml(page), { timeout: 10_000 })
     .toBe('<p>lead</p><ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
 
-  // 全选分两档：第一次收当前块，第二次才是整篇（`select-all-tiers-and-keys`）。
+  // Select-all has two tiers: the block, then the body (`select-all-tiers-and-keys`).
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+a`);
   await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
@@ -299,7 +301,7 @@ test('正文里有缩进列表时，全选之后除 To-do list 外九行都点�
     .toBe('<h1>lead</h1><h1>one</h1><h1>deep</h1>');
 });
 
-test('挂着子列表的那一项，只选它的第一行也点得动', async () => {
+test('an item opening a sub-list is reachable from its first line alone', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('- one');
   await page.keyboard.press('Enter');
@@ -309,8 +311,9 @@ test('挂着子列表的那一项，只选它的第一行也点得动', async ()
     .poll(async () => bodyHtml(page), { timeout: 10_000 })
     .toBe('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
 
-  // 只收「one」那一行。它是那一项的第一块，而那一项底下挂着子列表，所以它
-  // 交不出这一块 —— 整项的内容一起出来。
+  // Only the line reading "one". It is that item's first block, and the item
+  // holds a sub-list, so it cannot give that block up on its own — the whole
+  // item's content comes out together.
   await page.locator(`${EDITOR} p`).first().click();
   await page.keyboard.press(`${MOD}+a`);
   await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
@@ -322,3 +325,200 @@ test('挂着子列表的那一项，只选它的第一行也点得动', async ()
     .poll(async () => bodyHtml(page), { timeout: 10_000 })
     .toBe('<h1>one</h1><ul><li><p>deep</p></li></ul>');
 });
+
+/** One selection: how to type it, how to (re)select it, which rows it greys. */
+interface SelectionShape {
+  name: string;
+  /** Type the body. Done once. */
+  type: (p: Page) => Promise<void>;
+  /** Put the selection back, which every undo needs again. */
+  select: (p: Page) => Promise<void>;
+  /** The rows expected greyed, in the order the menu draws them. */
+  grey: string[];
+}
+
+/** The eight chords, one per row of `document-block-type-shortcuts.ts`. */
+const CHORDS: Array<[id: string, chord: string]> = [
+  ['paragraph', `${MOD}+Alt+0`],
+  ['heading-1', `${MOD}+Alt+1`],
+  ['heading-2', `${MOD}+Alt+2`],
+  ['heading-3', `${MOD}+Alt+3`],
+  ['bullet-list', `${MOD}+Shift+8`],
+  ['ordered-list', `${MOD}+Shift+7`],
+  ['code-block', `${MOD}+Alt+c`],
+  ['quote', `${MOD}+Shift+b`],
+];
+
+/** The nine rows, in the order the menu draws them. */
+const NINE_ROWS = [
+  'paragraph', 'heading-1', 'heading-2', 'heading-3',
+  'bullet-list', 'ordered-list', 'task-list', 'code-block', 'quote',
+];
+
+/**
+ * Take one block: click it, then one Cmd+A, whose first tier is that block.
+ * @param p - The page.
+ * @param selector - That block's selector.
+ */
+async function selectBlockAt(p: Page, selector: string): Promise<void> {
+  await p.locator(selector).first().click();
+  await p.keyboard.press(`${MOD}+a`);
+  await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
+}
+
+const SHAPES: SelectionShape[] = [
+  {
+    name: 'a plain paragraph',
+    type: async (p) => { await p.keyboard.type('plain line'); },
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} > p`); },
+    grey: ['task-list'],
+  },
+  {
+    name: 'a line inside a quote',
+    type: async (p) => {
+      await p.keyboard.type('quoted line');
+      await p.keyboard.press(`${MOD}+a`);
+      await p.keyboard.press(`${MOD}+Shift+b`);
+    },
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} blockquote p`); },
+    grey: ['task-list'],
+  },
+  {
+    name: 'a list item',
+    type: async (p) => { await p.keyboard.type('- an item'); },
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} li p`); },
+    grey: ['task-list'],
+  },
+  {
+    name: 'a list inside a quote',
+    type: async (p) => {
+      await p.keyboard.type('- quoted item');
+      await p.keyboard.press(`${MOD}+a`);
+      await p.keyboard.press(`${MOD}+Shift+b`);
+    },
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} blockquote li p`); },
+    grey: ['task-list'],
+  },
+  {
+    name: 'a selection across two blocks',
+    type: async (p) => {
+      await p.keyboard.type('first line');
+      await p.keyboard.press('Enter');
+      await p.keyboard.type('second line');
+    },
+    select: async (p) => {
+      // A real drag from the first block to the last, so both are in the
+      // selection and it is not a select-all. Shift+ArrowDown does not hold
+      // here: inside a code block that keystroke moves within the block, which
+      // leaves the selection in one block.
+      const first = await p.locator(`${EDITOR} > *`).first().boundingBox();
+      const last = await p.locator(`${EDITOR} > *`).last().boundingBox();
+      if (!first || !last) throw new Error('both blocks have to be measurable');
+      await p.mouse.move(first.x + 2, first.y + first.height / 2);
+      await p.mouse.down();
+      await p.mouse.move(last.x + last.width - 2, last.y + last.height / 2, { steps: 8 });
+      await p.mouse.up();
+      await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
+    },
+    grey: ['task-list'],
+  },
+  {
+    name: 'two presses of Cmd+A',
+    type: async (p) => {
+      await p.keyboard.type('lead');
+      await p.keyboard.press('Enter');
+      await p.keyboard.type('- one');
+      await p.keyboard.press('Enter');
+      await p.keyboard.press('Tab');
+      await p.keyboard.type('deep');
+    },
+    select: async (p) => {
+      await p.locator(`${EDITOR} > *`).first().click();
+      // The first tier takes the block, the second the body
+      // (`select-all-tiers-and-keys`).
+      await p.keyboard.press(`${MOD}+a`);
+      await p.keyboard.press(`${MOD}+a`);
+      await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
+    },
+    grey: ['task-list'],
+  },
+];
+
+/**
+ * The rows the open menu ticks.
+ * @param p - The page.
+ * @returns Their ids.
+ */
+async function tickedRows(p: Page): Promise<string[]> {
+  return p.evaluate((slot) => {
+    const ticks = document.querySelectorAll(`[data-testid^="${slot}-tick-"]`);
+    return Array.from(ticks)
+      .map((t) => t.getAttribute('data-testid')?.replace(`${slot}-tick-`, '') ?? '');
+  }, SLOT);
+}
+
+// The checklist wants all nine rows pressed and all eight chords held on each
+// of six selections. What each cell produces is pinned by the unit tests; what
+// is asked here is whether the real path runs: a real pointer opening the menu,
+// a real row taking the click, a real keystroke reaching the same command. One
+// undo returns to the start, so every cell begins on the same document — which
+// walks A31, one press one transaction, over all six as well.
+//
+// Two kinds of "nothing moved" are right and everything else is a problem: a
+// greyed row, and a ticked Text row, whose target is the state the blocks are
+// already in (the exception in §6.7).
+for (const shape of SHAPES) {
+  test(`${shape.name}: nine rows pressed and eight chords held`, async () => {
+    // Seventeen cells, each of them reselecting, opening, pressing, undoing.
+    test.setTimeout(180_000);
+    await openFreshDocument(page);
+    await shape.type(page);
+    await shape.select(page);
+    const start = await bodyHtml(page);
+
+    await openBlockTypeMenu(page);
+    expect(await greyedRows(page), `${shape.name}: greyed rows`).toEqual(shape.grey);
+    const alreadyText = (await tickedRows(page)).includes('paragraph');
+    await page.keyboard.press('Escape');
+
+    /** Whether pressing this row should move the document. */
+    const moves = (id: string): boolean =>
+      !shape.grey.includes(id) && !(id === 'paragraph' && alreadyText);
+
+    for (const id of NINE_ROWS) {
+      await shape.select(page);
+      await openBlockTypeMenu(page);
+      // A greyed row carries `cursor-not-allowed`, which playwright's
+      // actionability check will not pass, and what is asked here is what a
+      // real press does — so it presses anyway.
+      await page.getByTestId(`${SLOT}-item-${id}`).click({ force: true });
+      if (!moves(id)) {
+        expect(await bodyHtml(page), `${shape.name}: ${id} moved the document`).toBe(start);
+        continue;
+      }
+      await expect
+        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .not.toBe(start);
+      await page.keyboard.press(`${MOD}+z`);
+      await expect
+        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .toBe(start);
+    }
+
+    for (const [id, chord] of CHORDS) {
+      await shape.select(page);
+      await page.keyboard.press(chord);
+      if (!moves(id)) {
+        expect(await bodyHtml(page), `${shape.name}: ${chord} moved the document`).toBe(start);
+        continue;
+      }
+      await expect
+        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .not.toBe(start);
+      await page.keyboard.press(`${MOD}+z`);
+      await expect
+        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .toBe(start);
+    }
+  });
+}

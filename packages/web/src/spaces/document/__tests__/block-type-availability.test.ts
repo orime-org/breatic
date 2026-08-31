@@ -10,8 +10,10 @@
  * the same judgement — its `applicable` stops at the first block that can take
  * the type — and `Transform.setBlockType` skips the others one at a time.
  *
- * The only row greyed on every selection is the task list, which has no schema
- * node to turn anything into.
+ * The task list is greyed on every selection there is: it has no schema node
+ * to turn anything into. Quote joins it on the selections where rule 5 would
+ * have to stack a second level of quote to say yes — see
+ * {@link QUOTE_HELD_NEARBY}, where upstream's own `can()` answers false too.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -92,8 +94,63 @@ describe('a selection every row reaches', () => {
   });
 });
 
+/**
+ * Selections where the quote row is greyed as well, by rule 5.
+ *
+ * The block is not in a quote, so pressing Quote means putting one on. The
+ * schema takes no quote inside a list item, so the wrapping has to go around
+ * the list — and that list already holds a quote of its own, which rule 5 will
+ * not stack a second level onto. The reader gets to these in two presses of
+ * this very menu: select the second line of a two-line item, press Quote, then
+ * select the first line.
+ *
+ * Upstream answers the same on all four from the other direction:
+ * `editor.can().toggleBlockquote()` is false, because tiptap only tries the
+ * selection's own `blockRange` and the schema takes no quote at that depth
+ * (`@tiptap/extension-blockquote@3.29.2`, measured 2026-08-31).
+ */
+const QUOTE_HELD_NEARBY: Array<[name: string, body: string, place: Place]> = [
+  [
+    'the first line of an item whose second block is quoted',
+    '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>',
+    (e) => { selectBlock(e, 'a'); },
+  ],
+  [
+    'the same in an ordered list',
+    '<ol><li><p>a</p><blockquote><p>b</p></blockquote></li></ol>',
+    (e) => { selectBlock(e, 'a'); },
+  ],
+  [
+    'the first line of an item whose quote holds a list',
+    '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>',
+    (e) => { selectBlock(e, 'a'); },
+  ],
+  [
+    'the first line of an item whose sub-list holds the quote',
+    '<ul><li><p>a</p><ul><li><p>b</p><blockquote><p>c</p></blockquote></li></ul></li></ul>',
+    (e) => { selectBlock(e, 'a'); },
+  ],
+];
+
+describe('a selection rule 5 keeps a quote from', () => {
+  it.each(QUOTE_HELD_NEARBY)('greys Quote as well on %s', (_name, body, place) => {
+    const editor = openBody(body);
+    place(editor);
+    const dark = ROWS.filter((id) => !canRunBlockType(editor, id));
+    expect(dark).toEqual(['task-list', 'quote']);
+  });
+
+  it('lights Quote where the quote sits in a sibling item instead', () => {
+    // The split at the selection's edges leaves that item in a list of its
+    // own, so the range the quote goes around holds no quote.
+    const editor = openBody('<ul><li><p>a</p></li><li><p>b</p><blockquote><p>c</p></blockquote></li></ul>');
+    selectBlock(editor, 'a');
+    expect(ROWS.filter((id) => !canRunBlockType(editor, id))).toEqual(['task-list']);
+  });
+});
+
 describe('a greyed row never writes anything', () => {
-  const CASES = REACHABLE;
+  const CASES = [...REACHABLE, ...QUOTE_HELD_NEARBY];
 
   // One direction only. Text on a block that is already Text stays lit and
   // writes nothing: the target is the state it is in, so there is nothing to

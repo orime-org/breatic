@@ -131,8 +131,9 @@ describe('the bubble bar shell', () => {
       });
     });
 
-    // A7's second half, from the note under the demo's alignment menu: "对齐只作用在段落
-    // 和 H1 / H2 / H3 上。选区落在引用、列表、代码块里时，这个下拉整个变灰。"
+    // A7's second half, from the note under the demo's alignment menu:
+    // alignment reaches paragraphs and H1 / H2 / H3, and the whole slot greys
+    // where the selection sits in a quote, a list or a code block.
     // The first half — the greyed task list row — is `greys the task list row,
     // and only that one` further down.
     it.each([
@@ -402,8 +403,8 @@ describe('the bubble bar shell', () => {
       // The document is what it was: the console is the only thing that
       // happened.
       expect(sharedBodyMarkup()).toBe(before);
-      // C2 ends "菜单照常关闭", and it says so for every row alike — the ones
-      // that reach a command and the ones that reach the console.
+      // C2 ends with the menu closing, and it says so for every row alike —
+      // the ones that reach a command and the ones that reach the console.
       await waitFor(() => {
         expect(screen.queryByTestId(`${slot}-menu`)).toBeNull();
       });
@@ -783,7 +784,7 @@ describe('the bubble bar shell', () => {
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
       ).toHaveLength(8);
 
-      // A6 asks for "三组八项", and the three come from the ruling's own table
+      // A6 asks for eight rows in three groups, the three coming from the table
       // (§3.2.1). Counting the rows alone leaves the grouping untested: strip
       // every label out and eight ungrouped rows still pass.
       //
