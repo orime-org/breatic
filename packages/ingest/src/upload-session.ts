@@ -42,10 +42,11 @@ interface RecordedPart {
 /**
  * How far the finishing sequence has got.
  *
- * Kept because the alarm re-enters it: a report the server did not accept
- * leaves the alarm set, and the next attempt must not complete an upload that
- * is already complete or read a 2 GiB object back a second time to hash it
- * again.
+ * Kept because the alarm re-enters it, and each step is remembered on its own:
+ * assembling the object and hashing it are two facts, and reading a completed
+ * object back can fail by itself. A retry that lost only the hash asks R2 for
+ * nothing it has already done, and one that lost only the report re-sends it
+ * without reading a 2 GiB object back a second time.
  */
 interface FinishProgress {
   /** R2 has assembled the object, or the upload was aborted. */
@@ -143,17 +144,21 @@ export class UploadSession implements DurableObject {
    * Same work as the browser asking, because the question is the same one:
    * did every part arrive? The browser only ever gets there sooner. A browser
    * that stopped sending never asks at all, and this is what notices.
+   * @throws {Error} When the server did not accept the outcome.
    */
   async alarm(): Promise<void> {
-    await this.#finish();
+    const outcome = await this.#settleAndReport();
+    if (outcome === "not_accepted") {
+      // Cloudflare retries a failing alarm and reschedules nothing when one
+      // returns, so failing here is the only way another attempt happens. The
+      // node this upload belongs to sits in handling until the server hears
+      // the outcome, and nothing but this will tell it.
+      throw new Error("the server did not accept this upload's report");
+    }
   }
 
   /**
-   * Settle the upload and tell the server.
-   *
-   * Re-entrant by construction: each step records that it happened, so the
-   * alarm coming back after a report the server refused re-sends the report
-   * without completing an already-complete upload or hashing its bytes twice.
+   * Answer the browser asking to finish.
    *
    * The answer carries the outcome because one caller has no other way to hear
    * it: an upload with no node behind it — a focus crop — is not something the
@@ -162,27 +167,49 @@ export class UploadSession implements DurableObject {
    * @returns The outcome once the server has accepted it, 502 while it has not.
    */
   async #finish(): Promise<Response> {
+    const outcome = await this.#settleAndReport();
+    if (outcome === "gone") return new Response("Gone", { status: 410 });
+    if (outcome === "not_accepted") {
+      // The alarm is still set, so this upload gets another attempt whether or
+      // not the browser makes one.
+      return new Response("Report not accepted", { status: 502 });
+    }
+    return outcomeResponse(outcome);
+  }
+
+  /**
+   * Settle the upload and tell the server, from wherever the last attempt got
+   * to.
+   *
+   * Each step is persisted as it happens, so a re-entry redoes only what is
+   * actually missing: an object R2 has already assembled is not assembled
+   * again, and bytes already hashed are not read back a second time.
+   * @returns The accepted outcome, or why there is not one.
+   */
+  async #settleAndReport(): Promise<FinishProgress | "gone" | "not_accepted"> {
     const upload = await this.#state.storage.get<OpenUpload>("upload");
-    if (upload === undefined) return new Response("Gone", { status: 410 });
+    if (upload === undefined) return "gone";
 
     const stored: FinishProgress = (await this.#state.storage.get<FinishProgress>(
       "finish",
     )) ?? { settled: false, reported: false };
-    if (stored.reported) return outcomeResponse(stored);
+    if (stored.reported) return stored;
 
-    const settled = stored.settled ? stored : await this.#settle(upload, stored);
+    const assembled = stored.settled
+      ? stored
+      : await this.#assemble(upload, stored);
+    const settled =
+      assembled.abortedReason === undefined && assembled.sha256 === undefined
+        ? await this.#hash(upload, assembled)
+        : assembled;
 
     const reported = await this.#report(upload, settled);
-    if (reported === null) {
-      // The alarm stays set. Nothing else will tell the node what happened, so
-      // the only way this upload reaches the user is by trying again.
-      return new Response("Report not accepted", { status: 502 });
-    }
+    if (reported === null) return "not_accepted";
 
     const done: FinishProgress = { ...settled, reported: true, registered: reported };
     await this.#state.storage.put("finish", done);
     await this.#state.storage.deleteAlarm();
-    return outcomeResponse(done);
+    return done;
   }
 
   /**
@@ -193,9 +220,9 @@ export class UploadSession implements DurableObject {
    * count answers "is the file whole?" on its own.
    * @param upload - What is open.
    * @param progress - How far finishing has got.
-   * @returns The progress after settling, already persisted.
+   * @returns The progress after assembling, already persisted.
    */
-  async #settle(
+  async #assemble(
     upload: OpenUpload,
     progress: FinishProgress,
   ): Promise<FinishProgress> {
@@ -218,14 +245,34 @@ export class UploadSession implements DurableObject {
 
     const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
     const object = await resumed.complete(ordered);
-    const settled: FinishProgress = {
+    // Recorded before the hash is taken. Reading the object back can fail on
+    // its own, and R2 refuses to assemble an upload it has already assembled.
+    const assembled: FinishProgress = {
       ...progress,
       settled: true,
-      sha256: await this.#hashStored(upload.ticket.storageKey),
       sizeBytes: object.size,
     };
-    await this.#state.storage.put("finish", settled);
-    return settled;
+    await this.#state.storage.put("finish", assembled);
+    return assembled;
+  }
+
+  /**
+   * Hash the assembled object and remember what came out.
+   * @param upload - What is open.
+   * @param progress - The assembled progress.
+   * @returns The progress carrying the hash, already persisted.
+   * @throws {Error} When the object is not readable, which fails the alarm.
+   */
+  async #hash(
+    upload: OpenUpload,
+    progress: FinishProgress,
+  ): Promise<FinishProgress> {
+    const hashed: FinishProgress = {
+      ...progress,
+      sha256: await this.#hashStored(upload.ticket.storageKey),
+    };
+    await this.#state.storage.put("finish", hashed);
+    return hashed;
   }
 
   /**
