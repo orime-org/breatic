@@ -163,7 +163,7 @@ async function runTurn(signal?: AbortSignal): Promise<void> {
   sent = [];
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     for await (const chunk of await new MainAgent().chat("hi", signal)) {
-      sent.push(chunk as { type: string });
+      sent.push(chunk);
     }
   });
 }
