@@ -14,6 +14,13 @@ models:
     description: "Most natural, emotional speech"
     guide: "Most expressive TTS model with natural emotion and intonation. 70+ languages, 5000 char limit. 50+ preset voices covering diverse accents, ages, and styles. Choose for the highest-quality single-speaker voiceover, narration, or dialogue where naturalness matters most."
     cost_per_call: 10
+    # $0.10 / 1000 characters on the vendor's pricing page, at 1 credit =
+    # 1 US cent. Stated to the user before generating; the actual charge is
+    # taken afterwards, on actual usage.
+    rate:
+      credits: 10
+      per: 1000
+      unit: characters
     generation_time: 30
     languages:
       - English
@@ -104,6 +111,11 @@ models:
     params:
       voice_id:
         description: "Voice identifier"
+        # Filled by the voice picker, from GET /models/:name/voices. The two
+        # upstreams behind this model read different value domains — a 20-char
+        # id when connected directly, a name through WaveSpeed — so the value
+        # comes from whichever one this deployment resolved to.
+        remote_source: voices
         default: "Alice"
       stability:
         description: "Voice consistency (0-1)"

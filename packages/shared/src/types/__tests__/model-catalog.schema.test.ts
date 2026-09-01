@@ -282,4 +282,55 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(Object.getPrototypeOf(params)).toBe(Object.prototype); // not polluted
     expect(params?.aspect_ratio?.values).toEqual(["1:1"]); // legit sibling kept
   });
+
+  // #1960 — two fields the audio panel reads. Both schemas here are plain
+  // `z.object`s with no passthrough, so a field the backend sends but this
+  // file never declares is stripped silently: the panel then renders without
+  // it, typecheck stays green and no test elsewhere notices. These two cases
+  // are the only place the wire→browser half of that chain is pinned.
+  it("keeps a model's rate, unit and all, so the panel can state a price", () => {
+    const raw = catalog([
+      entry("fish-s2-pro", {
+        rate: { credits: 1.5, per: 1000, unit: "utf8_bytes" },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.rate).toEqual({
+      credits: 1.5,
+      per: 1000,
+      unit: "utf8_bytes",
+    });
+  });
+
+  it("leaves rate undefined on a model that declares none", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux")]));
+    expect(out.image[0]?.rate).toBeUndefined();
+  });
+
+  it("keeps a param's remote_source, which names the picker that fills it", () => {
+    const raw = catalog([
+      entry("elevenlabs-v3", {
+        params: {
+          voice_id: { description: "", default: null, remote_source: "voices" },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.voice_id?.remote_source).toBe("voices");
+  });
+
+  it("coerces an unknown remote_source to undefined but keeps the descriptor", () => {
+    // An unrecognised name would send the panel looking for a picker that does
+    // not exist; the param stays, it just renders as an ordinary one.
+    const raw = catalog([
+      entry("flux", {
+        params: {
+          seed: { description: "", default: 0, remote_source: "wat" },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.seed?.remote_source).toBeUndefined();
+    expect(out.image[0]?.params.seed?.default).toBe(0);
+  });
 });

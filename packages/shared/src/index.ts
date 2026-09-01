@@ -63,6 +63,8 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  RemoteParamSource,
+  ModelRate,
   ModelProvider,
   ModelEntry,
   ModelCatalog,
