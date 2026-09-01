@@ -15,7 +15,9 @@
  * job, and the queue's own failure net catches the case where the retries run
  * out. Everything upstream of the event is best-effort by comparison: the
  * video is already in the ledger, so a cover that cannot be extracted or
- * registered degrades to a video without one rather than to a failure.
+ * registered degrades to a video without one rather than to a failure. A cover
+ * that registered but could not be pointed at is the exception: that one is
+ * thrown, because the row it left behind is real and a retry finishes it.
  */
 
 import {
@@ -127,8 +129,9 @@ async function resolveCover(
     return undefined;
   }
 
+  let registered;
   try {
-    const { asset, reclaimQueueFailed } = await assetService.register({
+    registered = await assetService.register({
       projectId: data.projectId,
       actingUserId: data.userId,
       ownerStudioId: data.ownerStudioId,
@@ -140,20 +143,8 @@ async function resolveCover(
       kind: "image",
       source: "cover",
     });
-    if (reclaimQueueFailed === true) {
-      // The registration succeeded and only the bookkeeping insert that hands
-      // the now-redundant object to the offline reclaim job failed. The
-      // library layer may not log, so it returns a flag; swallowing it would
-      // leave the object silently absent from that job's work list.
-      logger.warn(
-        { storageKey: data.storageKey, key: cover.key, hash: cover.sha256 },
-        "asset_reclaim_queue_failed",
-      );
-    }
-    await assetRepo.setCoverAsset(data.videoAssetId, asset.id);
-    return publicUrl(asset.storageKey);
   } catch (err) {
-    // No live row means no cover anyone may serve. The video keeps its own
+    // No row means no cover anyone may serve. The video keeps its own
     // registration, so this degrades to a video without a cover.
     logger.warn(
       { err, storageKey: data.storageKey },
@@ -161,6 +152,25 @@ async function resolveCover(
     );
     return undefined;
   }
+
+  if (registered.reclaimQueueFailed === true) {
+    // The registration succeeded and only the bookkeeping insert that hands
+    // the now-redundant object to the offline reclaim job failed. The library
+    // layer may not log, so it returns a flag; swallowing it would leave the
+    // object silently absent from that job's work list.
+    logger.warn(
+      { storageKey: data.storageKey, key: cover.key, hash: cover.sha256 },
+      "asset_reclaim_queue_failed",
+    );
+  }
+
+  // Thrown rather than degraded, which is what separates it from the failure
+  // above. The cover row is real and keyed on this frame's hash, so the retry
+  // finds it by dedup and has only the pointer left to write; going on without
+  // it would leave that row with nothing pointing at it and a node that never
+  // gets a cover.
+  await assetRepo.setCoverAsset(data.videoAssetId, registered.asset.id);
+  return publicUrl(registered.asset.storageKey);
 }
 
 /**

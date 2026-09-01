@@ -260,6 +260,20 @@ describe("the cover cannot be registered", () => {
     expect(mockWarn).toHaveBeenCalled();
   });
 
+  // Registering and pointing at it are two different failures. The registered
+  // row is real and keyed on the frame's hash, so the retry that follows finds
+  // it by dedup and only has to write the pointer — whereas giving up here
+  // leaves a cover row nothing points at and a node that never gets one.
+  it("fails the job when the cover registered but could not be linked", async () => {
+    // Once, because `clearAllMocks` clears calls but keeps an implementation,
+    // and this one would then reject for every case after it.
+    mockSetCover.mockRejectedValueOnce(new Error("update lost"));
+
+    await expect(runVideoCover(job())).rejects.toThrow(/update lost/);
+
+    expect(mockEmitDone).not.toHaveBeenCalled();
+  });
+
   it("warns when the redundant object could not be queued for reclaim", async () => {
     mockRegister.mockResolvedValue({
       asset: REGISTERED_COVER,
