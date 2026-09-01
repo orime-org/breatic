@@ -4,9 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
-import { UploadNotOpenedError } from '@web/data/upload/ingest-upload';
 import {
-  browserOwnsFailure,
   isReportableAssetUrl,
   fileToNodeSpec,
   checkFileAdmission,
@@ -162,23 +160,6 @@ function makeUploadDeps(
   };
 }
 
-// The dividing line design §5.5 draws. Before a ticket exists no grant does
-// either, so nothing on the server will ever announce this upload's outcome
-// and the browser has to write it. Past the ticket a Durable Object holds an
-// alarm on the upload and reports either way — and a failure written here
-// clears `handlingBy`, which fences out the announcement still coming.
-describe('browserOwnsFailure — who writes the node when an upload ends badly', () => {
-  it('gives the browser every failure that happens before a ticket exists', () => {
-    expect(browserOwnsFailure('hash')).toBe(true);
-    expect(browserOwnsFailure('storage')).toBe(true);
-    expect(browserOwnsFailure('ticket')).toBe(true);
-  });
-
-  it('leaves a failure past the ticket to the server', () => {
-    expect(browserOwnsFailure('transfer')).toBe(false);
-  });
-});
-
 describe('runMediaUpload — ask for a ticket, send the bytes, hand back the outcome', () => {
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
   const context = { projectId: 'p1', leaseGen: 6, nodeId: 'n1', spaceId: 's1' };
@@ -267,11 +248,9 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
   });
 
-  // Past the ticket the outcome is the server's to announce: the Durable
-  // Object holds an alarm on this upload and reports whichever way it ends.
-  // Told apart from a ticket failure because the caller must not write the
-  // node's own failure over an outcome that is still coming (design §5.5).
-  it('names a failure past the ticket apart from one before it', async () => {
+  // Named apart from a ticket failure so the node's message and its Retry
+  // stash can differ, even though both are the browser's to write.
+  it('names a failure sending the bytes apart from one asking for a ticket', async () => {
     const deps = makeUploadDeps({
       sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
     });
@@ -280,23 +259,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('transfer');
-  });
-
-  // The Durable Object that reports an outcome is created by the open request,
-  // one step past the ticket. A failure there leaves nothing anywhere holding
-  // this attempt, so the browser writes the node's failure — the alternative is
-  // a node that spins until collab's hour-long sweeper reclaims it.
-  it('hands the browser a failure that arrived before the upload opened', async () => {
-    const deps = makeUploadDeps({
-      sendToIngest: vi
-        .fn()
-        .mockRejectedValue(new UploadNotOpenedError(apiError(502))),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
   });
 
   // A full account is not something a retry fixes, and the message the user

@@ -4,7 +4,6 @@
 import { validFocusImages } from '@web/data/focus-images';
 import {
   isAlreadyStored,
-  UploadNotOpenedError,
   type IngestOutcome,
   type UploadTicket,
   type UploadTicketResponse,
@@ -125,40 +124,23 @@ export interface UploadContext {
 }
 
 /**
- * Why an upload ended in `onFailure` — the caller picks the message from this,
- * and whether the node's own failure is the browser's to write.
+ * Why an upload ended in `onFailure` — the caller picks the message from this.
  *
- * The dividing line is the Durable Object (design §5.5), which the Worker
- * creates when the upload is opened — one request past the ticket. Until it
- * exists nothing anywhere holds this upload and nobody will ever announce how
- * it ended: the browser owns the outcome. Once it exists it holds an alarm on
- * this upload and reports whichever way it ends, so the node's state is the
- * server's — writing a failure over it would fence out the announcement that
- * is still coming.
+ * Whichever one it is, the browser writes the node's failure once its own
+ * retries are spent (design §5.6, §6.6). The server's own path runs on
+ * independently, and the event it eventually sends carries a gen the node no
+ * longer holds, so collab drops it — which is what the design asks for: what
+ * stays on the node is the failure the browser wrote.
  *
  * `hash` — the browser could not fingerprint the file (worker / WASM / read
  * failure), which no retry of the SAME page fixes: the fix is a reload.
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
- * `ticket` — the knobs, the ticket request, or opening the upload failed. A
- * retry can fix it.
- * `transfer` — a part or the completion failed, with the upload open.
+ * `ticket` — the knobs or the ticket request failed. A retry can fix it.
+ * `transfer` — opening the upload, a part, or the completion failed.
  */
 export type UploadFailureReason = 'hash' | 'storage' | 'ticket' | 'transfer';
-
-/**
- * Whether the browser writes this failure onto the node itself.
- *
- * True only for the reasons that arise before the upload is open. Past that
- * point the node is left in handling and the server announces the outcome —
- * which it does whether the browser is still there or not.
- * @param reason - Why the upload ended.
- * @returns True when the caller writes the node's failure.
- */
-export function browserOwnsFailure(reason: UploadFailureReason): boolean {
-  return reason !== 'transfer';
-}
 
 /**
  * Say which failure a ticket request ended in.
@@ -309,14 +291,11 @@ export async function runMediaUpload(
     return;
   }
 
-  // From here on the outcome is announced whether or not this browser is still
-  // listening — from the moment the Worker has the upload open, which is the
-  // first thing this step does.
   try {
     const outcome = await deps.sendToIngest(file, answer, cfg);
     deps.onSuccess(outcome.fileUrl);
-  } catch (err) {
-    deps.onFailure(err instanceof UploadNotOpenedError ? 'ticket' : 'transfer');
+  } catch {
+    deps.onFailure('transfer');
   }
 }
 

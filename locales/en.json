@@ -400,8 +400,7 @@
       "tooLarge": "{filename} exceeds the upload size limit.",
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
-      "storageFull": "Studio storage is full. Uploading is unavailable.",
-      "transferInterrupted": "Upload interrupted. The result will appear here shortly."
+      "storageFull": "Studio storage is full. Uploading is unavailable."
     },
     "minimap": {
       "label": "Canvas minimap"

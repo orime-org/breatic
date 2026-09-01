@@ -400,8 +400,7 @@
       "tooLarge": "{filename} 超过上传大小限制。",
       "empty": "{filename} 是空文件,没有内容可以添加。",
       "hashUnavailable": "无法校验此文件,请刷新页面后重试。",
-      "storageFull": "Studio 存储已满，当前无法上传。",
-      "transferInterrupted": "上传中断，稍后会显示结果。"
+      "storageFull": "Studio 存储已满，当前无法上传。"
     },
     "minimap": {
       "label": "画布缩略图"

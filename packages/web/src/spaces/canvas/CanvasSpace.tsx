@@ -98,7 +98,6 @@ import {
 } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import {
-  browserOwnsFailure,
   fileToNodeSpec,
   checkFileAdmission,
   fillNodeFromFile,
@@ -2023,9 +2022,6 @@ function CanvasSpaceInner({
   // reload. A `storage` failure means the account is out of room (#89), and
   // nobody frees any in the seconds a retry takes. Both remedies can only be
   // said in a localized toast.
-  //
-  // A `transfer` failure writes nothing at all: with the upload open, the
-  // node's outcome belongs to the server.
   const failUploadNode = React.useCallback(
     (
       reason: UploadFailureReason,
@@ -2063,16 +2059,6 @@ function CanvasSpaceInner({
           lease,
         );
         toast.error(t('canvas.upload.hashUnavailable'));
-        return;
-      }
-      if (!browserOwnsFailure(reason)) {
-        // Once the upload is open the server owns this node's outcome: a
-        // Durable Object holds an alarm on it and reports whichever way it
-        // ends. Writing a failure here would clear `handlingBy`, and collab
-        // fences every later event against a live lease — so the announcement
-        // still coming would be dropped and the node would sit on a failure
-        // that is not what happened.
-        toast.warning(t('canvas.upload.transferInterrupted'));
         return;
       }
       stashRetryFile(projectId, spaceId, nodeId, file);
