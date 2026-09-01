@@ -219,20 +219,21 @@ export const VoicePicker = React.memo(function VoicePicker({
                   data-testid={`generate-voice-option-${voice.id}`}
                   onSelect={() => handlePick(voice)}
                   className={cn(
-                    'justify-between gap-2 rounded-chrome',
+                    // Same row chrome as the model picker's ghost menu-item
+                    // Buttons: 6px corners, and hover lifts the label as well
+                    // as the fill.
+                    'gap-2 rounded-chrome hover:text-accent-foreground',
                     voice.id === selectedId
-                      ? 'bg-accent-strong'
+                      ? // cmdk marks whatever the pointer or the arrow keys
+                    // landed on with data-selected, and CommandItem draws
+                    // that as plain accent. That is a class plus an
+                    // attribute, which outranks a single class, so the
+                    // chosen fill has to answer in the same shape or it
+                    // drops to its neighbours' colour under the pointer.
+                      'bg-accent-strong data-[selected=\'true\']:bg-accent-strong hover:bg-accent-strong'
                       : 'hover:bg-accent',
                   )}
                 >
-                  <span className='flex min-w-0 flex-1 flex-col'>
-                    <span className='truncate'>{voice.name}</span>
-                    {voice.description !== undefined && (
-                      <span className='truncate text-xs text-muted-foreground'>
-                        {voice.description}
-                      </span>
-                    )}
-                  </span>
                   {voice.previewUrl !== undefined && (
                     <Button
                       type='button'
@@ -254,6 +255,14 @@ export const VoicePicker = React.memo(function VoicePicker({
                       <Play className='h-3 w-3' aria-hidden='true' />
                     </Button>
                   )}
+                  <span className='flex min-w-0 flex-1 flex-col'>
+                    <span className='truncate'>{voice.name}</span>
+                    {voice.description !== undefined && (
+                      <span className='truncate text-xs text-muted-foreground'>
+                        {voice.description}
+                      </span>
+                    )}
+                  </span>
                 </CommandItem>
               ))}
               {list.loadingMore && (

@@ -204,6 +204,36 @@ describe('VoicePicker list (#1960 A2)', () => {
     open({ selectedId: 'beta', selectedName: 'Beta' });
     expectChosenFill(screen.getByTestId('generate-voice-option-beta'));
   });
+
+  it('keeps the chosen fill under the pointer and under keyboard focus', () => {
+    // cmdk marks the item the pointer or the arrow keys landed on with
+    // data-selected, and CommandItem's own base draws that as plain accent.
+    // A class-plus-attribute selector outranks the single class holding the
+    // chosen fill, so without this the chosen voice drops back to the same
+    // colour as its neighbours the moment either lands on it.
+    open({ selectedId: 'beta', selectedName: 'Beta' });
+    const chosen = screen.getByTestId('generate-voice-option-beta');
+    expect(chosen.className).toContain(
+      'data-[selected=\'true\']:bg-accent-strong',
+    );
+  });
+
+  it('puts the sample button first, where the model picker puts its icon', () => {
+    open();
+    const row = screen.getByTestId('generate-voice-option-alpha');
+    expect(row.firstElementChild).toBe(
+      screen.getByTestId('generate-voice-sample-alpha'),
+    );
+  });
+
+  it('lifts the label with the fill, the way the model picker does', () => {
+    // ModelPicker's rows are ghost Buttons, whose hover is
+    // `hover:bg-accent hover:text-accent-foreground` — both halves.
+    open();
+    expect(screen.getByTestId('generate-voice-option-alpha').className).toContain(
+      'hover:text-accent-foreground',
+    );
+  });
 });
 
 describe('VoicePicker states (#1960 A6)', () => {
