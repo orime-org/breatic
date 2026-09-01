@@ -131,7 +131,15 @@ test.afterAll(async () => {
 // A1: the bytes reach R2 through the Worker, and the URL the server wrote is
 // the one the node keeps — which is what a reload proves.
 test('a dropped image lands on a node with a URL that survives a reload', async () => {
-  await dropFile(page, 'tiny.png', 'image/png', TINY_PNG);
+  // Bytes no earlier run has stored. A fixed payload would hit dedup at the
+  // ticket from the second run onwards, and the answer to that never reaches
+  // the Worker — which is the half this case exists to prove.
+  await dropFile(
+    page,
+    'tiny.png',
+    'image/png',
+    Buffer.concat([TINY_PNG, randomBytes(16)]),
+  );
 
   // The Space starts empty, so the one source that appears is this upload's.
   await expect
@@ -154,7 +162,13 @@ test('a dropped image lands on a node with a URL that survives a reload', async 
 // retries are spent the node fails there and then, keeps its Retry stash, and
 // says so in the language of the person who tried.
 test('a transfer that dies leaves the node failed and says so', async () => {
-  await page.route('**/uploads**', (route) => route.abort('connectionfailed'));
+  // Counted, because a ticket failure reaches the same sink with the same
+  // wording: without this the case passes on a glob that matches nothing.
+  let aborted = 0;
+  await page.route('**/uploads**', (route) => {
+    aborted += 1;
+    return route.abort('connectionfailed');
+  });
 
   // Bytes no earlier run has stored: an identical file hits dedup at the
   // ticket, which answers with the existing URL and sends nothing to abort.
@@ -168,9 +182,14 @@ test('a transfer that dies leaves the node failed and says so', async () => {
   await expect(page.getByText(/Upload failed: doomed\.png/)).toBeVisible({
     timeout: 60_000,
   });
-  await expect(page.locator('[data-sonner-toast]')).toBeVisible({
-    timeout: 5_000,
-  });
+  // The wording, not just the presence: `storage` and `hash` each raise their
+  // own toast from the same function, and picking the wrong one tells the user
+  // to retry something a retry cannot fix.
+  await expect(page.locator('[data-sonner-toast]')).toContainText(
+    'Upload failed',
+    { timeout: 5_000 },
+  );
+  expect(aborted).toBeGreaterThan(0);
 
   await page.unroute('**/uploads**');
 });

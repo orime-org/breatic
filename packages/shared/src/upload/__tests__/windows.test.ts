@@ -77,6 +77,21 @@ describe("completeRetryBudgetMs", () => {
   });
 });
 
+// Both halves decide the window on their own turn, and the shipped figures
+// only ever exercise one of them: 600s of idle is well under the delivery
+// budget, so nothing else here would notice the idle half going missing.
+describe("answerRetentionMs", () => {
+  it("holds the answer for the delivery budget when the idle gap is shorter", () => {
+    expect(answerRetentionMs(60)).toBe(completeRetryBudgetMs());
+  });
+
+  it("holds it for the idle gap when that is the longer of the two", () => {
+    const beyondBudget = Math.ceil(completeRetryBudgetMs() / 1000) + 60;
+
+    expect(answerRetentionMs(beyondBudget)).toBe(beyondBudget * 1000);
+  });
+});
+
 describe("assertUploadWindows", () => {
   /** The shipped figures, with the pieces a case varies. */
   const windows = (over: Record<string, number> = {}): Parameters<
