@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
@@ -83,9 +83,12 @@ export const ModelPicker = React.memo(function ModelPicker({
             space, hover = color change). The height cap and inner padding
             live on the viewport — the element that actually scrolls. */}
         <ScrollArea viewportClassName='max-h-52 p-1'>
-          {/* Same option pattern as LangSwitcher / ThemeToggle (spec §9.4): a
-              gap-0.5 column of ghost menu-item Buttons — the gap keeps the hover
-              and selected highlights visually separate. */}
+          {/* Same option pattern as LangSwitcher / ThemeToggle: a gap-0.5
+              column of ghost menu-item Buttons — the gap keeps the hover and
+              chosen highlights visually separate. Single-choice, so the fill is
+              the whole mark; a check mark reads as "more than one can be on at
+              once" (DESIGN.md §5.3). The vendor icon below names the model, it
+              reports no choice. */}
           <div className='flex flex-col gap-0.5'>
             {models.map((m) => (
               <Button
@@ -104,10 +107,6 @@ export const ModelPicker = React.memo(function ModelPicker({
                   setOpen(false);
                 }}
               >
-                <Check
-                  className={`h-3.5 w-3.5 shrink-0 ${m.name === value ? 'opacity-100' : 'opacity-0'}`}
-                  aria-hidden='true'
-                />
                 <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
                 {/* truncate: the catalog puts no length cap on display_name and
                     Button's base carries whitespace-nowrap — unbounded, one long
