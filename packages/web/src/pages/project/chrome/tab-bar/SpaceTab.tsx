@@ -92,8 +92,9 @@ const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
  *
  * - 32px hit area (`--btn-chrome`)
  * - rounded 4px (ground truth specifies sm radius, not chrome 6px)
- * - muted-foreground at rest; active + hover both lift to bg-accent
- * - close button fades in on hover; hidden when locked
+ * - muted-foreground at rest; hover lifts to bg-accent and the current tab
+ *   sits one step further at bg-accent-strong
+ * - close button takes room and fades in on hover; hidden when locked
  * @param root0 - Component props.
  * @param root0.id - Space id, used for the tab's test ids and keys.
  * @param root0.name - Current space name shown on the tab.
