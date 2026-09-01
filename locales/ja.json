@@ -591,6 +591,8 @@
         "create": "Space の作成に失敗しました",
         "openTab": "タブを開けませんでした",
         "closeTab": "タブを閉じられませんでした",
+        "reorderTab": "タブを移動できませんでした",
+        "reorderTabUnanswered": "サーバーから応答がありません。ページを再読み込みすると現在のタブ順序を確認できます",
         "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
@@ -1162,6 +1164,7 @@
       "share": "招待",
       "notifications": "通知",
       "newSpace": "新規 Space",
+      "revealActiveTab": "現在の Space を表示",
       "allSpaces": "全 Spaces",
       "agentHide": "エージェントパネルを隠す",
       "agentShow": "エージェントパネルを表示",

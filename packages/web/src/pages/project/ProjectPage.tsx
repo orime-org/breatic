@@ -20,7 +20,7 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
-import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import {
@@ -30,11 +30,13 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
-  nextActiveAfterVanish,
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
-import { resolveEffectiveActiveSpace } from '@web/pages/project/active-space';
+import {
+  resolveEffectiveActiveSpace,
+  reviseTabChoice,
+} from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
@@ -51,6 +53,7 @@ import {
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useTabReorder } from '@web/pages/project/use-tab-reorder';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
@@ -276,21 +279,153 @@ function ProjectWorkspace({
     null,
   );
 
+  /**
+   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
+   * connection. Always throws on failure, and always shows a toast first, so
+   * a caller's `.catch()` is there for its own cleanup, not to tell the user.
+   * There are three ways to fail and all three
+   * go through here: the provider is not mounted yet (the UI gates actions
+   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
+   * its 10s timeout, or the transport throws), or the server answered no.
+   */
+  const callRpc = React.useCallback(
+    async (
+      req: Parameters<typeof sendSpaceRpc>[1],
+      errorToastKey: string,
+      unansweredToastKey?: string,
+    ): Promise<SpaceRpcResponse> => {
+      if (!provider) {
+        // Surface a toast on the "no provider yet" path too - without this
+        // the catch block in callers received a silent `Error('notSynced')`
+        // and (because `err.message.length > 0`) the fallback toast was
+        // skipped, leaving the user staring at a dismissed dialog and no
+        // explanation (2026-05-25 P0 silent-fail).
+        const msg = t('project.space.error.notSynced');
+        toast.error(t(errorToastKey), { description: msg });
+        throw new Error(msg);
+      }
+      let res: SpaceRpcResponse;
+      try {
+        res = await sendSpaceRpc(provider, req);
+      } catch (err) {
+        // A rejection means the request never got an answer — the 10s
+        // timeout, or the socket refusing to carry it. Without this the
+        // rejection travelled straight out of the await, past both toasts
+        // below, into a caller's empty catch: with the network down a user
+        // could close a tab and never hear anything back (real-browser
+        // smoke, 2026-08-03). The thrown message is a developer string, so
+        // the user gets a written one instead.
+        //
+        // A caller that keeps showing what the user did while the answer is
+        // missing passes its own line, because "that failed" would contradict
+        // what is on screen and the server may well have done it.
+        if (unansweredToastKey !== undefined && isUnanswered(err)) {
+          toast.error(t(unansweredToastKey));
+        } else {
+          toast.error(t(errorToastKey), {
+            description: t('project.space.error.unreachable'),
+          });
+        }
+        throw err;
+      }
+      if (!res.ok) {
+        toast.error(t(errorToastKey), { description: res.error.message });
+        throw new Error(res.error.message);
+      }
+      return res;
+    },
+    [provider, t],
+  );
+
+  /**
+   * Send one tab move and say whether the server wrote anything.
+   * @param spaceId - The tab that moved.
+   * @param beforeSpaceId - The tab it landed in front of, null for the end.
+   * @returns Whether the order on the server changed, so a broadcast is coming.
+   * @throws {SpaceRpcUnanswered} When the request went out and drew no answer,
+   *   which leaves it open whether the server carried it out.
+   * @throws {Error} When the server said no.
+   */
+  const sendReorder = React.useCallback(
+    async (spaceId: string, beforeSpaceId: string | null): Promise<boolean> => {
+      const res = await callRpc(
+        { type: 'tab:reorder', payload: { spaceId, beforeSpaceId } },
+        'project.space.error.reorderTab',
+        'project.space.error.reorderTabUnanswered',
+      );
+      return res.ok && res.result && 'wrote' in res.result
+        ? res.result.wrote
+        : false;
+    },
+    [callRpc],
+  );
+
+  /**
+   * The Space a `tab:open` is out for, or null. Naming a Space and its tab
+   * appearing are two round trips, and between them the choice names a Space
+   * the strip does not hold — which is also what a tab that LEFT looks like.
+   * This says which of the two it is, so pinning can wait for one and settle
+   * the other.
+   */
+  const [openingTab, setOpeningTab] = React.useState<string | null>(null);
+
+  /**
+   * Put a Space on this user's strip.
+   *
+   * Which tabs are OPEN is shared and persisted, so only the server may write
+   * it. The failure is reported and nothing is rolled back: the Space itself
+   * is untouched.
+   * @param spaceId - The Space to open a tab for.
+   * @returns Nothing; the request settles on its own.
+   */
+  const openTab = React.useCallback(
+    (spaceId: string): void => {
+      setOpeningTab(spaceId);
+      void callRpc(
+        { type: 'tab:open', payload: { spaceId } },
+        'project.space.error.openTab',
+      ).catch(() => {
+        // callRpc already surfaced a toast. No tab is coming for this one,
+        // so stop holding the choice open for it.
+        setOpeningTab((cur) => (cur === spaceId ? null : cur));
+      });
+    },
+    [callRpc],
+  );
+
+  // What the strip renders: the stored order with a released drag laid over it
+  // until the document catches up.
+  const { order: tabOrder, reorder } = useTabReorder(openTabIds, sendReorder);
+
   // Tabs shown in the tab bar = each open tab id resolved against the
   // shared spaces list (drop missing ids - happens if another user
   // deleted a Space while we had it open).
   const openTabs: ReadonlyArray<ProjectSpace> = React.useMemo(
     () =>
-      openTabIds
+      tabOrder
         .map((id) => spaces.find((s) => s.id === id))
         .filter((s): s is ProjectSpace => Boolean(s)),
-    [openTabIds, spaces],
+    [tabOrder, spaces],
   );
 
   const activeSpace: ProjectSpace | undefined = resolveEffectiveActiveSpace(
     openTabs,
     activeSpaceId,
   );
+
+  // `reviseTabChoice` holds the invariant; this applies what it asks for.
+  React.useEffect(() => {
+    const revision = reviseTabChoice({
+      openTabIds: openTabs.map((s) => s.id),
+      activeSpaceId,
+      shownId: activeSpace?.id,
+      openingTab,
+    });
+    if (revision.activeSpaceId !== undefined) {
+      setActiveSpaceId(revision.activeSpaceId);
+    }
+    if (revision.clearOpening === true) setOpeningTab(null);
+  }, [openTabs, activeSpaceId, activeSpace, openingTab]);
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out
@@ -305,33 +440,6 @@ function ProjectWorkspace({
       new Set(spaces.map((s) => s.id)),
     );
   }, [projectId, openTabIds, spaces]);
-
-  // Move off a Space that has VANISHED — deleted by us or by a collaborator.
-  // Delete goes through the `space:delete` RPC, never through `onCloseTab`, so
-  // without this the active id keeps naming a Space that no longer exists.
-  //
-  // Closing a tab is NOT handled here, and must not be: an active id that is
-  // still live but absent from `openTabIds` also describes a Space that is
-  // being opened this instant, whose `tab:open` broadcast has not landed yet.
-  // Reacting to that shape sends the user back to the first tab every time
-  // they pick a Space. Closing needs nothing anyway — `openTabs` drops the id,
-  // `resolveEffectiveActiveSpace` falls back to the first open tab, and line
-  // ~805 hands that fallback's id to the tab strip, so body and highlight move
-  // together. `activeSpaceId` stays pointing at the closed Space until
-  // something else changes it, which is harmless: it only matters again if the
-  // user reopens that same Space, and landing back on it is what they asked
-  // for.
-  //
-  // Per-user + runs on every client, so the person who deleted AND everyone
-  // else each converge their own state.
-  React.useEffect(() => {
-    if (!userId) return;
-    const liveIds = new Set(spaces.map((s) => s.id));
-    const next = nextActiveAfterVanish(openTabIds, liveIds, activeSpaceId);
-    if (next !== undefined) {
-      setActiveSpaceId(next);
-    }
-  }, [userId, openTabIds, spaces, activeSpaceId]);
 
   // Discard the in-memory state of a tab once it has actually left this
   // user's list — whether they closed it, another machine on the account
@@ -369,54 +477,6 @@ function ProjectWorkspace({
     'space-readonly-sheet',
   );
 
-  /**
-   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
-   * connection. Always throws on failure, and always shows a toast first —
-   * every caller relies on that, ending in an empty `.catch()` because the
-   * user has already been told. There are three ways to fail and all three
-   * go through here: the provider is not mounted yet (the UI gates actions
-   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
-   * its 10s timeout, or the transport throws), or the server answered no.
-   */
-  const callRpc = React.useCallback(
-    async (
-      req: Parameters<typeof sendSpaceRpc>[1],
-      errorToastKey: string,
-    ): Promise<SpaceRpcResponse> => {
-      if (!provider) {
-        // Surface a toast on the "no provider yet" path too - without this
-        // the catch block in callers received a silent `Error('notSynced')`
-        // and (because `err.message.length > 0`) the fallback toast was
-        // skipped, leaving the user staring at a dismissed dialog and no
-        // explanation (2026-05-25 P0 silent-fail).
-        const msg = t('project.space.error.notSynced');
-        toast.error(t(errorToastKey), { description: msg });
-        throw new Error(msg);
-      }
-      let res: SpaceRpcResponse;
-      try {
-        res = await sendSpaceRpc(provider, req);
-      } catch (err) {
-        // A rejection means the request never got an answer — the 10s
-        // timeout, or the socket refusing to carry it. Without this the
-        // rejection travelled straight out of the await, past both toasts
-        // below, into a caller's empty catch: with the network down a user
-        // could close a tab and never hear anything back (real-browser
-        // smoke, 2026-08-03). The thrown message is a developer string, so
-        // the user gets a written one instead.
-        toast.error(t(errorToastKey), {
-          description: t('project.space.error.unreachable'),
-        });
-        throw err;
-      }
-      if (!res.ok) {
-        toast.error(t(errorToastKey), { description: res.error.message });
-        throw new Error(res.error.message);
-      }
-      return res;
-    },
-    [provider, t],
-  );
 
   const pendingCreateTokenRef = React.useRef<string | null>(null);
 
@@ -450,16 +510,10 @@ function ProjectWorkspace({
       // It reports as an OPEN failure, not a create failure. The create
       // already succeeded — the entry is in the list and on screen — so
       // saying it failed would send the user off to make a second Space.
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId: mine.id } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast; the Space itself exists, so
-        // there is nothing to roll back and nothing more to say.
-      });
+      openTab(mine.id);
       setActiveSpaceId(mine.id);
     }
-  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, callRpc]);
+  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, openTab]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
   // and surface a toast so the user can retry rather than stare at a
@@ -541,14 +595,7 @@ function ProjectWorkspace({
     // and a switch is instant and local. Sending the redundant open made
     // every switch raise "failed to open the tab" whenever collab was
     // unreachable, for an action that needed nothing from it.
-    if (!openTabIds.includes(id)) {
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId: id } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast.
-      });
-    }
+    if (!openTabIds.includes(id)) openTab(id);
     setActiveSpaceId(id);
   };
 
@@ -574,7 +621,7 @@ function ProjectWorkspace({
     // once the tab has actually left it: the in-memory state this tab
     // accumulated (canvas undo manager, document editor with its undo stack
     // and selection) is discarded by the effect that watches openTabIds, and
-    // moving off it is planned by `nextActiveAfterVanish`.
+    // the pinning effect above moves off it.
     //
     // That split matters now that this is a round trip. Anything done here
     // happens whether or not the request succeeds, and a close CAN fail —
@@ -960,6 +1007,7 @@ function ProjectWorkspace({
                     onDeleteSpace={onDeleteSpace}
                     onSetSpaceLocked={onSetSpaceLocked}
                     onRenameSpace={onRenameSpace}
+                    onReorder={reorder}
                     metaProvider={provider}
                     currentUserRole={role}
                     onRestoreSpace={onRestoreSpace}

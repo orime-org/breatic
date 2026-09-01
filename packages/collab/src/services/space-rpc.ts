@@ -8,7 +8,7 @@
  *
  *   - create / delete / lock / unlock / rename - caller role ≥ editor
  *   - restore                                   - caller role = owner
- *   - tab:open / tab:close                      - any role that can reach
+ *   - tab:open / tab:close / tab:reorder        - any role that can reach
  *     the project, viewers included: each caller manages only their OWN
  *     tab bar, and the userId comes from the connection, never the request.
  *
@@ -76,6 +76,9 @@ import {
   type SpaceRpcResponse,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
+  applyTabMove,
+  sameTabOrder,
+  sortSpaceIdsForTabOrder,
 } from "@breatic/shared";
 
 const logger = createLogger("space-rpc");
@@ -95,15 +98,15 @@ const SYSTEM_SOURCE = "space-rpc";
 /**
  * Compact reply builder so handlers stay one-liner-y.
  * @param id - Request id echoed back so the client can demultiplex concurrent RPCs.
- * @param result - Optional Space payload returned on success (only `space:create` populates it).
- * @param result.spaceId - Id of the created Space.
- * @param result.type - Doc kind of the created Space.
- * @param result.name - Display name of the created Space.
+ * @param result - Optional payload: the Space entry for `space:create`, or
+ *   whether the caller's tab order was written for `tab:reorder`.
  * @returns A success `SpaceRpcResponse` echoing the request id.
  */
 function ok(
   id: string,
-  result?: { spaceId: string; type: "canvas" | "document" | "timeline"; name: string },
+  result?:
+    | { spaceId: string; type: "canvas" | "document" | "timeline"; name: string }
+    | { wrote: boolean },
 ): SpaceRpcResponse {
   return { id, ok: true, result };
 }
@@ -442,7 +445,7 @@ function metaDocOf(conn: MetaDirectConnection): Y.Doc {
  *   out on every client — even when the publish rejected afterwards (§3.2:
  *   the callback runs synchronously and the broadcast leaves inside it).
  *   A callback that neither wrote nor decided would land here too, but
- *   none can: each of the seven either returns a verdict or marks and
+ *   none can: each of the eight either returns a verdict or marks and
  *   writes, so there is no third path to name. The caller carries on to
  *   its success answer.
  * - `failed-before-broadcast`: the transact rejected, no guard had
@@ -477,7 +480,7 @@ type PublishOutcome =
  *    rejection is then classifiable as before or after the broadcast.
  *    Handlers that skip `mark` and write anyway would misreport — which
  *    is why the flag rides through this wrapper instead of being a local
- *    variable seven functions each remember to declare.
+ *    variable eight functions each remember to declare.
  * 3. **A guard's answer outranks a publish rejection it did not cause.** The
  *    callback returns its answer instead of setting a flag the caller
  *    then has to consult in the right order, so `decided` and
@@ -582,7 +585,7 @@ async function publishMetaChange(
  *   handler's own success path; `undo` is true only when nothing reached
  *   any client.
  *
- * Exported for its own unit test. Only three of the seven operations own
+ * Exported for its own unit test. Only three of the eight operations own
  * content rows, and none of their callbacks can both write and settle, so
  * the write-then-settle row of this table is unreachable through any
  * handler — leaving the rule that guards it with nothing to fail against.
@@ -1353,8 +1356,31 @@ function ensureOpenTabList(
   mark();
   const list = new Y.Array<string>();
   userMap.set(OPEN_TAB_IDS_KEY, list);
-  list.push(Array.from(spaces.keys()));
+  list.push(seedOrder(spaces));
   return list;
+}
+
+/**
+ * The order a project's Spaces go into a freshly seeded tab list.
+ *
+ * `Y.Map` iteration order is integration order, and two replicas can
+ * disagree on it, so seeding straight from `spaces.keys()` would put a
+ * different order in the document than the one the browser was already
+ * showing this user from its own replica — their untouched tabs would jump
+ * the first time they moved one. Both sides call the same rule instead.
+ * @param spaces - The meta doc's `spaces` map.
+ * @returns The Space ids, oldest first.
+ */
+function seedOrder(spaces: Y.Map<unknown>): string[] {
+  const entries: { id: string; createdAt: number | undefined }[] = [];
+  spaces.forEach((entry, id) => {
+    const createdAt = entry instanceof Y.Map ? entry.get("createdAt") : undefined;
+    entries.push({
+      id,
+      createdAt: typeof createdAt === "number" ? createdAt : undefined,
+    });
+  });
+  return sortSpaceIdsForTabOrder(entries);
 }
 
 /**
@@ -1483,6 +1509,93 @@ async function handleTabClose(
   }
 }
 
+/**
+ * Move one tab inside the caller's own tab bar.
+ *
+ * The request says which tab moves and which one it lands in front of, and
+ * this reads the list as it stands right now to apply it. A tab this caller
+ * has never seen — one another connection on the account opened while the
+ * request was in flight — is not named by the move, so it keeps its place.
+ *
+ * Two collab instances that had not synced can each move the same tab and
+ * leave the merged list holding it twice. The move takes every copy of the
+ * id out and puts one back, so that case closes here; a duplicate of some
+ * other id stays in the document until a close sweeps it, and the browser
+ * dedupes what it reads so nobody sees it.
+ *
+ * The reply says whether this call wrote the list, which is what tells an
+ * optimistic client whether a broadcast is coming. Seeding counts: it is a
+ * write, and it changes what the tab bar reads back.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc holds the tab lists.
+ * @param caller - Authenticated caller; the userId comes from here, never from the request.
+ * @param req - The `tab:reorder` request.
+ * @returns Success carrying `wrote`; a move whose ids are no longer
+ *   both open writes nothing and says so.
+ */
+async function handleTabReorder(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "tab:reorder" }>,
+): Promise<SpaceRpcResponse> {
+  const { spaceId, beforeSpaceId } = req.payload;
+  const conn = await ctx.hocuspocus.openDirectConnection(
+    projectMetaDocName(projectId),
+    { context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE } },
+  );
+  const logCtx = {
+    projectId,
+    spaceId,
+    callerId: caller.userId,
+    during: "tab:reorder",
+  };
+  let wrote = false;
+  try {
+    const outcome = await publishMetaChange(conn, logCtx, (doc, mark) => {
+      const spaces = doc.getMap("spaces");
+      // Seeding has to come first: the guard below asks whether the tab is
+      // in this caller's list, and a caller who has never opened or closed
+      // anything does not have one yet. So a refused reorder can still have
+      // broadcast the seed — `tab:close` carries the same shape.
+      const seeded = existingOpenTabList(doc, caller.userId) === null;
+      const list = ensureOpenTabList(doc, caller.userId, spaces, mark);
+      const current = list.toArray();
+
+      // Both ids were read off a list the caller saw a moment ago, and either
+      // can leave it in between — they close that tab, or their other window
+      // does. `applyTabMove` hands the list back untouched for that, for a
+      // move onto itself, and for a tab already where it is asked to go, so
+      // one comparison covers every way this call has nothing to write. The
+      // browser retires the move against the same function, so both sides
+      // answer this state alike.
+      const next = applyTabMove(current, spaceId, beforeSpaceId);
+      if (sameTabOrder(next, current)) {
+        return ok(req.id, { wrote: seeded });
+      }
+      mark();
+      // One element moves and the rest are left where they are. Replacing the
+      // whole array would make every id a fresh insert, which a delete another
+      // instance issued concurrently can no longer reach — a tab closed there
+      // would come back. Copies of the moved id collapse into the one it lands
+      // as, and the landing index is read off `next` so the array this writes
+      // and the array the browser drew cannot describe different orders.
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        if (list.get(i) === spaceId) list.delete(i, 1);
+      }
+      list.insert(next.indexOf(spaceId), [spaceId]);
+      wrote = true;
+    });
+    const settled = settlePublish(outcome, () =>
+      err(req.id, "INTERNAL", "Could not move the tab"),
+    );
+    if (settled.response) return settled.response;
+    return ok(req.id, { wrote });
+  } finally {
+    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+  }
+}
+
 // ── Dispatcher ──────────────────────────────────────────────────────
 
 /**
@@ -1517,6 +1630,8 @@ export async function handleSpaceRpc(
         return await handleTabOpen(ctx, projectId, caller, request);
       case "tab:close":
         return await handleTabClose(ctx, projectId, caller, request);
+      case "tab:reorder":
+        return await handleTabReorder(ctx, projectId, caller, request);
     }
   } catch (e) {
     // Last resort for programmer errors only — every anticipated failure is

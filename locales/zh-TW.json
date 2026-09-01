@@ -591,6 +591,8 @@
         "create": "Space 建立失敗",
         "openTab": "開啟標籤失敗",
         "closeTab": "關閉標籤失敗",
+        "reorderTab": "移動標籤失敗",
+        "reorderTabUnanswered": "伺服器沒有回應，重新整理頁面可以看到目前的標籤順序",
         "unreachable": "伺服器沒有回應,請檢查網路後重試",
         "notSynced": "Project 正在同步,請稍後再試"
       },
@@ -1162,6 +1164,7 @@
       "share": "邀請",
       "notifications": "通知",
       "newSpace": "新增 Space",
+      "revealActiveTab": "顯示目前 Space",
       "allSpaces": "所有 Spaces",
       "agentHide": "收合 Agent 面板",
       "agentShow": "展開 Agent 面板",

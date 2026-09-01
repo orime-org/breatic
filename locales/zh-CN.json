@@ -591,6 +591,8 @@
         "create": "Space 创建失败",
         "openTab": "打开标签失败",
         "closeTab": "关闭标签失败",
+        "reorderTab": "移动标签失败",
+        "reorderTabUnanswered": "服务器没有响应，刷新页面可以看到当前的标签顺序",
         "unreachable": "服务器没有响应,请检查网络后重试",
         "notSynced": "Project 正在同步,请稍后再试"
       },
@@ -1162,6 +1164,7 @@
       "share": "邀请",
       "notifications": "通知",
       "newSpace": "新建 Space",
+      "revealActiveTab": "显示当前 Space",
       "allSpaces": "所有 Spaces",
       "agentHide": "收起 Agent 面板",
       "agentShow": "展开 Agent 面板",
