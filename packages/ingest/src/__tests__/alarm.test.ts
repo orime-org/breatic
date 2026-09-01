@@ -278,3 +278,84 @@ describe("the deadline a part arriving pushes out", () => {
     await runDurableObjectAlarm(stub);
   });
 });
+
+// A 4xx is the server having decided, not the server being unwell: it read the
+// report, acted on it, and refused. Retrying asks the same question six more
+// times and gets the same answer, while the node has already been told.
+describe("a server that refuses the report outright", () => {
+  it("takes the refusal as the outcome rather than retrying it", async () => {
+    expectReport(413);
+    const { storageKey } = await uploadedThrough(2);
+
+    await expect(runDurableObjectAlarm(sessionOf(storageKey))).resolves.toBe(true);
+
+    expect(reports).toHaveLength(1);
+  });
+
+  it("asks nothing more of the server when the browser asks again", async () => {
+    expectReport(413);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    await runDurableObjectAlarm(sessionOf(storageKey));
+
+    await complete(uploadId, token);
+
+    expect(reports).toHaveLength(1);
+  });
+});
+
+// One instance per upload, and uploads never stop arriving. What each one
+// holds — the ticket, the part list, the outcome — is worth nothing once the
+// server has the outcome and the browser has stopped asking.
+describe("what an instance keeps after its upload is over", () => {
+  it("holds the answer for as long as the browser may still ask", async () => {
+    expectReport();
+    const { uploadId, token } = await uploadedThrough(2);
+    await complete(uploadId, token);
+
+    const again = await complete(uploadId, token);
+
+    expect(again.status).toBe(200);
+    expect(reports).toHaveLength(1);
+  });
+
+  it("lets go of it once that window closes", async () => {
+    expectReport();
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    await complete(uploadId, token);
+
+    // The window is a second alarm, so running it is what closing it means.
+    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(true);
+
+    const keys = await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+      state.storage.list(),
+    );
+    expect(keys.size).toBe(0);
+    expect((await complete(uploadId, token)).status).toBe(410);
+  });
+});
+
+// A part that arrives after the upload was settled is asking to write into an
+// object R2 has already assembled. Saying so is the difference between a
+// caller that can act on the answer and one that reads a bare 500.
+describe("a part that arrives after the upload is over", () => {
+  it("says the upload is finished rather than failing on R2", async () => {
+    expectReport();
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    await complete(uploadId, token);
+
+    const ctx = createExecutionContext();
+    const late = await worker.fetch(
+      new Request(`https://ingest.example.com/uploads/${uploadId}/parts/2`, {
+        method: "PUT",
+        headers: { "x-upload-token": token },
+        body: new Uint8Array(FINAL_PART_SIZE),
+      }),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+
+    expect(late.status).toBe(409);
+    await runDurableObjectAlarm(sessionOf(storageKey));
+  });
+});

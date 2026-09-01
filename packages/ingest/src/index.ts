@@ -297,7 +297,15 @@ export default {
 async function answer(request: Request, env: Env): Promise<Response> {
   try {
     return await route(request, env);
-  } catch {
+  } catch (err) {
+    // Written here because catching it is what takes it off Cloudflare's own
+    // error reporting: what that shows is the exceptions nobody handled. A 500
+    // with nothing behind it is all anyone would have to go on otherwise.
+    console.error("ingest_request_failed", {
+      url: request.url,
+      method: request.method,
+      err: err instanceof Error ? err.stack : String(err),
+    });
     return new Response("Internal error", { status: 500 });
   }
 }

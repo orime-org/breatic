@@ -54,7 +54,11 @@ interface FinishProgress {
   sizeBytes?: number;
   /** Why it was given up on, when it was. */
   abortedReason?: string;
-  /** The server has accepted the outcome; nothing more is owed. */
+  /**
+   * The server has answered for good; nothing more is owed. True whether it
+   * took the outcome or refused it — a refusal is the server having read the
+   * report and acted on it, which asking again cannot change.
+   */
   reported: boolean;
   /**
    * What the server said the upload became. Kept so that asking to complete a
@@ -70,6 +74,9 @@ interface RegisteredAsset {
   /** The asset kind the server filed it under. */
   kind?: string;
 }
+
+/** What the server did with a report. */
+type ReportAnswer = RegisteredAsset | "refused" | "unavailable";
 
 /**
  * Say how a finished upload ended.
@@ -138,19 +145,36 @@ export class UploadSession implements DurableObject {
   /**
    * The alarm going off.
    *
-   * Same work as the browser asking, because the question is the same one:
-   * did every part arrive? The browser only ever gets there sooner. A browser
-   * that stopped sending never asks at all, and this is what notices.
-   * @throws {Error} When the server did not accept the outcome.
+   * Two jobs, told apart by whether the server has answered yet. Before that
+   * it is the same work as the browser asking, because the question is the
+   * same one: did every part arrive? A browser that stopped sending never asks
+   * at all, and this is what notices. After it, the instance has been holding
+   * its answer for anyone who asks again, and this is the end of that window.
+   * @throws {Error} When the server did not answer.
    */
   async alarm(): Promise<void> {
+    const stored = await this.#state.storage.get<FinishProgress>("finish");
+    if (stored?.reported === true) {
+      // Nobody is going to ask about this upload again. One instance per
+      // upload and uploads never stop arriving, so what it holds — the ticket,
+      // the part list, the outcome — is worth nothing from here on.
+      await this.#state.storage.deleteAll();
+      return;
+    }
+
     const outcome = await this.#settleAndReport();
     if (outcome === "not_accepted") {
       // Cloudflare retries a failing alarm and reschedules nothing when one
       // returns, so failing here is the only way another attempt happens. The
       // node this upload belongs to sits in handling until the server hears
       // the outcome, and nothing but this will tell it.
-      throw new Error("the server did not accept this upload's report");
+      //
+      // Named, because the retries are finite: after the last one this upload
+      // has nobody left, and the message is what says which one it was.
+      const upload = await this.#state.storage.get<OpenUpload>("upload");
+      throw new Error(
+        `the server did not answer for ${upload?.ticket.storageKey ?? "an unknown upload"}`,
+      );
     }
   }
 
@@ -200,12 +224,21 @@ export class UploadSession implements DurableObject {
         ? await this.#hash(upload, assembled)
         : assembled;
 
-    const reported = await this.#report(upload, settled);
-    if (reported === null) return "not_accepted";
+    const answer = await this.#report(upload, settled);
+    if (answer === "unavailable") return "not_accepted";
 
-    const done: FinishProgress = { ...settled, reported: true, registered: reported };
+    const done: FinishProgress = {
+      ...settled,
+      reported: true,
+      ...(answer !== "refused" && { registered: answer }),
+    };
     await this.#state.storage.put("finish", done);
-    await this.#state.storage.deleteAlarm();
+    // Not deleted: the same window this upload was allowed to go quiet for is
+    // how long the answer stays available to a browser still asking, and the
+    // alarm that ends it is what lets this instance go.
+    await this.#state.storage.setAlarm(
+      Date.now() + upload.ticket.alarmIdleSeconds * 1000,
+    );
     return done;
   }
 
@@ -294,14 +327,18 @@ export class UploadSession implements DurableObject {
 
   /**
    * Tell the server how this upload ended.
+   * A 4xx is the server having decided rather than the server being unwell: it
+   * read the report, acted on it — voiding the grant and telling the node —
+   * and refused. Asking again gets the same answer, so it ends this upload as
+   * surely as an acceptance does. Anything else leaves the outcome unsaid.
    * @param upload - What was uploaded, carrying the context the server reads back.
    * @param progress - The settled outcome.
-   * @returns What the server filed, or null when it did not accept the report.
+   * @returns What the server filed, its refusal, or that it did not answer.
    */
   async #report(
     upload: OpenUpload,
     progress: FinishProgress,
-  ): Promise<RegisteredAsset | null> {
+  ): Promise<ReportAnswer> {
     const body =
       progress.abortedReason === undefined
         ? {
@@ -326,7 +363,8 @@ export class UploadSession implements DurableObject {
         },
         body: JSON.stringify(body),
       });
-      if (!response.ok) return null;
+      if (response.status >= 400 && response.status < 500) return "refused";
+      if (!response.ok) return "unavailable";
       // An answer we cannot read still means the server took it. The report is
       // what the outcome hinges on; the URL only serves the crop path, and
       // failing the whole upload over an unreadable body would strand a node
@@ -336,9 +374,9 @@ export class UploadSession implements DurableObject {
         .catch(() => null);
       return answer?.data ?? {};
     } catch {
-      // Unreachable server, DNS, TLS — all the same answer here: not accepted,
-      // so the alarm keeps this upload alive for another try.
-      return null;
+      // Unreachable server, DNS, TLS — all the same answer here: nothing was
+      // said, so the alarm keeps this upload alive for another try.
+      return "unavailable";
     }
   }
 
@@ -355,6 +393,15 @@ export class UploadSession implements DurableObject {
   async #part(partNumber: number, body: ArrayBuffer): Promise<Response> {
     const upload = await this.#state.storage.get<OpenUpload>("upload");
     if (upload === undefined) return new Response("Gone", { status: 410 });
+
+    // Settled means R2 has assembled the object or dropped what was written.
+    // Either way there is no multipart upload left to write into, and saying
+    // so is the difference between a caller that can act on the answer and one
+    // that reads whatever R2 threw.
+    const finish = await this.#state.storage.get<FinishProgress>("finish");
+    if (finish?.settled === true) {
+      return new Response("This upload has already finished", { status: 409 });
+    }
 
     const { partSize, totalParts } = upload.ticket;
     if (partNumber < 1 || partNumber > totalParts) {
