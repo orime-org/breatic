@@ -13,9 +13,17 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 
-import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+// 上限换成一个跟五份文案里都不一样、且带千分位的数。文案自己写死 10,000 时，
+// 「说出来的数就是生效的数」那条永远成立，看不出它根本没读这个常量；而 12,345
+// 这个形状还顺带钉住了 ICU 的数字格式化——占位换成裸的 {limit} 就少了逗号。
+vi.mock('@breatic/shared', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return { ...actual, CHAT_MESSAGE_MAX_CHARS: 12345 };
+});
+
+const { CHAT_MESSAGE_MAX_CHARS } = await import('@breatic/shared');
+const { ChatComposer } = await import('@web/pages/project/chat/ChatComposer');
 
 /**
  * 渲染一个输入框，草稿内容由用例给。
@@ -41,6 +49,14 @@ describe('输入框的上限', () => {
     setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS));
 
     expect(screen.getByTestId('chat-composer-limit')).toBeInTheDocument();
+  });
+
+  it('说出来的那个数就是真正生效的那个', () => {
+    setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS));
+
+    expect(screen.getByTestId('chat-composer-limit')).toHaveTextContent(
+      '12,345',
+    );
   });
 
   it('差一个字符时不说话', () => {

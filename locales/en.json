@@ -152,7 +152,7 @@
       },
       "send": "Send",
       "sending": "Sending",
-      "atLimit": "At the 10,000-character limit"
+      "atLimit": "At the {limit, number}-character limit"
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",

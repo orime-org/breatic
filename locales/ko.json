@@ -152,7 +152,7 @@
       },
       "send": "전송",
       "sending": "보내는 중",
-      "atLimit": "10,000자 제한에 도달했습니다"
+      "atLimit": "{limit, number}자 제한에 도달했습니다"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",

@@ -152,7 +152,7 @@
       },
       "send": "送信",
       "sending": "送信中",
-      "atLimit": "10,000 文字の上限に達しました"
+      "atLimit": "{limit, number} 文字の上限に達しました"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",

@@ -270,7 +270,7 @@ function ChatComposerInner({
             data-testid='chat-composer-limit'
             className='mr-auto truncate text-xs text-muted-foreground'
           >
-            {t('chat.composer.atLimit')}
+            {t('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS })}
           </span>
         ) : null}
         {turnPhase === 'sending' ? (
