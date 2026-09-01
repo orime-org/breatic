@@ -69,6 +69,10 @@ export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEn
 export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
 export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
 
+// The voices a tts model offers, in one shape whichever vendor answers.
+export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
+export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
+
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
 export {
   CANVAS_LOCK_TTL_SECONDS,
