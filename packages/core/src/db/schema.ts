@@ -1991,23 +1991,25 @@ export const uploadGrants = pgTable(
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /**
      * Set when this grant died without its bytes ever becoming an asset — the
-     * report said `aborted`, the size came back over the cap, or the sweep
-     * found it past its deadline. Kept apart from `consumed_at` because the
+     * report said `aborted`, or the size came back over the cap. Kept apart
+     * from `consumed_at` because the
      * two terminal states demand opposite handling: a consumed grant produced
      * an asset row, a voided one produced an object nobody owns.
      */
     voidedAt: timestamp("voided_at", { withTimezone: true }),
     /**
-     * How long the ticket itself stays usable. Checked once, when the browser
-     * asks the ingest Worker to start; an upload already running is never cut
-     * off by it. Judged lazily on read, the way `studioInvite.service.ts:133`
-     * clears stale invites — no background scan.
+     * How long the ticket itself stays usable. The same instant is signed into
+     * the ticket, and the Worker checks that copy once, when the browser asks
+     * it to start; an upload already running is never cut off by it. This
+     * column is our record of it. No query reads it today — what it answers is
+     * "could this grant still be used", which is what tells an offline sweep
+     * that an unconsumed row is finished (#176).
      */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     /**
-     * The node's fencing gen at the moment handling opened. It is also signed
-     * into the ticket and echoed back by the Worker; keeping it here means the
-     * report handler reads the gen off a row we wrote rather than off anything
+     * The node's fencing gen at the moment handling opened. It never leaves the
+     * database: the ticket does not carry it and the Worker never sees it, so
+     * the report handler reads it off a row we wrote rather than off anything
      * the caller supplies. An event published without the right gen is dropped
      * by collab's CAS and the node hangs in handling until the lease sweeper
      * reclaims it an hour later.

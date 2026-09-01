@@ -3,8 +3,7 @@
 upload:
   # Hard upload cap (bytes). Frontend rejects oversize files on selection
   # (no network traffic); /assets/upload-ticket enforces it authoritatively
-  # (413). Also protects local-storage mode, which buffers the whole
-  # file in server memory. Default 2 GiB.
+  # (413). Default 2 GiB.
   max_upload_bytes: 2147483648
   # Browser-side attempts for the TICKET request, including the first
   # (matches worker job_attempts=3). Transient errors only. The parts no
@@ -19,13 +18,13 @@ upload:
   # packages/web/src/data/api/request.ts.
   client_request_timeout_ms: 30000
   # Part stall guard: per-attempt timeout = max(request timeout,
-  # size / this rate). A dead connection aborts + retries instead of
-  # hanging forever, while a legitimately slow big upload never trips it.
-  # Bounded from below against max_upload_bytes: the figure has to stay
-  # inside what a timer can hold, and the transport refuses an out-of-range
-  # deadline rather than clamping it. Too low a rate here is refused at
-  # startup with the lowest usable value in the message — at the shipped cap
-  # that floor is 1001.
+  # ONE PART's size / this rate). A dead connection aborts + retries instead
+  # of hanging forever, while a part that is legitimately slow never trips it.
+  # Bounded from below against part_size_bytes: the figure has to stay inside
+  # what a timer can hold, and the transport refuses an out-of-range deadline
+  # rather than clamping it. Too low a rate here is refused at startup with
+  # the lowest usable value in the message — at the shipped part size that
+  # floor is 4.
   client_put_min_bytes_per_sec: 65536
 
 # The ingest Worker (#173). Every figure it runs on is decided here and signed

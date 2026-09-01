@@ -438,7 +438,7 @@ assets.put("/local-upload/*", requireAuth, async (c) => {
 
   // Anti-spoof (#1826, design §3.2): the upload-grant ledger authorises this
   // write — the key must be one issued to THIS user and not yet consumed. This
-  // is the write-time gate; it does NOT consume (/uploaded consumes once). It
+  // is the write-time gate; it does NOT consume (/ingest-report consumes once). It
   // replaces the old `startsWith(user.id)` + `..`/`//` guard: the minted key is
   // tenant-neutral (no prefix to check) and a forged key isn't in the ledger,
   // so a `..`/`//` traversal attempt is rejected here before touching disk.

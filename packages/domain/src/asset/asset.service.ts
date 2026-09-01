@@ -27,10 +27,9 @@
  * the studio's hash namespace. Inviting someone into a studio or project is
  * an act of trust. The residual risks — content-existence probing via a hash
  * the caller already holds, cross-user dedup poisoning (`/local-upload` does
- * not verify the hash and `/uploaded` trusts the client's), quota consumption,
- * and using any of another member's assets as the cover of one's own video
- * node (the cover_hash residual in routes/assets.ts) — are borne by the user
- * who issued the invitation. NOTE: the product intends to spell these out in a
+ * not verify the hash; on the R2 path the ledger keys on the hash the ingest
+ * Worker computed, so that face does not exist there), and quota consumption
+ * — are borne by the user who issued the invitation. NOTE: the product intends to spell these out in a
  * user manual and terms of service, but NEITHER EXISTS YET — there is no
  * route, no locale copy, no document. Treat the disclosure as OUTSTANDING, not
  * done. These are ACCEPTED risks, not fixed ones — do not read "decided" as

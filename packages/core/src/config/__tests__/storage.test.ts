@@ -78,23 +78,24 @@ describe("storageConfigSchema defaults", () => {
 });
 
 /**
- * The pair of upload knobs that has to be judged together.
+ * The knobs that have to be judged together, and across sections.
  *
- * The browser sizes its PUT stall guard as `max_upload_bytes / rate`, and
- * hands the result to the shared HTTP transport as a per-delivery deadline.
- * The transport refuses a deadline a timer cannot hold — deliberately, rather
- * than clamping — so a rate low enough to push the biggest allowed upload past
- * {@link MAX_TIMER_MS} makes every such PUT fail before a single byte leaves,
- * with an error written for a programmer and not for the person uploading.
+ * The browser sizes each part's stall guard as `max(floor, part size / rate)`
+ * and hands the result to the shared HTTP transport as a per-delivery
+ * deadline. The transport refuses a deadline a timer cannot hold —
+ * deliberately, rather than clamping — so figures that push one part past
+ * {@link MAX_TIMER_MS} make every part fail before a single byte leaves, with
+ * an error written for a programmer and not for the person uploading.
  *
- * Nothing about that is the uploader's doing, and nothing we promised covers
- * an arbitrary rate. So the refusal belongs here, at load, where the operator
- * who typed the number is the one who reads the message.
+ * The part size is an `ingest:` knob and the other two are `upload:` knobs, so
+ * the relation is invisible from inside either section. What is asserted here
+ * is that loading the config reaches the rule at all; the rule's own boundary
+ * cases live with it, in `@shared/upload/windows`.
  */
 describe("storageConfigSchema — the stall guard has to stay expressible", () => {
-  /** The shipped cap, and the lowest rate that can still serve it. */
-  const SHIPPED_CAP = 2147483648;
-  const LOWEST_USABLE_RATE = 1001;
+  /** The shipped part size, and the lowest rate that can still serve it. */
+  const SHIPPED_PART = 8388608;
+  const LOWEST_USABLE_RATE = Math.ceil((SHIPPED_PART * 1000) / MAX_TIMER_MS);
 
   /**
    * Pair an upload section with ingest windows wide enough to hold whatever
@@ -123,7 +124,7 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     };
   }
 
-  it("accepts the lowest rate that still serves the shipped cap", () => {
+  it("accepts the lowest rate that still serves one part", () => {
     const cfg = storageConfigSchema.parse(
       withRoomToWait({ client_put_min_bytes_per_sec: LOWEST_USABLE_RATE }),
     );
@@ -131,7 +132,7 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     // The property behind the number, so this test still means something if
     // either constant moves.
     expect(
-      Math.ceil((cfg.upload.max_upload_bytes / LOWEST_USABLE_RATE) * 1000),
+      Math.ceil((cfg.ingest.part_size_bytes / LOWEST_USABLE_RATE) * 1000),
     ).toBeLessThanOrEqual(MAX_TIMER_MS);
   });
 
@@ -148,35 +149,24 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     ).toThrow(new RegExp(String(LOWEST_USABLE_RATE)));
   });
 
-  it("moves the floor when the upload cap moves", () => {
-    // The two knobs are judged together, not each against a constant. Doubling
-    // the cap doubles what the rate has to be, so a rate that was fine a
-    // moment ago is not. A bound written against the rate alone would let this
-    // through, and the guard would be unusable again at the new cap.
+  it("moves the floor when the part size moves", () => {
+    // The knobs are judged together, not each against a constant, and the one
+    // that decides the deadline lives in the other section. Doubling the part
+    // doubles what the rate has to be, so a rate that was fine a moment ago is
+    // not — which a bound written against the rate alone would let through.
     expect(() =>
       storageConfigSchema.parse({
-        upload: {
-          max_upload_bytes: SHIPPED_CAP * 2,
-          client_put_min_bytes_per_sec: LOWEST_USABLE_RATE,
-        },
+        upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE },
+        ingest: { part_size_bytes: SHIPPED_PART * 2 },
       }),
     ).toThrow(/client_put_min_bytes_per_sec/);
-
-    expect(() =>
-      storageConfigSchema.parse(
-        withRoomToWait({
-          max_upload_bytes: SHIPPED_CAP * 2,
-          client_put_min_bytes_per_sec: LOWEST_USABLE_RATE * 2,
-        }),
-      ),
-    ).not.toThrow();
   });
 
   it("refuses a floor a timer cannot hold either", () => {
-    // The deadline is max(floor, size/rate), so the floor is the second way to
-    // produce an unusable figure — and the one a rate-only bound would miss.
-    // Enumerated rather than waited for: the invariant is about the deadline,
-    // not about one of the two knobs that feed it.
+    // The deadline is max(floor, part size/rate), so the floor is the second
+    // way to produce an unusable figure — and the one a rate-only bound would
+    // miss. Enumerated rather than waited for: the invariant is about the
+    // deadline, not about one of the two knobs that feed it.
     expect(() =>
       storageConfigSchema.parse({
         upload: { client_request_timeout_ms: MAX_TIMER_MS + 1 },

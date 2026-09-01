@@ -18,6 +18,7 @@ import {
   MAX_RETRIES,
   MAX_RETRY_AFTER_MS,
   DEFAULT_TIMEOUT_MS,
+  MAX_TIMER_MS,
 } from "@shared/http/constants.js";
 
 /**
@@ -130,15 +131,37 @@ export interface UploadWindows extends PartDeadlineConfig {
 /**
  * Refuse figures whose windows are narrower than what they have to hold.
  *
- * Both relations here are one-directional and easy to get backwards, and
- * getting either backwards fails an upload that is doing nothing wrong: a
- * short idle window drops parts a browser is still retrying, and a short
- * token turns the request after a long wait into a 401. They are checked when
- * the config loads rather than left to be discovered by a user.
+ * Every relation here is one-directional and easy to get backwards, and getting
+ * one backwards fails an upload that is doing nothing wrong: a deadline no
+ * timer can hold stops a part before it is sent, a short idle window drops
+ * parts a browser is still retrying, and a short token turns the request after
+ * a long wait into a 401. They are checked when the config loads rather than
+ * left to be discovered by a user.
  * @param windows - The figures, as the config holds them.
  * @throws {Error} When a window cannot hold what it has to.
  */
 export function assertUploadWindows(windows: UploadWindows): void {
+  // What the browser hands the transport is one part's deadline, and the
+  // transport refuses a deadline no timer can hold rather than clamping it —
+  // before the first delivery. So a pair of knobs able to produce such a figure
+  // does not weaken the guard, it takes every upload down with an error written
+  // for a programmer. Neither knob is anything the person uploading chose, so
+  // the refusal belongs here, where the operator who typed the number reads it.
+  const deadlineMs = partDeadlineMs(windows.partSizeBytes, windows);
+  if (deadlineMs > MAX_TIMER_MS) {
+    const lowestRate = Math.ceil((windows.partSizeBytes * 1000) / MAX_TIMER_MS);
+    throw new Error(
+      windows.requestTimeoutMs > MAX_TIMER_MS
+        ? `client_request_timeout_ms ${windows.requestTimeoutMs} is past the ` +
+          `${MAX_TIMER_MS}ms a timer can hold; it floors every part's ` +
+          `deadline, so no part could be sent`
+        : `client_put_min_bytes_per_sec ${windows.minBytesPerSec} gives one ` +
+          `${windows.partSizeBytes}-byte part a deadline of ${deadlineMs}ms, ` +
+          `past the ${MAX_TIMER_MS}ms a timer can hold; no part could be ` +
+          `sent. Raise it to at least ${lowestRate}, or lower part_size_bytes`,
+    );
+  }
+
   const budgetMs = partRetryBudgetMs(windows.partSizeBytes, windows);
   if (windows.alarmIdleSeconds * 1000 < budgetMs) {
     throw new Error(

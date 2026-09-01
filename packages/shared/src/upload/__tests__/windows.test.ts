@@ -22,6 +22,7 @@ import {
   MAX_RETRIES,
   MAX_RETRY_AFTER_MS,
   DEFAULT_TIMEOUT_MS,
+  MAX_TIMER_MS,
 } from "@shared/http/constants.js";
 
 const CFG = { requestTimeoutMs: 30_000, minBytesPerSec: 65_536 };
@@ -92,7 +93,66 @@ describe("answerRetentionMs", () => {
   });
 });
 
+/**
+ * Windows wide enough that only the rule under test can trip.
+ *
+ * Driving the deadline to an extreme also drives what the idle window and the
+ * token have to outlast, so those are sized from the same arithmetic the rules
+ * use rather than pinned to figures that would go stale.
+ * @param over - The deadline inputs this case varies.
+ * @returns A whole set of windows.
+ */
+function roomToWait(over: {
+  minBytesPerSec?: number;
+  requestTimeoutMs?: number;
+}): Parameters<typeof assertUploadWindows>[0] {
+  const partSizeBytes = 8 * 1024 * 1024;
+  const cfg = {
+    requestTimeoutMs: over.requestTimeoutMs ?? 30_000,
+    minBytesPerSec: over.minBytesPerSec ?? 65_536,
+  };
+  const idle = Math.ceil(partRetryBudgetMs(partSizeBytes, cfg) / 1000);
+  const token = Math.max(idle, Math.ceil(completeRetryBudgetMs() / 1000)) + 1;
+  return {
+    partSizeBytes,
+    alarmIdleSeconds: idle,
+    sessionTokenTtlSeconds: token,
+    ticketExpiresSeconds: 300,
+    ...cfg,
+  };
+}
+
 describe("assertUploadWindows", () => {
+  // What the browser hands the transport is one part's deadline, and the
+  // transport refuses a deadline no timer can hold rather than clamping it —
+  // before the first delivery, so a pair of knobs able to produce such a
+  // figure does not weaken the guard, it takes every upload down.
+  describe("a part's deadline has to be a number a timer can hold", () => {
+    /** The lowest rate that still keeps the shipped part inside the timer. */
+    const lowestUsable = Math.ceil((8 * 1024 * 1024 * 1000) / MAX_TIMER_MS);
+
+    it("accepts the lowest rate that still serves one part", () => {
+      expect(() =>
+        assertUploadWindows(
+          roomToWait({ minBytesPerSec: lowestUsable }),
+        ),
+      ).not.toThrow();
+    });
+
+    it("refuses the rate one below it, and says what the floor is", () => {
+      expect(() =>
+        assertUploadWindows(roomToWait({ minBytesPerSec: lowestUsable - 1 })),
+      ).toThrow(new RegExp(String(lowestUsable)));
+    });
+
+    // The floor goes into the same max(), so it is the other way in.
+    it("refuses a floor no timer can hold", () => {
+      expect(() =>
+        assertUploadWindows(roomToWait({ requestTimeoutMs: MAX_TIMER_MS + 1 })),
+      ).toThrow(/client_request_timeout_ms/);
+    });
+  });
+
   /** The shipped figures, with the pieces a case varies. */
   const windows = (over: Record<string, number> = {}): Parameters<
     typeof assertUploadWindows

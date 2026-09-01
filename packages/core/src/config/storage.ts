@@ -12,11 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import {
-  MAX_TIMER_MS,
-  MIN_PART_SIZE_BYTES,
-  assertUploadWindows,
-} from "@breatic/shared";
+import { MIN_PART_SIZE_BYTES, assertUploadWindows } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -71,41 +67,7 @@ export const storageConfigSchema = z
       /** Part stall guard rate: per-attempt timeout = max(floor, size/rate). */
       client_put_min_bytes_per_sec: z.number().int().positive().default(65536),
     })
-    .prefault({})
-    .superRefine((upload, ctx) => {
-      // The browser sizes its PUT stall guard as max(floor, size / rate) and
-      // hands the figure to the shared HTTP transport as a per-delivery
-      // deadline. That layer refuses a deadline no timer can hold instead of
-      // clamping it, and it refuses before the first delivery — so a pair of
-      // knobs able to produce such a figure does not degrade the guard, it
-      // takes the whole upload down with an error written for a programmer.
-      //
-      // Neither knob is anything the person uploading chose, and no promise of
-      // ours covers an arbitrary rate. So the refusal belongs at load, where
-      // the operator who typed the number is the one reading the complaint.
-      // Both knobs are checked because the deadline is a max() of the two, and
-      // a bound on only the rate would leave the other way in open.
-      const worstCaseMs = Math.ceil(
-        (upload.max_upload_bytes / upload.client_put_min_bytes_per_sec) * 1000,
-      );
-      if (worstCaseMs > MAX_TIMER_MS) {
-        const lowestUsable = Math.ceil(
-          (upload.max_upload_bytes * 1000) / MAX_TIMER_MS,
-        );
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `client_put_min_bytes_per_sec ${upload.client_put_min_bytes_per_sec} sizes the PUT stall guard at ${worstCaseMs}ms for an upload at the ${upload.max_upload_bytes}-byte cap, past the ${MAX_TIMER_MS}ms a timer can hold; every upload near the cap would fail before sending a byte. Raise it to at least ${lowestUsable}, or lower max_upload_bytes.`,
-          path: ["client_put_min_bytes_per_sec"],
-        });
-      }
-      if (upload.client_request_timeout_ms > MAX_TIMER_MS) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `client_request_timeout_ms ${upload.client_request_timeout_ms} is past the ${MAX_TIMER_MS}ms a timer can hold; it floors the PUT stall guard, so every upload would fail before sending a byte.`,
-          path: ["client_request_timeout_ms"],
-        });
-      }
-    }),
+    .prefault({}),
 
   ingest: z
     .object({

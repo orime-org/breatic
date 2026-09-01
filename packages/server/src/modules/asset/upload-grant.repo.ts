@@ -5,8 +5,8 @@
  * Upload-grant repository (#1826, design §2.2 / §3.2) — the anti-spoof
  * authority that REPLACES the prefix-based `isOwnedKey`.
  *
- * When the ticket endpoint mints a tenant-neutral storage key K, it records one grant
- * (user + owner studio + declared content_hash + K). The upload endpoints then
+ * When the ticket endpoint mints a tenant-neutral storage key K, it records one
+ * grant (user + owner studio + K + where the bytes land). The upload endpoints then
  * re-derive ownership from this ledger instead of from a key prefix:
  *   - `PUT /assets/local-upload/*` (write-time gate) → {@link findLiveGrant}: a grant issued
  *     to this user + owner studio and NOT yet consumed authorises the disk
