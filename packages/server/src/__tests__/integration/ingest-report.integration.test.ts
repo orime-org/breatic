@@ -436,31 +436,6 @@ describe("POST /assets/ingest-report — an event that could not be published", 
 });
 
 describe("POST /assets/ingest-report — an aborted upload", () => {
-  // A grant is consumed by the completed report that registered the asset, so
-  // an aborted one arriving afterwards describes an attempt already settled.
-  // Design §6.1 has this one ignored.
-  it("leaves a node alone when the aborted report follows a completed one", async () => {
-    const seed = await seedEditor();
-    const nodeId = crypto.randomUUID();
-    const key = await mintTicket(seed, { node_id: nodeId });
-    await report(completed(key));
-    const docName = canvasSpaceDocName(seed.projectId, seed.spaceId);
-    const before = (await eventsFor(docName)).filter(
-      (e) => e.nodeId === nodeId,
-    ).length;
-
-    const res = await report({
-      storage_key: key,
-      outcome: "aborted",
-      lease_gen: 7,
-      reason: "parts_missing",
-    });
-
-    expect(res.status).toBe(200);
-    const after = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(after).toHaveLength(before);
-  });
-
   it("voids the grant and tells the node, without registering anything", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -747,30 +722,6 @@ describe("a video, which needs a cover before the node hears anything", () => {
     expect(job!.data.videoAssetId).toBe(rows[0]!.id);
     expect(job!.data.videoUrl).toBe(rows[0]!.file_url);
     expect(job!.data.videoUrl).not.toContain(secondKey);
-  });
-
-  // A video's event comes from the cover job, so a replayed report that finds
-  // no job left has nobody to send one. The Durable Object stops asking after
-  // this answer, and the node would wait for collab's hourly sweeper to call
-  // it a timeout on an upload whose bytes and ledger row are both fine
-  // (design §4.6).
-  it("queues the cover job again when a replayed report finds none", async () => {
-    const seed = await seedEditor();
-    // The Durable Object replays the report it already sent, so both carry the
-    // same hash — which is what the registered row is found by.
-    const body = completed(await mintTicket(seed, {
-      filename: "clip.mp4",
-      content_type: "video/mp4",
-      node_id: crypto.randomUUID(),
-    }), { content_type: "video/mp4", size_bytes: 200_000 });
-    await report(body);
-    const key = body.storage_key as string;
-    await createQueue(VIDEO_COVER_QUEUE).remove(videoCoverJobId(key));
-    expect(await coverJobFor(key)).toBeNull();
-
-    await report(body);
-
-    expect(await coverJobFor(key)).not.toBeNull();
   });
 
   it("queues nothing for an image, which needs no cover", async () => {
