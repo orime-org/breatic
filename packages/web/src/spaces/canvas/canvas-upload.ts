@@ -146,28 +146,19 @@ export type UploadFailureReason = 'hash' | 'storage' | 'upload';
  * Say which failure a ticket request ended in.
  *
  * A 507 answer means the account is out of room; anything else is transient as
- * far as the user is concerned. Hashing is not read off an error at all — it is
- * refused before anything is sent.
+ * far as the user is concerned. The status is what it reads, because the
+ * sentence beside it is localized on the server side and matching on that
+ * would break the moment anyone edits the copy or a user switches language.
+ * Both the status reader and the number itself come from the retry module,
+ * which asks the other half of the same question.
+ *
+ * Hashing is not read off an error at all — it is refused before anything is
+ * sent.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
 function ticketFailureOf(err: unknown): UploadFailureReason {
-  return isStorageFull(err) ? 'storage' : 'upload';
-}
-
-/**
- * Whether a rejection is the server saying the account is out of storage.
- *
- * Read off the status rather than the message: the sentence is localized on
- * the server side and matching on it would break the moment anyone edits the
- * copy or a user switches language. Both the status reader and the number
- * itself come from the retry module, which asks the other half of the same
- * question — two copies would have to be kept in step by hand.
- * @param err - The rejection value.
- * @returns True for a 507 answer.
- */
-function isStorageFull(err: unknown): boolean {
-  return errorStatus(err) === STORAGE_FULL_STATUS;
+  return errorStatus(err) === STORAGE_FULL_STATUS ? 'storage' : 'upload';
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */

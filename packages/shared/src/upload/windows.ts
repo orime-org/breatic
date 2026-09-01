@@ -147,11 +147,9 @@ export function assertUploadWindows(windows: UploadWindows): void {
     );
   }
   // Two things the token has to outlast, and it is issued once for both: the
-  // gap the alarm tolerates between parts, and the chain completing runs.
-  const mustOutlastMs = Math.max(
-    windows.alarmIdleSeconds * 1000,
-    completeRetryBudgetMs(),
-  );
+  // gap the alarm tolerates between parts, and the chain completing runs —
+  // which is the same span a finished upload's answer is kept for.
+  const mustOutlastMs = answerRetentionMs(windows.alarmIdleSeconds);
   if (windows.sessionTokenTtlSeconds * 1000 <= mustOutlastMs) {
     throw new Error(
       `session_token_ttl_seconds ${windows.sessionTokenTtlSeconds} is under ` +
@@ -160,16 +158,14 @@ export function assertUploadWindows(windows: UploadWindows): void {
         `completing an upload runs`,
     );
   }
-  // A finished upload's Durable Object holds its answer for this long and then
-  // deletes everything it knew, which is also what stops it recognising the
-  // key as already used. A ticket that outlives that could open a second
+  // Deleting what it knew is also what stops the Durable Object recognising
+  // the key as already used. A ticket that outlives that could open a second
   // multipart upload over an object the ledger already describes, and the
   // sha256 on that row would stop describing the bytes.
-  const retentionMs = answerRetentionMs(windows.alarmIdleSeconds);
-  if (windows.ticketExpiresSeconds * 1000 >= retentionMs) {
+  if (windows.ticketExpiresSeconds * 1000 >= mustOutlastMs) {
     throw new Error(
       `ticket_expires_seconds ${windows.ticketExpiresSeconds} outlives the ` +
-        `${Math.ceil(retentionMs / 1000)}s a finished upload is remembered ` +
+        `${Math.ceil(mustOutlastMs / 1000)}s a finished upload is remembered ` +
         `for, so a ticket could reopen a key already registered`,
     );
   }
