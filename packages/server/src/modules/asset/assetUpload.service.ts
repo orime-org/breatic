@@ -32,6 +32,12 @@ import {
 
 /** A dedup hit: the canonical asset the client should reuse. */
 export interface DedupHit {
+  /**
+   * The existing asset's ledger row. Carried because a hit is the only thing
+   * this path holds that names anything hanging off that row — a video's
+   * cover, which nothing else on this path can look up.
+   */
+  assetId: string;
   /** The existing asset's public URL (the one the node reuses — B.2). */
   fileUrl: string;
   /** The existing asset's kind (image / video / audio / document / file). */
@@ -63,7 +69,11 @@ export async function checkUploadDedup(params: {
   );
   if (!existing) return null;
   if (existing.sizeBytes !== params.sizeBytes) return null;
-  return { fileUrl: existing.fileUrl, kind: existing.kind };
+  return {
+    assetId: existing.id,
+    fileUrl: existing.fileUrl,
+    kind: existing.kind,
+  };
 }
 
 /**
@@ -101,6 +111,20 @@ export async function settleDedupHit(params: {
   nodeId?: string | undefined;
   spaceId?: string | undefined;
 }): Promise<void> {
+  // Nothing uploads on a hit, so no cover extraction runs and this is a
+  // video's only chance to arrive with the frame it already has. The node
+  // renders its poster from `coverUrl`, and one that never gets it shows a
+  // modality icon for a file whose first upload shows a frame. The video's own
+  // ledger row is where the link lives (design §7).
+  //
+  // A hit that lands between a video's registration and its cover being linked
+  // reads none, and that node shows the modality icon — the same degradation
+  // an extraction that produced nothing leaves behind (design §5.3).
+  const cover =
+    params.hit.kind === "video"
+      ? await assetRepo.findCoverOf(params.hit.assetId)
+      : null;
+
   if (params.nodeId !== undefined) {
     try {
       await nodeHistoryService.recordUpload({
@@ -108,6 +132,7 @@ export async function settleDedupHit(params: {
         nodeId: params.nodeId,
         userId: params.userId,
         content: params.hit.fileUrl,
+        ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
         metadata: params.metadata,
       });
     } catch (err) {
@@ -125,7 +150,10 @@ export async function settleDedupHit(params: {
     getStreamRedis(),
     canvasSpaceDocName(params.projectId, params.spaceId),
     params.nodeId,
-    { content: params.hit.fileUrl },
+    {
+      content: params.hit.fileUrl,
+      ...(cover !== null && { coverUrl: cover.fileUrl }),
+    },
     params.leaseGen,
   );
 }
