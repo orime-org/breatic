@@ -21,6 +21,10 @@
  * still passes the suite.
  */
 import { randomBytes } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
@@ -36,6 +40,7 @@ test.describe.configure({ mode: 'serial' });
 let context: BrowserContext;
 let page: Page;
 let spaceId = '';
+let workDir = '';
 
 /** A 1x1 PNG, small enough to be one part and to decode with no network. */
 const TINY_PNG = Buffer.from(
@@ -105,6 +110,47 @@ async function imageSources(target: Page): Promise<string[]> {
   );
 }
 
+/**
+ * Build a video large enough to be sent in several parts.
+ *
+ * `testsrc` is a synthetic pattern that compresses to almost nothing, so the
+ * clip is looped until it clears the 8 MiB part size several times over —
+ * which is the whole point of this file, since one part exercises none of the
+ * Durable Object's accounting.
+ *
+ * The comment tag carries random bytes because ffmpeg's output is otherwise
+ * deterministic: an identical file hashes the same, and the ticket answers the
+ * second run with the first run's asset without a byte moving — which is the
+ * dedup path, not the one this case is here to exercise.
+ * @param dir - Where to leave the file.
+ * @returns The path to the built video.
+ * @throws {Error} When ffmpeg is not on PATH or produced nothing usable.
+ */
+function buildMultipartVideo(dir: string): string {
+  const seed = join(dir, 'seed.mp4');
+  const out = join(dir, 'multipart.mp4');
+  execFileSync('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30',
+    '-t', '25', '-pix_fmt', 'yuv420p', '-b:v', '6M', seed,
+  ]);
+  execFileSync('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-stream_loop', '11', '-i', seed, '-c', 'copy',
+    '-metadata', `comment=${randomBytes(16).toString('hex')}`, out,
+  ]);
+  return out;
+}
+
+/** Every video node's `src` currently on the canvas. */
+async function videoSources(target: Page): Promise<string[]> {
+  return target.evaluate(() =>
+    [...document.querySelectorAll('.react-flow__node video')].map(
+      (v) => (v as HTMLVideoElement).src,
+    ),
+  );
+}
+
 test.beforeAll(async ({ browser }) => {
   // A hook keeps the config's budget until it raises its own, and seeding a
   // Space behind a sign-in outlasts 30s.
@@ -126,6 +172,7 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await context.close();
+  if (workDir !== '') rmSync(workDir, { recursive: true, force: true });
 });
 
 // A1: the bytes reach R2 through the Worker, and the URL the server wrote is
@@ -176,6 +223,46 @@ test('a dropped image lands on a node with a URL that survives a reload', async 
   await expect
     .poll(async () => imageSources(page), { timeout: 30_000 })
     .toContain(landed);
+});
+
+// A2: a video large enough to be sent in several parts, whose cover our own
+// worker pulls out of it. Nothing below a real run reaches this: the Durable
+// Object's part accounting needs more than one part, and the cover needs
+// ffmpeg against bytes that really landed in R2.
+test('a multi-part video lands with the cover our worker pulled out of it', async () => {
+  test.setTimeout(180_000);
+
+  workDir = mkdtempSync(join(tmpdir(), 'breatic-smoke-'));
+  const videoPath = buildMultipartVideo(workDir);
+  const size = statSync(videoPath).size;
+  // The shipped part size. A file this test could send in one part would prove
+  // nothing it is here to prove.
+  expect(size).toBeGreaterThan(2 * 8 * 1024 * 1024);
+
+  await dropFile(
+    page,
+    'multipart.mp4',
+    'video/mp4',
+    readFileSync(videoPath),
+  );
+
+  // The node hears nothing until the cover is out, so this one wait covers the
+  // whole chain: every part written, the report accepted, the asset
+  // registered, ffmpeg run, and one event carrying both URLs.
+  await expect
+    .poll(async () => (await videoSources(page)).length, { timeout: 150_000 })
+    .toBeGreaterThan(0);
+  const [videoUrl] = await videoSources(page);
+  expect(videoUrl).toMatch(/^https?:\/\//);
+
+  // The cover rides in on the same event, as the node's poster.
+  const poster = await page.evaluate(
+    () =>
+      (document.querySelector('.react-flow__node video') as HTMLVideoElement)
+        ?.poster ?? '',
+  );
+  expect(poster).toMatch(/^https?:\/\//);
+  expect(poster).not.toBe(videoUrl);
 });
 
 // Design §5.6 and the §6.6 table put this write on the browser: once its own

@@ -28,6 +28,14 @@ compatibility_date = "2026-03-10"
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "<the R2 bucket your local server writes to, same as R2_BUCKET in .env>"
+# The Worker keeps running on this machine while this one binding reaches the
+# real bucket. Both halves matter: bytes have to land where the server's public
+# URLs point (otherwise every asset resolves to a 404, and the cover job has
+# nothing to pull a frame out of), and the Worker has to stay local to reach
+# the server on localhost. `wrangler dev --remote` gives up the second half —
+# it moves the Worker to Cloudflare's edge, where this machine is unreachable
+# and no report ever arrives.
+remote = true
 
 # One instance per upload, addressed by its storage key. It is what makes
 # "have all the parts arrived?" answerable at all: R2 itself has no view of a

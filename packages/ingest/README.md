@@ -33,6 +33,7 @@ environments differ only in what the values are.
 | `bucket_name` | The bucket your local server writes to — the same as `R2_BUCKET` in the repo-root `.env` | The live bucket |
 | `SERVER_REPORT_URL` | `http://localhost:<PORT>/api/v1/assets/ingest-report`, where `PORT` is the one in your `.env` | The live API host |
 | `ALLOWED_ORIGINS` | `http://localhost:<VITE_DEV_PORT>`, from the same `.env` | The live site host |
+| `remote` on the R2 binding | `true` | Absent — a deployed Worker is already next to the bucket |
 
 `ALLOWED_ORIGINS` is what the browser is checked against. The browser sends its
 parts to this Worker rather than to the bucket, so this Worker answers the
@@ -68,10 +69,18 @@ Point the repo-root `.env`'s `INGEST_BASE_URL` at whichever one the browser
 should talk to, and restart the server so it reads the new value — `.env` is not
 watched, so a running server keeps whatever it started with.
 
-Local development simulates R2 rather than reaching the real bucket, so an
-object uploaded through `wrangler dev` is not readable at its public URL. The
-upload path itself is fully exercised; only the stored bytes live somewhere
-else.
+`remote = true` on the R2 binding is what makes a local upload land in the real
+bucket. Without it `wrangler dev` simulates R2 on disk, and every object it
+stores resolves to a 404 at its public URL — which fails anything that reads an
+asset back, the video cover job included, since that one downloads the video
+from that URL before it can pull a frame out of it.
+
+The Worker itself still runs on this machine, which is the half `wrangler dev
+--remote` gives up: that flag moves the Worker to Cloudflare's edge, where
+`SERVER_REPORT_URL` on localhost is unreachable and no report ever arrives.
+Durable Objects stay local either way — Cloudflare does not offer them as a
+remote binding, and an upload session is exactly the kind of state that belongs
+next to the code reading it.
 
 ## Tests
 
