@@ -45,7 +45,7 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
-import { useConversationRuntime } from '@web/stores/conversation-runtime';
+import { useConsolidating } from '@web/stores/consolidating';
 import {
   OPENING_BEAT,
   stubChatWire,
@@ -398,7 +398,7 @@ describe('这一轮停下来整理记忆', () => {
    * @returns 是就 true。
    */
   function folding(): boolean {
-    return useConversationRuntime.getState().consolidatingByConversation['c-1'] === true;
+    return useConsolidating.getState().byConversation['c-1'] === true;
   }
 
   it('服务端说在整理，就记下来', async () => {

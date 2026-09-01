@@ -25,7 +25,7 @@ import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
-import { clearConsolidating, noteConsolidating } from '@web/stores/conversation-runtime';
+import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
 /** What starting a conversation's state takes. */

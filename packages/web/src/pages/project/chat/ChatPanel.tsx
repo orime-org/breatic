@@ -7,6 +7,7 @@ import {
   conversationRuntime,
   useConversationRuntime,
 } from '@web/stores/conversation-runtime';
+import { useConsolidating } from '@web/stores/consolidating';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -101,8 +102,8 @@ export function ChatPanel({
   // answered, which is a second model call in front of the reply. Read here
   // rather than passed down the turn: the panel can be unmounted when the
   // word arrives and mounted again while the same turn runs.
-  const consolidating = useConversationRuntime((s) =>
-    currentId ? s.consolidatingByConversation[currentId] === true : false,
+  const consolidating = useConsolidating((s) =>
+    currentId ? s.byConversation[currentId] === true : false,
   );
   const [skeleton, setSkeleton] = React.useState(false);
   React.useEffect(() => {
