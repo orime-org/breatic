@@ -30,6 +30,7 @@ environments differ only in what the values are.
 
 | Setting | Local value | Production value |
 |---|---|---|
+| `[dev] port` | The port this Worker listens on. Every worktree on one machine runs its own, so each needs its own — and it has to match the port in the repo-root `.env`'s `INGEST_BASE_URL` | Absent |
 | `bucket_name` | The bucket your local server writes to — the same as `R2_BUCKET` in the repo-root `.env` | The live bucket |
 | `SERVER_REPORT_URL` | `http://localhost:<PORT>/api/v1/assets/ingest-report`, where `PORT` is the one in your `.env` | The live API host |
 | `ALLOWED_ORIGINS` | `http://localhost:<VITE_DEV_PORT>`, from the same `.env` | The live site host |
@@ -61,13 +62,17 @@ before anything reads a binding, so it holds for the preflight too.
 
 | What | Command |
 |---|---|
-| Locally | `npx wrangler dev` — listens on `http://localhost:8787` |
+| Locally | `pnpm dev` from the repo root, or `npx wrangler dev` here — listens on the `[dev] port` |
 | Tests | `pnpm test` from the repo root |
 | Deploy | `pnpm deploy` (it passes `--env production`) |
 
 Point the repo-root `.env`'s `INGEST_BASE_URL` at whichever one the browser
 should talk to, and restart the server so it reads the new value — `.env` is not
 watched, so a running server keeps whatever it started with.
+
+`pnpm dev` with no `wrangler.toml` prints what to copy and starts nothing, so a
+checkout that has not configured this Worker still gets its frontend and its
+API. Uploads are what stops working until it is configured.
 
 `remote = true` on the R2 binding is what makes a local upload land in the real
 bucket. Without it `wrangler dev` simulates R2 on disk, and every object it

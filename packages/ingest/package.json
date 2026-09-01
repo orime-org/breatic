@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "node scripts/dev.mjs",
     "deploy": "wrangler deploy --env production",
     "test": "vitest run",
     "lint": "eslint .",
