@@ -7,6 +7,10 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { StudioRail } from '@web/pages/studio/rail/StudioRail';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 function s(
   id: string,
@@ -348,12 +352,10 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         />
       </MemoryRouter>,
     );
-    const current = screen.getByRole('link', { name: /Recent/ });
-    expect(current.className).toMatch(/(^|\s)bg-accent(\s|$)/);
-
-    const idle = screen.getByRole('button', { name: 'New project' });
-    expect(idle.className).toContain('hover:bg-accent');
-    expect(idle.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+    expectChosenFill(screen.getByRole('link', { name: /Recent/ }));
+    expectHoverableSiblingFill(
+      screen.getByRole('button', { name: 'New project' }),
+    );
   });
 
   it('leaves 12px between the three groups, which is what tells them apart', () => {
