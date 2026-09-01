@@ -188,6 +188,31 @@ async function queueVideoCover(
 }
 
 /**
+ * Ask for the cover again when nothing is left to announce this video.
+ *
+ * A video's node hears from the cover job and from nowhere else, so a replayed
+ * report has to check that job is still coming. One that failed for good stays
+ * in the queue for `removeOnFail`'s whole window, and adding under the same id
+ * while it sits there is silently dropped — so it goes before the new one is
+ * asked for (design §4.6).
+ * @param grant - The grant, which carries the node and its gen.
+ * @param asset - The registered video, or null when the report named no hash.
+ * @param contentType - What the Worker measured, for the job's payload.
+ */
+async function requeueCoverIfGone(
+  grant: UploadGrant,
+  asset: { id: string; fileUrl: string; sizeBytes: number } | null,
+  contentType: string,
+): Promise<void> {
+  if (asset === null) return;
+  const jobId = videoCoverJobId(grant.storageKey);
+  const job = await getCoverQueue().getJob(jobId);
+  if (job !== undefined && (await job.getState()) !== "failed") return;
+  if (job !== undefined) await getCoverQueue().remove(jobId);
+  await queueVideoCover(grant, asset, contentType);
+}
+
+/**
  * Apply one report from the ingest Worker.
  * @param report - What the Worker says happened.
  * @returns What was decided, for the route to answer with.
@@ -207,6 +232,12 @@ export async function applyIngestReport(
   // applies these last-write-wins, so a duplicate costs nothing while a lost
   // one leaves the node spinning.
   if (grant.consumedAt !== null) {
+    // The completed report that consumed this grant already settled the
+    // upload, so an aborted one arriving afterwards describes an attempt that
+    // has been superseded. Acting on it would replace a finished node with a
+    // failure (design §6.1).
+    if (report.outcome === "aborted") return { status: "voided" };
+
     const existing = report.sha256
       ? await assetRepo.findByStudioAndHash(grant.studioId, report.sha256)
       : null;
@@ -215,10 +246,10 @@ export async function applyIngestReport(
     // A video's event belongs to the cover job, which sends one carrying both
     // URLs. Sending a video-only one here would put a cover-less video on
     // screen and have the job replace it a moment later — and if the job has
-    // already finished, this would undo the cover it just showed. The grant is
-    // only consumed once that job is queued, so reaching here for a video
-    // means one is waiting.
-    if (settledKind !== "video") {
+    // already finished, this would undo the cover it just showed.
+    if (settledKind === "video") {
+      await requeueCoverIfGone(grant, existing, report.contentType ?? "");
+    } else {
       await announceSuccess(grant, fileUrl);
     }
     return { status: "already_registered", fileUrl, kind: settledKind };
