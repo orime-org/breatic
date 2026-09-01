@@ -34,17 +34,22 @@ export type NodeType =
   | 'group';
 
 /**
- * The modalities that offer Generate — image and video (#1896). Text is
- * planned (#1778) but not built, so it stays out: a node created while this
- * said yes would carry a prompt container forever after, and the menu item
- * would open nothing.
+ * The modalities that offer Generate — image and video (#1896), audio
+ * (#1960). Text is planned (#1778) but not built, so it stays out: a node
+ * created while this said yes would carry a prompt container forever after,
+ * and the menu item would open nothing.
+ *
+ * That container is also why an audio node created before #1960 has none:
+ * seeding happens at creation and nothing backfills, so those nodes have no
+ * prompt to type into and the panel says so rather than showing an editor
+ * whose text goes nowhere.
  *
  * This list IS the product decision. `canGenerate` reads it rather than
  * comparing against literals, so its body answers the question its name asks
- * and a third modality is one more entry here rather than another clause
+ * and another modality is one more entry here rather than another clause
  * somewhere.
  */
-const GENERATIVE_MODALITIES: readonly NodeType[] = ['image', 'video'];
+const GENERATIVE_MODALITIES: readonly NodeType[] = ['image', 'video', 'audio'];
 
 /**
  * Whether a node of this modality offers Generate.

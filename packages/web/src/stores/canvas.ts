@@ -150,7 +150,13 @@ interface CanvasState {
    * host + kind is the correct abstraction for N mutually-exclusive node-
    * anchored panels — cheaper and inherently exclusive versus parallel states.
    */
-  panelKind: 'generate' | 'generateVideo' | 'resetEmpty' | 'history' | null;
+  panelKind:
+    | 'generate'
+    | 'generateVideo'
+    | 'generateAudio'
+    | 'resetEmpty'
+    | 'history'
+    | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -244,18 +250,20 @@ interface CanvasState {
 }
 
 /**
- * Which Generate panel a modality opens (#1896). Image and video have separate
- * panels, so this map — not the call site — decides which body renders.
+ * Which Generate panel a modality opens (#1896, #1960). Image, video and audio
+ * each have their own panel, so this map — not the call site — decides which
+ * body renders.
  *
  * It is deliberately partial: a modality absent here has no Generate panel,
  * and `openGeneratePanel` opens nothing for it. Adding text generation (#1778)
  * means one entry here and no change anywhere else.
  */
 const GENERATE_PANEL_BY_TYPE: Partial<
-  Record<NodeType, 'generate' | 'generateVideo'>
+  Record<NodeType, 'generate' | 'generateVideo' | 'generateAudio'>
 > = {
   image: 'generate',
   video: 'generateVideo',
+  audio: 'generateAudio',
 };
 
 export const useCanvasStore = create<CanvasState>()(
