@@ -25,35 +25,29 @@ export const VIDEO_COVER_QUEUE = "video-cover";
 export const VIDEO_COVER_JOB = "extract-cover";
 
 /**
- * The job id for telling one node about one video's cover.
+ * The job id for one upload's cover extraction.
  *
  * BullMQ dedups on an explicit job id and assigns a random one otherwise, so
  * without this the Durable Object retrying its report would start a second
- * extraction of the same video.
- *
- * Keyed on the pair rather than on the upload, because two nodes can be
- * waiting on the same video: a second upload of the same file resolves to the
- * row the first one registered, and if its cover has not been extracted yet
- * that node has to join the wait. One job per node is what lets each be told,
- * and the second one finds the cover already made.
- * @param videoAssetId - The registered video row.
- * @param nodeId - The node waiting to be told.
+ * extraction of the same video. The storage key is already unique per upload
+ * (`upload_grants_storage_key_unique`), and BullMQ only forbids `:` in an id,
+ * which a key never contains — so it is used as-is rather than hashed into
+ * something nobody can trace back to an upload.
+ * @param storageKey - The key this upload was granted.
  * @returns The BullMQ job id.
  */
-export function videoCoverJobId(videoAssetId: string, nodeId: string): string {
-  return `${videoAssetId}/${nodeId}`;
+export function videoCoverJobId(storageKey: string): string {
+  return storageKey;
 }
 
 /** What the worker is told about the video it should extract a cover from. */
 export interface VideoCoverJobData {
   /**
-   * The key this upload was granted, and null when no bytes moved — a dedup
-   * hit that joined an extraction already running. It keys the node history
-   * row the worker writes, which a replay must not duplicate; a hit has no
-   * key, and its rows are one per user action by the same rule the ticket
-   * endpoint used to write them under.
+   * The key this upload was granted. One upload is one key, so it identifies
+   * the job (BullMQ dedups on an explicit job id) and keys the node history
+   * row the worker writes, which a replay must not duplicate.
    */
-  storageKey: string | null;
+  storageKey: string;
   /** The registered video row; the cover's id is written back onto it. */
   videoAssetId: string;
   /**

@@ -75,7 +75,7 @@ export async function announceUpload(
     userId: data.userId,
     content: data.videoUrl,
     ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
-    ...(data.storageKey !== null && { storageKey: data.storageKey }),
+    storageKey: data.storageKey,
     metadata: {
       ...(data.filename !== null && { filename: data.filename }),
       size: data.sizeBytes,
@@ -115,13 +115,6 @@ async function resolveCover(
   data: VideoCoverJobData,
   publicUrl: (key: string) => string,
 ): Promise<string | undefined> {
-  // A retry reaches here whenever anything after the extraction failed, and
-  // the video's row already names what came out. Extracting again would
-  // download the video, run ffmpeg, and store a second PNG that dedups to the
-  // first — leaving an object for the reclaim job, once per attempt.
-  const linked = await assetRepo.findCoverOf(data.videoAssetId);
-  if (linked !== null) return publicUrl(linked.storageKey);
-
   const { extractVideoCover } = await import(
     "@worker/providers/video-cover.js"
   );
@@ -134,7 +127,6 @@ async function resolveCover(
     return undefined;
   }
 
-  let registered: { id: string; storageKey: string };
   try {
     const { asset, reclaimQueueFailed } = await assetService.register({
       projectId: data.projectId,
@@ -158,7 +150,8 @@ async function resolveCover(
         "asset_reclaim_queue_failed",
       );
     }
-    registered = asset;
+    await assetRepo.setCoverAsset(data.videoAssetId, asset.id);
+    return publicUrl(asset.storageKey);
   } catch (err) {
     // No live row means no cover anyone may serve. The video keeps its own
     // registration, so this degrades to a video without a cover.
@@ -168,13 +161,6 @@ async function resolveCover(
     );
     return undefined;
   }
-
-  // Outside that catch on purpose. By now the frame is in the ledger, so a
-  // failure here loses a cover that exists rather than finding there is none —
-  // which is what the degradation above is for. Failing the job asks for it
-  // again, and the short circuit at the top makes the retry cheap.
-  await assetRepo.setCoverAsset(data.videoAssetId, registered.id);
-  return publicUrl(registered.storageKey);
 }
 
 /**

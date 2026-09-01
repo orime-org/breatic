@@ -30,7 +30,6 @@ const mockGetStorageAdapter = vi.hoisted(() => vi.fn());
 const mockExtract = vi.hoisted(() => vi.fn());
 const mockRegister = vi.hoisted(() => vi.fn());
 const mockSetCover = vi.hoisted(() => vi.fn());
-const mockFindCoverOf = vi.hoisted(() => vi.fn());
 const mockRecordUpload = vi.hoisted(() => vi.fn());
 const mockEmitDone = vi.hoisted(() => vi.fn());
 const mockActivityInsert = vi.hoisted(() => vi.fn());
@@ -46,7 +45,7 @@ vi.mock("@breatic/core", () => ({
 }));
 vi.mock("@breatic/domain", () => ({
   assetService: { register: mockRegister },
-  assetRepo: { setCoverAsset: mockSetCover, findCoverOf: mockFindCoverOf },
+  assetRepo: { setCoverAsset: mockSetCover },
   nodeHistoryService: { recordUpload: mockRecordUpload },
   emitNodeStateDone: mockEmitDone,
 }));
@@ -106,7 +105,6 @@ beforeEach(() => {
   mockRegister.mockResolvedValue({ asset: REGISTERED_COVER, deduped: true });
   mockRecordUpload.mockResolvedValue({ entry: { id: "hist-1" }, inserted: true });
   mockEmitDone.mockResolvedValue(undefined);
-  mockFindCoverOf.mockResolvedValue(null);
 });
 
 describe("a cover that comes out", () => {
@@ -286,57 +284,5 @@ describe("the event cannot be published", () => {
     mockEmitDone.mockRejectedValue(new Error("redis gone"));
 
     await expect(runVideoCover(job())).rejects.toThrow("redis gone");
-  });
-});
-
-// A job that already produced a cover is retried whenever anything after the
-// extraction failed. Extracting again downloads the video, runs ffmpeg and
-// stores a second PNG that immediately dedups to the first — leaving an object
-// for the reclaim job to collect, once per retry.
-describe("a retry of a video whose cover is already linked", () => {
-  it("neither extracts nor stores a second time", async () => {
-    mockFindCoverOf.mockResolvedValueOnce({
-      id: "cover-1",
-      storageKey: "image/2026-08-31/cover.png",
-    });
-
-    await runVideoCover(job());
-
-    expect(mockExtract).not.toHaveBeenCalled();
-    expect(mockRegister).not.toHaveBeenCalled();
-  });
-
-  it("still tells the node what it holds, cover and all", async () => {
-    mockFindCoverOf.mockResolvedValueOnce({
-      id: "cover-1",
-      storageKey: "image/2026-08-31/cover.png",
-    });
-
-    await runVideoCover(job());
-
-    expect(mockEmitDone).toHaveBeenCalledOnce();
-    expect(mockEmitDone.mock.calls[0]![3]).toMatchObject({
-      coverUrl: expect.stringContaining("image/2026-08-31/cover.png"),
-    });
-  });
-});
-
-// The cover is in the ledger by the time this write happens, so failing it
-// leaves an extracted frame nothing can reach. That is not the degradation B1
-// describes (no cover came out); it is a cover that came out and was lost, and
-// the attempt has to be made again.
-describe("a cover that was registered but could not be linked", () => {
-  it("fails the job so it is retried", async () => {
-    mockSetCover.mockRejectedValueOnce(new Error("the ledger is unreachable"));
-
-    await expect(runVideoCover(job())).rejects.toThrow();
-  });
-
-  it("tells the node nothing rather than telling it there is no cover", async () => {
-    mockSetCover.mockRejectedValueOnce(new Error("the ledger is unreachable"));
-
-    await runVideoCover(job()).catch(() => undefined);
-
-    expect(mockEmitDone).not.toHaveBeenCalled();
   });
 });

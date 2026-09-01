@@ -46,6 +46,7 @@ import {
 } from "@breatic/core";
 import {
   VIDEO_COVER_QUEUE,
+  videoCoverJobId,
   type VideoCoverJobData,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -507,19 +508,12 @@ describe("POST /assets/ingest-report — the same report twice", () => {
 });
 
 describe("a video, which needs a cover before the node hears anything", () => {
-  /**
-   * The cover job waiting for `nodeId`, or null.
-   *
-   * Found by what the job carries rather than by rebuilding its id: a hit
-   * resolves to a video row this upload did not write, so the id cannot be
-   * derived from the key the report named.
-   */
-  async function coverJobFor(nodeId: string): Promise<{
+  /** The cover job queued for one upload's key, or null. */
+  async function coverJobFor(storageKey: string): Promise<{
     data: VideoCoverJobData;
   } | null> {
     const queue = createQueue(VIDEO_COVER_QUEUE);
-    const jobs = await queue.getJobs(["waiting", "delayed", "active"]);
-    const job = jobs.find((j) => (j.data as VideoCoverJobData).nodeId === nodeId);
+    const job = await queue.getJob(videoCoverJobId(storageKey));
     return job ? { data: job.data as VideoCoverJobData } : null;
   }
 
@@ -581,7 +575,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
     const seed = await seedEditor();
     const { key, nodeId } = await uploadVideo(seed);
 
-    const job = await coverJobFor(nodeId);
+    const job = await coverJobFor(key);
     expect(job).not.toBeNull();
     const rows = await sql<{ id: string; file_url: string }[]>`
       SELECT id, file_url FROM studio_assets WHERE storage_key = ${key}
@@ -648,7 +642,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
     );
 
     expect(second.status).toBe(200);
-    expect(await coverJobFor(nodeId)).not.toBeNull();
+    expect(await coverJobFor(key)).not.toBeNull();
     const grants = await sql<{ consumed_at: Date | null }[]>`
       SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
     `;
@@ -724,7 +718,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
     const rows = await sql<{ id: string; file_url: string }[]>`
       SELECT id, file_url FROM studio_assets WHERE storage_key = ${firstKey}
     `;
-    const job = await coverJobFor(secondNodeId);
+    const job = await coverJobFor(secondKey);
     expect(job!.data.videoAssetId).toBe(rows[0]!.id);
     expect(job!.data.videoUrl).toBe(rows[0]!.file_url);
     expect(job!.data.videoUrl).not.toContain(secondKey);
@@ -736,7 +730,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
     const key = await mintTicket(seed, { node_id: nodeId });
     await report(completed(key));
 
-    expect(await coverJobFor(nodeId)).toBeNull();
+    expect(await coverJobFor(key)).toBeNull();
   });
 
   // Without a node there is nobody to show a cover to, and the payload has no
@@ -752,6 +746,6 @@ describe("a video, which needs a cover before the node hears anything", () => {
     );
 
     // No node id was declared, so nothing is waiting to be told.
-    expect(await coverJobFor(crypto.randomUUID())).toBeNull();
+    expect(await coverJobFor(key)).toBeNull();
   });
 });

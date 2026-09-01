@@ -38,7 +38,6 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
-  createQueue,
   initCore,
   getRedis,
   getStreamRedis,
@@ -48,7 +47,6 @@ import {
   taskEventsStreamKey,
 } from "@breatic/core";
 import { verifyUploadTicket, canvasSpaceDocName } from "@breatic/shared";
-import { VIDEO_COVER_QUEUE, videoCoverJobId } from "@breatic/domain";
 import type { Hono } from "hono";
 
 try {
@@ -137,54 +135,16 @@ async function registerAsset(
   producedByUserId: string,
   contentHash: string,
   sizeBytes: number,
-  kind: "video" | "image" = "video",
 ): Promise<void> {
-  const isVideo = kind === "video";
-  const ext = isVideo ? "mp4" : "png";
   await sql`
     INSERT INTO studio_assets
       (studio_id, content_hash, storage_key, file_url, size_bytes,
        mime_type, kind, source, produced_by_user_id)
     VALUES
-      (${studioId}, ${contentHash}, ${`${kind}/${contentHash}.${ext}`},
-       ${`https://cdn.test.invalid/${contentHash}.${ext}`}, ${sizeBytes},
-       ${isVideo ? "video/mp4" : "image/png"}, ${kind}, 'upload',
-       ${producedByUserId})
+      (${studioId}, ${contentHash}, ${`video/${contentHash}.mp4`},
+       ${`https://cdn.test.invalid/${contentHash}.mp4`}, ${sizeBytes},
+       'video/mp4', 'video', 'upload', ${producedByUserId})
   `;
-}
-
-/**
- * Register a video that already carries its extracted cover, the way the first
- * upload of that file leaves it.
- * @param studioId - Studio the rows belong to.
- * @param producedByUserId - Who uploaded it.
- * @param contentHash - The video's hash, which dedup matches on.
- * @param sizeBytes - The video's size, which dedup also matches on.
- * @returns The cover's public URL.
- */
-async function registerVideoWithCover(
-  studioId: string,
-  producedByUserId: string,
-  contentHash: string,
-  sizeBytes: number,
-): Promise<string> {
-  await registerAsset(studioId, producedByUserId, contentHash, sizeBytes);
-  const coverHash = crypto.randomBytes(32).toString("hex");
-  const coverUrl = `https://cdn.test.invalid/${coverHash}_cover.png`;
-  const rows = await sql<{ id: string }[]>`
-    INSERT INTO studio_assets
-      (studio_id, content_hash, storage_key, file_url, size_bytes,
-       mime_type, kind, source, produced_by_user_id)
-    VALUES
-      (${studioId}, ${coverHash}, ${`image/${coverHash}_cover.png`},
-       ${coverUrl}, 4096, 'image/png', 'image', 'cover', ${producedByUserId})
-    RETURNING id
-  `;
-  await sql`
-    UPDATE studio_assets SET cover_asset_id = ${rows[0]!.id}
-    WHERE studio_id = ${studioId} AND content_hash = ${contentHash}
-  `;
-  return coverUrl;
 }
 
 /** A request body the endpoint should accept, with the pieces a caller varies. */
@@ -492,9 +452,7 @@ describe("POST /assets/upload-ticket", () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");
     const size = 40 * 1024 * 1024;
-    // An image: nothing about it is extracted afterwards, so the hit is the
-    // whole of what this node will be told.
-    await registerAsset(studioId, userId, hash, size, "image");
+    await registerAsset(studioId, userId, hash, size);
     const nodeId = crypto.randomUUID();
     const spaceId = crypto.randomUUID();
 
@@ -515,134 +473,8 @@ describe("POST /assets/upload-ticket", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.gen).toBe(9);
     expect(events[0]!.update).toMatchObject({
-      content: `https://cdn.test.invalid/${hash}.png`,
-    });
-  });
-
-  // Nothing uploads on a hit, so no cover job runs and this event is the only
-  // one this node will get. A video node reads `coverUrl` for its poster, so
-  // an event carrying the video alone leaves the second node showing a
-  // modality icon where the first shows a frame — from the same file.
-  it("hands over the cover as well when the deduped video already has one", async () => {
-    const { projectId, cookie, studioId, userId } = await seedEditor();
-    const hash = crypto.randomBytes(32).toString("hex");
-    const size = 40 * 1024 * 1024;
-    const coverUrl = await registerVideoWithCover(studioId, userId, hash, size);
-    const nodeId = crypto.randomUUID();
-    const spaceId = crypto.randomUUID();
-
-    await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        client_hash: hash,
-        size,
-        node_id: nodeId,
-        space_id: spaceId,
-        lease_gen: 9,
-      }),
-    );
-
-    const docName = canvasSpaceDocName(projectId, spaceId);
-    const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events[0]!.update).toMatchObject({
       content: `https://cdn.test.invalid/${hash}.mp4`,
-      coverUrl,
     });
-  });
-
-  it("puts that cover on the history row too", async () => {
-    const { projectId, cookie, studioId, userId } = await seedEditor();
-    const hash = crypto.randomBytes(32).toString("hex");
-    const size = 40 * 1024 * 1024;
-    const coverUrl = await registerVideoWithCover(studioId, userId, hash, size);
-    const nodeId = crypto.randomUUID();
-
-    await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        client_hash: hash,
-        size,
-        node_id: nodeId,
-        space_id: crypto.randomUUID(),
-      }),
-    );
-
-    const rows = await sql<{ thumbnail_url: string | null }[]>`
-      SELECT thumbnail_url FROM node_history WHERE node_id = ${nodeId}
-    `;
-    expect(rows[0]!.thumbnail_url).toBe(coverUrl);
-  });
-
-  // The event is the only thing that brings this node out of handling, so a
-  // failure to publish fails the request — and the browser's own retry sends
-  // the same request again. A history row written before that failure records
-  // an attempt that did not happen, and the retry writes a second one; a hit
-  // has no grant, so there is no key these rows could dedup on.
-  it("leaves no history row behind when the event cannot be published", async () => {
-    const { projectId, cookie, studioId, userId } = await seedEditor();
-    const hash = crypto.randomBytes(32).toString("hex");
-    const size = 40 * 1024 * 1024;
-    await registerAsset(studioId, userId, hash, size, "image");
-    const nodeId = crypto.randomUUID();
-
-    // The same lazy singleton the service publishes through.
-    const xadd = vi
-      .spyOn(getStreamRedis(), "xadd")
-      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    const refused = await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        client_hash: hash,
-        size,
-        node_id: nodeId,
-        space_id: crypto.randomUUID(),
-      }),
-    );
-    xadd.mockRestore();
-
-    expect(refused.status).toBe(500);
-    const rows = await sql`SELECT id FROM node_history WHERE node_id = ${nodeId}`;
-    expect(rows).toHaveLength(0);
-  });
-
-  // A video's cover is extracted after its row lands, so a hit that arrives in
-  // that window finds a video with no cover yet. Announcing then would put a
-  // cover-less video on this node for good: the extraction running for the
-  // first upload announces to its own node and no other, and a hit sends no
-  // second event. The node joins that wait instead.
-  it("waits for the cover when the deduped video has not got one yet", async () => {
-    const { projectId, cookie, studioId, userId } = await seedEditor();
-    const hash = crypto.randomBytes(32).toString("hex");
-    const size = 40 * 1024 * 1024;
-    await registerAsset(studioId, userId, hash, size);
-    const nodeId = crypto.randomUUID();
-    const spaceId = crypto.randomUUID();
-
-    await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        client_hash: hash,
-        size,
-        node_id: nodeId,
-        space_id: spaceId,
-        lease_gen: 9,
-      }),
-    );
-
-    const events = (await eventsFor(canvasSpaceDocName(projectId, spaceId)))
-      .filter((e) => e.nodeId === nodeId);
-    expect(events).toHaveLength(0);
-    const assets = await sql<{ id: string }[]>`
-      SELECT id FROM studio_assets WHERE content_hash = ${hash} AND kind = 'video'
-    `;
-    const queue = createQueue(VIDEO_COVER_QUEUE);
-    const job = await queue.getJob(videoCoverJobId(assets[0]!.id, nodeId));
-    expect(job).not.toBeNull();
-    expect(job?.data).toMatchObject({ nodeId, videoAssetId: assets[0]!.id });
   });
 
   // A focus crop asks with no node. There is nothing to announce to, and the

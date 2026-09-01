@@ -22,18 +22,8 @@ import {
   assetService,
   emitNodeStateDone,
   nodeHistoryService,
-  videoCoverJobId,
-  VIDEO_COVER_JOB,
-  type NodeStateDoneFields,
-  type VideoCoverJobData,
 } from "@breatic/domain";
-import {
-  storageKey,
-  getStreamRedis,
-  defaultJobOpts,
-  logger,
-} from "@breatic/core";
-import { getCoverQueue } from "@server/modules/asset/cover-queue.js";
+import { storageKey, getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
   issueGrant,
@@ -42,12 +32,6 @@ import {
 
 /** A dedup hit: the canonical asset the client should reuse. */
 export interface DedupHit {
-  /**
-   * The existing asset's ledger row. Carried because a hit is the only thing
-   * this path holds that names anything hanging off that row — a video's
-   * cover, which nothing else on this path can look up.
-   */
-  assetId: string;
   /** The existing asset's public URL (the one the node reuses — B.2). */
   fileUrl: string;
   /** The existing asset's kind (image / video / audio / document / file). */
@@ -79,66 +63,7 @@ export async function checkUploadDedup(params: {
   );
   if (!existing) return null;
   if (existing.sizeBytes !== params.sizeBytes) return null;
-  return { assetId: existing.id, fileUrl: existing.fileUrl, kind: existing.kind };
-}
-
-/**
- * Put this node in the queue behind the cover extraction already running for
- * the video it just resolved to.
- *
- * One job per waiting node, keyed on the pair, so the extraction that is under
- * way keeps telling its own node and this one gets a job of its own. By the
- * time it runs the cover is usually already linked, and the handler reads it
- * rather than extracting a second time.
- * @param params - What was matched and where it lands.
- * @param params.projectId - The project the node lives in.
- * @param params.hit - The video being reused.
- * @param params.userId - Who asked.
- * @param params.leaseGen - The node's fencing gen, which the event carries.
- * @param params.metadata - The picked file's facts, for the history row.
- * @param params.metadata.filename - The name the file was picked under.
- * @param params.metadata.size - The file's byte size as the browser declared it.
- * @param params.metadata.mimeType - The file's content type.
- * @param params.nodeId - The node waiting to be told.
- * @param params.spaceId - The space that node lives in.
- * @throws {unknown} When the job cannot be queued, which fails the request so
- *   the browser's own retry asks again.
- */
-async function joinCoverWait(params: {
-  projectId: string;
-  hit: DedupHit;
-  userId: string;
-  leaseGen: number;
-  metadata: { filename: string; size: number; mimeType: string };
-  nodeId: string;
-  spaceId: string;
-}): Promise<void> {
-  const studioId = await assetService.resolveOwnerStudioId(params.projectId);
-  await getCoverQueue().add(
-    VIDEO_COVER_JOB,
-    {
-      // No bytes moved, so there is no key of this upload's own; the history
-      // row this job writes is one per user action, as a hit's rows always are.
-      storageKey: null,
-      videoAssetId: params.hit.assetId,
-      videoUrl: params.hit.fileUrl,
-      ownerStudioId: studioId,
-      userId: params.userId,
-      projectId: params.projectId,
-      spaceId: params.spaceId,
-      nodeId: params.nodeId,
-      leaseGen: params.leaseGen,
-      sizeBytes: params.metadata.size,
-      mimeType: params.metadata.mimeType,
-      filename: params.metadata.filename,
-      source: null,
-      toolName: null,
-    } satisfies VideoCoverJobData,
-    {
-      ...defaultJobOpts(),
-      jobId: videoCoverJobId(params.hit.assetId, params.nodeId),
-    },
-  );
+  return { fileUrl: existing.fileUrl, kind: existing.kind };
 }
 
 /**
@@ -176,68 +101,33 @@ export async function settleDedupHit(params: {
   nodeId?: string | undefined;
   spaceId?: string | undefined;
 }): Promise<void> {
-  // Nothing uploads on a hit, so no cover extraction runs and this is a
-  // video's only chance to arrive with the frame it already has. The node
-  // renders its poster from `coverUrl`, and one that never gets it shows a
-  // modality icon for a file whose first upload shows a frame.
-  const cover =
-    params.hit.kind === 'video'
-      ? await assetRepo.findCoverOf(params.hit.assetId)
-      : null;
-
-  // A video whose cover has not been extracted yet is one this hit arrived in
-  // the middle of. Announcing now would settle the node on a cover-less video:
-  // the extraction under way tells its own node and no other, and a hit sends
-  // no second event. Joining that wait is what gets this node told.
-  if (
-    params.hit.kind === 'video' &&
-    cover === null &&
-    params.nodeId !== undefined &&
-    params.spaceId !== undefined
-  ) {
-    await joinCoverWait({ ...params, nodeId: params.nodeId, spaceId: params.spaceId });
-    return;
+  if (params.nodeId !== undefined) {
+    try {
+      await nodeHistoryService.recordUpload({
+        projectId: params.projectId,
+        nodeId: params.nodeId,
+        userId: params.userId,
+        content: params.hit.fileUrl,
+        metadata: params.metadata,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, projectId: params.projectId, nodeId: params.nodeId },
+        "upload_ticket_dedup_history_failed",
+      );
+    }
   }
 
-  const content: NodeStateDoneFields = {
-    content: params.hit.fileUrl,
-    ...(cover !== null && { coverUrl: cover.fileUrl }),
-  };
-
-  // The announcement goes first because it is the step that can fail the
-  // request, and the browser's own retry then sends the same request again. A
-  // history row written before that failure records an attempt that did not
-  // happen — and a hit issues no grant, so those rows have no key to dedup on
-  // and the retry adds a second one.
-  //
   // A focus crop asks with no node. It reads its result from this request's
   // own answer, so there is nothing to announce and nowhere to announce it.
-  if (params.nodeId !== undefined && params.spaceId !== undefined) {
-    await emitNodeStateDone(
-      getStreamRedis(),
-      canvasSpaceDocName(params.projectId, params.spaceId),
-      params.nodeId,
-      content,
-      params.leaseGen,
-    );
-  }
-
-  if (params.nodeId === undefined) return;
-  try {
-    await nodeHistoryService.recordUpload({
-      projectId: params.projectId,
-      nodeId: params.nodeId,
-      userId: params.userId,
-      content: params.hit.fileUrl,
-      ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
-      metadata: params.metadata,
-    });
-  } catch (err) {
-    logger.warn(
-      { err, projectId: params.projectId, nodeId: params.nodeId },
-      "upload_ticket_dedup_history_failed",
-    );
-  }
+  if (params.nodeId === undefined || params.spaceId === undefined) return;
+  await emitNodeStateDone(
+    getStreamRedis(),
+    canvasSpaceDocName(params.projectId, params.spaceId),
+    params.nodeId,
+    { content: params.hit.fileUrl },
+    params.leaseGen,
+  );
 }
 
 /**
