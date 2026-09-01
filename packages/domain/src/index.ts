@@ -63,6 +63,11 @@ export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
 export { listAvailableModels, estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
 export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+// Which upstream a model runs on in this deployment. One rule, two callers:
+// the worker sends the generation, the voice endpoint lists voices in that
+// same upstream's value domain.
+export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
+export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
 
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
 export {
