@@ -407,6 +407,7 @@ export {
   partDeadlineMs,
   partRetryBudgetMs,
   completeRetryBudgetMs,
+  answerRetentionMs,
   assertUploadWindows,
   type PartDeadlineConfig,
   type UploadWindows,

@@ -15,6 +15,7 @@ import {
   partDeadlineMs,
   partRetryBudgetMs,
   completeRetryBudgetMs,
+  answerRetentionMs,
   assertUploadWindows,
 } from "@shared/upload/windows.js";
 import {
@@ -84,6 +85,7 @@ describe("assertUploadWindows", () => {
     partSizeBytes: 8 * 1024 * 1024,
     alarmIdleSeconds: 600,
     sessionTokenTtlSeconds: 1200,
+    ticketExpiresSeconds: 300,
     requestTimeoutMs: 30_000,
     minBytesPerSec: 65_536,
     ...over,
@@ -121,5 +123,17 @@ describe("assertUploadWindows", () => {
         windows({ alarmIdleSeconds: 600, sessionTokenTtlSeconds: short }),
       ),
     ).toThrow(/session_token_ttl_seconds/);
+  });
+
+  // Letting go of a finished upload is also what stops the Durable Object
+  // recognising the key as used. A ticket still valid then could open a second
+  // multipart upload over an object the ledger already describes, leaving the
+  // sha256 on that row describing bytes that are gone.
+  it("refuses a ticket that outlives the memory of a finished upload", () => {
+    const past = Math.ceil(answerRetentionMs(600) / 1000) + 1;
+
+    expect(() =>
+      assertUploadWindows(windows({ ticketExpiresSeconds: past })),
+    ).toThrow(/ticket_expires_seconds/);
   });
 });

@@ -150,6 +150,10 @@ export async function register(input: {
   };
   const result = await registerWithDedup(repoInput);
   if (!result.deduped) return result;
+  // A replay of the same registration reaches here too: it dedups against the
+  // row its own earlier call wrote, so the two keys are one object. Queueing
+  // it would hand the reclaim job the object the ledger row is pointing at.
+  if (result.asset.storageKey === input.storageKey) return result;
   // The stored object lost dedup → hand it to the offline reclaim job. Only
   // INSERTs; the physical object is untouched. Idempotent on storage_key, so a
   // retried report never queues it twice.

@@ -19,7 +19,7 @@
  * rather than a race.
  */
 
-import { completeRetryBudgetMs } from "@breatic/shared";
+import { answerRetentionMs } from "@breatic/shared";
 import type { UploadTicketPayload } from "@breatic/shared";
 import { signSessionToken } from "@ingest/session-token.js";
 
@@ -239,11 +239,7 @@ export class UploadSession implements DurableObject {
     // budget. The crop path reads its entire result off that response. The
     // alarm that ends the window is also what lets this instance go.
     await this.#state.storage.setAlarm(
-      Date.now() +
-        Math.max(
-          upload.ticket.alarmIdleSeconds * 1000,
-          completeRetryBudgetMs(),
-        ),
+      Date.now() + answerRetentionMs(upload.ticket.alarmIdleSeconds),
     );
     return done;
   }

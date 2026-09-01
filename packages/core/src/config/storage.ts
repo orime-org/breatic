@@ -170,6 +170,7 @@ export const storageConfigSchema = z
         partSizeBytes: cfg.ingest.part_size_bytes,
         alarmIdleSeconds: cfg.ingest.alarm_idle_seconds,
         sessionTokenTtlSeconds: cfg.ingest.session_token_ttl_seconds,
+        ticketExpiresSeconds: cfg.ingest.ticket_expires_seconds,
         requestTimeoutMs: cfg.upload.client_request_timeout_ms,
         minBytesPerSec: cfg.upload.client_put_min_bytes_per_sec,
       });

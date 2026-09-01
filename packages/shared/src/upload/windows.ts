@@ -92,6 +92,21 @@ export function completeRetryBudgetMs(): number {
   return (MAX_RETRIES + 1) * DEFAULT_TIMEOUT_MS + WAITS_BETWEEN_DELIVERIES_MS;
 }
 
+/**
+ * How long a finished upload's answer stays available to a browser.
+ *
+ * The Durable Object holds what it decided until this passes, then lets go of
+ * the instance. A browser is still entitled to ask through its transport's
+ * whole redelivery budget, and the crop path reads its entire result off that
+ * response — so the window covers both that budget and the gap a browser was
+ * allowed to go quiet for.
+ * @param alarmIdleSeconds - The gap the alarm tolerates between parts.
+ * @returns The window in milliseconds.
+ */
+export function answerRetentionMs(alarmIdleSeconds: number): number {
+  return Math.max(alarmIdleSeconds * 1000, completeRetryBudgetMs());
+}
+
 /** Every figure an upload's windows are decided by, all from `config/storage.yaml`. */
 export interface UploadWindows extends PartDeadlineConfig {
   /** One part of a multipart upload, in bytes. */
@@ -104,6 +119,12 @@ export interface UploadWindows extends PartDeadlineConfig {
    * runs, because one token is issued for both.
    */
   sessionTokenTtlSeconds: number;
+  /**
+   * How long a signed ticket stays usable. It has to run out before the
+   * Durable Object lets go of a finished upload, because letting go is also
+   * what makes the key look untouched again.
+   */
+  ticketExpiresSeconds: number;
 }
 
 /**
@@ -137,6 +158,19 @@ export function assertUploadWindows(windows: UploadWindows): void {
         `the ${Math.ceil(mustOutlastMs / 1000)}s it has to outlast — the ` +
         `longest gap alarm_idle_seconds allows between parts, and the chain ` +
         `completing an upload runs`,
+    );
+  }
+  // A finished upload's Durable Object holds its answer for this long and then
+  // deletes everything it knew, which is also what stops it recognising the
+  // key as already used. A ticket that outlives that could open a second
+  // multipart upload over an object the ledger already describes, and the
+  // sha256 on that row would stop describing the bytes.
+  const retentionMs = answerRetentionMs(windows.alarmIdleSeconds);
+  if (windows.ticketExpiresSeconds * 1000 >= retentionMs) {
+    throw new Error(
+      `ticket_expires_seconds ${windows.ticketExpiresSeconds} outlives the ` +
+        `${Math.ceil(retentionMs / 1000)}s a finished upload is remembered ` +
+        `for, so a ticket could reopen a key already registered`,
     );
   }
 }
