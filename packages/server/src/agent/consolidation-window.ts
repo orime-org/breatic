@@ -26,8 +26,8 @@ export interface TurnCost {
 
 /** What the planner was asked. */
 export interface ConsolidationRequest {
-  /** Everything the consolidation cannot touch: prompt, tools, memory, this turn's question. */
-  fixedCost: number;
+  /** What the whole request measures as it stands, history included. */
+  assembled: number;
   /** The unconsolidated turns, oldest first. */
   turns: readonly TurnCost[];
   /** Over this, a pass runs. */
@@ -61,9 +61,7 @@ export interface ConsolidationPlan {
  * @returns The plan; `newWatermark` is null when nothing needs doing.
  */
 export function planConsolidation(request: ConsolidationRequest): ConsolidationPlan {
-  const { fixedCost, turns, budget, keep } = request;
-  const historyChars = turns.reduce((sum, t) => sum + t.chars, 0);
-  const assembled = fixedCost + historyChars;
+  const { assembled, turns, budget, keep } = request;
 
   const nothing: ConsolidationPlan = {
     takenTurns: [],

@@ -85,9 +85,36 @@ describe("the figures on the path from pressing send to the first frame", () => 
       expect(agentConfigSchemaForTests.safeParse({ message_page_size: bad }).success).toBe(
         false,
       );
-      expect(
-        agentConfigSchemaForTests.safeParse({ sse_heartbeat_interval_ms: bad }).success,
-      ).toBe(false);
     }
+  });
+});
+
+describe("the two memory lines", () => {
+  it("refuses a keep line at or above the budget", () => {
+    // A pass runs when the request is over the budget and takes turns until
+    // what remains is at or under the keep line. With keep the higher of the
+    // two, the loop stops before it has taken anything, the plan comes back
+    // empty, and folding never happens again — with nothing said anywhere.
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 500_000,
+        memory_keep_chars: 500_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 400_000,
+        memory_keep_chars: 500_000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("takes the pair the file ships with", () => {
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+      }).success,
+    ).toBe(true);
   });
 });

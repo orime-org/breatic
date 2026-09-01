@@ -53,7 +53,7 @@ export interface AgentConfigRequest {
    * task has neither.
    */
   basePrompt?: string;
-  /** Three-layer memory, when the caller has any. Worker never does. */
+  /** The conversation and project layers, when the caller has any. Worker never does. */
   memoryContext?: MemoryContext;
   /**
    * Whether this caller can render an interaction tool's payload.

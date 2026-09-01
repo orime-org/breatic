@@ -141,7 +141,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
 }));
 
 describe("a turn cut short by the client", () => {
-  it("still saves, consolidates and bills — without touching `usage`", async () => {
+  it("still saves and bills — without touching `usage`", async () => {
     // The billing figure has to come off the stream as it goes past, not
     // from `result.usage` at the end. That getter is not a passive read: on
     // ai@7.0.58 `usage` returns `totalUsage`, and `totalUsage` calls

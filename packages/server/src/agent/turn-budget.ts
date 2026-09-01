@@ -95,14 +95,9 @@ export async function foldIfOverBudget(
   // renders every turn of the history to find out what it costs.
   if (assembled <= config.memory_budget_chars) return false;
 
-  const turns = costPerTurn(assembly.history);
-  const historyChars = turns.reduce((sum, turn) => sum + turn.chars, 0);
-
   const plan = planConsolidation({
-    // Everything the fold cannot touch: the prompt, the tools, the memory and
-    // the question just asked.
-    fixedCost: assembled - historyChars,
-    turns,
+    assembled,
+    turns: costPerTurn(assembly.history),
     budget: config.memory_budget_chars,
     keep: config.memory_keep_chars,
   });

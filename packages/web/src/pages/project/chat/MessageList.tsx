@@ -276,7 +276,14 @@ function MessageListInner({
             </Button>
           ) : null}
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} consolidating={consolidating} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              // Only the bubble that is still waiting has anywhere to put it,
+              // and handing the same value to every bubble takes the whole
+              // list through a render each time a fold starts and ends.
+              consolidating={m.streaming === true ? consolidating : undefined}
+            />
           ))}
         </div>
       )}

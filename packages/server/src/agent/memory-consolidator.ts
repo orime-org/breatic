@@ -8,14 +8,12 @@
  * the budget: the caller works out which turns to take, hands them over as the
  * messages the model would have been sent, and reassembles once this returns.
  *
- * Either the memory and the watermark both move, or nothing is written and the
- * watermark moves anyway — the window is discarded and the turn goes out
- * regardless. Leaving the watermark behind for a later retry is what would
- * wedge the conversation: this call is `temperature: 0`, so the next turn
- * would send a strictly larger version of an input that already failed,
- * deterministically, on every turn from then on. The one ending that keeps
- * the window is a reader who left, and they left with nothing spent on their
- * behalf that a later turn cannot spend again.
+ * The turn goes out however this ends. What the endings differ on is the
+ * watermark, and the line they fall on either side of is whether the model
+ * ran: a fold that reached it and then failed gives the window up, because
+ * the call is `temperature: 0` and retrying would send the same input on
+ * every turn from then on. A fold that never reached it keeps the window,
+ * having spent nothing a later turn cannot spend again.
  */
 
 import { stepCountIs } from "ai";
@@ -91,12 +89,13 @@ export type ConsolidationOutcome =
   /** The reader left; nothing written, and the watermark stays for next turn. */
   | "aborted"
   /**
-   * Nothing ran and nothing was spent; the watermark stays for next turn.
+   * The watermark is where it was, and the window is still in the history.
    *
    * Told apart from `discarded` because the two say opposite things about the
    * window. A fold that reached the model and then failed has to give the
    * window up: the call is `temperature: 0`, so retrying sends the same input
-   * forever. A fold that never reached the model has nothing to give up.
+   * forever. This is every other way of not writing — the call was never made,
+   * or it was made and even the discard could not be recorded.
    */
   | "untouched";
 
@@ -225,15 +224,31 @@ export async function consolidateWindow(
 
   const config = getAgentConfig();
 
-  // What the window is folded against. Read before anything is spent, so a
-  // database that is briefly away costs this turn its fold and nothing else.
-  let existingConvMemory: string;
-  let existingProjectMemory: string;
+  // Everything the call is built from, gathered before a single token is
+  // spent. A database briefly away, a model name that is not in the
+  // catalogue: the call never leaves, so this turn loses its fold and
+  // nothing else. Giving the window up here would eat the history one
+  // window per turn for as long as the misconfiguration lasts.
+  let prompt: string;
+  let model: ReturnType<typeof getModel>;
   try {
-    existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
-    existingProjectMemory = projectId
+    const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
+    const existingProjectMemory = projectId
       ? await memoryRepo.getProjectMemory(userId, projectId)
       : "";
+
+    prompt = CONSOLIDATION_PROMPT.replace(
+      "{conversation_memory}",
+      existingConvMemory || "(empty)",
+    )
+      .replace("{project_memory}", existingProjectMemory || "(empty)")
+      // The ceiling the answer will actually be read through. `buildContext`
+      // truncates to this before injection, so a longer answer is written,
+      // stored, paid for, and then cut mid-sentence every time it is read.
+      .replace("{max_chars}", String(config.memory_conversation_max_size))
+      .replace("{messages}", transcribe(transcript));
+
+    model = getModel(config.consolidation_model);
   } catch (err) {
     if (signal?.aborted) return "aborted";
     logger.error(
@@ -246,21 +261,10 @@ export async function consolidateWindow(
   // From here on the model is involved, so every ending below has a call
   // behind it that has to be paid for and cannot be repeated for free.
   try {
-    const prompt = CONSOLIDATION_PROMPT.replace(
-      "{conversation_memory}",
-      existingConvMemory || "(empty)",
-    )
-      .replace("{project_memory}", existingProjectMemory || "(empty)")
-      // The ceiling the answer will actually be read through. `buildContext`
-      // truncates to this before injection, so a longer answer is written,
-      // stored, paid for, and then cut mid-sentence every time it is read.
-      .replace("{max_chars}", String(config.memory_conversation_max_size))
-      .replace("{messages}", transcribe(transcript));
-
     // One call, and the retrying happens inside it: `generateTextRetry` is
     // handed `llm_max_retries`, so this is one original and two retries.
     const result = await generateTextRetry({
-      model: getModel(config.consolidation_model),
+      model,
       messages: [{ role: "user" as const, content: prompt }],
       stopWhen: stepCountIs(1),
       temperature: 0,
@@ -311,22 +315,25 @@ export async function consolidateWindow(
     // timeout, which is the opposite case.
     if (signal?.aborted) return "aborted";
 
-    logger.error(
-      { err, userId, conversationId, watermarkBefore, newWatermark },
-      "memory_consolidation_discarded",
-    );
     try {
       await memoryService.discardConsolidation(conversationId, newWatermark);
     } catch (discardErr) {
       // The discard is itself a write, and whatever failed above is often the
-      // reason this fails too. Saying `discarded` here would be claiming a
-      // watermark that never moved.
+      // reason this fails too. Both errors go in the line: the one that lost
+      // the window and the one that could not record it.
       logger.error(
-        { err: discardErr, userId, conversationId, newWatermark },
+        { err, discardErr, userId, conversationId, watermarkBefore, newWatermark },
         "memory_consolidation_discard_failed",
       );
       return "untouched";
     }
+
+    // Written after the discard, so the line that says the window is gone is
+    // only there on the path where it went.
+    logger.error(
+      { err, userId, conversationId, watermarkBefore, newWatermark },
+      "memory_consolidation_discarded",
+    );
     return "discarded";
   }
 }

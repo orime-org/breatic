@@ -162,6 +162,19 @@ const agentConfigSchema = z.object({
   thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
+}).superRefine((config, ctx) => {
+  // A consolidation runs when the request is over the budget and takes turns
+  // until what remains is at or under the keep line. Put the keep line at or
+  // above the budget and the loop stops before it has taken anything: the
+  // plan comes back empty, folding never happens, and every turn from then on
+  // goes out at whatever length it happens to be — with nothing said anywhere.
+  if (config.memory_keep_chars >= config.memory_budget_chars) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["memory_keep_chars"],
+      message: `memory_keep_chars (${config.memory_keep_chars}) must be below memory_budget_chars (${config.memory_budget_chars})`,
+    });
+  }
 });
 
 /** Validated agent configuration type. */

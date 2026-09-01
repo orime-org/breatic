@@ -99,8 +99,6 @@
       "history_entry_not_found": "履歴が見つかりません",
       "node_locked": "このノードは他の人が生成中です"
     },
-    "memory": {
-    },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
     },
@@ -133,7 +131,7 @@
       "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
     },
     "chat": {
-      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit} 文字までですが、これは {actual} 文字あります。"
+      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。"
     }
   },
   "chat": {

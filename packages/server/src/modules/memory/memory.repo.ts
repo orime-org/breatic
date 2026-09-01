@@ -5,13 +5,14 @@
  * Memory repository — two layers, both the reader's own.
  *
  * Layers:
- * 1. Conversation memory (per-conversation, no versioning)
- * 2. Project memory (per member per project, versioned)
+ * 1. Conversation memory, one row per conversation
+ * 2. Project memory, one row per member per project
  *
- * The project layer is keyed by both columns everywhere it is touched. Two of
- * the three places are invisible to the compiler — a `where` clause is one
- * `eq` short without complaint, and the update is raw SQL — so a member id
- * that reaches only some of them silently reads and writes a neighbour's row.
+ * The project layer is keyed by both columns everywhere it is touched, and
+ * the compiler sees neither of them: a `where` clause is one `eq` short
+ * without complaint, and a conflict target names columns rather than types.
+ * A member id that reaches only one of the two reads and writes a
+ * neighbour's row.
  */
 
 import { and, eq, sql } from "drizzle-orm";
@@ -74,7 +75,7 @@ export async function appendHistory(
   await (tx ?? db).insert(memoryHistoryEntries).values({ conversationId, entry });
 }
 
-// ── Project Memory (Optimistic Locking) ──────────────────────────────
+// ── Project Memory ───────────────────────────────────────────────────
 
 /**
  * Get one member's project memory.
@@ -103,8 +104,8 @@ export async function getProjectMemory(
  * Write one member's project memory, inserting the row when it is their first.
  *
  * The last write wins, which is what this layer already means: a consolidation
- * replaces this member's project memory whole. `version` counts how many times
- * it has been rewritten.
+ * replaces this member's project memory whole. `version` is carried by the
+ * column and rises with each rewrite; nothing reads it.
  * @param userId - Whose memory is written.
  * @param projectId - Which project it belongs to.
  * @param content - New memory content to store.

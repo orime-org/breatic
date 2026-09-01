@@ -49,9 +49,11 @@ const thisCase = vi.hoisted(() => ({
 const contexts = vi.hoisted(() => ({
   queue: [] as unknown[],
   lastHistory: [] as never[],
+  /** Answers once the queue is empty, for a case whose later reads depend on what the fold decided. */
+  later: null as null | (() => unknown),
 }));
 const buildTurnContext = vi.fn(async () => {
-  const next = contexts.queue.shift() as { compressedHistory: never[] };
+  const next = (contexts.queue.shift() ?? contexts.later?.()) as { compressedHistory: never[] };
   contexts.lastHistory = next.compressedHistory;
   return next;
 });
@@ -136,6 +138,38 @@ function turn(turnIndex: number, size: number): MessageData[] {
 }
 
 /**
+ * One turn whose weight is all in a tool result.
+ *
+ * `toMessageData` builds `content` out of text parts alone, so a tool result
+ * is nowhere in the stored row's `content` and everywhere in what the turn
+ * sends. A turn shaped like this is the one place the two rulers disagree.
+ * @param turnIndex - The turn it belongs to.
+ * @param size - How many characters the tool gave back.
+ * @returns The user message and the reply.
+ */
+function toolTurn(turnIndex: number, size: number): MessageData[] {
+  return [
+    { role: "user", content: `q${turnIndex}`, parts: [{ type: "text", text: `q${turnIndex}` }], ts: "", turnIndex },
+    {
+      role: "assistant",
+      content: "",
+      parts: [
+        {
+          type: "tool",
+          toolCallId: `call-${turnIndex}`,
+          toolName: "web_fetch",
+          input: { url: "https://example.test/page" },
+          status: "success",
+          output: "a".repeat(size),
+        },
+      ],
+      ts: "",
+      turnIndex,
+    },
+  ];
+}
+
+/**
  * What one call to `buildTurnContext` should answer with.
  * @param history - The unconsolidated history it found.
  * @param conversationMemory - The conversation memory it read.
@@ -176,6 +210,7 @@ async function runTurn(signal?: AbortSignal): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks();
   contexts.queue = [];
+  contexts.later = null;
   limits.budget = 20_000;
   limits.keep = 13_000;
   consolidateWindow.mockResolvedValue("written");
@@ -348,6 +383,43 @@ describe("a turn that measured over the budget", () => {
     await runTurn();
 
     expect(buildTurnContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("prices a turn by what it sends, so a tool-heavy one counts", async () => {
+    // N1's third fixture. A tool result is absent from the stored row's
+    // `content` and present in everything the turn sends. The first turn
+    // alone is over the gap between the two lines, so taking it is enough.
+    //
+    // An implementation that adds up `content` reads that turn as two
+    // characters: the loop then takes it, finds nothing has come down, and
+    // goes on to take the rest of the conversation as well.
+    contexts.queue = [
+      context([...toolTurn(1, 18_000), ...turn(2, 500)]),
+      context([...turn(2, 500)]),
+    ];
+
+    await runTurn();
+
+    const folded = consolidateWindow.mock.calls[0]?.[0] as { newWatermark: number };
+    expect(folded.newWatermark).toBe(1);
+  });
+
+  it("leaves the reassembled request under the keep line", async () => {
+    // N1's headline, measured the way the budget is measured rather than by
+    // repeating the planner's own subtraction. The second read answers with
+    // whatever the fold decided to take, so this is the request that really
+    // goes out.
+    const history = [...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)];
+    contexts.queue = [context(history)];
+    contexts.later = () => {
+      const folded = consolidateWindow.mock.calls[0]?.[0] as { newWatermark: number };
+      return context(history.filter((m) => m.turnIndex > folded.newWatermark));
+    };
+
+    await runTurn();
+
+    expect(buildTurnContext).toHaveBeenCalledTimes(2);
+    expect(await lastAssembledLength()).toBeLessThanOrEqual(limits.keep);
   });
 
   it("does not reassemble when the fold never happened", async () => {

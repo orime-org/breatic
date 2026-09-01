@@ -94,12 +94,10 @@
     },
     "canvas": {
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
-      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
+      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
       "stream_unavailable": "任务事件流暂时不可用，请重试。",
       "history_entry_not_found": "找不到这条历史记录",
       "node_locked": "这个节点正在被其他人生成"
-    },
-    "memory": {
     },
     "asset": {
       "direct_upload_unavailable": "当前服务器不支持直接上传"
@@ -133,7 +131,7 @@
       "support": "对这笔购买有疑问，请写信到 {email}。"
     },
     "chat": {
-      "message_too_long": "这条消息太长了。连同附带的内容最多 {limit} 个字符，这条有 {actual} 个。"
+      "message_too_long": "这条消息太长了。连同附带的内容最多 {limit, number} 个字符，这条有 {actual, number} 个。"
     }
   },
   "chat": {

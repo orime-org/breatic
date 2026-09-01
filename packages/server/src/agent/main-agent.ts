@@ -262,10 +262,6 @@ export class MainAgent {
     const whatToolAnswered = new Map<string, unknown>();
 
     /**
-     * Ask the model, once everything it needs has been read.
-     * @returns The model's answer, as the stream the protocol is made of.
-     */
-    /**
      * Read everything the model is given, and lay it out as it will be sent.
      *
      * Repeatable on purpose: a consolidation changes both halves of what this

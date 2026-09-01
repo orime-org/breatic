@@ -94,12 +94,10 @@
     },
     "canvas": {
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
-      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual} 個",
+      "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
       "stream_unavailable": "任務事件流暫時不可用，請重試。",
       "history_entry_not_found": "找不到這筆歷史記錄",
       "node_locked": "這個節點正在被其他人生成"
-    },
-    "memory": {
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"
@@ -133,7 +131,7 @@
       "support": "對這筆購買有疑問，請寫信到 {email}。"
     },
     "chat": {
-      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit} 個字元，這則有 {actual} 個。"
+      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit, number} 個字元，這則有 {actual, number} 個。"
     }
   },
   "chat": {

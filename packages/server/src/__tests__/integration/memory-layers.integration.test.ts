@@ -10,10 +10,10 @@
  * next consolidation overwrote it.
  *
  * The read side and the write side are separate defects with separate causes,
- * and neither is caught by the compiler: the version read is a `where` clause
- * one `eq` short, and the update is raw SQL. The fixtures here give two users
- * a row apiece **with equal versions**, which is what makes a single-column
- * lookup actually pick the wrong one.
+ * and the compiler sees neither: a `where` clause is one `eq` short without
+ * complaint, and a conflict target names columns rather than types. The
+ * fixtures here give two members a row apiece, which is what makes a
+ * single-column lookup pick the wrong one.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
@@ -103,7 +103,7 @@ async function seedMember(projectId: string): Promise<string> {
  * @param userId - Whose memory this is.
  * @param projectId - Which project it belongs to.
  * @param content - What it says.
- * @param version - The optimistic-locking version to store.
+ * @param version - What to put in the row's `version` column.
  */
 async function seedProjectMemory(
   userId: string,
@@ -148,9 +148,9 @@ describe("project memory belongs to one member, not to the project", () => {
   });
 
   it("writes a consolidation into the writer's own row", async () => {
-    // Both members hold a row, so a conflict target that names the project
-    // alone matches two of them and the write lands on whichever the database
-    // returned first.
+    // Both members hold a row. A conflict target that names the project alone
+    // matches no unique index, so the statement is refused outright — which is
+    // the shape this and the two below are here to keep hold of.
     const { userId: alice, projectId } = await seedProject();
     const carol = await seedMember(projectId);
     await seedProjectMemory(alice, projectId, "alice: noir short", 4);
@@ -164,10 +164,10 @@ describe("project memory belongs to one member, not to the project", () => {
   });
 
   it("gives a member their first row while the other member already has one", async () => {
-    // Only the other member has a row, so this is an insert. A conflict target
-    // that names the project alone turns it into an update of the neighbour's
-    // row instead. Giving the writer a row of their own would hide that: with
-    // two rows present, either one coming back looks like a fit.
+    // Only the other member has a row, so this is an insert. A target one
+    // column short of the index it needs — the project without the member —
+    // takes the insert down rather than quietly updating the neighbour, and
+    // this is the case where the neighbour's row is the only one there to hit.
     const { userId: alice, projectId } = await seedProject();
     const carol = await seedMember(projectId);
     await seedProjectMemory(carol, projectId, "carol: trailer", 9);

@@ -22,6 +22,7 @@ import type * as CoreModule from "@breatic/core";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
+const getModel = vi.fn((id: string) => ({ modelId: id }));
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn(async (..._args: unknown[]) => undefined);
@@ -39,7 +40,7 @@ vi.mock("@breatic/domain", async () => {
   return {
     ...base,
     generateTextRetry,
-    getModel: () => ({ modelId: "test-model" }),
+    getModel,
     resolveProvider: () => "test",
     creditLotService: { chargeOnceForGeneration },
   };
@@ -120,6 +121,7 @@ beforeEach(() => {
   // of these reject would otherwise leave it rejecting for every case after.
   chargeOnceForGeneration.mockResolvedValue(null);
   discardConsolidation.mockResolvedValue(undefined);
+  getModel.mockImplementation((id: string) => ({ modelId: id }));
 });
 
 describe("a consolidation that works", () => {
@@ -266,6 +268,37 @@ describe("a consolidation that fails", () => {
     expect(chargeOnceForGeneration).not.toHaveBeenCalled();
     expect(discardConsolidation).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("keeps the window when the call could not be made at all", async () => {
+    // A model name that is not in the catalogue, a provider with no key: the
+    // call never leaves and nothing is spent. N4 gives the window up for a
+    // call that was made three times and failed three times — a call that was
+    // never made is a configuration to fix, and discarding on it would eat
+    // the history one window per turn until somebody noticed.
+    getModel.mockImplementation(() => {
+      throw new Error("unknown model: typo-4o");
+    });
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("untouched");
+    expect(generateTextRetry).not.toHaveBeenCalled();
+    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(discardConsolidation).not.toHaveBeenCalled();
+  });
+
+  it("does not log a discard it did not manage to perform", async () => {
+    // The line says the window is gone. Written before the write that makes
+    // it true, it says so on the one path where the window is still there.
+    generateTextRetry.mockRejectedValue(new Error("502 upstream"));
+    discardConsolidation.mockRejectedValue(new Error("connection terminated unexpectedly"));
+
+    await consolidate();
+
+    const said = vi.mocked(logger.error).mock.calls.map((call) => call[1]);
+    expect(said).toContain("memory_consolidation_discard_failed");
+    expect(said).not.toContain("memory_consolidation_discarded");
   });
 
   it("says the watermark stayed put when the window cannot even be discarded", async () => {

@@ -31,14 +31,25 @@ function turns(sizes: readonly number[], firstTurn = 1) {
   return sizes.map((chars, i) => ({ turnIndex: firstTurn + i, chars }));
 }
 
+/**
+ * A request stated the way the two lines are reasoned about: a fixed cost that
+ * the fold cannot touch, plus the turns it can.
+ * @param fixedCost - Prompt, tools, memory and this turn's question.
+ * @param turnList - The turns on hand, oldest first.
+ * @returns The request, with the total the planner reads worked out.
+ */
+function request(fixedCost: number, turnList: ReturnType<typeof turns>) {
+  return {
+    assembled: fixedCost + turnList.reduce((sum, t) => sum + t.chars, 0),
+    turns: turnList,
+    budget: BUDGET,
+    keep: KEEP,
+  };
+}
+
 describe("planning how much a consolidation takes", () => {
   it("takes nothing when the payload is already under the budget", () => {
-    const plan = planConsolidation({
-      fixedCost: 20_000,
-      turns: turns([10_000, 10_000, 10_000]),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(20_000, turns([10_000, 10_000, 10_000])));
 
     expect(plan.newWatermark).toBeNull();
     expect(plan.takenTurns).toEqual([]);
@@ -47,12 +58,7 @@ describe("planning how much a consolidation takes", () => {
   it("leaves the payload alone when it lands exactly on the budget", () => {
     // The rule is "over the budget", so the line itself passes. 83 turns of
     // 10,000 plus 20,000 fixed is 850,000 on the nose.
-    const plan = planConsolidation({
-      fixedCost: 20_000,
-      turns: turns(Array.from({ length: 83 }, () => 10_000)),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(20_000, turns(Array.from({ length: 83 }, () => 10_000))));
 
     expect(plan.newWatermark).toBeNull();
   });
@@ -60,12 +66,7 @@ describe("planning how much a consolidation takes", () => {
   it("takes from the oldest end until what remains is at or under the keep line", () => {
     // 30 turns of 30,000 = 900,000, plus 20,000 fixed = 920,000 assembled.
     // Taking the oldest 15 leaves 450,000 + 20,000 = 470,000.
-    const plan = planConsolidation({
-      fixedCost: 20_000,
-      turns: turns(Array.from({ length: 30 }, () => 30_000)),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(20_000, turns(Array.from({ length: 30 }, () => 30_000))));
 
     expect(plan.newWatermark).not.toBeNull();
     expect(plan.remainingChars).toBeLessThanOrEqual(KEEP);
@@ -75,14 +76,11 @@ describe("planning how much a consolidation takes", () => {
   });
 
   it("takes about 350,000 in the ordinary case, which is the difference of the two lines", () => {
-    const plan = planConsolidation({
-      fixedCost: 20_000,
+    const plan = planConsolidation(
       // 85 turns of 10,000 plus 20,000 fixed = 870,000, just over the budget.
       // Reaching the keep line means taking 370,000, which is 37 turns.
-      turns: turns(Array.from({ length: 85 }, () => 10_000)),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+      request(20_000, turns(Array.from({ length: 85 }, () => 10_000))),
+    );
 
     expect(plan.newWatermark).not.toBeNull();
     expect(plan.takenChars).toBeGreaterThanOrEqual(340_000);
@@ -91,12 +89,7 @@ describe("planning how much a consolidation takes", () => {
 
   it("takes far more than 350,000 when one recent turn is enormous", () => {
     // A single turn that ran forty steps and stored every tool result.
-    const plan = planConsolidation({
-      fixedCost: 20_000,
-      turns: turns([...Array.from({ length: 40 }, () => 10_000), 900_000]),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(20_000, turns([...Array.from({ length: 40 }, () => 10_000), 900_000])));
 
     expect(plan.newWatermark).not.toBeNull();
     // A fixed 350,000 would stop after the small turns and leave the payload
@@ -106,12 +99,7 @@ describe("planning how much a consolidation takes", () => {
 
   it("marks the boundary by turn, and takes whole turns only", () => {
     const sizes = Array.from({ length: 30 }, () => 30_000);
-    const plan = planConsolidation({
-      fixedCost: 20_000,
-      turns: turns(sizes, 7),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(20_000, turns(sizes, 7)));
 
     // The turns taken are a prefix of the history, in order, starting at the
     // oldest one the watermark left behind.
@@ -125,12 +113,7 @@ describe("planning how much a consolidation takes", () => {
   it("takes everything it has when even that does not reach the keep line", () => {
     // Fixed cost alone is over the keep line: nothing left to take after the
     // history is gone, and the plan says so rather than looping.
-    const plan = planConsolidation({
-      fixedCost: 600_000,
-      turns: turns([100_000, 100_000, 100_000, 100_000]),
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(600_000, turns([100_000, 100_000, 100_000, 100_000])));
 
     expect(plan.newWatermark).not.toBeNull();
     expect(plan.takenTurns).toEqual([1, 2, 3, 4]);
@@ -138,12 +121,7 @@ describe("planning how much a consolidation takes", () => {
   });
 
   it("takes nothing when there is no history to take", () => {
-    const plan = planConsolidation({
-      fixedCost: 900_000,
-      turns: [],
-      budget: BUDGET,
-      keep: KEEP,
-    });
+    const plan = planConsolidation(request(900_000, []));
 
     expect(plan.newWatermark).toBeNull();
     expect(plan.takenTurns).toEqual([]);

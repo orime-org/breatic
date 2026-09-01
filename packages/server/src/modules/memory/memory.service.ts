@@ -4,9 +4,8 @@
 /**
  * Memory service — orchestrates the two memory layers.
  *
- * Reads and writes conversation and project memory, applying optimistic
- * locking on the versioned one. Used by the agent system to build LLM context
- * and persist consolidation results.
+ * Reads and writes conversation and project memory. Used by the agent system
+ * to build LLM context and persist consolidation results.
  *
  * Both layers are the reader's own: project memory is keyed by member as well
  * as project, so nothing one person's agent summarised reaches another's
