@@ -110,7 +110,10 @@ export const ModeToggle = React.memo(function ModeToggle({
               size='menu-item'
               aria-pressed={mode === value}
               data-testid={testId}
-              className={cn('justify-start', mode === value && 'bg-accent')}
+              className={cn(
+                'justify-start',
+                mode === value && 'bg-accent-strong hover:bg-accent-strong',
+              )}
               onClick={() => {
                 if (mode !== value) onChange(mode);
                 setOpen(false);

@@ -33,6 +33,10 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 const editors: Editor[] = [];
 let doc: Y.Doc;
@@ -755,8 +759,33 @@ describe('the bubble bar shell', () => {
       expect(active.map((n) => n.getAttribute('data-testid'))).toEqual([
         'doc-bubble-block-type-item-heading-1',
       ]);
-      // The same fill the language menu marks its picked row with.
-      expect(active[0].className).toContain('bg-accent');
+      // The same fill the language menu marks its picked row with, and the
+      // rows beside it keep hover's own — otherwise pointing at one of them
+      // draws exactly what the mark draws.
+      expectChosenFill(active[0]);
+      expectHoverableSiblingFill(
+        menu.querySelector(
+          '[data-testid="doc-bubble-block-type-item-paragraph"]',
+        ) as Element,
+      );
+    });
+
+    // The alignment menu marks a row the same way, and every block starts out
+    // left-aligned, so that row is the marked one whatever the selection is.
+    it('marks the alignment every block already has', async () => {
+      const editor = open('<p>the quick brown fox</p>');
+      mount(editor);
+      await selectWithFocus(editor, 1, 10);
+      const menu = await hoverOpen('doc-bubble-align');
+
+      expectChosenFill(
+        menu.querySelector('[data-testid="doc-bubble-align-item-left"]') as Element,
+      );
+      expectHoverableSiblingFill(
+        menu.querySelector(
+          '[data-testid="doc-bubble-align-item-center"]',
+        ) as Element,
+      );
     });
 
     // The demo's `.menu-sep` rules the headings off from the lists below them.

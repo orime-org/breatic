@@ -14,6 +14,10 @@ import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 // SpaceDrawer's trigger and the row's delete action both wrap their
 // buttons in shadcn `Tooltip`, which throws without a `TooltipProvider`
@@ -153,17 +157,17 @@ describe('SpaceDrawer', () => {
     expect(screen.getByTestId('sheet-overlay')).toBeInTheDocument();
   });
 
-  it('the active (editing) row uses the accent hover fill, not the recessed muted fill', async () => {
-    // tokens.css semantics: --color-accent is the "global hover" lift,
-    // --color-muted is a RECESS fill (avatar bg / track / disabled) that
-    // sits below the card surface — using it on the selected row made it
-    // darker than its siblings (user report 2026-07-04).
+  it('fills the row you are on past the fill its siblings take under the pointer', async () => {
+    // tokens.css semantics: --color-muted is a RECESS fill (avatar bg / track /
+    // disabled) that sits below the card surface — using it on the selected row
+    // made it darker than its siblings (user report 2026-07-04).
     const user = userEvent.setup();
     setup({ activeSpaceId: 'sp-1' });
     await user.click(screen.getByTestId('space-drawer-trigger'));
     const row = screen.getByTestId('space-drawer-row-sp-1');
-    expect(row.className).toContain('bg-accent');
+    expectChosenFill(row);
     expect(row.className).not.toContain('bg-muted');
+    expectHoverableSiblingFill(screen.getByTestId('space-drawer-row-sp-2'));
   });
 
   it('#1539: closing the delete-confirm dialog returns focus to the drawer, not <body>', async () => {

@@ -217,7 +217,8 @@ function CreditsIndex({
                   onKeyDown={handleKeyDown}
                   className={cn(
                     'flex items-center justify-start gap-2 whitespace-nowrap rounded-chrome px-2 py-1.5 text-left text-sm font-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                    selected && 'bg-accent font-semibold text-foreground',
+                    selected &&
+                      'bg-accent-strong font-semibold text-foreground hover:bg-accent-strong',
                   )}
                 >
                   <Icon className='h-4 w-4 shrink-0 opacity-85' />

@@ -100,7 +100,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
               className={
                 'rounded-content-sm border px-2 py-1 text-xs tabular-nums transition-colors ' +
               (activeRatio === r.value
-                ? 'border-border bg-accent text-accent-foreground'
+                ? 'border-border bg-accent-strong text-accent-foreground'
                 : 'border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground')
               }
             >

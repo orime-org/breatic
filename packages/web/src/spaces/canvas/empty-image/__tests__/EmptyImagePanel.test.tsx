@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { EmptyImagePanel } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 describe('EmptyImagePanel', () => {
   it('executes with the default 1024² white spec', () => {
@@ -26,6 +30,13 @@ describe('EmptyImagePanel', () => {
     expect(onExecute).toHaveBeenCalledWith(
       expect.objectContaining({ width: 1024, height: 576 }),
     );
+  });
+
+  it('fills the picked ratio past the fill the others take under the pointer', () => {
+    render(<EmptyImagePanel onExecute={vi.fn()} onExit={() => {}} />);
+    // The panel opens on 1:1, which is what the default 1024² spec is.
+    expectChosenFill(screen.getByTestId('empty-image-ratio-1:1'));
+    expectHoverableSiblingFill(screen.getByTestId('empty-image-ratio-16:9'));
   });
 
   it('clamps a hand-typed out-of-range dimension on execute', () => {

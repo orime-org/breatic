@@ -7,6 +7,10 @@ import userEvent from '@testing-library/user-event';
 
 import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 describe('SpaceKindPicker', () => {
   it('renders the three space-type cards inside a labelled radiogroup', () => {
@@ -28,6 +32,12 @@ describe('SpaceKindPicker', () => {
       'aria-checked',
       'false',
     );
+  });
+
+  it('fills the picked card past the fill the others take under the pointer', () => {
+    render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
+    expectChosenFill(screen.getByRole('radio', { name: /Canvas/ }));
+    expectHoverableSiblingFill(screen.getByRole('radio', { name: /Document/ }));
   });
 
   it('offers canvas and document, and marks only timeline unavailable', () => {

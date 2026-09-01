@@ -66,7 +66,11 @@ export function ParamOptionGroup({
   const optionClass =
     'max-w-full truncate rounded-overlay border border-border px-2 py-1 text-xs text-foreground transition-colors ' +
     'hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    'aria-[current=true]:border-active-border aria-[current=true]:bg-accent';
+    'aria-[current=true]:border-active-border aria-[current=true]:bg-accent-strong ' +
+    // The whole group shares this list, so hover has to answer the same way:
+    // plain hover outranks the chosen fill and would take the mark off the
+    // option the pointer is on.
+    'aria-[current=true]:hover:bg-accent-strong';
   return (
     <div className={className}>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>

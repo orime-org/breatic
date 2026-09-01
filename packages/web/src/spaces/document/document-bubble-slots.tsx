@@ -250,7 +250,8 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
               // dry run for that command says no there (#85).
               className={cn(
                 (item.greyed || !runnable) && UNAVAILABLE,
-                item.id === current && 'bg-accent',
+                item.id === current &&
+                  'bg-accent-strong hover:bg-accent-strong',
               )}
               onSelect={() => {
                 if (item.run) {
@@ -351,7 +352,9 @@ export const AlignSlot = React.memo(function AlignSlot({
           // Left is where every block already is, so it is the row the demo
           // draws as active.
           data-active={item.id === 'left' ? 'true' : undefined}
-          className={cn(item.id === 'left' && 'bg-accent')}
+          className={cn(
+            item.id === 'left' && 'bg-accent-strong hover:bg-accent-strong',
+          )}
           onSelect={() => {
             pressedWithNothingBehindIt(`align ${item.id}`);
           }}
