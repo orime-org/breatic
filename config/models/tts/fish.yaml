@@ -59,10 +59,6 @@ models:
       volume:
         description: "Volume adjustment (-20 to 20 dB)"
         default: 0
-      format:
-        description: "Output audio format"
-        values: ["wav", "mp3", "pcm"]
-        default: "wav"
     providers:
       - name: fish
         model_id: "s2-pro"
