@@ -654,19 +654,31 @@ describe("POST /assets/upload-ticket", () => {
     expect(res.status).toBe(422);
   });
 
-  // SVG is the one image a browser executes rather than draws, so an object
-  // served under its own type off the asset domain is a page there.
-  it("refuses an SVG, which a browser runs rather than draws", async () => {
+  // A browser honours the LAST parsable value when a Content-Type carries
+  // commas — measured in Chromium: "video/mp4,text/html" renders as HTML and
+  // runs the scripts in it. So what the gate reads has to be what R2 stores,
+  // which is why only the first essence survives the ticket.
+  it("carries only the first type when the declaration names several", async () => {
     const { projectId, cookie } = await seedEditor();
 
-    for (const contentType of ["image/svg+xml", "IMAGE/SVG+XML", "image/svg"]) {
-      const res = await requestTicket(
-        cookie,
-        body({ project_id: projectId, content_type: contentType }),
-      );
+    const res = await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: crypto.randomBytes(32).toString("hex"),
+        content_type: "video/mp4,text/html",
+      }),
+    );
 
-      expect(res.status).toBe(422);
-    }
+    expect(res.status).toBe(201);
+    const answer = (await res.json()) as { data: { ticket: string } };
+    const verified = await verifyUploadTicket(
+      answer.data.ticket,
+      INGEST_SECRET,
+      Date.now(),
+    );
+
+    expect(verified.ok && verified.payload.contentType).toBe("video/mp4");
   });
 
   it("takes the three kinds the canvas does upload", async () => {

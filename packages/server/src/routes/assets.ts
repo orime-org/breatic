@@ -89,16 +89,18 @@ const uploadTicketSchema = z.object({
   // ever uploads these three kinds — `fileToNodeSpec` reads every other file
   // locally into a text node and sends no bytes at all (design §4.5).
   //
-  // SVG is the one image a browser executes rather than draws, so serving it
-  // off the asset domain under its own type would put a page there. It is
-  // refused at the same door as everything else that is not one of the three.
+  // Reduced to one essence before it is checked, because a browser honours the
+  // LAST parsable value when a header carries commas: measured in Chromium,
+  // "video/mp4,text/html" renders as HTML and runs the scripts in it. What
+  // survives here is what the ticket signs and what R2 stores, so the value
+  // the gate read is the value the browser is handed.
   content_type: z
     .string()
     .min(1)
     .max(100)
-    .regex(/^(image|video|audio)\//, "content_type is not an uploadable kind")
+    .transform((value) => value.split(/[;,]/)[0]!.trim().toLowerCase())
     .refine(
-      (value) => !/^image\/svg(\+xml)?$/i.test(value.split(";")[0]!.trim()),
+      (value) => /^(image|video|audio)\//.test(value),
       "content_type is not an uploadable kind",
     ),
   project_id: z.string().uuid(),
