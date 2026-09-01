@@ -149,10 +149,30 @@ test('a dropped image lands on a node with a URL that survives a reload', async 
   expect(landed).toMatch(/^https?:\/\//);
 
   // A reload reads the node back out of Yjs, so what survives it is what the
-  // server wrote rather than anything this session held. The tab strip opens
-  // on the project's first Space, so this one is picked again by hand.
+  // server wrote rather than anything this session held. Which Space the strip
+  // opens on is a local choice, and until it has been read back the strip
+  // falls back to the first tab — so a click sent before that lands is undone
+  // by the fallback. Waiting for a tab to be marked chosen is waiting for that
+  // read, and the assertion that follows the click proves it took.
   await page.reload();
-  await page.getByTestId(`space-tab-name-${spaceId}`).click();
+  const ourTab = page.getByTestId(`space-tab-name-${spaceId}`);
+  await expect(ourTab).toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(async () => page.locator('[role="tab"][aria-selected="true"]').count(), {
+      timeout: 30_000,
+    })
+    .toBe(1);
+  await ourTab.click();
+  await expect
+    .poll(
+      async () =>
+        ourTab.evaluate((el) =>
+          el.closest('[role="tab"]')?.getAttribute('aria-selected'),
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe('true');
+
   await expect
     .poll(async () => imageSources(page), { timeout: 30_000 })
     .toContain(landed);
