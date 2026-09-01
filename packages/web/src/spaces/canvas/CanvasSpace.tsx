@@ -2069,6 +2069,10 @@ function CanvasSpaceInner({
         `Upload failed: ${file.name}`,
         lease,
       );
+      // The sentence on the node is fixed English because every collaborator
+      // reads it; this one is in the language of the person who tried, and it
+      // is the only place they are told a retry is worth making.
+      toast.error(t('canvas.upload.failed'));
     },
     [projectId, spaceId, t],
   );

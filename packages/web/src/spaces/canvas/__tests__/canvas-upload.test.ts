@@ -245,7 +245,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
   });
 
   // Named apart from a ticket failure so the node's message and its Retry
@@ -258,7 +258,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('transfer');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
   });
 
   // A full account is not something a retry fixes, and the message the user
@@ -281,7 +281,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
   });
 
   // A crop is a byproduct with no node: registered for dedup, and told apart
@@ -401,7 +401,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     // The fixed English sentence on the node is written by the one exit that
     // owns it; this pins only that the reason was handed over.
     expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
-      'ticket',
+      'upload',
       'n1',
       file,
       LEASE,

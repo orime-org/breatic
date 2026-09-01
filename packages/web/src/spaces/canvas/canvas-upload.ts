@@ -137,10 +137,10 @@ export interface UploadContext {
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
- * `ticket` — the knobs or the ticket request failed. A retry can fix it.
- * `transfer` — opening the upload, a part, or the completion failed.
+ * `upload` — anything else along the way: the knobs, the ticket request,
+ * opening the upload, a part, or the completion. A retry can fix it.
  */
-export type UploadFailureReason = 'hash' | 'storage' | 'ticket' | 'transfer';
+export type UploadFailureReason = 'hash' | 'storage' | 'upload';
 
 /**
  * Say which failure a ticket request ended in.
@@ -152,7 +152,7 @@ export type UploadFailureReason = 'hash' | 'storage' | 'ticket' | 'transfer';
  * @returns The failure reason to report.
  */
 function ticketFailureOf(err: unknown): UploadFailureReason {
-  return isStorageFull(err) ? 'storage' : 'ticket';
+  return isStorageFull(err) ? 'storage' : 'upload';
 }
 
 /**
@@ -295,7 +295,7 @@ export async function runMediaUpload(
     const outcome = await deps.sendToIngest(file, answer, cfg);
     deps.onSuccess(outcome.fileUrl);
   } catch {
-    deps.onFailure('transfer');
+    deps.onFailure('upload');
   }
 }
 

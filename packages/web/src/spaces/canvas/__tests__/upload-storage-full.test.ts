@@ -93,7 +93,7 @@ describe('507 被认成 storage 而不是普通上传失败', () => {
         });
       },
     } as unknown as MediaUploadDeps);
-    expect(onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith('upload');
   });
 });
 
