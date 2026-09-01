@@ -60,3 +60,11 @@ decision_window_days: 7
 # logged — the bell is for the admin and is deliberately quiet, the log
 # is for whoever is on call and must not be.
 storage_notice_window_seconds: 86400
+
+# ── Voice catalog cache ────────────────────────────────
+# voice_catalog_cache_seconds: how long one answer from a vendor's voice
+# list is reused before asking again (#1960). A vendor's roster changes on
+# the order of days, while one person opening the picker, searching and
+# paging produces a burst of reads inside a minute — every one of them
+# spending our quota with that vendor.
+voice_catalog_cache_seconds: 300
