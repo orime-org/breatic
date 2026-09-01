@@ -9,8 +9,9 @@
  * our rows are written. Code can be rewritten when the library changes; rows
  * already written cannot.
  *
- * Two of our parts have no counterpart in the SDK's list. `interrupted` and
- * `failed` are things we know about a turn, not things a model streamed, so
+ * Three of our parts have no counterpart in the SDK's list. `interrupted`,
+ * `failed` and `truncated` are things we know about a turn, not things a
+ * model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define -- and not transient ones: a reader who reloads has
  * to still see that a turn was cut off.

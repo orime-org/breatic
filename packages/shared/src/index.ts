@@ -8,7 +8,6 @@ export {
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
   AVATAR_OUTPUT_PX,
-  MEMORY_RESERVE_FACTOR,
 } from "@shared/constants/index.js";
 
 export type {

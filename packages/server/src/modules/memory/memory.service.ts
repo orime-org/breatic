@@ -142,8 +142,9 @@ export async function commitConsolidation(
  * another tab — changes any of the inputs.
  * @param conversationId - The conversation whose window was discarded.
  * @param newWatermark - The turn the window ended on.
- * @returns Whether the watermark moved. False means someone else had already
- *   taken this window and folded it, so nothing was lost.
+ * @returns Whether this call moved it. False means the write matched no row:
+ *   the watermark is already at or past this turn, or the conversation is
+ *   soft-deleted.
  */
 export async function discardConsolidation(
   conversationId: string,

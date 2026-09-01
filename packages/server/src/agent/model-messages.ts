@@ -192,6 +192,8 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
     else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });
     else if (cutOff) out.push({ role: "assistant", content: TRUNCATED_NOTE });
+
+
   }
 
   return out;

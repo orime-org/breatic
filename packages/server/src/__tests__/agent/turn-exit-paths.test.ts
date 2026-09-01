@@ -145,12 +145,16 @@ async function runTurn(parts: ModelStreamPart[]): Promise<void> {
   const { runWithContext } = await import("@breatic/core");
   thisCase.parts = parts;
   thisCase.endsOnItsOwn = true;
+  sent.length = 0;
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    for await (const _chunk of await new MainAgent().chat("hi")) {
-      // drained
+    for await (const chunk of await new MainAgent().chat("hi")) {
+      sent.push(chunk);
     }
   });
 }
+
+/** What this turn put on the wire, in order. */
+const sent: Array<{ type: string }> = [];
 
 /**
  * Run one skill command to the end of its stream.
@@ -337,6 +341,27 @@ describe("a turn the ceiling cut off", () => {
 
     const parts = wrapUpMessages().at(-1)?.parts as Array<{ type: string }> | undefined;
     expect(parts?.map((p) => p.type)).toContain("truncated");
+  });
+
+  it("says so on the wire, so the reader sees it without reloading", async () => {
+    // Whether the model runs out of room is not ours to decide. Whether the
+    // reader is told it happened is, and that half is no different from a
+    // turn that failed: both are things this side knows and the browser
+    // cannot work out for itself.
+    await runTurn([
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "Half a sen" },
+      { type: "text-end", id: "t1" },
+      finishing("length", 16384),
+    ]);
+
+    expect(sent.map((c) => c.type)).toContain("data-truncated");
+  });
+
+  it("says nothing of the sort on a turn that ended on its own", async () => {
+    await runTurn(saidAndSpent("all of it", 100));
+
+    expect(sent.map((c) => c.type)).not.toContain("data-truncated");
   });
 
   it("leaves a turn that ended on its own unmarked", async () => {

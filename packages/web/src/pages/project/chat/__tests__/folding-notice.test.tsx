@@ -74,9 +74,13 @@ describe('归纳中的那一行', () => {
   });
 });
 
-// 本次新加的两句界面文字。少一份，那个语种的用户读到的是裸 key 或者一句
-// 英文，而两条都不会有任何东西报出来。
-describe.each(['chat.message.consolidating', 'chat.composer.atLimit'])('%s', (key) => {
+// 本次新加的三句界面文字。少一份，那个语种的用户读到的是裸 key 或者一句
+// 英文，而三条都不会有任何东西报出来。
+describe.each([
+  'chat.message.consolidating',
+  'chat.composer.atLimit',
+  'chat.message.truncated',
+])('%s', (key) => {
   it.each(LOCALE_CATALOGS)('%s 有这句话且不是空的', (_tag, catalog) => {
     const message = readPath(catalog, key);
     expect(typeof message).toBe('string');

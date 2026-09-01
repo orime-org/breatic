@@ -12,8 +12,40 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS, MEMORY_RESERVE_FACTOR } from "@breatic/shared";
+import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
+
+/**
+ * Code units per code point, at worst.
+ *
+ * Memory is cut in code points, which is where a character ends, and the
+ * assembled payload is measured in code units, which is what a string's
+ * length is. Everything above the basic plane is two units per point, and the
+ * consolidating prompt asks the model to answer in the language of the
+ * conversation.
+ */
+const MEMORY_RESERVE_FACTOR = 2;
+
+/**
+ * How much room a fold may add to the request it is shortening.
+ *
+ * What the budget measured carries the memory as it stood; what goes out
+ * carries what the fold just wrote. A pass has to stop this far short of the
+ * keep line to leave room for it.
+ * @param ceilings - An object carrying the two memory ceilings, in code points.
+ * @param ceilings.memory_conversation_max_size - The conversation ceiling.
+ * @param ceilings.memory_project_max_size - The project ceiling.
+ * @returns The reserve, in code units.
+ */
+function reservedForMemory(ceilings: {
+  memory_conversation_max_size: number;
+  memory_project_max_size: number;
+}): number {
+  return (
+    MEMORY_RESERVE_FACTOR *
+    (ceilings.memory_conversation_max_size + ceilings.memory_project_max_size)
+  );
+}
 
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),
@@ -183,11 +215,8 @@ const agentConfigSchema = z.object({
   // conversation, and past it the line is negative, which the loop reads as
   // never stopping. Both are configs that load clean and are found by the
   // first reader whose conversation grows past the budget.
-  // Reserved by the same factor `turn-budget.ts` reserves it by, from the
-  // one place it is written down.
-  const reserved =
-    MEMORY_RESERVE_FACTOR *
-    (config.memory_conversation_max_size + config.memory_project_max_size);
+  // The room the fold may add, held back from the keep line below.
+  const reserved = reservedForMemory(config);
   if (reserved >= config.memory_keep_chars) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -199,6 +228,27 @@ const agentConfigSchema = z.object({
 
 /** Validated agent configuration type. */
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+
+/**
+ * The keep line a consolidation pass actually runs to.
+ *
+ * The configured line less the room the fold may add, worked out here so the
+ * arithmetic has one home: the refinement above rejects a pair of ceilings
+ * that would put this at or below zero, and it can only do that if it holds
+ * back the same amount the pass will.
+ * @param config - An object carrying the three figures this is worked out from.
+ * @param config.memory_keep_chars - The configured keep line.
+ * @param config.memory_conversation_max_size - The conversation ceiling.
+ * @param config.memory_project_max_size - The project ceiling.
+ * @returns The line, in code units.
+ */
+export function effectiveKeepChars(config: {
+  memory_keep_chars: number;
+  memory_conversation_max_size: number;
+  memory_project_max_size: number;
+}): number {
+  return config.memory_keep_chars - reservedForMemory(config);
+}
 
 /**
  * The agent config shape, for tests that assert on its bounds.

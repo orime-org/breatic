@@ -195,6 +195,20 @@ describe("a consolidation that works", () => {
     expect(said).toContain("memory_consolidation_written");
   });
 
+  it("names the line for what the fold actually did", async () => {
+    // A fold whose write matched no row spent the tokens and wrote nothing.
+    // Called `written`, the one line about it says the opposite of what
+    // happened, and the watermark in its fields never landed anywhere.
+    commitConsolidation.mockResolvedValue("superseded");
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("superseded");
+    const said = vi.mocked(logger.info).mock.calls.map((call) => call[1]);
+    expect(said).toContain("memory_consolidation_superseded");
+    expect(said).not.toContain("memory_consolidation_written");
+  });
+
   it("reads the window it was handed, placeholders and all", async () => {
     // N10: the input is the assembled messages the budget was measured
     // against, not the stored rows. A consolidation reading storage would see
@@ -389,8 +403,23 @@ describe("a consolidation that fails", () => {
     const outcome = await consolidate();
 
     expect(outcome).toBe("superseded");
-    const said = vi.mocked(logger.error).mock.calls.map((call) => call[1]);
-    expect(said).not.toContain("memory_consolidation_discarded");
+    // The fold still failed, and that error is the only account of why. What
+    // separates the two endings is the field, not whether anything is said.
+    const [ctx, message] = vi.mocked(logger.error).mock.calls.at(-1) ?? [];
+    expect(message).toBe("memory_consolidation_failed");
+    expect(ctx).toMatchObject({ windowLost: false });
+  });
+
+  it("says the window went when nobody else had taken it", async () => {
+    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: { totalTokens: 10 } });
+    discardConsolidation.mockResolvedValue(true);
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("discarded");
+    const [ctx, message] = vi.mocked(logger.error).mock.calls.at(-1) ?? [];
+    expect(message).toBe("memory_consolidation_failed");
+    expect(ctx).toMatchObject({ windowLost: true });
   });
 
   it("says the watermark stayed put when the window cannot even be discarded", async () => {

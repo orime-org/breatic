@@ -166,8 +166,8 @@ export type MessagePart =
    * A part for the same reason `interrupted` is one, and the same guarantee
    * follows: a turn that fails before the model says a word produces nothing
    * else, and a row with an empty list cannot be told apart from a turn that
-   * never happened. Being stopped and failing are the two ways a turn ends
-   * without finishing, and a reader has to tell them apart — one is something
+   * never happened. Being stopped, failing and running out of room are the
+   * three ways a turn ends without finishing, and a reader has to tell them apart — one is something
    * the user did, the other is something that went wrong.
    */
   | { type: "failed" }

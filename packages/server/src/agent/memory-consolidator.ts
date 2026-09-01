@@ -336,9 +336,10 @@ export async function consolidateWindow(
       newWatermark,
     });
 
-    // The one ending here that changes things and would otherwise say nothing:
-    // the studio was charged and turns left the history. Both are reconstructed
-    // from this line when someone asks later where the money or the turns went.
+    // The call was made and paid for whichever ending it reached, so this
+    // line is written for both; the message says which. A `written` fold also
+    // took turns out of the history, and both facts are reconstructed from
+    // here when someone asks later where the money or the turns went.
     logger.info(
       {
         userId,
@@ -349,7 +350,9 @@ export async function consolidateWindow(
         outcome,
         tokensUsed: result.usage?.totalTokens ?? 0,
       },
-      "memory_consolidation_written",
+      outcome === "written"
+        ? "memory_consolidation_written"
+        : "memory_consolidation_superseded",
     );
     return outcome;
   } catch (err) {
@@ -386,20 +389,14 @@ export async function consolidateWindow(
       return "untouched";
     }
 
-    // Nothing moved, which means another turn took this same window and
-    // folded it while this one was failing. Its turns are in the memory the
-    // other one wrote, so this ending lost nothing and the line below would
-    // say it had.
-
-
-    if (!lost) return "superseded";
-
-    // Written after the discard, so the line that says the window is gone is
-    // only there on the path where it went.
+    // One line for both endings, with the field that tells them apart. The
+    // fold failed either way and that error is the only account of why;
+    // whether this turn's window went with it depends on whether anyone else
+    // had already folded it, and `windowLost` is that answer.
     logger.error(
-      { err, userId, conversationId, watermarkBefore, newWatermark },
-      "memory_consolidation_discarded",
+      { err, userId, conversationId, watermarkBefore, newWatermark, windowLost: lost },
+      "memory_consolidation_failed",
     );
-    return "discarded";
+    return lost ? "discarded" : "superseded";
   }
 }

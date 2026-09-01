@@ -12,8 +12,7 @@
  */
 
 import type { ModelMessage } from "ai";
-import { getAgentConfig } from "@breatic/core";
-import { MEMORY_RESERVE_FACTOR } from "@breatic/shared";
+import { effectiveKeepChars, getAgentConfig } from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
@@ -100,15 +99,9 @@ export async function foldIfOverBudget(
     assembled,
     turns: costPerTurn(assembly.history),
     budget: config.memory_budget_chars,
-    // The keep line, less the room the fold is about to take. What was
-    // measured above carries the memory as it stood — on a first fold, no
-    // memory sections at all — and the assembly that goes out carries what
-    // the fold wrote.
-    //
-    // Reserved by the factor the loader validates against, from the one
-    // place it is written down.
-    keep: config.memory_keep_chars - MEMORY_RESERVE_FACTOR *
-      (config.memory_conversation_max_size + config.memory_project_max_size),
+    // The keep line a pass runs to: the configured line less the room the
+    // fold is about to add, from the one place that arithmetic lives.
+    keep: effectiveKeepChars(config),
   });
   const newWatermark = plan.newWatermark;
   if (newWatermark === null) return false;

@@ -13,7 +13,7 @@
  * turn writes down, and what a conversation hands back when it is opened.
  * Both are pure functions and both are here.
  *
- * Two of our parts have no counterpart in the SDK's list. `interrupted` and
+ * Three of our parts have no counterpart in the SDK's list. `interrupted` and
  * `failed` are things we know about a turn, not things a model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define. They are not transient: a reader who reloads has
