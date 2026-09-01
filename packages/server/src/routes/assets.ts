@@ -48,13 +48,13 @@ const assets = new Hono<{ Variables: AuthVariables }>();
  * `GET /assets/upload-config` — browser upload knobs from
  * `config/storage.yaml` (`upload:` section). The frontend fetches this
  * once per session and caches it: the upload size cap (pre-checked on file
- * selection; authoritatively enforced by /presign), the retry attempts and
- * backoff base for **presign**, and the floor and rate that size the PUT's
- * stall guard.
+ * selection; authoritatively enforced by /upload-ticket), the retry attempts
+ * and backoff base for the **ticket request**, and the floor and rate that
+ * size a part's stall guard.
  *
- * The PUT's retry count is deliberately absent. It used to share the presign
- * figure; the browser PUT now goes through the shared HTTP transport, which
- * owns how many times it is delivered, so no knob here can move it.
+ * A part's retry count is deliberately absent: parts go through the shared
+ * HTTP transport, which owns how many times each one is delivered, so no knob
+ * here can move it.
  */
 assets.get("/upload-config", requireAuth, (c) => {
   const { upload } = getStorageConfig();
@@ -79,8 +79,8 @@ const uploadTicketSchema = z.object({
     .string()
     .min(1)
     .max(255)
-    // Same rejection as presign's: the extension is spliced into the storage
-    // key, so a "/" or "\\" could inject a path segment. Unicode letters,
+    // The extension is spliced into the storage key, so a "/" or "\\" could
+    // inject a path segment. Unicode letters,
     // spaces and punctuation stay allowed — this is a global product.
     // eslint-disable-next-line no-control-regex -- rejecting control chars IS the intent
     .regex(/^[^/\\\x00-\x1f\x7f]+$/, "filename contains an unsafe character"),
@@ -136,9 +136,9 @@ const uploadTicketSchema = z.object({
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
  * the ingest Worker (design §4.1).
  *
- * It runs the gate presign used to run — project access, the upload cap, the
- * dedup pass, the storage allowance — and then leaves behind the one row that
- * survives until the Worker reports back. The context the browser declares is
+ * It runs the whole gate — project access, the upload cap, the dedup pass, the
+ * storage allowance — and then leaves behind the one row that survives until
+ * the Worker reports back. The context the browser declares is
  * checked against this user's access before it lands on that row, so from the
  * report's point of view it is ours rather than the client's: the Worker knows
  * only what the ticket told it, and cannot be asked to prove any of it.
@@ -294,16 +294,29 @@ assets.post(
 
 // ── Ingest report (#173) ────────────────────────────────────────────
 
-const ingestReportSchema = z.object({
-  storage_key: z.string().min(1).max(512),
-  outcome: z.enum(["completed", "aborted"]),
-  /** What the Worker computed over the bytes that landed. */
-  sha256: z.string().regex(SHA256_HEX).optional(),
-  /** What actually landed, which is the authority over what was declared. */
-  size_bytes: z.coerce.number().int().nonnegative().optional(),
-  content_type: z.string().min(1).max(100).optional(),
-  reason: z.string().max(200).optional(),
-});
+// A success and an abort carry different things, so they are different shapes
+// rather than one shape whose fields are all optional. What a success reports
+// is the only account of the stored object anyone gets: the browser's claims
+// were answered before a byte moved, and nothing downstream reads the object
+// back. Left optional, a success naming no hash would register a row under the
+// empty string — and the second such row in a studio collides on
+// `(studio_id, content_hash)`.
+const ingestReportSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    storage_key: z.string().min(1).max(512),
+    outcome: z.literal("completed"),
+    /** What the Worker computed over the bytes that landed. */
+    sha256: z.string().regex(SHA256_HEX),
+    /** What actually landed, which is the authority over what was declared. */
+    size_bytes: z.coerce.number().int().nonnegative(),
+    content_type: z.string().min(1).max(100),
+  }),
+  z.object({
+    storage_key: z.string().min(1).max(512),
+    outcome: z.literal("aborted"),
+    reason: z.string().max(200).optional(),
+  }),
+]);
 
 /**
  * Compare two secrets without leaking where they diverge.
@@ -349,18 +362,28 @@ assets.post(
     }
 
     const body = c.req.valid("json");
-    const outcome = await ingestReportService.applyIngestReport({
-      storageKey: body.storage_key,
-      outcome: body.outcome,
-      ...(body.sha256 !== undefined && { sha256: body.sha256 }),
-      ...(body.size_bytes !== undefined && { sizeBytes: body.size_bytes }),
-      ...(body.content_type !== undefined && { contentType: body.content_type }),
-      ...(body.reason !== undefined && { reason: body.reason }),
-    });
+    const outcome = await ingestReportService.applyIngestReport(
+      body.outcome === "completed"
+        ? {
+            storageKey: body.storage_key,
+            outcome: "completed",
+            sha256: body.sha256,
+            sizeBytes: body.size_bytes,
+            contentType: body.content_type,
+          }
+        : {
+            storageKey: body.storage_key,
+            outcome: "aborted",
+            ...(body.reason !== undefined && { reason: body.reason }),
+          },
+    );
 
     if (outcome.status === "rejected") {
       logger.info(
-        { key: body.storage_key, size: body.size_bytes },
+        {
+          key: body.storage_key,
+          size: body.outcome === "completed" ? body.size_bytes : undefined,
+        },
         "ingest_report_over_cap",
       );
       return c.json(
@@ -370,7 +393,10 @@ assets.post(
     }
     if (outcome.status === "voided") {
       logger.info(
-        { key: body.storage_key, reason: body.reason },
+        {
+          key: body.storage_key,
+          reason: body.outcome === "aborted" ? body.reason : undefined,
+        },
         "ingest_report_aborted",
       );
       return c.json({ data: { ok: true } });

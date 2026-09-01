@@ -71,18 +71,29 @@ function getCoverQueue(): ReturnType<typeof createQueue> {
   return coverQueue;
 }
 
-/** What the Worker says happened. */
-export interface IngestReport {
-  storageKey: string;
-  outcome: "completed" | "aborted";
-  /** Present on `completed`: what the Worker computed over the stored bytes. */
-  sha256?: string;
-  /** Present on `completed`: what actually landed, which is the authority. */
-  sizeBytes?: number;
-  contentType?: string;
-  /** Present on `aborted`: why the Worker gave up. */
-  reason?: string;
-}
+/**
+ * What the Worker says happened.
+ *
+ * A success and an abort carry different things, so they are different shapes:
+ * what a success reports is the only account of the stored object anyone gets,
+ * and making those fields optional would put a fallback where the fact belongs.
+ */
+export type IngestReport =
+  | {
+      storageKey: string;
+      outcome: "completed";
+      /** What the Worker computed over the stored bytes. */
+      sha256: string;
+      /** What actually landed, which is the authority over what was declared. */
+      sizeBytes: number;
+      contentType: string;
+    }
+  | {
+      storageKey: string;
+      outcome: "aborted";
+      /** Why the Worker gave up. */
+      reason?: string;
+    };
 
 /** What the report handler decided, for the route to answer with. */
 export type IngestOutcome =
@@ -200,9 +211,13 @@ export async function applyIngestReport(
   if (grant === null) throw new NotFoundError(t("server.error.not_found"));
 
   const adapter = await getStorageAdapter();
-  // An `aborted` report carries none, and what it becomes is what a browser
-  // would have been sent for bytes of unknown type.
-  const contentType = report.contentType ?? "application/octet-stream";
+  // An `aborted` report names no type, and what it becomes is what a browser
+  // would have been sent for bytes of unknown type. Only the already-consumed
+  // branch below reads it on that path.
+  const contentType =
+    report.outcome === "completed"
+      ? report.contentType
+      : "application/octet-stream";
 
   // A retry. The Durable Object keeps its alarm until we answer, so the most
   // likely reason it is asking again is that our answer — or the event that
@@ -210,9 +225,10 @@ export async function applyIngestReport(
   // applies these last-write-wins, so a duplicate costs nothing while a lost
   // one leaves the node spinning.
   if (grant.consumedAt !== null) {
-    const existing = report.sha256
-      ? await assetRepo.findByStudioAndHash(grant.studioId, report.sha256)
-      : null;
+    const existing =
+      report.outcome === "completed"
+        ? await assetRepo.findByStudioAndHash(grant.studioId, report.sha256)
+        : null;
     const fileUrl = existing?.fileUrl ?? adapter.publicUrl(grant.storageKey);
     const settledKind = existing?.kind ?? assetService.detectAssetKind(contentType);
     // A video's event belongs to the cover job, which sends one carrying both
@@ -238,7 +254,7 @@ export async function applyIngestReport(
   // measured what actually arrived. The object is already in storage, so this
   // refusal leaves it there and lets the voided grant name it as an orphan.
   const { upload } = getStorageConfig();
-  const sizeBytes = report.sizeBytes ?? 0;
+  const sizeBytes = report.sizeBytes;
   if (sizeBytes > upload.max_upload_bytes) {
     await voidGrant(grant.storageKey);
     await announceFailure(grant, "Upload failed");
@@ -256,7 +272,7 @@ export async function applyIngestReport(
     // very project — so this is the one already-known answer rather than a
     // second, differing one. Passing it saves `register` the lookup.
     ownerStudioId: grant.studioId,
-    contentHash: report.sha256 ?? "",
+    contentHash: report.sha256,
     storageKey: grant.storageKey,
     fileUrl: adapter.publicUrl(grant.storageKey),
     sizeBytes,

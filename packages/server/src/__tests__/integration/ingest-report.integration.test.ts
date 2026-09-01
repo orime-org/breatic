@@ -241,6 +241,24 @@ describe("POST /assets/ingest-report — who may call it", () => {
 });
 
 describe("POST /assets/ingest-report — a completed upload", () => {
+  // The hash is what the ledger keys on, so a success that names none would
+  // register a row under the empty string. The second such row anywhere in the
+  // studio then collides on `(studio_id, content_hash)`, and every later upload
+  // of unknown bytes dedups against whatever got there first.
+  it("refuses a success that names no hash, registering nothing", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const { sha256: _omitted, ...noHash } = completed(key);
+
+    const res = await report(noHash);
+
+    expect(res.status).toBe(422);
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${seed.studioId}
+    `;
+    expect(rows[0]!.n).toBe("0");
+  });
+
   it("registers the asset under the grant's studio and consumes the grant", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
