@@ -185,6 +185,7 @@
     },
     "message": {
       "interrupted": "중지됨",
+      "truncated": "길이 제한에 도달함",
       "waiting": "응답 중",
       "consolidating": "이 대화의 기억을 정리하는 중…"
     },

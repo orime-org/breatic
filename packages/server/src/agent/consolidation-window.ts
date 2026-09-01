@@ -38,12 +38,12 @@ export interface ConsolidationRequest {
 
 /** What one pass would do. */
 export interface ConsolidationPlan {
-  /** The turns this pass takes, oldest first. */
-  takenTurns: number[];
   /** What the payload measures once they are gone. */
   remainingChars: number;
   /**
    * Where the watermark lands, and `null` when this pass does nothing.
+   *
+   * Also says which turns were taken: they are the ones at or below it.
    *
    * One field answers both questions because they have one answer: a payload
    * over the budget is by that fact over the keep line as well (the keep line
@@ -62,7 +62,6 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   const { assembled, turns, budget, keep } = request;
 
   const nothing: ConsolidationPlan = {
-    takenTurns: [],
     remainingChars: assembled,
     newWatermark: null,
   };
@@ -72,18 +71,17 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   // whole payload, and there is nothing this pass could take.
   if (turns.length === 0) return nothing;
 
-  const takenTurns: number[] = [];
   let remainingChars = assembled;
+  let newWatermark: number | null = null;
 
+  // The turns arrive oldest first and are taken from that end without a gap,
+  // so where the pass stopped says everything about which turns it took: the
+  // ones at or below it.
   for (const turn of turns) {
     if (remainingChars <= keep) break;
-    takenTurns.push(turn.turnIndex);
+    newWatermark = turn.turnIndex;
     remainingChars -= turn.chars;
   }
 
-  return {
-    takenTurns,
-    remainingChars,
-    newWatermark: takenTurns[takenTurns.length - 1] ?? null,
-  };
+  return { remainingChars, newWatermark };
 }

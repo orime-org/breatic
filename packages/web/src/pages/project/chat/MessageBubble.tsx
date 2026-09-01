@@ -104,6 +104,17 @@ export const MessageBubble = React.memo(function MessageBubble({
             {t('chat.message.interrupted')}
           </div>
         ) : null}
+        {message.truncated ? (
+          // Its own line rather than the stop mark's: nobody stopped this
+          // reply and nothing about it failed. What ran out is the room one
+          // model call gets, and the reader's next move is to ask it to go on.
+          <div
+            data-testid='message-bubble-truncated'
+            className='text-xs text-muted-foreground'
+          >
+            {t('chat.message.truncated')}
+          </div>
+        ) : null}
         {message.failed ? (
           // On the turn it belongs to rather than as a banner: what failed is
           // this reply, and a bar at the top of the panel would say the whole

@@ -185,6 +185,7 @@
     },
     "message": {
       "interrupted": "停止しました",
+      "truncated": "長さの上限に達しました",
       "waiting": "応答中",
       "consolidating": "この会話の記憶を整理しています…"
     },

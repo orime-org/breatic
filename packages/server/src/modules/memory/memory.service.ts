@@ -142,12 +142,14 @@ export async function commitConsolidation(
  * another tab — changes any of the inputs.
  * @param conversationId - The conversation whose window was discarded.
  * @param newWatermark - The turn the window ended on.
+ * @returns Whether the watermark moved. False means someone else had already
+ *   taken this window and folded it, so nothing was lost.
  */
 export async function discardConsolidation(
   conversationId: string,
   newWatermark: number,
-): Promise<void> {
-  await conversationRepo.advanceConsolidatedTurn(conversationId, newWatermark);
+): Promise<boolean> {
+  return await conversationRepo.advanceConsolidatedTurn(conversationId, newWatermark);
 }
 
 /**

@@ -25,6 +25,9 @@ const INTERRUPTED = 'data-interrupted';
 /** The part type carrying a turn that could not be finished. */
 const FAILED = 'data-failed';
 
+/** The part type carrying a turn the output ceiling cut off. */
+const TRUNCATED = 'data-truncated';
+
 /**
  * How far a tool got, in the panel's words.
  * @param state - The tool part's state, as the SDK reports it.
@@ -61,6 +64,7 @@ export function toChatMessage(
   let thinking = '';
   const toolCalls: ToolCall[] = [];
   let interrupted = false;
+  let truncated = false;
   let failed = false;
 
   // Read before the loop because a tool part can come before the mark. A call
@@ -107,6 +111,8 @@ export function toChatMessage(
     else if (part.type === 'reasoning') thinking += part.text;
     else if (part.type === INTERRUPTED) interrupted = true;
     else if (part.type === FAILED) failed = true;
+    else if (part.type === TRUNCATED) truncated = true;
+
   }
 
   return {
@@ -119,6 +125,7 @@ export function toChatMessage(
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
+    ...(truncated ? { truncated: true as const } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),
   };

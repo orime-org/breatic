@@ -13,6 +13,7 @@
 
 import type { ModelMessage } from "ai";
 import { getAgentConfig } from "@breatic/core";
+import { MEMORY_RESERVE_FACTOR } from "@breatic/shared";
 import type { MessageData } from "@breatic/shared";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
@@ -48,15 +49,6 @@ export interface TurnIdentity {
    */
   onStart?: () => void;
 }
-
-/**
- * Code units per code point, at worst.
- *
- * Anything outside the basic plane — emoji, and every script that lives above
- * it — is a surrogate pair. The ceilings on memory are counted in code
- * points; what the payload is measured in is code units.
- */
-const MEMORY_RESERVE_FACTOR = 2;
 
 /**
  * What each turn in the history costs the assembled request.
@@ -113,27 +105,26 @@ export async function foldIfOverBudget(
     // memory sections at all — and the assembly that goes out carries what
     // the fold wrote.
     //
-    // Doubled because the two sides count differently: memory is cut in code
-    // points, which is where a character ends, and the payload is measured in
-    // code units, which is what a string's length is. A summary written in
-    // emoji is two units per character, and the prompt asks the model to
-    // answer in the language of the conversation.
+    // Reserved by the factor the loader validates against, from the one
+    // place it is written down.
     keep: config.memory_keep_chars - MEMORY_RESERVE_FACTOR *
       (config.memory_conversation_max_size + config.memory_project_max_size),
   });
-  if (plan.newWatermark === null) return false;
+  const newWatermark = plan.newWatermark;
+  if (newWatermark === null) return false;
 
   who.onStart?.();
 
-  const taken = new Set(plan.takenTurns);
   const outcome = await consolidateWindow({
     userId: who.userId,
     conversationId: who.conversationId,
     projectId: who.projectId,
     // The window as the model would have been sent it, placeholders and all.
-    transcript: toModelMessages(assembly.history.filter((m) => taken.has(m.turnIndex))),
+    transcript: toModelMessages(
+      assembly.history.filter((m) => m.turnIndex <= newWatermark),
+    ),
     watermarkBefore: assembly.watermark,
-    newWatermark: plan.newWatermark,
+    newWatermark,
     ...(who.signal ? { signal: who.signal } : {}),
   });
 

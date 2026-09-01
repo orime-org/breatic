@@ -185,6 +185,7 @@
     },
     "message": {
       "interrupted": "已停止",
+      "truncated": "已达长度上限",
       "waiting": "正在回复",
       "consolidating": "正在整理这条会话的记忆…"
     },

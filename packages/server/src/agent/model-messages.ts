@@ -112,6 +112,15 @@ const STOP_NOTE = "[This turn did not finish: the connection to the user closed.
 const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 
 /**
+ * The note that says a turn ran out of room rather than out of things to say.
+ *
+ * Apart from both above because it leads somewhere neither does: what the
+ * model was saying is still wanted and nothing about it went wrong, so the
+ * turn to make of this is to carry on from where the sentence stops.
+ */
+const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
+
+/**
  * Turn stored messages into the messages the model is sent.
  *
  * Reasoning never goes back: it is the model's own working, and returning it
@@ -147,6 +156,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     // than as something it wrote.
     const stopped = message.parts.some((p) => p.type === "interrupted");
     const brokeOff = message.parts.some((p) => p.type === "failed");
+    const cutOff = message.parts.some((p) => p.type === "truncated");
 
     for (const part of message.parts) {
       if (part.type === "text") {
@@ -181,6 +191,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     }
     if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
     else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });
+    else if (cutOff) out.push({ role: "assistant", content: TRUNCATED_NOTE });
   }
 
   return out;

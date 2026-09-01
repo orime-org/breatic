@@ -21,7 +21,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 import type { MockLanguageModelV4 } from "ai/test";
-import { FINISHED, finishedSpending } from "../helpers/model-double.js";
+import { FINISHED, finishedSpending, finishing } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
@@ -321,6 +321,31 @@ describe("a turn that failed", () => {
     expect(looked).toBeGreaterThan(asked!);
     expect(looked).toBeLessThan(replied!);
   });
+});
+
+describe("a turn the ceiling cut off", () => {
+  it("records that it was cut off, so a reload does not read it as a finished answer", async () => {
+    // The third way a turn ends without finishing, and the one this build
+    // introduced by giving every model call an output ceiling. Neither of the
+    // other two marks fits: nobody stopped it and nothing went wrong.
+    await runTurn([
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "Half a sen" },
+      { type: "text-end", id: "t1" },
+      finishing("length", 16384),
+    ]);
+
+    const parts = wrapUpMessages().at(-1)?.parts as Array<{ type: string }> | undefined;
+    expect(parts?.map((p) => p.type)).toContain("truncated");
+  });
+
+  it("leaves a turn that ended on its own unmarked", async () => {
+    await runTurn(saidAndSpent("all of it", 100));
+
+    const parts = wrapUpMessages().at(-1)?.parts as Array<{ type: string }> | undefined;
+    expect(parts?.map((p) => p.type)).not.toContain("truncated");
+  });
+
 });
 
 describe("a turn the user stopped", () => {

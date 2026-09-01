@@ -71,6 +71,7 @@ function toMessageData(row: StoredRow): MessageData {
     content: text,
     ...(reasoning ? { thinking: reasoning } : {}),
     ...(parts.some((p) => p.type === "interrupted") ? { interrupted: true as const } : {}),
+    ...(parts.some((p) => p.type === "truncated") ? { truncated: true as const } : {}),
     ...(parts.some((p) => p.type === "failed") ? { failed: true as const } : {}),
   };
 }

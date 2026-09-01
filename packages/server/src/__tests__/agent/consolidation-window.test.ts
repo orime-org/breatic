@@ -52,7 +52,6 @@ describe("planning how much a consolidation takes", () => {
     const plan = planConsolidation(request(20_000, turns([10_000, 10_000, 10_000])));
 
     expect(plan.newWatermark).toBeNull();
-    expect(plan.takenTurns).toEqual([]);
   });
 
   it("leaves the payload alone when it lands exactly on the budget", () => {
@@ -102,13 +101,11 @@ describe("planning how much a consolidation takes", () => {
     const sizes = Array.from({ length: 30 }, () => 30_000);
     const plan = planConsolidation(request(20_000, turns(sizes, 7)));
 
-    // The turns taken are a prefix of the history, in order, starting at the
-    // oldest one the watermark left behind.
-    expect(plan.takenTurns[0]).toBe(7);
-    for (const [i, t] of plan.takenTurns.entries()) {
-      expect(t).toBe(7 + i);
-    }
-    expect(plan.newWatermark).toBe(plan.takenTurns[plan.takenTurns.length - 1]);
+    // The watermark lands on a turn the history has, and every turn at or
+    // below it is one this pass takes: the oldest is the first one the
+    // previous watermark left behind.
+    expect(plan.newWatermark).toBeGreaterThanOrEqual(7);
+    expect(plan.newWatermark).toBeLessThan(7 + 30);
   });
 
   it("takes everything it has when even that does not reach the keep line", () => {
@@ -116,8 +113,7 @@ describe("planning how much a consolidation takes", () => {
     // history is gone, and the plan says so rather than looping.
     const plan = planConsolidation(request(600_000, turns([100_000, 100_000, 100_000, 100_000])));
 
-    expect(plan.newWatermark).not.toBeNull();
-    expect(plan.takenTurns).toEqual([1, 2, 3, 4]);
+    expect(plan.newWatermark).toBe(4);
     expect(plan.remainingChars).toBe(600_000);
   });
 
@@ -125,6 +121,5 @@ describe("planning how much a consolidation takes", () => {
     const plan = planConsolidation(request(900_000, []));
 
     expect(plan.newWatermark).toBeNull();
-    expect(plan.takenTurns).toEqual([]);
   });
 });

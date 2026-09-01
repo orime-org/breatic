@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS } from "@breatic/shared";
+import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS, MEMORY_RESERVE_FACTOR } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const agentConfigSchema = z.object({
@@ -183,11 +183,11 @@ const agentConfigSchema = z.object({
   // conversation, and past it the line is negative, which the loop reads as
   // never stopping. Both are configs that load clean and are found by the
   // first reader whose conversation grows past the budget.
-  // Doubled, the way `turn-budget.ts` reserves it: memory is cut in code
-  // points and the payload is measured in code units, and everything above
-  // the basic plane is two units per point.
+  // Reserved by the same factor `turn-budget.ts` reserves it by, from the
+  // one place it is written down.
   const reserved =
-    2 * (config.memory_conversation_max_size + config.memory_project_max_size);
+    MEMORY_RESERVE_FACTOR *
+    (config.memory_conversation_max_size + config.memory_project_max_size);
   if (reserved >= config.memory_keep_chars) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

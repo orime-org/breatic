@@ -170,7 +170,19 @@ export type MessagePart =
    * without finishing, and a reader has to tell them apart — one is something
    * the user did, the other is something that went wrong.
    */
-  | { type: "failed" };
+  | { type: "failed" }
+  /**
+   * The turn reached the ceiling on one call's output and stopped mid-sentence.
+   *
+   * The third way a turn ends without finishing, and it is neither of the
+   * other two: nobody stopped it and nothing went wrong. What ran out is room
+   * we ourselves set, so a reader told it was stopped would look for a stop
+   * they never made, and one told it failed would look for a fault there is
+   * none of.
+   *
+   * A part for the same reason the other two are.
+   */
+  | { type: "truncated" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
@@ -217,6 +229,12 @@ export interface MessageData {
    * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
    */
   failed?: true;
+  /**
+   * The turn hit the per-call output ceiling, so `content` stops mid-sentence.
+   *
+   * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
+   */
+  truncated?: true;
 }
 
 /**

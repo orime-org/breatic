@@ -185,6 +185,7 @@
     },
     "message": {
       "interrupted": "Stopped",
+      "truncated": "Cut off at the length limit",
       "waiting": "Replying",
       "consolidating": "Tidying up this conversation's memory…"
     },

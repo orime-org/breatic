@@ -6,9 +6,9 @@
  *
  * One fact, held apart from both stores that touch it. The turn's stream is
  * what learns of it — `chat-sessions` reads the wire — and the panel is what
- * shows it, which is `conversation-runtime`'s side of the app. Kept inside
- * either one, the other has to import it, and the two already import each
- * other's session bookkeeping.
+ * shows it, which is `conversation-runtime`'s side of the app. Kept in the
+ * runtime, `chat-sessions` would have to import it back, and the runtime
+ * already imports `chat-sessions` for its session bookkeeping.
  */
 
 import { create } from 'zustand';

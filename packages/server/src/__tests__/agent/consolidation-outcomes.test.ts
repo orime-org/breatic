@@ -23,7 +23,7 @@ import type { ModelMessage } from "ai";
 const generateTextRetry = vi.fn();
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
-const discardConsolidation = vi.fn(async (..._args: unknown[]) => undefined);
+const discardConsolidation = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 // The one door into the memory module: what a turn is injected with is what
 // the fold is shown as the state it is rewriting.
 const buildContext = vi.fn<
@@ -163,7 +163,7 @@ beforeEach(() => {
   // `clearAllMocks` forgets calls, not implementations: a case that made one
   // of these reject would otherwise leave it rejecting for every case after.
   chargeOnceForGeneration.mockResolvedValue(null);
-  discardConsolidation.mockResolvedValue(undefined);
+  discardConsolidation.mockResolvedValue(true);
 });
 
 describe("a consolidation that works", () => {
@@ -183,6 +183,16 @@ describe("a consolidation that works", () => {
       },
     });
     expect(discardConsolidation).not.toHaveBeenCalled();
+  });
+
+  it("records the fold, which spent money and moved the watermark", async () => {
+    // The one path through here that changes something and says nothing: a
+    // fold that worked charged the studio and took turns out of the history,
+    // and at 3am the only account of either is what was written down.
+    await consolidate();
+
+    const said = vi.mocked(logger.info).mock.calls.map((call) => call[1]);
+    expect(said).toContain("memory_consolidation_written");
   });
 
   it("reads the window it was handed, placeholders and all", async () => {
@@ -365,6 +375,21 @@ describe("a consolidation that fails", () => {
 
     const said = vi.mocked(logger.error).mock.calls.map((call) => call[1]);
     expect(said).toContain("memory_consolidation_discard_failed");
+    expect(said).not.toContain("memory_consolidation_discarded");
+  });
+
+  it("does not call the window lost when another tab had already folded it", async () => {
+    // Two tabs over the budget take the same window. One folds it and moves
+    // the watermark; the other's model answers with something unreadable and
+    // goes to discard turns that are no longer in the history. The write
+    // matches no row, and the window it was going to lose is safely folded.
+    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: { totalTokens: 10 } });
+    discardConsolidation.mockResolvedValue(false);
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("superseded");
+    const said = vi.mocked(logger.error).mock.calls.map((call) => call[1]);
     expect(said).not.toContain("memory_consolidation_discarded");
   });
 

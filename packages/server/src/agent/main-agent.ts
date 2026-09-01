@@ -239,6 +239,8 @@ export class MainAgent {
     // them. Every step says what it spent as it finishes, which gives the
     // same figure with none of that, on every exit alike.
     let tokensUsed = 0;
+    /** How the last step ended, which says whether the ceiling landed on it. */
+    let lastFinishReason: string | undefined;
 
     // The SDK does not throw when the provider fails. It puts an `error`
     // chunk on the stream and closes it normally, so nothing rejects and
@@ -339,10 +341,10 @@ export class MainAgent {
           // The fold moved the watermark, so the window is out of the history
           // whichever way it ended. Failing here would spend it and give the
           // reader nothing, and the reply is what was promised. What is still
-          // in hand is the pre-fold assembly: over the character budget by
-          // design, and inside the model's real window — 850,000 characters
-          // is at most 850,000 tokens against a window that starts at a
-          // million, which is why the budget is drawn in characters at all.
+          // in hand is the pre-fold assembly, over the character budget by
+          // however much this conversation had grown: sending it is the one
+          // move left that answers at all, and the provider is what decides
+          // whether it fits.
           logger.error(
             { err, userId, conversationId, projectId },
             "turn_reassembly_failed",
@@ -371,8 +373,13 @@ export class MainAgent {
         // stream within milliseconds, makes no further model call, and is
         // passed on to every tool the turn invokes.
         abortSignal: signal,
-        onStepFinish: ({ usage, content }) => {
+        onStepFinish: ({ usage, content, finishReason }) => {
           tokensUsed += usage?.totalTokens ?? 0;
+          // Kept from the last step rather than the first that hit the
+          // ceiling: a step ending at the limit mid-tool-call is the turn
+          // carrying on, and what the mark below is about is the answer the
+          // reader is left holding.
+          lastFinishReason = finishReason;
           // The other way a call can fail, and the only place its reason is
           // readable. A call whose arguments the model shaped wrongly is
           // refused at the door -- the SDK never runs it, so the callback
@@ -464,6 +471,13 @@ export class MainAgent {
         // finished answer.
         if (exit === "aborted") replyParts.push({ type: "interrupted" });
         if (exit === "failed") replyParts.push({ type: "failed" });
+        // The third mark, and the one this build made reachable by giving
+        // every call an output ceiling. Only on a turn that ended no other
+        // way: a stopped or failed turn says what happened to it already, and
+        // the ceiling is not why it ended.
+        if (exit === "completed" && lastFinishReason === "length") {
+          replyParts.push({ type: "truncated" });
+        }
 
         // Put the reasons back. What came off the wire says only that
         // something went wrong, and that sentence is what the model would

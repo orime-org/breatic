@@ -164,18 +164,6 @@ interface ConversationRuntimeState {
    * is what there is.
    */
   sendingByProject: Record<string, true>;
-  /**
-   * Which conversations are folding memory before they answer.
-   *
-   * A long conversation goes over the budget for what one request may carry,
-   * and the server summarises its oldest part before asking the model
-   * anything. That is a second model call in front of the reply, on a turn
-   * where the panel is empty and the reader is looking at it.
-   *
-   * Kept per conversation rather than on the turn: the panel showing it may
-   * be unmounted when the word arrives (the column collapses, the reader
-   * switches conversations) and mounted again while the same turn runs.
-   */
 }
 
 /**

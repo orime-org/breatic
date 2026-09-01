@@ -324,7 +324,7 @@ export async function consolidateWindow(
       );
     }
 
-    return await memoryService.commitConsolidation({
+    const outcome = await memoryService.commitConsolidation({
       userId,
       conversationId,
       projectId,
@@ -335,6 +335,23 @@ export async function consolidateWindow(
       },
       newWatermark,
     });
+
+    // The one ending here that changes things and would otherwise say nothing:
+    // the studio was charged and turns left the history. Both are reconstructed
+    // from this line when someone asks later where the money or the turns went.
+    logger.info(
+      {
+        userId,
+        conversationId,
+        projectId,
+        watermarkBefore,
+        newWatermark,
+        outcome,
+        tokensUsed: result.usage?.totalTokens ?? 0,
+      },
+      "memory_consolidation_written",
+    );
+    return outcome;
   } catch (err) {
     // The reader leaving is the one ending here that keeps the window: they
     // come back to a conversation that folds it again, and the charge is
@@ -355,8 +372,9 @@ export async function consolidateWindow(
       return "aborted";
     }
 
+    let lost: boolean;
     try {
-      await memoryService.discardConsolidation(conversationId, newWatermark);
+      lost = await memoryService.discardConsolidation(conversationId, newWatermark);
     } catch (discardErr) {
       // The discard is itself a write, and whatever failed above is often the
       // reason this fails too. Both errors go in the line: the one that lost
@@ -367,6 +385,14 @@ export async function consolidateWindow(
       );
       return "untouched";
     }
+
+    // Nothing moved, which means another turn took this same window and
+    // folded it while this one was failing. Its turns are in the memory the
+    // other one wrote, so this ending lost nothing and the line below would
+    // say it had.
+
+
+    if (!lost) return "superseded";
 
     // Written after the discard, so the line that says the window is gone is
     // only there on the path where it went.
