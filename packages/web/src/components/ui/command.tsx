@@ -85,8 +85,13 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof CommandPrimitive.List> & {
+    /** Styles the element that scrolls. Replaces the default height cap. */
+    viewportClassName?: string;
+    /** The scrolling element itself, for a list that pages as it is read. */
+    viewportRef?: React.Ref<HTMLDivElement>;
+  }
+>(({ className, children, viewportClassName, viewportRef, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
     className={cn('overflow-hidden', className)}
@@ -96,7 +101,12 @@ const CommandList = React.forwardRef<
         no layout space, hover changes color only. The height cap moves to
         the Radix viewport (the scroller); cmdk's active-item scrollIntoView
         scrolls the nearest scrollable ancestor, which is that viewport. */}
-    <ScrollArea viewportClassName='max-h-[300px]'>{children}</ScrollArea>
+    <ScrollArea
+      viewportRef={viewportRef}
+      viewportClassName={viewportClassName ?? 'max-h-[300px]'}
+    >
+      {children}
+    </ScrollArea>
   </CommandPrimitive.List>
 ));
 CommandList.displayName = CommandPrimitive.List.displayName;
