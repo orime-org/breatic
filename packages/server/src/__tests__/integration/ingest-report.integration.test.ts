@@ -397,6 +397,43 @@ describe("POST /assets/ingest-report — a completed upload", () => {
   });
 });
 
+// The whole retry chain rests on this. A report answered 2xx tells the Durable
+// Object it is done and its alarm is deleted, so an answer given while the
+// node was never told leaves that node in handling with nothing left to reach
+// it — the alarm that would have tried again is gone.
+describe("POST /assets/ingest-report — an event that could not be published", () => {
+  it("refuses the report so the Durable Object keeps its alarm", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    const res = await report(completed(key));
+    xadd.mockRestore();
+
+    expect(res.status).toBeGreaterThanOrEqual(500);
+  });
+
+  it("finishes on the report that follows", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    await report(completed(key));
+    xadd.mockRestore();
+
+    expect((await report(completed(key))).status).toBe(200);
+
+    const events = await eventsFor(
+      canvasSpaceDocName(seed.projectId, seed.spaceId),
+    );
+    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(1);
+  });
+});
+
 describe("POST /assets/ingest-report — an aborted upload", () => {
   it("voids the grant and tells the node, without registering anything", async () => {
     const seed = await seedEditor();

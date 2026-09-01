@@ -244,3 +244,37 @@ describe("a retry that lost the hash but not the object", () => {
     });
   });
 });
+
+// An upload that keeps moving is never cut off, however large the file: every
+// part pushes the deadline out. Without that push a large upload is judged
+// dead partway through and every part already written is dropped.
+describe("the deadline a part arriving pushes out", () => {
+  it("moves to the window the ticket signed", async () => {
+    expectReport();
+    const { storageKey, uploadId, token } = await uploadedThrough(1);
+    const stub = sessionOf(storageKey);
+    // A deadline nothing would otherwise choose, so what is read back can only
+    // be the one this part set.
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.setAlarm(Date.now() + 1_000);
+    });
+
+    const ctx = createExecutionContext();
+    await worker.fetch(
+      new Request(`https://ingest.example.com/uploads/${uploadId}/parts/2`, {
+        method: "PUT",
+        headers: { "x-upload-token": token },
+        body: new Uint8Array(FINAL_PART_SIZE),
+      }),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+
+    const alarm = await runInDurableObject(stub, (_instance, state) =>
+      state.storage.getAlarm(),
+    );
+    expect(alarm).toBeGreaterThan(Date.now() + 200_000);
+    await runDurableObjectAlarm(stub);
+  });
+});
