@@ -26,6 +26,23 @@ import type { MessageData, MessagePart } from "@breatic/shared";
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
 /**
+ * Whether this use of a tool is one the model is shown.
+ *
+ * A call still running has nothing to report yet, and a call whose arguments
+ * never finished arriving is left out along with its own half: what was
+ * stored is a partial parse, and replaying it puts words in the model's
+ * mouth.
+ *
+ * Exported because compaction counts in the same unit. Counting the ones the
+ * model never sees would spend the configured window on them.
+ * @param part - The tool part to judge.
+ * @returns True when it reaches the model.
+ */
+export function reachesTheModel(part: ToolPart): boolean {
+  return part.status !== "pending" && part.argumentsIncomplete !== true;
+}
+
+/**
  * Render what a tool returned in the typed form the SDK requires.
  *
  * The field is a discriminated union, not a string — `ai@7.0.68` validates it
@@ -137,11 +154,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         continue;
       }
 
-      // A call whose arguments never finished arriving is left out along with
-      // its own half: what was stored is a partial parse, and replaying it
-      // puts words in the model's mouth.
-      if (part.type !== "tool" || part.status === "pending") continue;
-      if (part.argumentsIncomplete === true) continue;
+      if (part.type !== "tool" || !reachesTheModel(part)) continue;
 
       out.push({
         role: "assistant",

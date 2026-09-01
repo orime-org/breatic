@@ -20,6 +20,23 @@
  */
 
 import type { MessageData, MessagePart } from "@breatic/shared";
+import { reachesTheModel } from "@server/agent/model-messages.js";
+
+/** A tool part, once narrowed out of the union. */
+type ToolPart = Extract<MessagePart, { type: "tool" }>;
+
+/**
+ * Whether this part is one the window is counted over.
+ *
+ * The same set the conversion emits: counting a use the model never sees
+ * would spend one of the configured slots on it, and the reader would get
+ * fewer recent results than the number they set.
+ * @param part - A part of a message's content.
+ * @returns True when it is a tool use the model is shown.
+ */
+function counts(part: MessagePart): part is ToolPart {
+  return part.type === "tool" && reachesTheModel(part);
+}
 
 /**
  * What an old tool result reads as once its body is gone.
@@ -29,6 +46,26 @@ import type { MessageData, MessagePart } from "@breatic/shared";
  * its next call on that claim.
  */
 export const DROPPED_TOOL_RESULT = "[earlier tool result omitted from context]";
+
+/**
+ * Replace what one use of a tool gave back.
+ *
+ * Which field that is depends on how the call ended: a call that succeeded is
+ * read off `output`, and one that failed is read off `failure.forModel` —
+ * `toModelMessages` never looks at `output` for a failed call. Replacing only
+ * the first leaves every failed call in the history at full length, and the
+ * text of an invalid-arguments failure quotes back everything the model sent.
+ * @param part - The tool part to shorten.
+ * @returns The same part with its account of itself replaced.
+ */
+function withoutItsResult(part: ToolPart): ToolPart {
+  if (part.status === "error") {
+    return part.failure
+      ? { ...part, failure: { ...part.failure, forModel: DROPPED_TOOL_RESULT } }
+      : part;
+  }
+  return part.output === undefined ? part : { ...part, output: DROPPED_TOOL_RESULT };
+}
 
 /**
  * Compress history for the model by dropping old tool result bodies.
@@ -41,7 +78,7 @@ export function compressForContext(
   toolResultKeep: number,
 ): MessageData[] {
   const totalUses = messages.reduce(
-    (sum, message) => sum + message.parts.filter((p) => p.type === "tool").length,
+    (sum, message) => sum + message.parts.filter(counts).length,
     0,
   );
 
@@ -50,13 +87,12 @@ export function compressForContext(
 
   let seen = 0;
   return messages.map((message) => {
-    if (!message.parts.some((p) => p.type === "tool")) return message;
+    if (!message.parts.some(counts)) return message;
     const parts = message.parts.map((part): MessagePart => {
-      if (part.type !== "tool") return part;
+      if (!counts(part)) return part;
       const isOld = seen < dropBefore;
       seen += 1;
-      if (!isOld || part.output === undefined) return part;
-      return { ...part, output: DROPPED_TOOL_RESULT };
+      return isOld ? withoutItsResult(part) : part;
     });
     return { ...message, parts };
   });

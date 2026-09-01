@@ -122,8 +122,8 @@ export async function foldIfOverBudget(
     ...(who.signal ? { signal: who.signal } : {}),
   });
 
-  // Reassemble for every outcome but a stop. The window is past the watermark
-  // whether its summary was written, discarded, or lost a race to a further
-  // one, so this assembly is holding turns the history no longer has.
-  return outcome !== "aborted";
+  // Reassemble when the watermark moved — written, discarded and superseded
+  // all leave it further along, so this assembly is holding turns the history
+  // no longer has. The two retryable endings leave everything as it was.
+  return outcome !== "aborted" && outcome !== "contended";
 }

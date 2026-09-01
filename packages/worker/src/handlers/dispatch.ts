@@ -1763,6 +1763,10 @@ export async function runSkillAgent(
     messages: [{ role: "user" as const, content: JSON.stringify(params) }],
     tools: agentConfig.tools,
     stopWhen: stepCountIs(getAgentConfig().skill_agent_max_steps),
+    // Per model call, and this job makes up to `skill_agent_max_steps` of
+    // them. The key is named for the call rather than for the caller: chat
+    // and a skill job bound the same thing.
+    maxOutputTokens: getAgentConfig().max_output_tokens,
   });
 
   return [result.text || "Task completed.", [skillName]];

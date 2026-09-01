@@ -25,7 +25,7 @@ import {
   creditLotService,
   resolveProvider,
 } from "@breatic/domain";
-import { getAgentConfig, env, logger } from "@breatic/core";
+import { ConflictError, getAgentConfig, env, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 
@@ -85,8 +85,24 @@ export type ConsolidationOutcome =
   | "discarded"
   /** Another request had already folded further; nothing written. */
   | "superseded"
-  /** The reader left before the model was asked. */
+  /** A version race on the project layer; nothing written, try again next turn. */
+  | "contended"
+  /** The reader left; nothing written. */
   | "aborted";
+
+/**
+ * Whether this is the reader walking away rather than something going wrong.
+ *
+ * The same three names `@ai-sdk/provider-utils` checks in its own
+ * `isAbortError` (`dist/index.js:1219`), read here rather than imported: it
+ * reaches this package only as a transitive dependency.
+ * @param err - What was thrown.
+ * @returns True when the call was cancelled.
+ */
+function isAbort(err: unknown): boolean {
+  if (!(err instanceof Error) && !(err instanceof DOMException)) return false;
+  return err.name === "AbortError" || err.name === "ResponseAborted" || err.name === "TimeoutError";
+}
 
 /** What the consolidating model is asked to produce. */
 interface ConsolidationAnswer {
@@ -252,6 +268,14 @@ export async function consolidateWindow(
       newWatermark,
     });
   } catch (err) {
+    // Two of the three ways this can end are retryable, and discarding on
+    // either would lose turns that are then in neither the history nor the
+    // memory. The reader who left will come back to a conversation that folds
+    // the same window; the version race resolves itself against the newer
+    // row. Only a window that cannot be summarised at all is thrown away.
+    if (isAbort(err)) return "aborted";
+    if (err instanceof ConflictError) return "contended";
+
     logger.error(
       { err, userId, conversationId, watermarkBefore, newWatermark },
       "memory_consolidation_discarded",
@@ -263,14 +287,24 @@ export async function consolidateWindow(
   // Billed whichever way the write went: the model ran and the tokens were
   // spent either way. Two tabs that took the same window derive the same key
   // from the watermark they started at, and the second charge is refused.
-  await bill({
-    userId,
-    conversationId,
-    projectId,
-    watermarkBefore,
-    tokensUsed,
-    model: config.consolidation_model,
-  });
+  try {
+    await bill({
+      userId,
+      conversationId,
+      projectId,
+      watermarkBefore,
+      tokensUsed,
+      model: config.consolidation_model,
+    });
+  } catch (err) {
+    // The memory is written and the watermark has moved. Letting this take
+    // the turn down would fail a reply with nothing wrong with it, over
+    // bookkeeping the reader never sees.
+    logger.error(
+      { err, userId, conversationId, watermarkBefore },
+      "consolidation_charge_failed",
+    );
+  }
 
   return outcome;
 }

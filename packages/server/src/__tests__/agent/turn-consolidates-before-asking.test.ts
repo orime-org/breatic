@@ -141,6 +141,7 @@ function context(history: MessageData[], conversationMemory = "") {
   return {
     memoryContext: { projectMemory: "", conversationMemory },
     compressedHistory: history,
+    watermark: 4,
   };
 }
 
@@ -279,6 +280,9 @@ describe("a turn that measured over the budget", () => {
     };
     expect(asked.conversationId).toBe("c1");
     expect(asked.newWatermark).toBe(2);
+    // Half of the billing key. Read off the assembly rather than looked up
+    // again, so two tabs that took the same window derive the same key.
+    expect(asked.watermarkBefore).toBe(4);
 
     const folded = JSON.stringify(asked.transcript);
     expect(folded).toContain("q1");

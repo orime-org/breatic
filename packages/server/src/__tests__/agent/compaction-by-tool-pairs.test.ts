@@ -195,7 +195,7 @@ describe("compression keeps the last N tool results, whatever turn they are in",
       toolName: "web_fetch",
       input: { url: `https://example.test/${n}` },
       status: "error",
-      failure: { forModel: `${BODY} ${n}`.repeat(500), readerKey: "chat.tool.failed" },
+      failure: { kind: "tool_failed", forModel: `${BODY} ${n}`.repeat(500), readerKey: "chat.tool.failure.upstream" },
     });
     const history = Array.from({ length: 5 }, (_, i) => i + 1).flatMap((t) => [
       msg("user", t, [{ type: "text", text: `question ${t}` }]),
@@ -224,7 +224,7 @@ describe("compression keeps the last N tool results, whatever turn they are in",
       input: { url: "https://example.test/half" },
       status: "error",
       argumentsIncomplete: true,
-      failure: { forModel: "the call never finished", readerKey: "chat.tool.failed" },
+      failure: { kind: "tool_failed", forModel: "the call never finished", readerKey: "chat.tool.failure.upstream" },
     };
     const history = [
       ...Array.from({ length: 4 }, (_, i) => i + 1).flatMap((t) => [
