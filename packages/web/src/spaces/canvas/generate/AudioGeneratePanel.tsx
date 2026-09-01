@@ -145,7 +145,11 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
       {promptSlot ?? (
         <p
           data-testid='generate-audio-legacy'
-          className='px-2.5 py-4 text-sm text-muted-foreground'
+          // Takes the editor's place, so it takes the editor's chrome and
+          // padding too: PromptEditor.tsx:391 for the frame, and the padding
+          // its Radix viewport carries. Without them this row would read as
+          // loose text where every other panel shows a bordered field.
+          className='min-h-[6.5rem] rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-muted-foreground'
         >
           {t('canvas.generatePanel.audioLegacyNoPrompt')}
         </p>

@@ -146,7 +146,7 @@ export const VoicePicker = React.memo(function VoicePicker({
           variant={null}
           size={null}
           data-testid='generate-voice-trigger'
-          className='flex h-8 min-w-0 max-w-[11rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='flex h-8 min-w-0 max-w-[12rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <span className='truncate'>{triggerLabel}</span>
           <ChevronDown
@@ -161,6 +161,9 @@ export const VoicePicker = React.memo(function VoicePicker({
         // Clip rather than flip at a screen edge: a following popover that
         // flipped would fight the follow and jump as the canvas pans (#1788).
         avoidCollisions={false}
+        // 20rem, which is where the model picker's own width tops out. Fixed
+        // rather than auto because the list changes with every keystroke, and
+        // a width that follows its content would jump as the user types.
         className='w-80 p-0'
       >
         <Command shouldFilter={false}>
@@ -182,7 +185,7 @@ export const VoicePicker = React.memo(function VoicePicker({
               {list.status === 'loading' && (
                 <p
                   data-testid='generate-voice-loading'
-                  className='px-3 py-6 text-center text-sm text-muted-foreground'
+                  className='py-6 text-center text-sm text-muted-foreground'
                 >
                   {t('canvas.generatePanel.voiceLoading')}
                 </p>
@@ -190,7 +193,7 @@ export const VoicePicker = React.memo(function VoicePicker({
               {list.status === 'empty' && (
                 <p
                   data-testid='generate-voice-empty'
-                  className='px-3 py-6 text-center text-sm text-muted-foreground'
+                  className='py-6 text-center text-sm text-muted-foreground'
                 >
                   {t('canvas.generatePanel.voiceEmpty')}
                 </p>
@@ -198,7 +201,7 @@ export const VoicePicker = React.memo(function VoicePicker({
               {list.status === 'failed' && (
                 <div
                   data-testid='generate-voice-error'
-                  className='flex flex-col items-center gap-2 px-3 py-6 text-sm text-muted-foreground'
+                  className='flex flex-col items-center gap-2 py-6 text-sm text-muted-foreground'
                 >
                   <span>{t('canvas.generatePanel.voiceError')}</span>
                   <Button
