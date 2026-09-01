@@ -143,7 +143,7 @@ export function NewSpaceDialog({ trigger, tooltip, onCreate }: NewSpaceDialogPro
           <TooltipTrigger asChild>
             <DialogTrigger asChild>{trigger}</DialogTrigger>
           </TooltipTrigger>
-          <TooltipContent side='bottom'>{tooltip}</TooltipContent>
+          <TooltipContent>{tooltip}</TooltipContent>
         </Tooltip>
       ) : (
         <DialogTrigger asChild>{trigger}</DialogTrigger>

@@ -512,7 +512,7 @@ export function SpaceTabBar({
               )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side='bottom'>
+          <TooltipContent>
             {agentOpen
               ? t('chrome.tooltip.agentHide')
               : t('chrome.tooltip.agentShow')}
@@ -634,7 +634,7 @@ export function SpaceTabBar({
             <LocateFixed className='h-3.5 w-3.5' />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side='bottom'>
+        <TooltipContent>
           {t('chrome.tooltip.revealActiveTab')}
         </TooltipContent>
       </Tooltip>

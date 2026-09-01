@@ -153,7 +153,7 @@ export function SpaceDrawer({
             </Button>
           </SheetTrigger>
         </TooltipTrigger>
-        <TooltipContent side='bottom'>
+        <TooltipContent>
           {t('chrome.tooltip.allSpaces')}
         </TooltipContent>
       </Tooltip>
