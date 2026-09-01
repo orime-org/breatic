@@ -124,28 +124,50 @@ export interface UploadContext {
 }
 
 /**
- * Why an upload ended in `onFailure` — the caller picks the message from this.
- * `hash` means the browser could not fingerprint the file (worker/WASM/read
+ * Why an upload ended in `onFailure` — the caller picks the message from this,
+ * and whether the node's own failure is the browser's to write.
+ *
+ * The ticket is the dividing line (design §5.5). Before it there is no grant,
+ * so nothing on the server knows this upload was attempted and nobody will
+ * ever announce how it ended: the browser owns the outcome. After it a Durable
+ * Object holds an alarm on this upload and reports whichever way it ends, so
+ * the node's state is the server's — writing a failure over it would fence out
+ * the announcement that is still coming.
+ *
+ * `hash` — the browser could not fingerprint the file (worker / WASM / read
  * failure), which no retry of the SAME page fixes: the fix is a reload.
- * `storage` means the studio's account is out of room (#89), which no retry
- * fixes either — but for the opposite reason: nothing is broken, there is
- * simply nowhere to put the bytes until the admin acts.
- * `upload` is everything else (the knobs, the ticket, the parts), which a retry
- * can fix.
+ * `storage` — the studio's account is out of room (#89), which no retry fixes
+ * either, for the opposite reason: nothing is broken, there is simply nowhere
+ * to put the bytes until the admin acts.
+ * `ticket` — the knobs or the ticket request failed. A retry can fix it.
+ * `transfer` — the parts or the completion failed, past the ticket.
  */
-export type UploadFailureReason = 'hash' | 'storage' | 'upload';
+export type UploadFailureReason = 'hash' | 'storage' | 'ticket' | 'transfer';
 
 /**
- * Say which failure this was.
+ * Whether the browser writes this failure onto the node itself.
  *
- * A 507 answer means the account is out of room; anything else is a transient
- * failure as far as the user is concerned. Hashing is not read off an error at
- * all — it is refused before anything is sent.
+ * True only for the reasons that arise before a ticket exists. Past that point
+ * the node is left in handling and the server announces the outcome — which it
+ * does whether the browser is still there or not.
+ * @param reason - Why the upload ended.
+ * @returns True when the caller writes the node's failure.
+ */
+export function browserOwnsFailure(reason: UploadFailureReason): boolean {
+  return reason !== 'transfer';
+}
+
+/**
+ * Say which failure a ticket request ended in.
+ *
+ * A 507 answer means the account is out of room; anything else is transient as
+ * far as the user is concerned. Hashing is not read off an error at all — it is
+ * refused before anything is sent.
  * @param err - The rejection value.
  * @returns The failure reason to report.
  */
-function failureReasonOf(err: unknown): UploadFailureReason {
-  return isStorageFull(err) ? 'storage' : 'upload';
+function ticketFailureOf(err: unknown): UploadFailureReason {
+  return isStorageFull(err) ? 'storage' : 'ticket';
 }
 
 /**
@@ -241,15 +263,17 @@ export async function runMediaUpload(
   context: UploadContext,
   deps: MediaUploadDeps,
 ): Promise<void> {
+  let cfg: UploadClientConfig;
+  let answer: UploadTicketResponse;
   try {
-    const cfg = await deps.getUploadConfig();
+    cfg = await deps.getUploadConfig();
     const hash = await deps.hashFile(file);
     if (hash === null) {
       // Refused up front: nothing asked for, nothing sent, no bandwidth burnt.
       deps.onFailure('hash');
       return;
     }
-    const answer = await retryTransient(
+    answer = await retryTransient(
       () =>
         deps.requestTicket({
           filename: file.name,
@@ -270,16 +294,25 @@ export async function runMediaUpload(
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );
-    if (isAlreadyStored(answer)) {
-      // Nothing moves. The server has already written the node's history and
-      // published what ends its handling.
-      deps.onSuccess(answer.fileUrl);
-      return;
-    }
+  } catch (err) {
+    deps.onFailure(ticketFailureOf(err));
+    return;
+  }
+
+  if (isAlreadyStored(answer)) {
+    // Nothing moves. The server has already written the node's history and
+    // published what ends its handling.
+    deps.onSuccess(answer.fileUrl);
+    return;
+  }
+
+  // From here the grant exists, so the outcome is announced whether or not
+  // this browser is still listening.
+  try {
     const outcome = await deps.sendToIngest(file, answer, cfg);
     deps.onSuccess(outcome.fileUrl);
-  } catch (err) {
-    deps.onFailure(failureReasonOf(err));
+  } catch {
+    deps.onFailure('transfer');
   }
 }
 

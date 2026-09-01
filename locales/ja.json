@@ -400,7 +400,8 @@
       "tooLarge": "{filename} はアップロードサイズの上限を超えています。",
       "empty": "{filename} は空のファイルです。追加できる内容がありません。",
       "hashUnavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
-      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。"
+      "storageFull": "Studio のストレージがいっぱいです。アップロードできません。",
+      "transferInterrupted": "アップロードが中断されました。結果はまもなく表示されます。"
     },
     "minimap": {
       "label": "キャンバスのミニマップ"

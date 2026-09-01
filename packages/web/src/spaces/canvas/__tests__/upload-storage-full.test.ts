@@ -81,7 +81,7 @@ describe('507 被认成 storage 而不是普通上传失败', () => {
     expect(onFailure).toHaveBeenCalledExactlyOnceWith('storage');
   });
 
-  it('其他失败仍然是 upload，没有被 507 那一支吞掉', async () => {
+  it('leaves an ordinary ticket failure outside the 507 branch', async () => {
     const onFailure = vi.fn();
     await runMediaUpload(pngFile(), { projectId: 'p1', leaseGen: 0 }, {
       ...refusingDeps(onFailure),
@@ -93,7 +93,7 @@ describe('507 被认成 storage 而不是普通上传失败', () => {
         });
       },
     } as unknown as MediaUploadDeps);
-    expect(onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
   });
 });
 

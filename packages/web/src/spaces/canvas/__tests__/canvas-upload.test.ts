@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
 import {
+  browserOwnsFailure,
   isReportableAssetUrl,
   fileToNodeSpec,
   checkFileAdmission,
@@ -160,6 +161,23 @@ function makeUploadDeps(
   };
 }
 
+// The dividing line design §5.5 draws. Before a ticket exists no grant does
+// either, so nothing on the server will ever announce this upload's outcome
+// and the browser has to write it. Past the ticket a Durable Object holds an
+// alarm on the upload and reports either way — and a failure written here
+// clears `handlingBy`, which fences out the announcement still coming.
+describe('browserOwnsFailure — who writes the node when an upload ends badly', () => {
+  it('gives the browser every failure that happens before a ticket exists', () => {
+    expect(browserOwnsFailure('hash')).toBe(true);
+    expect(browserOwnsFailure('storage')).toBe(true);
+    expect(browserOwnsFailure('ticket')).toBe(true);
+  });
+
+  it('leaves a failure past the ticket to the server', () => {
+    expect(browserOwnsFailure('transfer')).toBe(false);
+  });
+});
+
 describe('runMediaUpload — ask for a ticket, send the bytes, hand back the outcome', () => {
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
   const context = { projectId: 'p1', leaseGen: 6, nodeId: 'n1', spaceId: 's1' };
@@ -235,6 +253,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onSuccess).toHaveBeenCalledOnce();
   });
 
+  // No ticket means no grant, so nothing on the server knows this upload was
+  // ever attempted and nobody will announce how it ended.
   it('sends nothing when the ticket request finally fails', async () => {
     const deps = makeUploadDeps({
       requestTicket: vi.fn().mockRejectedValue(apiError(503)),
@@ -243,10 +263,14 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
   });
 
-  it('reports a failure when the bytes do not get through', async () => {
+  // Past the ticket the outcome is the server's to announce: the Durable
+  // Object holds an alarm on this upload and reports whichever way it ends.
+  // Told apart from a ticket failure because the caller must not write the
+  // node's own failure over an outcome that is still coming (design §5.5).
+  it('names a failure past the ticket apart from one before it', async () => {
     const deps = makeUploadDeps({
       sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
     });
@@ -254,7 +278,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('transfer');
   });
 
   // A full account is not something a retry fixes, and the message the user
@@ -277,7 +301,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
   });
 
   // A crop is a byproduct with no node: registered for dedup, and told apart
@@ -394,9 +418,10 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     const file = new File(['x'], 'bad.png', { type: 'image/png' });
     await fillNodeFromFile('n1', file, 'image', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();
-    // 节点上那句固定英文由出口那一处写，这里只钉「原因交对了」。
+    // The fixed English sentence on the node is written by the one exit that
+    // owns it; this pins only that the reason was handed over.
     expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
-      'upload',
+      'ticket',
       'n1',
       file,
       LEASE,
