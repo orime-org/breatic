@@ -55,6 +55,25 @@ function readApiKey(envVarName: string): string {
 }
 
 /**
+ * Build the credential string a provider's transport reads.
+ *
+ * A vendor that authenticates with a key pair gets both halves joined by a
+ * colon, which is the shape its transport splits on. Half a pair counts as no
+ * credential at all: a token signed with an empty secret is one the vendor
+ * rejects, so a half-configured deployment would look configured and fail
+ * every request rather than falling through to the next provider.
+ * @param connection - The provider's entry from providers.yaml.
+ * @returns The credential, or an empty string when the provider is unconfigured.
+ */
+function readCredential(connection: ProviderConnectionConfig): string {
+  const key = readApiKey(connection.api_key_env ?? "");
+  if (!connection.api_secret_env) return key;
+
+  const secret = readApiKey(connection.api_secret_env);
+  return key && secret ? `${key}:${secret}` : "";
+}
+
+/**
  * Resolve a model to the provider this deployment will actually call.
  * @param modality - The modality directory the model lives in.
  * @param modelName - The model's catalog name.
@@ -78,7 +97,7 @@ export function resolveActiveProvider(
 
   for (const entry of byPriority) {
     const connection: ProviderConnectionConfig = config.providers[entry.name] ?? {};
-    const apiKey = readApiKey(connection.api_key_env ?? "");
+    const apiKey = readCredential(connection);
     if (!apiKey) continue;
 
     return {

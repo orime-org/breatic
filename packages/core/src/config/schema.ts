@@ -241,6 +241,7 @@ export const coreConfigSchema = z.object({
   // GOOGLE_API_KEY above, which the image and video catalogs name for Google's
   // `google` provider (Imagen / Veo).
   GEMINI_API_KEY: z.string().default(""),
+  DEEPSEEK_API_KEY: z.string().default(""),
   WAVESPEED_API_KEY: z.string().default(""),
   DASHSCOPE_API_KEY: z.string().default(""),
   BYTEPLUS_API_KEY: z.string().default(""),

@@ -88,6 +88,33 @@ describe("resolveActiveProvider (#1960)", () => {
     );
   });
 
+  // KlingAI signs a JWT per request: the access key becomes the `iss` claim
+  // and the secret key signs it (https://kling.ai/document-api/apiReference/commonInfo).
+  // The worker's transport takes both halves as one `access:secret` string,
+  // so resolution is where the two configured vars come together.
+  it("joins a provider's two credentials the way its transport reads them", () => {
+    deployWith({
+      KLINGAI_ACCESS_KEY: "kling-access",
+      KLINGAI_SECRET_KEY: "kling-secret",
+    });
+    const resolved = resolveActiveProvider("video", "kling-o3-pro");
+    expect(resolved.providerName).toBe("klingai");
+    expect(resolved.apiKey).toBe("kling-access:kling-secret");
+  });
+
+  // Half a credential is not a credential: signing with an empty secret
+  // produces a token the vendor rejects, so the deployment would look
+  // configured and fail on every request instead of falling through.
+  it("treats a two-credential provider with only one half as unconfigured", () => {
+    deployWith({
+      KLINGAI_ACCESS_KEY: "kling-access",
+      WAVESPEED_API_KEY: "ws-key",
+    });
+    expect(resolveActiveProvider("video", "kling-o3-pro").providerName).not.toBe(
+      "klingai",
+    );
+  });
+
   it("refuses when the model is not in the catalog", () => {
     deployWith({ FISH_API_KEY: "fish-key" });
     expect(() => resolveActiveProvider("tts", "no-such-model")).toThrow(
