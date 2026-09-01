@@ -28,7 +28,7 @@ import { partDeadlineMs } from '@breatic/shared';
 export interface UploadClientConfig {
   /** Hard upload cap in bytes (pre-checked on selection; server 413s). */
   maxUploadBytes: number;
-  /** Presign attempts including the first; the PUT's count lives in the transport. */
+  /** Ticket attempts including the first; a part's count lives in the transport. */
   clientMaxAttempts: number;
   /** Base backoff (ms) between ticket attempts; full jitter on base * 2^attemptIndex. */
   clientRetryBaseDelayMs: number;

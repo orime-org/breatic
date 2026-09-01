@@ -49,7 +49,7 @@ function loadConfig(): z.infer<typeof rateLimitsConfigSchema> {
  * Resolve one action's rate limit. Throws (fail-loud) when the action
  * is absent — a missing entry must not silently disable a throttle.
  * @param action - The throttle action name (matches the yaml key + the
- *   Redis prefix, e.g. `login` / `presign` / `asset-report`).
+ *   Redis prefix, e.g. `login` / `upload-ticket` / `asset-report`).
  * @returns `{ max, windowSeconds }` for the action.
  * @throws {Error} when the action has no config entry.
  */

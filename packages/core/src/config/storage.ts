@@ -4,8 +4,8 @@
 /**
  * Storage YAML configuration loader.
  *
- * Reads `config/storage.yaml`: the browser-side upload knobs and presign
- * window, and the studio-avatar byte cap.
+ * Reads `config/storage.yaml`: the browser-side upload knobs, the figures
+ * the ingest Worker runs on, and the studio-avatar byte cap.
  */
 
 import { readFileSync } from "node:fs";
@@ -60,15 +60,15 @@ export const storageConfigSchema = z
   .object({
   upload: z
     .object({
-      /** Hard upload cap in bytes; presign rejects larger files (413). */
+      /** Hard upload cap in bytes; the ticket endpoint rejects larger files (413). */
       max_upload_bytes: z.number().int().positive().default(2147483648),
-      /** Browser PRESIGN attempts including the first. The PUT is retried by the shared HTTP transport, which compiles its own count. */
+      /** Browser TICKET attempts including the first. A part is retried by the shared HTTP transport, which compiles its own count. */
       client_max_attempts: z.number().int().positive().default(3),
-      /** Base backoff (ms) between browser PRESIGN retry attempts. */
+      /** Base backoff (ms) between browser TICKET retry attempts. */
       client_retry_base_delay_ms: z.number().int().min(0).default(1000),
-      /** Floor for the PUT stall guard. Despite the name it does not time any API request: presign is timed by the axios client. */
+      /** Floor for the part stall guard. Despite the name it does not time any API request: the ticket is timed by the axios client. */
       client_request_timeout_ms: z.number().int().positive().default(30000),
-      /** PUT stall guard rate: per-attempt timeout = max(floor, size/rate). */
+      /** Part stall guard rate: per-attempt timeout = max(floor, size/rate). */
       client_put_min_bytes_per_sec: z.number().int().positive().default(65536),
     })
     .prefault({})
@@ -149,7 +149,7 @@ export const storageConfigSchema = z
     .object({
       /**
        * Hard cap on an avatar upload, in bytes. Unlike a project asset, an
-       * avatar arrives THROUGH the server (no presigned direct upload), so
+       * avatar arrives THROUGH the server (it never goes near the Worker), so
        * this bound is also the bound on what the process buffers for one
        * request — and it is the only thing the server measures about the
        * picture, which is not the same as the only thing it checks: the bytes

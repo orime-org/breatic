@@ -1945,16 +1945,19 @@ export const studioAssets = pgTable(
 
 // The anti-spoof authority (#1826, design §2.2 / §3.2) that REPLACES the
 // prefix-based isOwnedKey once storage keys drop their {userId}/{projectId}/
-// prefix. /presign writes one grant row per issued storage key K (user +
-// owner studio + declared content_hash + K); the upload endpoints re-check
-// it — /local-upload finds a LIVE (not-consumed) grant to gate the disk
-// write WITHOUT consuming (a local upload is a two-hop PUT-then-report on
-// ONE grant), /uploaded finds + INSERTs studio_assets + marks consumed
+// prefix. /upload-ticket writes one grant row per issued storage key K (user +
+// owner studio + declared content_hash + K) and signs a ticket naming that
+// same key; the endpoints that finish an upload re-check it —
+// /local-upload finds a LIVE (not-consumed) grant to gate the disk write
+// WITHOUT consuming (a local upload is a two-hop PUT-then-report on ONE
+// grant), /ingest-report finds + INSERTs studio_assets + marks consumed
 // exactly once (anti-replay).
 //
-// No expires_at (design v11): the check is ownership + not-consumed only, no
-// upload time limit (local uploads take as long as they take; cloud presigned
-// PUT-URL expiry is the provider's own PUT window, unrelated to this table).
+// Everything the report's consequences are decided from is READ off this row
+// rather than off what the Worker says: the owner studio, the node the bytes
+// land on, and the fencing gen. The Worker knows only what the ticket told it
+// and can prove none of it (#173, design §3.3).
+//
 // No deleted_at: a short-lived anti-spoof credential, not a project-scoped
 // audit row — bound to (user, studio), never to a project, physically
 // reclaimed by an OFFLINE GC sweep (design §7), like an outbox. No
@@ -1963,24 +1966,25 @@ export const uploadGrants = pgTable(
   "upload_grants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    /** The user who requested the presign. */
+    /** The user the ticket was issued to. */
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** The owner studio resolved server-side at presign (resolveOwnerStudioId). */
+    /** The owner studio resolved server-side at ticket time (resolveOwnerStudioId). */
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     /** The tenant-neutral storage key K the server minted (issued at most once). */
     storageKey: text("storage_key").notNull(),
     /**
-     * Client-declared byte size — a presign-time UX pre-check + downstream
-     * quota-reservation hint ONLY; the authoritative upload-cap gate reads the
-     * stored object's real size at /uploaded (design §4.2), never this.
+     * Client-declared byte size — a ticket-time UX pre-check + downstream
+     * quota-reservation hint ONLY; the authoritative upload-cap gate reads what
+     * the Worker measured as it wrote, off the report (design §4.2), never
+     * this.
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by /uploaded AFTER its
+     * Anti-replay marker — set exactly once by /ingest-report AFTER its
      * studio_assets INSERT. Null while unconsumed. /local-upload never sets it
      * (write-time gate only). A consumed grant no longer resolves as live.
      */

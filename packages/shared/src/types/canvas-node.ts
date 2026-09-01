@@ -73,8 +73,8 @@ export function canGenerate(type: NodeType): boolean {
  * `type` (added 2026-05-11, ADR `2026-05-11-mini-tool-state-machine.md`)
  * names the driver responsible for advancing the node out of `handling`:
  *
- *   - `frontend` — the user's own browser is running the op (e.g. a
- *     presigned upload straight to object storage). The browser writes
+ *   - `frontend` — the user's own browser is running the op (e.g. an
+ *     upload streaming its parts to the ingest Worker). The browser writes
  *     back `state: 'idle'` on success / failure itself (`setNodeError`);
  *     if it hard-crashes, the collab lease sweeper (below) reclaims the
  *     node after the budget.
@@ -84,8 +84,9 @@ export function canGenerate(type: NodeType): boolean {
  *
  * Collab's `onDisconnect` no longer reclaims handling for EITHER driver
  * (#1580 slice 4, Option A). A disconnect is not reliable evidence the
- * work died — a presigned upload is invisible to collab and outlives the
- * WebSocket, so reclaiming on disconnect false-reclaims live uploads. The
+ * work died — an upload to the ingest Worker is invisible to collab and
+ * outlives the WebSocket, so reclaiming on disconnect false-reclaims live
+ * uploads. The
  * lease sweeper is the single, guaranteed backstop.
  *
  * READ-TIME SKIP INVARIANT (#1580 #5, single-writer): collab is the ONLY
