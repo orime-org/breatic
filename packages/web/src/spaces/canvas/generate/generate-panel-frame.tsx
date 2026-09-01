@@ -21,8 +21,13 @@ import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  modelsForModality,
+  type GenerateModality,
+} from '@web/spaces/canvas/generate/modality-buckets';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 
 /** The panel kinds this frame serves — the node-anchored generate panels. */
 type GeneratePanelKind = 'generate' | 'generateVideo';
@@ -52,9 +57,6 @@ export function useOpenPanelNode(
   return nodeGone ? null : nodeId;
 }
 
-/** The modalities that have a node-anchored generate panel. */
-type GenerateModality = 'image' | 'video';
-
 /**
  * The modes each panel offers, before availability narrows them (#1951).
  *
@@ -68,6 +70,7 @@ const MODE_OPTIONS_BY_MODALITY: Record<
 > = {
   image: IMAGE_MODE_OPTIONS,
   video: VIDEO_MODE_OPTIONS,
+  audio: AUDIO_MODE_OPTIONS,
 };
 
 interface CatalogGatedFrameProps {
@@ -154,7 +157,7 @@ export function CatalogGatedFrame({
   // they never read the catalog.)
   const noServableMode =
     data !== undefined &&
-    filterAvailableModes(MODE_OPTIONS_BY_MODALITY[modality], data[modality])
+    filterAvailableModes(MODE_OPTIONS_BY_MODALITY[modality], modelsForModality(data, modality))
       .length === 0;
   React.useEffect(() => {
     // A fixed toast id de-duplicates the StrictMode double-effect and rapid

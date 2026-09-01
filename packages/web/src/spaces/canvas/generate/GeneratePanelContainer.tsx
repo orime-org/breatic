@@ -41,6 +41,7 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import {
   imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
@@ -165,7 +166,7 @@ function GeneratePanelBody({
   // Once resolved, modelsApi.list() has run the response through
   // sanitizeModelCatalog, so catalog.image is a guaranteed ModelEntry[] — no
   // per-field guarding needed here.
-  const models = React.useMemo(() => catalog?.image ?? [], [catalog]);
+  const models = React.useMemo(() => modelsForModality(catalog, 'image'), [catalog]);
 
   // Two mirrors of each execute-critical value. The ref is read SYNCHRONOUSLY
   // in onExecute so a rapid re-click or a collaborator's keystroke that React

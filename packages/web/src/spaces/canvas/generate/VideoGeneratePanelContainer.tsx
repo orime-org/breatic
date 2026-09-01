@@ -60,6 +60,7 @@ import {
   VIDEO_MODE_OPTIONS,
   modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
+import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import {
   VIDEO_SLOTS,
   slotForPurpose,
@@ -156,7 +157,7 @@ function VideoGeneratePanelBody({
   // `CatalogGatedFrame`, which withholds it until the query has data. Once
   // resolved, modelsApi.list() has run the response through
   // sanitizeModelCatalog, so catalog.video is a guaranteed ModelEntry[].
-  const models = React.useMemo(() => catalog?.video ?? [], [catalog]);
+  const models = React.useMemo(() => modelsForModality(catalog, 'video'), [catalog]);
 
   // Two mirrors of the prompt: state drives the button's enabled look (a frame
   // of lag is fine there); the ref is read SYNCHRONOUSLY in onExecute so a
