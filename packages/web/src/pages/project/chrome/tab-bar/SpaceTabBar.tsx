@@ -572,7 +572,7 @@ export function SpaceTabBar({
             role='tablist'
             aria-label={t('chrome.aria.openSpaces')}
             className='flex w-max items-center'
-            style={{ gap: 'var(--space-1)', padding: '0 var(--space-2)' }}
+            style={{ gap: 'var(--space-3)', padding: '0 var(--space-2)' }}
           >
             <SortableContext
               items={tabIds}

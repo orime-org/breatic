@@ -217,11 +217,13 @@ export function SpaceTab({
         // moves, saying whether the keyboard belongs here (#168). Hover
         // reaches for that same brightness, so it follows the region too:
         // with the agent column active a hovered tab brighter than the
-        // current one would read as the current one.
+        // current one would read as the current one. Which is why the current
+        // tab sits one step past hover: landing on the same fill leaves a
+        // hovered neighbour and the current tab looking alike.
         active
           ? spaceRegionActive
-            ? 'bg-accent text-foreground'
-            : 'bg-accent text-muted-foreground'
+            ? 'bg-accent-strong text-foreground'
+            : 'bg-accent-strong text-muted-foreground'
           : spaceRegionActive
             ? 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
             : 'bg-transparent text-muted-foreground hover:bg-accent',
@@ -241,6 +243,10 @@ export function SpaceTab({
         transition,
         // Above the tabs it slides past, so it stays whole while it travels.
         zIndex: isDragging ? 1 : undefined,
+        // Lifted off the strip while it travels: the tabs it passes over stay
+        // readable through it, and the tab under the pointer reads as the one
+        // being carried rather than one more tab sitting in the row.
+        opacity: isDragging ? 0.55 : undefined,
       }}
     >
       <Icon
@@ -320,7 +326,7 @@ export function SpaceTab({
             }
           }}
           data-testid={`space-tab-close-${id}`}
-          className='ml-[2px] inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-chrome text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+          className='ml-0 inline-flex h-4 w-0 shrink-0 items-center justify-center overflow-hidden rounded-chrome text-muted-foreground opacity-0 transition-[width,margin,opacity] hover:bg-accent hover:text-foreground focus-visible:ml-[2px] focus-visible:w-4 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:ml-[2px] group-hover:w-4 group-hover:opacity-100'
         >
           <X style={{ width: 12, height: 12 }} />
         </span>
