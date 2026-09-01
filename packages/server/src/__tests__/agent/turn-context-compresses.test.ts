@@ -88,20 +88,27 @@ describe("what the assembly hands the turn", () => {
     // memory that is at least as new as the watermark, so the worst case is
     // an overlap — those turns in both — which costs context and loses
     // nothing.
+    // Recorded at three moments, so what is pinned is the watermark read
+    // having *finished* before the memory read starts. Recording only which
+    // call was made first would pass on two reads issued together, and two
+    // reads issued together are the gap: the fold in the other tab can commit
+    // between them just as it can between two sequential ones.
     const { conversationService, memoryService } = await import("@server/modules");
     const order: string[] = [];
     vi.mocked(conversationService.getConversation).mockImplementationOnce(async () => {
-      order.push("watermark");
+      order.push("watermark:start");
+      await Promise.resolve();
+      order.push("watermark:done");
       return { id: "c1", lastConsolidatedTurn: 0 } as never;
     });
     vi.mocked(memoryService.buildContext).mockImplementationOnce(async () => {
-      order.push("memory");
+      order.push("memory:start");
       return { projectMemory: "", conversationMemory: "" };
     });
 
     const { buildTurnContext } = await import("@server/agent/turn-context.js");
     await buildTurnContext("u1", "c1", "p1", 7);
 
-    expect(order).toEqual(["watermark", "memory"]);
+    expect(order).toEqual(["watermark:start", "watermark:done", "memory:start"]);
   });
 });

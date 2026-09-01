@@ -99,7 +99,15 @@ export async function foldIfOverBudget(
     assembled,
     turns: costPerTurn(assembly.history),
     budget: config.memory_budget_chars,
-    keep: config.memory_keep_chars,
+    // The keep line, less the room the fold is about to take. What was
+    // measured above carries the memory as it stood — on a first fold, no
+    // memory sections at all — and the assembly that goes out carries what
+    // the fold wrote. Both layers are bounded, so the growth is bounded, and
+    // reserving the whole of it is what makes the line hold on the request
+    // that is actually sent.
+    keep:
+      config.memory_keep_chars -
+      (config.memory_conversation_max_size + config.memory_project_max_size),
   });
   if (plan.newWatermark === null) return false;
 

@@ -9,7 +9,8 @@
 -- with a unique index on `user_id`, which is what the next person adding a
 -- memory read would find. The rows they hold were written during development.
 --
--- Entries first: it is the one holding a foreign key.
+-- Neither points at the other, so the order is free; entries first reads the
+-- way the pair was created.
 
 DROP TABLE IF EXISTS "user_memory_entries";--> statement-breakpoint
 DROP TABLE IF EXISTS "user_memories";

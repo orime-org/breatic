@@ -39,16 +39,16 @@ export async function buildContext(
   projectId: string,
 ): Promise<MemoryContext> {
   const config = getAgentConfig();
+  // Together: neither read is an input to the other, and this sits on the
+  // path of every turn, in front of a reader waiting for the first word.
+  const [projectMemory, conversationMemory] = await Promise.all([
+    memoryRepo.getProjectMemory(userId, projectId),
+    memoryRepo.getConversationMemory(conversationId),
+  ]);
 
   return {
-    projectMemory: truncate(
-      await memoryRepo.getProjectMemory(userId, projectId),
-      config.memory_project_max_size,
-    ),
-    conversationMemory: truncate(
-      await memoryRepo.getConversationMemory(conversationId),
-      config.memory_conversation_max_size,
-    ),
+    projectMemory: truncate(projectMemory, config.memory_project_max_size),
+    conversationMemory: truncate(conversationMemory, config.memory_conversation_max_size),
   };
 }
 
@@ -94,11 +94,11 @@ export async function commitConsolidation(
 ): Promise<"written" | "superseded"> {
   const { userId, conversationId, projectId, data, newWatermark } = commit;
   const config = getAgentConfig();
-  // Cut here, where the row is made, rather than on the way out. A model
-  // answering longer than it was asked to is the ordinary case — the ceiling
-  // reaches it as a line in a prompt — and a row over the ceiling is read
-  // back in full by the next fold, which is the one reader that does not go
-  // through `buildContext`.
+  // Cut where the row is made, so the row itself is within the ceiling. A
+  // model answering longer than it was asked to is the ordinary case: the
+  // ceiling reaches it as a line in a prompt and nothing else. Storing the
+  // overflow would mean paying to write characters that the read side then
+  // cuts off on every single read, for as long as the row lives.
   const conversationUpdate = truncate(
     data.conversationUpdate,
     config.memory_conversation_max_size,
@@ -157,6 +157,12 @@ export async function discardConsolidation(
  * @returns The original string if within the limit, otherwise the first `maxLength` characters.
  */
 function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength);
+  // Counted and cut in code points. A code-unit cut lands between the halves
+  // of a surrogate pair — every emoji is one, and a model summarising in the
+  // reader's language reaches for them — and half a pair is stored, and read
+  // back, as the replacement character, in every prompt this memory is put
+  // into from then on. `conversation.service.ts` states the same for titles.
+  const characters = [...text];
+  if (characters.length <= maxLength) return text;
+  return characters.slice(0, maxLength).join("");
 }

@@ -247,7 +247,7 @@ export async function findMostRecentlyUsed(
  *
  * Reference-only children (FK `onDelete: set null`) are deliberately
  * NOT touched — the row does not belong to the conversation:
- *   - `user_memory_entries.source_conversation_id` belongs to the user
+ *   - `project_memory_entries.source_conversation_id` belongs to the member
  *   - `project_memory_entries.source_conversation_id` belongs to the project
  * Both keep their link as a historical breadcrumb; list queries that
  * join `conversations WHERE deleted_at IS NULL` filter deleted sources

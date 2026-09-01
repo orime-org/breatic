@@ -85,6 +85,9 @@ describe("the figures on the path from pressing send to the first frame", () => 
       expect(agentConfigSchemaForTests.safeParse({ message_page_size: bad }).success).toBe(
         false,
       );
+      expect(
+        agentConfigSchemaForTests.safeParse({ sse_heartbeat_interval_ms: bad }).success,
+      ).toBe(false);
     }
   });
 });

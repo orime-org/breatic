@@ -20,6 +20,7 @@ import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
+import { skillCommandText } from "@server/agent/skill-command.js";
 import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
@@ -39,6 +40,7 @@ import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
  * URLs and key hints, and ours carry file paths.
  */
 const FAILED_TEXT = "The assistant could not finish this turn.";
+
 
 /**
  * Main Agent for streaming chat interactions.
@@ -91,7 +93,7 @@ export class MainAgent {
     // before a message was saved or a stream opened. Asking again would be a
     // second answer to a settled question, which is how the two entry points
     // drifted apart in the first place.
-    return this.runTurn(`/skill ${skillName} ${userInput}`, signal, skillName);
+    return this.runTurn(skillCommandText(skillName, userInput), signal, skillName);
   }
 
   /**

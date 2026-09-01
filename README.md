@@ -74,17 +74,18 @@ User Chat → MainAgent (AI SDK streamText) → TaskPlan → BullMQ → Worker
                                                         Yjs sync → all connected clients
 ```
 
-### Three-Layer Memory
+### Two-Layer Memory
 
 | Layer | Scope | Storage |
 |-------|-------|---------|
-| User Memory | Cross-project preferences | `user_memories` table |
-| Project Memory | Shared among collaborators | `project_memories` table |
+| Project Memory | One row per member per project | `project_memories` table |
 | Conversation Memory | Per-conversation context | `conversation_memories` table |
 
-Memory is automatically consolidated by the LLM when the conversation exceeds `memory_window` **turns** (default 20). Each consolidation **rewrites** the full memory content (not append), keeping it concise.
+Both layers are the member's own: a project row is keyed by `(user_id, project_id)`, so what one member's agent summarised is never handed to another's prompt.
 
-**Turn-based context management**: Each message carries a `turnIndex` (increments on every user message). When building LLM context, the last `full_detail_turns` (default 3) turns keep full step detail (tool calls + results); older turns are compressed to user message + assistant final reply only. Model `thinking` content is stored for debugging but never sent back to the LLM.
+Memory is consolidated by the LLM in front of the reply, on a turn whose assembled request measures past `memory_budget_chars` (default 850,000). The oldest turns are taken until what remains is under `memory_keep_chars` (default 500,000), and each consolidation **rewrites** the full memory content (not append), bounded by `memory_conversation_max_size`.
+
+**Turn-based context management**: Each message carries a `turnIndex` (increments on every user message). When building LLM context, tool results older than the last `tool_result_keep` (default 3) tool uses are replaced with a placeholder; the calls themselves, assistant text and user prose are kept. Model `thinking` content is stored for debugging but never sent back to the LLM.
 
 ### Agent & Skill System
 

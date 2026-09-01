@@ -163,6 +163,37 @@ describe("a consolidation that lands", () => {
     expect(context.conversationMemory).toHaveLength(ceiling);
   });
 
+  it("cuts between characters, so half of one is never what gets stored", async () => {
+    // A model writing a summary in the reader's language reaches for emoji,
+    // and an emoji is two UTF-16 code units. Cutting by code unit lands
+    // between them, and half a pair is stored — and read back — as the
+    // replacement character, in every prompt that memory is injected into
+    // from then on. `conversation.service.ts` states the same for titles.
+    const { userId, projectId, conversationId } = await seed();
+    const { getAgentConfig } = await import("@breatic/core");
+    const ceiling = getAgentConfig().memory_conversation_max_size;
+    // The ceiling falls exactly between the two halves of the last emoji.
+    const answer = `${"x".repeat(ceiling - 1)}🎬🎬`;
+
+    await memoryService.commitConsolidation({
+      userId,
+      conversationId,
+      projectId,
+      data: { conversationUpdate: answer, historyEntry: "wrote an emoji" },
+      newWatermark: 14,
+    });
+
+    const [stored] = await sql<{ content: string }[]>`
+      SELECT content FROM conversation_memories WHERE conversation_id = ${conversationId}
+    `;
+
+    expect(stored?.content).not.toContain("�");
+    expect([...(stored?.content ?? "")].length).toBeLessThanOrEqual(ceiling);
+    // The ceiling falls after the first emoji, so it is stored whole and the
+    // second is gone entirely.
+    expect(stored?.content.endsWith("🎬")).toBe(true);
+  });
+
   it("records what it folded, in the history it keeps of itself", async () => {
     const { userId, projectId, conversationId } = await seed();
 

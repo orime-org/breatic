@@ -180,9 +180,9 @@ function toolTurn(turnIndex: number, size: number): MessageData[] {
  * @param conversationMemory - The conversation memory it read.
  * @returns The context, in the shape the turn destructures.
  */
-function context(history: MessageData[], conversationMemory = "") {
+function context(history: MessageData[], conversationMemory = "", projectMemory = "") {
   return {
-    memoryContext: { projectMemory: "", conversationMemory },
+    memoryContext: { projectMemory, conversationMemory },
     compressedHistory: history,
     // Nothing folded yet, which is what a history starting at turn 1 means.
     watermark: 0,
@@ -331,8 +331,11 @@ describe("a turn that landed exactly on the budget", () => {
 describe("a turn that measured over the budget", () => {
   it("takes whole turns from the oldest end, and stops when enough is gone", async () => {
     // Three turns of 6,000 on a 6,200 fixed cost is about 24,200 assembled.
-    // Taking the first leaves 18,200 and the second leaves 12,200, which is
-    // under the keep line — so the third stays and the boundary is turn 2.
+    // The loop runs to the keep line less the room the fold may take for
+    // memory: 19,000 - (1,000 + 1,000) = 17,000. Taking the first leaves
+    // 18,200 and the second leaves 12,200, the first figure under 17,000 —
+    // so the third stays and the boundary is turn 2.
+    limits.keep = 19_000;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),
@@ -365,7 +368,7 @@ describe("a turn that measured over the budget", () => {
     // make the wait shorter; it makes it explainable.
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
-      context([...turn(3, 6000)], "what turns 1 and 2 came to"),
+      context([], "what the whole conversation came to"),
     ];
 
     await runTurn();
@@ -449,6 +452,30 @@ describe("a turn that measured over the budget", () => {
     await runTurn();
 
     expect(buildTurnContext).toHaveBeenCalledTimes(2);
+    expect(await sentLength()).toBeLessThanOrEqual(limits.keep);
+  });
+
+  it("leaves room for the memory the fold is about to write", async () => {
+    // The planner measures a payload whose memory sections are what they were
+    // before the fold — on a conversation's first fold, absent entirely. The
+    // fold then writes both layers, and the second assembly carries them. Take
+    // turns until the pre-fold figure is under the line and the post-fold
+    // request is over it by however much the memory grew.
+    const { getAgentConfig } = await import("@breatic/core");
+    const config = getAgentConfig();
+    const history = [...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)];
+    contexts.queue = [context(history)];
+    contexts.later = () => {
+      const folded = consolidateWindow.mock.calls[0]?.[0] as { newWatermark: number };
+      return context(
+        history.filter((m) => m.turnIndex > folded.newWatermark),
+        "c".repeat(config.memory_conversation_max_size),
+        "p".repeat(config.memory_project_max_size),
+      );
+    };
+
+    await runTurn();
+
     expect(await sentLength()).toBeLessThanOrEqual(limits.keep);
   });
 

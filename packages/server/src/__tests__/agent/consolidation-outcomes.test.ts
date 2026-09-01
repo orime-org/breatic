@@ -33,11 +33,24 @@ const buildContext = vi.fn<
   conversationMemory: "what was settled so far",
 }));
 
+// Set apart from what `config/agent.yaml` ships and from what `mock-core`
+// answers, both 16384: an assertion whose two sides are the same 16384 is
+// satisfied by an implementation that writes the number in.
+const OUTPUT_CEILING = 4242;
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
   const base = await coreMock(importOriginal);
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...base, runWithContext: actual.runWithContext, getContext: actual.getContext };
+  return {
+    ...base,
+    runWithContext: actual.runWithContext,
+    getContext: actual.getContext,
+    getAgentConfig: () => ({
+      ...(base.getAgentConfig as () => Record<string, unknown>)(),
+      max_output_tokens: OUTPUT_CEILING,
+    }),
+  };
 });
 
 vi.mock("@breatic/domain", async () => {
@@ -193,7 +206,7 @@ describe("a consolidation that works", () => {
     await consolidate();
 
     const call = generateTextRetry.mock.calls[0]?.[0] as { maxOutputTokens?: number };
-    expect(call.maxOutputTokens).toBeGreaterThan(0);
+    expect(call.maxOutputTokens).toBe(OUTPUT_CEILING);
   });
 
   it("tells the model the ceiling its answer is read through", async () => {

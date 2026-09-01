@@ -55,7 +55,7 @@ Produce a JSON object with these fields:
 
 Rules:
 - conversationUpdate REWRITES the full memory — incorporate existing memory + new info
-- conversationUpdate MUST stay under {max_chars} characters; anything past that is cut off before the memory is ever read, and the newest material is what goes first
+- conversationUpdate MUST stay under {max_chars} characters; the cut keeps the start of what you write and drops the rest before the memory is ever read, so put what matters most at the beginning
 - projectUpdate only when there are genuine cross-conversation insights
 - Be concise — this text will be injected into future LLM context windows
 - Respond ONLY with the JSON object, no markdown or explanation
@@ -271,7 +271,13 @@ export async function consolidateWindow(
 
     model = getModel(config.consolidation_model);
   } catch (err) {
-    if (signal?.aborted) return "aborted";
+    if (signal?.aborted) {
+      logger.error(
+        { err, userId, conversationId, watermarkBefore, newWatermark },
+        "memory_consolidation_aborted",
+      );
+      return "aborted";
+    }
     logger.error(
       { err, userId, conversationId, watermarkBefore, newWatermark },
       "memory_consolidation_untouched",
@@ -334,7 +340,18 @@ export async function consolidateWindow(
     // signal rather than of the error's name — a name says what the provider
     // called it, and one of the names the SDK treats as cancellation is a
     // timeout, which is the opposite case.
-    if (signal?.aborted) return "aborted";
+    //
+    // Logged on the way out, because asking the signal answers who stopped
+    // the turn and not what went wrong in it: a write that deadlocked while
+    // the reader happened to close the tab leaves by this door too, and
+    // without this line it leaves without a trace.
+    if (signal?.aborted) {
+      logger.error(
+        { err, userId, conversationId, watermarkBefore, newWatermark },
+        "memory_consolidation_aborted",
+      );
+      return "aborted";
+    }
 
     try {
       await memoryService.discardConsolidation(conversationId, newWatermark);

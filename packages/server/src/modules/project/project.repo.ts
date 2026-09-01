@@ -457,7 +457,7 @@ export async function duplicateProject(
  * overwrite a previously-stamped timestamp if the same project is
  * deleted twice.
  *
- * Reference-only memory entries (`user_memory_entries.source_conversation_id`,
+ * Reference-only memory entries (`project_memory_entries.source_conversation_id`,
  * `project_memory_entries.source_conversation_id`) are NOT rewritten
  * here — see the rationale in `cascadeDeleteConversations`.
  *

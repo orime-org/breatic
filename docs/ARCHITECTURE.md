@@ -83,16 +83,17 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 - **页面被浏览器收起来再恢复,必须把协作本地状态设回去** —— 浏览器对「暂存后恢复」的页面有两半约定:`pagehide` 拆、`pageshow` 装。协作库替我们做了前一半(它自己的 `pagehide` 处理器把本客户端的 awareness 状态**删掉**),后一半留给应用,而我们一直没写。少这一半,**同一处会静默坏掉两样东西**:① 心跳永久停(y-protocols 只在 `getLocalState() !== null` 时续时钟,条件读的正是被删掉的那个东西,定时器照跑但什么都不做),于是在场清扫把一个连着的人关掉、而且再也回不来(复活要靠心跳);② 光标对所有人消失(`setLocalStateField` 在状态为 null 时是空操作,而它是本客户端发布光标和焦点的唯一途径)。**这个状态只有一处来源**:`Awareness` 构造函数最后一行 `setLocalState({})`,只在建 provider 时跑一次;恢复的页面把整个 JS 环境原样搬回来,那一行不会再跑,重连也只恢复连接、不恢复它。所以恢复动作放在统一管理 provider 的那一处(`data/yjs/collab-socket.tsx`),监听 `pageshow` 且 `persisted` 为真时,把还是 null 的那些设回 `{}`。判定题:**这个东西的初值是不是只在「创建时」设过一次?是 → 页面被恢复时它不会自己回来**。
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
 
-### Three-layer memory + Turn compression
+### Two-layer memory + tool-pair compression
 
 | Layer | Scope | Table |
 |---|---|---|
-| User | 跨项目偏好 | `user_memories` |
-| Project | 协作者共享 | `project_memories` |
+| Project | 一个成员在一个 project 里一行,键是 `(user_id, project_id)` | `project_memories` |
 | Conversation | 当前对话摘要 | `conversation_memories` |
 
-- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。`memory_window`(默认 20)按 Turn 计数,超出时自动归纳旧 Turn 到记忆摘要。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
-- **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM。**压缩靠 `turnIndex` 分组,所以读历史那一步必须把它留着**:`getMessagesForLlm` 曾经把它连同时间戳一起剥掉再强转回完整消息类型,理由是「模型看不到这些」—— 但模型本来就是被 `toModelMessages` 逐个点名字段喂的,剥掉谁也没挡住;真正被挡住的是压缩器,它每条消息都落进同一组、一组永远不超过窗口,于是丢掉旧轮工具调用的那条分支在生产路径上一次都没跑过
+两层都限于用户自己:项目记忆按成员分行,一个成员归纳出来的东西不会进另一个成员的提示词。
+
+- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求长度超过 `memory_budget_chars`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_chars`(默认 500,000)以下。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
+- **Context 压缩**:按工具调用对切,不按轮切。超出最近 `tool_result_keep`(默认 3)对的工具**结果**换成占位文本,`tool-call` 记录、助手文本、用户原文一律保留。`thinking` 字段永远不发回 LLM。**压缩靠 `turnIndex` 分组,所以读历史那一步必须把它留着**:`getMessagesForLlm` 曾经把它连同时间戳一起剥掉再强转回完整消息类型,理由是「模型看不到这些」—— 但模型本来就是被 `toModelMessages` 逐个点名字段喂的,剥掉谁也没挡住;真正被挡住的是压缩器,它每条消息都落进同一组、一组永远不超过窗口,于是丢掉旧轮工具调用的那条分支在生产路径上一次都没跑过
 - **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
 ### Chat conversation ownership

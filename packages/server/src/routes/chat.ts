@@ -31,6 +31,7 @@ import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { MainAgent } from "@server/agent/main-agent.js";
+import { skillCommandText } from "@server/agent/skill-command.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
@@ -70,8 +71,8 @@ function formatChipsForLLM(
  *
  * Measured on the finished text rather than on any field of the request: what
  * the model is sent is the message with its attached canvas content in front
- * of it, and a per-field check admits a short message carrying chips worth
- * many times the limit.
+ * of it, or the skill command written around the input, and a per-field check
+ * admits a short field carrying a turn many times the limit.
  *
  * Refused rather than trimmed. A silently shortened question leaves the
  * reader unable to see what went missing, reading an answer to something they
@@ -278,7 +279,7 @@ chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
     body.project_id,
   );
 
-  assertSayable(body.input);
+  assertSayable(skillCommandText(body.skill_name, body.input));
 
   return streamTurn(
     c,
