@@ -217,6 +217,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   contexts.queue = [];
   contexts.later = null;
+  // Cleared, so "the model was never called" means this case rather than any
+  // case: what the previous one handed the model would otherwise be read as
+  // this one's, and read as a pass.
+  thisCase.sent = null;
   limits.budget = 20_000;
   limits.keep = 13_000;
   consolidateWindow.mockResolvedValue("written");

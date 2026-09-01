@@ -45,20 +45,45 @@ function sourcesUnder(dir: string): string[] {
 
 describe("the user memory layer", () => {
   it("is gone from every package that used to carry it", () => {
-    // A5. It spanned three: the type in shared, the prompt section in domain,
-    // and the reads and writes in server. A leftover in any one of them is a
-    // layer that looks live to the next reader.
+    // A5. It spanned four: the two tables in core, the type in shared, the
+    // prompt section in domain, and the reads and writes in server. A
+    // leftover in any one of them is a layer that looks live to the next
+    // reader — a declared table most of all, since it comes with a unique
+    // index and a name that reads as current.
+    //
+    // The needle is the stem: the field was `userMemory`, the tables were
+    // `userMemories`, and a search for the field alone walks past both.
     const offenders: string[] = [];
-    for (const pkg of ["shared", "domain", "server"]) {
+    for (const pkg of ["core", "shared", "domain", "server"]) {
       for (const file of sourcesUnder(join(PACKAGES, pkg, "src"))) {
         if (file === SELF) continue;
-        if (readFileSync(file, "utf8").includes("userMemory")) {
+        if (readFileSync(file, "utf8").includes("userMemor")) {
           offenders.push(file.slice(PACKAGES.length));
         }
       }
     }
 
     expect(offenders).toEqual([]);
+  });
+
+  it("leaves the context builder asking for the three ids its two layers are keyed by", () => {
+    // Every one of them is half of a key: conversation memory is keyed by the
+    // conversation, project memory by the member and the project together.
+    // An optional one is a layer that silently comes back empty, and the
+    // caller gets no complaint from anywhere.
+    //
+    // Read off the source because optionality is a type-level mark: it is
+    // erased at runtime, so `buildContext.length` counts an optional
+    // parameter and a required one the same way and cannot tell them apart.
+    const service = readFileSync(
+      join(PACKAGES, "server", "src", "modules", "memory", "memory.service.ts"),
+      "utf8",
+    );
+    const start = service.indexOf("export async function buildContext(");
+    const signature = service.slice(start, service.indexOf(")", start));
+
+    expect(signature).not.toContain("?:");
+    expect(signature).not.toContain("Scenario");
   });
 
   it("leaves the context builder describing the two layers it has", () => {

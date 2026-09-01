@@ -484,6 +484,13 @@
       "when": 1788170908100,
       "tag": "0068_project_memory_per_user",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1788255992305,
+      "tag": "0069_drop_user_memory",
+      "breakpoints": true
     }
   ]
 }

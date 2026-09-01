@@ -149,6 +149,15 @@ describe("a consolidation that lands", () => {
       newWatermark: 12,
     });
 
+    // The stored row, not only what a turn reads back. Truncating on the way
+    // out leaves the row itself unbounded, and the row is what the next fold
+    // is shown as the memory it is rewriting — a segment no ceiling covers,
+    // in the one prompt that pays for every character twice.
+    const [stored] = await sql<{ content: string }[]>`
+      SELECT content FROM conversation_memories WHERE conversation_id = ${conversationId}
+    `;
+    expect(stored?.content).toHaveLength(ceiling);
+
     const context = await memoryService.buildContext(userId, conversationId, projectId);
 
     expect(context.conversationMemory).toHaveLength(ceiling);

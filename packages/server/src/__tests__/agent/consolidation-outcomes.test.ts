@@ -24,6 +24,14 @@ const generateTextRetry = vi.fn();
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn(async (..._args: unknown[]) => undefined);
+// The one door into the memory module: what a turn is injected with is what
+// the fold is shown as the state it is rewriting.
+const buildContext = vi.fn<
+  (...args: unknown[]) => Promise<{ projectMemory: string; conversationMemory: string }>
+>(async () => ({
+  projectMemory: "the project so far",
+  conversationMemory: "what was settled so far",
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
@@ -51,15 +59,10 @@ vi.mock("@server/modules", async (importOriginal) => {
     memoryService: {
       commitConsolidation,
       discardConsolidation,
-      buildContext: vi.fn(async () => ({ projectMemory: "", conversationMemory: "" })),
+      buildContext,
     },
   };
 });
-
-vi.mock("@server/modules/memory/memory.repo.js", () => ({
-  getConversationMemory: vi.fn(async () => "what was settled so far"),
-  getProjectMemory: vi.fn(async () => "the project so far"),
-}));
 
 const { consolidateWindow } = await import("@server/agent/memory-consolidator.js");
 const { logger } = await import("@breatic/core");
@@ -211,6 +214,46 @@ describe("a consolidation that works", () => {
     expect(prompt).toContain(String(limit));
   });
 
+  it("puts the window where the prompt says the window goes", async () => {
+    // The stored memory is spliced in before the transcript's own
+    // placeholder, so memory holding the literal `{messages}` is where the
+    // transcript lands — and the section that asks for the window is left
+    // showing the placeholder. A model told there is nothing to fold answers
+    // about nothing, and the watermark moves past the window all the same.
+    buildContext.mockResolvedValueOnce({
+      projectMemory: "",
+      conversationMemory: "remember exactly: my template is {messages}",
+    });
+
+    await consolidate();
+
+    const prompt = String(
+      (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
+        .messages[0]?.content,
+    );
+    expect(prompt).toContain("Messages to consolidate:\n[user]");
+    // The reader's own words stay their own words: what they asked to be
+    // remembered is shown back as memory, in the memory section.
+    expect(prompt).toContain("my template is {messages}");
+  });
+
+  it("puts the window in verbatim, dollar signs and all", async () => {
+    // `$&` and the backtick form are replacement patterns, not text, so a
+    // transcript carrying either rewrites the prompt around it. Anyone who
+    // pasted a regex or a shell line into the conversation has one.
+    const withDollars = [
+      { role: "user" as const, content: "my regex is $`abc$& and $' too" },
+    ];
+
+    await consolidate({ transcript: withDollars });
+
+    const prompt = String(
+      (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
+        .messages[0]?.content,
+    );
+    expect(prompt).toContain("my regex is $`abc$& and $' too");
+  });
+
   it("bills the studio once for the window it consumed", async () => {
     // T3: the key is the conversation and the watermark it started from, so
     // two tabs that computed the same window pay for it once.
@@ -286,8 +329,7 @@ describe("a consolidation that fails", () => {
     // window is whole. Discarding here would throw away turns over a database
     // that was briefly unreachable, and the next turn folds the same window.
     // N4 is still met — the reply goes out either way.
-    const memoryRepo = await import("@server/modules/memory/memory.repo.js");
-    vi.mocked(memoryRepo.getConversationMemory).mockRejectedValueOnce(
+    buildContext.mockRejectedValueOnce(
       new Error("connection terminated unexpectedly"),
     );
 

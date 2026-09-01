@@ -47,6 +47,15 @@ afterAll(async () => {
 
 let seq = 0;
 
+/**
+ * A conversation id with no row behind it.
+ *
+ * These cases are about the project layer. Conversation memory is keyed by
+ * the conversation, so an id nothing was ever written under reads as the
+ * empty string — which is what this member having said nothing looks like.
+ */
+const NO_CONVERSATION = "00000000-0000-4000-8000-000000000000";
+
 /** A user, their studio, and one project they own. */
 interface Seeded {
   userId: string;
@@ -141,7 +150,7 @@ describe("project memory belongs to one member, not to the project", () => {
     await seedProjectMemory(alice, projectId, "alice is working on a noir short", 4);
     await seedProjectMemory(carol, projectId, "carol is storyboarding a trailer", 4);
 
-    const carolsContext = await memoryService.buildContext(carol, undefined, projectId);
+    const carolsContext = await memoryService.buildContext(carol, NO_CONVERSATION, projectId);
 
     expect(carolsContext.projectMemory).toContain("carol");
     expect(carolsContext.projectMemory).not.toContain("alice");
@@ -208,7 +217,7 @@ describe("project memory belongs to one member, not to the project", () => {
 
     const context = await memoryService.buildContext(
       alice.userId,
-      undefined,
+      NO_CONVERSATION,
       elsewhere.projectId,
     );
 

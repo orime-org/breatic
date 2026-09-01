@@ -78,4 +78,30 @@ describe("what the assembly hands the turn", () => {
     expect(results.slice(0, -3).some((r) => r.includes(BODY))).toBe(false);
     expect(watermark).toBe(0);
   });
+
+  it("reads the watermark before the memory it is supposed to agree with", async () => {
+    // A fold running in another tab commits between these two reads. Taking
+    // the memory first pairs a memory from before the fold with a watermark
+    // from after it, and the turns in between are in neither: gone from the
+    // history because the watermark passed them, absent from the memory
+    // because it was read before the fold wrote it. The other order pairs a
+    // memory that is at least as new as the watermark, so the worst case is
+    // an overlap — those turns in both — which costs context and loses
+    // nothing.
+    const { conversationService, memoryService } = await import("@server/modules");
+    const order: string[] = [];
+    vi.mocked(conversationService.getConversation).mockImplementationOnce(async () => {
+      order.push("watermark");
+      return { id: "c1", lastConsolidatedTurn: 0 } as never;
+    });
+    vi.mocked(memoryService.buildContext).mockImplementationOnce(async () => {
+      order.push("memory");
+      return { projectMemory: "", conversationMemory: "" };
+    });
+
+    const { buildTurnContext } = await import("@server/agent/turn-context.js");
+    await buildTurnContext("u1", "c1", "p1", 7);
+
+    expect(order).toEqual(["watermark", "memory"]);
+  });
 });

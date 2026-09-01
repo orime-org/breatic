@@ -8,12 +8,20 @@
  * the budget: the caller works out which turns to take, hands them over as the
  * messages the model would have been sent, and reassembles once this returns.
  *
- * The turn goes out however this ends. What the endings differ on is the
- * watermark, and the line they fall on either side of is whether the model
- * ran: a fold that reached it and then failed gives the window up, because
- * the call is `temperature: 0` and retrying would send the same input on
- * every turn from then on. A fold that never reached it keeps the window,
- * having spent nothing a later turn cannot spend again.
+ * The turn goes out however this ends: the reply is what is promised, and a
+ * fold is what keeps the request small enough to make one and the earlier
+ * conversation represented rather than simply dropped.
+ *
+ * So a fold that does not produce an answer gives its window up — three
+ * failed calls, an answer that is not the JSON it asked for, a write that
+ * cannot land. The watermark moves, nothing is written, the error is logged
+ * and the reply goes out. Holding the window instead would send the same
+ * input on the next turn and every turn after it, since the call is
+ * `temperature: 0` and the history only grows.
+ *
+ * The one ending that keeps the window is the reader leaving: they come back
+ * to a conversation that folds it again, and the charge is already keyed so
+ * the second attempt is not paid for twice.
  */
 
 import { stepCountIs } from "ai";
@@ -27,7 +35,6 @@ import {
 import { getAgentConfig, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
-import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are a memory consolidator for an AI creative assistant. Your job is to analyze conversation messages and extract key information into a structured memory update.
@@ -92,10 +99,10 @@ export type ConsolidationOutcome =
    * The watermark is where it was, and the window is still in the history.
    *
    * Told apart from `discarded` because the two say opposite things about the
-   * window. A fold that reached the model and then failed has to give the
-   * window up: the call is `temperature: 0`, so retrying sends the same input
-   * forever. This is every other way of not writing — the call was never made,
-   * or it was made and even the discard could not be recorded.
+   * window. `discarded` is what a fold that produced no answer ends as, and
+   * the watermark moves. This is the narrower case where the fold never
+   * started — the database was briefly away while the memory it rewrites was
+   * being read — or where even the discard could not be recorded.
    */
   | "untouched";
 
@@ -227,25 +234,40 @@ export async function consolidateWindow(
   // Everything the call is built from, gathered before a single token is
   // spent. The database is the part that can be briefly away; `getModel`
   // takes any string and defers to the provider, so a wrong model name and a
-  // missing key both surface later, from the call itself. What this guard
-  // buys is that a read which failed costs this turn its fold and nothing
-  // else — the window is still whole and the next turn folds it again.
+  // missing key both surface later, from the call itself. A read that failed
+  // here costs this turn its fold and nothing else: the fold never started,
+  // so the window is still whole and the next turn folds it again.
   let prompt: string;
   let model: ReturnType<typeof getModel>;
   try {
-    const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
-    const existingProjectMemory = await memoryRepo.getProjectMemory(userId, projectId);
+    // The same two layers a turn is given, through the same door. Read
+    // straight from the repository they would be the untruncated rows, so the
+    // "current memory state" the rewriting model is shown would be a longer
+    // text than any turn injects — and it is asked to rewrite what it sees.
+    const { conversationMemory, projectMemory } = await memoryService.buildContext(
+      userId,
+      conversationId,
+      projectId,
+    );
 
+    // One pass over the template, with a function for the replacement. Chained
+    // calls rescan what the previous one inserted, so memory holding the
+    // literal `{messages}` would take the transcript's place; and a string
+    // replacement reads `$&` and its siblings in the inserted text as
+    // patterns, which anyone who pasted a regex into the conversation has.
+    // A replacer function is handed the text and returns it as it is.
+    const values: Record<string, string> = {
+      conversation_memory: conversationMemory || "(empty)",
+      project_memory: projectMemory || "(empty)",
+      // The ceiling the answer will actually be read through: a longer answer
+      // is written, stored, paid for, and then cut where the ceiling falls.
+      max_chars: String(config.memory_conversation_max_size),
+      messages: transcribe(transcript),
+    };
     prompt = CONSOLIDATION_PROMPT.replace(
-      "{conversation_memory}",
-      existingConvMemory || "(empty)",
-    )
-      .replace("{project_memory}", existingProjectMemory || "(empty)")
-      // The ceiling the answer will actually be read through. `buildContext`
-      // truncates to this before injection, so a longer answer is written,
-      // stored, paid for, and then cut mid-sentence every time it is read.
-      .replace("{max_chars}", String(config.memory_conversation_max_size))
-      .replace("{messages}", transcribe(transcript));
+      /\{(conversation_memory|project_memory|max_chars|messages)\}/g,
+      (_whole, key: string) => values[key] ?? "",
+    );
 
     model = getModel(config.consolidation_model);
   } catch (err) {

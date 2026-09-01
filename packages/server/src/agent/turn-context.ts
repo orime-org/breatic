@@ -47,17 +47,25 @@ export async function buildTurnContext(
   runningTurn: number,
 ): Promise<TurnContext> {
   const agentCfg = getAgentConfig();
+
+  // The watermark first, and the memory after it, so the memory is always at
+  // least as new as the watermark it is paired with. A fold running in
+  // another tab commits between these two reads: taking the memory first
+  // pairs one from before the fold with a watermark from after it, and the
+  // turns in between are in neither — gone from the history because the
+  // watermark passed them, absent from the memory because it was read before
+  // the fold wrote it. This way round the worst case is those turns in both,
+  // which costs a little context and loses nothing.
+  const conversation = await conversationService.getConversation(conversationId);
   const memoryContext = await memoryService.buildContext(
     userId,
     conversationId,
     projectId,
-    "agent_chat",
   );
 
   // Turns already folded into memory are not read again: the watermark is
   // where that folding got to, and everything under it is represented by the
   // memory loaded above.
-  const conversation = await conversationService.getConversation(conversationId);
   const rawHistory = await conversationService.getMessagesForLlm(
     conversationId,
     conversation?.lastConsolidatedTurn ?? 0,
