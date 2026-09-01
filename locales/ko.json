@@ -97,7 +97,11 @@
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
       "stream_unavailable": "작업 이벤트 스트림을 사용할 수 없습니다. 다시 시도해 주세요.",
       "history_entry_not_found": "기록을 찾을 수 없습니다",
-      "node_locked": "이 노드는 다른 사람이 생성 중입니다"
+      "node_locked": "이 노드는 다른 사람이 생성 중입니다",
+      "voices_model_not_found": "이 모델은 사용할 수 없습니다",
+      "voices_not_offered": "이 모델에는 음성 목록이 없습니다",
+      "voices_provider_unconfigured": "이 서버에서는 음성을 사용할 수 없습니다",
+      "voices_upstream_failed": "음성을 불러오지 못했습니다. 다시 시도해 주세요."
     },
     "memory": {
       "version_conflict": "다른 사람이 동시에 수정했습니다. 다시 시도해 주세요."

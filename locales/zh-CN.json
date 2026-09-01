@@ -97,7 +97,11 @@
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
       "stream_unavailable": "任务事件流暂时不可用，请重试。",
       "history_entry_not_found": "找不到这条历史记录",
-      "node_locked": "这个节点正在被其他人生成"
+      "node_locked": "这个节点正在被其他人生成",
+      "voices_model_not_found": "这个模型不可用",
+      "voices_not_offered": "这个模型没有音色列表",
+      "voices_provider_unconfigured": "这台服务器上音色不可用",
+      "voices_upstream_failed": "音色加载失败，请重试。"
     },
     "memory": {
       "version_conflict": "有人同时修改了它，请重试。"

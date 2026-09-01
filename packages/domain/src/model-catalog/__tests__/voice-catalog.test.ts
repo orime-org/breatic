@@ -260,18 +260,38 @@ describe("listVoices against a WaveSpeed deployment (#1960 §6.1.1)", () => {
   });
 });
 
-describe("when the model has no voice catalog to offer", () => {
-  it("refuses a model whose params declare no remote voice source", async () => {
+// Every refusal carries the status the client should see, so the route hands
+// it straight to the error handler rather than re-deriving one from a message.
+describe("when there are no voices to answer with", () => {
+  it("answers 404 for a model the catalog does not have", async () => {
     deployWith({ WAVESPEED_API_KEY: "ws-key" });
-    await expect(listVoices("midjourney-v7", {})).rejects.toThrow(/no voice/i);
+    await expect(listVoices("no-such-model", {})).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
-  it("lets an upstream failure through to the caller", async () => {
+  it("answers 404 for a model whose params declare no voice source", async () => {
+    deployWith({ WAVESPEED_API_KEY: "ws-key" });
+    await expect(listVoices("midjourney-v7", {})).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it("answers 503 when no provider of the model is configured", async () => {
+    deployWith({});
+    await expect(listVoices("elevenlabs-v3", {})).rejects.toMatchObject({
+      statusCode: 503,
+    });
+  });
+
+  it("answers 502 when the upstream refuses", async () => {
     deployWith({ ELEVENLABS_API_KEY: "el-key" });
     httpRequestMock.mockResolvedValueOnce(
       new Response("upstream is down", { status: 503 }),
     );
-    // Domain throws; deciding what the user sees belongs to the route.
-    await expect(listVoices("elevenlabs-v3", {})).rejects.toThrow(/503/);
+    // 502, not the vendor's own 503: what failed is our call to them.
+    await expect(listVoices("elevenlabs-v3", {})).rejects.toMatchObject({
+      statusCode: 502,
+    });
   });
 });

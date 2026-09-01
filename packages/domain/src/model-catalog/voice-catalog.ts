@@ -12,14 +12,18 @@
  * writes into the node and what the next generation sends back out.
  */
 
-import { httpRequest } from "@breatic/shared";
+import { AppError } from "@breatic/core";
+import { httpRequest, t } from "@breatic/shared";
 
 import {
   MODALITIES,
   getFullModelConfig,
   type FullModelEntry,
 } from "@domain/model-catalog/model-catalog.js";
-import { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
+import {
+  resolveActiveProvider,
+  type ActiveProvider,
+} from "@domain/model-catalog/resolve-active-provider.js";
 
 /** One voice, as the panel reads it. */
 export interface Voice {
@@ -64,27 +68,46 @@ interface InlineVoice {
  * Find the model and the modality it lives in.
  * @param modelName - The model's catalog name.
  * @returns The model's yaml entry and its modality.
- * @throws {Error} When no modality carries this model.
+ * @throws {AppError} 404 when no modality carries this model.
  */
 function findModel(modelName: string): { entry: FullModelEntry; modality: string } {
   for (const modality of MODALITIES) {
     const entry = getFullModelConfig(modality).models.find((m) => m.name === modelName);
     if (entry) return { entry, modality };
   }
-  throw new Error(`Model '${modelName}' not found`);
+  throw new AppError(404, t("server.canvas.voices_model_not_found"));
 }
 
 /**
- * Locate the model's voice param, the one whose values come from this catalog.
+ * Assert that the model has a param this catalog fills.
  * @param entry - The model's yaml entry.
- * @returns The param's name.
- * @throws {Error} When the model declares no param filled from a voice catalog.
+ * @throws {AppError} 404 when the model declares no param filled from a voice
+ *   catalog, which is what makes asking for its voices meaningless.
  */
-function voiceParamName(entry: FullModelEntry): string {
-  for (const [name, spec] of Object.entries(entry.params ?? {})) {
-    if (spec.remote_source === "voices") return name;
+function assertOffersVoices(entry: FullModelEntry): void {
+  for (const spec of Object.values(entry.params ?? {})) {
+    if (spec.remote_source === "voices") return;
   }
-  throw new Error(`Model '${entry.name}' has no voice param to fill`);
+  throw new AppError(404, t("server.canvas.voices_not_offered"));
+}
+
+/**
+ * Resolve the provider serving this model, as a configuration answer.
+ *
+ * Provider resolution refuses with a plain error, which reaches a route as a
+ * 500. Nothing is broken here: a deployment simply configured no key for any
+ * of the model's providers, and the fix is an operator's.
+ * @param modality - The modality the model lives in.
+ * @param modelName - The model's catalog name.
+ * @returns The provider this deployment will call.
+ * @throws {AppError} 503 when no provider of the model has a key.
+ */
+function providerServing(modality: string, modelName: string): ActiveProvider {
+  try {
+    return resolveActiveProvider(modality, modelName);
+  } catch {
+    throw new AppError(503, t("server.canvas.voices_provider_unconfigured"));
+  }
 }
 
 /**
@@ -93,7 +116,9 @@ function voiceParamName(entry: FullModelEntry): string {
  * @param headers - Auth headers for that vendor.
  * @param timeoutSeconds - The provider's configured timeout.
  * @returns The parsed body.
- * @throws {Error} When the upstream refuses or answers with a non-2xx status.
+ * @throws {AppError} 502 when the upstream refuses or answers with a non-2xx
+ *   status. The vendor's own status is not forwarded: what failed is our call
+ *   to them, and its wording is theirs, in their language.
  */
 async function readJson(
   url: string,
@@ -107,8 +132,7 @@ async function readJson(
     { replaySafe: true, timeoutMs: timeoutSeconds * 1000 },
   );
   if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Voice catalog HTTP ${resp.status}: ${body}`);
+    throw new AppError(502, t("server.canvas.voices_upstream_failed"));
   }
   return (await resp.json()) as unknown;
 }
@@ -209,17 +233,17 @@ function inlineVoices(entry: FullModelEntry): Voice[] {
  * @param modelName - The model's catalog name.
  * @param options - Search term and page cursor.
  * @returns One page of voices.
- * @throws {Error} When the model is unknown, declares no voice param, has no
- *   configured provider, or the upstream refuses.
+ * @throws {AppError} 404 when the model is unknown or offers no voices, 503
+ *   when no provider of it is configured, 502 when the upstream refuses.
  */
 export async function listVoices(
   modelName: string,
   options: VoiceQuery,
 ): Promise<VoicePage> {
   const { entry, modality } = findModel(modelName);
-  voiceParamName(entry);
+  assertOffersVoices(entry);
 
-  const provider = resolveActiveProvider(modality, modelName);
+  const provider = providerServing(modality, modelName);
 
   if (provider.providerName === "elevenlabs") {
     // Search and pagination live on v2, while base_url already carries the v1
@@ -284,17 +308,17 @@ export async function listVoices(
  * @param modelName - The model's catalog name.
  * @param voiceId - The value stored in the node's params.
  * @returns The voice, or null when this provider no longer carries that id.
- * @throws {Error} When the model is unknown, declares no voice param, has no
- *   configured provider, or the upstream refuses for any reason but a miss.
+ * @throws {AppError} 404 when the model is unknown or offers no voices, 503
+ *   when no provider of it is configured, 502 when the upstream refuses.
  */
 export async function getVoice(
   modelName: string,
   voiceId: string,
 ): Promise<Voice | null> {
   const { entry, modality } = findModel(modelName);
-  voiceParamName(entry);
+  assertOffersVoices(entry);
 
-  const provider = resolveActiveProvider(modality, modelName);
+  const provider = providerServing(modality, modelName);
 
   if (provider.providerName === "elevenlabs") {
     // Single reads stayed on v1 when the list moved to v2.

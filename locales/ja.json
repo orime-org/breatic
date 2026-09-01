@@ -97,7 +97,11 @@
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "stream_unavailable": "タスクイベントストリームを利用できません。もう一度お試しください。",
       "history_entry_not_found": "履歴が見つかりません",
-      "node_locked": "このノードは他の人が生成中です"
+      "node_locked": "このノードは他の人が生成中です",
+      "voices_model_not_found": "このモデルは利用できません",
+      "voices_not_offered": "このモデルには音声の一覧がありません",
+      "voices_provider_unconfigured": "このサーバーでは音声を利用できません",
+      "voices_upstream_failed": "音声を読み込めませんでした。もう一度お試しください。"
     },
     "memory": {
       "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"
