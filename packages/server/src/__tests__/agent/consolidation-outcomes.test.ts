@@ -335,9 +335,11 @@ describe("a reader who left while the model was running", () => {
 
 describe("a consolidation whose bill could not be settled", () => {
   it("still counts as written, and says so in the log", async () => {
-    // The memory is already written and the watermark already moved. Letting
-    // the charge take the turn down would fail a reply that has nothing wrong
-    // with it, over bookkeeping the reader never sees.
+    // The call has already happened and the tokens are already gone, so the
+    // charge is the only part of this that failed. Letting it take the turn
+    // down would fail a reply that has nothing wrong with it, over
+    // bookkeeping the reader never sees — and the write that follows it
+    // still lands.
     chargeOnceForGeneration.mockRejectedValue(new Error("redis is down"));
 
     const outcome = await consolidate();

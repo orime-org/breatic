@@ -38,22 +38,27 @@ export interface ConsolidationRequest {
 
 /** What one pass would do. */
 export interface ConsolidationPlan {
-  /** Whether the assembled payload is over the budget at all. */
-  shouldConsolidate: boolean;
   /** The turns this pass takes, oldest first. */
   takenTurns: number[];
   /** What those turns contributed to the payload. */
   takenChars: number;
   /** What the payload measures once they are gone. */
   remainingChars: number;
-  /** Where the watermark lands, or `null` when nothing is taken. */
+  /**
+   * Where the watermark lands, and `null` when this pass does nothing.
+   *
+   * One field answers both questions because they have one answer: a payload
+   * over the budget is by that fact over the keep line as well (the keep line
+   * is the lower of the two), so the loop below always takes at least one
+   * turn once it runs at all.
+   */
   newWatermark: number | null;
 }
 
 /**
  * Decide whether to consolidate and how far back to go.
  * @param request - The fixed cost, the turns on hand, and the two lines.
- * @returns The plan; `shouldConsolidate` is false when nothing needs doing.
+ * @returns The plan; `newWatermark` is null when nothing needs doing.
  */
 export function planConsolidation(request: ConsolidationRequest): ConsolidationPlan {
   const { fixedCost, turns, budget, keep } = request;
@@ -61,7 +66,6 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   const assembled = fixedCost + historyChars;
 
   const nothing: ConsolidationPlan = {
-    shouldConsolidate: false,
     takenTurns: [],
     takenChars: 0,
     remainingChars: assembled,
@@ -85,7 +89,6 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   }
 
   return {
-    shouldConsolidate: true,
     takenTurns,
     takenChars,
     remainingChars,

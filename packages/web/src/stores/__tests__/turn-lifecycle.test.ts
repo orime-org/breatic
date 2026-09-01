@@ -411,6 +411,8 @@ describe('这一轮停下来整理记忆', () => {
 
     expect(folding()).toBe(false);
 
+    // 会话名那一帧先到：服务端每一轮都写它，而归纳在它之后才开始。
+    wire.current()?.push({ type: 'data-conversation-titled', data: { title: '一句话' } });
     wire.current()?.push({ type: 'data-memory-consolidating', transient: true, data: {} });
     await settle();
 
@@ -423,6 +425,9 @@ describe('这一轮停下来整理记忆', () => {
     aConversation();
     void sendInSession('c-1', '那接下来呢？');
     await settle();
+    // 生产顺序：会话名那一帧在前，归纳帧在后。少了它，「这一轮开口了」这个
+    // 闩会被模型的第一条文本闩上，而生产里它早在归纳开始之前就闩上了。
+    wire.current()?.push({ type: 'data-conversation-titled', data: { title: '一句话' } });
     wire.current()?.push({ type: 'data-memory-consolidating', transient: true, data: {} });
     await settle();
 

@@ -106,7 +106,7 @@ export async function foldIfOverBudget(
     budget: config.memory_budget_chars,
     keep: config.memory_keep_chars,
   });
-  if (!plan.shouldConsolidate || plan.newWatermark === null) return false;
+  if (plan.newWatermark === null) return false;
 
   who.onStart?.();
 

@@ -138,20 +138,25 @@ function isAnswering(chunk: UIMessageChunk): boolean {
  * reader's message held out of the list, and the sentence would be in neither
  * place until the answer began.
  * @param stream - The turn's stream, as the transport built it.
- * @param onFirstFrame - Told once, on the first frame that carries an answer.
+ * @param onAnswering - Told on every frame that carries an answer.
+ * @param onFirstFrame - Told once, on the first of them.
  * @returns The same frames, in the same order.
  */
 function sayWhenItOpens(
   stream: ReadableStream<UIMessageChunk>,
+  onAnswering: () => void,
   onFirstFrame: () => void,
 ): ReadableStream<UIMessageChunk> {
   let answering = false;
   return stream.pipeThrough(
     new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
-        if (!answering && isAnswering(chunk)) {
-          answering = true;
-          onFirstFrame();
+        if (isAnswering(chunk)) {
+          onAnswering();
+          if (!answering) {
+            answering = true;
+            onFirstFrame();
+          }
         }
         controller.enqueue(chunk);
       },
@@ -203,22 +208,30 @@ function transportFor(
   });
   return {
     sendMessages: async (options) =>
-      sayWhenItOpens(await wire.sendMessages(options), () => {
-        // The turn is always there when a frame arrives: a stream is only
-        // read while its turn is running, and both ways one ends -- the
-        // stream closing, or the reader stopping it -- take the reader's end
-        // of the pipe away first, after which nothing more is pulled through
-        // this transform. So this branch exists because the map answers
-        // `number | undefined`, not because there is a frame it turns away.
-        // Both halves are behind it anyway: they are one signal, and a guard
-        // that let one through would be saying they are two.
-        const turn = runningTurn.get(conversationId);
-        if (turn === undefined) return;
-        answeredTurn.set(conversationId, turn);
-        // Whatever the turn stopped to do before this, it is answering now.
-        clearConsolidating(conversationId);
-        onFirstFrame();
-      }),
+      sayWhenItOpens(
+        await wire.sendMessages(options),
+        // On every answering frame, because the fold begins after the turn
+        // has already opened: the server writes the conversation's name
+        // first, every turn, and only then stops to fold. Clearing on the
+        // first frame alone would run before the fold had said anything and
+        // never run again.
+        () => clearConsolidating(conversationId),
+        () => {
+          // The turn is always there when a frame arrives: a stream is only
+          // read while its turn is running, and both ways one ends -- the
+          // stream closing, or the reader stopping it -- take the reader's
+          // end of the pipe away first, after which nothing more is pulled
+          // through this transform. So this branch exists because the map
+          // answers `number | undefined`, not because there is a frame it
+          // turns away. Both halves are behind it anyway: they are one
+          // signal, and a guard that let one through would be saying they
+          // are two.
+          const turn = runningTurn.get(conversationId);
+          if (turn === undefined) return;
+          answeredTurn.set(conversationId, turn);
+          onFirstFrame();
+        },
+      ),
     reconnectToStream: (options) => wire.reconnectToStream(options),
   };
 }

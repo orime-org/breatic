@@ -40,7 +40,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(false);
+    expect(plan.newWatermark).toBeNull();
     expect(plan.takenTurns).toEqual([]);
   });
 
@@ -54,7 +54,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(false);
+    expect(plan.newWatermark).toBeNull();
   });
 
   it("takes from the oldest end until what remains is at or under the keep line", () => {
@@ -67,7 +67,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(true);
+    expect(plan.newWatermark).not.toBeNull();
     expect(plan.remainingChars).toBeLessThanOrEqual(KEEP);
     // It stops as soon as the line is met: one turn fewer would still be over.
     const oneFewer = plan.remainingChars + 30_000;
@@ -84,7 +84,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(true);
+    expect(plan.newWatermark).not.toBeNull();
     expect(plan.takenChars).toBeGreaterThanOrEqual(340_000);
     expect(plan.takenChars).toBeLessThanOrEqual(370_000);
   });
@@ -98,7 +98,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(true);
+    expect(plan.newWatermark).not.toBeNull();
     // A fixed 350,000 would stop after the small turns and leave the payload
     // above the budget; this one keeps going.
     expect(plan.remainingChars).toBeLessThanOrEqual(KEEP);
@@ -132,7 +132,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(true);
+    expect(plan.newWatermark).not.toBeNull();
     expect(plan.takenTurns).toEqual([1, 2, 3, 4]);
     expect(plan.remainingChars).toBe(600_000);
   });
@@ -145,7 +145,7 @@ describe("planning how much a consolidation takes", () => {
       keep: KEEP,
     });
 
-    expect(plan.shouldConsolidate).toBe(false);
+    expect(plan.newWatermark).toBeNull();
     expect(plan.takenTurns).toEqual([]);
   });
 });

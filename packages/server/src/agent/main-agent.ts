@@ -18,13 +18,13 @@ import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
-import { env } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
+import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
@@ -518,7 +518,7 @@ export class MainAgent {
             bill: async () => {
               if (tokensUsed === 0) return;
 
-              creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
+              creditsUsed = creditsForTokens(tokensUsed);
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
               const outcome = await creditLotService.chargeOnceForGeneration(

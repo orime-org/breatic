@@ -26,8 +26,9 @@ import {
   creditLotService,
   resolveProvider,
 } from "@breatic/domain";
-import { getAgentConfig, env, logger } from "@breatic/core";
+import { getAgentConfig, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
+import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 
 const CONSOLIDATION_PROMPT = `\
@@ -172,7 +173,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
       {
         projectId: projectId ?? null,
         actorUserId: userId,
-        amount: Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER),
+        amount: creditsForTokens(tokensUsed),
         description: "Memory consolidation",
         tokensUsed,
         model,
