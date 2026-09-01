@@ -333,7 +333,21 @@ export class MainAgent {
             writer.write({ type: "data-memory-consolidating", transient: true, data: {} }),
         })
       ) {
-        assembly = await assemble();
+        try {
+          assembly = await assemble();
+        } catch (err) {
+          // The fold moved the watermark, so the window is out of the history
+          // whichever way it ended. Failing here would spend it and give the
+          // reader nothing, and the reply is what was promised. What is still
+          // in hand is the pre-fold assembly: over the character budget by
+          // design, and inside the model's real window — 850,000 characters
+          // is at most 850,000 tokens against a window that starts at a
+          // million, which is why the budget is drawn in characters at all.
+          logger.error(
+            { err, userId, conversationId, projectId },
+            "turn_reassembly_failed",
+          );
+        }
       }
 
       const { agentConfig, messages } = assembly;

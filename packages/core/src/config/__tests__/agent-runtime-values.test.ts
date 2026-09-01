@@ -128,6 +128,29 @@ describe("the two memory lines", () => {
     ).toBe(true);
   });
 
+  it("refuses memory ceilings that leave a pass nothing to run to", () => {
+    // A pass runs to the keep line less the room the fold may add to memory,
+    // so the two ceilings together have to leave something under it. Take the
+    // whole of it and every fold swallows the conversation entire; take more
+    // and the line goes negative, which the loop reads as "never stop".
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 250_000,
+        memory_project_max_size: 250_000,
+      }).success,
+    ).toBe(false);
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 400_000,
+        memory_project_max_size: 200_000,
+      }).success,
+    ).toBe(false);
+  });
+
   it.each([
     ["server", "../../../../server/src/index.ts"],
     ["worker", "../../../../worker/src/index.ts"],
@@ -138,6 +161,12 @@ describe("the two memory lines", () => {
     // What is asserted is only that the call is still in the entry — whether
     // it exits is the entry's own `process.exit(1)`, three lines below it.
     const entry = readFileSync(resolve(import.meta.dirname, path), "utf8");
-    expect(entry).toContain("getAgentConfig()");
+    // The call, and the exit that makes it a preflight rather than a read.
+    // Matching the call alone passes on one sitting in a comment, or on one
+    // whose failure is swallowed — either of which starts the process on a
+    // config the schema refuses.
+    expect(entry).toMatch(
+      /\n\s*getAgentConfig\(\);\n\} catch \(err\) \{[\s\S]{0,300}?process\.exit\(1\);/,
+    );
   });
 });

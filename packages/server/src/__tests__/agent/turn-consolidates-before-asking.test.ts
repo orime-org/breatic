@@ -479,6 +479,51 @@ describe("a turn that measured over the budget", () => {
     expect(await sentLength()).toBeLessThanOrEqual(limits.keep);
   });
 
+  it("leaves room measured the way the payload is measured", async () => {
+    // The ceilings are counted in code points, since that is where memory is
+    // cut; the payload is measured in code units, since that is what a string
+    // length is. A summary written in emoji — the prompt asks the model to
+    // answer in the language of the conversation — is two code units per
+    // character, so a reservation taken at face value is half of what the
+    // memory actually adds.
+    const { getAgentConfig } = await import("@breatic/core");
+    const config = getAgentConfig();
+    // Six small turns on a 15,000 budget, so the loop stops with what remains
+    // just under the line rather than overshooting it: 18,200 assembled, and
+    // taking four leaves 10,200 against a line of 11,000.
+    limits.budget = 15_000;
+    const history = [1, 2, 3, 4, 5, 6].flatMap((n) => turn(n, 2000));
+    contexts.queue = [context(history)];
+    contexts.later = () => {
+      const folded = consolidateWindow.mock.calls[0]?.[0] as { newWatermark: number };
+      return context(
+        history.filter((m) => m.turnIndex > folded.newWatermark),
+        "🎬".repeat(config.memory_conversation_max_size),
+        "🎥".repeat(config.memory_project_max_size),
+      );
+    };
+
+    await runTurn();
+
+    expect(await sentLength()).toBeLessThanOrEqual(limits.keep);
+  });
+
+  it("answers the reader when the second assembly cannot be read", async () => {
+    // The fold moved the watermark, so the window is gone from the history
+    // whichever way it ended. Failing the turn here spends that window and
+    // gives nothing back — and the reply is what was promised. The assembly
+    // already in hand is the pre-fold one: over the character budget, inside
+    // the model's real window, and the only thing left to send.
+    contexts.queue = [context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)])];
+    contexts.later = () => {
+      throw new Error("connection terminated unexpectedly");
+    };
+
+    await runTurn();
+
+    expect(sent.some((chunk) => chunk.type === "text-delta")).toBe(true);
+  });
+
   it.each(["discarded", "untouched"] as const)(
     "still answers the reader when the fold ends as %s",
     async (outcome) => {

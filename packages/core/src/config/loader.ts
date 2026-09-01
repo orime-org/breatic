@@ -175,6 +175,26 @@ const agentConfigSchema = z.object({
       message: `memory_keep_chars (${config.memory_keep_chars}) must be below memory_budget_chars (${config.memory_budget_chars})`,
     });
   }
+
+  // The pass runs to the keep line less the room the fold may add: it
+  // measures a payload carrying the memory as it stood, and the request that
+  // goes out carries what the fold wrote. Let the two ceilings reach that
+  // line and the pass has nothing to run to — every fold takes the whole
+  // conversation, and past it the line is negative, which the loop reads as
+  // never stopping. Both are configs that load clean and are found by the
+  // first reader whose conversation grows past the budget.
+  // Doubled, the way `turn-budget.ts` reserves it: memory is cut in code
+  // points and the payload is measured in code units, and everything above
+  // the basic plane is two units per point.
+  const reserved =
+    2 * (config.memory_conversation_max_size + config.memory_project_max_size);
+  if (reserved >= config.memory_keep_chars) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["memory_conversation_max_size"],
+      message: `memory_conversation_max_size + memory_project_max_size (${reserved}) must be below memory_keep_chars (${config.memory_keep_chars})`,
+    });
+  }
 });
 
 /** Validated agent configuration type. */

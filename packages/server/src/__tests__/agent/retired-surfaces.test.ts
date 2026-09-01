@@ -83,6 +83,9 @@ describe("the user memory layer", () => {
     const signature = service.slice(start, service.indexOf(")", start));
 
     expect(signature).not.toContain("?:");
+    // The other way to write the same thing, which a search for `?:` walks
+    // past: `projectId: string | undefined` is optional to every caller.
+    expect(signature).not.toContain("undefined");
     expect(signature).not.toContain("Scenario");
   });
 

@@ -50,6 +50,15 @@ export interface TurnIdentity {
 }
 
 /**
+ * Code units per code point, at worst.
+ *
+ * Anything outside the basic plane — emoji, and every script that lives above
+ * it — is a surrogate pair. The ceilings on memory are counted in code
+ * points; what the payload is measured in is code units.
+ */
+const MEMORY_RESERVE_FACTOR = 2;
+
+/**
  * What each turn in the history costs the assembled request.
  *
  * Priced one turn at a time with the same function the whole is priced with:
@@ -102,11 +111,14 @@ export async function foldIfOverBudget(
     // The keep line, less the room the fold is about to take. What was
     // measured above carries the memory as it stood — on a first fold, no
     // memory sections at all — and the assembly that goes out carries what
-    // the fold wrote. Both layers are bounded, so the growth is bounded, and
-    // reserving the whole of it is what makes the line hold on the request
-    // that is actually sent.
-    keep:
-      config.memory_keep_chars -
+    // the fold wrote.
+    //
+    // Doubled because the two sides count differently: memory is cut in code
+    // points, which is where a character ends, and the payload is measured in
+    // code units, which is what a string's length is. A summary written in
+    // emoji is two units per character, and the prompt asks the model to
+    // answer in the language of the conversation.
+    keep: config.memory_keep_chars - MEMORY_RESERVE_FACTOR *
       (config.memory_conversation_max_size + config.memory_project_max_size),
   });
   if (plan.newWatermark === null) return false;

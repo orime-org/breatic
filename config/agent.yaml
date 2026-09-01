@@ -83,7 +83,9 @@ user_message_max_chars: 15000
 memory_budget_chars: 850000
 
 # What one consolidation leaves behind, in characters. A pass takes whole
-# turns from the oldest end until what remains is at or under this.
+# turns from the oldest end until what remains is under this, less the room
+# the fold may add to memory — the two memory ceilings, doubled, since they
+# are counted in code points and the payload is measured in code units.
 memory_keep_chars: 500000
 
 # ── Tools ─────────────────────────────────────────────────

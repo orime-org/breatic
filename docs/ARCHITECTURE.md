@@ -93,7 +93,7 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 两层都限于用户自己:项目记忆按成员分行,一个成员归纳出来的东西不会进另一个成员的提示词。
 
 - **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求长度超过 `memory_budget_chars`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_chars`(默认 500,000)以下。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
-- **Context 压缩**:按工具调用对切,不按轮切。超出最近 `tool_result_keep`(默认 3)对的工具**结果**换成占位文本,`tool-call` 记录、助手文本、用户原文一律保留。`thinking` 字段永远不发回 LLM。**压缩靠 `turnIndex` 分组,所以读历史那一步必须把它留着**:`getMessagesForLlm` 曾经把它连同时间戳一起剥掉再强转回完整消息类型,理由是「模型看不到这些」—— 但模型本来就是被 `toModelMessages` 逐个点名字段喂的,剥掉谁也没挡住;真正被挡住的是压缩器,它每条消息都落进同一组、一组永远不超过窗口,于是丢掉旧轮工具调用的那条分支在生产路径上一次都没跑过
+- **Context 压缩**:按工具调用对切,不按轮切。超出最近 `tool_result_keep`(默认 3)对的工具**结果**换成占位文本,`tool-call` 记录、助手文本、用户原文一律保留。`thinking` 字段永远不发回 LLM。**归纳按整轮取,所以读历史那一步必须把 `turnIndex` 留着**:归纳的边界是一个轮次号,水位线记的也是它,`getMessagesForLlm` 剥掉它就没有边界可算
 - **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
 ### Chat conversation ownership

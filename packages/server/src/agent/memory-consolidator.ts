@@ -199,7 +199,9 @@ async function bill(input: ConsolidationBill): Promise<void> {
           charged: outcome.charged,
           shortfall: outcome.shortfall,
         },
-        "consolidation_charge_shortfall",
+        // The same key the turn's own charge logs under, so one query finds
+        // every model call that ran without being paid for.
+        "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
       );
     }
   } catch (err) {
