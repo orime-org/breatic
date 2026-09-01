@@ -13,6 +13,10 @@ import {
 } from '@web/pages/project/chat/ConversationHistorySheet';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 import { expectEveryLocaleRenders } from '@web/test-utils/i18n-keys';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 const CONVS: ConversationRow[] = [
   {
@@ -172,6 +176,21 @@ describe('ConversationHistorySheet', () => {
     expect(
       screen.getByTestId('conversation-open-c2').getAttribute('aria-current'),
     ).toBeNull();
+  });
+
+  it('fills the active row past the fill the others take under the pointer', () => {
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+      />,
+    );
+    expectChosenFill(screen.getByTestId('conversation-c1'));
+    expectHoverableSiblingFill(screen.getByTestId('conversation-c2'));
   });
 
   it('clicking a row fires onPick with that id', async () => {

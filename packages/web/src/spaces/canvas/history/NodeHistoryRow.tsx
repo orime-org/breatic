@@ -161,7 +161,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
       data-testid='node-history-row'
       className={
         'grid grid-cols-[46px_1fr_auto] items-center gap-2.5 rounded-content-sm px-1.5 py-1.5 transition-colors' +
-        (isCurrent ? ' bg-accent' : ' hover:bg-accent') +
+        (isCurrent ? ' bg-accent-strong' : ' hover:bg-accent') +
         (failed ? ' opacity-60' : '')
       }
     >

@@ -7,6 +7,10 @@ import type { ModelEntry } from '@breatic/shared';
 
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 /**
  * Builds a minimal image model entry for the picker tests.
@@ -55,6 +59,17 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     fireEvent.click(screen.getByTestId('generate-model-option-midjourney_v7'));
     expect(onChange).toHaveBeenCalledWith('midjourney_v7');
+  });
+
+  it('fills the current model past the fill the others take under the pointer', () => {
+    render(
+      <ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    expectChosenFill(screen.getByTestId('generate-model-option-nano_banana_pro'));
+    expectHoverableSiblingFill(
+      screen.getByTestId('generate-model-option-midjourney_v7'),
+    );
   });
 
   it('falls back to the raw model id on the trigger when it is not in the catalog', () => {

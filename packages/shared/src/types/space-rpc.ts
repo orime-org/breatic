@@ -136,6 +136,31 @@ export const TabPayloadSchema = z
   .strict();
 export type TabPayload = z.infer<typeof TabPayloadSchema>;
 
+/**
+ * Move a tab in the caller's own tab bar.
+ *
+ * The move is relative — which tab, and which one it lands in front of —
+ * rather than a whole new order. A client computes its request from the
+ * tabs it can see, and by the time the request arrives the server may know
+ * about a tab that client never saw (another connection on the same account
+ * just opened one). "Replace the list with mine" would drop that tab;
+ * a relative move does not mention it, so its place is unaffected.
+ *
+ * `beforeSpaceId` is `null` for a move to the end. Spelled out rather than
+ * absent, so "put it last" and "the sender forgot the field" stay different
+ * requests.
+ *
+ * Strict for the same reason as {@link TabPayloadSchema}: whose tab bar
+ * changes comes from the authenticated connection, never from the body.
+ */
+export const TabReorderPayloadSchema = z
+  .object({
+    spaceId: z.string().min(1).max(64),
+    beforeSpaceId: z.string().min(1).max(64).nullable(),
+  })
+  .strict();
+export type TabReorderPayload = z.infer<typeof TabReorderPayloadSchema>;
+
 // ── Request envelope (tagged union) ─────────────────────────────────
 
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
@@ -174,6 +199,11 @@ export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("tab:close"),
     payload: TabPayloadSchema,
   }),
+  z.object({
+    id: RpcIdSchema,
+    type: z.literal("tab:reorder"),
+    payload: TabReorderPayloadSchema,
+  }),
 ]);
 export type SpaceRpcRequest = z.infer<typeof SpaceRpcRequestSchema>;
 
@@ -183,13 +213,25 @@ export const SpaceRpcResponseSchema = z.discriminatedUnion("ok", [
   z.object({
     id: RpcIdSchema,
     ok: z.literal(true),
-    /** `space:create` returns the canonical entry; others return undefined. */
+    /**
+     * `space:create` returns the canonical entry. `tab:reorder` returns
+     * whether this call WROTE the caller's list — seeding it counts, even
+     * when the move itself changed no order. A client showing the move
+     * optimistically keeps it until the broadcast arrives when it did, and
+     * retires it at once when it did not, because nothing was written and
+     * so nothing will arrive. Every other request answers with no result.
+     */
     result: z
-      .object({
-        spaceId: z.string(),
-        type: SpaceTypeSchema,
-        name: z.string(),
-      })
+      .union([
+        z.object({
+          spaceId: z.string(),
+          type: SpaceTypeSchema,
+          name: z.string(),
+        }),
+        z.object({
+          wrote: z.boolean(),
+        }),
+      ])
       .optional(),
   }),
   z.object({

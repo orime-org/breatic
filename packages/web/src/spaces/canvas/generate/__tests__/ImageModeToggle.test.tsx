@@ -10,6 +10,10 @@ import {
   type ImageGenMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
 import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 /**
  * Renders the mode picker with the given active mode.
@@ -43,6 +47,13 @@ describe('ImageModeToggle — the t2i / i2i mode popover', () => {
     fireEvent.click(screen.getByTestId('generate-mode-trigger'));
     expect(screen.getByTestId('generate-mode-t2i')).toBeInTheDocument();
     expect(screen.getByTestId('generate-mode-i2i')).toBeInTheDocument();
+  });
+
+  it('fills the active mode past the fill the other takes under the pointer', () => {
+    setup('i2i');
+    fireEvent.click(screen.getByTestId('generate-mode-trigger'));
+    expectChosenFill(screen.getByTestId('generate-mode-i2i'));
+    expectHoverableSiblingFill(screen.getByTestId('generate-mode-t2i'));
   });
 
   it('marks the active mode option as selected (aria-pressed)', () => {

@@ -20,7 +20,7 @@ import { useExclusiveOverlay } from '@web/lib/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/lib/use-track-active-region';
-import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { isUnanswered, sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import {
@@ -30,11 +30,13 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { evictDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import {
-  nextActiveAfterVanish,
   useProjectMeta,
   type ProjectSpace,
 } from '@web/data/yjs/project-meta';
-import { resolveEffectiveActiveSpace } from '@web/pages/project/active-space';
+import {
+  resolveEffectiveActiveSpace,
+  reviseTabChoice,
+} from '@web/pages/project/active-space';
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
@@ -51,15 +53,38 @@ import {
 import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRenameProject } from '@web/pages/project/use-rename-project';
+import { useTabReorder } from '@web/pages/project/use-tab-reorder';
 import { useRecordProjectOpen } from '@web/pages/project/use-record-project-open';
 import { SpaceTabBar } from '@web/pages/project/chrome/tab-bar/SpaceTabBar';
 import { ViewportToolbar } from '@web/pages/project/chrome/viewport-toolbar/ViewportToolbar';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { SpaceDocSync } from '@web/pages/project/SpaceDocSync';
+import {
+  Group,
+  Panel,
+  Separator as ResizeSeparator,
+} from 'react-resizable-panels';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import {
+  AGENT_COLUMN_MAX_WIDTH,
+  AGENT_COLUMN_MIN_WIDTH,
+  AGENT_PANEL_ID,
+  PAGE_MIN_WIDTH,
+  RESIZE_HANDLE_WIDTH,
+  SPACE_MIN_WIDTH,
+} from '@web/pages/project/agent-column-width';
+import { useAgentColumnWidth } from '@web/pages/project/use-agent-column-width';
+
+/**
+ * Undoes the library's inner wrapper, which is a block box with
+ * `overflow: auto` hard-coded. Both columns lay their children out with flex
+ * and own their scrolling, so the wrapper has to hand both back.
+ */
+const PANEL_STYLE = { display: 'flex', overflow: 'visible' } as const;
 
 /**
  * Project page shell - TopBar above two columns:
- *   - left:  Agent column (320 px, collapsible) - AgentColumn
+ *   - left:  Agent column (320..640 px, drag to resize, collapsible) - AgentColumn
  *   - right: SpaceTabBar + Space body + floating menus
  *
  * State model (2026-05-21 redesign):
@@ -254,21 +279,153 @@ function ProjectWorkspace({
     null,
   );
 
+  /**
+   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
+   * connection. Always throws on failure, and always shows a toast first, so
+   * a caller's `.catch()` is there for its own cleanup, not to tell the user.
+   * There are three ways to fail and all three
+   * go through here: the provider is not mounted yet (the UI gates actions
+   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
+   * its 10s timeout, or the transport throws), or the server answered no.
+   */
+  const callRpc = React.useCallback(
+    async (
+      req: Parameters<typeof sendSpaceRpc>[1],
+      errorToastKey: string,
+      unansweredToastKey?: string,
+    ): Promise<SpaceRpcResponse> => {
+      if (!provider) {
+        // Surface a toast on the "no provider yet" path too - without this
+        // the catch block in callers received a silent `Error('notSynced')`
+        // and (because `err.message.length > 0`) the fallback toast was
+        // skipped, leaving the user staring at a dismissed dialog and no
+        // explanation (2026-05-25 P0 silent-fail).
+        const msg = t('project.space.error.notSynced');
+        toast.error(t(errorToastKey), { description: msg });
+        throw new Error(msg);
+      }
+      let res: SpaceRpcResponse;
+      try {
+        res = await sendSpaceRpc(provider, req);
+      } catch (err) {
+        // A rejection means the request never got an answer — the 10s
+        // timeout, or the socket refusing to carry it. Without this the
+        // rejection travelled straight out of the await, past both toasts
+        // below, into a caller's empty catch: with the network down a user
+        // could close a tab and never hear anything back (real-browser
+        // smoke, 2026-08-03). The thrown message is a developer string, so
+        // the user gets a written one instead.
+        //
+        // A caller that keeps showing what the user did while the answer is
+        // missing passes its own line, because "that failed" would contradict
+        // what is on screen and the server may well have done it.
+        if (unansweredToastKey !== undefined && isUnanswered(err)) {
+          toast.error(t(unansweredToastKey));
+        } else {
+          toast.error(t(errorToastKey), {
+            description: t('project.space.error.unreachable'),
+          });
+        }
+        throw err;
+      }
+      if (!res.ok) {
+        toast.error(t(errorToastKey), { description: res.error.message });
+        throw new Error(res.error.message);
+      }
+      return res;
+    },
+    [provider, t],
+  );
+
+  /**
+   * Send one tab move and say whether the server wrote anything.
+   * @param spaceId - The tab that moved.
+   * @param beforeSpaceId - The tab it landed in front of, null for the end.
+   * @returns Whether the order on the server changed, so a broadcast is coming.
+   * @throws {SpaceRpcUnanswered} When the request went out and drew no answer,
+   *   which leaves it open whether the server carried it out.
+   * @throws {Error} When the server said no.
+   */
+  const sendReorder = React.useCallback(
+    async (spaceId: string, beforeSpaceId: string | null): Promise<boolean> => {
+      const res = await callRpc(
+        { type: 'tab:reorder', payload: { spaceId, beforeSpaceId } },
+        'project.space.error.reorderTab',
+        'project.space.error.reorderTabUnanswered',
+      );
+      return res.ok && res.result && 'wrote' in res.result
+        ? res.result.wrote
+        : false;
+    },
+    [callRpc],
+  );
+
+  /**
+   * The Space a `tab:open` is out for, or null. Naming a Space and its tab
+   * appearing are two round trips, and between them the choice names a Space
+   * the strip does not hold — which is also what a tab that LEFT looks like.
+   * This says which of the two it is, so pinning can wait for one and settle
+   * the other.
+   */
+  const [openingTab, setOpeningTab] = React.useState<string | null>(null);
+
+  /**
+   * Put a Space on this user's strip.
+   *
+   * Which tabs are OPEN is shared and persisted, so only the server may write
+   * it. The failure is reported and nothing is rolled back: the Space itself
+   * is untouched.
+   * @param spaceId - The Space to open a tab for.
+   * @returns Nothing; the request settles on its own.
+   */
+  const openTab = React.useCallback(
+    (spaceId: string): void => {
+      setOpeningTab(spaceId);
+      void callRpc(
+        { type: 'tab:open', payload: { spaceId } },
+        'project.space.error.openTab',
+      ).catch(() => {
+        // callRpc already surfaced a toast. No tab is coming for this one,
+        // so stop holding the choice open for it.
+        setOpeningTab((cur) => (cur === spaceId ? null : cur));
+      });
+    },
+    [callRpc],
+  );
+
+  // What the strip renders: the stored order with a released drag laid over it
+  // until the document catches up.
+  const { order: tabOrder, reorder } = useTabReorder(openTabIds, sendReorder);
+
   // Tabs shown in the tab bar = each open tab id resolved against the
   // shared spaces list (drop missing ids - happens if another user
   // deleted a Space while we had it open).
   const openTabs: ReadonlyArray<ProjectSpace> = React.useMemo(
     () =>
-      openTabIds
+      tabOrder
         .map((id) => spaces.find((s) => s.id === id))
         .filter((s): s is ProjectSpace => Boolean(s)),
-    [openTabIds, spaces],
+    [tabOrder, spaces],
   );
 
   const activeSpace: ProjectSpace | undefined = resolveEffectiveActiveSpace(
     openTabs,
     activeSpaceId,
   );
+
+  // `reviseTabChoice` holds the invariant; this applies what it asks for.
+  React.useEffect(() => {
+    const revision = reviseTabChoice({
+      openTabIds: openTabs.map((s) => s.id),
+      activeSpaceId,
+      shownId: activeSpace?.id,
+      openingTab,
+    });
+    if (revision.activeSpaceId !== undefined) {
+      setActiveSpaceId(revision.activeSpaceId);
+    }
+    if (revision.clearOpening === true) setOpeningTab(null);
+  }, [openTabs, activeSpaceId, activeSpace, openingTab]);
 
   // Clear the undo history of spaces that have VANISHED (deleted locally or by
   // a collaborator) while still in this user's openTabIds. Such a tab drops out
@@ -283,33 +440,6 @@ function ProjectWorkspace({
       new Set(spaces.map((s) => s.id)),
     );
   }, [projectId, openTabIds, spaces]);
-
-  // Move off a Space that has VANISHED — deleted by us or by a collaborator.
-  // Delete goes through the `space:delete` RPC, never through `onCloseTab`, so
-  // without this the active id keeps naming a Space that no longer exists.
-  //
-  // Closing a tab is NOT handled here, and must not be: an active id that is
-  // still live but absent from `openTabIds` also describes a Space that is
-  // being opened this instant, whose `tab:open` broadcast has not landed yet.
-  // Reacting to that shape sends the user back to the first tab every time
-  // they pick a Space. Closing needs nothing anyway — `openTabs` drops the id,
-  // `resolveEffectiveActiveSpace` falls back to the first open tab, and line
-  // ~805 hands that fallback's id to the tab strip, so body and highlight move
-  // together. `activeSpaceId` stays pointing at the closed Space until
-  // something else changes it, which is harmless: it only matters again if the
-  // user reopens that same Space, and landing back on it is what they asked
-  // for.
-  //
-  // Per-user + runs on every client, so the person who deleted AND everyone
-  // else each converge their own state.
-  React.useEffect(() => {
-    if (!userId) return;
-    const liveIds = new Set(spaces.map((s) => s.id));
-    const next = nextActiveAfterVanish(openTabIds, liveIds, activeSpaceId);
-    if (next !== undefined) {
-      setActiveSpaceId(next);
-    }
-  }, [userId, openTabIds, spaces, activeSpaceId]);
 
   // Discard the in-memory state of a tab once it has actually left this
   // user's list — whether they closed it, another machine on the account
@@ -347,54 +477,6 @@ function ProjectWorkspace({
     'space-readonly-sheet',
   );
 
-  /**
-   * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
-   * connection. Always throws on failure, and always shows a toast first —
-   * every caller relies on that, ending in an empty `.catch()` because the
-   * user has already been told. There are three ways to fail and all three
-   * go through here: the provider is not mounted yet (the UI gates actions
-   * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
-   * its 10s timeout, or the transport throws), or the server answered no.
-   */
-  const callRpc = React.useCallback(
-    async (
-      req: Parameters<typeof sendSpaceRpc>[1],
-      errorToastKey: string,
-    ): Promise<SpaceRpcResponse> => {
-      if (!provider) {
-        // Surface a toast on the "no provider yet" path too - without this
-        // the catch block in callers received a silent `Error('notSynced')`
-        // and (because `err.message.length > 0`) the fallback toast was
-        // skipped, leaving the user staring at a dismissed dialog and no
-        // explanation (2026-05-25 P0 silent-fail).
-        const msg = t('project.space.error.notSynced');
-        toast.error(t(errorToastKey), { description: msg });
-        throw new Error(msg);
-      }
-      let res: SpaceRpcResponse;
-      try {
-        res = await sendSpaceRpc(provider, req);
-      } catch (err) {
-        // A rejection means the request never got an answer — the 10s
-        // timeout, or the socket refusing to carry it. Without this the
-        // rejection travelled straight out of the await, past both toasts
-        // below, into a caller's empty catch: with the network down a user
-        // could close a tab and never hear anything back (real-browser
-        // smoke, 2026-08-03). The thrown message is a developer string, so
-        // the user gets a written one instead.
-        toast.error(t(errorToastKey), {
-          description: t('project.space.error.unreachable'),
-        });
-        throw err;
-      }
-      if (!res.ok) {
-        toast.error(t(errorToastKey), { description: res.error.message });
-        throw new Error(res.error.message);
-      }
-      return res;
-    },
-    [provider, t],
-  );
 
   const pendingCreateTokenRef = React.useRef<string | null>(null);
 
@@ -428,16 +510,10 @@ function ProjectWorkspace({
       // It reports as an OPEN failure, not a create failure. The create
       // already succeeded — the entry is in the list and on screen — so
       // saying it failed would send the user off to make a second Space.
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId: mine.id } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast; the Space itself exists, so
-        // there is nothing to roll back and nothing more to say.
-      });
+      openTab(mine.id);
       setActiveSpaceId(mine.id);
     }
-  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, callRpc]);
+  }, [spaces, spaceOpInProgress, userId, setSpaceOpInProgress, openTab]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
   // and surface a toast so the user can retry rather than stare at a
@@ -479,6 +555,9 @@ function ProjectWorkspace({
 
   // ---- Local view UI state ----
   const collapsed = useUIStore((s) => s.chatPanelCollapsed);
+  // Called unconditionally: the width outlives the column being collapsed, and
+  // a collapsed column is exactly the case where nothing may write it.
+  const agentColumnWidth = useAgentColumnWidth();
   // Zoom is owned by the canvas (the ReactFlow viewport): the canvas mirrors the
   // live zoom into the store for this read-out, and the toolbar posts zoom
   // commands back through the store mailbox (consumed inside the canvas).
@@ -516,14 +595,7 @@ function ProjectWorkspace({
     // and a switch is instant and local. Sending the redundant open made
     // every switch raise "failed to open the tab" whenever collab was
     // unreachable, for an action that needed nothing from it.
-    if (!openTabIds.includes(id)) {
-      void callRpc(
-        { type: 'tab:open', payload: { spaceId: id } },
-        'project.space.error.openTab',
-      ).catch(() => {
-        // callRpc already surfaced a toast.
-      });
-    }
+    if (!openTabIds.includes(id)) openTab(id);
     setActiveSpaceId(id);
   };
 
@@ -549,7 +621,7 @@ function ProjectWorkspace({
     // once the tab has actually left it: the in-memory state this tab
     // accumulated (canvas undo manager, document editor with its undo stack
     // and selection) is discarded by the effect that watches openTabIds, and
-    // moving off it is planned by `nextActiveAfterVanish`.
+    // the pinning effect above moves off it.
     //
     // That split matters now that this is a round trip. Anything done here
     // happens whether or not the request succeeds, and a close CAN fail —
@@ -749,35 +821,67 @@ function ProjectWorkspace({
     // anywhere below gets it without a single layer in between having to know
     // it exists, which is the property the prop chain could not give us.
     <CollaboratorNamesProvider value={collaboratorNames}>
-      <div className='flex h-screen w-screen flex-col bg-background text-foreground'>
-        {/* Confirm before an in-app leave (back link / logo / browser back) while
+      {/*
+        The floor is what keeps both regions usable: below it neither side may
+        be squeezed further, so the page scrolls sideways and the top bar goes
+        with it. It is a constant — collapsing the Agent column does not lower
+        it, or the scrollbar would appear and disappear every time the column
+        is toggled.
+
+        That sideways scrolling happens in our own scroller rather than in the
+        document, which is the rule for every visible scroller in the app: the
+        bar the browser draws down the bottom of a window looks different in
+        every engine. It also keeps `documentElement` from overflowing at all,
+        so the page below is sized off the viewport without a horizontal bar
+        eating into the bottom of it.
+      */}
+      <ScrollArea scrollbars='horizontal' className='h-full w-full'>
+        {/*
+          Sized off the viewport rather than off its parent. Radix wraps the
+          children in a `display: table` div, and a table takes its size from
+          its content — a percentage height inside it resolves against a height
+          the table does not have yet, so the whole `flex-1 min-h-0` chain
+          below loses its bound and the page grows to whatever its content
+          happens to add up to (measured: 2283px tall in an 800px window).
+
+          `100vw` and `100vh` are exact here because the document itself no
+          longer scrolls in either direction: the scroller above owns the
+          sideways overflow, so neither a horizontal bar eats into the height
+          nor a vertical one into the width.
+        */}
+        <div
+          className='flex h-screen w-screen flex-col bg-background text-foreground'
+          style={{ minWidth: `${PAGE_MIN_WIDTH}px` }}
+          data-testid='project-page'
+        >
+          {/* Confirm before an in-app leave (back link / logo / browser back) while
           a front-end operation is still syncing (#1787) — the in-app companion
           to the beforeunload guard. Renders nothing while not blocked. */}
-        <LeaveProjectGuard />
-        {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
+          <LeaveProjectGuard />
+          {/* Keep every OPEN Space tab's Yjs doc attached to the shared collab
           socket. Attach follows tab open / close — NOT the active tab — so
           background tabs stay live and re-activating one is instant (user
           requirement 2026-06-18). Renders nothing. */}
-        {openTabs.map((tab) => (
-          <SpaceDocSync
-            key={tab.id}
-            projectId={projectId}
-            spaceId={tab.id}
-            type={tab.type}
-          />
-        ))}
-        <ConnectionBanner
-          status={connectionStatus}
-          onReload={() => window.location.reload()}
-          onReLogin={() => {
-          // Carry the current path as `?next=` so the login page can
-          // bounce back to the project after a successful re-auth.
-            navigate(
+          {openTabs.map((tab) => (
+            <SpaceDocSync
+              key={tab.id}
+              projectId={projectId}
+              spaceId={tab.id}
+              type={tab.type}
+            />
+          ))}
+          <ConnectionBanner
+            status={connectionStatus}
+            onReload={() => window.location.reload()}
+            onReLogin={() => {
+              // Carry the current path as `?next=` so the login page can
+              // bounce back to the project after a successful re-auth.
+              navigate(
             `/login?next=${encodeURIComponent(window.location.pathname)}`,
-            );
-          }}
-        />
-        {/*
+              );
+            }}
+          />
+          {/*
         Nothing reaches INTO this element to disable it when the connection
         drops — no `inert`, no `aria-hidden`, no `disabled`. The first two were
         tried and removed: `inert` stops the whole subtree receiving input,
@@ -803,160 +907,224 @@ function ProjectWorkspace({
         selected on when absent, and a class list would pin the assertion to
         styling.
       */}
-        <div
-          className='relative flex min-h-0 flex-1 flex-col'
-          data-workspace=''
-          data-workspace-disabled={workspaceDisabled || undefined}
-        >
-          <TopBar
-            projectId={projectId}
-            projectName={projectName}
-            role={role}
-            credits={credits}
-            onRename={(next) => renameMutation.mutate(next)}
-            members={members}
-            currentUserId={userId}
-          />
-          <div className='flex min-h-0 flex-1'>
-            {/* Agent column is hidden for viewers (B model — not rendered,
+          <div
+            className='relative flex min-h-0 flex-1 flex-col'
+            data-workspace=''
+            data-workspace-disabled={workspaceDisabled || undefined}
+          >
+            <TopBar
+              projectId={projectId}
+              projectName={projectName}
+              role={role}
+              credits={credits}
+              onRename={(next) => renameMutation.mutate(next)}
+              members={members}
+              currentUserId={userId}
+            />
+            {/* Both panels are given `display: flex` and `overflow: visible`
+            because the library's inner wrapper is a block box that hard-codes
+            `overflow: auto`: left alone it breaks each side's height chain and
+            adds a scroll container we never wrote. */}
+            <Group
+              orientation='horizontal'
+              className='flex min-h-0 flex-1'
+              elementRef={agentColumnWidth.groupRef}
+              onLayoutChanged={agentColumnWidth.onLayoutChanged}
+            >
+              {/* Agent column is hidden for viewers (B model — not rendered,
               not just disabled) AND when the user has collapsed it. The
-              backend gates agent chat on role; this hide is UX only. */}
-            {collapsed || isViewer ? null : <AgentColumn projectId={projectId} />}
-            {/* The other of the two regions a keyboard or clipboard event can
+              backend gates agent chat on role; this hide is UX only. The
+              handle goes with it: there is nothing to drag against once the
+              column is gone, and the space region then has the row to itself. */}
+              {collapsed || isViewer ? null : (
+                <>
+                  <Panel
+                    id={AGENT_PANEL_ID}
+                    panelRef={agentColumnWidth.panelRef}
+                    defaultSize={agentColumnWidth.defaultSize}
+                    minSize={`${AGENT_COLUMN_MIN_WIDTH}px`}
+                    maxSize={`${AGENT_COLUMN_MAX_WIDTH}px`}
+                    groupResizeBehavior='preserve-pixel-size'
+                    style={PANEL_STYLE}
+                  >
+                    <AgentColumn projectId={projectId} />
+                  </Panel>
+                  {/* The line between the two columns. What answers a pointer
+                  around it is wider than the line twice over: the transparent
+                  ::before reaches 4px to each side, and the library grows the
+                  1px hit rect to a total of `resizeTargetMinimumSize` (10px
+                  for a mouse), which is about 4.5px to each side.
+
+                  The `z-10` is what makes the right-hand half of that reach
+                  real: the canvas pane is `position:absolute; z-index:1`, so
+                  without it the pane paints over the half of the ::before that
+                  hangs into the space region, and a press there lands on the
+                  canvas in the DOM while the library still reads it as a drag.
+                  The canvas then began a box selection, the library took the
+                  pointer capture away, and the `pointerup` the canvas was
+                  waiting for went to the handle instead — leaving a selection
+                  box being drawn under a pointer with no button held.
+
+                  Double-click is off: the library
+                  resizes imperatively there, which does not count as a user
+                  gesture, so the width would be restored a frame later — the
+                  user would see it flick and come back. */}
+                  <ResizeSeparator
+                    disableDoubleClick
+                    aria-label={t('chrome.aria.agentColumnWidth')}
+                    style={{ width: RESIZE_HANDLE_WIDTH }}
+                    className={
+                      'relative z-10 flex-none cursor-col-resize bg-border '
+                    + 'transition-colors duration-[var(--duration-fast)] '
+                    + 'before:absolute before:inset-y-0 before:-inset-x-1 before:content-[\'\'] '
+                    + 'hover:bg-active-border active:bg-active-border '
+                    + 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                    }
+                  />
+                </>
+              )}
+              {/* The other of the two regions a keyboard or clipboard event can
               belong to. The tab bar sits inside it, which is what makes the
               tabs part of the space region without a rule of their own. */}
-            <section
-              className='flex min-w-0 flex-1 flex-col'
-              data-region='space'
-            >
-              <SpaceTabBar
-                spaces={openTabs}
-                allSpaces={spaces}
-                openTabIds={openTabIds}
-                activeSpaceId={activeSpace?.id ?? ''}
-                projectId={projectId}
-                onActivate={onActivate}
-                onCreate={onCreateSpace}
-                onClose={onCloseTab}
-                onViewSpace={onViewSpace}
-                onDeleteSpace={onDeleteSpace}
-                onSetSpaceLocked={onSetSpaceLocked}
-                onRenameSpace={onRenameSpace}
-                metaProvider={provider}
-                currentUserRole={role}
-                onRestoreSpace={onRestoreSpace}
-              />
-              {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
+              <Panel
+                minSize={`${SPACE_MIN_WIDTH}px`}
+                style={PANEL_STYLE}
+              >
+                <section
+                  className='flex min-w-0 flex-1 flex-col'
+                  data-region='space'
+                >
+                  <SpaceTabBar
+                    spaces={openTabs}
+                    allSpaces={spaces}
+                    openTabIds={openTabIds}
+                    activeSpaceId={activeSpace?.id ?? ''}
+                    projectId={projectId}
+                    onActivate={onActivate}
+                    onCreate={onCreateSpace}
+                    onClose={onCloseTab}
+                    onViewSpace={onViewSpace}
+                    onDeleteSpace={onDeleteSpace}
+                    onSetSpaceLocked={onSetSpaceLocked}
+                    onRenameSpace={onRenameSpace}
+                    onReorder={reorder}
+                    metaProvider={provider}
+                    currentUserRole={role}
+                    onRestoreSpace={onRestoreSpace}
+                  />
+                  {/* overflow-hidden: the pick-mode chrome slide-out (batch-2 item
                 13) must exit THROUGH this section's edges — without the clip
                 the left menu slides on top of the chat sidebar instead of
                 disappearing (caught by the real-browser screenshot). Floating
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
-              <div className='relative flex-1 overflow-hidden'>
-                {activeSpace ? (
-                // key on the Space id so switching tabs REMOUNTS the body —
-                // ReactFlow re-runs fitView so the camera frames the new
-                // Space's nodes (#1378). Cheap now: remount only re-binds the
-                // already-attached doc, it does not rebuild a WebSocket.
-                  <SpaceOutlet
-                    key={activeSpace.id}
-                    projectId={projectId}
-                    spaceId={activeSpace.id}
-                    type={activeSpace.type}
-                    readOnly={isViewer}
-                  />
-                ) : (
-                  <div
-                    data-testid='no-active-space'
-                    className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-                  >
-                    {t('project.space.noActive')}
+                  <div className='relative flex-1 overflow-hidden'>
+                    {activeSpace ? (
+                    // key on the Space id so switching tabs REMOUNTS the body —
+                    // ReactFlow re-runs fitView so the camera frames the new
+                    // Space's nodes (#1378). Cheap now: remount only re-binds the
+                    // already-attached doc, it does not rebuild a WebSocket.
+                      <SpaceOutlet
+                        key={activeSpace.id}
+                        projectId={projectId}
+                        spaceId={activeSpace.id}
+                        type={activeSpace.type}
+                        readOnly={isViewer}
+                      />
+                    ) : (
+                      <div
+                        data-testid='no-active-space'
+                        className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+                      >
+                        {t('project.space.noActive')}
+                      </div>
+                    )}
+                    {activeSpace?.type === 'canvas' ? (
+                      <>
+                        <input
+                          ref={uploadInputRef}
+                          type='file'
+                          multiple
+                          accept='image/*,video/*,audio/*,text/*'
+                          hidden
+                          data-testid='canvas-upload-input'
+                          onChange={(e) => {
+                            const files = e.target.files;
+                            if (files && files.length > 0) {
+                              requestUpload([...files]);
+                            }
+                            // Reset so picking the same file again re-fires change.
+                            e.target.value = '';
+                          }}
+                        />
+                        <LeftFloatingMenu
+                          disabled={isViewer}
+                          concealed={picking}
+                          onCreateNode={requestNodeCreate}
+                          onPick={(tool) => {
+                          // Open the file picker synchronously inside the click so
+                          // the browser keeps user-activation; the canvas fulfils
+                          // the picked files via the upload mailbox.
+                            if (tool === 'upload') uploadInputRef.current?.click();
+                          // comment    - enter annotation mode (later slice)
+                          // collection - placeholder (M1+)
+                          // help       - placeholder (M1+)
+                          // feedback   - placeholder (M1+)
+                          // Buttons never store a "selected" state - fire and forget.
+                          // The node-library (`nodes`) button owns its own dropdown.
+                          }}
+                        />
+                        <ViewportToolbar
+                          zoom={zoom}
+                          concealed={picking}
+                          minimapVisible={minimapVisible}
+                          snapToGrid={snapToGrid}
+                          canUndo={canUndo}
+                          canRedo={canRedo}
+                          onZoomIn={() => requestViewportCommand('zoomIn')}
+                          onZoomOut={() => requestViewportCommand('zoomOut')}
+                          onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
+                          onFit={() => requestViewportCommand('fit')}
+                          onToggleSnap={toggleSnapToGrid}
+                          onToggleMinimap={toggleMinimap}
+                          onUndo={() => requestHistoryCommand('undo')}
+                          onRedo={() => requestHistoryCommand('redo')}
+                        />
+                      </>
+                    ) : null}
                   </div>
-                )}
-                {activeSpace?.type === 'canvas' ? (
-                  <>
-                    <input
-                      ref={uploadInputRef}
-                      type='file'
-                      multiple
-                      accept='image/*,video/*,audio/*,text/*'
-                      hidden
-                      data-testid='canvas-upload-input'
-                      onChange={(e) => {
-                        const files = e.target.files;
-                        if (files && files.length > 0) {
-                          requestUpload([...files]);
-                        }
-                        // Reset so picking the same file again re-fires change.
-                        e.target.value = '';
-                      }}
-                    />
-                    <LeftFloatingMenu
-                      disabled={isViewer}
-                      concealed={picking}
-                      onCreateNode={requestNodeCreate}
-                      onPick={(tool) => {
-                      // Open the file picker synchronously inside the click so
-                      // the browser keeps user-activation; the canvas fulfils
-                      // the picked files via the upload mailbox.
-                        if (tool === 'upload') uploadInputRef.current?.click();
-                      // comment    - enter annotation mode (later slice)
-                      // collection - placeholder (M1+)
-                      // help       - placeholder (M1+)
-                      // feedback   - placeholder (M1+)
-                      // Buttons never store a "selected" state - fire and forget.
-                      // The node-library (`nodes`) button owns its own dropdown.
-                      }}
-                    />
-                    <ViewportToolbar
-                      zoom={zoom}
-                      concealed={picking}
-                      minimapVisible={minimapVisible}
-                      snapToGrid={snapToGrid}
-                      canUndo={canUndo}
-                      canRedo={canRedo}
-                      onZoomIn={() => requestViewportCommand('zoomIn')}
-                      onZoomOut={() => requestViewportCommand('zoomOut')}
-                      onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
-                      onFit={() => requestViewportCommand('fit')}
-                      onToggleSnap={toggleSnapToGrid}
-                      onToggleMinimap={toggleMinimap}
-                      onUndo={() => requestHistoryCommand('undo')}
-                      onRedo={() => requestHistoryCommand('redo')}
-                    />
-                  </>
-                ) : null}
-              </div>
-            </section>
-          </div>
-          {/* A visual signal that something is wrong — that is the whole job, and
+                </section>
+              </Panel>
+            </Group>
+            {/* A visual signal that something is wrong — that is the whole job, and
             once the user can see it the job is done. Being opaque, it does also
             take the pointer, so the workspace is not clickable while it shows.
             That is a side effect of covering the screen, not a goal: nothing
             here works to block input, and nothing here works to let it
             through either. */}
-          {workspaceDisabled ? (
-            <div
-              className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
-              data-testid='workspace-disabled-overlay'
+            {workspaceDisabled ? (
+              <div
+                className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+                data-testid='workspace-disabled-overlay'
+              />
+            ) : null}
+          </div>
+          <SpaceReadOnlySheet
+            open={roSheetOpen}
+            space={readOnlySpace}
+            onClose={() => {
+              setRoSheetOpen(false);
+              setReadOnlyViewSpaceId(null);
+            }}
+          />
+          {spaceOpInProgress === 'creating' ? (
+            <LoadingOverlay
+              message={t('project.space.loading.create')}
+              testId='creating-space-overlay'
             />
           ) : null}
         </div>
-        <SpaceReadOnlySheet
-          open={roSheetOpen}
-          space={readOnlySpace}
-          onClose={() => {
-            setRoSheetOpen(false);
-            setReadOnlyViewSpaceId(null);
-          }}
-        />
-        {spaceOpInProgress === 'creating' ? (
-          <LoadingOverlay
-            message={t('project.space.loading.create')}
-            testId='creating-space-overlay'
-          />
-        ) : null}
-      </div>
+      </ScrollArea>
     </CollaboratorNamesProvider>
   );
 }

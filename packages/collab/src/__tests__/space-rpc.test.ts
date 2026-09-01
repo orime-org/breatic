@@ -239,7 +239,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     );
     expect(res.ok).toBe(true);
     // The caller learns the id from the reply — it did not choose one.
-    const newId = res.ok ? res.result?.spaceId : undefined;
+    const newId = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
     expect(newId).toBeTruthy();
     expect(fakeMetaDoc.doc.getMap("spaces").has(newId!)).toBe(true);
     expect(seedInitialStateMock).toHaveBeenCalledWith(
@@ -283,7 +283,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
         },
       );
       expect(res.ok).toBe(true);
-      const id = res.ok ? res.result?.spaceId : undefined;
+      const id = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
       const name = spaceContentDocName(PID, id!, type);
       const call = seedInitialStateMock.mock.calls.find((c) => c[0] === name);
       expect(call).toBeDefined();
@@ -314,7 +314,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
         payload: { type: "canvas", name: "Main", claimToken: TOKEN },
       },
     );
-    const newId = res.ok ? res.result?.spaceId : undefined;
+    const newId = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
     const entry = fakeMetaDoc.doc
       .getMap("spaces")
       .get(newId!) as Y.Map<unknown>;
@@ -339,7 +339,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
           payload: { type: "canvas", name, claimToken: TOKEN },
         },
       );
-      return res.ok ? res.result?.spaceId : undefined;
+      return res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
     };
     const first = await mk("One");
     const second = await mk("Two");
@@ -362,7 +362,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       },
     );
     expect(res.ok).toBe(true);
-    const newId = res.ok ? res.result?.spaceId : undefined;
+    const newId = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
     expect(fakeMetaDoc.doc.getMap("spaces").has(newId!)).toBe(true);
   });
 
