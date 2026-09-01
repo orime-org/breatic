@@ -26,7 +26,7 @@ import { reachesTheModel } from "@server/agent/model-messages.js";
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
 /**
- * Whether this part is one the window is counted over.
+ * Whether this part is a use of a tool the window is measured over.
  *
  * The same set the conversion emits: counting a use the model never sees
  * would spend one of the configured slots on it, and the reader would get
@@ -34,7 +34,7 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * @param part - A part of a message's content.
  * @returns True when it is a tool use the model is shown.
  */
-function counts(part: MessagePart): part is ToolPart {
+function isCountedUse(part: MessagePart): part is ToolPart {
   return part.type === "tool" && reachesTheModel(part);
 }
 
@@ -78,7 +78,7 @@ export function compressForContext(
   toolResultKeep: number,
 ): MessageData[] {
   const totalUses = messages.reduce(
-    (sum, message) => sum + message.parts.filter(counts).length,
+    (sum, message) => sum + message.parts.filter(isCountedUse).length,
     0,
   );
 
@@ -87,9 +87,9 @@ export function compressForContext(
 
   let seen = 0;
   return messages.map((message) => {
-    if (!message.parts.some(counts)) return message;
+    if (!message.parts.some(isCountedUse)) return message;
     const parts = message.parts.map((part): MessagePart => {
-      if (!counts(part)) return part;
+      if (!isCountedUse(part)) return part;
       const isOld = seen < dropBefore;
       seen += 1;
       return isOld ? withoutItsResult(part) : part;
