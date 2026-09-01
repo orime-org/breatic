@@ -51,13 +51,14 @@ class_name = "UploadSession"
 tag = "v1"
 new_sqlite_classes = ["UploadSession"]
 
-# The port `wrangler dev` listens on. Every worktree on one machine runs its own
+# The port `wrangler dev` listens on. Every checkout on one machine runs its own
 # Worker, so each needs its own — the same way each already has its own `PORT`
-# and `VITE_DEV_PORT` in the repo-root `.env`. Whatever is set here has to match
-# the port in that `.env`'s `INGEST_BASE_URL`: this is where the Worker listens,
-# and that is the address the browser is handed.
+# and `VITE_DEV_PORT` in the repo-root `.env`. Set it to the port in that
+# `.env`'s `INGEST_BASE_URL`: this is where the Worker listens, and that is the
+# address the browser is handed. Wrangler defaults to 8787 when this is absent,
+# which two checkouts on one machine cannot both have.
 [dev]
-port = 8787
+port = <your own port, matching INGEST_BASE_URL in .env>
 
 [vars]
 # Where the Worker reports an upload's outcome: your local server's address,
