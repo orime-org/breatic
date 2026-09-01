@@ -654,6 +654,21 @@ describe("POST /assets/upload-ticket", () => {
     expect(res.status).toBe(422);
   });
 
+  // SVG is the one image a browser executes rather than draws, so an object
+  // served under its own type off the asset domain is a page there.
+  it("refuses an SVG, which a browser runs rather than draws", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    for (const contentType of ["image/svg+xml", "IMAGE/SVG+XML", "image/svg"]) {
+      const res = await requestTicket(
+        cookie,
+        body({ project_id: projectId, content_type: contentType }),
+      );
+
+      expect(res.status).toBe(422);
+    }
+  });
+
   it("takes the three kinds the canvas does upload", async () => {
     const { projectId, cookie } = await seedEditor();
 

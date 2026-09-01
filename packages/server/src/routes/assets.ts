@@ -88,11 +88,19 @@ const uploadTicketSchema = z.object({
   // a public read hands straight to whoever opens the URL. The canvas only
   // ever uploads these three kinds — `fileToNodeSpec` reads every other file
   // locally into a text node and sends no bytes at all (design §4.5).
+  //
+  // SVG is the one image a browser executes rather than draws, so serving it
+  // off the asset domain under its own type would put a page there. It is
+  // refused at the same door as everything else that is not one of the three.
   content_type: z
     .string()
     .min(1)
     .max(100)
-    .regex(/^(image|video|audio)\//, "content_type is not an uploadable kind"),
+    .regex(/^(image|video|audio)\//, "content_type is not an uploadable kind")
+    .refine(
+      (value) => !/^image\/svg(\+xml)?$/i.test(value.split(";")[0]!.trim()),
+      "content_type is not an uploadable kind",
+    ),
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
