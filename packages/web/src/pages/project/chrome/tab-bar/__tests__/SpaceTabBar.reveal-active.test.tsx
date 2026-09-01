@@ -7,8 +7,9 @@
  * Reordering deliberately does not chase the current tab (user 2026-08-30),
  * so a drag can leave it behind the arrows with nothing pointing at it. This
  * button is what the user has instead, and it is offered only when it has
- * something to do: the strip has to overflow, and the tab has to be at least
- * partly out of sight.
+ * somewhere to scroll to: the strip is not already showing as much of that tab
+ * as it can hold. A tab wider than the strip counts as shown once it fills the
+ * strip, so the button goes quiet there too.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

@@ -281,9 +281,9 @@ function ProjectWorkspace({
 
   /**
    * Send a Space-lifecycle RPC over the live meta-doc Hocuspocus
-   * connection. Always throws on failure, and always shows a toast first —
-   * every caller relies on that, ending in an empty `.catch()` because the
-   * user has already been told. There are three ways to fail and all three
+   * connection. Always throws on failure, and always shows a toast first, so
+   * a caller's `.catch()` is there for its own cleanup, not to tell the user.
+   * There are three ways to fail and all three
    * go through here: the provider is not mounted yet (the UI gates actions
    * behind `synced`), the request never came back (`sendSpaceRpc` rejects on
    * its 10s timeout, or the transport throws), or the server answered no.

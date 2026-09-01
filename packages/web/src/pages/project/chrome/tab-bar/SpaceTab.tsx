@@ -55,10 +55,11 @@ interface SpaceTabProps {
  * A name may run to `SPACE_NAME_MAX_LEN`, and the strip scrolls sideways, so
  * without a cap one long name takes the whole visible width and pushes every
  * other tab behind the scroll arrows. What the name is left with on a tab that
- * has reached the cap, measured in Chrome at 13px: 100px on every tab, current
- * or not, and 84px once a Space is locked and the lock icon joins the row —
- * about seven CJK characters or fourteen Latin ones, six and eleven when
- * locked (user set 160 on 2026-08-28, #2015).
+ * has reached the cap, measured in Chrome at 13px: 118px while the pointer is
+ * elsewhere, 100px on the tab being pointed at once the close key takes its
+ * 16px — about eight CJK characters or sixteen Latin ones, seven and fourteen
+ * under the pointer. A locked Space gives up another 16px to the lock icon and
+ * its gap (user set 160 on 2026-08-28, #2015).
  *
  * The cap is a width and not a character count because a full-width character
  * is about as wide as the font size while a Latin one is about half that: the
@@ -94,13 +95,14 @@ const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
  * - rounded 4px (ground truth specifies sm radius, not chrome 6px)
  * - muted-foreground at rest; hover lifts to bg-accent and the current tab
  *   sits one step further at bg-accent-strong
- * - close button takes room and fades in on hover; hidden when locked
+ * - close button takes room and fades in on hover; shown on every tab,
+ *   locked or not, because closing a tab is not deleting the Space
  * @param root0 - Component props.
  * @param root0.id - Space id, used for the tab's test ids and keys.
  * @param root0.name - Current space name shown on the tab.
  * @param root0.type - Space type, selecting the leading type icon.
  * @param root0.active - Whether this tab is the active one.
- * @param root0.locked - Whether the space is locked (shows a lock icon, blocks inline rename and close).
+ * @param root0.locked - Whether the space is locked (shows a lock icon, blocks inline rename).
  * @param root0.onActivate - Activates this tab when clicked.
  * @param root0.onClose - Closes this tab; when omitted, no close affordance is shown.
  * @param root0.onRename - Commits a new name after inline edit; when omitted, double-click rename is disabled.

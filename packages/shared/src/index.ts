@@ -301,10 +301,11 @@ export {
 
 export { newId, deriveId } from "@shared/ids.js";
 
-// The two rules the per-user tab order needs on both sides of the wire:
-// collab seeds and normalises the stored list, the browser dedupes what it
-// reads and builds the first-visit default. Same rules, or the two put a
-// different order on screen than the one in the document.
+// The rules the per-user tab order needs on both sides of the wire: collab
+// seeds a user's list and moves one tab within it, the browser dedupes what it
+// reads, builds the first-visit default, and lays a released drag over what
+// arrives. Same rules, or the two put a different order on screen than the one
+// in the document.
 export {
   applyTabMove,
   dedupeTabOrder,

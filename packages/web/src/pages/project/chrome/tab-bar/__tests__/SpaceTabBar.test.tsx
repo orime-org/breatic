@@ -108,10 +108,11 @@ describe('SpaceTabBar', () => {
   /**
    * Mock the scroller into the overflow state (scrollWidth > clientWidth).
    * Does NOT dispatch the scroll event — the test must call
-   * `flushScrollState` AFTER all rect mocks are in place, because the
-   * post-PR #140 DOM-rect-based `updateScrollState` reads tab + scroller
-   * rects (defaults to 0 in jsdom, which falsely yields atStart=atEnd=true
-   * and disables the arrows before the test can click them).
+   * `flushScrollState` AFTER the layout is in place, because
+   * `updateScrollState` reads `offsetLeft`/`offsetWidth` off the tabs and
+   * `scrollLeft`/`clientWidth` off the scroller (all 0 in jsdom, which
+   * falsely yields atStart=atEnd=true and disables the arrows before the
+   * test can click them).
    */
   /**
    * Place a tab along the strip, in the strip's own scroll coordinates.
@@ -409,10 +410,9 @@ describe('SpaceTabBar', () => {
     it('leaves a tab that is already whole on screen exactly where it is', () => {
       const { setActiveSpace } = setup();
       const scroller = makeOverflow();
-      mockRect(scroller, { left: 0, right: 200 });
-      mockRect(screen.getByTestId('space-tab-s1'), { left: 0, right: 60 });
-      mockRect(screen.getByTestId('space-tab-s2'), { left: 70, right: 130 });
-      mockRect(screen.getByTestId('space-tab-s3'), { left: 240, right: 340 });
+      setLayout(screen.getByTestId('space-tab-s1'), { left: 0, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s2'), { left: 70, width: 60 });
+      setLayout(screen.getByTestId('space-tab-s3'), { left: 240, width: 100 });
       flushScrollState(scroller);
       const scrollTo = vi.fn();
       scroller.scrollTo = scrollTo;
