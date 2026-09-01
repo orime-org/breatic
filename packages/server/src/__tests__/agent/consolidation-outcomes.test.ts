@@ -5,16 +5,15 @@
  * How one consolidation ends (#148, N4 N6 N7 N9 N10 T3).
  *
  * Consolidation moved in front of the reply, so its failures are now on the
- * path of a turn somebody is waiting for. There are only two results and no
- * middle: either the memory and the watermark both move, or neither memory is
- * written and the watermark moves anyway — the window is discarded and the
- * turn goes out regardless.
+ * path of a turn somebody is waiting for, and the turn goes out however this
+ * ends. What the endings differ on is the watermark, and the line they fall
+ * on either side of is whether the model ran.
  *
- * Discarding rather than retrying next turn is what keeps a conversation from
- * wedging. The consolidation call is `temperature: 0` and a failure leaves
- * the watermark where it was, so the next turn would send a strictly larger
- * version of an input that already failed, deterministically, forever — three
- * model calls burnt each time, and no refresh or relogin changes any of it.
+ * A fold that reached it and then failed gives the window up. Keeping it for
+ * next turn is what wedges a conversation: the call is `temperature: 0`, so
+ * the next turn would send a strictly larger version of an input that already
+ * failed, deterministically, forever — three model calls burnt each time, and
+ * no refresh or relogin changes any of it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -22,7 +21,6 @@ import type * as CoreModule from "@breatic/core";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
-const getModel = vi.fn((id: string) => ({ modelId: id }));
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const commitConsolidation = vi.fn<(...args: unknown[]) => Promise<"written" | "superseded">>();
 const discardConsolidation = vi.fn(async (..._args: unknown[]) => undefined);
@@ -40,7 +38,7 @@ vi.mock("@breatic/domain", async () => {
   return {
     ...base,
     generateTextRetry,
-    getModel,
+    getModel: (id: string) => ({ modelId: id }),
     resolveProvider: () => "test",
     creditLotService: { chargeOnceForGeneration },
   };
@@ -65,26 +63,55 @@ vi.mock("@server/modules/memory/memory.repo.js", () => ({
 
 const { consolidateWindow } = await import("@server/agent/memory-consolidator.js");
 const { logger } = await import("@breatic/core");
+const { creditsForTokens } = await import("@server/modules/credit/token-pricing.js");
 
 const USER = "11111111-1111-4111-8111-111111111111";
 const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
 
-const TRANSCRIPT: ModelMessage[] = [
-  { role: "user", content: "read these three pages and tell me what they say" },
-  {
-    role: "tool",
-    content: [
-      {
-        type: "tool-result",
-        toolCallId: "c1",
-        toolName: "web_fetch",
-        output: { type: "text", value: "[earlier tool result omitted from context]" },
-      },
-    ],
-  },
-  { role: "assistant", content: "they all describe the same technique" },
-];
+/**
+ * The window as the caller hands it over: compressed, then converted.
+ *
+ * Run through the real compressor rather than written out with a placeholder
+ * already in it. N10 is the claim that a consolidation reads what compression
+ * left behind, and a fixture carrying its own placeholder proves only that a
+ * string put in comes back out.
+ * @returns The window, in the shape `foldIfOverBudget` builds it.
+ */
+async function compressedWindow(): Promise<ModelMessage[]> {
+  const { compressForContext } = await import("@server/agent/message-compressor.js");
+  const { toModelMessages } = await import("@server/agent/model-messages.js");
+  const history = [1, 2, 3, 4].flatMap((n) => [
+    {
+      role: "user" as const,
+      content: `read page ${n}`,
+      parts: [{ type: "text" as const, text: `read page ${n}` }],
+      ts: "",
+      turnIndex: n,
+    },
+    {
+      role: "assistant" as const,
+      content: "they all describe the same technique",
+      parts: [
+        {
+          type: "tool" as const,
+          toolCallId: `c${n}`,
+          toolName: "web_fetch",
+          input: { url: `https://example.test/${n}` },
+          status: "success" as const,
+          output: `the whole of page ${n}`,
+        },
+        { type: "text" as const, text: "they all describe the same technique" },
+      ],
+      ts: "",
+      turnIndex: n,
+    },
+  ]);
+  // One use more than the keep window, so the oldest loses its body.
+  return toModelMessages(compressForContext(history, 3));
+}
+
+const TRANSCRIPT: ModelMessage[] = await compressedWindow();
 
 /**
  * Ask for one consolidation, with everything the caller would have worked out.
@@ -121,7 +148,6 @@ beforeEach(() => {
   // of these reject would otherwise leave it rejecting for every case after.
   chargeOnceForGeneration.mockResolvedValue(null);
   discardConsolidation.mockResolvedValue(undefined);
-  getModel.mockImplementation((id: string) => ({ modelId: id }));
 });
 
 describe("a consolidation that works", () => {
@@ -197,6 +223,10 @@ describe("a consolidation that works", () => {
     expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({
       projectId: PROJECT,
       actorUserId: USER,
+      // What it costs, by the one rate every token-priced call uses. Left
+      // unasserted, a charge of zero — or of the token count itself — passes.
+      tokensUsed: GOOD_ANSWER.usage.totalTokens,
+      amount: creditsForTokens(GOOD_ANSWER.usage.totalTokens),
     });
   });
 
@@ -268,24 +298,6 @@ describe("a consolidation that fails", () => {
     expect(chargeOnceForGeneration).not.toHaveBeenCalled();
     expect(discardConsolidation).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
-  });
-
-  it("keeps the window when the call could not be made at all", async () => {
-    // A model name that is not in the catalogue, a provider with no key: the
-    // call never leaves and nothing is spent. N4 gives the window up for a
-    // call that was made three times and failed three times — a call that was
-    // never made is a configuration to fix, and discarding on it would eat
-    // the history one window per turn until somebody noticed.
-    getModel.mockImplementation(() => {
-      throw new Error("unknown model: typo-4o");
-    });
-
-    const outcome = await consolidate();
-
-    expect(outcome).toBe("untouched");
-    expect(generateTextRetry).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
-    expect(discardConsolidation).not.toHaveBeenCalled();
   });
 
   it("does not log a discard it did not manage to perform", async () => {

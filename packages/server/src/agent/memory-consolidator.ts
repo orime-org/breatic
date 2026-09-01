@@ -60,8 +60,8 @@ export interface ConsolidationWindow {
   userId: string;
   /** The conversation being folded. */
   conversationId: string;
-  /** The project it belongs to, when it has one. */
-  projectId?: string;
+  /** The project it belongs to. */
+  projectId: string;
   /**
    * The window, as the model would have been sent it.
    *
@@ -145,7 +145,7 @@ interface ConsolidationBill {
   /** The conversation it folded. */
   conversationId: string;
   /** Whose studio pays, by way of the project. */
-  projectId: string | undefined;
+  projectId: string;
   /** Where the watermark stood; half of the idempotency key. */
   watermarkBefore: number;
   /** What the call spent. */
@@ -170,7 +170,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
     const outcome = await creditLotService.chargeOnceForGeneration(
       `consolidate:${conversationId}:${watermarkBefore}`,
       {
-        projectId: projectId ?? null,
+        projectId,
         actorUserId: userId,
         amount: creditsForTokens(tokensUsed),
         description: "Memory consolidation",
@@ -225,17 +225,16 @@ export async function consolidateWindow(
   const config = getAgentConfig();
 
   // Everything the call is built from, gathered before a single token is
-  // spent. A database briefly away, a model name that is not in the
-  // catalogue: the call never leaves, so this turn loses its fold and
-  // nothing else. Giving the window up here would eat the history one
-  // window per turn for as long as the misconfiguration lasts.
+  // spent. The database is the part that can be briefly away; `getModel`
+  // takes any string and defers to the provider, so a wrong model name and a
+  // missing key both surface later, from the call itself. What this guard
+  // buys is that a read which failed costs this turn its fold and nothing
+  // else — the window is still whole and the next turn folds it again.
   let prompt: string;
   let model: ReturnType<typeof getModel>;
   try {
     const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
-    const existingProjectMemory = projectId
-      ? await memoryRepo.getProjectMemory(userId, projectId)
-      : "";
+    const existingProjectMemory = await memoryRepo.getProjectMemory(userId, projectId);
 
     prompt = CONSOLIDATION_PROMPT.replace(
       "{conversation_memory}",

@@ -83,8 +83,9 @@ describe("planning how much a consolidation takes", () => {
     );
 
     expect(plan.newWatermark).not.toBeNull();
-    expect(plan.takenChars).toBeGreaterThanOrEqual(340_000);
-    expect(plan.takenChars).toBeLessThanOrEqual(370_000);
+    const taken = 870_000 - plan.remainingChars;
+    expect(taken).toBeGreaterThanOrEqual(340_000);
+    expect(taken).toBeLessThanOrEqual(370_000);
   });
 
   it("takes far more than 350,000 when one recent turn is enormous", () => {

@@ -43,6 +43,8 @@ const buildAgentConfig = vi.hoisted(() => vi.fn());
 const thisCase = vi.hoisted(() => ({
   parts: [] as unknown[],
   endsOnItsOwn: true,
+  /** What the model was actually handed, straight off the provider call. */
+  sent: null as null | { prompt: unknown[]; tools: unknown },
 }));
 
 /** What `buildTurnContext` answers with, one call at a time. */
@@ -91,14 +93,17 @@ vi.mock("@breatic/domain", async () => {
     resolveProvider: () => "test",
     getModel: () =>
       new MockLanguageModelV4({
-        doStream: async () => ({
+        doStream: async ({ prompt, tools }) => {
+          thisCase.sent = { prompt, tools };
+          return {
           stream: new ReadableStream({
-            start(controller) {
-              for (const part of thisCase.parts) controller.enqueue(part as never);
-              controller.close();
-            },
-          }),
-        }),
+              start(controller) {
+                for (const part of thisCase.parts) controller.enqueue(part as never);
+                controller.close();
+              },
+            }),
+          };
+        },
       }),
   };
 });
@@ -179,7 +184,8 @@ function context(history: MessageData[], conversationMemory = "") {
   return {
     memoryContext: { projectMemory: "", conversationMemory },
     compressedHistory: history,
-    watermark: 4,
+    // Nothing folded yet, which is what a history starting at turn 1 means.
+    watermark: 0,
   };
 }
 
@@ -217,7 +223,11 @@ beforeEach(() => {
 });
 
 /**
- * What the last assembly measured, by the same ruler the budget is read with.
+ * What the assembly measures, by the ruler the budget is read with.
+ *
+ * The figure the implementation compares against its line, which is what a
+ * case pinning the line itself needs: `instructions` is priced apart from
+ * `messages`, and a provider is handed the two folded together.
  * @returns The assembled length in characters.
  */
 async function lastAssembledLength(): Promise<number> {
@@ -236,6 +246,22 @@ async function lastAssembledLength(): Promise<number> {
     tools: resolved.tools,
     messages: [...sent, { role: "user", content: "hi" }],
   });
+}
+
+/**
+ * What the model was handed, measured the way the budget is measured.
+ *
+ * Read off the provider call rather than rebuilt from the assembly's inputs:
+ * the thing N1 promises about is the request that goes out, and a turn that
+ * folded and then sent its first assembly anyway would satisfy any figure
+ * recomputed from those inputs.
+ * @returns The length in characters of what was sent.
+ */
+async function sentLength(): Promise<number> {
+  const { measureMessages } = await import("@server/agent/payload-size.js");
+  const call = thisCase.sent;
+  if (call === null) throw new Error("the model was never called");
+  return measureMessages(call.prompt as never) + JSON.stringify(call.tools ?? []).length;
 }
 
 describe("an ordinary turn", () => {
@@ -321,7 +347,7 @@ describe("a turn that measured over the budget", () => {
     expect(asked.newWatermark).toBe(2);
     // Half of the billing key. Read off the assembly rather than looked up
     // again, so two tabs that took the same window derive the same key.
-    expect(asked.watermarkBefore).toBe(4);
+    expect(asked.watermarkBefore).toBe(0);
 
     const folded = JSON.stringify(asked.transcript);
     expect(folded).toContain("q1");
@@ -419,8 +445,26 @@ describe("a turn that measured over the budget", () => {
     await runTurn();
 
     expect(buildTurnContext).toHaveBeenCalledTimes(2);
-    expect(await lastAssembledLength()).toBeLessThanOrEqual(limits.keep);
+    expect(await sentLength()).toBeLessThanOrEqual(limits.keep);
   });
+
+  it.each(["discarded", "untouched"] as const)(
+    "still answers the reader when the fold ends as %s",
+    async (outcome) => {
+      // N4's headline. Every other assertion about a failed fold is about the
+      // watermark; this is the one about the reader, who asked a question and
+      // is owed an answer whichever way the bookkeeping went.
+      consolidateWindow.mockResolvedValue(outcome);
+      contexts.queue = [
+        context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
+        context([...turn(3, 6000)]),
+      ];
+
+      await runTurn();
+
+      expect(sent.some((chunk) => chunk.type === "text-delta")).toBe(true);
+    },
+  );
 
   it("does not reassemble when the fold never happened", async () => {
     // Nothing moved: the watermark is where the first assembly read it and
@@ -469,8 +513,13 @@ describe("a turn the reader stopped", () => {
 
     await runTurn(controller.signal);
 
-    for (const call of consolidateWindow.mock.calls) {
-      const asked = call[0] as { signal?: AbortSignal };
+    // The fold is reached and hands back straight away: its first line is the
+    // signal check. Written as two statements rather than a loop over the
+    // calls — a loop over an empty list is an assertion that never runs, so a
+    // turn that skipped the fold entirely would read as a pass.
+    expect(consolidateWindow).toHaveBeenCalledTimes(1);
+    {
+      const asked = consolidateWindow.mock.calls[0]?.[0] as { signal?: AbortSignal };
       expect(asked.signal?.aborted).toBe(true);
     }
   });

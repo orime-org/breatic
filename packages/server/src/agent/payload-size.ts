@@ -17,7 +17,7 @@
  * OpenRouter — see the design's DD section.
  */
 
-import { z } from "zod";
+import { asSchema } from "ai";
 import type { ModelMessage, Tool } from "ai";
 
 /** The three segments a request is assembled from. */
@@ -77,17 +77,11 @@ function measureMessage(message: ModelMessage): number {
  */
 function measureTool(name: string, definition: Tool): number {
   const described = definition.description?.length ?? 0;
-  const schema = (definition as { inputSchema?: unknown }).inputSchema;
-  let declared = 0;
-  if (schema !== undefined) {
-    try {
-      declared = JSON.stringify(z.toJSONSchema(schema as never)).length;
-    } catch {
-      // A schema this build cannot render as JSON Schema still occupies the
-      // request; its serialised form is the closest stand-in available here.
-      declared = JSON.stringify(schema).length;
-    }
-  }
+  // The SDK's own conversion, not a second one: it renders draft-7 from the
+  // input side and adds `additionalProperties`, so a conversion written here
+  // would measure a document no provider is ever sent. It also answers for a
+  // tool that declares no schema — an empty object is what goes out for one.
+  const declared = JSON.stringify(asSchema(definition.inputSchema).jsonSchema).length;
   return name.length + described + declared;
 }
 

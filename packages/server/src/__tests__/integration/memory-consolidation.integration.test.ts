@@ -115,6 +115,43 @@ describe("a consolidation that lands", () => {
     expect(context.conversationMemory).toContain("noir look");
     expect(context.projectMemory).toContain("noir short");
     expect(await watermarkOf(conversationId)).toBe(12);
+
+    // The last hop, and the one N2 is actually about: the factory folds these
+    // two into the instructions a turn is sent with. Stopping at the context
+    // object leaves that hop unguarded, and it is a hop this task edited.
+    const { buildAgentConfig } = await import("@breatic/domain");
+    const { instructions } = buildAgentConfig({
+      basePrompt: "system",
+      memoryContext: context,
+      interactive: true,
+    });
+    expect(instructions).toContain("noir look");
+    expect(instructions).toContain("noir short");
+  });
+
+  it("hands the injection only as much memory as the ceiling allows", async () => {
+    // N9's other half. Conversation memory is the one segment a consolidation
+    // rewrites whole every time it runs, so it is the one that grows itself;
+    // the ceiling is what stops it settling into the fixed cost that folding
+    // cannot reduce.
+    const { userId, projectId, conversationId } = await seed();
+    const { getAgentConfig } = await import("@breatic/core");
+    const ceiling = getAgentConfig().memory_conversation_max_size;
+
+    await memoryService.commitConsolidation({
+      userId,
+      conversationId,
+      projectId,
+      data: {
+        conversationUpdate: "x".repeat(ceiling + 500),
+        historyEntry: "wrote a long one",
+      },
+      newWatermark: 12,
+    });
+
+    const context = await memoryService.buildContext(userId, conversationId, projectId);
+
+    expect(context.conversationMemory).toHaveLength(ceiling);
   });
 
   it("records what it folded, in the history it keeps of itself", async () => {

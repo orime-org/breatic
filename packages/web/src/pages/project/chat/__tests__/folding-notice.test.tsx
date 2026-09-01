@@ -17,6 +17,7 @@ import { render, screen } from '@testing-library/react';
 import { t } from '@breatic/shared';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { MessageList } from '@web/pages/project/chat/MessageList';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
@@ -52,6 +53,25 @@ describe('归纳中的那一行', () => {
     expect(screen.queryByTestId('chat-message-consolidating')).not.toBeInTheDocument();
   });
 
+  it('从列表这一层传下去也到得了屏幕', () => {
+    // 面板把这个属性交给列表，列表再挑出还在流的那条气泡。中间这两跳一起
+    // 改掉，只打气泡的那三条用例照样全绿。
+    render(<MessageList messages={[reply(true)]} consolidating ready />);
+
+    expect(screen.getByTestId('chat-message-consolidating')).toBeInTheDocument();
+  });
+
+  it('列表里已经说完的那些气泡不跟着说', () => {
+    render(
+      <MessageList
+        messages={[{ id: 'done', role: 'assistant', content: '说完了' }, reply(true)]}
+        consolidating
+        ready
+      />,
+    );
+
+    expect(screen.getAllByTestId('chat-message-consolidating')).toHaveLength(1);
+  });
 });
 
 // 本次新加的两句界面文字。少一份，那个语种的用户读到的是裸 key 或者一句

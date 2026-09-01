@@ -110,11 +110,31 @@ describe("the two memory lines", () => {
   });
 
   it("takes the pair the file ships with", () => {
+    const config = shippedConfig();
+    // Both read off disk, so editing either line in the file is what this
+    // answers. Their presence is asserted first: absent, the schema hands
+    // back its own defaults and the pair being checked would be one nobody
+    // ships.
+    expect(typeof config.memory_budget_chars).toBe("number");
+    expect(typeof config.memory_keep_chars).toBe("number");
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 850_000,
-        memory_keep_chars: 500_000,
+        memory_budget_chars: config.memory_budget_chars,
+        memory_keep_chars: config.memory_keep_chars,
       }).success,
     ).toBe(true);
+  });
+
+  it.each([
+    ["server", "../../../../server/src/index.ts"],
+    ["worker", "../../../../worker/src/index.ts"],
+  ])("is read by the %s at startup, not on the first request", (_name, path) => {
+    // The reader is lazy, like every config reader here, so a file the schema
+    // now refuses would otherwise be found by whoever spoke first: a 500 for
+    // them, a process that started fine and a healthz still green behind it.
+    // What is asserted is only that the call is still in the entry — whether
+    // it exits is the entry's own `process.exit(1)`, three lines below it.
+    const entry = readFileSync(resolve(import.meta.dirname, path), "utf8");
+    expect(entry).toContain("getAgentConfig()");
   });
 });

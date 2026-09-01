@@ -29,11 +29,26 @@ vi.mock("@server/agent/turn-context.js", () => ({
   })),
 }));
 
+// The ceiling is set apart from the figure `config/agent.yaml` ships, so the
+// assertion below reads the configured value rather than a literal that
+// happens to match it. `mock-core` answers 16384 for this key, the same as
+// the file — an implementation writing that number in would satisfy an
+// assertion whose two sides are both 16384.
+const OUTPUT_CEILING = 4242;
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
   const base = await coreMock(importOriginal);
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...base, runWithContext: actual.runWithContext, getContext: actual.getContext };
+  return {
+    ...base,
+    runWithContext: actual.runWithContext,
+    getContext: actual.getContext,
+    getAgentConfig: () => ({
+      ...(base.getAgentConfig as () => Record<string, unknown>)(),
+      max_output_tokens: OUTPUT_CEILING,
+    }),
+  };
 });
 
 vi.mock("@breatic/domain", async () => {

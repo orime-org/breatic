@@ -40,8 +40,6 @@ export interface ConsolidationRequest {
 export interface ConsolidationPlan {
   /** The turns this pass takes, oldest first. */
   takenTurns: number[];
-  /** What those turns contributed to the payload. */
-  takenChars: number;
   /** What the payload measures once they are gone. */
   remainingChars: number;
   /**
@@ -57,7 +55,7 @@ export interface ConsolidationPlan {
 
 /**
  * Decide whether to consolidate and how far back to go.
- * @param request - The fixed cost, the turns on hand, and the two lines.
+ * @param request - The assembled total, the turns on hand, and the two lines.
  * @returns The plan; `newWatermark` is null when nothing needs doing.
  */
 export function planConsolidation(request: ConsolidationRequest): ConsolidationPlan {
@@ -65,7 +63,6 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
 
   const nothing: ConsolidationPlan = {
     takenTurns: [],
-    takenChars: 0,
     remainingChars: assembled,
     newWatermark: null,
   };
@@ -76,19 +73,16 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   if (turns.length === 0) return nothing;
 
   const takenTurns: number[] = [];
-  let takenChars = 0;
   let remainingChars = assembled;
 
   for (const turn of turns) {
     if (remainingChars <= keep) break;
     takenTurns.push(turn.turnIndex);
-    takenChars += turn.chars;
     remainingChars -= turn.chars;
   }
 
   return {
     takenTurns,
-    takenChars,
     remainingChars,
     newWatermark: takenTurns[takenTurns.length - 1] ?? null,
   };

@@ -77,8 +77,8 @@ export interface ConsolidationCommit {
   userId: string;
   /** The conversation that was read. */
   conversationId: string;
-  /** The project it belongs to, when it has one. */
-  projectId: string | undefined;
+  /** The project it belongs to. */
+  projectId: string;
   /** What the model produced. */
   data: ConsolidationData;
   /** The turn the window ended on. */
@@ -117,7 +117,7 @@ export async function commitConsolidation(
     await memoryRepo.upsertConversationMemory(conversationId, data.conversationUpdate, tx);
     await memoryRepo.appendHistory(conversationId, data.historyEntry, tx);
 
-    if (data.projectUpdate && projectId) {
+    if (data.projectUpdate) {
       await memoryRepo.appendProjectEntry(
         projectId,
         userId,
