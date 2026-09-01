@@ -282,6 +282,20 @@ describe("the deadline a part arriving pushes out", () => {
 // A 4xx is the server having decided, not the server being unwell: it read the
 // report, acted on it, and refused. Retrying asks the same question six more
 // times and gets the same answer, while the node has already been told.
+// 401 is the one 4xx that says nothing about this upload: the shared secret
+// did not match, so the server never read the report. Rotating that secret, or
+// deploying the Worker and the server a few minutes apart, would otherwise
+// lose every upload landing in the gap — bytes in R2, no ledger row, and a
+// node left for collab's hourly sweeper.
+describe("a server that will not accept our credentials", () => {
+  it("keeps retrying rather than taking it as this upload's outcome", async () => {
+    expectReport(401);
+    const { storageKey } = await uploadedThrough(2);
+
+    await expect(runDurableObjectAlarm(sessionOf(storageKey))).rejects.toThrow();
+  });
+});
+
 describe("a server that refuses the report outright", () => {
   it("takes the refusal as the outcome rather than retrying it", async () => {
     expectReport(413);

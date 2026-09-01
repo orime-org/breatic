@@ -23,9 +23,14 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
   fetchMock,
+  runInDurableObject,
 } from "cloudflare:test";
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
-import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
+import {
+  signUploadTicket,
+  completeRetryBudgetMs,
+  type UploadTicketPayload,
+} from "@breatic/shared";
 import worker from "@ingest/index.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
@@ -286,5 +291,26 @@ describe("an upload already reported", () => {
 
     expect((await complete(uploadId, token)).status).toBe(200);
     expect(reports).toHaveLength(1);
+  });
+
+  // What the answer has to outlast is the browser asking, and a browser asks
+  // for as long as its transport keeps redelivering. The focus crop reads its
+  // whole result off this response, so an answer thrown away while a delivery
+  // is still coming costs that crop the object it already paid for.
+  it("keeps the answer for as long as a browser can still be asking", async () => {
+    expectReport();
+    const { storageKey, uploadId, token } = await uploadedThrough(2, {
+      alarmIdleSeconds: 300,
+    });
+    await complete(uploadId, token);
+
+    const alarm = await runInDurableObject(
+      env.UPLOAD_SESSION.get(env.UPLOAD_SESSION.idFromName(storageKey)),
+      (_instance, state) => state.storage.getAlarm(),
+    );
+
+    expect(alarm).toBeGreaterThanOrEqual(
+      Date.now() + completeRetryBudgetMs() - 5_000,
+    );
   });
 });

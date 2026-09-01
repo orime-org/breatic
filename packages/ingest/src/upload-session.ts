@@ -19,6 +19,7 @@
  * rather than a race.
  */
 
+import { completeRetryBudgetMs } from "@breatic/shared";
 import type { UploadTicketPayload } from "@breatic/shared";
 import { signSessionToken } from "@ingest/session-token.js";
 
@@ -233,11 +234,16 @@ export class UploadSession implements DurableObject {
       ...(answer !== "refused" && { registered: answer }),
     };
     await this.#state.storage.put("finish", done);
-    // Not deleted: the same window this upload was allowed to go quiet for is
-    // how long the answer stays available to a browser still asking, and the
-    // alarm that ends it is what lets this instance go.
+    // Not deleted: the answer stays available for as long as a browser can
+    // still be asking for it, which is its transport's whole redelivery
+    // budget. The crop path reads its entire result off that response. The
+    // alarm that ends the window is also what lets this instance go.
     await this.#state.storage.setAlarm(
-      Date.now() + upload.ticket.alarmIdleSeconds * 1000,
+      Date.now() +
+        Math.max(
+          upload.ticket.alarmIdleSeconds * 1000,
+          completeRetryBudgetMs(),
+        ),
     );
     return done;
   }
@@ -363,6 +369,10 @@ export class UploadSession implements DurableObject {
         },
         body: JSON.stringify(body),
       });
+      // 401 is the one 4xx that says nothing about this upload: the shared
+      // secret did not match, so the server never read the report. Every other
+      // one in the range is the server having read it and decided.
+      if (response.status === 401) return "unavailable";
       if (response.status >= 400 && response.status < 500) return "refused";
       if (!response.ok) return "unavailable";
       // An answer we cannot read still means the server took it. The report is
