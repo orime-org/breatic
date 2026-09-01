@@ -14,6 +14,9 @@ const CHOSEN = /(^|\s)bg-accent-strong(\s|$)/;
 /** The hover fill a sibling reaches for. */
 const HOVER = 'hover:bg-accent';
 
+/** That same fill as a whole class, so `hover:bg-accent-strong` is not it. */
+const HOVER_PLAIN = /hover:bg-accent(\s|$)/;
+
 /**
  * The plain accent fill. It is hover's own colour, so on a chosen item beside
  * hoverable siblings it says nothing the hover does not already say.
@@ -27,6 +30,11 @@ const PLAIN = /(^|\s)bg-accent(\s|$)/;
  */
 export function expectChosenFill(el: Element): void {
   expect(el.className).toMatch(CHOSEN);
+  // A chosen item that also carries plain hover loses its mark the moment the
+  // pointer lands on it: `.hover\:bg-accent:hover` is a class plus a
+  // pseudo-class and outranks the single class holding the chosen fill, so it
+  // drops back to hover's own colour under the pointer.
+  expect(el.className).not.toMatch(HOVER_PLAIN);
 }
 
 /**
@@ -51,5 +59,9 @@ export function expectHoverableSiblingFill(el: Element): void {
 export function expectAriaCurrentChosenFill(el: Element): void {
   expect(el.className).toContain('aria-[current=true]:bg-accent-strong');
   expect(el.className).not.toMatch(/aria-\[current=true\]:bg-accent(\s|$)/);
-  expect(el.className).toContain(HOVER);
+  // Hover has to answer the same way, since the group shares one class list:
+  // plain hover outranks the chosen fill and takes the mark off whichever
+  // option the pointer is on.
+  expect(el.className).toContain('aria-[current=true]:hover:bg-accent-strong');
+  expect(el.className).toMatch(HOVER_PLAIN);
 }

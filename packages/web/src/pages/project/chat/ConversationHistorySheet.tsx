@@ -282,11 +282,11 @@ function ConversationRowView({
           // container and selected nothing. Measured in the browser -- jsdom
           // has no layout, so nothing here could have caught it.
           'group relative flex items-center border-b border-border transition-colors',
-          // The active row uses the accent fill, the same one hover uses.
-          // `bg-muted` is a recess and made the active row darker than its
-          // siblings -- `SpaceDrawer` carries the same note for the same
-          // reason.
-          isActive ? 'bg-accent' : 'hover:bg-accent',
+          // The active row sits one step past the fill its siblings take under
+          // the pointer. `bg-muted` is a recess and made the active row darker
+          // than its siblings -- `SpaceDrawer` carries the same note for the
+          // same reason.
+          isActive ? 'bg-accent-strong' : 'hover:bg-accent',
         )}
         data-testid={`conversation-${row.id}`}
       >
