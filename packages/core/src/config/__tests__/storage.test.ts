@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from "vitest";
-import { MAX_TIMER_MS, partRetryBudgetMs } from "@breatic/shared";
+import {
+  MAX_TIMER_MS,
+  partRetryBudgetMs,
+  completeRetryBudgetMs,
+} from "@breatic/shared";
 
 import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 
@@ -109,11 +113,12 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     const seconds = Math.ceil(
       partRetryBudgetMs(8388608, { requestTimeoutMs, minBytesPerSec }) / 1000,
     );
+    const token = Math.max(seconds, Math.ceil(completeRetryBudgetMs() / 1000));
     return {
       upload,
       ingest: {
         alarm_idle_seconds: seconds,
-        session_token_ttl_seconds: seconds + 1,
+        session_token_ttl_seconds: token + 1,
       },
     };
   }
@@ -212,7 +217,7 @@ describe("storageConfigSchema — the ingest knobs", () => {
     expect(cfg.ingest.part_size_bytes).toBe(8388608);
     expect(cfg.ingest.ticket_expires_seconds).toBe(300);
     expect(cfg.ingest.alarm_idle_seconds).toBe(600);
-    expect(cfg.ingest.session_token_ttl_seconds).toBe(900);
+    expect(cfg.ingest.session_token_ttl_seconds).toBe(1200);
   });
 
   it("refuses a part size R2 would reject as a non-final part", () => {

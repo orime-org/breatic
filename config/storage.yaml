@@ -49,10 +49,12 @@ ingest:
   # part being retried delivers nothing while it goes on. Loading this file
   # checks that, so the two cannot drift apart silently.
   alarm_idle_seconds: 600
-  # How long a session token stays usable. It is re-issued with every part, so
-  # it only has to outlast the longest gap the alarm tolerates. Loading this
-  # file checks that it does.
-  session_token_ttl_seconds: 900
+  # How long a session token stays usable. One token covers two waits: the
+  # longest gap the alarm tolerates between parts, and the whole chain
+  # completing an upload runs on — completing names no deadline of its own, so
+  # each of its deliveries takes the transport's default. Loading this file
+  # checks it clears both.
+  session_token_ttl_seconds: 1200
 
 # Studio avatars.
 avatar:

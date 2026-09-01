@@ -47,7 +47,7 @@ export const assetsApi = {
     leaseGen: number;
     nodeId?: string;
     spaceId?: string;
-    source?: 'mini_tool' | 'cover';
+    source?: 'mini_tool';
     toolName?: string;
     derived?: true;
   }): Promise<UploadTicketResponse> {

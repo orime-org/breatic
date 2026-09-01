@@ -104,7 +104,12 @@ const uploadTicketSchema = z.object({
   /** Where the bytes land. Absent for a focus crop, which has no node. */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
-  source: z.string().max(50).optional(),
+  /**
+   * What started this upload. Only the mini-tool value is ever sent, and it
+   * decides how the ledger files what is stored — a column the offline reclaim
+   * job reads — so nothing else is admitted.
+   */
+  source: z.enum(["mini_tool"]).optional(),
   tool_name: z.string().max(100).optional(),
   derived: z.boolean().optional(),
 });

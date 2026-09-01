@@ -667,6 +667,23 @@ describe("POST /assets/upload-ticket", () => {
     expect(await eventsFor(canvasSpaceDocName(projectId, spaceId))).toEqual([]);
   });
 
+  // `source` decides how the ledger files what is stored, and the only value
+  // any of our code sends is the mini-tool one. Left open, an editor could
+  // hand-write a request that files their own upload as a video's cover — a
+  // column the offline reclaim job reads to tell the two apart.
+  it("refuses a source no caller of ours sends", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, source: "cover" }),
+    );
+
+    // 422, the same answer every other unsatisfiable field gets: the body
+    // parsed and was read, and one value is not one this endpoint accepts.
+    expect(res.status).toBe(422);
+  });
+
   it("refuses an anonymous caller", async () => {
     const { projectId } = await seedEditor();
 

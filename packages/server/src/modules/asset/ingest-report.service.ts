@@ -240,7 +240,9 @@ export async function applyIngestReport(
     sizeBytes,
     mimeType: contentType,
     kind,
-    source: grant.source === "cover" ? "cover" : "upload",
+    // Every upload that comes through a ticket is one. A cover is registered
+    // by the worker that extracted it, which calls `register` directly.
+    source: "upload",
   });
 
   // The object this upload wrote is a duplicate of one the studio already

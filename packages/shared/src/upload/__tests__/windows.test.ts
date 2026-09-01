@@ -14,9 +14,14 @@ import { describe, it, expect } from "vitest";
 import {
   partDeadlineMs,
   partRetryBudgetMs,
+  completeRetryBudgetMs,
   assertUploadWindows,
 } from "@shared/upload/windows.js";
-import { MAX_RETRIES, BASE_DELAY_MS } from "@shared/http/constants.js";
+import {
+  MAX_RETRIES,
+  MAX_RETRY_AFTER_MS,
+  DEFAULT_TIMEOUT_MS,
+} from "@shared/http/constants.js";
 
 const CFG = { requestTimeoutMs: 30_000, minBytesPerSec: 65_536 };
 
@@ -40,17 +45,34 @@ describe("partRetryBudgetMs", () => {
     expect(budget).toBeGreaterThan((MAX_RETRIES + 1) * oneDelivery);
   });
 
-  it("adds the exponential ceiling of the waits between them", () => {
+  // The waits between deliveries are the transport's own only when the server
+  // named none. One that asks to be waited for is waited for, up to the bound
+  // past which the transport stops instead — so that bound is what a budget
+  // has to allow for, not the figure the transport would have picked.
+  it("allows for the longest wait a server can ask for between them", () => {
     const deliveries = (MAX_RETRIES + 1) * partDeadlineMs(1024, CFG);
-    const backoff = BASE_DELAY_MS + BASE_DELAY_MS * 2;
 
-    expect(partRetryBudgetMs(1024, CFG)).toBe(deliveries + backoff);
+    expect(partRetryBudgetMs(1024, CFG)).toBe(
+      deliveries + MAX_RETRIES * MAX_RETRY_AFTER_MS,
+    );
   });
 
   // The shipped figures. An 8 MiB part can hold the browser for longer than
   // five minutes, which is what the Durable Object's idle window has to clear.
   it("exceeds five minutes for one part at the shipped part size", () => {
     expect(partRetryBudgetMs(8 * 1024 * 1024, CFG)).toBeGreaterThan(300_000);
+  });
+});
+
+// Completing carries no bytes and names no deadline of its own, so each of its
+// deliveries runs on the transport's default. The token it carries is the one
+// the last part issued, and it has to outlast that whole chain — a token that
+// expires partway turns the delivery that would have succeeded into a 401.
+describe("completeRetryBudgetMs", () => {
+  it("counts every delivery and the longest wait between them", () => {
+    expect(completeRetryBudgetMs()).toBe(
+      (MAX_RETRIES + 1) * DEFAULT_TIMEOUT_MS + MAX_RETRIES * MAX_RETRY_AFTER_MS,
+    );
   });
 });
 
@@ -61,7 +83,7 @@ describe("assertUploadWindows", () => {
   >[0] => ({
     partSizeBytes: 8 * 1024 * 1024,
     alarmIdleSeconds: 600,
-    sessionTokenTtlSeconds: 900,
+    sessionTokenTtlSeconds: 1200,
     requestTimeoutMs: 30_000,
     minBytesPerSec: 65_536,
     ...over,
@@ -86,6 +108,18 @@ describe("assertUploadWindows", () => {
   it("refuses a session token that expires inside the idle window", () => {
     expect(() =>
       assertUploadWindows(windows({ sessionTokenTtlSeconds: 600 })),
+    ).toThrow(/session_token_ttl_seconds/);
+  });
+
+  // The last part issues the token that completing carries, so the token has
+  // to outlast completing's own chain as well as the gap between parts.
+  it("refuses a session token that expires inside the completion chain", () => {
+    const short = Math.ceil(completeRetryBudgetMs() / 1000) - 1;
+
+    expect(() =>
+      assertUploadWindows(
+        windows({ alarmIdleSeconds: 600, sessionTokenTtlSeconds: short }),
+      ),
     ).toThrow(/session_token_ttl_seconds/);
   });
 });

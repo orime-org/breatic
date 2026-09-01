@@ -406,6 +406,7 @@ export {
 export {
   partDeadlineMs,
   partRetryBudgetMs,
+  completeRetryBudgetMs,
   assertUploadWindows,
   type PartDeadlineConfig,
   type UploadWindows,

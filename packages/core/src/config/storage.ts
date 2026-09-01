@@ -136,12 +136,12 @@ export const storageConfigSchema = z
        */
       alarm_idle_seconds: z.number().int().positive().default(600),
       /**
-       * How long a session token stays usable, in seconds. It is re-issued
-       * with every part, so it only has to outlast the longest gap the alarm
-       * tolerates — which is why the two are checked against each other below
-       * rather than each being picked on its own.
+       * How long a session token stays usable, in seconds. One token covers
+       * two waits — the longest gap the alarm tolerates between parts, and the
+       * chain completing an upload runs — which is why it is checked against
+       * both below rather than picked on its own.
        */
-      session_token_ttl_seconds: z.number().int().positive().default(900),
+      session_token_ttl_seconds: z.number().int().positive().default(1200),
     })
     .prefault({}),
 

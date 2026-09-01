@@ -116,7 +116,7 @@ export interface UploadContext {
   /** The space that node lives in. */
   spaceId?: string;
   /** `mini_tool` for a mini-tool product. */
-  source?: 'mini_tool' | 'cover';
+  source?: 'mini_tool';
   /** The mini-tool's name when `source` says so. */
   toolName?: string;
   /** True for a byproduct, registered without an activity-feed row of its own. */
@@ -206,7 +206,7 @@ export interface MediaUploadDeps {
     leaseGen: number;
     nodeId?: string;
     spaceId?: string;
-    source?: 'mini_tool' | 'cover';
+    source?: 'mini_tool';
     toolName?: string;
     derived?: true;
   }) => Promise<UploadTicketResponse>;

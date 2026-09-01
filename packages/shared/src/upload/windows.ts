@@ -13,7 +13,21 @@
  * disagree the first time either side's figures moved.
  */
 
-import { MAX_RETRIES, BASE_DELAY_MS } from "@shared/http/constants.js";
+import {
+  MAX_RETRIES,
+  MAX_RETRY_AFTER_MS,
+  DEFAULT_TIMEOUT_MS,
+} from "@shared/http/constants.js";
+
+/**
+ * The longest the transport can spend waiting between deliveries.
+ *
+ * Its own backoff is the smaller half of this: a server that names a wait is
+ * waited for, up to the bound past which the transport stops instead of
+ * substituting a figure of its own. So the bound is what a budget has to allow
+ * for, whatever the transport would have picked unaided.
+ */
+const WAITS_BETWEEN_DELIVERIES_MS = MAX_RETRIES * MAX_RETRY_AFTER_MS;
 
 /** The figures a part's deadline is sized from, as `config/storage.yaml` holds them. */
 export interface PartDeadlineConfig {
@@ -58,12 +72,23 @@ export function partRetryBudgetMs(
   sizeBytes: number,
   cfg: PartDeadlineConfig,
 ): number {
-  const deliveries = MAX_RETRIES + 1;
-  let backoff = 0;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
-    backoff += BASE_DELAY_MS * 2 ** attempt;
-  }
-  return deliveries * partDeadlineMs(sizeBytes, cfg) + backoff;
+  return (
+    (MAX_RETRIES + 1) * partDeadlineMs(sizeBytes, cfg) +
+    WAITS_BETWEEN_DELIVERIES_MS
+  );
+}
+
+/**
+ * The longest completing an upload can occupy the browser.
+ *
+ * It carries no bytes and names no deadline of its own, so every delivery runs
+ * on the transport's default. What it carries instead is the token the last
+ * part issued, and that token has to outlast this whole chain — one expiring
+ * partway turns the delivery that would have succeeded into a 401.
+ * @returns The worst-case milliseconds completing can take.
+ */
+export function completeRetryBudgetMs(): number {
+  return (MAX_RETRIES + 1) * DEFAULT_TIMEOUT_MS + WAITS_BETWEEN_DELIVERIES_MS;
 }
 
 /** Every figure an upload's windows are decided by, all from `config/storage.yaml`. */
@@ -72,7 +97,11 @@ export interface UploadWindows extends PartDeadlineConfig {
   partSizeBytes: number;
   /** How long the Durable Object waits for a part before judging the upload dead. */
   alarmIdleSeconds: number;
-  /** How long a session token stays usable after the part that issued it. */
+  /**
+   * How long a session token stays usable after the part that issued it. It
+   * has to cover both the gap the alarm tolerates and the chain completing
+   * runs, because one token is issued for both.
+   */
   sessionTokenTtlSeconds: number;
 }
 
@@ -95,10 +124,18 @@ export function assertUploadWindows(windows: UploadWindows): void {
         `${Math.ceil(budgetMs / 1000)}s one part can take to be delivered`,
     );
   }
-  if (windows.sessionTokenTtlSeconds <= windows.alarmIdleSeconds) {
+  // Two things the token has to outlast, and it is issued once for both: the
+  // gap the alarm tolerates between parts, and the chain completing runs.
+  const mustOutlastMs = Math.max(
+    windows.alarmIdleSeconds * 1000,
+    completeRetryBudgetMs(),
+  );
+  if (windows.sessionTokenTtlSeconds * 1000 <= mustOutlastMs) {
     throw new Error(
-      `session_token_ttl_seconds ${windows.sessionTokenTtlSeconds} does not ` +
-        `outlast alarm_idle_seconds ${windows.alarmIdleSeconds}`,
+      `session_token_ttl_seconds ${windows.sessionTokenTtlSeconds} is under ` +
+        `the ${Math.ceil(mustOutlastMs / 1000)}s it has to outlast — the ` +
+        `longest gap alarm_idle_seconds allows between parts, and the chain ` +
+        `completing an upload runs`,
     );
   }
 }
