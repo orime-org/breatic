@@ -8,8 +8,8 @@
  * 和发起生成。判定逻辑本身由 `storage-quota.integration.test.ts` 钉，这一份
  * 只回答三个接线问题：
  *
- *   1. 满了的时候，请求上传地址拿不到 `uploadUrl` —— 拿不到就传不上去，
- *      这是「拦住」在上传那条路上的确切含义。
+ *   1. 满了的时候，请求上传凭据拿不到 ticket 也拿不到 Worker 的地址 ——
+ *      两样缺一就传不上去，这是「拦住」在上传那条路上的确切含义。
  *   2. 去重命中那条路照样放行。它零写入（不发 key、不发凭据、`studio_assets`
  *      一行不增），拦它等于拦一个不消耗配额的操作。
  *   3. 满了的时候，发起生成不但返回 507，`tasks` 表也不许多出一行 —— 任务
@@ -159,40 +159,45 @@ async function fullAccount(filledBytes: number): Promise<{
 }
 
 /**
- * Ask for an upload URL.
+ * Ask for an upload ticket.
  * @param cookie - The caller's session cookie.
  * @param projectId - Where the bytes would land.
  * @param size - Declared size.
  * @param hash - Declared content hash.
  * @returns The raw response.
  */
-async function presign(
+async function requestTicket(
   cookie: string,
   projectId: string,
   size: number,
   hash: string,
 ): Promise<Response> {
-  const params = new URLSearchParams({
-    filename: "photo.png",
-    content_type: "image/png",
-    project_id: projectId,
-    size: String(size),
-    hash,
-  });
-  return app.request(`/api/v1/assets/presign?${params.toString()}`, {
-    headers: { Cookie: cookie },
+  return app.request("/api/v1/assets/upload-ticket", {
+    method: "POST",
+    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: "photo.png",
+      content_type: "image/png",
+      project_id: projectId,
+      size,
+      client_hash: hash,
+      lease_gen: 1,
+    }),
   });
 }
 
 describe("the two write paths behind the storage gate", () => {
-  it("hands out no upload URL once the account is full", async () => {
+  it("mints no ticket once the account is full", async () => {
     const { cookie, projectId } = await fullAccount(BASE_STORAGE);
 
-    const res = await presign(cookie, projectId, 4096, "b".repeat(64));
+    const res = await requestTicket(cookie, projectId, 4096, "b".repeat(64));
 
     expect(res.status).toBe(507);
     const body = (await res.json()) as Record<string, unknown>;
+    // Neither half of what would authorise an upload comes back: no address
+    // for the ingest Worker, and nothing it would accept as a ticket.
     expect(JSON.stringify(body)).not.toContain("uploadUrl");
+    expect(JSON.stringify(body)).not.toContain("ticket");
   });
 
   it("still answers a dedup hit when the account is full", async () => {
@@ -203,7 +208,7 @@ describe("the two write paths behind the storage gate", () => {
     const { cookie, projectId, seededHash, seededSize } =
       await fullAccount(BASE_STORAGE);
 
-    const res = await presign(cookie, projectId, seededSize, seededHash);
+    const res = await requestTicket(cookie, projectId, seededSize, seededHash);
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { alreadyExists: boolean } };

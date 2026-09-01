@@ -576,6 +576,15 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "**/*.js", "**/*.mjs"],
+    // `.wrangler/` is what `wrangler dev` writes while it runs — a bundle it
+    // generated and its local storage. It is not ours to lint, and a machine
+    // that has run the Worker locally would otherwise fail on it.
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.wrangler/**",
+      "**/*.js",
+      "**/*.mjs",
+    ],
   },
 );

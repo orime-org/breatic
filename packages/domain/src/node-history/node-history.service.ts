@@ -99,18 +99,24 @@ export async function recordGenerationFailure(opts: {
 /**
  * Record a manual user upload that replaces node content.
  *
- * Called by the upload endpoint after the file is persisted to storage.
+ * Called after the file is persisted to storage and registered in the ledger.
+ * Idempotent on `storageKey` when one is given, so the video cover job — which
+ * BullMQ may replay whole — writes one row per upload rather than per attempt.
  * @param opts - Fields describing the uploaded content.
  * @param opts.projectId - ID of the project owning the node.
  * @param opts.nodeId - ID of the canvas node the upload replaces content on.
  * @param opts.userId - ID of the user who uploaded the file.
  * @param opts.content - Reference to the uploaded content (e.g. asset URL).
  * @param opts.thumbnailUrl - Thumbnail URL for previews, if available.
+ * @param opts.storageKey - The granted storage key, when this upload has one.
+ *   Omitted by the first-pass dedup hit, which moves no bytes and holds no grant.
  * @param opts.metadata - Optional upload metadata.
  * @param opts.metadata.filename - Original filename of the upload.
  * @param opts.metadata.size - Size of the uploaded file in bytes.
  * @param opts.metadata.mimeType - MIME type of the uploaded file.
- * @returns The created `NodeHistoryEntity`.
+ * @returns The stored entry plus whether this call is the one that wrote it.
+ *   The project activity feed, which has no key of its own, uses that flag
+ *   to skip its write on a replay.
  */
 export async function recordUpload(opts: {
   projectId: string;
@@ -118,20 +124,20 @@ export async function recordUpload(opts: {
   userId: string;
   content: string;
   thumbnailUrl?: string;
+  storageKey?: string;
   metadata?: {
     filename?: string;
     size?: number;
     mimeType?: string;
   };
-}): Promise<NodeHistoryEntity> {
-  return repo.create({
+}): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
+  return repo.createUploadSuccessIfAbsent({
     projectId: opts.projectId,
     nodeId: opts.nodeId,
     userId: opts.userId,
-    entryType: "upload",
-    status: "success",
     content: opts.content,
-    thumbnailUrl: opts.thumbnailUrl,
+    ...(opts.thumbnailUrl !== undefined && { thumbnailUrl: opts.thumbnailUrl }),
+    ...(opts.storageKey !== undefined && { storageKey: opts.storageKey }),
     metadata: opts.metadata ?? {},
   });
 }

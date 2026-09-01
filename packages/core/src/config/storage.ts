@@ -4,15 +4,15 @@
 /**
  * Storage YAML configuration loader.
  *
- * Reads `config/storage.yaml`: the browser-side upload knobs and presign
- * window, and the studio-avatar byte cap.
+ * Reads `config/storage.yaml`: the browser-side upload knobs, the figures
+ * the ingest Worker runs on, and the studio-avatar byte cap.
  */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { MIN_PART_SIZE_BYTES, assertUploadWindows } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -52,63 +52,66 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  * Exported for tests only, and not re-exported from the package barrel — the
  * one thing application code should reach for is {@link getStorageConfig}.
  */
-export const storageConfigSchema = z.object({
+export const storageConfigSchema = z
+  .object({
   upload: z
     .object({
-      /** Hard upload cap in bytes; presign rejects larger files (413). */
+      /** Hard upload cap in bytes; the ticket endpoint rejects larger files (413). */
       max_upload_bytes: z.number().int().positive().default(2147483648),
-      /** Browser PRESIGN attempts including the first. The PUT is retried by the shared HTTP transport, which compiles its own count. */
+      /** Browser TICKET attempts including the first. A part is retried by the shared HTTP transport, which compiles its own count. */
       client_max_attempts: z.number().int().positive().default(3),
-      /** Base backoff (ms) between browser PRESIGN retry attempts. */
+      /** Base backoff (ms) between browser TICKET retry attempts. */
       client_retry_base_delay_ms: z.number().int().min(0).default(1000),
-      /** Floor for the PUT stall guard. Despite the name it does not time any API request: presign is timed by the axios client. */
+      /** Floor for the part stall guard. Despite the name it does not time any API request: the ticket is timed by the axios client. */
       client_request_timeout_ms: z.number().int().positive().default(30000),
-      /** PUT stall guard rate: per-attempt timeout = max(floor, size/rate). */
+      /** Part stall guard rate: per-attempt timeout = max(floor, size/rate). */
       client_put_min_bytes_per_sec: z.number().int().positive().default(65536),
-      /** Presigned PUT URL expiry (s); the cloud PUT window (#1826, §3.2). */
-      presign_expires_seconds: z.number().int().positive().default(300),
     })
-    .prefault({})
-    .superRefine((upload, ctx) => {
-      // The browser sizes its PUT stall guard as max(floor, size / rate) and
-      // hands the figure to the shared HTTP transport as a per-delivery
-      // deadline. That layer refuses a deadline no timer can hold instead of
-      // clamping it, and it refuses before the first delivery — so a pair of
-      // knobs able to produce such a figure does not degrade the guard, it
-      // takes the whole upload down with an error written for a programmer.
-      //
-      // Neither knob is anything the person uploading chose, and no promise of
-      // ours covers an arbitrary rate. So the refusal belongs at load, where
-      // the operator who typed the number is the one reading the complaint.
-      // Both knobs are checked because the deadline is a max() of the two, and
-      // a bound on only the rate would leave the other way in open.
-      const worstCaseMs = Math.ceil(
-        (upload.max_upload_bytes / upload.client_put_min_bytes_per_sec) * 1000,
-      );
-      if (worstCaseMs > MAX_TIMER_MS) {
-        const lowestUsable = Math.ceil(
-          (upload.max_upload_bytes * 1000) / MAX_TIMER_MS,
-        );
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `client_put_min_bytes_per_sec ${upload.client_put_min_bytes_per_sec} sizes the PUT stall guard at ${worstCaseMs}ms for an upload at the ${upload.max_upload_bytes}-byte cap, past the ${MAX_TIMER_MS}ms a timer can hold; every upload near the cap would fail before sending a byte. Raise it to at least ${lowestUsable}, or lower max_upload_bytes.`,
-          path: ["client_put_min_bytes_per_sec"],
-        });
-      }
-      if (upload.client_request_timeout_ms > MAX_TIMER_MS) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `client_request_timeout_ms ${upload.client_request_timeout_ms} is past the ${MAX_TIMER_MS}ms a timer can hold; it floors the PUT stall guard, so every upload would fail before sending a byte.`,
-          path: ["client_request_timeout_ms"],
-        });
-      }
-    }),
+    .prefault({}),
+
+  ingest: z
+    .object({
+      /**
+       * One part of a multipart upload, in bytes. R2 refuses a non-final part
+       * under 5 MiB; `signUploadTicket` enforces the same floor when it signs
+       * a multi-part ticket, so a config below it would fail at request time
+       * rather than at load.
+       */
+      part_size_bytes: z
+        .number()
+        .int()
+        .min(
+          MIN_PART_SIZE_BYTES,
+          `part_size_bytes must be at least ${MIN_PART_SIZE_BYTES} — R2 refuses a non-final part below 5 MiB, so every multi-part upload would be rejected mid-flight.`,
+        )
+        .default(8388608),
+      /**
+       * How long the browser has to START the upload, in seconds. Checked once
+       * by the ingest Worker; an upload already running is never cut off by it.
+       */
+      ticket_expires_seconds: z.number().int().positive().default(300),
+      /**
+       * How long an upload may go without a new part arriving, in seconds. The
+       * Durable Object pushes its alarm out by this much on every part, so an
+       * upload that keeps moving is never cut off however large the file is,
+       * and one that stops is judged dead this long after its last part.
+       */
+      alarm_idle_seconds: z.number().int().positive().default(600),
+      /**
+       * How long a session token stays usable, in seconds. One token covers
+       * two waits — the longest gap the alarm tolerates between parts, and the
+       * chain completing an upload runs — which is why it is checked against
+       * both below rather than picked on its own.
+       */
+      session_token_ttl_seconds: z.number().int().positive().default(1200),
+    })
+    .prefault({}),
 
   avatar: z
     .object({
       /**
        * Hard cap on an avatar upload, in bytes. Unlike a project asset, an
-       * avatar arrives THROUGH the server (no presigned direct upload), so
+       * avatar arrives THROUGH the server (it never goes near the Worker), so
        * this bound is also the bound on what the process buffers for one
        * request — and it is the only thing the server measures about the
        * picture, which is not the same as the only thing it checks: the bytes
@@ -118,7 +121,29 @@ export const storageConfigSchema = z.object({
       max_bytes: z.number().int().positive().default(2097152),
     })
     .prefault({}),
-});
+  })
+  .superRefine((cfg, ctx) => {
+    // Across sections, because the part size is an ingest knob while the
+    // deadline each part is delivered under comes from the upload ones. Both
+    // relations fail an upload that is doing nothing wrong when they are the
+    // wrong way round, and neither is visible from inside either section.
+    try {
+      assertUploadWindows({
+        partSizeBytes: cfg.ingest.part_size_bytes,
+        alarmIdleSeconds: cfg.ingest.alarm_idle_seconds,
+        sessionTokenTtlSeconds: cfg.ingest.session_token_ttl_seconds,
+        ticketExpiresSeconds: cfg.ingest.ticket_expires_seconds,
+        requestTimeoutMs: cfg.upload.client_request_timeout_ms,
+        minBytesPerSec: cfg.upload.client_put_min_bytes_per_sec,
+      });
+    } catch (err) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: err instanceof Error ? err.message : String(err),
+        path: ["ingest"],
+      });
+    }
+  });
 
 /** Validated storage configuration type. */
 export type StorageConfig = z.infer<typeof storageConfigSchema>;

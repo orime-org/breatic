@@ -4,8 +4,14 @@
 /**
  * S3-compatible storage adapter (AWS S3, MinIO, Cloudflare R2).
  *
- * For persistFromUrl: downloads the file then uploads to S3.
- * S3 doesn't support server-side copy from external URLs.
+ * One implementation, two configurations. What separates them is a pair of
+ * addresses that must not be confused: the API endpoint, which answers only to
+ * SigV4-signed requests, and the public base, which is what a browser fetches.
+ * A URL built on the first is unreadable, and it is the URL that gets pinned
+ * onto nodes and into node_history.
+ *
+ * For persistFromUrl: downloads the file then uploads. The S3 API has no
+ * server-side copy from an external URL.
  */
 
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
@@ -18,29 +24,96 @@ import type {
 } from "@core/infra/storage/index.js";
 import { downloadValidated, sha256Hex } from "@core/infra/storage/index.js";
 
+/** Everything needed to reach one S3-compatible bucket. */
+export interface S3CompatibleConfig {
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  /**
+   * API endpoint, when the SDK cannot derive it. R2's is account-scoped rather
+   * than regional, so leaving this out sends every write to an AWS hostname.
+   */
+  endpoint?: string;
+  /** Where a stored object is read back from. Never the API endpoint. */
+  publicBaseUrl: string;
+}
+
+/**
+ * Read the AWS S3 configuration out of the environment.
+ * @returns The bucket's configuration.
+ * @throws {Error} When a required S3 variable is missing.
+ */
+export function s3ConfigFromEnv(): S3CompatibleConfig {
+  const bucket = env.S3_BUCKET;
+  const region = env.S3_REGION;
+  if (!bucket || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) {
+    throw new Error(
+      "S3 storage requires S3_BUCKET, S3_REGION, S3_ACCESS_KEY, S3_SECRET_KEY",
+    );
+  }
+  return {
+    bucket,
+    region,
+    accessKeyId: env.S3_ACCESS_KEY,
+    secretAccessKey: env.S3_SECRET_KEY,
+    // An AWS bucket is publicly addressable at its own regional hostname, so a
+    // missing base is a plain default here rather than a broken URL.
+    publicBaseUrl:
+      env.UPLOAD_BASE_URL || `https://${bucket}.s3.${region}.amazonaws.com`,
+  };
+}
+
+/**
+ * Read the Cloudflare R2 configuration out of the environment.
+ * @returns The bucket's configuration.
+ * @throws {Error} When a required R2 variable is missing.
+ */
+export function r2ConfigFromEnv(): S3CompatibleConfig {
+  const missing: string[] = [];
+  if (!env.R2_BUCKET) missing.push("R2_BUCKET");
+  if (!env.R2_ACCESS_KEY) missing.push("R2_ACCESS_KEY");
+  if (!env.R2_SECRET_KEY) missing.push("R2_SECRET_KEY");
+  if (!env.R2_S3_ENDPOINT) missing.push("R2_S3_ENDPOINT");
+  // R2 has no regional hostname to fall back on, and the API endpoint needs a
+  // signature on every request — so without this every stored object would be
+  // pinned to a URL no browser can fetch.
+  if (!env.UPLOAD_BASE_URL) missing.push("UPLOAD_BASE_URL");
+  if (missing.length > 0) {
+    throw new Error(`R2 storage requires ${missing.join(", ")}`);
+  }
+  return {
+    bucket: env.R2_BUCKET,
+    // R2 is a single region and the SDK still demands the field; "auto" is what
+    // Cloudflare's own S3 API documentation uses.
+    region: "auto",
+    accessKeyId: env.R2_ACCESS_KEY,
+    secretAccessKey: env.R2_SECRET_KEY,
+    endpoint: env.R2_S3_ENDPOINT,
+    publicBaseUrl: env.UPLOAD_BASE_URL,
+  };
+}
+
 /** Storage adapter that persists files to an S3-compatible service. */
 export class S3StorageAdapter implements StorageAdapter {
   private readonly client: S3Client;
   private readonly bucket: string;
-  private readonly region: string;
+  private readonly publicBaseUrl: string;
 
   /**
-   * Validate the required S3 credentials and build the S3 client.
-   * @throws {Error} when any required S3 env var is missing
+   * Build the client for one S3-compatible bucket.
+   * @param config - Where the bucket is and how to reach it.
    */
-  constructor() {
-    this.bucket = env.S3_BUCKET;
-    this.region = env.S3_REGION;
-
-    if (!this.bucket || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) {
-      throw new Error("S3 storage requires S3_BUCKET, S3_REGION, S3_ACCESS_KEY, S3_SECRET_KEY");
-    }
+  constructor(config: S3CompatibleConfig) {
+    this.bucket = config.bucket;
+    this.publicBaseUrl = config.publicBaseUrl;
 
     this.client = new S3Client({
-      region: this.region,
+      region: config.region,
+      ...(config.endpoint !== undefined && { endpoint: config.endpoint }),
       credentials: {
-        accessKeyId: env.S3_ACCESS_KEY,
-        secretAccessKey: env.S3_SECRET_KEY,
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
       },
       // Pin the retry policy explicitly (#1625 Slice 3) — these are the aws-sdk
       // v3 defaults, made visible instead of implicit. "standard" mode retries
@@ -67,10 +140,7 @@ export class S3StorageAdapter implements StorageAdapter {
       }),
     );
 
-    // Use CDN base URL if configured, otherwise S3 direct URL
-    const baseUrl = env.UPLOAD_BASE_URL || `https://${this.bucket}.s3.${this.region}.amazonaws.com`;
-    const url = `${baseUrl}/${key}`;
-    return url;
+    return `${this.publicBaseUrl}/${key}`;
   }
 
   /**
@@ -138,8 +208,7 @@ export class S3StorageAdapter implements StorageAdapter {
    * @returns the public (CDN or S3-direct) URL for the key
    */
   publicUrl(key: string): string {
-    const baseUrl = env.UPLOAD_BASE_URL || `https://${this.bucket}.s3.${this.region}.amazonaws.com`;
-    return `${baseUrl}/${key}`;
+    return `${this.publicBaseUrl}/${key}`;
   }
 
   /**
@@ -148,7 +217,6 @@ export class S3StorageAdapter implements StorageAdapter {
    * @returns true when the URL starts with our public base
    */
   isOwnUrl(url: string): boolean {
-    const baseUrl = env.UPLOAD_BASE_URL || `https://${this.bucket}.s3.${this.region}.amazonaws.com`;
-    return url.startsWith(`${baseUrl}/`);
+    return url.startsWith(`${this.publicBaseUrl}/`);
   }
 }

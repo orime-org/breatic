@@ -9,7 +9,7 @@
  * ordered by created_at desc.
  */
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { nodeHistory, studios } from "@breatic/core";
 import type { NodeHistoryEntity } from "@breatic/shared";
@@ -147,6 +147,79 @@ export async function createGenerationSuccessIfAbsent(data: {
     )
     .limit(1);
   return toEntity(existing[0]!);
+}
+
+/**
+ * Idempotently record a successful upload, keyed on the granted storage key
+ * (#173). Backed by the partial UNIQUE from migration 0069 — (upload_storage_key)
+ * WHERE upload_storage_key IS NOT NULL AND entry_type='upload' AND deleted_at
+ * IS NULL — so a BullMQ replay of the video cover job leaves one row rather
+ * than one per attempt.
+ *
+ * A replay may carry a thumbnail the first attempt did not have (the cover
+ * extraction that failed then succeeded on the retry), so the conflict fills
+ * an empty thumbnail in. It never clears one: `COALESCE` keeps whatever is
+ * already stored, which is what an attempt that extracted no cover would
+ * otherwise overwrite.
+ *
+ * Omitting `storageKey` skips the key entirely and every call inserts its own
+ * row. That is the first-pass dedup hit, which records an upload without ever
+ * issuing a grant; two of those are two user actions.
+ * @param data - Upload fields; `storageKey` is the idempotency key.
+ * @param data.projectId - ID of the project owning the node.
+ * @param data.nodeId - ID of the canvas node the upload targets.
+ * @param data.userId - ID of the user who uploaded.
+ * @param data.content - Canonical URL of the registered asset.
+ * @param data.thumbnailUrl - Cover URL for a video; the asset's own URL for an image.
+ * @param data.storageKey - The granted storage key, when this upload has one.
+ * @param data.metadata - Filename, byte size and mime type.
+ * @returns The stored entry plus whether this call is the one that wrote it.
+ */
+export async function createUploadSuccessIfAbsent(data: {
+  projectId: string;
+  nodeId: string;
+  userId: string;
+  content: string;
+  thumbnailUrl?: string;
+  storageKey?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
+  const rows = await db
+    .insert(nodeHistory)
+    .values({
+      projectId: data.projectId,
+      nodeId: data.nodeId,
+      userId: data.userId,
+      entryType: "upload",
+      status: "success",
+      content: data.content,
+      thumbnailUrl: data.thumbnailUrl ?? null,
+      uploadStorageKey: data.storageKey ?? null,
+      metadata: data.metadata ?? {},
+    })
+    .onConflictDoUpdate({
+      target: [nodeHistory.uploadStorageKey],
+      // `targetWhere`, not the deprecated `where`: this predicate names the
+      // partial index the conflict resolves against. `where` emits it on the
+      // DO UPDATE instead, leaving `ON CONFLICT ("upload_storage_key")` with
+      // nothing to match the partial index against — verified by swapping the
+      // two, which made every insert on this path fail outright.
+      targetWhere: sql`upload_storage_key IS NOT NULL AND entry_type = 'upload' AND deleted_at IS NULL`,
+      set: {
+        thumbnailUrl: sql`COALESCE(${nodeHistory.thumbnailUrl}, EXCLUDED.thumbnail_url)`,
+      },
+    })
+    // `xmax = 0` on a returned row means this statement inserted it; a row the
+    // DO UPDATE touched carries the updating transaction's id there instead.
+    // The caller needs this because the OTHER downstream of an upload — the
+    // project activity feed — has no key of its own to dedup on, and gets its
+    // answer from here rather than from a second idempotency column.
+    .returning({
+      ...getTableColumns(nodeHistory),
+      inserted: sql<boolean>`(xmax = 0)`,
+    });
+  const first = rows[0]!;
+  return { entry: toEntity(first), inserted: first.inserted };
 }
 
 /**

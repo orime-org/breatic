@@ -477,6 +477,20 @@
       "when": 1787792261632,
       "tag": "0067_drop_outbox_kind_and_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1788062758374,
+      "tag": "0068_upload_grants_for_ingest",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1788087667511,
+      "tag": "0069_node_history_upload_key",
+      "breakpoints": true
     }
   ]
 }

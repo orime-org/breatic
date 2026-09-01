@@ -399,8 +399,8 @@
       "retry": "Retry upload",
       "tooLarge": "{filename} exceeds the upload size limit.",
       "empty": "{filename} is empty — there's nothing to add.",
-      "videoCodecUnsupported": "This video's format can't be read in the browser. Convert it to H.264 / MP4 and try again.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
+      "failed": "Upload failed.",
       "storageFull": "Studio storage is full. Uploading is unavailable."
     },
     "minimap": {

@@ -110,7 +110,7 @@ let _adapter: StorageAdapter | null = null;
 
 /**
  * Get the configured storage adapter singleton.
- * @returns the adapter selected by `STORAGE_PROVIDER` (local / s3 / aliyun_oss)
+ * @returns the adapter selected by `STORAGE_PROVIDER` (local / s3 / aliyun_oss / r2)
  */
 export async function getStorageAdapter(): Promise<StorageAdapter> {
   if (_adapter) return _adapter;
@@ -122,13 +122,24 @@ export async function getStorageAdapter(): Promise<StorageAdapter> {
       break;
     }
     case "s3": {
-      const { S3StorageAdapter } = await import("@core/infra/storage/s3.js");
-      _adapter = new S3StorageAdapter();
+      const { S3StorageAdapter, s3ConfigFromEnv } = await import(
+        "@core/infra/storage/s3.js"
+      );
+      _adapter = new S3StorageAdapter(s3ConfigFromEnv());
       break;
     }
     case "aliyun_oss": {
       const { AliyunOSSStorageAdapter } = await import("@core/infra/storage/oss.js");
       _adapter = new AliyunOSSStorageAdapter();
+      break;
+    }
+    case "r2": {
+      // R2 speaks the S3 API, so the same client reaches it; what it needs is
+      // the account-scoped endpoint the SDK cannot derive.
+      const { S3StorageAdapter, r2ConfigFromEnv } = await import(
+        "@core/infra/storage/s3.js"
+      );
+      _adapter = new S3StorageAdapter(r2ConfigFromEnv());
       break;
     }
   }

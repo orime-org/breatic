@@ -81,12 +81,13 @@ describe('isTransientUploadError — retry only what can heal', () => {
   });
 });
 
-// Every fixture below is an ApiException, because presign is the only caller
-// this loop has left. It used to be driven with `UploadHttpError`, which reads
-// naturally but is a pairing production can no longer produce: that class is
-// thrown by `putFileWithRetry` alone, and that function no longer goes through
-// this loop. Same judgment that deleted two unreachable branches from the
-// predicate — a test of a pairing nobody can reach protects nothing.
+// Every fixture below is an ApiException, because the ticket request is the
+// only caller this loop has left, and it goes through the axios client, which
+// reports failures as that class. `UploadHttpError` reads naturally here but is
+// a pairing production cannot produce: it comes from the parts, and those go
+// through the shared HTTP transport, which does its own redelivery. Same
+// judgment that deleted two unreachable branches from the predicate — a test of
+// a pairing nobody can reach protects nothing.
 describe('retryTransient — 3 attempts, full-jitter backoff', () => {
   it('retries transient failures up to the attempt budget then throws', async () => {
     const fn = vi

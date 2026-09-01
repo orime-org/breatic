@@ -63,6 +63,12 @@ process.env.ENV = "dev";
 process.env.STORAGE_PROVIDER = "local";
 process.env.ALLOWED_ORIGINS = "http://localhost:8000";
 
+// The ingest Worker's two settings. The ticket endpoint refuses to mint
+// anything without them, so the suite has to supply both; the secret is a
+// fixed test value, and tests that verify a ticket read it back from here.
+process.env.INGEST_BASE_URL = "https://ingest.test.invalid";
+process.env.INGEST_SHARED_SECRET = "integration-suite-ingest-secret";
+
 // Each test file hands back the connections it opened.
 //
 // This file is a setupFile, so it is evaluated once per test file, inside

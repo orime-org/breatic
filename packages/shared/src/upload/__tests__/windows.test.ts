@@ -1,0 +1,214 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * How long one part may take, and why every window around it has to be wider.
+ *
+ * Both answers come from one piece of arithmetic: the browser sizes each
+ * part's deadline with it, and the ticket endpoint checks the Durable Object's
+ * idle window against it. Two copies would drift apart the first time either
+ * side's figures moved.
+ */
+
+import { describe, it, expect } from "vitest";
+import {
+  partDeadlineMs,
+  partRetryBudgetMs,
+  completeRetryBudgetMs,
+  answerRetentionMs,
+  assertUploadWindows,
+} from "@shared/upload/windows.js";
+import {
+  MAX_RETRIES,
+  MAX_RETRY_AFTER_MS,
+  DEFAULT_TIMEOUT_MS,
+  MAX_TIMER_MS,
+} from "@shared/http/constants.js";
+
+const CFG = { requestTimeoutMs: 30_000, minBytesPerSec: 65_536 };
+
+describe("partDeadlineMs", () => {
+  it("gives a small part the floor rather than a window it cannot use", () => {
+    expect(partDeadlineMs(1024, CFG)).toBe(30_000);
+  });
+
+  it("scales with the bytes once they need longer than the floor", () => {
+    // 8 MiB at 64 KiB/s is 128 seconds, well past the floor.
+    expect(partDeadlineMs(8 * 1024 * 1024, CFG)).toBe(128_000);
+  });
+});
+
+describe("partRetryBudgetMs", () => {
+  it("counts every delivery the transport makes, not just the first", () => {
+    const oneDelivery = partDeadlineMs(8 * 1024 * 1024, CFG);
+
+    const budget = partRetryBudgetMs(8 * 1024 * 1024, CFG);
+
+    expect(budget).toBeGreaterThan((MAX_RETRIES + 1) * oneDelivery);
+  });
+
+  // The waits between deliveries are the transport's own only when the server
+  // named none. One that asks to be waited for is waited for, up to the bound
+  // past which the transport stops instead — so that bound is what a budget
+  // has to allow for, not the figure the transport would have picked.
+  it("allows for the longest wait a server can ask for between them", () => {
+    const deliveries = (MAX_RETRIES + 1) * partDeadlineMs(1024, CFG);
+
+    expect(partRetryBudgetMs(1024, CFG)).toBe(
+      deliveries + MAX_RETRIES * MAX_RETRY_AFTER_MS,
+    );
+  });
+
+  // The shipped figures. An 8 MiB part can hold the browser for longer than
+  // five minutes, which is what the Durable Object's idle window has to clear.
+  it("exceeds five minutes for one part at the shipped part size", () => {
+    expect(partRetryBudgetMs(8 * 1024 * 1024, CFG)).toBeGreaterThan(300_000);
+  });
+});
+
+// Completing carries no bytes and names no deadline of its own, so each of its
+// deliveries runs on the transport's default. The token it carries is the one
+// the last part issued, and it has to outlast that whole chain — a token that
+// expires partway turns the delivery that would have succeeded into a 401.
+describe("completeRetryBudgetMs", () => {
+  it("counts every delivery and the longest wait between them", () => {
+    expect(completeRetryBudgetMs()).toBe(
+      (MAX_RETRIES + 1) * DEFAULT_TIMEOUT_MS + MAX_RETRIES * MAX_RETRY_AFTER_MS,
+    );
+  });
+});
+
+// Both halves decide the window on their own turn, and the shipped figures
+// only ever exercise one of them: 600s of idle is well under the delivery
+// budget, so nothing else here would notice the idle half going missing.
+describe("answerRetentionMs", () => {
+  it("holds the answer for the delivery budget when the idle gap is shorter", () => {
+    expect(answerRetentionMs(60)).toBe(completeRetryBudgetMs());
+  });
+
+  it("holds it for the idle gap when that is the longer of the two", () => {
+    const beyondBudget = Math.ceil(completeRetryBudgetMs() / 1000) + 60;
+
+    expect(answerRetentionMs(beyondBudget)).toBe(beyondBudget * 1000);
+  });
+});
+
+/**
+ * Windows wide enough that only the rule under test can trip.
+ *
+ * Driving the deadline to an extreme also drives what the idle window and the
+ * token have to outlast, so those are sized from the same arithmetic the rules
+ * use rather than pinned to figures that would go stale.
+ * @param over - The deadline inputs this case varies.
+ * @returns A whole set of windows.
+ */
+function roomToWait(over: {
+  minBytesPerSec?: number;
+  requestTimeoutMs?: number;
+}): Parameters<typeof assertUploadWindows>[0] {
+  const partSizeBytes = 8 * 1024 * 1024;
+  const cfg = {
+    requestTimeoutMs: over.requestTimeoutMs ?? 30_000,
+    minBytesPerSec: over.minBytesPerSec ?? 65_536,
+  };
+  const idle = Math.ceil(partRetryBudgetMs(partSizeBytes, cfg) / 1000);
+  const token = Math.max(idle, Math.ceil(completeRetryBudgetMs() / 1000)) + 1;
+  return {
+    partSizeBytes,
+    alarmIdleSeconds: idle,
+    sessionTokenTtlSeconds: token,
+    ticketExpiresSeconds: 300,
+    ...cfg,
+  };
+}
+
+describe("assertUploadWindows", () => {
+  // What the browser hands the transport is one part's deadline, and the
+  // transport refuses a deadline no timer can hold rather than clamping it —
+  // before the first delivery, so a pair of knobs able to produce such a
+  // figure does not weaken the guard, it takes every upload down.
+  describe("a part's deadline has to be a number a timer can hold", () => {
+    /** The lowest rate that still keeps the shipped part inside the timer. */
+    const lowestUsable = Math.ceil((8 * 1024 * 1024 * 1000) / MAX_TIMER_MS);
+
+    it("accepts the lowest rate that still serves one part", () => {
+      expect(() =>
+        assertUploadWindows(
+          roomToWait({ minBytesPerSec: lowestUsable }),
+        ),
+      ).not.toThrow();
+    });
+
+    it("refuses the rate one below it, and says what the floor is", () => {
+      expect(() =>
+        assertUploadWindows(roomToWait({ minBytesPerSec: lowestUsable - 1 })),
+      ).toThrow(new RegExp(String(lowestUsable)));
+    });
+
+    // The floor goes into the same max(), so it is the other way in.
+    it("refuses a floor no timer can hold", () => {
+      expect(() =>
+        assertUploadWindows(roomToWait({ requestTimeoutMs: MAX_TIMER_MS + 1 })),
+      ).toThrow(/client_request_timeout_ms/);
+    });
+  });
+
+  /** The shipped figures, with the pieces a case varies. */
+  const windows = (over: Record<string, number> = {}): Parameters<
+    typeof assertUploadWindows
+  >[0] => ({
+    partSizeBytes: 8 * 1024 * 1024,
+    alarmIdleSeconds: 600,
+    sessionTokenTtlSeconds: 1200,
+    ticketExpiresSeconds: 300,
+    requestTimeoutMs: 30_000,
+    minBytesPerSec: 65_536,
+    ...over,
+  });
+
+  it("accepts figures that leave every window wider than what it holds", () => {
+    expect(() => assertUploadWindows(windows())).not.toThrow();
+  });
+
+  // One part's retries run to about 387 seconds, while an alarm at 300 judges
+  // the upload dead: every part already written is dropped, and the browser is
+  // still delivering.
+  it("refuses an idle window a single part's retries can outlast", () => {
+    expect(() => assertUploadWindows(windows({ alarmIdleSeconds: 300 }))).toThrow(
+      /alarm_idle_seconds/,
+    );
+  });
+
+  // The token is re-issued with every part, so it only has to cover the gap
+  // between two of them — and the longest gap the alarm allows is its own
+  // window.
+  it("refuses a session token that expires inside the idle window", () => {
+    expect(() =>
+      assertUploadWindows(windows({ sessionTokenTtlSeconds: 600 })),
+    ).toThrow(/session_token_ttl_seconds/);
+  });
+
+  // The last part issues the token that completing carries, so the token has
+  // to outlast completing's own chain as well as the gap between parts.
+  it("refuses a session token that expires inside the completion chain", () => {
+    const short = Math.ceil(completeRetryBudgetMs() / 1000) - 1;
+
+    expect(() =>
+      assertUploadWindows(
+        windows({ alarmIdleSeconds: 600, sessionTokenTtlSeconds: short }),
+      ),
+    ).toThrow(/session_token_ttl_seconds/);
+  });
+
+  // Letting go of a finished upload is also what stops the Durable Object
+  // recognising the key as used. A ticket still valid then could open a second
+  // multipart upload over an object the ledger already describes, leaving the
+  // sha256 on that row describing bytes that are gone.
+  it("refuses a ticket that outlives the memory of a finished upload", () => {
+    const past = Math.ceil(answerRetentionMs(600) / 1000) + 1;
+
+    expect(() =>
+      assertUploadWindows(windows({ ticketExpiresSeconds: past })),
+    ).toThrow(/ticket_expires_seconds/);
+  });
+});

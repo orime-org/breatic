@@ -10,7 +10,6 @@ import {
   checkFileAdmission,
   fillNodeFromFile,
   runMediaUpload,
-  runVideoUploadWithCover,
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
@@ -123,6 +122,25 @@ const CFG = {
 
 const HASH = 'a'.repeat(64);
 
+/**
+ * An error the API layer would have thrown for `status`.
+ * @param status - The status the server answered with.
+ * @returns The exception the caller sees.
+ */
+function apiError(status: number): ApiException {
+  return new ApiException({ status, message: `HTTP ${status}` });
+}
+
+/** A ticket for a one-part upload. */
+const TICKET = {
+  ticket: 'signed',
+  storageKey: 'image/2026-08-31/p.png',
+  uploadUrl: 'https://ingest.example.com',
+  kind: 'image',
+  partSize: 5 * 1024 * 1024,
+  totalParts: 1,
+};
+
 /** Shared orchestration deps (config + hash + network spies). */
 function makeUploadDeps(
   over: Partial<Parameters<typeof runMediaUpload>[2]> = {},
@@ -130,13 +148,11 @@ function makeUploadDeps(
   return {
     getUploadConfig: vi.fn().mockResolvedValue(CFG),
     hashFile: vi.fn().mockResolvedValue(HASH),
-    presign: vi.fn().mockResolvedValue({
-      uploadUrl: 'https://put',
+    requestTicket: vi.fn().mockResolvedValue(TICKET),
+    sendToIngest: vi.fn().mockResolvedValue({
       fileUrl: 'https://cdn/p.png',
-      key: 'k',
       kind: 'image',
     }),
-    putFile: vi.fn().mockResolvedValue(undefined),
     onSuccess: vi.fn(),
     onFailure: vi.fn(),
     sleep: () => Promise.resolve(),
@@ -144,415 +160,150 @@ function makeUploadDeps(
   };
 }
 
-describe('runMediaUpload — config → hash → presign(dedup) → PUT → callbacks', () => {
+describe('runMediaUpload — ask for a ticket, send the bytes, hand back the outcome', () => {
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
+  const context = { projectId: 'p1', leaseGen: 6, nodeId: 'n1', spaceId: 's1' };
 
-  it('presigns with name + type + size + hash, PUTs with the config, reports the URL', async () => {
+  it('asks with what the server signs a ticket from, then sends the file', async () => {
     const deps = makeUploadDeps();
-    const onUploaded = vi.fn();
 
-    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
+    await runMediaUpload(file, context, deps);
 
-    expect(deps.presign).toHaveBeenCalledWith({
+    expect(deps.requestTicket).toHaveBeenCalledWith({
       filename: 'photo.png',
       contentType: 'image/png',
       projectId: 'p1',
       size: file.size,
       hash: HASH,
+      leaseGen: 6,
+      nodeId: 'n1',
+      spaceId: 's1',
     });
-    expect(deps.putFile).toHaveBeenCalledWith('https://put', file, CFG);
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/p.png');
-    expect(onUploaded).toHaveBeenCalledExactlyOnceWith({
-      key: 'k',
-      kind: 'image',
-      fileUrl: 'https://cdn/p.png',
-      hash: HASH,
-    });
+    expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
-  it('dedup hit: skips the PUT entirely and reuses the existing URL (B.2)', async () => {
+  // The node reads its result from Yjs and ignores this; an upload with no
+  // node behind it has no other channel and reads it here (design §9).
+  it('hands back what completing the upload said it became', async () => {
+    const deps = makeUploadDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/p.png');
+  });
+
+  it('sends nothing when the studio already holds the content', async () => {
     const deps = makeUploadDeps({
-      presign: vi.fn().mockResolvedValue({
+      requestTicket: vi.fn().mockResolvedValue({
         alreadyExists: true,
         fileUrl: 'https://cdn/existing.png',
         kind: 'image',
       }),
     });
-    const onUploaded = vi.fn();
 
-    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
+    await runMediaUpload(file, context, deps);
 
-    expect(deps.putFile).not.toHaveBeenCalled();
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/existing.png');
-    expect(onUploaded).toHaveBeenCalledExactlyOnceWith({
-      dedup: true,
-      kind: 'image',
-      fileUrl: 'https://cdn/existing.png',
-      hash: HASH,
-    });
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
+      'https://cdn/existing.png',
+    );
   });
 
-  it('hashing failed (null) → the upload is REFUSED before any network call (user decision 2026-07-26)', async () => {
-    // The content hash is the whole storage design's ticket: instant-dedup,
-    // within-studio dedup and the ledger row all key on it. An upload without
-    // one can never be registered (`studio_assets.content_hash` is NOT NULL),
-    // so it would pin the node to an object with no live row — an offline-GC
-    // orphan → 404. Refusing UP FRONT also wastes no bandwidth: nothing is
-    // presigned and nothing is PUT. (This replaces the old availability-first
-    // rule that let a hashless upload through as "stored but untracked".)
+  // No hash, no upload (user decision 2026-07-26): the ledger keys on content,
+  // and a file we cannot fingerprint has nothing to key on.
+  it('refuses before any network call when the file cannot be hashed', async () => {
     const deps = makeUploadDeps({ hashFile: vi.fn().mockResolvedValue(null) });
-    const onUploaded = vi.fn();
 
-    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
+    await runMediaUpload(file, context, deps);
 
-    expect(deps.presign).not.toHaveBeenCalled();
-    expect(deps.putFile).not.toHaveBeenCalled();
-    expect(onUploaded).not.toHaveBeenCalled();
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    // The caller needs to tell "we could not fingerprint the file" apart from a
-    // network failure — the remedy differs (reload the page vs retry).
+    expect(deps.requestTicket).not.toHaveBeenCalled();
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('hash');
   });
 
-  it('retries a transient presign failure (5xx) before succeeding', async () => {
-    const presign = vi
+  it('retries a transient ticket failure before succeeding', async () => {
+    const requestTicket = vi
       .fn()
-      // Flat `.status`, the shape apiGet's interceptor normalises every
-      // presign failure into. The raw axios `{response:{status}}` shape this
-      // used to seed cannot leave the axios instance.
-      .mockRejectedValueOnce({ status: 503 })
-      .mockResolvedValueOnce({
-        uploadUrl: 'https://put',
-        fileUrl: 'https://cdn/p.png',
-        key: 'k',
-        kind: 'image',
-      });
-    const deps = makeUploadDeps({ presign });
+      .mockRejectedValueOnce(apiError(503))
+      .mockResolvedValue(TICKET);
+    const deps = makeUploadDeps({ requestTicket });
 
-    await runMediaUpload(file, 'p1', deps);
+    await runMediaUpload(file, context, deps);
 
-    expect(presign).toHaveBeenCalledTimes(2);
+    expect(requestTicket).toHaveBeenCalledTimes(2);
     expect(deps.onSuccess).toHaveBeenCalledOnce();
-    expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
-  it('reports failure when presign finally throws (PUT not attempted)', async () => {
-    // The real thing apiGet rejects with, rather than a hand-written shape.
-    // It used to be seeded as `{ response: { status: 403 } }` — the raw axios
-    // shape, which the interceptor no longer lets out and which `errorStatus`
-    // no longer reads. That fixture still went green, but for a changed
-    // reason: not "403 is final, so no retry", but "no status could be read
-    // at all". The 403 in it had stopped reaching any code.
+  // No ticket means no grant, so nothing on the server knows this upload was
+  // ever attempted and nobody will announce how it ended.
+  it('sends nothing when the ticket request finally fails', async () => {
     const deps = makeUploadDeps({
-      presign: vi.fn().mockRejectedValue(
-        new ApiException({ status: 403, message: 'forbidden' }),
-      ),
+      requestTicket: vi.fn().mockRejectedValue(apiError(503)),
     });
 
-    await runMediaUpload(file, 'p1', deps);
+    await runMediaUpload(file, context, deps);
 
-    // Called ONCE, which is what makes the 403 in the fixture load-bearing.
-    // Without this the same test passes with a 503 in there, and then it is
-    // only checking that an exhausted presign reports failure — which the
-    // status could not affect either way.
-    expect(deps.presign).toHaveBeenCalledTimes(1);
-    expect(deps.putFile).not.toHaveBeenCalled();
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
   });
 
-  it('reports failure when the PUT throws', async () => {
+  // Named apart from a ticket failure so the node's message and its Retry
+  // stash can differ, even though both are the browser's to write.
+  it('names a failure sending the bytes apart from one asking for a ticket', async () => {
     const deps = makeUploadDeps({
-      putFile: vi.fn().mockRejectedValue(new Error('network')),
+      sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
     });
 
-    await runMediaUpload(file, 'p1', deps);
-
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
-  });
-
-  it('reports failure when the config fetch itself fails', async () => {
-    const deps = makeUploadDeps({
-      getUploadConfig: vi.fn().mockRejectedValue(new Error('down')),
-    });
-
-    await runMediaUpload(file, 'p1', deps);
-
-    expect(deps.presign).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
-  });
-
-  it('pins the REPORT canonical, never the presign temp key (§0 rule 2 / §4.1 step 7)', async () => {
-    // The presign URL is a temp minted key; onSuccess must fire with the
-    // registered CANONICAL the report returns, not that temp key.
-    const deps = makeUploadDeps({
-      presign: vi.fn().mockResolvedValue({
-        uploadUrl: 'https://put',
-        fileUrl: 'https://cdn/TEMP.png',
-        key: 'k',
-        kind: 'image',
-      }),
-    });
-    const onUploaded = vi.fn().mockResolvedValue({ fileUrl: 'https://cdn/CANON.png' });
-
-    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
-
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/CANON.png');
-    expect(deps.onSuccess).not.toHaveBeenCalledWith('https://cdn/TEMP.png');
-  });
-
-  it('keeps the node handling until the report returns: report resolves BEFORE onSuccess pins', async () => {
-    const order: string[] = [];
-    let resolveReport: (v: { fileUrl: string }) => void = () => {};
-    const onUploaded = vi.fn(() => {
-      order.push('report');
-      return new Promise<{ fileUrl: string }>((r) => {
-        resolveReport = r;
-      });
-    });
-    const deps = makeUploadDeps({ onSuccess: vi.fn(() => order.push('pin')) });
-
-    const done = runMediaUpload(file, 'p1', { ...deps, onUploaded });
-    await new Promise((r) => setTimeout(r, 0));
-    // Report fired; the node is NOT pinned yet (still handling).
-    expect(order).toEqual(['report']);
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-
-    resolveReport({ fileUrl: 'https://cdn/c.png' });
-    await done;
-    // Pinned only AFTER the report resolved with the canonical.
-    expect(order).toEqual(['report', 'pin']);
-  });
-
-  it('a report failure (node-bound register 422) → onFailure, node NOT pinned (Retry)', async () => {
-    const onUploaded = vi.fn().mockRejectedValue(new Error('422'));
-    const deps = makeUploadDeps();
-
-    await runMediaUpload(file, 'p1', { ...deps, onUploaded });
-
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
-  });
-});
-
-const VIDEO_FILE = new File(['v'], 'clip.mp4', { type: 'video/mp4' });
-const COVER_FILE = new File(['c'], 'clip-cover.png', { type: 'image/png' });
-
-/**
- * Deps for {@link runVideoUploadWithCover}: config + hash shared, presign +
- * PUT keyed on the file so the video and cover get distinct URLs / can fail
- * independently.
- * @param over - Per-test overrides.
- * @returns The atomic video-with-cover orchestration deps.
- */
-function makeVideoCoverDeps(
-  over: Partial<Parameters<typeof runVideoUploadWithCover>[3]> = {},
-): Parameters<typeof runVideoUploadWithCover>[3] {
-  return {
-    getUploadConfig: vi.fn().mockResolvedValue(CFG),
-    hashFile: vi.fn().mockResolvedValue(HASH),
-    presign: vi.fn().mockImplementation((params: { contentType: string }) =>
-      Promise.resolve(
-        params.contentType.startsWith('video/')
-          ? {
-            uploadUrl: 'https://put/v',
-            fileUrl: 'https://cdn/clip.mp4',
-            key: 'kv',
-            kind: 'video',
-          }
-          : {
-            uploadUrl: 'https://put/c',
-            fileUrl: 'https://cdn/clip-cover.png',
-            key: 'kc',
-            kind: 'image',
-          },
-      ),
-    ),
-    putFile: vi.fn().mockResolvedValue(undefined),
-    onSuccess: vi.fn(),
-    onFailure: vi.fn(),
-    // The video report returns the REGISTERED canonical(s) the node pins; the
-    // default matches the presign URLs so the happy-path assertions hold.
-    onVideoUploaded: vi.fn().mockResolvedValue({
-      fileUrl: 'https://cdn/clip.mp4',
-      coverUrl: 'https://cdn/clip-cover.png',
-    }),
-    onCoverUploaded: vi.fn(),
-    sleep: () => Promise.resolve(),
-    ...over,
-  };
-}
-
-describe('runVideoUploadWithCover — atomic video + cover (#1816)', () => {
-  it('writes content + cover ONCE when both uploads succeed, and reports both assets', async () => {
-    const deps = makeVideoCoverDeps();
-
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
-
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
-      'https://cdn/clip.mp4',
-      'https://cdn/clip-cover.png',
-    );
-    expect(deps.onFailure).not.toHaveBeenCalled();
-    // Both ledger reports fire (video WITH nodeId at the caller; cover WITHOUT).
-    // The video report carries BOTH infos (#1824): the caller rides the cover's
-    // verifiable ref on the VIDEO report so the server can re-derive the cover
-    // URL for the node-history row (①) + activity row (②).
-    expect(deps.onVideoUploaded).toHaveBeenCalledExactlyOnceWith(
-      { key: 'kv', kind: 'video', fileUrl: 'https://cdn/clip.mp4', hash: HASH },
-      { key: 'kc', kind: 'image', fileUrl: 'https://cdn/clip-cover.png', hash: HASH },
-    );
-    expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
-  });
-
-  it('awaits the cover report BEFORE firing the video report (read-after-write, #1826 §4.5)', async () => {
-    // The video report rides only the cover's HASH; the server reads the cover's
-    // studio_assets row by that hash. So the cover MUST register first — else the
-    // node-history + activity thumbnails race to a null row → Film.
-    const order: string[] = [];
-    let resolveCover: () => void = () => {};
-    const deps = makeVideoCoverDeps({
-      onCoverUploaded: vi.fn(() => {
-        order.push('cover');
-        return new Promise<void>((r) => {
-          resolveCover = r;
-        });
-      }),
-      onVideoUploaded: vi.fn(() => {
-        order.push('video');
-        return Promise.resolve({ fileUrl: 'https://cdn/clip.mp4' });
-      }),
-    });
-
-    const done = runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
-    // Flush the uploads + reach the `await onCoverUploaded` suspend point.
-    await new Promise((r) => setTimeout(r, 0));
-    // The cover report fired; the video report MUST wait for it to resolve.
-    expect(order).toEqual(['cover']);
-    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
-
-    resolveCover();
-    await done;
-    // Video report fires only AFTER the cover row is committed.
-    expect(order).toEqual(['cover', 'video']);
-  });
-
-  it('fails atomically when the VIDEO PUT fails — no write, no reports', async () => {
-    const deps = makeVideoCoverDeps({
-      putFile: vi
-        .fn()
-        .mockImplementation((url: string) =>
-          url === 'https://put/v'
-            ? Promise.reject(new Error('net'))
-            : Promise.resolve(),
-        ),
-    });
-
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
-
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
-    // No phantom node-history row / attribution for an aborted atomic upload.
-    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
-    expect(deps.onCoverUploaded).not.toHaveBeenCalled();
-  });
-
-  it('fails atomically when the COVER PUT fails — never writes video-only', async () => {
-    const deps = makeVideoCoverDeps({
-      putFile: vi
-        .fn()
-        .mockImplementation((url: string) =>
-          url === 'https://put/c'
-            ? Promise.reject(new Error('net'))
-            : Promise.resolve(),
-        ),
-    });
-
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
-
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
-    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
-    expect(deps.onCoverUploaded).not.toHaveBeenCalled();
-  });
-
-  it('pins the VIDEO REPORT canonical (content + coverUrl), not the presign temp keys (§0 rule 2)', async () => {
-    const deps = makeVideoCoverDeps({
-      onVideoUploaded: vi.fn().mockResolvedValue({
-        fileUrl: 'https://cdn/CANON.mp4',
-        coverUrl: 'https://cdn/CANON-cover.png',
-      }),
-    });
-
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
-
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
-      'https://cdn/CANON.mp4',
-      'https://cdn/CANON-cover.png',
-    );
-    expect(deps.onSuccess).not.toHaveBeenCalledWith(
-      'https://cdn/clip.mp4',
-      'https://cdn/clip-cover.png',
-    );
-  });
-
-  it('cover degrade: report.coverUrl undefined → pins undefined (Film), NEVER the presign temp cover key (§0 rule 2 / §4.5 / #1824)', async () => {
-    // The server degrades the cover to `undefined` when it cannot resolve a live
-    // studio_assets row (the cover register failed, or its hash degraded so no
-    // row was written). The node MUST then show Film — never the cover's presign
-    // TEMP key, which has no live row and becomes an offline-GC orphan → 404. The
-    // `?? cover.url` fallback that re-pinned that temp key was the G8 regression on
-    // the cover half (Gate-2 R3). `completeNodeHandling` skips `coverUrl` when it
-    // is undefined, so passing undefined through is exactly "degrade to Film".
-    const deps = makeVideoCoverDeps({
-      onVideoUploaded: vi.fn().mockResolvedValue({
-        fileUrl: 'https://cdn/CANON.mp4',
-        // coverUrl omitted → the server degraded the cover to Film.
-      }),
-    });
-
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
-
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
-      'https://cdn/CANON.mp4',
-      undefined,
-    );
-    // The cover's presign temp key (from the sub-upload) must NEVER be pinned.
-    expect(deps.onSuccess).not.toHaveBeenCalledWith(
-      'https://cdn/CANON.mp4',
-      'https://cdn/clip-cover.png',
-    );
-  });
-
-  it('a COVER report failure fails the whole upload — the two halves are atomic (#1816, user 2026-07-26)', async () => {
-    // #1816's contract is "a video never lands without its cover and a cover
-    // never lands without its video". That has always held for a failed PUT;
-    // it must hold for a failed REGISTER too, otherwise the video lands while
-    // its cover silently isn't in the ledger. So onCoverUploaded rejecting
-    // aborts the whole thing: no node write, no video report, Retry offered.
-    const deps = makeVideoCoverDeps({
-      onCoverUploaded: vi.fn().mockRejectedValue(new Error('cover register 422')),
-    });
-
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+    await runMediaUpload(file, context, deps);
 
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
-    // The video report never fires — no half-written ledger state.
-    expect(deps.onVideoUploaded).not.toHaveBeenCalled();
   });
 
-  it('a video report failure (e.g. register 422) → onFailure, node NOT written (retry both)', async () => {
-    const deps = makeVideoCoverDeps({
-      onVideoUploaded: vi.fn().mockRejectedValue(new Error('422')),
+  // A full account is not something a retry fixes, and the message the user
+  // needs is a different one.
+  it('names a full account apart from an ordinary failure', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockRejectedValue(apiError(507)),
     });
 
-    await runVideoUploadWithCover(VIDEO_FILE, COVER_FILE, 'p1', deps);
+    await runMediaUpload(file, context, deps);
 
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('storage');
+  });
+
+  it('reports a failure when the knobs cannot be fetched', async () => {
+    const deps = makeUploadDeps({
+      getUploadConfig: vi.fn().mockRejectedValue(new Error('offline')),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.requestTicket).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+  });
+
+  // A crop is a byproduct with no node: registered for dedup, and told apart
+  // from a real upload in the feed.
+  it('carries the byproduct flag and leaves out the node context', async () => {
+    const deps = makeUploadDeps();
+
+    await runMediaUpload(
+      file,
+      { projectId: 'p1', leaseGen: 0, derived: true },
+      deps,
+    );
+
+    expect(deps.requestTicket).toHaveBeenCalledWith({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: file.size,
+      hash: HASH,
+      leaseGen: 0,
+      derived: true,
+    });
   });
 });
 
@@ -565,13 +316,11 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     return {
       getUploadConfig: vi.fn().mockResolvedValue(CFG),
       hashFile: vi.fn().mockResolvedValue(HASH),
-      presign: vi.fn().mockResolvedValue({
-        uploadUrl: 'https://put',
+      requestTicket: vi.fn().mockResolvedValue(TICKET),
+      sendToIngest: vi.fn().mockResolvedValue({
         fileUrl: 'https://cdn/p.png',
-        key: 'k',
         kind: 'image',
       }),
-      putFile: vi.fn().mockResolvedValue(undefined),
       extractText: vi.fn().mockResolvedValue('extracted body'),
       isHandling: vi.fn().mockReturnValue(false),
       onBusy: vi.fn(),
@@ -579,15 +328,54 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       setHandling: vi.fn().mockReturnValue(LEASE),
       setContent: vi.fn().mockReturnValue(true),
       setError: vi.fn().mockReturnValue(true),
-      // 上传失败的唯一出口。它是必填的：这个模块不再自己留一份用户读到的
-      // 句子，谁失败都把原因交出去，由 CanvasSpace 那一处决定怎么呈现。
+      // The only exit for a failed upload. It is required: this module keeps
+      // no copy of the sentences a user reads, so every failure hands its
+      // reason out and CanvasSpace decides how to present it.
       onUploadFailure: vi.fn(),
+      onUploadSettled: vi.fn(),
       sleep: () => Promise.resolve(),
       ...over,
     };
   }
 
-  it('media file: handling → upload → fill content with the public URL (no new node)', async () => {
+  // Delivered bytes mean the file is no longer worth holding for a Retry this
+  // node is not offered any more. The drop path says the same thing, and a
+  // stash only one of them clears is a stash that outlives its node.
+  it('media file: says so once the bytes are delivered', async () => {
+    const deps = makeDeps();
+
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
+      'p1',
+      deps,
+    );
+
+    expect(deps.onUploadSettled).toHaveBeenCalledExactlyOnceWith('n1');
+  });
+
+  it('media file: says nothing of the sort when the upload failed', async () => {
+    const deps = makeDeps({
+      sendToIngest: vi.fn().mockRejectedValue(new Error('network')),
+    });
+
+    await fillNodeFromFile(
+      'n1',
+      new File(['x'], 'p.png', { type: 'image/png' }),
+      'image',
+      'p1',
+      deps,
+    );
+
+    expect(deps.onUploadSettled).not.toHaveBeenCalled();
+    expect(deps.onUploadFailure).toHaveBeenCalledOnce();
+  });
+
+  // The node opens handling and stays there. What it ends up holding comes
+  // from the server through Yjs, so this path writes nothing on the way out
+  // (design §6.6).
+  it('media file: opens handling, sends the bytes, writes nothing itself', async () => {
     const deps = makeDeps();
     await fillNodeFromFile(
       'n1',
@@ -597,135 +385,21 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
-    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'https://cdn/p.png', LEASE);
+    expect(deps.sendToIngest).toHaveBeenCalledOnce();
+    expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
     expect(deps.extractText).not.toHaveBeenCalled();
   });
 
-  /**
-   * A presign keyed on content type so the video and cover get distinct URLs
-   * (the atomic video-with-cover fill path uploads both).
-   * @param params - The presign params (only `contentType` is read).
-   * @returns The presign response for a video or a cover.
-   */
-  const videoCoverPresign = (params: {
-    contentType: string;
-  }): Promise<unknown> =>
-    Promise.resolve(
-      params.contentType.startsWith('video/')
-        ? {
-          uploadUrl: 'https://put/v',
-          fileUrl: 'https://cdn/clip.mp4',
-          key: 'kv',
-          kind: 'video',
-        }
-        : {
-          uploadUrl: 'https://put/c',
-          fileUrl: 'https://cdn/clip-cover.png',
-          key: 'kc',
-          kind: 'image',
-        },
-    );
-
-  it('video pre-flight reject (#1816): extraction null → NO setHandling, empty node untouched, onExtractRejected fires', async () => {
-    const deps = makeDeps({
-      extractVideoCover: vi.fn().mockResolvedValue(null),
-      onExtractRejected: vi.fn(),
-    });
-    await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
-    expect(deps.extractVideoCover).toHaveBeenCalledOnce();
-    expect(deps.onExtractRejected).toHaveBeenCalledExactlyOnceWith('n1');
-    // The empty node is never touched: no lease, no upload, no write.
-    expect(deps.setHandling).not.toHaveBeenCalled();
-    expect(deps.presign).not.toHaveBeenCalled();
-    expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).not.toHaveBeenCalled();
-  });
-
-  it('video with cover (#1816): extraction ok → atomic upload → setContent gets content + coverUrl; both assets reported', async () => {
-    const deps = makeDeps({
-      presign: vi.fn().mockImplementation(videoCoverPresign),
-      extractVideoCover: vi
-        .fn()
-        .mockResolvedValue(new Blob(['c'], { type: 'image/png' })),
-      // The reporter returns the REGISTERED canonical(s) — the node pins those,
-      // never the presign temp keys (report-then-pin, §0 rule 2). Canonical URLs
-      // are deliberately DISTINCT from the presign temp keys so the assertion
-      // actually guards the pin source.
-      onUploaded: vi.fn().mockResolvedValue({
-        fileUrl: 'https://cdn/CANON.mp4',
-        coverUrl: 'https://cdn/CANON-cover.png',
-      }),
-      onCoverUploaded: vi.fn(),
-    });
-    await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
-    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
-    // The cover File is declared PNG (§8) by `videoCoverFile`, not by the blob
-    // it wraps. Asserting the presign contract is what pins that declaration
-    // from this side: on S3 / OSS the declared type is signed into the upload
-    // URL and becomes the stored object's Content-Type, so a regression here
-    // mislabels the asset itself, not just the request.
-    expect(deps.presign).toHaveBeenCalledWith(
-      expect.objectContaining({
-        filename: 'clip-cover.png',
-        contentType: 'image/png',
-      }),
-    );
-    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith(
-      'n1',
-      'https://cdn/CANON.mp4',
-      LEASE,
-      'https://cdn/CANON-cover.png',
-    );
-    // NEVER the presign temp keys.
-    expect(deps.setContent).not.toHaveBeenCalledWith(
-      'n1',
-      'https://cdn/clip.mp4',
-      LEASE,
-      'https://cdn/clip-cover.png',
-    );
-    // Video ledger report carries the nodeId AND the cover info (#1824) so the
-    // caller can ride the cover ref on the video report; cover report has no
-    // nodeId (F3).
-    expect(deps.onUploaded).toHaveBeenCalledExactlyOnceWith(
-      'n1',
-      expect.objectContaining({ key: 'kv', kind: 'video' }),
-      expect.objectContaining({ key: 'kc', kind: 'image' }),
-    );
-    expect(deps.onCoverUploaded).toHaveBeenCalledOnce();
-    expect(deps.setError).not.toHaveBeenCalled();
-  });
-
-  it('video atomic failure (#1816): cover PUT fails → reports the failure, never writes video-only', async () => {
-    const deps = makeDeps({
-      presign: vi.fn().mockImplementation(videoCoverPresign),
-      putFile: vi
-        .fn()
-        .mockImplementation((url: string) =>
-          url === 'https://put/c'
-            ? Promise.reject(new Error('net'))
-            : Promise.resolve(),
-        ),
-      extractVideoCover: vi
-        .fn()
-        .mockResolvedValue(new Blob(['c'], { type: 'image/png' })),
-    });
-    await fillNodeFromFile('n1', VIDEO_FILE, 'video', 'p1', deps);
-    expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
-      'upload',
-      'n1',
-      VIDEO_FILE,
-      LEASE,
-    );
-  });
-
   it('media upload failure: reports the reason, and does not write the node itself', async () => {
-    const deps = makeDeps({ presign: vi.fn().mockRejectedValue(new Error('403')) });
+    const deps = makeDeps({
+      requestTicket: vi.fn().mockRejectedValue(new Error('403')),
+    });
     const file = new File(['x'], 'bad.png', { type: 'image/png' });
     await fillNodeFromFile('n1', file, 'image', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();
-    // 节点上那句固定英文由出口那一处写，这里只钉「原因交对了」。
+    // The fixed English sentence on the node is written by the one exit that
+    // owns it; this pins only that the reason was handed over.
     expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
       'upload',
       'n1',
@@ -745,7 +419,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
-    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body', LEASE);
   });
 
@@ -775,7 +449,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     );
     expect(deps.onBusy).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.setHandling).not.toHaveBeenCalled();
-    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
   });
@@ -789,7 +463,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       'p1',
       deps,
     );
-    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
   });
@@ -805,7 +479,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     );
     expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.setHandling).not.toHaveBeenCalled();
-    expect(deps.presign).not.toHaveBeenCalled();
+    expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
   });

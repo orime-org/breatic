@@ -2,39 +2,64 @@
 # GET /assets/upload-config (session-cached).
 upload:
   # Hard upload cap (bytes). Frontend rejects oversize files on selection
-  # (no network traffic); /assets/presign enforces it authoritatively
-  # (413). Also protects local-storage mode, which buffers the whole
-  # file in server memory. Default 2 GiB.
+  # (no network traffic); /assets/upload-ticket enforces it authoritatively
+  # (413). Default 2 GiB.
   max_upload_bytes: 2147483648
-  # Browser-side attempts for PRESIGN, including the first (matches worker
-  # job_attempts=3). Transient errors only. The PUT no longer reads this:
-  # it goes through the shared HTTP transport, which compiles its own.
+  # Browser-side attempts for the TICKET request, including the first
+  # (matches worker job_attempts=3). Transient errors only. The parts no
+  # longer read this: they go through the shared HTTP transport, which
+  # compiles its own.
   client_max_attempts: 3
-  # Base backoff (ms) between browser PRESIGN retry attempts, full-jittered.
-  # The PUT's backoff lives in the shared HTTP transport.
+  # Base backoff (ms) between browser TICKET retry attempts, full-jittered.
+  # A part's backoff lives in the shared HTTP transport.
   client_retry_base_delay_ms: 1000
-  # Floor for the PUT stall guard below. Despite the name it does NOT time
-  # presign: that goes through axios, whose timeout is set in
+  # Floor for the part stall guard below. Despite the name it does NOT time
+  # the ticket request: that goes through axios, whose timeout is set in
   # packages/web/src/data/api/request.ts.
   client_request_timeout_ms: 30000
-  # PUT stall guard: per-attempt timeout = max(request timeout,
-  # size / this rate). A dead connection aborts + retries instead of
-  # hanging forever, while a legitimately slow big upload never trips it.
-  # Bounded from below against max_upload_bytes: the figure has to stay
-  # inside what a timer can hold, and the transport refuses an out-of-range
-  # deadline rather than clamping it. Too low a rate here is refused at
-  # startup with the lowest usable value in the message — at the shipped cap
-  # that floor is 1001.
+  # Part stall guard: per-attempt timeout = max(request timeout,
+  # ONE PART's size / this rate). A dead connection aborts + retries instead
+  # of hanging forever, while a part that is legitimately slow never trips it.
+  # Bounded from below against part_size_bytes: the figure has to stay inside
+  # what a timer can hold, and the transport refuses an out-of-range deadline
+  # rather than clamping it. Too low a rate here is refused at startup with
+  # the lowest usable value in the message — at the shipped part size that
+  # floor is 4.
   client_put_min_bytes_per_sec: 65536
-  # Presigned PUT URL expiry (seconds) for cloud storage (S3/OSS). This is the
-  # provider's own PUT window — unrelated to the upload-grant ledger, which has
-  # no time limit (#1826, design §3.2). Local storage has no presigned URL.
-  presign_expires_seconds: 300
+
+# The ingest Worker (#173). Every figure it runs on is decided here and signed
+# into the ticket, because a Worker cannot read this file and a second copy in
+# its own deployment config is a second place for the value to drift.
+ingest:
+  # One part of a multipart upload, in bytes. R2 refuses a non-final part
+  # under 5 MiB, which is the floor `signUploadTicket` enforces.
+  part_size_bytes: 8388608
+  # How long the browser has to START the upload. Checked once, when it asks
+  # the Worker to begin; an upload already running is never cut off by it.
+  ticket_expires_seconds: 300
+  # How long the upload may go without a new part arriving. The Durable Object
+  # pushes its alarm out by this much on every part it receives, so an upload
+  # that keeps moving is never cut off no matter how large the file is, and one
+  # that stops is judged dead this long after its last part. There is no total
+  # time limit: a total would have to be guessed from the file size and the
+  # user's bandwidth, and guessing it low kills uploads that are still running.
+  #
+  # It has to be wider than the whole worst case for one part — three
+  # deliveries at that part's deadline plus the waits between them — because a
+  # part being retried delivers nothing while it goes on. Loading this file
+  # checks that, so the two cannot drift apart silently.
+  alarm_idle_seconds: 600
+  # How long a session token stays usable. One token covers two waits: the
+  # longest gap the alarm tolerates between parts, and the whole chain
+  # completing an upload runs on — completing names no deadline of its own, so
+  # each of its deliveries takes the transport's default. Loading this file
+  # checks it clears both.
+  session_token_ttl_seconds: 1200
 
 # Studio avatars.
 avatar:
-  # Hard cap on one avatar upload, in bytes. Avatars do NOT use presigned
-  # direct upload — the bytes come through the server — so this is also the
+  # Hard cap on one avatar upload, in bytes. Avatars do NOT go through the
+  # ingest Worker — the bytes come through the server — so this is also the
   # bound on what the process buffers per request.
   #
   # It is the only thing measured about the picture; the server does not read
