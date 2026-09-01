@@ -24,7 +24,7 @@ import { signSessionToken } from "@ingest/session-token.js";
 
 /** What the instance remembers about an upload while it is open. */
 interface OpenUpload {
-  /** The ticket that opened it; the part layout and ceilings come from here. */
+  /** The ticket that opened it; the part layout and the deadlines come from here. */
   ticket: UploadTicketPayload;
   /** R2's id for the multipart upload. */
   uploadId: string;

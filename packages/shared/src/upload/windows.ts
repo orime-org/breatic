@@ -4,10 +4,11 @@
 /**
  * How long one part of an upload may take (#173).
  *
- * Two sides read this. The browser sizes each part's deadline with it, and the
- * ticket endpoint checks that the window the Durable Object waits in is wider
- * than the whole worst case — otherwise an upload that is still retrying a
- * part gets judged dead and every part already written is dropped.
+ * Two sides read this. The browser sizes each part's deadline with it, and
+ * loading `config/storage.yaml` checks that the window the Durable Object
+ * waits in is wider than the whole worst case — otherwise an upload that is
+ * still retrying a part gets judged dead and every part already written is
+ * dropped, and the operator who typed the figure reads about it at load.
  *
  * Both answers come from the same arithmetic on purpose. Two copies would
  * disagree the first time either side's figures moved.
@@ -111,8 +112,8 @@ export interface UploadWindows extends PartDeadlineConfig {
  * Both relations here are one-directional and easy to get backwards, and
  * getting either backwards fails an upload that is doing nothing wrong: a
  * short idle window drops parts a browser is still retrying, and a short
- * token turns the part after a long wait into a 401. They are checked where
- * the ticket is minted rather than left to be discovered by a user.
+ * token turns the request after a long wait into a 401. They are checked when
+ * the config loads rather than left to be discovered by a user.
  * @param windows - The figures, as the config holds them.
  * @throws {Error} When a window cannot hold what it has to.
  */

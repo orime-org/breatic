@@ -269,6 +269,10 @@ export async function applyIngestReport(
   // outcome is queued, so an interruption anywhere above leaves the grant
   // unconsumed and the retry finishes the job. It is also what lets the
   // already-consumed branch take a queued cover job as given.
+  // The answer is a CAS: false means another delivery of this same report got
+  // there first. Both are then doing the work below against one registered
+  // asset, which every downstream keys on — so the loser has nothing to undo
+  // and nothing to say.
   await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
 
   if (coverQueued) {
@@ -297,8 +301,9 @@ export async function applyIngestReport(
     historyIsNew = recorded.inserted;
   }
 
-  // The project feed. A derived byproduct (a video's cover) is in the ledger
-  // but is not an event anyone watching the project wants announced.
+  // The project feed. A byproduct — today a focus crop — is in the ledger for
+  // attribution and dedup, and is not an event anyone watching the project
+  // wants announced.
   if (historyIsNew && grant.projectId !== null && grant.derived !== true) {
     await recordProjectActivity({
       projectId: grant.projectId,

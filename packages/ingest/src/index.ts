@@ -12,8 +12,8 @@
  *
  * It is authorised entirely by what our server signed. The Worker holds no
  * database and asks us nothing: a ticket carries the key, the studio, the part
- * layout and the size ceiling, all under one HMAC, so every check it performs
- * is against values the browser cannot alter.
+ * layout and the deadlines, all under one HMAC, so every check it performs is
+ * against values the browser cannot alter.
  */
 
 import { verifyUploadTicket } from "@breatic/shared";

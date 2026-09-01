@@ -299,9 +299,11 @@ export function startWorker(): void {
     await health.stop();
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      // Both of them. A cover extraction runs for as long as ffmpeg takes, and
-      // a deploy that cuts one off leaves a video whose node is still waiting
-      // for the event that job owns.
+      // Both of them, within the shared deadline below. A cover extraction
+      // runs for as long as ffmpeg takes, so the one in flight at a deploy is
+      // usually cut off anyway; what draining buys is that no further job is
+      // picked up, and BullMQ's stalled-job recovery plus
+      // `reclaimFailedCoverJobById` are what tell the node either way.
       drains: [() => worker.close(), () => coverWorker.close()],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
