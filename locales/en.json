@@ -400,7 +400,7 @@
       "tooLarge": "{filename} exceeds the upload size limit.",
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",
-      "failed": "Upload failed. You can try again.",
+      "failed": "Upload failed.",
       "storageFull": "Studio storage is full. Uploading is unavailable."
     },
     "minimap": {
