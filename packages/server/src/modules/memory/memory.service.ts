@@ -126,14 +126,7 @@ export async function commitConsolidation(
         conversationId,
         tx,
       );
-      const version = await memoryRepo.getProjectMemoryVersion(userId, projectId, tx);
-      await memoryRepo.upsertProjectMemory(
-        userId,
-        projectId,
-        data.projectUpdate,
-        version,
-        tx,
-      );
+      await memoryRepo.upsertProjectMemory(userId, projectId, data.projectUpdate, tx);
     }
     return "written";
   });

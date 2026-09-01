@@ -100,7 +100,6 @@
       "node_locked": "这个节点正在被其他人生成"
     },
     "memory": {
-      "version_conflict": "有人同时修改了它，请重试。"
     },
     "asset": {
       "direct_upload_unavailable": "当前服务器不支持直接上传"

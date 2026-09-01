@@ -32,7 +32,11 @@ const limits = vi.hoisted(() => ({ budget: 20_000, keep: 13_000 }));
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 9);
 const consolidateWindow =
-  vi.fn<(...args: unknown[]) => Promise<"written" | "discarded" | "superseded" | "aborted">>();
+  vi.fn<
+    (
+      ...args: unknown[]
+    ) => Promise<"written" | "discarded" | "superseded" | "aborted" | "untouched">
+  >();
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
@@ -344,6 +348,18 @@ describe("a turn that measured over the budget", () => {
     await runTurn();
 
     expect(buildTurnContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not reassemble when the fold never happened", async () => {
+    // Nothing moved: the watermark is where the first assembly read it and
+    // the history is the same history. Reading it again would return the
+    // same thing at the cost of another round of queries.
+    consolidateWindow.mockResolvedValue("untouched");
+    contexts.queue = [context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)])];
+
+    await runTurn();
+
+    expect(buildTurnContext).toHaveBeenCalledTimes(1);
   });
 
   it("reassembles when another request folded further first", async () => {

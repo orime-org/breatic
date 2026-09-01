@@ -100,7 +100,6 @@
       "node_locked": "這個節點正在被其他人生成"
     },
     "memory": {
-      "version_conflict": "有人同時修改了它，請重試。"
     },
     "asset": {
       "direct_upload_unavailable": "目前的伺服器不支援直接上傳"

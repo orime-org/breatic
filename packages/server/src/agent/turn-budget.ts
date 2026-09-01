@@ -122,8 +122,9 @@ export async function foldIfOverBudget(
     ...(who.signal ? { signal: who.signal } : {}),
   });
 
-  // Reassemble when the watermark moved — written, discarded and superseded
-  // all leave it further along, so this assembly is holding turns the history
-  // no longer has. Only a reader who left leaves everything as it was.
-  return outcome !== "aborted";
+  // Reassemble when the watermark moved. These three leave it further along,
+  // so this assembly is holding turns the history no longer has; the endings
+  // left out of the list are the ones that changed nothing at all, and
+  // reading again would return the same thing at the cost of the queries.
+  return outcome === "written" || outcome === "superseded" || outcome === "discarded";
 }

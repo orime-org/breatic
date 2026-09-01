@@ -49,6 +49,7 @@ Produce a JSON object with these fields:
 
 Rules:
 - conversationUpdate REWRITES the full memory — incorporate existing memory + new info
+- conversationUpdate MUST stay under {max_chars} characters; anything past that is cut off before the memory is ever read, and the newest material is what goes first
 - projectUpdate only when there are genuine cross-conversation insights
 - Be concise — this text will be injected into future LLM context windows
 - Respond ONLY with the JSON object, no markdown or explanation
@@ -87,21 +88,16 @@ export type ConsolidationOutcome =
   /** Another request had already folded further; nothing written. */
   | "superseded"
   /** The reader left; nothing written, and the watermark stays for next turn. */
-  | "aborted";
-
-/**
- * Whether this is the reader walking away rather than something going wrong.
- *
- * The same three names `@ai-sdk/provider-utils` checks in its own
- * `isAbortError` (`dist/index.js:1219`), read here rather than imported: it
- * reaches this package only as a transitive dependency.
- * @param err - What was thrown.
- * @returns True when the call was cancelled.
- */
-function isAbort(err: unknown): boolean {
-  if (!(err instanceof Error) && !(err instanceof DOMException)) return false;
-  return err.name === "AbortError" || err.name === "ResponseAborted" || err.name === "TimeoutError";
-}
+  | "aborted"
+  /**
+   * Nothing ran and nothing was spent; the watermark stays for next turn.
+   *
+   * Told apart from `discarded` because the two say opposite things about the
+   * window. A fold that reached the model and then failed has to give the
+   * window up: the call is `temperature: 0`, so retrying sends the same input
+   * forever. A fold that never reached the model has nothing to give up.
+   */
+  | "untouched";
 
 /** What the consolidating model is asked to produce. */
 interface ConsolidationAnswer {
@@ -228,20 +224,36 @@ export async function consolidateWindow(
 
   const config = getAgentConfig();
 
-  // Everything from the first read to the write is inside this: each step is
-  // a call that can fail on its own, and a fold that fails must not take the
-  // reply down with it.
+  // What the window is folded against. Read before anything is spent, so a
+  // database that is briefly away costs this turn its fold and nothing else.
+  let existingConvMemory: string;
+  let existingProjectMemory: string;
   try {
-    const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
-    const existingProjectMemory = projectId
+    existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
+    existingProjectMemory = projectId
       ? await memoryRepo.getProjectMemory(userId, projectId)
       : "";
+  } catch (err) {
+    if (signal?.aborted) return "aborted";
+    logger.error(
+      { err, userId, conversationId, watermarkBefore, newWatermark },
+      "memory_consolidation_untouched",
+    );
+    return "untouched";
+  }
 
+  // From here on the model is involved, so every ending below has a call
+  // behind it that has to be paid for and cannot be repeated for free.
+  try {
     const prompt = CONSOLIDATION_PROMPT.replace(
       "{conversation_memory}",
       existingConvMemory || "(empty)",
     )
       .replace("{project_memory}", existingProjectMemory || "(empty)")
+      // The ceiling the answer will actually be read through. `buildContext`
+      // truncates to this before injection, so a longer answer is written,
+      // stored, paid for, and then cut mid-sentence every time it is read.
+      .replace("{max_chars}", String(config.memory_conversation_max_size))
       .replace("{messages}", transcribe(transcript));
 
     // One call, and the retrying happens inside it: `generateTextRetry` is
@@ -290,14 +302,13 @@ export async function consolidateWindow(
       newWatermark,
     });
   } catch (err) {
-    // The reader leaving is the one ending that keeps the window: they come
-    // back to a conversation that folds it again. Everything else arrives
-    // here having written nothing, and N6 says what that means — the
-    // watermark moves anyway and the window is gone. A lost version race is
-    // one of these: the commit is a single transaction, so losing it rolled
-    // back all three writes, and the assembly waiting on this is still over
-    // budget with nothing about it changed.
-    if (isAbort(err)) return "aborted";
+    // The reader leaving is the one ending here that keeps the window: they
+    // come back to a conversation that folds it again, and the charge is
+    // already keyed so the second attempt is not paid for twice. Asked of the
+    // signal rather than of the error's name — a name says what the provider
+    // called it, and one of the names the SDK treats as cancellation is a
+    // timeout, which is the opposite case.
+    if (signal?.aborted) return "aborted";
 
     logger.error(
       { err, userId, conversationId, watermarkBefore, newWatermark },
@@ -306,13 +317,14 @@ export async function consolidateWindow(
     try {
       await memoryService.discardConsolidation(conversationId, newWatermark);
     } catch (discardErr) {
-      // The discard is itself a write, and whatever failed above is often
-      // the reason this fails too. The watermark stays put and the reply
-      // still goes out.
+      // The discard is itself a write, and whatever failed above is often the
+      // reason this fails too. Saying `discarded` here would be claiming a
+      // watermark that never moved.
       logger.error(
         { err: discardErr, userId, conversationId, newWatermark },
         "memory_consolidation_discard_failed",
       );
+      return "untouched";
     }
     return "discarded";
   }

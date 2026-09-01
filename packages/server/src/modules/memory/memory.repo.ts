@@ -23,8 +23,6 @@ import {
   projectMemories,
   projectMemoryEntries,
 } from "@breatic/core";
-import { ConflictError } from "@breatic/core";
-import { t } from "@breatic/shared";
 
 // ── Conversation Memory ──────────────────────────────────────────────
 
@@ -102,71 +100,29 @@ export async function getProjectMemory(
 }
 
 /**
- * Get one member's project memory version for optimistic locking.
- * @param userId - Whose memory to read.
- * @param projectId - Which project it belongs to.
- * @param tx - The transaction to read inside, when the caller has one.
- * @returns The current version number, or 0 if no memory row exists yet.
- */
-export async function getProjectMemoryVersion(
-  userId: string,
-  projectId: string,
-  tx?: DbTx,
-): Promise<number> {
-  const rows = await (tx ?? db)
-    .select({ version: projectMemories.version })
-    .from(projectMemories)
-    .where(
-      and(
-        eq(projectMemories.userId, userId),
-        eq(projectMemories.projectId, projectId),
-      ),
-    )
-    .limit(1);
-  return rows[0]?.version ?? 0;
-}
-
-/**
- * Upsert one member's project memory with optimistic locking.
+ * Write one member's project memory, inserting the row when it is their first.
+ *
+ * The last write wins, which is what this layer already means: a consolidation
+ * replaces this member's project memory whole. `version` counts how many times
+ * it has been rewritten.
  * @param userId - Whose memory is written.
  * @param projectId - Which project it belongs to.
  * @param content - New memory content to store.
- * @param expectedVersion - Version the caller read; 0 inserts a fresh row, otherwise the update only succeeds if it still matches.
  * @param tx - The transaction to run inside, when the caller has one.
- * @throws {ConflictError} If the version doesn't match (concurrent update)
  */
 export async function upsertProjectMemory(
   userId: string,
   projectId: string,
   content: string,
-  expectedVersion: number,
   tx?: DbTx,
 ): Promise<void> {
-  const handle = tx ?? db;
-  if (expectedVersion === 0) {
-    // A first write and an update take the same path: two requests that both
-    // read version 0 would otherwise have the second break the unique index,
-    // and it runs inside the consolidation transaction.
-    await handle
-      .insert(projectMemories)
-      .values({ userId, projectId, content, version: 1 })
-      .onConflictDoUpdate({
-        target: [projectMemories.userId, projectMemories.projectId],
-        set: { content, version: sql`${projectMemories.version} + 1`, updatedAt: new Date() },
-      });
-    return;
-  }
-
-  const result = await handle.execute(
-    sql`UPDATE project_memories
-        SET content = ${content}, version = version + 1, updated_at = NOW()
-        WHERE user_id = ${userId} AND project_id = ${projectId} AND version = ${expectedVersion}
-        RETURNING id`,
-  );
-
-  if ((result as unknown[]).length === 0) {
-    throw new ConflictError(t("server.memory.version_conflict"));
-  }
+  await (tx ?? db)
+    .insert(projectMemories)
+    .values({ userId, projectId, content, version: 1 })
+    .onConflictDoUpdate({
+      target: [projectMemories.userId, projectMemories.projectId],
+      set: { content, version: sql`${projectMemories.version} + 1`, updatedAt: new Date() },
+    });
 }
 
 /**

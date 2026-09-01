@@ -100,7 +100,6 @@
       "node_locked": "このノードは他の人が生成中です"
     },
     "memory": {
-      "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"
     },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"

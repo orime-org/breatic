@@ -165,6 +165,24 @@ describe("a consolidation that works", () => {
     expect(call.maxOutputTokens).toBeGreaterThan(0);
   });
 
+  it("tells the model the ceiling its answer is read through", async () => {
+    // The token ceiling above and the character ceiling the injection applies
+    // are two different numbers, and the second is the smaller by far. A
+    // model asked for a complete rewrite that preserves every fact, and never
+    // told where the reading stops, writes past it — and `buildContext` cuts
+    // mid-sentence, silently, taking the most recently folded turns with it.
+    const { getAgentConfig } = await import("@breatic/core");
+    const limit = getAgentConfig().memory_conversation_max_size;
+
+    await consolidate();
+
+    const prompt = String(
+      (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
+        .messages[0]?.content,
+    );
+    expect(prompt).toContain(String(limit));
+  });
+
   it("bills the studio once for the window it consumed", async () => {
     // T3: the key is the conversation and the watermark it started from, so
     // two tabs that computed the same window pay for it once.
@@ -231,10 +249,11 @@ describe("a consolidation that fails", () => {
     expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
   });
 
-  it("discards the window when the memory it reads first cannot be read", async () => {
-    // N4: a fold that fails must not take the reply down with it. Every read
-    // this makes is a database call on the path of a turn somebody is waiting
-    // for, and one of them going down is not a reason to fail the answer.
+  it("keeps the window when the memory it reads first cannot be read", async () => {
+    // Nothing ran and nothing was spent: the model was never called and the
+    // window is whole. Discarding here would throw away turns over a database
+    // that was briefly unreachable, and the next turn folds the same window.
+    // N4 is still met — the reply goes out either way.
     const memoryRepo = await import("@server/modules/memory/memory.repo.js");
     vi.mocked(memoryRepo.getConversationMemory).mockRejectedValueOnce(
       new Error("connection terminated unexpectedly"),
@@ -242,20 +261,23 @@ describe("a consolidation that fails", () => {
 
     const outcome = await consolidate();
 
-    expect(outcome).toBe("discarded");
+    expect(outcome).toBe("untouched");
     expect(generateTextRetry).not.toHaveBeenCalled();
+    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+    expect(discardConsolidation).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 
-  it("says so and carries on when the window cannot even be discarded", async () => {
-    // N4 again, one layer further in: the discard is itself a write, and the
-    // failure that led here is often the reason it fails too.
+  it("says the watermark stayed put when the window cannot even be discarded", async () => {
+    // The discard is itself a write, and whatever failed above is often the
+    // reason it fails too. Reporting `discarded` here would be claiming a
+    // watermark that never moved, and the caller reassembles for nothing.
     generateTextRetry.mockRejectedValue(new Error("502 upstream"));
     discardConsolidation.mockRejectedValue(new Error("connection terminated unexpectedly"));
 
     const outcome = await consolidate();
 
-    expect(outcome).toBe("discarded");
+    expect(outcome).toBe("untouched");
     expect(logger.error).toHaveBeenCalled();
   });
 });
@@ -287,42 +309,27 @@ describe("a consolidation the reader did not wait for", () => {
   });
 });
 
-describe("a consolidation the reader walked out on mid-call", () => {
-  it("keeps the window: nothing written, watermark where it was", async () => {
-    // N7. The pre-flight check catches a reader who left before the call
-    // started; this is the one who left during it, which is the likelier
-    // half — the call is seconds long and the panel is showing a line about
-    // it. Discarding here would lose turns that are in neither the history
-    // nor the memory.
-    const abort = Object.assign(new Error("The operation was aborted."), {
-      name: "AbortError",
+describe("a reader who left while the model was running", () => {
+  // N7. The pre-flight check catches a reader who left before the call
+  // started; this is the one who left during it, which is the likelier half —
+  // the call is seconds long and the panel is showing a line about it.
+  // Discarding here would lose turns that are in neither the history nor the
+  // memory.
+  it("keeps the window, and says so by the signal rather than by a name", async () => {
+    // What the provider throws on cancellation is a name, and names differ:
+    // the SDK checks three of them and one of the three is a timeout, which
+    // is not a reader leaving at all. The signal is the fact itself.
+    const controller = new AbortController();
+    generateTextRetry.mockImplementation(async () => {
+      controller.abort();
+      throw new Error("socket hang up");
     });
-    generateTextRetry.mockRejectedValue(abort);
 
-    const outcome = await consolidate();
+    const outcome = await consolidate({ signal: controller.signal });
 
     expect(outcome).toBe("aborted");
-    expect(commitConsolidation).not.toHaveBeenCalled();
     expect(discardConsolidation).not.toHaveBeenCalled();
-    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
-  });
-});
-
-describe("a consolidation that lost a version race", () => {
-  it("discards the window like any other write that did not land", async () => {
-    // The project layer is versioned and the whole commit is one transaction,
-    // so losing that race rolls back all three writes. N6 says what happens
-    // when nothing is written: the watermark moves anyway and the window is
-    // gone. Leaving it for the next turn is what wedges the conversation —
-    // the assembly is still over budget and nothing about it has changed.
-    const { ConflictError } = await import("@breatic/core");
-    commitConsolidation.mockRejectedValue(new ConflictError("version conflict"));
-
-    const outcome = await consolidate();
-
-    expect(outcome).toBe("discarded");
-    expect(discardConsolidation).toHaveBeenCalledWith(CONVERSATION, 19);
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(commitConsolidation).not.toHaveBeenCalled();
   });
 });
 

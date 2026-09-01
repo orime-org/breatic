@@ -148,35 +148,31 @@ describe("project memory belongs to one member, not to the project", () => {
   });
 
   it("writes a consolidation into the writer's own row", async () => {
-    // Equal versions on purpose: a version read that finds the row by project
-    // alone returns a number that happens to fit, and the update then lands on
-    // whichever row the database returned first.
+    // Both members hold a row, so a conflict target that names the project
+    // alone matches two of them and the write lands on whichever the database
+    // returned first.
     const { userId: alice, projectId } = await seedProject();
     const carol = await seedMember(projectId);
     await seedProjectMemory(alice, projectId, "alice: noir short", 4);
     await seedProjectMemory(carol, projectId, "carol: trailer", 4);
 
-    const version = await memoryRepo.getProjectMemoryVersion(alice, projectId);
-    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: noir short, act two", version);
+    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: noir short, act two");
 
     expect((await readProjectMemory(alice, projectId))?.content).toBe(
       "alice: noir short, act two",
     );
   });
 
-  it("reads the version off the writer's own row", async () => {
-    // Only the other member has a row, so the writer's version is 0 and the
-    // write is a first write. A version read that finds the row by project
-    // alone returns the neighbour's number instead, sending the write down
-    // the update path, where it matches nothing and the optimistic lock
-    // throws. Giving the writer a row of their own would hide that: whichever
-    // of the two rows came back, the number would fit.
+  it("gives a member their first row while the other member already has one", async () => {
+    // Only the other member has a row, so this is an insert. A conflict target
+    // that names the project alone turns it into an update of the neighbour's
+    // row instead. Giving the writer a row of their own would hide that: with
+    // two rows present, either one coming back looks like a fit.
     const { userId: alice, projectId } = await seedProject();
     const carol = await seedMember(projectId);
     await seedProjectMemory(carol, projectId, "carol: trailer", 9);
 
-    const version = await memoryRepo.getProjectMemoryVersion(alice, projectId);
-    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: act one", version);
+    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: act one");
 
     expect((await readProjectMemory(alice, projectId))?.content).toBe("alice: act one");
     expect(await readProjectMemory(carol, projectId)).toEqual({
@@ -191,8 +187,7 @@ describe("project memory belongs to one member, not to the project", () => {
     await seedProjectMemory(alice, projectId, "alice: noir short", 4);
     await seedProjectMemory(carol, projectId, "carol: trailer", 4);
 
-    const version = await memoryRepo.getProjectMemoryVersion(alice, projectId);
-    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: noir short, act two", version);
+    await memoryRepo.upsertProjectMemory(alice, projectId, "alice: noir short, act two");
 
     expect(await readProjectMemory(carol, projectId)).toEqual({
       content: "carol: trailer",

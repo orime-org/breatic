@@ -100,7 +100,6 @@
       "node_locked": "이 노드는 다른 사람이 생성 중입니다"
     },
     "memory": {
-      "version_conflict": "다른 사람이 동시에 수정했습니다. 다시 시도해 주세요."
     },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
