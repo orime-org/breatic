@@ -22,9 +22,18 @@ import {
   assetService,
   emitNodeStateDone,
   nodeHistoryService,
+  videoCoverJobId,
+  VIDEO_COVER_JOB,
   type NodeStateDoneFields,
+  type VideoCoverJobData,
 } from "@breatic/domain";
-import { storageKey, getStreamRedis, logger } from "@breatic/core";
+import {
+  storageKey,
+  getStreamRedis,
+  defaultJobOpts,
+  logger,
+} from "@breatic/core";
+import { getCoverQueue } from "@server/modules/asset/cover-queue.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
   issueGrant,
@@ -74,6 +83,65 @@ export async function checkUploadDedup(params: {
 }
 
 /**
+ * Put this node in the queue behind the cover extraction already running for
+ * the video it just resolved to.
+ *
+ * One job per waiting node, keyed on the pair, so the extraction that is under
+ * way keeps telling its own node and this one gets a job of its own. By the
+ * time it runs the cover is usually already linked, and the handler reads it
+ * rather than extracting a second time.
+ * @param params - What was matched and where it lands.
+ * @param params.projectId - The project the node lives in.
+ * @param params.hit - The video being reused.
+ * @param params.userId - Who asked.
+ * @param params.leaseGen - The node's fencing gen, which the event carries.
+ * @param params.metadata - The picked file's facts, for the history row.
+ * @param params.metadata.filename - The name the file was picked under.
+ * @param params.metadata.size - The file's byte size as the browser declared it.
+ * @param params.metadata.mimeType - The file's content type.
+ * @param params.nodeId - The node waiting to be told.
+ * @param params.spaceId - The space that node lives in.
+ * @throws {unknown} When the job cannot be queued, which fails the request so
+ *   the browser's own retry asks again.
+ */
+async function joinCoverWait(params: {
+  projectId: string;
+  hit: DedupHit;
+  userId: string;
+  leaseGen: number;
+  metadata: { filename: string; size: number; mimeType: string };
+  nodeId: string;
+  spaceId: string;
+}): Promise<void> {
+  const studioId = await assetService.resolveOwnerStudioId(params.projectId);
+  await getCoverQueue().add(
+    VIDEO_COVER_JOB,
+    {
+      // No bytes moved, so there is no key of this upload's own; the history
+      // row this job writes is one per user action, as a hit's rows always are.
+      storageKey: null,
+      videoAssetId: params.hit.assetId,
+      videoUrl: params.hit.fileUrl,
+      ownerStudioId: studioId,
+      userId: params.userId,
+      projectId: params.projectId,
+      spaceId: params.spaceId,
+      nodeId: params.nodeId,
+      leaseGen: params.leaseGen,
+      sizeBytes: params.metadata.size,
+      mimeType: params.metadata.mimeType,
+      filename: params.metadata.filename,
+      source: null,
+      toolName: null,
+    } satisfies VideoCoverJobData,
+    {
+      ...defaultJobOpts(),
+      jobId: videoCoverJobId(params.hit.assetId, params.nodeId),
+    },
+  );
+}
+
+/**
  * Carry out what a dedup hit means: nothing uploads, and the node now holds
  * content it did not hold before (design §7).
  *
@@ -112,7 +180,25 @@ export async function settleDedupHit(params: {
   // video's only chance to arrive with the frame it already has. The node
   // renders its poster from `coverUrl`, and one that never gets it shows a
   // modality icon for a file whose first upload shows a frame.
-  const cover = await assetRepo.findCoverOf(params.hit.assetId);
+  const cover =
+    params.hit.kind === 'video'
+      ? await assetRepo.findCoverOf(params.hit.assetId)
+      : null;
+
+  // A video whose cover has not been extracted yet is one this hit arrived in
+  // the middle of. Announcing now would settle the node on a cover-less video:
+  // the extraction under way tells its own node and no other, and a hit sends
+  // no second event. Joining that wait is what gets this node told.
+  if (
+    params.hit.kind === 'video' &&
+    cover === null &&
+    params.nodeId !== undefined &&
+    params.spaceId !== undefined
+  ) {
+    await joinCoverWait({ ...params, nodeId: params.nodeId, spaceId: params.spaceId });
+    return;
+  }
+
   const content: NodeStateDoneFields = {
     content: params.hit.fileUrl,
     ...(cover !== null && { coverUrl: cover.fileUrl }),

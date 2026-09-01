@@ -320,3 +320,23 @@ describe("a retry of a video whose cover is already linked", () => {
     });
   });
 });
+
+// The cover is in the ledger by the time this write happens, so failing it
+// leaves an extracted frame nothing can reach. That is not the degradation B1
+// describes (no cover came out); it is a cover that came out and was lost, and
+// the attempt has to be made again.
+describe("a cover that was registered but could not be linked", () => {
+  it("fails the job so it is retried", async () => {
+    mockSetCover.mockRejectedValueOnce(new Error("the ledger is unreachable"));
+
+    await expect(runVideoCover(job())).rejects.toThrow();
+  });
+
+  it("tells the node nothing rather than telling it there is no cover", async () => {
+    mockSetCover.mockRejectedValueOnce(new Error("the ledger is unreachable"));
+
+    await runVideoCover(job()).catch(() => undefined);
+
+    expect(mockEmitDone).not.toHaveBeenCalled();
+  });
+});

@@ -31,12 +31,10 @@ import {
   emitNodeStateDone,
   emitNodeStateFailed,
   videoCoverJobId,
-  VIDEO_COVER_QUEUE,
   VIDEO_COVER_JOB,
   type VideoCoverJobData,
 } from "@breatic/domain";
 import {
-  createQueue,
   defaultJobOpts,
   getStorageAdapter,
   getStorageConfig,
@@ -46,30 +44,13 @@ import {
 } from "@breatic/core";
 import { canvasSpaceDocName, t } from "@breatic/shared";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { getCoverQueue } from "@server/modules/asset/cover-queue.js";
 import {
   findGrantByKey,
   consumeGrant,
   voidGrant,
   type UploadGrant,
 } from "@server/modules/asset/upload-grant.repo.js";
-
-/**
- * The queue the worker takes cover extractions off.
- *
- * Built on first use, not at import: `createQueue` reads the Redis URL out
- * of the validated config, and this module is reachable from imports that
- * run before an entry point has called `initCore`.
- */
-let coverQueue: ReturnType<typeof createQueue> | null = null;
-
-/**
- * The cover queue, created on first use.
- * @returns The shared BullMQ queue handle.
- */
-function getCoverQueue(): ReturnType<typeof createQueue> {
-  coverQueue ??= createQueue(VIDEO_COVER_QUEUE);
-  return coverQueue;
-}
 
 /** What the Worker says happened. */
 export interface IngestReport {
@@ -182,7 +163,7 @@ async function queueVideoCover(
     } satisfies VideoCoverJobData,
     // The id makes a retried report reuse the job already queued rather than
     // start a second extraction of the same video.
-    { ...defaultJobOpts(), jobId: videoCoverJobId(grant.storageKey) },
+    { ...defaultJobOpts(), jobId: videoCoverJobId(asset.id, grant.nodeId) },
   );
   return true;
 }

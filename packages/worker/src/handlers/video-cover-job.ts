@@ -75,7 +75,7 @@ export async function announceUpload(
     userId: data.userId,
     content: data.videoUrl,
     ...(coverUrl !== undefined && { thumbnailUrl: coverUrl }),
-    storageKey: data.storageKey,
+    ...(data.storageKey !== null && { storageKey: data.storageKey }),
     metadata: {
       ...(data.filename !== null && { filename: data.filename }),
       size: data.sizeBytes,
@@ -134,6 +134,7 @@ async function resolveCover(
     return undefined;
   }
 
+  let registered: { id: string; storageKey: string };
   try {
     const { asset, reclaimQueueFailed } = await assetService.register({
       projectId: data.projectId,
@@ -157,8 +158,7 @@ async function resolveCover(
         "asset_reclaim_queue_failed",
       );
     }
-    await assetRepo.setCoverAsset(data.videoAssetId, asset.id);
-    return publicUrl(asset.storageKey);
+    registered = asset;
   } catch (err) {
     // No live row means no cover anyone may serve. The video keeps its own
     // registration, so this degrades to a video without a cover.
@@ -168,6 +168,13 @@ async function resolveCover(
     );
     return undefined;
   }
+
+  // Outside that catch on purpose. By now the frame is in the ledger, so a
+  // failure here loses a cover that exists rather than finding there is none —
+  // which is what the degradation above is for. Failing the job asks for it
+  // again, and the short circuit at the top makes the retry cheap.
+  await assetRepo.setCoverAsset(data.videoAssetId, registered.id);
+  return publicUrl(registered.storageKey);
 }
 
 /**

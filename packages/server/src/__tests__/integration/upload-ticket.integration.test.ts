@@ -38,6 +38,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
+  createQueue,
   initCore,
   getRedis,
   getStreamRedis,
@@ -47,6 +48,7 @@ import {
   taskEventsStreamKey,
 } from "@breatic/core";
 import { verifyUploadTicket, canvasSpaceDocName } from "@breatic/shared";
+import { VIDEO_COVER_QUEUE, videoCoverJobId } from "@breatic/domain";
 import type { Hono } from "hono";
 
 try {
@@ -135,15 +137,19 @@ async function registerAsset(
   producedByUserId: string,
   contentHash: string,
   sizeBytes: number,
+  kind: "video" | "image" = "video",
 ): Promise<void> {
+  const isVideo = kind === "video";
+  const ext = isVideo ? "mp4" : "png";
   await sql`
     INSERT INTO studio_assets
       (studio_id, content_hash, storage_key, file_url, size_bytes,
        mime_type, kind, source, produced_by_user_id)
     VALUES
-      (${studioId}, ${contentHash}, ${`video/${contentHash}.mp4`},
-       ${`https://cdn.test.invalid/${contentHash}.mp4`}, ${sizeBytes},
-       'video/mp4', 'video', 'upload', ${producedByUserId})
+      (${studioId}, ${contentHash}, ${`${kind}/${contentHash}.${ext}`},
+       ${`https://cdn.test.invalid/${contentHash}.${ext}`}, ${sizeBytes},
+       ${isVideo ? "video/mp4" : "image/png"}, ${kind}, 'upload',
+       ${producedByUserId})
   `;
 }
 
@@ -486,7 +492,9 @@ describe("POST /assets/upload-ticket", () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");
     const size = 40 * 1024 * 1024;
-    await registerAsset(studioId, userId, hash, size);
+    // An image: nothing about it is extracted afterwards, so the hit is the
+    // whole of what this node will be told.
+    await registerAsset(studioId, userId, hash, size, "image");
     const nodeId = crypto.randomUUID();
     const spaceId = crypto.randomUUID();
 
@@ -507,7 +515,7 @@ describe("POST /assets/upload-ticket", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.gen).toBe(9);
     expect(events[0]!.update).toMatchObject({
-      content: `https://cdn.test.invalid/${hash}.mp4`,
+      content: `https://cdn.test.invalid/${hash}.png`,
     });
   });
 
@@ -576,7 +584,7 @@ describe("POST /assets/upload-ticket", () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");
     const size = 40 * 1024 * 1024;
-    await registerAsset(studioId, userId, hash, size);
+    await registerAsset(studioId, userId, hash, size, "image");
     const nodeId = crypto.randomUUID();
 
     // The same lazy singleton the service publishes through.
@@ -598,6 +606,43 @@ describe("POST /assets/upload-ticket", () => {
     expect(refused.status).toBe(500);
     const rows = await sql`SELECT id FROM node_history WHERE node_id = ${nodeId}`;
     expect(rows).toHaveLength(0);
+  });
+
+  // A video's cover is extracted after its row lands, so a hit that arrives in
+  // that window finds a video with no cover yet. Announcing then would put a
+  // cover-less video on this node for good: the extraction running for the
+  // first upload announces to its own node and no other, and a hit sends no
+  // second event. The node joins that wait instead.
+  it("waits for the cover when the deduped video has not got one yet", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    await registerAsset(studioId, userId, hash, size);
+    const nodeId = crypto.randomUUID();
+    const spaceId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+        space_id: spaceId,
+        lease_gen: 9,
+      }),
+    );
+
+    const events = (await eventsFor(canvasSpaceDocName(projectId, spaceId)))
+      .filter((e) => e.nodeId === nodeId);
+    expect(events).toHaveLength(0);
+    const assets = await sql<{ id: string }[]>`
+      SELECT id FROM studio_assets WHERE content_hash = ${hash} AND kind = 'video'
+    `;
+    const queue = createQueue(VIDEO_COVER_QUEUE);
+    const job = await queue.getJob(videoCoverJobId(assets[0]!.id, nodeId));
+    expect(job).not.toBeNull();
+    expect(job?.data).toMatchObject({ nodeId, videoAssetId: assets[0]!.id });
   });
 
   // A focus crop asks with no node. There is nothing to announce to, and the
