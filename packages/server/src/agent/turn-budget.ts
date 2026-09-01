@@ -124,6 +124,6 @@ export async function foldIfOverBudget(
 
   // Reassemble when the watermark moved — written, discarded and superseded
   // all leave it further along, so this assembly is holding turns the history
-  // no longer has. The two retryable endings leave everything as it was.
-  return outcome !== "aborted" && outcome !== "contended";
+  // no longer has. Only a reader who left leaves everything as it was.
+  return outcome !== "aborted";
 }

@@ -8,13 +8,14 @@
  * the budget: the caller works out which turns to take, hands them over as the
  * messages the model would have been sent, and reassembles once this returns.
  *
- * There are two results and nothing in between. Either the memory and the
- * watermark both move, or neither memory is written and the watermark moves
- * anyway — the window is discarded and the turn goes out regardless. Leaving
- * the watermark behind for a later retry is what would wedge the conversation:
- * this call is `temperature: 0`, so the next turn would send a strictly larger
- * version of an input that already failed, deterministically, on every turn
- * from then on.
+ * Either the memory and the watermark both move, or nothing is written and the
+ * watermark moves anyway — the window is discarded and the turn goes out
+ * regardless. Leaving the watermark behind for a later retry is what would
+ * wedge the conversation: this call is `temperature: 0`, so the next turn
+ * would send a strictly larger version of an input that already failed,
+ * deterministically, on every turn from then on. The one ending that keeps
+ * the window is a reader who left, and they left with nothing spent on their
+ * behalf that a later turn cannot spend again.
  */
 
 import { stepCountIs } from "ai";
@@ -25,7 +26,7 @@ import {
   creditLotService,
   resolveProvider,
 } from "@breatic/domain";
-import { ConflictError, getAgentConfig, env, logger } from "@breatic/core";
+import { getAgentConfig, env, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
 
@@ -85,9 +86,7 @@ export type ConsolidationOutcome =
   | "discarded"
   /** Another request had already folded further; nothing written. */
   | "superseded"
-  /** A version race on the project layer; nothing written, try again next turn. */
-  | "contended"
-  /** The reader left; nothing written. */
+  /** The reader left; nothing written, and the watermark stays for next turn. */
   | "aborted";
 
 /**
@@ -160,40 +159,48 @@ interface ConsolidationBill {
 }
 
 /**
- * Charge the studio for one consolidation.
+ * Charge the studio for one consolidation, and never fail over it.
+ *
+ * The tokens are spent by the time this is called and the reader is waiting
+ * on a reply. Letting a charge take the turn down would fail an answer that
+ * has nothing wrong with it, over bookkeeping nobody sees.
  * @param input - Who ran it, over which window, and what it cost.
  */
 async function bill(input: ConsolidationBill): Promise<void> {
   const { userId, conversationId, projectId, watermarkBefore, tokensUsed, model } = input;
   if (tokensUsed === 0) return;
 
-  const outcome = await creditLotService.chargeOnceForGeneration(
-    `consolidate:${conversationId}:${watermarkBefore}`,
-    {
-      projectId: projectId ?? null,
-      actorUserId: userId,
-      amount: Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER),
-      description: "Memory consolidation",
-      tokensUsed,
-      model,
-      provider: resolveProvider(model),
-    },
-  );
-
-  if (outcome && outcome.shortfall > 0) {
-    // The pool ran out, or its credits were reassigned while this ran. The
-    // memory is already written, so what could not be charged goes to
-    // reconciliation.
-    logger.error(
+  try {
+    const outcome = await creditLotService.chargeOnceForGeneration(
+      `consolidate:${conversationId}:${watermarkBefore}`,
       {
-        userId,
-        conversationId,
-        studioId: outcome.studioId,
-        charged: outcome.charged,
-        shortfall: outcome.shortfall,
+        projectId: projectId ?? null,
+        actorUserId: userId,
+        amount: Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER),
+        description: "Memory consolidation",
+        tokensUsed,
+        model,
+        provider: resolveProvider(model),
       },
-      "consolidation_charge_shortfall",
     );
+
+    if (outcome && outcome.shortfall > 0) {
+      // The pool ran out, or its credits were reassigned while this ran. The
+      // call already happened, so what could not be charged goes to
+      // reconciliation.
+      logger.error(
+        {
+          userId,
+          conversationId,
+          studioId: outcome.studioId,
+          charged: outcome.charged,
+          shortfall: outcome.shortfall,
+        },
+        "consolidation_charge_shortfall",
+      );
+    }
+  } catch (err) {
+    logger.error({ err, userId, conversationId, watermarkBefore }, "consolidation_charge_failed");
   }
 }
 
@@ -220,21 +227,23 @@ export async function consolidateWindow(
   if (signal?.aborted) return "aborted";
 
   const config = getAgentConfig();
-  const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
-  const existingProjectMemory = projectId
-    ? await memoryRepo.getProjectMemory(userId, projectId)
-    : "";
 
-  const prompt = CONSOLIDATION_PROMPT.replace(
-    "{conversation_memory}",
-    existingConvMemory || "(empty)",
-  )
-    .replace("{project_memory}", existingProjectMemory || "(empty)")
-    .replace("{messages}", transcribe(transcript));
-
-  let outcome: ConsolidationOutcome;
-  let tokensUsed = 0;
+  // Everything from the first read to the write is inside this: each step is
+  // a call that can fail on its own, and a fold that fails must not take the
+  // reply down with it.
   try {
+    const existingConvMemory = await memoryRepo.getConversationMemory(conversationId);
+    const existingProjectMemory = projectId
+      ? await memoryRepo.getProjectMemory(userId, projectId)
+      : "";
+
+    const prompt = CONSOLIDATION_PROMPT.replace(
+      "{conversation_memory}",
+      existingConvMemory || "(empty)",
+    )
+      .replace("{project_memory}", existingProjectMemory || "(empty)")
+      .replace("{messages}", transcribe(transcript));
+
     // One call, and the retrying happens inside it: `generateTextRetry` is
     // handed `llm_max_retries`, so this is one original and two retries.
     const result = await generateTextRetry({
@@ -247,7 +256,20 @@ export async function consolidateWindow(
       maxOutputTokens: config.max_output_tokens,
       ...(signal ? { abortSignal: signal } : {}),
     });
-    tokensUsed = result.usage?.totalTokens ?? 0;
+
+    // Billed the moment the call comes back, which is the moment the tokens
+    // are gone. What becomes of the answer after this has several endings,
+    // and the studio owes the same under every one of them. Two tabs that
+    // took the same window derive the same key from the watermark they
+    // started at, and the second charge is refused.
+    await bill({
+      userId,
+      conversationId,
+      projectId,
+      watermarkBefore,
+      tokensUsed: result.usage?.totalTokens ?? 0,
+      model: config.consolidation_model,
+    });
 
     const answer = readAnswer(result.text.trim());
     if (!answer) {
@@ -256,7 +278,7 @@ export async function consolidateWindow(
       );
     }
 
-    outcome = await memoryService.commitConsolidation({
+    return await memoryService.commitConsolidation({
       userId,
       conversationId,
       projectId,
@@ -268,43 +290,30 @@ export async function consolidateWindow(
       newWatermark,
     });
   } catch (err) {
-    // Two of the three ways this can end are retryable, and discarding on
-    // either would lose turns that are then in neither the history nor the
-    // memory. The reader who left will come back to a conversation that folds
-    // the same window; the version race resolves itself against the newer
-    // row. Only a window that cannot be summarised at all is thrown away.
+    // The reader leaving is the one ending that keeps the window: they come
+    // back to a conversation that folds it again. Everything else arrives
+    // here having written nothing, and N6 says what that means — the
+    // watermark moves anyway and the window is gone. A lost version race is
+    // one of these: the commit is a single transaction, so losing it rolled
+    // back all three writes, and the assembly waiting on this is still over
+    // budget with nothing about it changed.
     if (isAbort(err)) return "aborted";
-    if (err instanceof ConflictError) return "contended";
 
     logger.error(
       { err, userId, conversationId, watermarkBefore, newWatermark },
       "memory_consolidation_discarded",
     );
-    await memoryService.discardConsolidation(conversationId, newWatermark);
+    try {
+      await memoryService.discardConsolidation(conversationId, newWatermark);
+    } catch (discardErr) {
+      // The discard is itself a write, and whatever failed above is often
+      // the reason this fails too. The watermark stays put and the reply
+      // still goes out.
+      logger.error(
+        { err: discardErr, userId, conversationId, newWatermark },
+        "memory_consolidation_discard_failed",
+      );
+    }
     return "discarded";
   }
-
-  // Billed whichever way the write went: the model ran and the tokens were
-  // spent either way. Two tabs that took the same window derive the same key
-  // from the watermark they started at, and the second charge is refused.
-  try {
-    await bill({
-      userId,
-      conversationId,
-      projectId,
-      watermarkBefore,
-      tokensUsed,
-      model: config.consolidation_model,
-    });
-  } catch (err) {
-    // The memory is written and the watermark has moved. Letting this take
-    // the turn down would fail a reply with nothing wrong with it, over
-    // bookkeeping the reader never sees.
-    logger.error(
-      { err, userId, conversationId, watermarkBefore },
-      "consolidation_charge_failed",
-    );
-  }
-
-  return outcome;
 }

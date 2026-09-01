@@ -203,7 +203,10 @@ describe("a consolidation that fails", () => {
   });
 
   it("discards the window when the answer is not the JSON it asked for", async () => {
-    generateTextRetry.mockResolvedValue({ text: "Sure! Here is a summary.", usage: {} });
+    generateTextRetry.mockResolvedValue({
+      text: "Sure! Here is a summary.",
+      usage: { totalTokens: 400 },
+    });
 
     const outcome = await consolidate();
 
@@ -211,6 +214,10 @@ describe("a consolidation that fails", () => {
     expect(commitConsolidation).not.toHaveBeenCalled();
     expect(discardConsolidation).toHaveBeenCalledWith(CONVERSATION, 19);
     expect(logger.error).toHaveBeenCalled();
+    // T3: the call ran and the tokens went, so the studio is charged for it.
+    // Charging only on the way out of a successful write would make every
+    // ending but one a free model call.
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
   });
 
   it("discards the window when the write fails", async () => {
@@ -220,6 +227,35 @@ describe("a consolidation that fails", () => {
 
     expect(outcome).toBe("discarded");
     expect(discardConsolidation).toHaveBeenCalledWith(CONVERSATION, 19);
+    expect(logger.error).toHaveBeenCalled();
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards the window when the memory it reads first cannot be read", async () => {
+    // N4: a fold that fails must not take the reply down with it. Every read
+    // this makes is a database call on the path of a turn somebody is waiting
+    // for, and one of them going down is not a reason to fail the answer.
+    const memoryRepo = await import("@server/modules/memory/memory.repo.js");
+    vi.mocked(memoryRepo.getConversationMemory).mockRejectedValueOnce(
+      new Error("connection terminated unexpectedly"),
+    );
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("discarded");
+    expect(generateTextRetry).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("says so and carries on when the window cannot even be discarded", async () => {
+    // N4 again, one layer further in: the discard is itself a write, and the
+    // failure that led here is often the reason it fails too.
+    generateTextRetry.mockRejectedValue(new Error("502 upstream"));
+    discardConsolidation.mockRejectedValue(new Error("connection terminated unexpectedly"));
+
+    const outcome = await consolidate();
+
+    expect(outcome).toBe("discarded");
     expect(logger.error).toHaveBeenCalled();
   });
 });
@@ -273,18 +309,20 @@ describe("a consolidation the reader walked out on mid-call", () => {
 });
 
 describe("a consolidation that lost a version race", () => {
-  it("keeps the window: the clash is retryable, not a failure", async () => {
-    // The project layer is versioned, and losing that race means somebody
-    // else wrote a moment ago — the next turn folds the same window against
-    // the newer version. Filing it as a failure would throw the window away
-    // over a conflict that resolves itself.
+  it("discards the window like any other write that did not land", async () => {
+    // The project layer is versioned and the whole commit is one transaction,
+    // so losing that race rolls back all three writes. N6 says what happens
+    // when nothing is written: the watermark moves anyway and the window is
+    // gone. Leaving it for the next turn is what wedges the conversation —
+    // the assembly is still over budget and nothing about it has changed.
     const { ConflictError } = await import("@breatic/core");
     commitConsolidation.mockRejectedValue(new ConflictError("version conflict"));
 
     const outcome = await consolidate();
 
-    expect(outcome).toBe("contended");
-    expect(discardConsolidation).not.toHaveBeenCalled();
+    expect(outcome).toBe("discarded");
+    expect(discardConsolidation).toHaveBeenCalledWith(CONVERSATION, 19);
+    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
   });
 });
 
