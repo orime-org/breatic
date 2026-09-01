@@ -368,6 +368,10 @@ function GeneratePanelBody({
     // existed, because the only derivation available then read a `prompt`
     // entry under `params` that no image model writes.
     promptRequired: vm.promptRequired,
+    // This panel's models take no voice, so that branch of the gate
+    // never applies here.
+    voiceRequired: false,
+    voiceChosen: false,
   });
 
   const onSelectModel = React.useCallback(
@@ -629,6 +633,8 @@ function GeneratePanelBody({
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      voiceRequired: false,
+      voiceChosen: false,
     });
     if (refusal != null) {
       // WHICH refusal speaks is policy, and it lives in one place for the same

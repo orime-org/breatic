@@ -298,6 +298,7 @@
       "emptyTextReference": "No content yet",
       "refuseInsertModeOff": "This mode doesn't use reference material",
       "refuseExecuteNoPrompt": "Write a prompt first",
+      "refuseExecuteNoVoice": "Choose a voice",
       "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",

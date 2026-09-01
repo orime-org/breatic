@@ -39,6 +39,22 @@ export interface ExecuteGateInput {
    * everything it weighs, and it has no catalog to consult.
    */
   promptRequired: boolean;
+  /**
+   * Whether the selected model picks its voice from a catalog (#1960) — true
+   * for a model declaring a param filled from the voice list.
+   */
+  voiceRequired: boolean;
+  /**
+   * Whether the stored voice is one this deployment's provider accepts.
+   *
+   * Not "is the value non-null": one model defaults to null while the other
+   * defaults to a display name that the direct connection rejects and the
+   * gateway accepts, so the same stored value is valid on one deployment and
+   * not the other. Which it is depends on the resolved provider, which this
+   * module has no way to consult — the caller decides and passes the answer,
+   * the same way it does for `promptRequired`.
+   */
+  voiceChosen: boolean;
 }
 
 /**
@@ -54,7 +70,8 @@ export type ExecuteRefusal =
   | 'node-gone'
   | 'no-model'
   | 'submitting'
-  | 'prompt-missing';
+  | 'prompt-missing'
+  | 'voice-missing';
 
 /**
  * Which execute precondition fails, or null when Generate may proceed.
@@ -91,6 +108,9 @@ export function evaluateExecute(
   if (input.promptRequired && input.promptText.trim().length === 0) {
     return 'prompt-missing';
   }
+  // Both remaining refusals are the user's to fix, so they follow the panel's
+  // own order: the prompt editor sits above the voice picker.
+  if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
   return null;
 }
 
@@ -101,19 +121,22 @@ export function evaluateExecute(
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * Only `prompt-missing` leaves the button live, because it is the only one the
- * user can act on — the click then says what is missing, which a greyed-out
- * button cannot (GOV.UK and Adam Silver both name the disabled-until-valid
- * button an anti-pattern for exactly this: it never tells anyone why). The
- * other three are facts about the environment, and a button that invites a
- * click it will not honour is worse than one that plainly cannot be pressed.
+ * `prompt-missing` and `voice-missing` leave the button live, because they are
+ * the ones the user can act on — the click then says what is missing, which a
+ * greyed-out button cannot (GOV.UK and Adam Silver both name the
+ * disabled-until-valid button an anti-pattern for exactly this: it never tells
+ * anyone why). The other three are facts about the environment, and a button
+ * that invites a click it will not honour is worse than one that plainly
+ * cannot be pressed.
  * @param refusal - The failing condition from {@link evaluateExecute}, or null.
  * @returns True when the button must be disabled.
  */
 export function isExecuteButtonDisabled(
   refusal: ExecuteRefusal | null,
 ): boolean {
-  return refusal != null && refusal !== 'prompt-missing';
+  return (
+    refusal != null && refusal !== 'prompt-missing' && refusal !== 'voice-missing'
+  );
 }
 
 /**
@@ -144,7 +167,11 @@ export function isExecuteButtonDisabled(
  * @returns The i18n key to warn with, or null to refuse in silence.
  */
 export function refusalToastKey(refusal: ExecuteRefusal): string | null {
-  return refusal === 'prompt-missing'
-    ? 'canvas.generatePanel.refuseExecuteNoPrompt'
-    : null;
+  if (refusal === 'prompt-missing') {
+    return 'canvas.generatePanel.refuseExecuteNoPrompt';
+  }
+  if (refusal === 'voice-missing') {
+    return 'canvas.generatePanel.refuseExecuteNoVoice';
+  }
+  return null;
 }

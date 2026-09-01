@@ -289,6 +289,7 @@
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
       "refuseExecuteNoPrompt": "プロンプトを入力してください",
+      "refuseExecuteNoVoice": "音声を選択してください",
       "refuseInsertTypeUnused": "{kind, select, audio {参照は画像のみで、音声は使えません} video {参照は画像のみで、動画は使えません} other {参照は画像のみで、この種類の素材は使えません}}",
       "exit": "終了",
       "promptPlaceholder": "生成したい画像を説明してください。@ で参照を追加",

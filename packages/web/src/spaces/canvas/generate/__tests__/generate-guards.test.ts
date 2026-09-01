@@ -16,6 +16,8 @@ const ok = {
   nodeStatus: 'idle' as string | undefined,
   isSubmitting: false,
   promptRequired: true,
+  voiceRequired: false,
+  voiceChosen: false,
 };
 
 describe('evaluateExecute — which precondition is the one that fails', () => {
@@ -58,6 +60,41 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     expect(evaluateExecute({ ...noPrompt, isSubmitting: true })).toBe(
       'submitting',
     );
+  });
+
+  it('names the voice when the model needs one and none is chosen (#1960)', () => {
+    // fish-s2-pro's reference_id defaults to null and its inline voice table
+    // is empty, so a user who types and hits generate without ever opening
+    // the picker sends no voice at all. Upstream succeeds — in its own
+    // default voice — and nothing on screen said the choice went unmade.
+    expect(evaluateExecute({ ...ok, voiceRequired: true, voiceChosen: false })).toBe(
+      'voice-missing',
+    );
+  });
+
+  it('lets a chosen voice through', () => {
+    expect(
+      evaluateExecute({ ...ok, voiceRequired: true, voiceChosen: true }),
+    ).toBeNull();
+  });
+
+  it('ignores the voice for a model that takes none', () => {
+    expect(
+      evaluateExecute({ ...ok, voiceRequired: false, voiceChosen: false }),
+    ).toBeNull();
+  });
+
+  it('names the prompt before the voice — the panel reads top to bottom', () => {
+    // Both are the user's to fix, so the order follows the panel: the prompt
+    // editor sits above the voice picker.
+    expect(
+      evaluateExecute({
+        ...ok,
+        promptText: '   ',
+        voiceRequired: true,
+        voiceChosen: false,
+      }),
+    ).toBe('prompt-missing');
   });
 
   it('names the model when none is selected (a mode that offers nothing)', () => {
@@ -147,6 +184,10 @@ describe('isExecuteButtonDisabled — only what the user cannot act on greys the
     expect(isExecuteButtonDisabled('prompt-missing')).toBe(false);
   });
 
+  it('leaves the button clickable for a missing voice, for the same reason', () => {
+    expect(isExecuteButtonDisabled('voice-missing')).toBe(false);
+  });
+
   it('greys the button for the three the user cannot act on', () => {
     expect(isExecuteButtonDisabled('node-gone')).toBe(true);
     expect(isExecuteButtonDisabled('no-model')).toBe(true);
@@ -163,6 +204,12 @@ describe('refusalToastKey — which refusal says something out loud', () => {
   it('names the prompt key for the one refusal the user can act on', () => {
     expect(refusalToastKey('prompt-missing')).toBe(
       'canvas.generatePanel.refuseExecuteNoPrompt',
+    );
+  });
+
+  it('names the voice key when the model needs a voice and has none', () => {
+    expect(refusalToastKey('voice-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoVoice',
     );
   });
 
