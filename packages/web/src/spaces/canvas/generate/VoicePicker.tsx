@@ -146,7 +146,13 @@ export const VoicePicker = React.memo(function VoicePicker({
           variant={null}
           size={null}
           data-testid='generate-voice-trigger'
-          className='flex h-8 min-w-0 max-w-[12rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          // 11rem: the 52 voices this deployment can offer without an upstream
+          // call top out at 9 characters (Charlotte), which fits in well under
+          // half of this. The headroom is for the two live catalogues, where
+          // names are whatever the account holder typed — those get measured
+          // against real data on a running app, and anything past the cap
+          // truncates with the full name a click away in the list.
+          className='flex h-8 min-w-0 max-w-[11rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <span className='truncate'>{triggerLabel}</span>
           <ChevronDown
