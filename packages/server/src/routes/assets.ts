@@ -84,7 +84,15 @@ const uploadTicketSchema = z.object({
     // spaces and punctuation stay allowed — this is a global product.
     // eslint-disable-next-line no-control-regex -- rejecting control chars IS the intent
     .regex(/^[^/\\\x00-\x1f\x7f]+$/, "filename contains an unsafe character"),
-  content_type: z.string().min(1).max(100),
+  // Whatever is declared here becomes the stored object's Content-Type, which
+  // a public read hands straight to whoever opens the URL. The canvas only
+  // ever uploads these three kinds — `fileToNodeSpec` reads every other file
+  // locally into a text node and sends no bytes at all (design §4.5).
+  content_type: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^(image|video|audio)\//, "content_type is not an uploadable kind"),
   project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),

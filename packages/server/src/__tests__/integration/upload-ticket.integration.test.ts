@@ -639,6 +639,38 @@ describe("POST /assets/upload-ticket", () => {
     expect(res.status).toBe(422);
   });
 
+  // Whatever is declared here becomes the stored object's Content-Type, which
+  // a public read hands straight to whoever opens the URL. The canvas only
+  // ever uploads these three kinds — anything else is a hand-written request
+  // asking us to serve something of its choosing off our own domain.
+  it("refuses a content type the canvas never uploads", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, content_type: "text/html" }),
+    );
+
+    expect(res.status).toBe(422);
+  });
+
+  it("takes the three kinds the canvas does upload", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    for (const contentType of ["image/png", "video/mp4", "audio/mpeg"]) {
+      const res = await requestTicket(
+        cookie,
+        body({
+          project_id: projectId,
+          content_type: contentType,
+          client_hash: crypto.randomBytes(32).toString("hex"),
+        }),
+      );
+
+      expect(res.status).toBe(201);
+    }
+  });
+
   it("refuses an anonymous caller", async () => {
     const { projectId } = await seedEditor();
 
