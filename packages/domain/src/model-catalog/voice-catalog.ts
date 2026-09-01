@@ -13,7 +13,7 @@
  */
 
 import { AppError } from "@breatic/core";
-import { httpRequest, t } from "@breatic/shared";
+import { httpRequest, t, type Voice, type VoicePage } from "@breatic/shared";
 
 import {
   MODALITIES,
@@ -25,28 +25,10 @@ import {
   type ActiveProvider,
 } from "@domain/model-catalog/resolve-active-provider.js";
 
-/** One voice, as the panel reads it. */
-export interface Voice {
-  /** The value this deployment's provider accepts for the model's voice param. */
-  id: string;
-  name: string;
-  description?: string;
-  languages?: string[];
-  /** Audio to play as a sample. Absent where the provider offers none. */
-  previewUrl?: string;
-}
-
-/** One page of voices. */
-export interface VoicePage {
-  voices: Voice[];
-  hasMore: boolean;
-  /**
-   * Opaque token for the next page, absent on the last one. Opaque because the
-   * vendors disagree on what paging is: one takes a continuation token, the
-   * other a page number, and callers work with neither.
-   */
-  nextCursor?: string;
-}
+// `Voice` and `VoicePage` are the wire shape, so they live in shared where the
+// panel that renders them can reach them too. Re-exported here so this module
+// stays the one place a caller looks for anything voice-catalog.
+export type { Voice, VoicePage };
 
 /** What to ask the catalog for. */
 export interface VoiceQuery {

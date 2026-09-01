@@ -104,6 +104,8 @@ export type {
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
   ProjectLifecycleEvent,
+  Voice,
+  VoicePage,
 } from "@shared/types/index.js";
 
 export {
@@ -170,6 +172,7 @@ export {
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  sanitizeVoicePage,
 } from "@shared/types/index.js";
 
 export type {
