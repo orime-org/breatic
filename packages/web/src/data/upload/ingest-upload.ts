@@ -21,6 +21,24 @@ import {
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
 
+/**
+ * A failure that arrived before the upload was open.
+ *
+ * The Durable Object that reports an upload's outcome is created by the open
+ * request, which is one step past the ticket. A failure there leaves nothing
+ * anywhere holding this attempt, and that is what decides who writes the
+ * node's failure — so the step it happened at travels with the error.
+ */
+export class UploadNotOpenedError extends Error {
+  /**
+   * Wrap what the open request rejected with.
+   * @param cause - What the open request rejected with.
+   */
+  constructor(override readonly cause: unknown) {
+    super('the upload was never opened');
+  }
+}
+
 /** What the ticket endpoint hands back when bytes have to move. */
 export interface UploadTicket {
   /** The signed permission slip the Worker verifies. */
@@ -92,7 +110,9 @@ interface OpenedUpload {
  * @param ticket - What the ticket endpoint issued for it.
  * @param cfg - The upload knobs, which size the per-delivery deadlines.
  * @returns What completing the upload said it became.
- * @throws {UploadHttpError} When the Worker refuses any of the three steps.
+ * @throws {UploadNotOpenedError} When opening the upload failed, which leaves
+ *   no Durable Object to report how it ended.
+ * @throws {UploadHttpError} When the Worker refuses a part or the completion.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -101,7 +121,9 @@ export async function sendFileToIngest(
   ticket: UploadTicket,
   cfg: UploadClientConfig,
 ): Promise<IngestOutcome> {
-  const opened = await openUpload(ticket, cfg);
+  const opened = await openUpload(ticket, cfg).catch((err: unknown) => {
+    throw new UploadNotOpenedError(err);
+  });
 
   let token = opened.token;
   for (let part = 1; part <= ticket.totalParts; part += 1) {

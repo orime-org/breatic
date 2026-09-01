@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
+import { UploadNotOpenedError } from '@web/data/upload/ingest-upload';
 import {
   browserOwnsFailure,
   isReportableAssetUrl,
@@ -279,6 +280,23 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('transfer');
+  });
+
+  // The Durable Object that reports an outcome is created by the open request,
+  // one step past the ticket. A failure there leaves nothing anywhere holding
+  // this attempt, so the browser writes the node's failure — the alternative is
+  // a node that spins until collab's hour-long sweeper reclaims it.
+  it('hands the browser a failure that arrived before the upload opened', async () => {
+    const deps = makeUploadDeps({
+      sendToIngest: vi
+        .fn()
+        .mockRejectedValue(new UploadNotOpenedError(apiError(502))),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('ticket');
   });
 
   // A full account is not something a retry fixes, and the message the user

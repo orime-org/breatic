@@ -2024,8 +2024,8 @@ function CanvasSpaceInner({
   // nobody frees any in the seconds a retry takes. Both remedies can only be
   // said in a localized toast.
   //
-  // A `transfer` failure writes nothing at all: past the ticket the node's
-  // outcome belongs to the server.
+  // A `transfer` failure writes nothing at all: with the upload open, the
+  // node's outcome belongs to the server.
   const failUploadNode = React.useCallback(
     (
       reason: UploadFailureReason,
@@ -2066,8 +2066,8 @@ function CanvasSpaceInner({
         return;
       }
       if (!browserOwnsFailure(reason)) {
-        // Past the ticket the server owns this node's outcome: a Durable
-        // Object holds an alarm on the upload and reports whichever way it
+        // Once the upload is open the server owns this node's outcome: a
+        // Durable Object holds an alarm on it and reports whichever way it
         // ends. Writing a failure here would clear `handlingBy`, and collab
         // fences every later event against a live lease — so the announcement
         // still coming would be dropped and the node would sit on a failure

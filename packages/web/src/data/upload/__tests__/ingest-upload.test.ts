@@ -13,7 +13,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { httpRequest } from '@breatic/shared';
 import type * as shared from '@breatic/shared';
-import { sendFileToIngest } from '@web/data/upload/ingest-upload';
+import {
+  sendFileToIngest,
+  UploadNotOpenedError,
+} from '@web/data/upload/ingest-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
 import {
   computePutTimeoutMs,
@@ -210,6 +213,27 @@ describe('when the Worker refuses', () => {
     ).rejects.toThrow();
 
     expect(mockedRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // The Durable Object that reports an upload's outcome is created by this
+  // request. A caller cannot tell from a bare rejection whether anything is
+  // left holding the upload, and that is what decides who writes the failure.
+  it('says the upload was never opened, apart from a later refusal', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(401, {}));
+
+    await expect(
+      sendFileToIngest(fileOf(1024), ticketFor(1), cfg),
+    ).rejects.toBeInstanceOf(UploadNotOpenedError);
+  });
+
+  it('carries what the open request refused with', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(401, {}));
+
+    const err = await sendFileToIngest(fileOf(1024), ticketFor(1), cfg).catch(
+      (e: unknown) => e,
+    );
+
+    expect((err as UploadNotOpenedError).cause).toMatchObject({ status: 401 });
   });
 
   it('stops at a refused part instead of sending the rest', async () => {
