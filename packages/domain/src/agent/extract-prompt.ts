@@ -27,8 +27,12 @@ export function extractPromptText(prompt: unknown): string {
   // Strip HTML comments
   text = text.replace(/<!--[\s\S]*?-->/g, " ");
 
-  // Strip HTML tags
-  text = text.replace(/<[^>]*>/g, " ");
+  // Strip HTML tags. A tag opens with a letter, optionally behind a slash —
+  // requiring that is what separates markup from a pair of angle brackets a
+  // person typed. `<[^>]*>` matched both, and a voiceover script is read out
+  // word for word: `under <100, over >50` lost the clause between the two,
+  // and `5 < 6` lost every line down to the next `>`.
+  text = text.replace(/<\/?[a-zA-Z][^<>]*>/g, " ");
 
   // Decode common HTML entities
   text = text

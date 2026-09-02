@@ -28,6 +28,27 @@ describe("extractPromptText — what it strips", () => {
     expect(extractPromptText("a &amp; b &quot;c&quot;")).toBe('a & b "c"');
   });
 
+  it("keeps a stage direction, which is not a tag", () => {
+    // A voiceover script is read out word for word, so anything removed from
+    // it is a word the listener does not hear. Angle brackets around prose are
+    // ordinary punctuation — neither tts vendor treats them as markup, both
+    // use square brackets.
+    expect(extractPromptText("他喊了一声 <停!> 然后离开")).toBe(
+      "他喊了一声 <停!> 然后离开",
+    );
+  });
+
+  it("keeps a comparison, and the line under it", () => {
+    // The two brackets need not be near each other: what sits between them is
+    // a clause, a line break, or a whole paragraph.
+    expect(extractPromptText("价格<100元，库存>50件")).toBe("价格<100元，库存>50件");
+    expect(extractPromptText("5 < 6\n\n然后 7 > 3")).toBe("5 < 6\n\n然后 7 > 3");
+  });
+
+  it("removes a tag whose attributes run onto the next line", () => {
+    expect(extractPromptText('<div\nclass="x">y</div>')).toBe("y");
+  });
+
   it("removes zero-width and invisible characters", () => {
     // Escaped, not literal: a source file carrying the characters themselves
     // is the thing `no-trojan-source` exists to catch.
