@@ -18,6 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
 import { expectChosenFill } from '@web/test-utils/selection-fill';
@@ -370,5 +371,48 @@ describe('VoicePicker when a next page fails (#1960 A6)', () => {
   it('says nothing there while a page is still on its way', () => {
     open({ list: state({ hasMore: true, loadingMore: true }) });
     expect(screen.queryByTestId('generate-voice-more-retry')).toBeNull();
+  });
+});
+
+describe('the voice list answers Enter on its own buttons', () => {
+  // Every button here sits inside cmdk's Command, whose root cancels Enter and
+  // fires the highlighted ROW's select instead. Left alone, a keyboard user
+  // asking for one thing gets a different voice chosen and the list closed.
+  // `userEvent` follows the spec: a cancelled keydown skips the click.
+
+  it('plays the sample the button belongs to, and picks nothing', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    const play = vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue();
+    open({ onPick });
+    screen.getByTestId('generate-voice-sample-alpha').focus();
+    await user.keyboard('{Enter}');
+    expect(play).toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
+    play.mockRestore();
+  });
+
+  it('retries the list, and picks nothing', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    const onOpenChange = vi.fn();
+    open({ onPick, onOpenChange, list: state({ status: 'failed', voices: [] }) });
+    // Opening called it once already; only what Enter does counts here.
+    onOpenChange.mockClear();
+    screen.getByTestId('generate-voice-retry').focus();
+    await user.keyboard('{Enter}');
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('retries the next page, and picks nothing', async () => {
+    const user = userEvent.setup();
+    const onPick = vi.fn();
+    const onLoadMore = vi.fn();
+    open({ onPick, onLoadMore, list: state({ hasMore: true, moreFailed: true }) });
+    screen.getByTestId('generate-voice-more-retry').focus();
+    await user.keyboard('{Enter}');
+    expect(onLoadMore).toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
   });
 });

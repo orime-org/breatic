@@ -215,6 +215,10 @@ export const VoicePicker = React.memo(function VoicePicker({
                     variant='outline'
                     size='sm'
                     data-testid='generate-voice-retry'
+                    // cmdk's root cancels Enter for everything inside it.
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.stopPropagation();
+                    }}
                     onClick={() => onOpenChange(true)}
                   >
                     {t('canvas.generatePanel.voiceRetry')}
@@ -253,6 +257,13 @@ export const VoicePicker = React.memo(function VoicePicker({
                         name: voice.name,
                       })}
                       className='flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong'
+                      // cmdk's root cancels Enter and fires the highlighted
+                      // ROW's select instead, so this button's own Enter
+                      // never reaches it — the other half of the click gate
+                      // below.
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.stopPropagation();
+                      }}
                       onClick={(e) => {
                         // cmdk hangs onSelect off the item's own onClick, so
                         // a sample click that reached it would choose the
@@ -293,6 +304,10 @@ export const VoicePicker = React.memo(function VoicePicker({
                     variant='outline'
                     size='sm'
                     data-testid='generate-voice-more-retry'
+                    // cmdk's root cancels Enter for everything inside it.
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.stopPropagation();
+                    }}
                     onClick={onLoadMore}
                   >
                     {t('canvas.generatePanel.voiceRetry')}
