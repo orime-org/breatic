@@ -19,6 +19,12 @@ catalog:
 
   # The editor stack moves as one unit — a mixed set produces unmet
   # peer ranges and, historically, two copies of the same extension.
+  #
+  # BlockNote sits on top of the same ProseMirror and tiptap. Its own packages
+  # are MPL-2.0 and are listed in THIRD-PARTY.md; the @blocknote/xl-* packages
+  # are GPL-3.0 and are never installed.
+  "@blocknote/core": 0.54.0
+  "@blocknote/react": 0.54.0
   "@tiptap/core": 3.29.2
   "@tiptap/extension-collaboration": 3.29.2
   "@tiptap/extension-collaboration-caret": 3.29.2
