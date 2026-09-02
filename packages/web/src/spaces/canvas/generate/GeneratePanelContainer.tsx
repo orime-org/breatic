@@ -76,6 +76,7 @@ import {
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -318,13 +319,10 @@ function GeneratePanelBody({
   // (small array — a stringify key is cheap and exact). The pool the rail /
   // mention plumbing consumes is node references + focus crops mapped into
   // the same row shape (#1782) — one list, one code path downstream.
-  const referencesKey =
-    JSON.stringify(vm.references) + JSON.stringify(vm.focusImages);
-  const stableReferences = React.useMemo(
-    () => [...vm.references, ...vm.focusImages.map(focusToRailItem)],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
-    [referencesKey],
-  );
+  const stableReferences = useContentStable([
+    ...vm.references,
+    ...vm.focusImages.map(focusToRailItem),
+  ]);
   const freshVm = React.useCallback(
     (atMentionedSourceIds?: ReadonlySet<string>): GeneratePanelViewModel => {
       const graph = readCanvasGraph(projectId, spaceId);

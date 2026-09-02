@@ -64,6 +64,7 @@ import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets'
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import type { PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
+import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -195,23 +196,11 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, models, mode],
   );
 
-  // Both of these rebuild with the view model, which rebuilds on every canvas
-  // mutation — every frame of any node drag — and both flow into React.memo
-  // components (the panel, and the rail and params picker under it). Keyed on
-  // their CONTENT so an unchanged one keeps its identity and those memos can
-  // bail; the image and video containers carry the same discipline.
-  const referencesKey = JSON.stringify(derivedReferences);
-  const references = React.useMemo(
-    () => derivedReferences,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS the input, serialized
-    [referencesKey],
-  );
-  const paramsKey = JSON.stringify(vm.params);
-  const params = React.useMemo(
-    () => vm.params,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: paramsKey IS the input, serialized
-    [paramsKey],
-  );
+  // Both rebuild with the view model, which rebuilds on every canvas mutation
+  // — every frame of any node drag — and both flow into React.memo components
+  // (the panel, and the rail and params picker under it).
+  const references = useContentStable(derivedReferences);
+  const params = useContentStable(vm.params);
 
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
@@ -307,9 +296,7 @@ function AudioGeneratePanelBody({
       );
       setNodeParams(projectId, spaceId, nodeId, paramsByModel);
       // Collapsing the picker is the picker's own doing (VoicePicker closes on
-      // pick). Doing it here too would only cost this callback its identity:
-      // `useVoiceList` hands back a fresh object each render, so depending on
-      // it rebuilds this on every render and the memoized panel never bails.
+      // pick), so this callback has no reason to reach for the list handle.
     },
     [projectId, spaceId, nodeId, freshVm, freshContent, vm.model, queryClient, t],
   );

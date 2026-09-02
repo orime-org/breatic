@@ -80,6 +80,7 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -348,33 +349,20 @@ function VideoGeneratePanelBody({
   // Two sources, one list (#1978): edge-derived rows, then this node's focus
   // crops turned into rows of the same shape. Downstream — rail, `@` pool,
   // submit — there is one code path, exactly as on the image panel.
-  const referencesKey =
-    JSON.stringify(references) + JSON.stringify(vm.focusImages);
-  const stableReferences = React.useMemo(
-    () => [...references, ...vm.focusImages.map(focusToRailItem)],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS both inputs, serialized
-    [referencesKey],
-  );
+  const stableReferences = useContentStable([
+    ...references,
+    ...vm.focusImages.map(focusToRailItem),
+  ]);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
   // object the panel got a plain string and bailed on its own; keying on the
   // content keeps that.
-  const slotUrlsKey = JSON.stringify(vm.slotUrls);
-  const stableSlotUrls = React.useMemo(
-    () => vm.slotUrls,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotUrlsKey IS the input, serialized
-    [slotUrlsKey],
-  );
+  const stableSlotUrls = useContentStable(vm.slotUrls);
   // The display URLs are a second object rebuilt just as often, so they need
   // the same treatment: one unstable prop is enough to make both memos below
   // re-render on every frame of a drag.
-  const slotThumbnailsKey = JSON.stringify(vm.slotThumbnails);
-  const stableSlotThumbnails = React.useMemo(
-    () => vm.slotThumbnails,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: slotThumbnailsKey IS the input, serialized
-    [slotThumbnailsKey],
-  );
+  const stableSlotThumbnails = useContentStable(vm.slotThumbnails);
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {

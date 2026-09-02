@@ -108,5 +108,12 @@ export function useVoiceList(model: string | undefined): VoiceListHandle {
     dispatch({ type: 'moreRequested' });
   }, []);
 
-  return { state, onOpenChange, onQueryChange, onLoadMore };
+  // One object, kept while its parts are: the three callbacks never change
+  // identity, so this only rebuilds when the state does. A fresh object every
+  // render would spread through every callback that reads it and defeat the
+  // memoized panel below them.
+  return React.useMemo(
+    () => ({ state, onOpenChange, onQueryChange, onLoadMore }),
+    [state, onOpenChange, onQueryChange, onLoadMore],
+  );
 }
