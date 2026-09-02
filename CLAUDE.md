@@ -33,7 +33,7 @@
 
 面向内容创作者的 AI 无限画布协作平台。全栈 TypeScript monorepo,7 包 + 3 服务。
 
-**架构详见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**(backend 全部技术栈 / 包依赖 / 3 服务 / 画布协作 / 三层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志)。**前端详见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由)。
+**架构详见 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**(backend 全部技术栈 / 包依赖 / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志)。**前端详见 [docs/ARCHITECTURE.md#frontend](./docs/ARCHITECTURE.md#frontend)**(技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由)。
 
 # 开发命令
 
@@ -168,7 +168,7 @@ pnpm test / typecheck / lint
 - **架构 / 长期维护**(整体目录结构 / 公共 API / 跨服务边界)
 - **状态机**(一个事实有 ≥ 2 种状态,且有 ≥ 2 条路径能改它 —— 面板 / 会话 / 任务 / 连接的生命周期,前端 store 与长跑服务尤其高发)
 
-breatic 高频:AIGC provider 选型 · Agent / Skill 定义 · 三层记忆 / Yjs 结构 · 积分计费。
+breatic 高频:AIGC provider 选型 · Agent / Skill 定义 · 两层记忆 / Yjs 结构 · 积分计费。
 
 **硬流程**:候选枚举 → 5 维度尽调(实测 / 源码 / 治理 / 安全 / 上游)→ 对比矩阵(每格证据可追溯)→ 推荐 + 理由 → **用户拍板**。
 

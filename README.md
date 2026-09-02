@@ -83,7 +83,7 @@ User Chat → MainAgent (AI SDK streamText) → TaskPlan → BullMQ → Worker
 
 Both layers are the member's own: a project row is keyed by `(user_id, project_id)`, so what one member's agent summarised is never handed to another's prompt.
 
-Memory is consolidated by the LLM in front of the reply, on a turn whose assembled request measures past `memory_budget_chars` (default 850,000). The oldest turns are taken until what remains is under `memory_keep_chars` (default 500,000), and each consolidation **rewrites** the full memory content (not append), bounded by `memory_conversation_max_size`.
+Memory is consolidated by the LLM in front of the reply, on a turn whose assembled request measures past `memory_budget_chars` (default 850,000). The oldest turns are taken until what remains is under `memory_keep_chars` (default 500,000) less what the fold itself may add back — twice the two ceilings, since the request is measured in code units and memory is cut in code points. Each consolidation **rewrites** the full memory content (not append), bounded by `memory_project_max_size` and `memory_conversation_max_size`.
 
 **Turn-based context management**: Each message carries a `turnIndex` (increments on every user message). When building LLM context, tool results older than the last `tool_result_keep` (default 3) tool uses are replaced with a placeholder; the calls themselves, assistant text and user prose are kept. Model `thinking` content is stored for debugging but never sent back to the LLM.
 
