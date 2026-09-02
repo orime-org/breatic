@@ -344,10 +344,9 @@ function secretsMatch(a: string, b: string): boolean {
  */
 assets.post(
   "/ingest-report",
-  rateLimitFor("ingest-report"),
-  // Ahead of the body, because this route takes no session: the address is all
-  // anybody needs to reach it, and a caller who cannot prove they hold the
-  // secret should cost a header comparison rather than a parse.
+  // First, because this route takes no session: the address is all anybody
+  // needs to reach it, and a caller who cannot prove they hold the secret
+  // should cost one header comparison and nothing else.
   async (c, next) => {
     const presented = c.req.header("x-ingest-secret") ?? "";
     if (

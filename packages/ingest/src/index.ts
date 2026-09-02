@@ -159,9 +159,9 @@ async function authorizedSession(
 /**
  * Hand one part's bytes to the instance that owns this upload.
  *
- * The bytes are read into memory here and written to R2 by the instance, so
- * recording a part and storing it are the same step — which is what makes
- * "have they all arrived?" a matter of counting rows it wrote itself.
+ * The instance records a part and writes it to R2 in the same step, which is
+ * what makes "have they all arrived?" a matter of counting rows it wrote
+ * itself.
  * @param request - The browser's request, carrying the token and the bytes.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.

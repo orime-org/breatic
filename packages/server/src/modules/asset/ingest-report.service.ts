@@ -105,8 +105,9 @@ export type IngestOutcome =
 /**
  * A grant whose upload has a node behind it.
  *
- * The three fields travel together: an upload with no node — a focus crop
- * (design §9) — has all three null, and one with a node has all three set.
+ * A focus crop (design §9) has no node: its `nodeId` and `spaceId` are null,
+ * while `projectId` is set on every grant. All three are judged together so
+ * that `canvasSpaceDocName(projectId, spaceId)` gets non-null arguments.
  */
 type GrantWithNode = UploadGrant & {
   projectId: string;
