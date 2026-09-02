@@ -450,7 +450,12 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     await openPanel({ model: 'elevenlabs-v3' });
     typePrompt('Good evening.');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
-    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    // The sentence, not just that one appeared: both refusals a click can
+    // reach warn, so "a toast fired" would survive the container naming the
+    // prompt one here.
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith('Choose a voice', expect.anything()),
+    );
     expect(create).not.toHaveBeenCalled();
   });
 
