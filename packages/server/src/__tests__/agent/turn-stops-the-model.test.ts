@@ -32,7 +32,7 @@ import type * as DomainModule from "@breatic/domain";
 const dnsLookupMock = vi.fn();
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
@@ -46,7 +46,7 @@ let providerCalls = 0;
 let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The tools the turn is given, set per test. */
 let turnTools: Record<string, unknown> = {};
@@ -58,7 +58,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getAgentConfig: () => ({
       max_tool_iterations: 5,
       llm_max_retries: 0,
-      full_detail_turns: 3,
+      tool_result_keep: 3,
       web_fetch_timeout_ms: 30_000,
       web_search_timeout_ms: 10_000,
       web_fetch_max_chars: 50_000,
@@ -126,7 +126,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const fetchMock = vi.fn();
@@ -181,7 +181,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   dnsLookupMock.mockReset();
   dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
-  [addMessage, consolidateIfNeeded, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => m.mockClear());
 });
 
 afterEach(() => {

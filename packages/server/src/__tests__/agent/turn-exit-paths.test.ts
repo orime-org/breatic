@@ -21,11 +21,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 import type { MockLanguageModelV4 } from "ai/test";
-import { FINISHED, finishedSpending } from "../helpers/model-double.js";
+import { FINISHED, finishedSpending, finishing } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
@@ -44,7 +44,7 @@ const thisCase = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
@@ -118,7 +118,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 /**
@@ -145,12 +145,16 @@ async function runTurn(parts: ModelStreamPart[]): Promise<void> {
   const { runWithContext } = await import("@breatic/core");
   thisCase.parts = parts;
   thisCase.endsOnItsOwn = true;
+  sent.length = 0;
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    for await (const _chunk of await new MainAgent().chat("hi")) {
-      // drained
+    for await (const chunk of await new MainAgent().chat("hi")) {
+      sent.push(chunk);
     }
   });
 }
+
+/** What this turn put on the wire, in order. */
+const sent: Array<{ type: string }> = [];
 
 /**
  * Run one skill command to the end of its stream.
@@ -215,7 +219,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
+  [addMessage, foldIfOverBudget, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -306,26 +310,67 @@ describe("a turn that failed", () => {
     expect(wrapUpMessages()).toHaveLength(1);
   });
 
-  it("does not make the user wait for memory consolidation", async () => {
-    // Consolidation is an LLM call of its own, seconds long, and nobody is
-    // waiting for it -- the user is waiting for the turn to be over. Putting
-    // it in front of the ending leaves the panel spinning on a reply that
-    // has already finished streaming.
-    //
-    // The race is the assertion: a consolidation that never finishes must not
-    // hold the ending. Everything else in this path is mocked, so the only
-    // thing that can take 200ms is an await on that promise.
-    consolidateIfNeeded.mockReturnValueOnce(new Promise<undefined>(() => {}));
-    await Promise.race([
-      runTurn(saidAndSpent("hi", 100)),
-      new Promise<void>((_, reject) =>
-        setTimeout(() => {
-          reject(new Error("the turn waited for consolidation"));
-        }, 200),
-      ),
-    ]);
-    expect(consolidateIfNeeded).toHaveBeenCalled();
+  it("asks about the budget once, before the model and not after it", async () => {
+    // Folding belongs in front of the reply, on the turn whose assembled
+    // request measured over the budget — that is the turn it can shorten. A
+    // second look on the way out would hold the ending of a reply that has
+    // already finished streaming, and shorten nothing until the turn after.
+    await runTurn(saidAndSpent("hi", 100));
+
+    expect(foldIfOverBudget).toHaveBeenCalledTimes(1);
+    // The user's message is stored before the assembly, the reply after the
+    // stream ends. The check sits between them.
+    const [asked, replied] = addMessage.mock.invocationCallOrder;
+    const looked = foldIfOverBudget.mock.invocationCallOrder[0]!;
+    expect(looked).toBeGreaterThan(asked!);
+    expect(looked).toBeLessThan(replied!);
   });
+});
+
+describe("a turn the ceiling cut off", () => {
+  it("records that it was cut off, so a reload does not read it as a finished answer", async () => {
+    // The third way a turn ends without finishing, and the one this build
+    // introduced by giving every model call an output ceiling. Neither of the
+    // other two marks fits: nobody stopped it and nothing went wrong.
+    await runTurn([
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "Half a sen" },
+      { type: "text-end", id: "t1" },
+      finishing("length", 16384),
+    ]);
+
+    const parts = wrapUpMessages().at(-1)?.parts as Array<{ type: string }> | undefined;
+    expect(parts?.map((p) => p.type)).toContain("truncated");
+  });
+
+  it("says so on the wire, so the reader sees it without reloading", async () => {
+    // Whether the model runs out of room is not ours to decide. Whether the
+    // reader is told it happened is, and that half is no different from a
+    // turn that failed: both are things this side knows and the browser
+    // cannot work out for itself.
+    await runTurn([
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "Half a sen" },
+      { type: "text-end", id: "t1" },
+      finishing("length", 16384),
+    ]);
+
+    expect(sent.map((c) => c.type)).toContain("data-truncated");
+  });
+
+  it("says nothing of the sort on a turn that ended on its own", async () => {
+    await runTurn(saidAndSpent("all of it", 100));
+
+    expect(sent.map((c) => c.type)).not.toContain("data-truncated");
+  });
+
+  it("leaves a turn that ended on its own unmarked", async () => {
+    await runTurn(saidAndSpent("all of it", 100));
+
+    const parts = wrapUpMessages().at(-1)?.parts as Array<{ type: string }> | undefined;
+    expect(parts?.map((p) => p.type)).not.toContain("truncated");
+  });
+
 });
 
 describe("a turn the user stopped", () => {

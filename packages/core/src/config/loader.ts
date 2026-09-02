@@ -15,6 +15,38 @@ import { z } from "zod";
 import { CONVERSATION_TITLE_MAX_CHARS, MAX_TIMER_MS } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
+/**
+ * Code units per code point, at worst.
+ *
+ * Memory is cut in code points, which is where a character ends, and the
+ * assembled payload is measured in code units, which is what a string's
+ * length is. Everything above the basic plane is two units per point, and the
+ * consolidating prompt asks the model to answer in the language of the
+ * conversation.
+ */
+const MEMORY_RESERVE_FACTOR = 2;
+
+/**
+ * How much room a fold may add to the request it is shortening.
+ *
+ * What the budget measured carries the memory as it stood; what goes out
+ * carries what the fold just wrote. A pass has to stop this far short of the
+ * keep line to leave room for it.
+ * @param ceilings - An object carrying the two memory ceilings, in code points.
+ * @param ceilings.memory_conversation_max_size - The conversation ceiling.
+ * @param ceilings.memory_project_max_size - The project ceiling.
+ * @returns The reserve, in code units.
+ */
+function reservedForMemory(ceilings: {
+  memory_conversation_max_size: number;
+  memory_project_max_size: number;
+}): number {
+  return (
+    MEMORY_RESERVE_FACTOR *
+    (ceilings.memory_conversation_max_size + ceilings.memory_project_max_size)
+  );
+}
+
 const agentConfigSchema = z.object({
   max_tool_iterations: z.number().int().positive().default(40),
   /**
@@ -27,7 +59,6 @@ const agentConfigSchema = z.object({
   skill_agent_max_steps: z.number().int().positive().default(15),
   default_model: z.string().default("deepseek/deepseek-v4-pro"),
   consolidation_model: z.string().default("deepseek/deepseek-v4-pro"),
-  memory_window: z.number().int().positive().default(20),
   /**
    * How much of the first message a conversation keeps as its name.
    *
@@ -68,10 +99,66 @@ const agentConfigSchema = z.object({
    * would start killing turns that were doing fine.
    */
   sse_heartbeat_interval_ms: z.number().int().positive().default(5000),
-  memory_keep_recent_turns: z.number().int().positive().default(3),
-  full_detail_turns: z.number().int().positive().default(3),
+  /**
+   * How many of the most recent tool uses keep their result in the context.
+   *
+   * Counted in tool use/result pairs rather than turns: one turn can run
+   * forty model calls whose whole output lands in a single stored row, so a
+   * turn-shaped window is three orders of magnitude coarser than the thing
+   * filling the context. The default matches the one figure the industry
+   * agrees on — Anthropic's `clear_tool_uses_20250919` keeps three.
+   */
+  tool_result_keep: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(3072),
-  memory_user_max_size: z.number().int().positive().default(2048),
+  /**
+   * How much of a conversation's own memory reaches the system prompt.
+   *
+   * Consolidation rewrites this layer whole every time it runs, so it is the
+   * one segment that grows from its own output.
+   */
+  memory_conversation_max_size: z.number().int().positive().default(3072),
+  /**
+   * The ceiling on one model call's answer, in tokens.
+   *
+   * Per call rather than per turn: `stopWhen: stepCountIs(...)` lets one turn
+   * make many, and each of them is bounded by this.
+   */
+  max_output_tokens: z.number().int().positive().default(16384),
+  /**
+   * How long one turn's question may be, in characters.
+   *
+   * Measured on what reaches the model: the message with the canvas content
+   * the reader attached folded in front of it. Per field it would admit a
+   * short message carrying chips worth many times the limit.
+   *
+   * The browser draws a lower line and says so as the reader types; this one
+   * is where a client cannot skip it.
+   */
+  user_message_max_chars: z.number().int().positive().default(15000),
+  /**
+   * How long an assembled request may be before a consolidation runs, in
+   * characters.
+   *
+   * Measured against everything about to go to the model — system prompt,
+   * skill bodies, memory, tool definitions, history and this turn's question
+   * — because those are what fill a context window, and a budget that only
+   * counted the history would be blind to the segments it cannot shorten.
+   *
+   * Characters rather than tokens: no library counts tokens for a model
+   * reached through OpenRouter, and a character is never more than a token in
+   * the tokenizers this build meets, so this can only fire early.
+   */
+  memory_budget_chars: z.number().int().positive().default(850000),
+  /**
+   * What one consolidation leaves behind, in characters.
+   *
+   * A pass takes whole turns from the oldest end until what remains is at or
+   * under this. Written as "what is left" rather than "how much to take"
+   * because a turn has no upper bound — forty model calls, every tool result
+   * stored whole — so no fixed amount can promise the reassembled request
+   * lands under the budget, and that promise is the point.
+   */
+  memory_keep_chars: z.number().int().positive().default(500000),
   web_fetch_max_chars: z.number().int().positive().default(50000),
   /**
    * How long ONE DELIVERY of a `web_fetch` request may take, in milliseconds.
@@ -107,10 +194,61 @@ const agentConfigSchema = z.object({
   thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
+}).superRefine((config, ctx) => {
+  // A consolidation runs when the request is over the budget and takes turns
+  // until what remains is at or under the keep line. Put the keep line at or
+  // above the budget and the loop stops before it has taken anything: the
+  // plan comes back empty, folding never happens, and every turn from then on
+  // goes out at whatever length it happens to be — with nothing said anywhere.
+  if (config.memory_keep_chars >= config.memory_budget_chars) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["memory_keep_chars"],
+      message: `memory_keep_chars (${config.memory_keep_chars}) must be below memory_budget_chars (${config.memory_budget_chars})`,
+    });
+  }
+
+  // The pass runs to the keep line less the room the fold may add: it
+  // measures a payload carrying the memory as it stood, and the request that
+  // goes out carries what the fold wrote. Let the two ceilings reach that
+  // line and the pass has nothing to run to — every fold takes the whole
+  // conversation, and past it the line is negative, which the loop reads as
+  // never stopping. Both are configs that load clean and are found by the
+  // first reader whose conversation grows past the budget.
+  // The room the fold may add, held back from the keep line below.
+  const reserved = reservedForMemory(config);
+  if (reserved >= config.memory_keep_chars) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["memory_conversation_max_size"],
+      message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_chars (${config.memory_keep_chars})`,
+    });
+  }
 });
 
 /** Validated agent configuration type. */
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+
+/**
+ * The keep line a consolidation pass actually runs to.
+ *
+ * The configured line less the room the fold may add, worked out here so the
+ * arithmetic has one home: the refinement above rejects a pair of ceilings
+ * that would put this at or below zero, and it can only do that if it holds
+ * back the same amount the pass will.
+ * @param config - An object carrying the three figures this is worked out from.
+ * @param config.memory_keep_chars - The configured keep line.
+ * @param config.memory_conversation_max_size - The conversation ceiling.
+ * @param config.memory_project_max_size - The project ceiling.
+ * @returns The line, in code units.
+ */
+export function effectiveKeepChars(config: {
+  memory_keep_chars: number;
+  memory_conversation_max_size: number;
+  memory_project_max_size: number;
+}): number {
+  return config.memory_keep_chars - reservedForMemory(config);
+}
 
 /**
  * The agent config shape, for tests that assert on its bounds.

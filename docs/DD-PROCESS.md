@@ -22,7 +22,7 @@
 |---|---|
 | AIGC provider 选型(image / video / audio / 3d / tts / understand 模型路由) | 架构/长期维护 + 跨界 |
 | Agent / Skill 定义变更(system prompt / tools 列表) | 安全模型(prompt injection)+ 架构/长期维护 |
-| 核心架构变更(三层记忆 / Turn 压缩 / Yjs 结构 / Redis Streams) | 架构/长期维护 + 跨界 |
+| 核心架构变更(两层记忆 / Turn 压缩 / Yjs 结构 / Redis Streams) | 架构/长期维护 + 跨界 |
 | 积分 / 计费机制(pricing / Stripe webhook / 扣费幂等) | 安全模型 + 已扩散 |
 | 部署形态变更(Docker / nginx / CI 流水线) | 架构/长期维护 + 已扩散 |
 | 全前端重写 / 长 living branch | 架构/长期维护 + 跨界 + 已扩散 |

@@ -166,11 +166,23 @@ export type MessagePart =
    * A part for the same reason `interrupted` is one, and the same guarantee
    * follows: a turn that fails before the model says a word produces nothing
    * else, and a row with an empty list cannot be told apart from a turn that
-   * never happened. Being stopped and failing are the two ways a turn ends
-   * without finishing, and a reader has to tell them apart — one is something
+   * never happened. Being stopped, failing and running out of room are the
+   * three ways a turn ends without finishing, and a reader has to tell them apart — one is something
    * the user did, the other is something that went wrong.
    */
-  | { type: "failed" };
+  | { type: "failed" }
+  /**
+   * The turn reached the ceiling on one call's output and stopped mid-sentence.
+   *
+   * The third way a turn ends without finishing, and it is neither of the
+   * other two: nobody stopped it and nothing went wrong. What ran out is room
+   * we ourselves set, so a reader told it was stopped would look for a stop
+   * they never made, and one told it failed would look for a fault there is
+   * none of.
+   *
+   * A part for the same reason the other two are.
+   */
+  | { type: "truncated" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
@@ -658,9 +670,13 @@ export interface RecentItem {
   lastOpenedAt: Date;
 }
 
-/** Three-layer memory context for LLM prompts. */
+/**
+ * The two memory layers an LLM prompt carries.
+ *
+ * Both are the reader's own: project memory is keyed by member as well as
+ * project, and conversation memory by conversation.
+ */
 export interface MemoryContext {
-  userMemory: string;
   projectMemory: string;
   conversationMemory: string;
 }

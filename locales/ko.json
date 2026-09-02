@@ -99,9 +99,6 @@
       "history_entry_not_found": "기록을 찾을 수 없습니다",
       "node_locked": "이 노드는 다른 사람이 생성 중입니다"
     },
-    "memory": {
-      "version_conflict": "다른 사람이 동시에 수정했습니다. 다시 시도해 주세요."
-    },
     "asset": {
       "direct_upload_unavailable": "이 서버에서는 직접 업로드를 사용할 수 없습니다"
     },
@@ -132,6 +129,9 @@
       "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
       "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
+    },
+    "chat": {
+      "message_too_long": "이 메시지는 너무 깁니다. 첨부한 내용을 포함해 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다."
     }
   },
   "chat": {
@@ -148,7 +148,8 @@
         "title": "스킬 선택"
       },
       "send": "전송",
-      "sending": "보내는 중"
+      "sending": "보내는 중",
+      "atLimit": "{limit, number}자 제한에 도달했습니다"
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -184,7 +185,9 @@
     },
     "message": {
       "interrupted": "중지됨",
-      "waiting": "응답 중"
+      "truncated": "길이 제한에 도달함",
+      "waiting": "응답 중",
+      "consolidating": "이 대화의 기억을 정리하는 중…"
     },
     "tool": {
       "unfinished": "중지됨",

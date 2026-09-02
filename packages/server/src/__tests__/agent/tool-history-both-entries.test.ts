@@ -19,12 +19,12 @@ import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const streamTextRetry = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     // The history is what this case is about: a turn now reads it itself,
     // after storing the message and answering the browser, so this is where
     // it comes from.
@@ -82,7 +82,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 
 // What the system prompt says is settled elsewhere and has its own tests; here
 // it would only drag the skill registry in for a suite that asserts on history.

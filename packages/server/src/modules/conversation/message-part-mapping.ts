@@ -9,8 +9,9 @@
  * our rows are written. Code can be rewritten when the library changes; rows
  * already written cannot.
  *
- * Two of our parts have no counterpart in the SDK's list. `interrupted` and
- * `failed` are things we know about a turn, not things a model streamed, so
+ * Three of our parts have no counterpart in the SDK's list. `interrupted`,
+ * `failed` and `truncated` are things we know about a turn, not things a
+ * model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define -- and not transient ones: a reader who reloads has
  * to still see that a turn was cut off.
@@ -31,6 +32,9 @@ const INTERRUPTED = "data-interrupted";
 
 /** The data part type carrying a turn that could not be finished. */
 const FAILED = "data-failed";
+
+/** The data part type carrying a turn the output ceiling cut off. */
+const TRUNCATED = "data-truncated";
 
 /**
  * How far a tool got, from the state the SDK last reported.
@@ -115,6 +119,7 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === "reasoning") stored.push({ type: "reasoning", text: part.text });
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
     else if (part.type === FAILED) stored.push({ type: "failed" });
+    else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
     // Anything else the protocol carries -- step boundaries, sources, the
     // beat -- is about the exchange rather than the message, and the message
     // is what this stores.
@@ -133,6 +138,8 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     if (part.type === "reasoning") return { type: "reasoning", text: part.text };
     if (part.type === "interrupted") return { type: INTERRUPTED, data: {} };
     if (part.type === "failed") return { type: FAILED, data: {} };
+    if (part.type === "truncated") return { type: TRUNCATED, data: {} };
+
 
     const base = {
       type: `tool-${part.toolName}`,

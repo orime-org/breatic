@@ -21,10 +21,6 @@ default_model: deepseek/deepseek-v4-pro
 consolidation_model: deepseek/deepseek-v4-pro
 
 # ── Memory System ─────────────────────────────────────────
-# Number of recent turns (user → agent round-trips) before triggering consolidation.
-# A "turn" = one user message + all agent steps (tool calls + final reply).
-memory_window: 20
-
 # How much of a conversation's first message is kept as its title. The rest is
 # cut with an ellipsis so a list of conversations stays readable.
 conversation_title_max_chars: 60
@@ -46,19 +42,52 @@ message_page_size: 30
 # a row happen to a stream that is doing fine.
 sse_heartbeat_interval_ms: 5000
 
-# Number of recent turns to keep unconsolidated during memory consolidation.
-memory_keep_recent_turns: 3
-
-# Number of recent turns to preserve full step detail (tool calls + results)
-# when building LLM context. Older unconsolidated turns are compressed to
-# user message + assistant final reply only.
-full_detail_turns: 3
+# How many of the most recent tool uses keep their result when building LLM
+# context. Older tool results are replaced by a placeholder; the call record
+# — name and arguments — stays, as does every user message and reply.
+#
+# Counted in tool use/result pairs, not turns: one turn can run forty model
+# calls and all of them land in a single stored row, so a turn-shaped window
+# would be three orders of magnitude coarser than what actually fills the
+# context. Three is the figure Anthropic's clear_tool_uses_20250919 keeps.
+tool_result_keep: 3
 
 # Maximum character length for project memory injected into AI calls.
 memory_project_max_size: 3072
 
-# Maximum character length for user memory injected into AI calls.
-memory_user_max_size: 2048
+# Maximum character length for conversation memory injected into AI calls.
+# Consolidation rewrites this layer whole every time it runs, so it is the one
+# segment that grows from its own output.
+memory_conversation_max_size: 3072
+
+# The ceiling on one model call's answer, in tokens. Per call, not per turn:
+# a turn can make many calls and each of them is bounded by this.
+max_output_tokens: 16384
+
+# How long one turn's question may be, in characters. Measured on what
+# reaches the model: a message carries the canvas content the reader attached
+# folded in front of it, and a skill command carries its name and input.
+# Both entrances measure the same way.
+#
+# The browser draws a lower line (10,000) and says so as the reader types;
+# this one is where a client cannot skip it.
+user_message_max_chars: 15000
+
+# How long an assembled request may be before a consolidation runs, in
+# characters. Measured against everything about to go to the model: system
+# prompt, skill bodies, memory, tool definitions, history and this turn's
+# question.
+#
+# Characters rather than tokens because no library counts tokens for a model
+# reached through OpenRouter, and a character is never more than a token in
+# the tokenizers this build meets — so this can only fire early.
+memory_budget_chars: 850000
+
+# What one consolidation leaves behind, in characters. A pass takes whole
+# turns from the oldest end until what remains is under this, less the room
+# the fold may add to memory — the two memory ceilings, doubled, since they
+# are counted in code points and the payload is measured in code units.
+memory_keep_chars: 500000
 
 # ── Tools ─────────────────────────────────────────────────
 # Maximum characters returned from web_fetch tool output.

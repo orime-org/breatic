@@ -78,7 +78,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig } from "@core/config/loader.js";
+export { getAgentConfig, effectiveKeepChars } from "@core/config/loader.js";
 export { getSkillRouting, resetSkillRouting, SKILL_SURFACES } from "@core/config/skill-routing.js";
 export type { SkillRoute, SkillRouting, SkillSurface } from "@core/config/skill-routing.js";
 

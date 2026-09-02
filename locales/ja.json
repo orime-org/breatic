@@ -99,9 +99,6 @@
       "history_entry_not_found": "履歴が見つかりません",
       "node_locked": "このノードは他の人が生成中です"
     },
-    "memory": {
-      "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"
-    },
     "asset": {
       "direct_upload_unavailable": "このサーバーでは直接アップロードを利用できません"
     },
@@ -132,6 +129,9 @@
       "consent_heading": "ご購入時に同意いただいた内容",
       "refund_heading": "クレジットパックの返金規定",
       "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
+    },
+    "chat": {
+      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。"
     }
   },
   "chat": {
@@ -148,7 +148,8 @@
         "title": "Skill を選択"
       },
       "send": "送信",
-      "sending": "送信中"
+      "sending": "送信中",
+      "atLimit": "{limit, number} 文字の上限に達しました"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -184,7 +185,9 @@
     },
     "message": {
       "interrupted": "停止しました",
-      "waiting": "応答中"
+      "truncated": "長さの上限に達しました",
+      "waiting": "応答中",
+      "consolidating": "この会話の記憶を整理しています…"
     },
     "tool": {
       "unfinished": "停止しました",

@@ -13,7 +13,7 @@
  * turn writes down, and what a conversation hands back when it is opened.
  * Both are pure functions and both are here.
  *
- * Two of our parts have no counterpart in the SDK's list. `interrupted` and
+ * Three of our parts have no counterpart in the SDK's list. `interrupted` and
  * `failed` are things we know about a turn, not things a model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
  * what it does not define. They are not transient: a reader who reloads has
@@ -30,6 +30,20 @@ import {
 } from "@server/modules/conversation/message-part-mapping.js";
 
 describe("what a finished turn writes down", () => {
+  it("carries a turn's ending back out the way it came in", () => {
+    // The three marks make the round trip on their own: a reload reads them
+    // out of storage and the panel draws from what `toUiParts` hands back,
+    // so a mark that survives storage and not the way back is invisible.
+    for (const [stored, wire] of [
+      ["interrupted", "data-interrupted"],
+      ["failed", "data-failed"],
+      ["truncated", "data-truncated"],
+    ] as const) {
+      expect(toUiParts([{ type: stored }])).toEqual([{ type: wire, data: {} }]);
+      expect(toStoredParts([{ type: wire, data: {} }] as never)).toEqual([{ type: stored }]);
+    }
+  });
+
   it("keeps prose and reasoning as they came", () => {
     const stored = toStoredParts([
       { type: "text", text: "好的" },

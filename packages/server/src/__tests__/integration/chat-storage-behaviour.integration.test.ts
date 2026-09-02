@@ -14,8 +14,8 @@
  *     the idempotency key, and one of the two turns goes unbilled.
  *
  *   - The memory chain reads messages through the same repository. Moving
- *     messages out of the JSONB column moves the ground under it, so its two
- *     read functions are pinned here as well.
+ *     messages out of the JSONB column moves the ground under it, so what it
+ *     reads and what it writes are pinned here as well.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -431,24 +431,12 @@ describe("reading a conversation longer than one page", () => {
 });
 
 describe("the memory chain still sees the same messages", () => {
-  it("counts the turns past the consolidated watermark", async () => {
-    const { userId, projectId } = await seedProject();
-    const conv = await seedConversation(userId, projectId);
-
-    for (let i = 0; i < 5; i++) {
-      const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
-      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }], turnIndex: turn });
-    }
-    await conversationRepo.updateConsolidatedTurn(conv.id, 2);
-
-    // Five user messages → turns 1..5; watermark at 2 leaves three.
-    expect(await messageRepo.getUnconsolidatedTurnCount(conv.id)).toBe(3);
-  });
-
   it("does not move the conversation when it records what it consolidated", async () => {
-    // 归纳是 fire-and-forget 的:它落地时读者可能已经在另一条会话里说过话了。
-    // 动了 updated_at,这条没人在说话的会话会反超到列表最前,下次打开 project
-    // 也落在它上面 —— 而归纳对读者是不可见的簿记。
+    // `updated_at` orders the conversation list and decides which one an open
+    // lands on, and what it means there is "last used". Consolidation is
+    // bookkeeping the reader never asked for and cannot see; moving the
+    // conversation for it would lift one they have not opened in weeks to
+    // the top of their list.
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
     const turn = await messageRepo.addMessage(conv.id, {
@@ -462,25 +450,10 @@ describe("the memory chain still sees the same messages", () => {
     });
     const before = await conversationRepo.getConversation(conv.id);
 
-    await conversationRepo.updateConsolidatedTurn(conv.id, 1);
+    await conversationRepo.advanceConsolidatedTurn(conv.id, 1);
 
     const after = await conversationRepo.getConversation(conv.id);
     expect(after!.updatedAt.getTime()).toBe(before!.updatedAt.getTime());
-  });
-
-  it("hands consolidation exactly the turns inside the window", async () => {
-    const { userId, projectId } = await seedProject();
-    const conv = await seedConversation(userId, projectId);
-
-    for (let i = 1; i <= 6; i++) {
-      const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: `q${i}` }] });
-      await messageRepo.addMessage(conv.id, { role: "assistant", parts: [{ type: "text", text: `a${i}` }], turnIndex: turn });
-    }
-
-    // Turns 1..6 exist, 1 is already consolidated, the last 2 are kept back:
-    // the window is turns 2..4.
-    const window = await messageRepo.getMessagesForConsolidation(conv.id, 1, 2);
-    expect(window.map((m) => m.content)).toEqual(["q2", "a2", "q3", "a3", "q4", "a4"]);
   });
 
   it("skips consolidated turns and drops the flat mirror of the reasoning", async () => {
@@ -506,13 +479,12 @@ describe("the memory chain still sees the same messages", () => {
     // Reasoning is the model's own working: sending it back teaches nothing
     // and is paid for every turn.
     expect(forLlm[1]).not.toHaveProperty("thinking");
-    // The turn index stays, because the compressor between here and the model
-    // groups by it. Dropping it left every message in one group and the
-    // compressing branch unreachable.
+    // The turn index stays: it is how the store knows which question a reply
+    // answers, and consolidation moves its watermark by it.
     expect(forLlm[1]?.turnIndex).toBe(turn);
   });
 
-  it("compresses the turns past the detail window, read the way the route reads them", async () => {
+  it("drops the results of tool uses past the window, read the way the route reads them", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
@@ -544,10 +516,16 @@ describe("the memory chain still sees the same messages", () => {
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 0);
     const context = compressForContext(forLlm, 3);
 
-    // Five turns, the last three kept whole. Turns 1 and 2 are old enough to
-    // lose their tool use -- that is the entire point of compressing them, and
-    // the older the conversation the larger the share of the context it saves.
-    const keptToolUse = context.filter((m) => m.parts.some((p) => p.type === "tool"));
-    expect(keptToolUse.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
+    // Every call is still on the record: what the assistant did is small, and
+    // a result with no call in front of it is a page the model cannot place.
+    const called = context.filter((m) => m.parts.some((p) => p.type === "tool"));
+    expect(called.map((m) => m.content)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
+
+    // Five uses, the last three keeping what came back. The first two are past
+    // the window, and their bodies are what the compression saves.
+    const keptResult = context.filter((m) =>
+      m.parts.some((p) => p.type === "tool" && p.output === "page text"),
+    );
+    expect(keptResult.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
   });
 });

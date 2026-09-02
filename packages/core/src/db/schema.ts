@@ -1143,51 +1143,23 @@ export const memoryHistoryEntries = pgTable(
   ],
 );
 
-// ── 11. User Memories ────────────────────────────────────────────────
+// ── 11. Project Memories ─────────────────────────────────────────────
 
-export const userMemories = pgTable(
-  "user_memories",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    content: text("content").default("").notNull(),
-    version: integer("version").default(1).notNull(),
-    ...timestamps,
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [uniqueIndex("user_memories_user_id_idx").on(table.userId)],
-);
-
-// ── 12. User Memory Entries ──────────────────────────────────────────
-
-export const userMemoryEntries = pgTable(
-  "user_memory_entries",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    content: text("content").notNull(),
-    sourceConversationId: uuid("source_conversation_id").references(
-      () => conversations.id,
-      { onDelete: "set null" },
-    ),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [index("user_mem_entries_user_id_idx").on(table.userId)],
-);
-
-// ── 13. Project Memories ─────────────────────────────────────────────
-
+/**
+ * What one member's agent has summarised about one project.
+ *
+ * Keyed by member as well as project: the content is written by reading that
+ * member's own conversations, so a row shared across a project hands what one
+ * person's agent learned to the next person's system prompt, and the next
+ * consolidation overwrites it.
+ */
 export const projectMemories = pgTable(
   "project_memories",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
@@ -1197,11 +1169,14 @@ export const projectMemories = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("project_memories_project_id_idx").on(table.projectId),
+    uniqueIndex("project_memories_user_project_idx").on(
+      table.userId,
+      table.projectId,
+    ),
   ],
 );
 
-// ── 14. Project Memory Entries ───────────────────────────────────────
+// ── 12. Project Memory Entries ───────────────────────────────────────
 
 export const projectMemoryEntries = pgTable(
   "project_memory_entries",
