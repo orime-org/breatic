@@ -40,6 +40,16 @@ interface AudioGeneratePanelProps {
   models: ModelEntry[];
   /** The selected model id. */
   model: string;
+  /**
+   * The selected model's entry, resolved by the view model.
+   *
+   * Handed down rather than looked up again here: the view model already
+   * resolved it to answer which params to render and whether a voice is
+   * needed, and a second lookup is a second chance to answer differently.
+   */
+  currentModel: ModelEntry | undefined;
+  /** Whether that model consumes the prompt (its `takes_prompt`). */
+  modelTakesPrompt: boolean;
   /** The selected mode. */
   mode: string;
   /** The modes this panel offers, filtered by what the catalog serves. */
@@ -109,6 +119,8 @@ interface AudioGeneratePanelProps {
  * @param root0 - Component props.
  * @param root0.models - The tts models to offer.
  * @param root0.model - The selected model id.
+ * @param root0.currentModel - That model's catalog entry.
+ * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
  * @param root0.voiceList - Where the voice list is.
@@ -136,6 +148,8 @@ interface AudioGeneratePanelProps {
 export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   models,
   model,
+  currentModel,
+  modelTakesPrompt,
   mode,
   modeOptions,
   voiceList,
@@ -160,7 +174,6 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onExecute,
 }: AudioGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
-  const currentModel = models.find((m) => m.name === model);
   const rate = currentModel?.rate;
 
   const exitButton = (
@@ -215,9 +228,9 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         onInsert={onInsertReference}
         // An audio node collects only text rows, and a text row is prompt
         // material — outside the `modeTakesReferences` question entirely. What
-        // it answers to is the model's own `takes_prompt`, the fact this prop
-        // is named for.
-        modelTakesPrompt={currentModel?.takes_prompt !== false}
+        // it answers to is the model's own `takes_prompt`, resolved once by the
+        // view model.
+        modelTakesPrompt={modelTakesPrompt}
       />
 
       {promptSlot}

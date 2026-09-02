@@ -86,6 +86,8 @@ function renderPanel(ui: React.ReactElement): ReturnType<typeof render> {
 const BASE = {
   models: [ELEVEN, FISH],
   model: 'elevenlabs-v3',
+  currentModel: ELEVEN,
+  modelTakesPrompt: true,
   mode: 'tts',
   modeOptions: AUDIO_MODE_OPTIONS,
   voiceList: initialVoiceListState,
@@ -160,7 +162,9 @@ describe('AudioGeneratePanel rate (#1960 A5)', () => {
   it('counts bytes for the vendor that bills that way', () => {
     // Fish charges per UTF-8 byte and a Chinese character is three of them, so
     // one shared "per 1000 characters" wording would understate it threefold.
-    renderPanel(<AudioGeneratePanel {...BASE} model='fish-s2-pro' />);
+    renderPanel(
+      <AudioGeneratePanel {...BASE} model='fish-s2-pro' currentModel={FISH} />,
+    );
     expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
       'canvas.generatePanel.rateBytes',
     );
@@ -171,6 +175,7 @@ describe('AudioGeneratePanel rate (#1960 A5)', () => {
       <AudioGeneratePanel
         {...BASE}
         models={[ttsModel('no-rate')]}
+        currentModel={ttsModel('no-rate')}
         model='no-rate'
       />,
     );
@@ -261,7 +266,12 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
 
   it('offers the params picker for a model that declares one', () => {
     renderPanel(
-      <AudioGeneratePanel {...BASE} models={[WITH_PARAMS]} model={WITH_PARAMS.name} />,
+      <AudioGeneratePanel
+        {...BASE}
+        models={[WITH_PARAMS]}
+        currentModel={WITH_PARAMS}
+        model={WITH_PARAMS.name}
+      />,
     );
     expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
   });
@@ -277,6 +287,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
       <AudioGeneratePanel
         {...BASE}
         models={[WITH_PARAMS]}
+        currentModel={WITH_PARAMS}
         model={WITH_PARAMS.name}
         onChangeParams={onChangeParams}
       />,

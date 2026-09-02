@@ -346,6 +346,7 @@
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",
+      "voiceModelChanged": "モデルが変更されました。音声を選び直してください。",
       "catalogUnavailable": "モデル一覧を読み込めませんでした。後でもう一度お試しください",
       "catalogOffline": "オフラインのためモデル一覧を取得できません。接続し直してからお試しください。",
       "catalogNoModels": "利用可能なモデルがありません。provider の API key を設定してください",

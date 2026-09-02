@@ -96,7 +96,7 @@ export function buildAudioPanelViewModel(input: {
     modelEntry: current,
     params,
     nodeStatus: content?.status,
-    promptRequired: current?.takes_prompt === true,
+    promptRequired: current?.takes_prompt ?? true,
     voiceRequired: voiceParam !== null,
     voiceChosen,
     voiceSelectedId: voiceChosen

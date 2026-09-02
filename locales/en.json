@@ -355,6 +355,7 @@
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
+      "voiceModelChanged": "The model changed. Pick a voice again.",
       "catalogUnavailable": "Model list unavailable — please try again later",
       "catalogOffline": "You are offline — the model list cannot be loaded. Reconnect and try again.",
       "catalogNoModels": "No models available. Configure a provider API key",

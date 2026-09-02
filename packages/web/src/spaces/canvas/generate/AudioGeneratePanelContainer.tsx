@@ -288,7 +288,7 @@ function AudioGeneratePanelBody({
       // from the outgoing vendor's domain in hand, and the incoming model's
       // record is no place for it.
       if (fresh.model !== vm.model) {
-        toast.warning(t('canvas.generatePanel.modelUnavailable'));
+        toast.warning(t('canvas.generatePanel.voiceModelChanged'));
         return;
       }
       const name = voiceParamName(fresh.modelEntry);
@@ -450,6 +450,8 @@ function AudioGeneratePanelBody({
     <AudioGeneratePanel
       models={modeModels}
       model={vm.model}
+      currentModel={vm.modelEntry}
+      modelTakesPrompt={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}
       voiceList={voices.state}
