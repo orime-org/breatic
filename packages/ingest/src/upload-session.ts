@@ -89,13 +89,17 @@ type ReportAnswer = RegisteredAsset | "refused" | "unavailable";
  * @returns The answer to give the caller.
  */
 function outcomeResponse(progress: FinishProgress): Response {
-  if (progress.abortedReason !== undefined) {
+  // A refusal ends the upload the same way an abort does — the server will
+  // never register this object, and asking again cannot change that — so it
+  // gets the same answer. Only a report the server accepted leaves `registered`
+  // behind, which is what tells the two apart.
+  if (progress.abortedReason !== undefined || progress.registered === undefined) {
     return Response.json(
-      { outcome: "aborted", reason: progress.abortedReason },
+      { outcome: "aborted", ...(progress.abortedReason !== undefined && { reason: progress.abortedReason }) },
       { status: 409 },
     );
   }
-  return Response.json(progress.registered ?? {});
+  return Response.json(progress.registered);
 }
 
 /** The Durable Object holding one upload's parts, ticket context and alarm. */

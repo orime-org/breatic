@@ -177,11 +177,14 @@ async function uploadPart(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  const body = await request.arrayBuffer();
+  // Forwarded as the stream it arrived as. The instance has to hold the whole
+  // part to check its length against the signed layout and to hand it to R2;
+  // reading it here as well would mean a second copy of every part in memory,
+  // on the one hop that adds nothing to it.
   return sessionFor(env, session.storageKey).fetch(
     new Request(`https://session/part/${partNumber}`, {
       method: "PUT",
-      body,
+      body: request.body,
     }),
   );
 }

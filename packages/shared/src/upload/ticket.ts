@@ -64,28 +64,9 @@ export type UploadTicketVerification =
   | { ok: false; reason: UploadTicketRejection };
 
 import {
-  encodeBase64Utf8,
-  decodeBase64Utf8,
-  encodeBase64Bytes,
-  decodeBase64Bytes,
-} from "@shared/upload/base64.js";
-
-const ALGORITHM = { name: "HMAC", hash: "SHA-256" } as const;
-
-/**
- * Import a shared secret as an HMAC key.
- * @param secret - The shared secret both sides hold.
- * @returns A CryptoKey usable for signing and verifying.
- */
-async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    ALGORITHM,
-    false,
-    ["sign", "verify"],
-  );
-}
+  signPayload,
+  readSignedPayload,
+} from "@shared/upload/signed-payload.js";
 
 /**
  * Sign an upload ticket.
@@ -108,13 +89,7 @@ export async function signUploadTicket(
       `partSize ${payload.partSize} is under R2's ${MIN_PART_SIZE_BYTES}-byte floor for a multi-part upload`,
     );
   }
-  const body = encodeBase64Utf8(JSON.stringify(payload));
-  const signature = await crypto.subtle.sign(
-    ALGORITHM,
-    await hmacKey(secret),
-    new TextEncoder().encode(body),
-  );
-  return `${body}.${encodeBase64Bytes(signature)}`;
+  return signPayload(payload, secret);
 }
 
 /**
@@ -132,29 +107,8 @@ export async function verifyUploadTicket(
   secret: string,
   now: number,
 ): Promise<UploadTicketVerification> {
-  const parts = token.split(".");
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    return { ok: false, reason: "malformed" };
-  }
-  const [body, signature] = parts as [string, string];
-
-  let signatureBytes: Uint8Array;
-  let payload: UploadTicketPayload;
-  try {
-    signatureBytes = decodeBase64Bytes(signature);
-    payload = JSON.parse(decodeBase64Utf8(body)) as UploadTicketPayload;
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
-
-  const valid = await crypto.subtle.verify(
-    ALGORITHM,
-    await hmacKey(secret),
-    signatureBytes,
-    new TextEncoder().encode(body),
-  );
-  if (!valid) return { ok: false, reason: "bad_signature" };
-
-  if (now > payload.expiresAt) return { ok: false, reason: "expired" };
-  return { ok: true, payload };
+  const read = await readSignedPayload<UploadTicketPayload>(token, secret);
+  if (!read.ok) return read;
+  if (now > read.payload.expiresAt) return { ok: false, reason: "expired" };
+  return { ok: true, payload: read.payload };
 }

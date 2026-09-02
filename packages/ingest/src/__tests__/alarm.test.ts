@@ -315,6 +315,20 @@ describe("a server that refuses the report outright", () => {
 
     expect(reports).toHaveLength(1);
   });
+
+  // A refusal ends this upload as surely as an abort does: the server will
+  // never register the object, and asking again cannot change that. Answering
+  // 200 says the opposite, and the browser then clears the node's retry stash
+  // on an upload the server has already written down as failed.
+  it("tells the browser the upload is over rather than answering it as a success", async () => {
+    expectReport(413);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    await runDurableObjectAlarm(sessionOf(storageKey));
+
+    const answer = await complete(uploadId, token);
+
+    expect(answer.status).toBe(409);
+  });
 });
 
 // One instance per upload, and uploads never stop arriving. What each one

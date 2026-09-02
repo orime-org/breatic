@@ -24,29 +24,7 @@ export interface SessionTokenPayload {
   expiresAt: number;
 }
 
-import {
-  encodeBase64Utf8,
-  decodeBase64Utf8,
-  encodeBase64Bytes,
-  decodeBase64Bytes,
-} from "@breatic/shared";
-
-const ALGORITHM = { name: "HMAC", hash: "SHA-256" } as const;
-
-/**
- * Import the shared secret as an HMAC key.
- * @param secret - The value our server and this Worker both hold.
- * @returns A key usable for signing and verifying.
- */
-async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    ALGORITHM,
-    false,
-    ["sign", "verify"],
-  );
-}
+import { signPayload, readSignedPayload } from "@breatic/shared";
 
 /**
  * Issue a token for the next part of an upload.
@@ -58,13 +36,7 @@ export async function signSessionToken(
   payload: SessionTokenPayload,
   secret: string,
 ): Promise<string> {
-  const body = encodeBase64Utf8(JSON.stringify(payload));
-  const signature = await crypto.subtle.sign(
-    ALGORITHM,
-    await hmacKey(secret),
-    new TextEncoder().encode(body),
-  );
-  return `${body}.${encodeBase64Bytes(signature)}`;
+  return signPayload(payload, secret);
 }
 
 /**
@@ -81,26 +53,8 @@ export async function verifySessionToken(
   secret: string,
   now: number,
 ): Promise<SessionTokenPayload | null> {
-  const parts = token.split(".");
-  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
-  const [body, signature] = parts as [string, string];
-
-  let signatureBytes: Uint8Array;
-  let payload: SessionTokenPayload;
-  try {
-    signatureBytes = decodeBase64Bytes(signature);
-    payload = JSON.parse(decodeBase64Utf8(body)) as SessionTokenPayload;
-  } catch {
-    return null;
-  }
-
-  const valid = await crypto.subtle.verify(
-    ALGORITHM,
-    await hmacKey(secret),
-    signatureBytes,
-    new TextEncoder().encode(body),
-  );
-  if (!valid) return null;
-  if (now > payload.expiresAt) return null;
-  return payload;
+  const read = await readSignedPayload<SessionTokenPayload>(token, secret);
+  if (!read.ok) return null;
+  if (now > read.payload.expiresAt) return null;
+  return read.payload;
 }

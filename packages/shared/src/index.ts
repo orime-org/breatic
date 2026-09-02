@@ -430,3 +430,11 @@ export {
   encodeBase64Bytes,
   decodeBase64Bytes,
 } from "@shared/upload/base64.js";
+// The credential format both halves of an upload use: our server signs the
+// ticket and the session token with one secret, and the Worker verifies both.
+export {
+  signPayload,
+  readSignedPayload,
+  type SignedPayloadReading,
+  type SignedPayloadRejection,
+} from "@shared/upload/signed-payload.js";
