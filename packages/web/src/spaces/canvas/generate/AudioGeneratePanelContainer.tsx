@@ -52,7 +52,10 @@ import {
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/generate/model-params';
-import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
+import {
+  filterAvailableModes,
+  filterModelsByMode,
+} from '@web/spaces/canvas/generate/mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import type { PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
@@ -120,6 +123,15 @@ function AudioGeneratePanelBody({
     [models],
   );
   const mode = availableModes[0]?.value ?? '';
+  // What the picker offers has to be what this mode can run. The union of both
+  // buckets is the right input for the availability gate above and for the view
+  // model's own narrowing; handing it to the picker lists sound-effect, music
+  // and vocal-remover models under voiceover, where selecting one writes a
+  // model the next render resolves straight back.
+  const modeModels = React.useMemo(
+    () => filterModelsByMode(models, mode),
+    [models, mode],
+  );
 
   // Two mirrors of the prompt: state drives the button's enabled look, and the
   // ref is read synchronously at click time so a rapid re-click, or a
@@ -389,7 +401,7 @@ function AudioGeneratePanelBody({
 
   return (
     <AudioGeneratePanel
-      models={models}
+      models={modeModels}
       model={vm.model}
       mode={mode}
       modeOptions={availableModes}

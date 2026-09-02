@@ -85,6 +85,17 @@ const FISH: ModelEntry = {
   rate: { credits: 1.5, per: 1000, unit: 'utf8_bytes' },
 };
 
+/** A sound-effect model, as `config/models/audio/` holds one today. */
+const SFX: ModelEntry = {
+  ...ELEVEN,
+  name: 'elevenlabs-sfx-v2',
+  display_name: 'ElevenLabs SFX V2',
+  modality: 'audio',
+  mode: 'sfx',
+  params: {},
+  sourcesByMode: { sfx: [] },
+};
+
 /**
  * A catalog holding both tts models — the two buckets this panel reads.
  * @returns A model catalog.
@@ -93,7 +104,9 @@ function catalog(): ModelCatalog {
   return {
     image: [],
     video: [],
-    audio: [],
+    // The audio bucket really does hold non-voiceover models today
+    // (`config/models/audio/`), and this panel reads both buckets.
+    audio: [SFX],
     tts: [ELEVEN, FISH],
     three_d: [],
     understand: [],
@@ -226,6 +239,17 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
+  });
+
+  it('offers only the models this mode can run', async () => {
+    // The panel reads two catalog buckets, and the audio one holds sound
+    // effect, music and vocal-remover models. Listing one of those under
+    // voiceover offers a pick the panel then silently reverts.
+    await openPanel({ model: 'elevenlabs-v3' });
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    expect(screen.getByTestId('generate-model-option-elevenlabs-v3')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-model-option-fish-s2-pro')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-model-option-elevenlabs-sfx-v2')).toBeNull();
   });
 
   it('states the rate of the model it is on, in that vendor\'s unit', async () => {
