@@ -191,10 +191,42 @@ describe('AudioParamsPicker — when a slider writes', () => {
     expect(onChange).toHaveBeenCalledWith({ speed: 1.7 });
   });
 
-  it('still writes per keypress, because each one is its own decision', () => {
+  it('holding an arrow key writes where it started and where it ended', () => {
+    // The browser repeats a held key about thirty times a second and Radix
+    // commits on every one of them. Volume has 41 stops, so holding from one
+    // end to the other would fill most of a 50-deep undo stack with steps of
+    // one gesture. The press is the decision; the repeats are it continuing.
     const onChange = vi.fn();
     open(FISH, { speed: 1, volume: 0 }, onChange);
-    fireEvent.keyDown(screen.getByRole('slider', { name: 'Speed' }), { key: 'ArrowRight' });
-    expect(onChange).toHaveBeenCalledWith({ speed: 1.05 });
+    const thumb = screen.getByRole('slider', { name: 'Speed' });
+
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
+    }
+    fireEvent.keyUp(thumb, { key: 'ArrowRight' });
+
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenNthCalledWith(1, { speed: 1.05 });
+    expect(onChange).toHaveBeenNthCalledWith(2, { speed: 1.2 });
+  });
+
+  it('lets go of the drafted value once the key is up', () => {
+    // Radix reports a keyboard commit before it reports the change, so the
+    // draft cleared inside the commit is written straight back. Left set, the
+    // row shows this client's number over anything a collaborator stores.
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <AudioParamsPicker model={FISH} value={{ speed: 1, volume: 0 }} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    const thumb = screen.getByRole('slider', { name: 'Speed' });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    fireEvent.keyUp(thumb, { key: 'ArrowRight' });
+
+    rerender(
+      <AudioParamsPicker model={FISH} value={{ speed: 0.8, volume: 0 }} onChange={onChange} />,
+    );
+    expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('0.80x');
   });
 });

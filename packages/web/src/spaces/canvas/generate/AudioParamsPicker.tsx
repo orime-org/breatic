@@ -260,14 +260,42 @@ function ParamSliderRow({
   const [dragged, setDragged] = React.useState<number | null>(null);
   const shown = dragged ?? value;
 
+  // A key the browser is repeating, and the step the last repeat reached.
+  const repeatingRef = React.useRef(false);
+  const repeatedToRef = React.useRef<number | null>(null);
+
   const onValueChange = React.useCallback(([next]: number[]) => setDragged(next), []);
+
   const onValueCommit = React.useCallback(
     ([next]: number[]) => {
+      // Radix commits on every repeat of a held key. The press is the
+      // decision and the repeats are it continuing, so they wait for the
+      // release rather than each becoming its own undo entry.
+      if (repeatingRef.current) {
+        repeatedToRef.current = next;
+        return;
+      }
       setDragged(null);
       onChange({ [control.name]: next });
     },
     [onChange, control.name],
   );
+
+  const onKeyDown = React.useCallback((event: React.KeyboardEvent): void => {
+    if (event.repeat) repeatingRef.current = true;
+  }, []);
+
+  const onKeyUp = React.useCallback((): void => {
+    repeatingRef.current = false;
+    const reached = repeatedToRef.current;
+    repeatedToRef.current = null;
+    // Also where the draft is released: Radix reports a keyboard commit
+    // BEFORE it reports the change, so clearing it inside the commit is
+    // written straight back, and a draft left set shows this client's number
+    // over whatever a collaborator stores.
+    setDragged(null);
+    if (reached !== null) onChange({ [control.name]: reached });
+  }, [onChange, control.name]);
 
   return (
     <div className={className}>
@@ -294,6 +322,8 @@ function ParamSliderRow({
         // float error of repeated addition never reaches here.
         onValueChange={onValueChange}
         onValueCommit={onValueCommit}
+        onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
       />
     </div>
   );
