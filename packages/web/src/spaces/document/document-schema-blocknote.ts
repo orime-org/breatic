@@ -27,6 +27,7 @@ import {
   defaultInlineContentSpecs,
   defaultStyleSpecs,
 } from '@blocknote/core';
+import { createCodeBlockSpec } from '@blocknote/core/blocks';
 
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
 
@@ -99,7 +100,13 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
   const blockSpecs = {
     paragraph: withProps(enabled.paragraph, QUOTED_PROP),
     heading: withProps(enabled.heading, { ...QUOTED_PROP, ...NUMBERED_PROPS }),
-    codeBlock: withProps(enabled.codeBlock, QUOTED_PROP),
+    // Tab moves a block one level in, whatever kind of block it is (§3.3).
+    // The code block's own Tab types two spaces instead, which is right for a
+    // code editor and wrong for this Space's one rule.
+    codeBlock: withProps(
+      createCodeBlockSpec({ indentLineWithTab: false }),
+      QUOTED_PROP,
+    ),
     bulletListItem: withProps(lists.bulletListItem, QUOTED_PROP),
     numberedListItem: withProps(lists.numberedListItem, {
       ...QUOTED_PROP,
