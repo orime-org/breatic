@@ -12,6 +12,10 @@
  * run of quoted-or-not". Change indentation and you change which list an item
  * belongs to; put it in a quote and you take it out of the list around it.
  *
+ * A block that is both — an ordered item the user made a heading — draws its
+ * number from the headings, so the list it sits in numbers the items around it
+ * as though it were not there (user 2026-09-02).
+ *
  * Every assertion below reads the LITERAL string the function hands the
  * decoration layer, because the two shapes differ in their punctuation and a
  * test that normalised them away would agree with a bug that dropped it
@@ -203,15 +207,25 @@ describe('C9 — a heading’s number ignores indentation', () => {
   });
 });
 
-describe('C9b — a numbered heading holds a place in a list only when it is in one', () => {
-  it('① holds its place when a list item sits next to it', () => {
+describe('C9b — a numbered heading leaves its list’s numbering', () => {
+  it('lets the items around it close over the gap', () => {
     const n = numbersFor([li('first'), h('middle', 1), li('third')]);
     expect(n.get('first')).toBe('1.');
     expect(n.get('middle')).toBe('1');
-    expect(n.get('third')).toBe('3.');
+    expect(n.get('third')).toBe('2.');
   });
 
-  it('② holds no place when no list item sits next to it', () => {
+  it('leaves the item after it first in the list, when it opened the list', () => {
+    // demo §4.3: a sub-list of two, the first turned into a heading.
+    const n = numbersFor([
+      { ...li('top'), children: [h('became-heading', 1), li('second')] },
+    ]);
+    expect(n.get('top')).toBe('1.');
+    expect(n.get('became-heading')).toBe('1');
+    expect(n.get('second')).toBe('1.');
+  });
+
+  it('leaves a list further down untouched', () => {
     const n = numbersFor([
       h('intro', 1),
       { id: 'prose', type: 'paragraph' },
@@ -223,7 +237,7 @@ describe('C9b — a numbered heading holds a place in a list only when it is in 
     expect(n.get('b')).toBe('2.');
   });
 
-  it('③ starts the quoted run over rather than carrying the outer one in', () => {
+  it('starts the quoted list at one, whatever the list outside it read', () => {
     const n = numbersFor([
       li('outer1'),
       li('outer2'),
@@ -233,20 +247,6 @@ describe('C9b — a numbered heading holds a place in a list only when it is in 
     ]);
     expect(n.get('outer1')).toBe('1.');
     expect(n.get('outer2')).toBe('2.');
-    // The heading opens the quoted list and shows its heading path; the two
-    // items after it are that list's second and third, not the outer list's.
-    expect(n.get('quoted-head')).toBe('1');
-    expect(n.get('quoted-a')).toBe('2.');
-    expect(n.get('quoted-b')).toBe('3.');
-  });
-
-  it('④ holds no place inside a quote either, when prose separates it', () => {
-    const n = numbersFor([
-      h('quoted-head', 1, { quoted: true }),
-      { id: 'quoted-prose', type: 'paragraph', props: { quoted: true } },
-      li('quoted-a', { quoted: true }),
-      li('quoted-b', { quoted: true }),
-    ]);
     expect(n.get('quoted-head')).toBe('1');
     expect(n.get('quoted-a')).toBe('1.');
     expect(n.get('quoted-b')).toBe('2.');

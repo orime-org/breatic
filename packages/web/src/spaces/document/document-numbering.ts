@@ -16,6 +16,11 @@
  *   it leaves the one around it. It shows `1.`, the shape the delivered
  *   `list-style-type: decimal` marker already draws.
  *
+ * A block that is both — an ordered item the user made a heading — draws its
+ * number from the headings, so the list it sits in numbers the items around it
+ * as though it were not there. Three ordered items with the middle one turned
+ * into a heading read `1.`, the heading path, `2.`.
+ *
  * Nothing here writes to the document: the result is handed to a decoration
  * layer, so opening a document changes no bytes and fills nobody's undo stack.
  */
@@ -80,42 +85,6 @@ function describe(container: PMNode): Block {
 }
 
 /**
- * Whether a block holds a place in a list — that is, whether it IS one.
- * @param block - The block to judge.
- * @returns True for a list item and for a heading carrying a number.
- */
-function countsInAList(block: Block): boolean {
-  return (
-    block.type === 'numberedListItem' ||
-    (block.type === 'heading' && block.numbered)
-  );
-}
-
-/**
- * Whether a list sits immediately beside this block, in the same list.
- *
- * This is what keeps a numbered heading from eating the first number of a list
- * it merely stands above (§6.2.1). A heading the user turned into an ordered
- * item while it sat inside a list is a member of that list and holds its
- * place; a heading with prose between it and the nearest list never was.
- * @param siblings - The blocks sharing this block's parent, in order.
- * @param index - Where this block sits among them.
- * @returns True when the neighbour before or after is in the same list.
- */
-function touchesAList(siblings: readonly Block[], index: number): boolean {
-  const self = siblings[index];
-  if (self === undefined) {
-    return false;
-  }
-  return [siblings[index - 1], siblings[index + 1]].some(
-    (neighbour) =>
-      neighbour !== undefined &&
-      neighbour.quoted === self.quoted &&
-      countsInAList(neighbour),
-  );
-}
-
-/**
  * The heading path down to a level, filling in a 1 for any level above it that
  * has no numbered heading yet.
  *
@@ -171,10 +140,9 @@ function countListItem(block: Block, key: string, walk: Walk): void {
 function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
   const containers: PMNode[] = [];
   group.forEach((child) => containers.push(child));
-  const siblings = containers.map(describe);
 
-  containers.forEach((container, index) => {
-    const block = siblings[index]!;
+  containers.forEach((container) => {
+    const block = describe(container);
     if (block.quoted && !walk.prevQuoted) {
       walk.quoteRuns += 1;
     }
@@ -188,11 +156,8 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
       block.level <= DEEPEST_LEVEL
     ) {
       countHeading(block, walk);
-      // It shows a heading path, and it is still an ordered item: the siblings
-      // after it count on past it. Only when it stands in a list, though.
-      if (touchesAList(siblings, index)) {
-        walk.runs.set(key, (walk.runs.get(key) ?? 0) + 1);
-      }
+      // Its number comes from the headings, so the list it sits in numbers the
+      // items around it as though it were not there.
     } else if (block.type === 'numberedListItem') {
       countListItem(block, key, walk);
     }

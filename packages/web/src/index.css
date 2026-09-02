@@ -588,7 +588,13 @@ body {
    the two bare `.bn-block-content:before` rules on specificity alone.
 
    The box repeats what BlockNote gives an ordered item's marker, so that a
-   heading's number and a list item's land on the same vertical line. */
+   heading's number and a list item's land on the same vertical line.
+
+   NO `font-size` HERE, deliberately: a numbered heading's number is set in
+   that heading's own size (user 2026-09-02), and `::before` inherits it from
+   the block. Writing any size into this rule flattens all three heading
+   levels onto one. `min-width` is the body-sized floor; a level path in a
+   heading's size outgrows it and pushes the text right, which is correct. */
 .bn-block-content[data-doc-number]::before {
   content: attr(data-doc-number) !important;
   display: flex;
