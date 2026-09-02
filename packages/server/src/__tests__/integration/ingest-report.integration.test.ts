@@ -220,6 +220,21 @@ describe("POST /assets/ingest-report — who may call it", () => {
     expect(res.status).toBe(401);
   });
 
+  // This route takes no session, so anybody who finds the address can reach
+  // it. What the secret decides is whether the report is acted on; what
+  // decides whether an anonymous caller can make the server work is the order
+  // these run in. Parsing a body before knowing who sent it means every
+  // request costs a parse no matter how the caller is refused.
+  it("refuses an unsigned caller before reading what they sent", async () => {
+    const res = await app.request("/api/v1/assets/ingest-report", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{ this is not json",
+    });
+
+    expect(res.status).toBe(401);
+  });
+
   it("refuses a report whose secret does not match, registering nothing", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed);

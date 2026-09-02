@@ -344,8 +344,11 @@ function secretsMatch(a: string, b: string): boolean {
  */
 assets.post(
   "/ingest-report",
-  validate("json", ingestReportSchema),
-  async (c) => {
+  rateLimitFor("ingest-report"),
+  // Ahead of the body, because this route takes no session: the address is all
+  // anybody needs to reach it, and a caller who cannot prove they hold the
+  // secret should cost a header comparison rather than a parse.
+  async (c, next) => {
     const presented = c.req.header("x-ingest-secret") ?? "";
     if (
       !env.INGEST_SHARED_SECRET ||
@@ -360,7 +363,11 @@ assets.post(
         401,
       );
     }
-
+    await next();
+    return undefined;
+  },
+  validate("json", ingestReportSchema),
+  async (c) => {
     const body = c.req.valid("json");
     const outcome = await ingestReportService.applyIngestReport(
       body.outcome === "completed"
