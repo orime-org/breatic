@@ -66,6 +66,22 @@ function scrollerOf(): HTMLElement {
   return el as HTMLElement;
 }
 
+/**
+ * The row wrapping one voice — the element carrying the fill and the hover.
+ *
+ * The row holds two controls side by side (choose, sample), so the fill lives
+ * on their container rather than on either button.
+ * @param id - The voice's id.
+ * @returns That row.
+ * @throws {Error} When the row is not on screen.
+ */
+function rowOf(id: string): HTMLElement {
+  const btn = screen.getByTestId(`generate-voice-option-${id}`);
+  const row = btn.parentElement;
+  if (!row) throw new Error(`voice row ${id} has no container`);
+  return row;
+}
+
 /** The props every case supplies, so a case names only what it exercises. */
 const NOOPS = {
   onOpenChange: (): void => {},
@@ -204,28 +220,16 @@ describe('VoicePicker list (#1960 A2)', () => {
 
   it('marks the chosen voice by fill, since only one can be chosen', () => {
     open({ selectedId: 'beta', selectedName: 'Beta' });
-    expectChosenFill(screen.getByTestId('generate-voice-option-beta'));
+    expectChosenFill(rowOf('beta'));
   });
 
-  it('keeps the chosen fill under the pointer and under keyboard focus', () => {
-    // cmdk marks the item the pointer or the arrow keys landed on with
-    // data-selected, and CommandItem's own base draws that as plain accent.
-    // A class-plus-attribute selector outranks the single class holding the
-    // chosen fill, so without this the chosen voice drops back to the same
-    // colour as its neighbours the moment either lands on it.
+  it('keeps the chosen fill under the pointer', () => {
+    // Hover lifts a row to `accent`, one step below the `accent-strong` the
+    // chosen one carries — applied to the chosen row it would drop it to the
+    // colour its neighbours take under the pointer.
     open({ selectedId: 'beta', selectedName: 'Beta' });
-    const chosen = screen.getByTestId('generate-voice-option-beta');
-    expect(chosen.className).toContain(
-      'data-[selected=\'true\']:bg-accent-strong',
-    );
-  });
-
-  it('puts the sample button first, where the model picker puts its icon', () => {
-    open();
-    const row = screen.getByTestId('generate-voice-option-alpha');
-    expect(row.firstElementChild).toBe(
-      screen.getByTestId('generate-voice-sample-alpha'),
-    );
+    expect(rowOf('beta').className).not.toContain('hover:bg-accent');
+    expect(rowOf('alpha').className).toContain('hover:bg-accent');
   });
 
   it('lifts the label with the fill, the way the model picker does', () => {
@@ -239,11 +243,6 @@ describe('VoicePicker list (#1960 A2)', () => {
 });
 
 describe('VoicePicker states (#1960 A6)', () => {
-  it('says it is loading while the first page is on its way', () => {
-    open({ list: state({ status: 'loading', voices: [] }) });
-    expect(screen.getByTestId('generate-voice-loading')).toBeInTheDocument();
-  });
-
   it('says nothing matched when the search came back empty', () => {
     open({ list: state({ status: 'empty', voices: [], query: 'zzz' }) });
     expect(screen.getByTestId('generate-voice-empty')).toBeInTheDocument();
@@ -414,5 +413,77 @@ describe('the voice list answers Enter on its own buttons', () => {
     await user.keyboard('{Enter}');
     expect(onLoadMore).toHaveBeenCalled();
     expect(onPick).not.toHaveBeenCalled();
+  });
+});
+
+describe('VoicePicker rows are the option shape the rest of the app uses', () => {
+  it('draws each voice as a button, the way the model picker does', () => {
+    // LangSwitcher / ThemeToggle / ModelPicker / ModeToggle / ParamOptionGroup
+    // are all a column of ghost menu-item Buttons. A row that is a real button
+    // is reachable by Tab and draws its own focus ring; nothing here depends
+    // on a list library's cursor attribute.
+    open();
+    const row = screen.getByTestId('generate-voice-option-alpha');
+    expect(row.tagName).toBe('BUTTON');
+  });
+
+  it('reports the chosen row through aria-pressed, as the model picker does', () => {
+    open({ selectedId: 'beta' });
+    expect(screen.getByTestId('generate-voice-option-beta')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('generate-voice-option-alpha')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('puts the sample button after the name, at the end of the row', () => {
+    // The row reads name, then description, then the control — the order the
+    // demo lays out (user 2026-09-02).
+    open();
+    const name = screen.getByText('Alpha');
+    const sample = screen.getByTestId('generate-voice-sample-alpha');
+    expect(
+      name.compareDocumentPosition(sample) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('turns the sample button into a stop while that voice is playing', () => {
+    open();
+    const sample = screen.getByTestId('generate-voice-sample-alpha');
+    expect(sample).toHaveAttribute('data-playing', 'false');
+    fireEvent.click(sample);
+    expect(
+      screen.getByTestId('generate-voice-sample-alpha'),
+    ).toHaveAttribute('data-playing', 'true');
+  });
+
+  it('names the voice on the trigger behind a speaker icon', () => {
+    // The model picker carries the vendor icon in the same spot; without one
+    // the third pill is a bare proper noun beside the model's own.
+    render(
+      <VoicePicker
+        list={state()}
+        selectedId='alpha'
+        selectedName='Alpha'
+        {...NOOPS}
+      />,
+    );
+    const trigger = screen.getByTestId('generate-voice-trigger');
+    expect(trigger.querySelectorAll('svg').length).toBeGreaterThan(1);
+  });
+});
+
+describe('VoicePicker while the first page is on its way', () => {
+  it('holds the list open at its own height with placeholder rows', () => {
+    // A single line of centred text collapses the popover, and the popover
+    // grows upward — so the search box the user is typing into moves under
+    // their hands on every keystroke.
+    open({ list: state({ status: 'loading', voices: [] }) });
+    expect(
+      screen.getAllByTestId('generate-voice-skeleton').length,
+    ).toBeGreaterThan(1);
   });
 });

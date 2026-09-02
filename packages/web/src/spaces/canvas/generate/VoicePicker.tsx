@@ -1,23 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ChevronDown, Play } from 'lucide-react';
+import { ChevronDown, Pause, Play, Volume2 } from 'lucide-react';
 import * as React from 'react';
 
 import type { Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import {
-  Command,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@web/components/ui/command';
+import { Input } from '@web/components/ui/input';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
@@ -25,6 +22,15 @@ import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-stat
 
 /** How close to the bottom asking for the next page starts, in pixels. */
 const PAGE_TRIGGER_DISTANCE = 24;
+
+/**
+ * How many placeholder rows stand in while the first page is on its way.
+ *
+ * The popover opens upward, so a list that collapses to one line of text
+ * pulls the search box down under the user's hands and pushes it back when
+ * the results land — on every keystroke, since each one restarts the request.
+ */
+const PLACEHOLDER_ROWS = 5;
 
 interface VoicePickerProps {
   /** Where the list is, owned by the container's reducer. */
@@ -47,10 +53,14 @@ interface VoicePickerProps {
  * The Generate panel's voice picker: a pill naming the chosen voice that opens
  * a searchable list of what this deployment's provider offers.
  *
- * Searching happens upstream, so cmdk's own filtering is off (`shouldFilter`).
- * Leaving it on hides voices the server just sent whose names do not match the
- * term locally, and the picker then claims no matches over a list that has
- * them.
+ * The rows are the option shape every other single-choice dropdown in this app
+ * uses — a column of ghost menu-item Buttons, chosen one filled with
+ * `accent-strong` (LangSwitcher, ThemeToggle, ModelPicker, ModeToggle,
+ * ParamOptionGroup). Being real buttons they take Tab and draw their own focus
+ * ring, and the fill is the whole mark for the chosen one.
+ *
+ * Searching happens upstream, so what is rendered is exactly what the server
+ * sent.
  *
  * Samples play through one audio element held here, so starting one stops
  * whatever was playing. Two at once is two voices over each other.
@@ -81,6 +91,7 @@ export const VoicePicker = React.memo(function VoicePicker({
   useFollowCanvasViewport(open);
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [playingId, setPlayingId] = React.useState<string | null>(null);
   React.useEffect(
     () => () => {
       audioRef.current?.pause();
@@ -93,7 +104,10 @@ export const VoicePicker = React.memo(function VoicePicker({
     (next: boolean) => {
       setOpen(next);
       onOpenChange(next);
-      if (!next) audioRef.current?.pause();
+      if (!next) {
+        audioRef.current?.pause();
+        setPlayingId(null);
+      }
     },
     [onOpenChange],
   );
@@ -106,20 +120,33 @@ export const VoicePicker = React.memo(function VoicePicker({
     [onPick, handleOpenChange],
   );
 
-  const playSample = React.useCallback((url: string) => {
-    audioRef.current?.pause();
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    void audio.play().catch(() => {
-      // Autoplay policy, a dead url, an unsupported codec: the sample is a
-      // convenience, and the voice stays pickable either way.
-    });
-  }, []);
+  const toggleSample = React.useCallback(
+    (voice: Voice) => {
+      audioRef.current?.pause();
+      if (playingId === voice.id) {
+        setPlayingId(null);
+        return;
+      }
+      const audio = new Audio(voice.previewUrl);
+      audioRef.current = audio;
+      audio.addEventListener('ended', () => setPlayingId(null));
+      setPlayingId(voice.id);
+      // Wrapped: `play()` returns a promise per the current spec, and a value
+      // of its own in environments that predate it — jsdom returns nothing at
+      // all, and calling `.catch` straight on that throws.
+      void Promise.resolve(audio.play()).catch(() => {
+        // Autoplay policy, a dead url, an unsupported codec: the sample is a
+        // convenience, and the voice stays pickable either way.
+        setPlayingId(null);
+      });
+    },
+    [playingId],
+  );
 
-  // The listener goes on the element that scrolls, which the ScrollArea inside
-  // CommandList owns. It arrives through a callback ref rather than a plain
-  // one: the popover renders into a portal, so on the render that opens it the
-  // viewport does not exist yet and an effect reading a ref would find null.
+  // The listener goes on the element that scrolls, which the ScrollArea owns.
+  // It arrives through a callback ref rather than a plain one: the popover
+  // renders into a portal, so on the render that opens it the viewport does
+  // not exist yet and an effect reading a ref would find null.
   const [scroller, setScroller] = React.useState<HTMLDivElement | null>(null);
   const hasMore = list.hasMore;
   const loadingMore = list.loadingMore;
@@ -146,14 +173,13 @@ export const VoicePicker = React.memo(function VoicePicker({
           variant={null}
           size={null}
           data-testid='generate-voice-trigger'
-          // 11rem: the 52 voices this deployment can offer without an upstream
-          // call top out at 9 characters (Charlotte), which fits in well under
-          // half of this. The headroom is for the two live catalogues, where
-          // names are whatever the account holder typed — those get measured
-          // against real data on a running app, and anything past the cap
-          // truncates with the full name a click away in the list.
+          // Truncation here is the intended behaviour, not a shortfall: the
+          // first characters name the voice well enough to recognise, and the
+          // full name is one click away in the list. The cap is what keeps
+          // this row inside the panel's own width (user 2026-09-02).
           className='flex h-8 min-w-0 max-w-[11rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
+          <Volume2 className='h-4 w-4 shrink-0' aria-hidden='true' />
           <span className='truncate'>{triggerLabel}</span>
           <ChevronDown
             className='h-3.5 w-3.5 shrink-0 opacity-60'
@@ -172,151 +198,139 @@ export const VoicePicker = React.memo(function VoicePicker({
         // a width that follows its content would jump as the user types.
         className='w-80 p-0'
       >
-        <Command shouldFilter={false}>
-          <CommandInput
+        <div className='border-b border-border p-2'>
+          <Input
             data-testid='generate-voice-search'
             value={list.query}
-            onValueChange={onQueryChange}
+            onChange={(e) => onQueryChange(e.target.value)}
             placeholder={t('canvas.generatePanel.voiceSearchPlaceholder')}
+            className='h-8 text-sm'
           />
-          {/* The scroll listener has to sit on the element that actually
-              scrolls, which is the ScrollArea viewport CommandList wraps its
-              children in — so it comes from there rather than from a container
-              of our own. */}
-          <CommandList
-            viewportRef={setScroller}
-            viewportClassName='max-h-52'
-          >
-            <div className='flex flex-col gap-0.5 p-1'>
-              {list.status === 'loading' && (
-                <p
-                  data-testid='generate-voice-loading'
-                  className='py-6 text-center text-sm text-muted-foreground'
+        </div>
+        {/* Taller than the model picker's list, which this height does not
+            answer to: that one offers a handful of models under no search box,
+            this one offers every voice the deployment has (52 on the inline
+            catalogue) under one (user 2026-09-02). */}
+        <ScrollArea viewportRef={setScroller} viewportClassName='max-h-80 p-1'>
+          <div className='flex flex-col gap-0.5'>
+            {list.status === 'loading' &&
+              Array.from({ length: PLACEHOLDER_ROWS }, (_, i) => (
+                <Skeleton
+                  key={i}
+                  data-testid='generate-voice-skeleton'
+                  className='h-[38px] shrink-0'
+                />
+              ))}
+            {list.status === 'empty' && (
+              <p
+                data-testid='generate-voice-empty'
+                className='py-6 text-center text-sm text-muted-foreground'
+              >
+                {t('canvas.generatePanel.voiceEmpty')}
+              </p>
+            )}
+            {list.status === 'failed' && (
+              <div
+                data-testid='generate-voice-error'
+                className='flex flex-col items-center gap-2 py-6 text-sm text-muted-foreground'
+              >
+                <span>{t('canvas.generatePanel.voiceError')}</span>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  data-testid='generate-voice-retry'
+                  onClick={() => onOpenChange(true)}
                 >
-                  {t('canvas.generatePanel.voiceLoading')}
-                </p>
-              )}
-              {list.status === 'empty' && (
-                <p
-                  data-testid='generate-voice-empty'
-                  className='py-6 text-center text-sm text-muted-foreground'
-                >
-                  {t('canvas.generatePanel.voiceEmpty')}
-                </p>
-              )}
-              {list.status === 'failed' && (
+                  {t('canvas.generatePanel.voiceRetry')}
+                </Button>
+              </div>
+            )}
+            {list.voices.map((voice) => {
+              const chosen = voice.id === selectedId;
+              return (
+                // The row carries the fill and the hover, and the two controls
+                // sit inside it as siblings: a sample button nested in the row
+                // button would be a button inside a button, which the content
+                // model does not allow. The model picker's rows have one
+                // control and are a single Button.
                 <div
-                  data-testid='generate-voice-error'
-                  className='flex flex-col items-center gap-2 py-6 text-sm text-muted-foreground'
-                >
-                  <span>{t('canvas.generatePanel.voiceError')}</span>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    data-testid='generate-voice-retry'
-                    // cmdk's root cancels Enter for everything inside it.
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.stopPropagation();
-                    }}
-                    onClick={() => onOpenChange(true)}
-                  >
-                    {t('canvas.generatePanel.voiceRetry')}
-                  </Button>
-                </div>
-              )}
-              {list.voices.map((voice) => (
-                <CommandItem
                   key={voice.id}
-                  value={voice.id}
-                  data-testid={`generate-voice-option-${voice.id}`}
-                  onSelect={() => handlePick(voice)}
                   className={cn(
-                    // Same row chrome as the model picker's ghost menu-item
-                    // Buttons: 6px corners, and hover lifts the label as well
-                    // as the fill.
-                    'gap-2 rounded-chrome hover:text-accent-foreground',
-                    voice.id === selectedId
-                      ? // cmdk marks whatever the pointer or the arrow keys
-                    // landed on with data-selected, and CommandItem draws
-                    // that as plain accent. That is a class plus an
-                    // attribute, which outranks a single class, so the
-                    // chosen fill has to answer in the same shape or it
-                    // drops to its neighbours' colour under the pointer.
-                      'bg-accent-strong data-[selected=\'true\']:bg-accent-strong hover:bg-accent-strong'
-                      : 'hover:bg-accent',
+                    'flex items-center gap-1 rounded-chrome',
+                    chosen ? 'bg-accent-strong' : 'hover:bg-accent',
                   )}
                 >
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='menu-item'
+                    aria-pressed={chosen}
+                    data-testid={`generate-voice-option-${voice.id}`}
+                    className='min-w-0 flex-1 justify-start hover:bg-transparent'
+                    onClick={() => handlePick(voice)}
+                  >
+                    <span className='flex min-w-0 flex-1 flex-col items-start'>
+                      <span className='w-full truncate text-left'>
+                        {voice.name}
+                      </span>
+                      {voice.description !== undefined && (
+                        <span className='w-full truncate text-left text-xs text-muted-foreground'>
+                          {voice.description}
+                        </span>
+                      )}
+                    </span>
+                  </Button>
                   {voice.previewUrl !== undefined && (
                     <Button
                       type='button'
                       variant={null}
                       size={null}
                       data-testid={`generate-voice-sample-${voice.id}`}
+                      data-playing={playingId === voice.id}
                       aria-label={t('canvas.generatePanel.voiceSample', {
                         name: voice.name,
                       })}
-                      className='flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong'
-                      // cmdk's root cancels Enter and fires the highlighted
-                      // ROW's select instead, so this button's own Enter
-                      // never reaches it — the other half of the click gate
-                      // below.
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.stopPropagation();
-                      }}
-                      onClick={(e) => {
-                        // cmdk hangs onSelect off the item's own onClick, so
-                        // a sample click that reached it would choose the
-                        // voice as well as play it.
-                        e.stopPropagation();
-                        playSample(voice.previewUrl as string);
-                      }}
+                      className='mr-1 flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong'
+                      onClick={() => toggleSample(voice)}
                     >
-                      <Play className='h-3 w-3' aria-hidden='true' />
+                      {playingId === voice.id ? (
+                        <Pause className='h-3 w-3' aria-hidden='true' />
+                      ) : (
+                        <Play className='h-3 w-3' aria-hidden='true' />
+                      )}
                     </Button>
                   )}
-                  <span className='flex min-w-0 flex-1 flex-col'>
-                    <span className='truncate'>{voice.name}</span>
-                    {voice.description !== undefined && (
-                      <span className='truncate text-xs text-muted-foreground'>
-                        {voice.description}
-                      </span>
-                    )}
-                  </span>
-                </CommandItem>
-              ))}
-              {list.loadingMore && (
-                <p
-                  data-testid='generate-voice-loading-more'
-                  className='py-2 text-center text-xs text-muted-foreground'
-                >
-                  {t('canvas.generatePanel.voiceLoading')}
-                </p>
-              )}
-              {list.moreFailed && !list.loadingMore && (
-                // Scrolling again would retry on its own, but only after the
-                // reader scrolls up and back down — from where they are
-                // standing the list just stopped.
-                <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
-                  <span>{t('canvas.generatePanel.voiceError')}</span>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    data-testid='generate-voice-more-retry'
-                    // cmdk's root cancels Enter for everything inside it.
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.stopPropagation();
-                    }}
-                    onClick={onLoadMore}
-                  >
-                    {t('canvas.generatePanel.voiceRetry')}
-                  </Button>
                 </div>
-              )}
-            </div>
-          </CommandList>
-        </Command>
+              );
+            })}
+            {list.loadingMore && (
+              <p
+                data-testid='generate-voice-loading-more'
+                className='py-2 text-center text-xs text-muted-foreground'
+              >
+                {t('canvas.generatePanel.voiceLoading')}
+              </p>
+            )}
+            {list.moreFailed && !list.loadingMore && (
+              // Scrolling again would retry on its own, but only after the
+              // reader scrolls up and back down — from where they are
+              // standing the list just stopped.
+              <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
+                <span>{t('canvas.generatePanel.voiceError')}</span>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  data-testid='generate-voice-more-retry'
+                  onClick={onLoadMore}
+                >
+                  {t('canvas.generatePanel.voiceRetry')}
+                </Button>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
   );
