@@ -4107,7 +4107,7 @@ function CanvasSpaceInner({
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Generate opens on any editable node of a modality that generates
-          // (`canGenerate` — image and video today), the AIGC "generate into
+          // (`canGenerate`), the AIGC "generate into
           // self" flow. Which PANEL opens is the opener's decision, not this
           // one's: the store maps the node's modality to a panel kind.
           // INCLUDING a locked or handling node, so the user can open the panel

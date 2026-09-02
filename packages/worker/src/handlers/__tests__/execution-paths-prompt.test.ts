@@ -52,8 +52,9 @@ vi.mock("@breatic/domain", () => ({
   getModel: vi.fn(),
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
-  // The real one; the prompt must reach the provider stripped, and that is
-  // part of what this file asserts.
+  // A stand-in: what this file pins is that both VALIDATING paths CALL
+  // `takePromptAndValidate`. What the sanitizer itself does to a prompt is
+  // pinned in `domain/src/agent/__tests__/extract-prompt.test.ts`.
   extractPromptText: (x: unknown) => String(x ?? "").replace(/<[^>]*>/g, ""),
   releaseCanvasNodeLock: vi.fn(),
   reacquireCanvasNodeLock: vi.fn(),
