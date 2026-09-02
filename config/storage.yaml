@@ -33,6 +33,13 @@ upload:
 ingest:
   # One part of a multipart upload, in bytes. R2 refuses a non-final part
   # under 5 MiB, which is the floor `signUploadTicket` enforces.
+  #
+  # Three things move together when this changes, and 8 MiB is where they were
+  # balanced: how many requests one upload costs (a part is one PUT, so the
+  # 2 GiB cap is 256 of them at this size), how much is thrown away when one
+  # part has to be re-sent, and how many parts the browser can have in flight
+  # at once. Halving it doubles the requests to save half a part on a retry;
+  # doubling it does the reverse.
   part_size_bytes: 8388608
   # How long the browser has to START the upload. Checked once, when it asks
   # the Worker to begin; an upload already running is never cut off by it.
