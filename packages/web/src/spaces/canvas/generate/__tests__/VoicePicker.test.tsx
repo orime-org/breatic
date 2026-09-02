@@ -308,6 +308,16 @@ describe('VoicePicker samples (#1960 A2)', () => {
     vi.restoreAllMocks();
   });
 
+  it('turns the sample button into a stop while that voice is playing', () => {
+    open();
+    const sample = screen.getByTestId('generate-voice-sample-alpha');
+    expect(sample).toHaveAttribute('data-playing', 'false');
+    fireEvent.click(sample);
+    expect(
+      screen.getByTestId('generate-voice-sample-alpha'),
+    ).toHaveAttribute('data-playing', 'true');
+  });
+
   it('offers a sample on a voice that has one', () => {
     open();
     expect(screen.getByTestId('generate-voice-sample-alpha')).toBeInTheDocument();
@@ -450,15 +460,6 @@ describe('VoicePicker rows are the option shape the rest of the app uses', () =>
     ).toBeTruthy();
   });
 
-  it('turns the sample button into a stop while that voice is playing', () => {
-    open();
-    const sample = screen.getByTestId('generate-voice-sample-alpha');
-    expect(sample).toHaveAttribute('data-playing', 'false');
-    fireEvent.click(sample);
-    expect(
-      screen.getByTestId('generate-voice-sample-alpha'),
-    ).toHaveAttribute('data-playing', 'true');
-  });
 
   it('names the voice on the trigger behind a speaker icon', () => {
     // The model picker carries the vendor icon in the same spot; without one

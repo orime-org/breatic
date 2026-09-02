@@ -131,10 +131,7 @@ export const VoicePicker = React.memo(function VoicePicker({
       audioRef.current = audio;
       audio.addEventListener('ended', () => setPlayingId(null));
       setPlayingId(voice.id);
-      // Wrapped: `play()` returns a promise per the current spec, and a value
-      // of its own in environments that predate it — jsdom returns nothing at
-      // all, and calling `.catch` straight on that throws.
-      void Promise.resolve(audio.play()).catch(() => {
+      void audio.play().catch(() => {
         // Autoplay policy, a dead url, an unsupported codec: the sample is a
         // convenience, and the voice stays pickable either way.
         setPlayingId(null);
