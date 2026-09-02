@@ -44,18 +44,56 @@ async function signIn(p: Page): Promise<void> {
 }
 
 /**
- * Write one audio node into the open Space's document.
+ * Where the next seeded node goes, and what to clear afterwards.
+ *
+ * Two constraints meet here. A node is 288 wide, so dropping them all at one
+ * point stacks them and a right-click meant for the one underneath lands on
+ * whatever was seeded last. And the canvas mounts only what the viewport
+ * intersects (`onlyRenderVisibleElements`, `CanvasSpace.tsx:3831`), so a row
+ * that keeps growing across cases walks off the edge and the node is not in
+ * the DOM at all. Clearing between cases holds both: every case starts its own
+ * row at the origin.
+ */
+const SEED_STEP = 300;
+let seededSoFar = 0;
+const seededIds: string[] = [];
+
+/**
+ * Write one node into the open Space's document.
  *
  * Seeded rather than generated: what this file is here to exercise is the
- * panel, and an audio node arrives on the canvas by upload or by an earlier
- * generation — neither of which this case is about.
+ * panel, and a node arrives on the canvas by upload or by an earlier
+ * generation — neither of which these cases are about.
+ *
+ * The id is a UUID because the task endpoint's schema requires one for both
+ * `target_node_id` and every key of `node_gens`; a readable id gets the submit
+ * rejected at the boundary, which no case here is about.
  * @param p - A page with the Space open.
- * @param nodeId - The id to give the node.
+ * @param nodeId - The id to give the node, a UUID.
+ * @param kind - The node type to write.
+ * @param content - The asset URL the node holds, if any.
+ * @param atX - Where to put it, overriding the running row.
  */
-async function seedAudioNode(p: Page, nodeId: string): Promise<void> {
+async function seedNode(
+  p: Page,
+  nodeId: string,
+  kind: 'audio' | 'video',
+  content?: string,
+  atX?: number,
+): Promise<void> {
   await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  const x = atX ?? seededSoFar * SEED_STEP;
+  seededSoFar += 1;
+  seededIds.push(nodeId);
   const seen = await p.evaluate(
-    async ([pid, sid, id]: [string, string, string]) => {
+    async ([pid, sid, id, type, asset, left]: [
+      string,
+      string,
+      string,
+      string,
+      string,
+      number,
+    ]) => {
       // Vite serves each module under a versioned URL; importing the bare path
       // would evaluate a SECOND copy whose caches are empty.
       const live = (re: RegExp): string => {
@@ -74,20 +112,28 @@ async function seedAudioNode(p: Page, nodeId: string): Promise<void> {
       };
       canvas.addNode(pid, sid, {
         id,
-        type: 'audio',
-        position: { x: 0, y: 0 },
+        type,
+        position: { x: left, y: 0 },
         data: {
-          name: 'audio-e2e',
+          name: `${type}-e2e`,
           createdAt: Date.now(),
           createdBy: 'audio-e2e',
           locked: false,
           state: 'idle',
           attachments: [],
+          ...(asset ? { content: asset, status: 'ready' } : {}),
         },
       });
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => n.id);
     },
-    [projectId, spaceId, nodeId] as [string, string, string],
+    [projectId, spaceId, nodeId, kind, content ?? '', x] as [
+      string,
+      string,
+      string,
+      string,
+      string,
+      number,
+    ],
   );
   if (!seen.includes(nodeId)) {
     throw new Error(`${nodeId} never reached the document; saw [${seen.join(', ')}]`);
@@ -99,15 +145,18 @@ async function seedAudioNode(p: Page, nodeId: string): Promise<void> {
  * the menu item.
  * @param p - A page with the Space open.
  * @param nodeId - The node to open it on.
+ * @param settled - A testid the open panel is known to render, waited on.
  */
-async function openGenerate(p: Page, nodeId: string): Promise<void> {
+async function openGenerate(
+  p: Page,
+  nodeId: string,
+  settled = 'generate-audio-execute',
+): Promise<void> {
   const node = p.locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.click({ button: 'right' });
   await p.getByTestId('node-menu-generate').click();
-  await expect(p.getByTestId('generate-audio-execute')).toBeVisible({
-    timeout: 15_000,
-  });
+  await expect(p.getByTestId(settled)).toBeVisible({ timeout: 15_000 });
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -126,6 +175,26 @@ test.beforeAll(async ({ browser }) => {
   spaceId = await createSpace(page, 'canvas', `audio-e2e-${Date.now()}`);
 });
 
+test.afterEach(async () => {
+  if (seededIds.length === 0) return;
+  const ids = seededIds.splice(0);
+  seededSoFar = 0;
+  await page.evaluate(
+    async ([pid, sid, list]: [string, string, string[]]) => {
+      const found = performance
+        .getEntriesByType('resource')
+        .map((e) => e.name)
+        .find((n) => /data\/yjs\/canvas-space\.ts/.test(n));
+      if (found === undefined) return;
+      const canvas = (await import(/* @vite-ignore */ found)) as {
+        removeNode: (p: string, s: string, n: string) => void;
+      };
+      for (const id of list) canvas.removeNode(pid, sid, id);
+    },
+    [projectId, spaceId, ids] as [string, string, string[]],
+  );
+});
+
 test.afterAll(async () => {
   if (spaceId) await deleteSpace(page, spaceId);
   await page.close();
@@ -136,8 +205,8 @@ test.afterAll(async () => {
 // each would reopen the panel three times and say nothing more.
 test('the panel opens, offers what the model declares, and refuses a voiceless submit', async () => {
   test.setTimeout(90_000);
-  const nodeId = `audio-${Date.now()}`;
-  await seedAudioNode(page, nodeId);
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio');
   await openGenerate(page, nodeId);
 
   await expect(page.getByTestId('generate-audio-mode-trigger')).toBeVisible();
@@ -163,4 +232,82 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({
     timeout: 10_000,
   });
+});
+
+test('the voice list matches the deployment it is served from, and a pick survives a reopen', async () => {
+  test.setTimeout(90_000);
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio');
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-voice-trigger').click();
+  const options = page.locator('[data-testid^="generate-voice-option-"]');
+  await expect(options.first()).toBeVisible({ timeout: 20_000 });
+
+  // Two deployments, two sources (§6.1.1): a direct ElevenLabs or fish key
+  // gets the vendor's live list, every row of which previews; WaveSpeed has no
+  // voice endpoint, so the list is the catalog's own and nothing previews.
+  // Asserting a count would pin this to whichever box ran it, so the invariant
+  // is that the list is served WHOLE from one of the two — every row previews
+  // or none does.
+  const rows = await options.count();
+  const samples = await page
+    .locator('[data-testid^="generate-voice-sample-"]')
+    .count();
+  expect(rows).toBeGreaterThan(0);
+  expect([0, rows]).toContain(samples);
+
+  const chosen = (await options.first().innerText()).split('\n')[0];
+  const saysChosen = new RegExp(chosen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  await options.first().click();
+  await expect(page.getByTestId('generate-voice-trigger')).toHaveText(saysChosen);
+
+  // The pick is a parameter ON THE NODE, not panel state. Going to a second
+  // audio node and back reads it off the document twice over: the panel that
+  // opens on the untouched node must NOT show the first one's voice, and the
+  // one that reopens on the first must still show it.
+  const otherId = crypto.randomUUID();
+  await seedNode(page, otherId, 'audio');
+  await openGenerate(page, otherId);
+  await expect(page.getByTestId('generate-voice-trigger')).not.toHaveText(
+    saysChosen,
+  );
+
+  await openGenerate(page, nodeId);
+  await expect(page.getByTestId('generate-voice-trigger')).toHaveText(saysChosen);
+});
+
+test('an audio node with a produced asset can be picked into the talking-head driving slot', async () => {
+  test.setTimeout(90_000);
+  // The slot's candidate rule is the node's TYPE and whether it holds an asset
+  // (`CanvasSpace.tsx:3702`), not how the asset got there — so a seeded one
+  // exercises the same path a generated one takes, without a vendor round trip.
+  // Seeded to the left of the origin: the video panel is wide, and opened on a
+  // node any further right it reaches the minimap in the bottom-right corner,
+  // which sits above it and takes the clicks meant for the slot row.
+  const audioId = crypto.randomUUID();
+  const videoId = crypto.randomUUID();
+  await seedNode(
+    page,
+    audioId,
+    'audio',
+    'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0U=',
+    -350,
+  );
+  await seedNode(page, videoId, 'video', undefined, -50);
+
+  await openGenerate(page, videoId, 'generate-video-mode-trigger');
+  await page.getByTestId('generate-video-mode-trigger').click();
+  await page.getByTestId('generate-video-mode-talking-head').click();
+
+  await page.getByTestId('generate-video-tool-driving-audio').click();
+  await page.locator(`.react-flow__node[data-id="${audioId}"]`).click();
+
+  // The clear button, not the thumbnail: a filled slot draws a thumbnail from
+  // the pick's cover, and an audio node carries no poster — the toolbar covers
+  // the button with the audio icon instead (`video-slots.ts:148`). The clear
+  // button is what says the slot is holding something whatever the kind is.
+  await expect(
+    page.getByTestId('generate-video-driving-audio-clear'),
+  ).toBeVisible({ timeout: 10_000 });
 });
