@@ -15,7 +15,6 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
-import type * as Y from 'yjs';
 
 import type { Voice } from '@breatic/shared';
 
@@ -162,13 +161,15 @@ function AudioGeneratePanelBody({
     };
   }, []);
 
-  // Resolved in an effect: the node id can change under a mounted panel. Null
-  // means the node predates prompt seeding — the panel then says so instead of
-  // offering an editor that stores nothing.
-  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
-  React.useEffect(() => {
-    setFragment(getPromptFragment(projectId, spaceId, nodeId));
-  }, [projectId, spaceId, nodeId]);
+  // Read during render: `getPromptFragment` is a synchronous document read with
+  // no side effect, and null means the node predates prompt seeding — the panel
+  // then says so instead of offering an editor that stores nothing. Resolving
+  // it after the first commit would make that sentence the first thing every
+  // modern node's panel renders.
+  const fragment = React.useMemo(
+    () => getPromptFragment(projectId, spaceId, nodeId),
+    [projectId, spaceId, nodeId],
+  );
 
   // The ids come off `deriveReferences` itself, so the followed set and the
   // rendered rows cannot drift. Following every text node on the board instead

@@ -50,6 +50,8 @@ vi.mock('@web/data/api/voices', () => ({
   },
 }));
 
+/** Every `promptSlot` the panel has been handed, newest last. */
+const seenPromptSlots: unknown[] = [];
 /** Every `params` object the panel has been handed, newest last. */
 const seenParams: unknown[] = [];
 /** Every `references` array it has been handed, newest last. */
@@ -62,9 +64,11 @@ vi.mock('@web/spaces/canvas/generate/AudioGeneratePanel', () => ({
   AudioGeneratePanel: (props: {
     params: unknown;
     references: unknown;
+    promptSlot: unknown;
   }): null => {
     seenParams.push(props.params);
     seenReferences.push(props.references);
+    seenPromptSlots.push(props.promptSlot);
     return null;
   },
 }));
@@ -175,6 +179,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
   beforeEach(() => {
     seenParams.length = 0;
     seenReferences.length = 0;
+    seenPromptSlots.length = 0;
     _resetForTests();
     useCanvasStore.setState({
       panelHostId: null,
@@ -199,6 +204,22 @@ describe('the audio container keeps its memoized panel bail-able', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('hands down the prompt editor on the very first render', async () => {
+    // A null promptSlot is how the panel is told the node has no prompt
+    // container, and it then renders one sentence saying the node is too old.
+    // Resolving the fragment after the first commit makes every modern node
+    // paint that sentence first.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    mount();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+    });
+    await waitFor(() => {
+      expect(seenPromptSlots.length).toBeGreaterThan(0);
+    });
+    expect(seenPromptSlots[0]).not.toBeNull();
   });
 
   it('hands down the SAME params and references while their content is unchanged', async () => {
