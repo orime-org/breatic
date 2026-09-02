@@ -271,3 +271,49 @@ describe('AudioParamsPicker — when a slider writes', () => {
     expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('0.80x');
   });
 });
+
+describe('AudioParamsPicker trigger carries the values, like the video panel', () => {
+  it('prints what the params are set to, each in its own unit', () => {
+    // VideoParamsPicker joins the declared values with a middot and prints
+    // them on the trigger; the row reads as four pills each naming what it
+    // holds. A stop the vendor named reads by that name.
+    render(
+      <AudioParamsPicker
+        model={ELEVENLABS}
+        value={{ stability: 0.5, similarity: 0.75 }}
+        onChange={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId('generate-audio-params-trigger');
+    expect(trigger).toHaveTextContent('Natural');
+    expect(trigger).toHaveTextContent('0.75');
+  });
+
+  it('prints Fish\'s pair in their own units', () => {
+    render(
+      <AudioParamsPicker
+        model={FISH}
+        value={{ speed: 1.25, volume: -5 }}
+        onChange={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId('generate-audio-params-trigger');
+    expect(trigger).toHaveTextContent('1.25x');
+    expect(trigger).toHaveTextContent('-5 dB');
+  });
+
+  it('is filled like the pills beside it, not left as bare chrome', () => {
+    // The three pills to its left carry bg-background. An unfilled control in
+    // that row reads as a switch that is off, and these params are never off.
+    render(
+      <AudioParamsPicker
+        model={FISH}
+        value={{ speed: 1, volume: 0 }}
+        onChange={() => {}}
+      />,
+    );
+    expect(
+      screen.getByTestId('generate-audio-params-trigger').className,
+    ).toContain('bg-background');
+  });
+});

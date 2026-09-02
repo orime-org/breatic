@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { SlidersHorizontal } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
@@ -13,13 +13,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { Slider } from '@web/components/ui/slider';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import {
   audioParamControls,
   audioParamOptionLabelKey,
@@ -69,12 +63,14 @@ function shownValue(
 }
 
 /**
- * The audio panel's speaking-parameter picker (#1960): an icon that opens a
- * popover holding one control per param the active model declares.
+ * The audio panel's speaking-parameter picker (#1960): a pill printing what
+ * the params are set to, opening a popover holding one control per param the
+ * active model declares.
  *
- * An icon rather than the value pill the video panel uses, matching the camera
- * cluster: `16:9 · 1080p` reads on its own, `0.50 · 0.75` does not — a number
- * with no name beside it says nothing about what it would do to the voice.
+ * The pill is the shape VideoParamsPicker uses, down to the class string —
+ * the same slot in the same row of the same panel family. Values read in
+ * their own units, and a stop the vendor named reads by that name, so the
+ * label is `Natural · 0.75` rather than a pair of bare numbers.
  *
  * Which params appear, and whether one is a row of stops or a slider, comes
  * from the model's own declaration (see `audio-params.ts`). Nothing here knows
@@ -101,36 +97,46 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
   // no picker at all (the same rule the video params pill follows).
   if (controls.length === 0) return null;
 
+  const label = controls
+    .map((control) => {
+      const shown = shownValue(model, control.name, value[control.name]);
+      if (shown === undefined) return undefined;
+      const named =
+        control.kind === 'choice'
+          ? audioParamOptionLabelKey(control.name, shown)
+          : undefined;
+      return named ? t(named) : formatAudioParam(control.name, shown);
+    })
+    .filter(Boolean)
+    .join(' · ');
+
   const triggerClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border ' +
-    'text-muted-foreground transition-colors hover:bg-accent hover:text-foreground ' +
+    'flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border ' +
+    'bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent ' +
     'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              data-testid='generate-audio-params-trigger'
-              aria-label={t('canvas.generatePanel.voiceParams')}
-              // This button is BOTH a TooltipTrigger and a PopoverTrigger:
-              // suppress the tooltip's focus-open so closing the popover
-              // (Escape returns focus here) does not pop a stray tooltip.
-              onFocusCapture={suppressTooltipFocusOpen}
-              className={triggerClass}
-            >
-              <SlidersHorizontal className='h-4 w-4' aria-hidden='true' />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side='top'>
-          {t('canvas.generatePanel.voiceParams')}
-        </TooltipContent>
-      </Tooltip>
+      {/* No tooltip, as on the other three pills in this row: the values are
+          printed on the face, and the label names what they belong to. */}
+      <PopoverTrigger asChild>
+        <Button
+          type='button'
+          variant={null}
+          size={null}
+          data-testid='generate-audio-params-trigger'
+          aria-label={t('canvas.generatePanel.voiceParams')}
+          className={triggerClass}
+        >
+          {/* truncate: a vendor could name a stop at any length, and the
+              footer has five other controls to fit. */}
+          <span className='max-w-[12rem] truncate'>{label}</span>
+          <ChevronDown
+            className='h-3.5 w-3.5 shrink-0 opacity-60'
+            aria-hidden='true'
+          />
+        </Button>
+      </PopoverTrigger>
       <PopoverContent
         side='top'
         align='center'
