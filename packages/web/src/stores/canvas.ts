@@ -205,10 +205,10 @@ interface CanvasState {
   /**
    * Open the Generate panel for a node (replaces any currently open panel).
    *
-   * Image and video have separate panels (#1896), and this decides which one
-   * from the node's modality so callers never have to know how many exist:
-   * adding text generation (#1778) is one more case here, not a branch at
-   * every call site.
+   * Image, video and audio have separate panels (#1896, #1960), and this
+   * decides which one from the node's modality so callers never have to know
+   * how many exist: adding text generation (#1778) is one more case here, not
+   * a branch at every call site.
    */
   openGeneratePanel: (nodeId: string, type: NodeType) => void;
   /** Open the reset-empty-image panel for a node (replaces any open panel). */
@@ -374,14 +374,15 @@ export const useCanvasStore = create<CanvasState>()(
       }),
     openGeneratePanel: (nodeId, type) =>
       set((s) => {
-        // Image and video have separate panels (#1896). Deciding here rather
-        // than at the call site keeps the number of panels a detail of this
-        // store: a third generative modality is one more entry in the map,
-        // not a new branch wherever Generate is opened from.
+        // Image, video and audio have separate panels (#1896, #1960).
+        // Deciding here rather than at the call site keeps the number of
+        // panels a detail of this store: a fourth generative modality is one
+        // more entry in the map, not a new branch wherever Generate is
+        // opened from.
         const kind = GENERATE_PANEL_BY_TYPE[type];
         // A modality with no panel opens nothing. The unmapped modalities are
-        // the ones with no Generate panel yet (text / audio / 3d / web /
-        // annotation / group), and the menu never offers Generate on them
+        // the ones with no Generate panel yet (text / 3d / web / annotation /
+        // group), and the menu never offers Generate on them
         // (canGenerate gates it) — so arriving here means a caller is wrong.
         // Falling back to the image panel would put such a node's host id
         // under an image body, which reads as a working panel operating on

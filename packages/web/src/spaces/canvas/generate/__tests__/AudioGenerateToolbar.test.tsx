@@ -82,8 +82,8 @@ describe('AudioGenerateToolbar — Reference is the row', () => {
 
   it('sends the user after text, the only thing an audio node accepts', async () => {
     // The image and video toolbars share a tip naming images. An audio node's
-    // whitelist is text alone (connection-rules.ts:29), so that tip would point
-    // at the one kind of node this pick greys out and then refuses.
+    // whitelist is text alone (`lib/connection-rules.ts:30`), so that tip
+    // would point at the one kind of node this pick greys out and refuses.
     setup();
     fireEvent.pointerMove(screen.getByTestId('generate-audio-tool-reference'), {
       pointerType: 'mouse',
