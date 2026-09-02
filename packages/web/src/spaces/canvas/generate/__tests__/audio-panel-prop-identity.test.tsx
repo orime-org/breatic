@@ -133,7 +133,9 @@ function catalog(): ModelCatalog {
  * reach the memoized panel as a new params or references object.
  * @returns One audio node and one text node feeding it.
  */
-function nodes(): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
+function nodes(
+  stability = 1,
+): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
   return [
     {
       id: 'target',
@@ -141,7 +143,7 @@ function nodes(): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
         kind: 'audio',
         status: 'idle',
         model: 'elevenlabs-v3',
-        paramsByModel: { 'elevenlabs-v3': { stability: 1 } },
+        paramsByModel: { 'elevenlabs-v3': { stability } },
       },
     },
     { id: 'src', data: { kind: 'text', status: 'idle', name: 'The script' } },
@@ -149,11 +151,12 @@ function nodes(): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
 }
 
 /**
- * Mounts the container around that node, with one incoming text edge.
- * @returns The render result, so the case can force a re-render.
+ * The whole tree, so a case can re-render it with different node content.
+ * @param stability - The stored param value the node carries.
+ * @returns The element to render.
  */
-function mount(): ReturnType<typeof render> {
-  return render(
+function tree(stability = 1): React.ReactElement {
+  return (
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
@@ -167,12 +170,20 @@ function mount(): ReturnType<typeof render> {
             projectId='p'
             spaceId='s'
             edges={[{ id: 'e1', source: 'src', target: 'target' }]}
-            nodes={nodes()}
+            nodes={nodes(stability)}
           />
         </CanvasContext.Provider>
       </ReactFlow>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+/**
+ * Mounts the container around that node, with one incoming text edge.
+ * @returns The render result, so the case can force a re-render.
+ */
+function mount(): ReturnType<typeof render> {
+  return render(tree());
 }
 
 describe('the audio container keeps its memoized panel bail-able', () => {
@@ -235,33 +246,36 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     const referencesBefore = seenReferences.at(-1);
 
     // What a node drag does: the same board, a new nodes array.
-    rerender(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <ReactFlow
-          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
-          edges={[]}
-          panOnDrag={false}
-        >
-          <CanvasContext.Provider value={CANVAS}>
-            <AudioGeneratePanelContainer
-              projectId='p'
-              spaceId='s'
-              edges={[{ id: 'e1', source: 'src', target: 'target' }]}
-              nodes={nodes()}
-            />
-          </CanvasContext.Provider>
-        </ReactFlow>
-      </QueryClientProvider>,
-    );
+    rerender(tree());
 
     await waitFor(() => {
       expect(seenParams.length).toBeGreaterThan(1);
     });
     expect(seenParams.at(-1)).toBe(paramsBefore);
     expect(seenReferences.at(-1)).toBe(referencesBefore);
+  });
+
+  it('hands down a NEW params object once the content changes', async () => {
+    // The other half of the identity contract: holding on when the content
+    // moved would leave the picker showing a value the node no longer holds,
+    // which is what a key frozen to a constant would do.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    const { rerender } = mount();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+    });
+    await waitFor(() => {
+      expect(seenParams.length).toBeGreaterThan(0);
+    });
+    const before = seenParams.at(-1);
+
+    // What the params picker's write looks like from up here: the canvas hands
+    // down a node carrying a different stored value.
+    rerender(tree(0));
+
+    await waitFor(() => {
+      expect(seenParams.at(-1)).not.toBe(before);
+    });
+    expect(seenParams.at(-1)).toEqual(expect.objectContaining({ stability: 0 }));
   });
 });

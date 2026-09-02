@@ -7,6 +7,7 @@ import {
   evaluateExecute,
   isExecuteButtonDisabled,
   refusalToastKey,
+  type ExecuteRefusal,
 } from '@web/spaces/canvas/generate/generate-guards';
 
 /** A gate input where every condition is satisfied. */
@@ -224,12 +225,15 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    const all = [
+    // Every member of the union, so adding a sixth without deciding which
+    // half it belongs to turns this red rather than passing on a stale list.
+    const all: ExecuteRefusal[] = [
       'node-gone',
       'no-model',
       'submitting',
       'prompt-missing',
-    ] as const;
+      'voice-missing',
+    ];
     for (const refusal of all) {
       expect(refusalToastKey(refusal) != null).toBe(
         !isExecuteButtonDisabled(refusal),

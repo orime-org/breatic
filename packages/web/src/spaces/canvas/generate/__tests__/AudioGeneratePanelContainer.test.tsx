@@ -421,6 +421,26 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
   });
 });
 
+describe('AudioGeneratePanelContainer — what the trigger says', () => {
+  it('names the stored voice, rather than leaving its raw id on the trigger', async () => {
+    // The record holds an id; the trigger shows a name. The two must differ
+    // here, or the trigger's own id fallback satisfies the assertion and the
+    // wiring under test could be severed without a word.
+    getVoice.mockResolvedValue({ id: '21m00Tcm4Tlv', name: 'Rachel' });
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: '21m00Tcm4Tlv' } },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-voice-trigger').textContent).toContain(
+        'Rachel',
+      );
+    });
+    expect(getVoice).toHaveBeenCalledWith('elevenlabs-v3', '21m00Tcm4Tlv');
+  });
+});
+
 describe('AudioGeneratePanelContainer — submitting', () => {
   it('refuses when no voice has been chosen, and says which', async () => {
     // The catalog's default voice is not a value every deployment accepts, so
@@ -451,6 +471,30 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     expect(payload?.params.voice_id).toBe('Aria');
     // Read off the node, not hardcoded: the seeded lease is 3.
     expect(payload?.node_gens).toEqual({ target: 4 });
+  });
+
+  it('spins and greys the button while the submit is out', async () => {
+    // The container's own render-time gate call: severing it leaves the button
+    // live and arrow-shaped through the whole POST, so a second click lands on
+    // a latch that drops it without a word.
+    let settle: (() => void) | undefined;
+    vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = () => resolve({} as never);
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await screen.findByTestId('generate-audio-execute-pending');
+    expect(screen.getByTestId('generate-audio-execute')).toBeDisabled();
+
+    settle?.();
   });
 
   it('refuses on a locked node', async () => {

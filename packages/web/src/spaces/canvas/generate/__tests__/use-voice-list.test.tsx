@@ -155,6 +155,22 @@ describe('useVoiceList — paging and model changes', () => {
     expect(result.current.state.voices.map((v) => v.id)).toEqual(['Alice', 'Aria']);
   });
 
+  it('marks the list when the next page comes back rejected', async () => {
+    // Without that mark the failure renders exactly like reaching the end: the
+    // loading row disappears and nothing takes its place.
+    list.mockResolvedValueOnce(page(['Alice'], 'c1'));
+    list.mockRejectedValueOnce(new Error('upstream down'));
+    const { result } = renderHook(() => useVoiceList('elevenlabs-v3'));
+    act(() => result.current.onOpenChange(true));
+    await waitFor(() => expect(result.current.state.hasMore).toBe(true));
+
+    act(() => result.current.onLoadMore());
+    await waitFor(() => expect(result.current.state.moreFailed).toBe(true));
+    // The page that did land stays on screen — the user can still pick from it.
+    expect(result.current.state.voices.map((v) => v.id)).toEqual(['Alice']);
+    expect(result.current.state.loadingMore).toBe(false);
+  });
+
   it('drops a page that arrives after the model changed', async () => {
     // The answer is for a model the picker is no longer showing; taking it
     // would offer voices the current model cannot speak with.
