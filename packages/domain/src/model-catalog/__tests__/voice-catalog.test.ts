@@ -122,6 +122,20 @@ describe("listVoices against a direct ElevenLabs deployment (#1960 A2)", () => {
     expect(page.nextCursor).toBe("tok-2");
   });
 
+  it("reports no next page when the vendor claims one without a token", async () => {
+    // The two travel together or not at all: a hasMore with no cursor makes
+    // the picker ask for "the next page" with no cursor, which is page one
+    // again — every scroll to the bottom refetches it and shows nothing new.
+    upstreamReturns({
+      voices: [{ voice_id: "v1", name: "Elli" }],
+      has_more: true,
+    });
+
+    const page = await listVoices("elevenlabs-v3", {});
+    expect(page.hasMore).toBe(false);
+    expect(page.nextCursor).toBeUndefined();
+  });
+
   it("falls back to the labels when a voice carries no description", async () => {
     upstreamReturns({
       voices: [

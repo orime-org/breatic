@@ -243,12 +243,16 @@ export async function listVoices(
 
     const rawVoices = Array.isArray(body.voices) ? body.voices : [];
     const nextToken = body.next_page_token;
+    // The flag and the cursor travel together. Reporting more without a token
+    // leaves the picker asking for "the next page" with no cursor, which is
+    // page one again: every scroll to the bottom refetches it, the dedupe
+    // drops all of it, and the list never moves.
+    const hasMore =
+      body.has_more === true && typeof nextToken === "string" && nextToken !== "";
     return {
       voices: rawVoices.map(fromElevenLabs).filter((v): v is Voice => v !== null),
-      hasMore: body.has_more === true,
-      ...(body.has_more === true && typeof nextToken === "string" && nextToken
-        ? { nextCursor: nextToken }
-        : {}),
+      hasMore,
+      ...(hasMore ? { nextCursor: nextToken as string } : {}),
     };
   }
 
