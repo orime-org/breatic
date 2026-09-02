@@ -6,6 +6,15 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
+
+/**
+ * The id the at-limit line carries, so the box can point at it.
+ *
+ * `maxLength` refuses the keystroke without saying anything, and the line
+ * that says why is drawn on the panel's own edge -- out of the field, where
+ * a screen reader would only meet it by leaving the box.
+ */
+export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 
@@ -211,6 +220,19 @@ function ChatComposerInner({
           ))}
         </div>
       </div>
+      {draft.length >= CHAT_MESSAGE_MAX_CHARS ? (
+        // On the box's own top edge, where this panel puts everything it has
+        // to say about the box below. `maxLength` refuses the keystroke
+        // without a word, and a box that has quietly stopped taking text
+        // looks exactly like one that is working.
+        <p
+          id={CHAT_LIMIT_NOTICE_ID}
+          data-testid='chat-composer-limit'
+          className='px-3 pt-1.5 text-xs text-muted-foreground'
+        >
+          {t('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS })}
+        </p>
+      ) : null}
       <textarea
         ref={box}
         value={draft}
@@ -245,6 +267,9 @@ function ChatComposerInner({
         rows={3}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
         aria-label={t('chat.composer.inputAria')}
+        {...(draft.length >= CHAT_MESSAGE_MAX_CHARS
+          ? { 'aria-describedby': CHAT_LIMIT_NOTICE_ID }
+          : {})}
         data-testid='chat-composer-textarea'
       />
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
@@ -265,14 +290,6 @@ function ChatComposerInner({
           <Wand2 className='h-4 w-4' />
           <span>{activeSkillLabel ?? 'Skill'}</span>
         </Button>
-        {draft.length >= CHAT_MESSAGE_MAX_CHARS ? (
-          <span
-            data-testid='chat-composer-limit'
-            className='mr-auto truncate text-xs text-muted-foreground'
-          >
-            {t('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS })}
-          </span>
-        ) : null}
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
           // to stand here or the press reads as having done nothing -- but it

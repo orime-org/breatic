@@ -94,12 +94,19 @@ export const MessageBubble = React.memo(function MessageBubble({
             {message.streaming ? <WaitingDot consolidating={consolidating} /> : null}
           </div>
         ) : null}
+        {message.toolCalls?.map((tc) => (
+          <ToolCallCard key={tc.id} toolCall={tc} />
+        ))}
+        {/* How the turn ended goes last, after everything it produced: this
+            is the line that says there is no more, so nothing may follow it.
+            Each is a paragraph's distance from what it follows, which is what
+            separates any two blocks in this scope. */}
         {message.interrupted ? (
           // The backend stores this mark so a cut-off answer can be told apart
           // from a complete one; without drawing it the whole chain is wasted.
           <div
             data-testid='message-bubble-interrupted'
-            className='text-xs text-muted-foreground'
+            className='mt-[0.85em] text-xs text-muted-foreground'
           >
             {t('chat.message.interrupted')}
           </div>
@@ -110,7 +117,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           // model call gets, and the reader's next move is to ask it to go on.
           <div
             data-testid='message-bubble-truncated'
-            className='text-xs text-muted-foreground'
+            className='mt-[0.85em] text-xs text-muted-foreground'
           >
             {t('chat.message.truncated')}
           </div>
@@ -131,14 +138,11 @@ export const MessageBubble = React.memo(function MessageBubble({
           <div
             data-testid='message-bubble-error'
             {...(message.failedJustNow ? { role: 'alert' } : {})}
-            className='rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
+            className='mt-[0.85em] rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
           >
             {t('chat.error.turnFailed')}
           </div>
         ) : null}
-        {message.toolCalls?.map((tc) => (
-          <ToolCallCard key={tc.id} toolCall={tc} />
-        ))}
       </div>
     </div>
   );
