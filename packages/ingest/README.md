@@ -10,17 +10,34 @@ against values the browser cannot alter.
 
 ## Setting it up
 
-Two files carry configuration, and neither is committed. Each has a committed
-template beside it; copy the template, drop the `.template` suffix, and replace
-the values with your own.
+Two files carry this Worker's own configuration, and neither is committed. Each
+has a committed template beside it; copy the template, drop the `.template`
+suffix, and replace the values with your own.
 
 | Copy this | To this | Put in it |
 |---|---|---|
-| `wrangler.toml.template` | `wrangler.toml` | Bucket name, and the two addresses this Worker talks to |
+| `wrangler.toml.template` | `wrangler.toml` | Bucket name, ports, and the two addresses this Worker talks to |
 | `.dev.vars.template` | `.dev.vars` | The shared secret |
 
 Nothing appears in both files, so nothing overrides anything: what a name means
 is decided in exactly one place.
+
+### The server side of the same pipeline
+
+The Worker writes the bytes; the server mints the keys and resolves them into
+the URLs that land on nodes. Both halves have to name the same bucket, so the
+repo-root `.env` needs these as well — this Worker running perfectly is not
+enough on its own.
+
+| In the repo-root `.env` | What it is |
+|---|---|
+| `STORAGE_PROVIDER=r2` | **The one that decides everything else.** Left at its `local` default, the bytes still reach R2 and the server still resolves them against the local uploads directory, so every node gets a URL that fetches nothing — and no step reports an error |
+| `R2_BUCKET` | The same bucket as `bucket_name` in `wrangler.toml` |
+| `R2_ACCESS_KEY`, `R2_SECRET_KEY` | An R2 API token's pair. The server reads and writes the bucket over the S3 API with them |
+| `R2_S3_ENDPOINT` | `https://<account>.r2.cloudflarestorage.com` — the signed API endpoint, not a public one |
+| `UPLOAD_BASE_URL` | Where a stored object is publicly readable: the bucket's r2.dev address or a custom domain. This is the URL written onto nodes, and the one ffmpeg downloads a video from to cut its cover |
+| `INGEST_BASE_URL` | Where the browser sends its parts: `http://localhost:<[dev] port>` locally, the Worker's public address on a deployment |
+| `INGEST_SHARED_SECRET` | The same string as in `.dev.vars` |
 
 ### wrangler.toml
 

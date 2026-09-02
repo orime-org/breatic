@@ -114,4 +114,26 @@ describe("a Worker whose configuration is incomplete", () => {
     expect(response.status).toBe(500);
     await expect(response.text()).resolves.toContain("ALLOWED_ORIGINS");
   });
+
+  // The two bindings are filled in by hand in the same file as the vars, and a
+  // name typed wrong there fails no differently than a var left empty — except
+  // that reading a binding that is not there throws somewhere deep, and what
+  // comes back is a 500 naming nothing.
+  it.each(["BUCKET", "UPLOAD_SESSION"])(
+    "names the %s binding when the config does not bind it",
+    async (binding) => {
+      const partial: Record<string, unknown> = { ...env };
+      delete partial[binding];
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(
+        new Request("https://ingest.example.com/uploads", { method: "POST" }),
+        partial as unknown as typeof env,
+        ctx,
+      );
+      await waitOnExecutionContext(ctx);
+
+      expect(response.status).toBe(500);
+      await expect(response.text()).resolves.toContain(binding);
+    },
+  );
 });

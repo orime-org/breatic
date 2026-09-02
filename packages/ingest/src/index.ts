@@ -53,13 +53,21 @@ export interface Env {
 
 /**
  * The settings this Worker cannot run without, each filled in by hand: the two
- * vars from `wrangler.toml` (copied from its template), the secret from
- * `.dev.vars` locally and `wrangler secret put` on a deployment.
+ * vars and the two bindings from `wrangler.toml` (copied from its template),
+ * the secret from `.dev.vars` locally and `wrangler secret put` on a
+ * deployment.
+ *
+ * The bindings are in here for the same reason the vars are: a binding whose
+ * name was typed differently in `wrangler.toml` than the code expects arrives
+ * as nothing at all, and reading it throws somewhere far from the file that
+ * has the typo.
  */
 const REQUIRED_SETTINGS = [
   "INGEST_SHARED_SECRET",
   "SERVER_REPORT_URL",
   "ALLOWED_ORIGINS",
+  "BUCKET",
+  "UPLOAD_SESSION",
 ] as const;
 
 /**
