@@ -31,6 +31,17 @@ vi.mock('@web/data/yjs/use-socket', () => ({
   })),
 }));
 
+// Two modes, so the mode wiring has something to switch BETWEEN: the shipped
+// list holds voiceover alone (later slices add the rest), and with one entry
+// reading the node's stored mode and hardcoding the first are the same thing.
+// The catalog fixture below already carries a sound-effect model for it.
+vi.mock('@web/spaces/canvas/generate/audio-mode-options', () => ({
+  AUDIO_MODE_OPTIONS: [
+    { value: 'tts', label: 'Voiceover', testId: 'generate-audio-mode-tts' },
+    { value: 'sfx', label: 'Sound effects', testId: 'generate-audio-mode-sfx' },
+  ],
+}));
+
 const listVoices = vi.fn();
 const getVoice = vi.fn();
 vi.mock('@web/data/api/voices', () => ({
@@ -301,6 +312,30 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
   it('states the rate of the model it is on, in that vendor\'s unit', async () => {
     await openPanel({ model: 'fish-s2-pro' });
     expect(screen.getByTestId('generate-audio-rate').textContent).toContain('1.5');
+  });
+});
+
+describe('AudioGeneratePanelContainer — the mode comes off the node', () => {
+  it('opens on the mode the node stores, not on the first one offered', async () => {
+    await openPanel({ model: 'elevenlabs-sfx-v2', mode: 'sfx' });
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    expect(
+      screen.getByTestId('generate-model-option-elevenlabs-sfx-v2'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-model-option-elevenlabs-v3')).toBeNull();
+  });
+
+  it('writes a switched mode onto the node, with a model that mode can run', async () => {
+    await openPanel({ model: 'elevenlabs-v3' });
+    fireEvent.click(screen.getByTestId('generate-audio-mode-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-audio-mode-sfx'));
+
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      const data = node?.data as { mode?: string; model?: string };
+      expect(data.mode).toBe('sfx');
+      expect(data.model).toBe('elevenlabs-sfx-v2');
+    });
   });
 });
 

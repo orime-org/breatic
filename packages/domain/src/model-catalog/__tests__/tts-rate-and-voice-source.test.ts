@@ -96,3 +96,27 @@ describe("the voice param names itself to the panel (#1960 A2)", () => {
     expect(ttsEntry("fish-s2-pro").params.speed?.remote_source).toBeUndefined();
   });
 });
+
+describe("the speaking params declare what a control needs (#1960 A15)", () => {
+  // The panel builds its controls off these declarations alone: a list of
+  // stops becomes options, a min/max/step triple becomes a slider, and a
+  // declaration missing any of the three renders nothing at all while its
+  // value still travels to the vendor. Pinned against the real yaml because
+  // that silence is what a fixture copy cannot show.
+  it("gives elevenlabs-v3's stability the three stops the vendor documents", () => {
+    expect(ttsEntry("elevenlabs-v3").params.stability?.values).toEqual([
+      0, 0.5, 1,
+    ]);
+  });
+
+  it.each([
+    ["elevenlabs-v3", "similarity"],
+    ["fish-s2-pro", "speed"],
+    ["fish-s2-pro", "volume"],
+  ])("gives %s's %s a complete range", (model, param) => {
+    const spec = ttsEntry(model).params[param];
+    expect(typeof spec?.min).toBe("number");
+    expect(typeof spec?.max).toBe("number");
+    expect(typeof spec?.step).toBe("number");
+  });
+});

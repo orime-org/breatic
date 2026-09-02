@@ -29,7 +29,9 @@ vi.mock("@breatic/shared", async (importOriginal) => {
 });
 
 const { listVoices, getVoice } = await import("../voice-catalog.js");
-const { resetModelCatalog } = await import("../model-catalog.js");
+const { getFullModelConfig, resetModelCatalog } = await import(
+  "../model-catalog.js"
+);
 
 const BASE_ENV = { DATABASE_URL: "postgres://localhost:5432/breatic_test" };
 
@@ -235,8 +237,15 @@ describe("listVoices against a WaveSpeed deployment (#1960 §6.1.1)", () => {
     const page = await listVoices("elevenlabs-v3", {});
 
     expect(httpRequestMock).not.toHaveBeenCalled();
-    expect(page.voices.length).toBeGreaterThan(0);
     expect(page.hasMore).toBe(false);
+    // Against the yaml rather than against zero: this table IS the product
+    // surface on such a deployment, so serving one of its rows and serving all
+    // of them have to be told apart.
+    const declared = (
+      getFullModelConfig("tts").models.find((m) => m.name === "elevenlabs-v3")
+        ?.voices ?? []
+    ) as Array<{ id: string }>;
+    expect(page.voices.map((v) => v.id)).toEqual(declared.map((v) => v.id));
     const alice = page.voices.find((v) => v.id === "Alice");
     expect(alice).toBeDefined();
     // No previews: every sample_url in that table is null.
