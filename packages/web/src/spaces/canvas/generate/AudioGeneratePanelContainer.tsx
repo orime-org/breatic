@@ -26,6 +26,7 @@ import {
   isNodeLocked,
   readCanvasGraph,
   readNodeLeaseGen,
+  setNodeMode,
   setNodeModel,
   setNodeParams,
 } from '@web/data/yjs/canvas-space';
@@ -55,6 +56,8 @@ import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/genera
 import {
   filterAvailableModes,
   filterModelsByMode,
+  resolveAvailableMode,
+  resolveModeSwitch,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
@@ -113,7 +116,14 @@ function AudioGeneratePanelBody({
     () => filterAvailableModes(AUDIO_MODE_OPTIONS, models),
     [models],
   );
-  const mode = availableModes[0]?.value ?? '';
+  // The node's own mode, kept only while this deployment still offers it: a
+  // mode whose models all went away falls back rather than opening a panel
+  // with nothing to run, and putting the models back reads as that mode again.
+  const storedMode = React.useMemo(
+    () => asContentView(nodes.find((n) => n.id === nodeId)?.data)?.mode,
+    [nodes, nodeId],
+  );
+  const mode = resolveAvailableMode(storedMode, availableModes) ?? '';
   // What the picker offers has to be what this mode can run. The union of both
   // buckets is the right input for the availability gate above and for the view
   // model's own narrowing; handing it to the picker lists sound-effect, music
@@ -208,6 +218,21 @@ function AudioGeneratePanelBody({
     queryFn: () => voicesApi.get(vm.model, vm.voiceSelectedId ?? ''),
     enabled: vm.model !== '' && vm.voiceSelectedId !== null,
   });
+
+  const onToggleMode = React.useCallback(
+    (next: string) => {
+      // Read the node fresh — a collaborator may have changed its per-mode
+      // model memory or its params since this render — and write the switch in
+      // one transaction.
+      const { model, paramsByModel } = resolveModeSwitch(freshContent(), next, models);
+      // An empty model would clobber the node's stored model AND every model's
+      // records. Unreachable while the picker offers only modes that resolve
+      // one; kept as defence against a layer above breaking.
+      if (!model) return;
+      setNodeMode(projectId, spaceId, nodeId, next, model, paramsByModel);
+    },
+    [models, projectId, spaceId, nodeId, freshContent],
+  );
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {
@@ -412,7 +437,7 @@ function AudioGeneratePanelBody({
         voiceChosen: vm.voiceChosen,
       })}
       promptSlot={promptSlot}
-      onToggleMode={noop}
+      onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}
       onVoiceQueryChange={voices.onQueryChange}
