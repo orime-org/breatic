@@ -28,7 +28,7 @@ import {
   defaultStyleSpecs,
 } from '@blocknote/core';
 
-import { buildOrderedListItemSpec } from '@web/spaces/document/document-list-block';
+import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
 
 /** A prop declaration in BlockNote's shape. */
 type PropDecl = Readonly<Record<string, unknown>>;
@@ -95,16 +95,17 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     ...enabled
   } = defaultBlockSpecs;
 
+  const lists = buildListItemSpecs();
   const blockSpecs = {
     paragraph: withProps(enabled.paragraph, QUOTED_PROP),
     heading: withProps(enabled.heading, { ...QUOTED_PROP, ...NUMBERED_PROPS }),
     codeBlock: withProps(enabled.codeBlock, QUOTED_PROP),
-    bulletListItem: withProps(enabled.bulletListItem, QUOTED_PROP),
-    numberedListItem: withProps(buildOrderedListItemSpec(), {
+    bulletListItem: withProps(lists.bulletListItem, QUOTED_PROP),
+    numberedListItem: withProps(lists.numberedListItem, {
       ...QUOTED_PROP,
       ...NUMBER_PROP,
     }),
-    checkListItem: withProps(enabled.checkListItem, QUOTED_PROP),
+    checkListItem: withProps(lists.checkListItem, QUOTED_PROP),
   };
 
   return BlockNoteSchema.create({

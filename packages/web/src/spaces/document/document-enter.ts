@@ -1,0 +1,146 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * What Enter does inside a quote.
+ *
+ * A quote is a prop on the block in this Space, not a container around it, so
+ * every block BlockNote's Enter creates has to be told it is inside one.
+ * BlockNote's handler tries four things in order, and two of them make a new
+ * block:
+ *
+ * - An empty block with the caret at its start gets a fresh `paragraph`
+ *   container built from `createAndFill()`, with no attributes at all.
+ * - A non-empty block is split, with `keepProps` set to whether the caret sits
+ *   at the block's start — so ending a line and pressing Enter passes
+ *   `attrs: {}`.
+ *
+ * Either way the writer lands outside the quote they were writing in. This
+ * handler takes over only for blocks that are inside a quote, and mirrors what
+ * BlockNote would have done for each case, quote included. Everything else —
+ * an unquoted block, a hard break, lifting an empty indented block out a level
+ * — falls straight through.
+ */
+
+import { createExtension, getBlockInfoFromSelection } from '@blocknote/core';
+import { TextSelection } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
+
+import {
+  handleListEnter,
+  QUOTED,
+  splitCarryingQuote,
+  type ListEditor,
+} from '@web/spaces/document/document-list-block';
+
+/** The three block types that answer Enter with a list handler of their own. */
+const LIST_ITEM_TYPES = [
+  'numberedListItem',
+  'bulletListItem',
+  'checkListItem',
+] as const;
+
+/**
+ * Opens a new quoted paragraph after an empty quoted block.
+ *
+ * Mirrors BlockNote's own "empty block, caret at start" case, which builds the
+ * container with `createAndFill()` and so gives it no attributes.
+ * @param tr - The transaction to write into.
+ * @param afterPos - Where the current block ends.
+ * @param childContainer - The current block's children, to carry over.
+ * @returns Whether the block was opened.
+ */
+function openQuotedBlockAfter(
+  tr: Transaction,
+  afterPos: number,
+  childContainer: { node: unknown; beforePos: number; afterPos: number } | undefined,
+): boolean {
+  const { schema } = tr.doc.type;
+  const paragraph = schema.nodes['paragraph']?.createAndFill({
+    [QUOTED]: true,
+  });
+  if (paragraph === undefined || paragraph === null) {
+    return false;
+  }
+  const container = schema.nodes['blockContainer']?.createAndFill(
+    undefined,
+    [paragraph, childContainer?.node].filter((node) => node !== undefined) as never,
+  );
+  if (container === undefined || container === null) {
+    return false;
+  }
+  tr.insert(afterPos, container)
+    .setSelection(new TextSelection(tr.doc.resolve(afterPos + 2)))
+    .scrollIntoView();
+  if (childContainer !== undefined) {
+    tr.delete(childContainer.beforePos, childContainer.afterPos);
+  }
+  return true;
+}
+
+/**
+ * Enter, for a block that sits inside a quote.
+ * @param editor - The editor Enter was pressed in.
+ * @returns Whether this handler claimed the key.
+ */
+function handleQuotedEnter(editor: ListEditor): boolean {
+  return editor.transact((tr) => {
+    const info = getBlockInfoFromSelection(tr);
+    if (!info.isBlockContainer) {
+      return false;
+    }
+    const { blockContent, bnBlock, childContainer } = info;
+    const type = blockContent.node.type.name;
+
+    if (LIST_ITEM_TYPES.some((listType) => listType === type)) {
+      // The list handlers already carry the quote across; they also answer
+      // Enter on an empty item by leaving the list, which is their own rule.
+      return false;
+    }
+    if (blockContent.node.attrs[QUOTED] !== true) {
+      return false;
+    }
+
+    const atBlockStart = tr.selection.$anchor.parentOffset === 0;
+    const blockEmpty = blockContent.node.childCount === 0;
+    const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
+
+    if (blockEmpty) {
+      if (atBlockStart && indented) {
+        // BlockNote lifts this one out a level, which creates no block and so
+        // loses no props.
+        return false;
+      }
+      return atBlockStart
+        ? openQuotedBlockAfter(tr, bnBlock.afterPos, childContainer)
+        : false;
+    }
+
+    tr.deleteSelection();
+    tr.scrollIntoView();
+    return splitCarryingQuote(tr, tr.selection.from, atBlockStart);
+  });
+}
+
+/**
+ * The extension that binds Enter for the whole document.
+ *
+ * The three list types are handled here rather than in each block's own
+ * extension, so that one file decides what Enter does; the built-in list
+ * bindings still exist and are overridden by this one.
+ */
+export const documentEnterExtension = createExtension(() => ({
+  key: 'document-enter',
+  keyboardShortcuts: {
+    Enter: ({ editor }: { editor: ListEditor }) => {
+      const type = editor.transact(
+        (tr) => getBlockInfoFromSelection(tr).blockNoteType,
+      );
+      const listType = LIST_ITEM_TYPES.find((each) => each === type);
+      if (listType !== undefined) {
+        return handleListEnter(editor, listType);
+      }
+      return handleQuotedEnter(editor);
+    },
+  },
+}) as never);

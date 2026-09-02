@@ -170,6 +170,56 @@ describe('typing an ordered list into being', () => {
   });
 });
 
+describe('the shorthands the other two lists ship with', () => {
+  const SHORTHANDS = [
+    { typed: '- ', type: 'bulletListItem', props: {} },
+    { typed: '[] ', type: 'checkListItem', props: { checked: false } },
+    { typed: '[x] ', type: 'checkListItem', props: { checked: true } },
+  ] as const;
+
+  SHORTHANDS.forEach(({ typed, type, props }) => {
+    it(`turns "${typed}" into ${type}`, () => {
+      const before = typed.slice(0, -1);
+      const editor = open([{ type: 'paragraph', content: before }]).editor;
+      caretToEndOf(editor, 0);
+      expect(typeCharacter(editor, ' ')).toBe(true);
+      const [block] = blocksOf(editor);
+      expect(block?.type).toBe(type);
+      Object.entries(props).forEach(([key, value]) => {
+        expect(block?.props[key]).toBe(value);
+      });
+    });
+  });
+});
+
+describe('the chords the three lists ship with', () => {
+  const CHORDS = [
+    { key: '7', type: 'numberedListItem' },
+    { key: '8', type: 'bulletListItem' },
+    { key: '9', type: 'checkListItem' },
+  ] as const;
+
+  CHORDS.forEach(({ key, type }) => {
+    it(`Mod-Shift-${key} turns a paragraph into ${type}`, () => {
+      const { editor } = open([{ type: 'paragraph', content: 'one' }]);
+      caretToEndOf(editor, 0);
+      const view = editor.prosemirrorView!;
+      // `Mod` resolves by platform, and jsdom reports no Mac, so the
+      // binding registered is the Ctrl one.
+      const event = new KeyboardEvent('keydown', {
+        key,
+        shiftKey: true,
+        ctrlKey: true,
+        bubbles: true,
+      });
+      expect(
+        view.someProp('handleKeyDown', (handler) => handler(view, event)),
+      ).toBe(true);
+      expect(blocksOf(editor)[0]?.type).toBe(type);
+    });
+  });
+});
+
 describe('Enter inside an ordered list', () => {
   it('takes an empty item back to a paragraph', () => {
     const { editor } = open([{ type: 'numberedListItem', content: '' }]);

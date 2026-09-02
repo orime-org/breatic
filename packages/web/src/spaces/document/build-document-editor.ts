@@ -38,6 +38,7 @@ import { withCollaboration } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
+import { documentEnterExtension } from '@web/spaces/document/document-enter';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -69,7 +70,10 @@ export function buildDocumentEditor(
       fragment: options.fragment,
       user: UNUSED_USER,
     },
-    extensions: [...(options.extensions ?? [])],
+    // The Enter binding goes in first so that a caller's extension can still
+    // sit after it; the built-in list bindings it overrides are registered
+    // with the blocks themselves.
+    extensions: [documentEnterExtension(), ...(options.extensions ?? [])],
     // Ours draws the placeholder, from `document-placeholders.ts`.
     disableExtensions: ['placeholder'],
   });

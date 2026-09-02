@@ -29,18 +29,19 @@ import {
   getBlockInfo,
   getBlockInfoFromSelection,
   getNearestBlockPos,
+  getPmSchema,
   updateBlockTr,
 } from '@blocknote/core';
 import type { Transaction } from '@tiptap/pm/state';
 
 /** The block type this file rebuilds. */
-const ORDERED_LIST = 'numberedListItem';
+export const ORDERED_LIST = 'numberedListItem';
 
 /** The prop that says a block sits inside a quote. */
-const QUOTED = 'quoted';
+export const QUOTED = 'quoted';
 
 /** What the editor object offers the handlers below. */
-interface ListEditor {
+export interface ListEditor {
   readonly prosemirrorState: { readonly selection: unknown };
   transact: <T>(run: (tr: Transaction) => T) => T;
   getTextCursorPosition: () => { block: { type: string } };
@@ -62,17 +63,26 @@ interface ListEditor {
  * the one after it counts along.
  * @param tr - The transaction to split in.
  * @param posInBlock - Where to split.
+ * @param keepType - Whether the new block keeps this one's type.
  * @returns Whether the split happened.
  */
-function splitCarryingQuote(tr: Transaction, posInBlock: number): boolean {
+export function splitCarryingQuote(
+  tr: Transaction,
+  posInBlock: number,
+  keepType = true,
+): boolean {
   const info = getBlockInfo(getNearestBlockPos(tr.doc, posInBlock));
   if (!info.isBlockContainer) {
     return false;
   }
+  const schema = getPmSchema(tr);
   const quoted = info.blockContent.node.attrs[QUOTED];
   tr.split(posInBlock, 2, [
     { type: info.bnBlock.node.type, attrs: {} },
-    { type: info.blockContent.node.type, attrs: { [QUOTED]: quoted } },
+    {
+      type: keepType ? info.blockContent.node.type : schema.nodes['paragraph'],
+      attrs: { [QUOTED]: quoted },
+    },
   ]);
   return true;
 }
@@ -86,7 +96,10 @@ function splitCarryingQuote(tr: Transaction, posInBlock: number): boolean {
  * @param listItemType - The list block type this handler belongs to.
  * @returns Whether this handler claimed the key.
  */
-function handleListEnter(editor: ListEditor, listItemType: string): boolean {
+export function handleListEnter(
+  editor: ListEditor,
+  listItemType: string,
+): boolean {
   const { blockInfo, selectionEmpty } = editor.transact((tr) => ({
     blockInfo: getBlockInfoFromSelection(tr),
     selectionEmpty: tr.selection.anchor === tr.selection.head,
@@ -114,44 +127,127 @@ function handleListEnter(editor: ListEditor, listItemType: string): boolean {
   });
 }
 
-/** The extension the rebuilt block carries, indexing plugin left out. */
-const orderedListExtension = createExtension({
-  key: 'document-ordered-list',
-  inputRules: [
-    {
-      find: /^\s?(\d+)\.\s$/,
-      replace({ editor }: { editor: ListEditor }) {
-        const info = getBlockInfoFromSelection(
-          editor.prosemirrorState as never,
-        );
-        if (info.blockNoteType === 'heading') {
-          return undefined;
-        }
-        return { type: ORDERED_LIST, props: {} };
-      },
-    },
-  ],
-  keyboardShortcuts: {
-    Enter: ({ editor }: { editor: ListEditor }) =>
-      handleListEnter(editor, ORDERED_LIST),
-    'Mod-Shift-7': ({ editor }: { editor: ListEditor }) => {
-      const position = editor.getTextCursorPosition();
-      if (editor.schema.blockSchema[position.block.type]?.content !== 'inline') {
-        return false;
-      }
-      editor.updateBlock(position.block, { type: ORDERED_LIST, props: {} });
-      return true;
-    },
-  },
-} as never);
+/** What one entry of a block spec's `extensions` array is. */
+type ListExtension = NonNullable<
+  typeof defaultBlockSpecs.numberedListItem.extensions
+>[number];
+
+/** One list kind, and everything its extension has to carry. */
+interface ListKind {
+  /** The block type. */
+  readonly type: string;
+  /** The chord that turns a block into this kind. */
+  readonly shortcut: string;
+  /** The markdown shorthands that open this kind, and what each sets. */
+  readonly inputRules: readonly {
+    readonly find: RegExp;
+    readonly props?: Readonly<Record<string, unknown>>;
+  }[];
+  /** Whether typing the shorthand inside a heading is ignored. */
+  readonly notInHeadings: boolean;
+}
 
 /**
- * The ordered list item spec, rebuilt without the indexing plugin.
- * @returns The spec, ready for `withProps` to add this Space's props to.
+ * The three list kinds, with what BlockNote gives each of them.
+ *
+ * The ordered kind's rule stores no starting number: where a list starts is
+ * `#944`, and until then the digits a user types are the trigger and nothing
+ * more.
  */
-export function buildOrderedListItemSpec(): typeof defaultBlockSpecs.numberedListItem {
+const LIST_KINDS: readonly ListKind[] = [
+  {
+    type: ORDERED_LIST,
+    shortcut: 'Mod-Shift-7',
+    inputRules: [{ find: /^\s?(\d+)\.\s$/ }],
+    notInHeadings: true,
+  },
+  {
+    type: 'bulletListItem',
+    shortcut: 'Mod-Shift-8',
+    inputRules: [{ find: /^\s?[-+*]\s$/ }],
+    notInHeadings: true,
+  },
+  {
+    type: 'checkListItem',
+    shortcut: 'Mod-Shift-9',
+    inputRules: [
+      { find: /^\s?\[\s*\]\s$/, props: { checked: false } },
+      { find: /^\s?\[[Xx]\]\s$/, props: { checked: true } },
+    ],
+    notInHeadings: false,
+  },
+];
+
+/**
+ * Builds the one extension a list kind carries.
+ *
+ * Everything BlockNote's own extension carried is here except the ordered
+ * kind's indexing plugin, which was the sole writer of `data-index` and would
+ * otherwise fight this Space's own numbering decoration for that attribute.
+ * @param kind - Which list to build it for.
+ * @returns The extension.
+ */
+function buildListExtension(kind: ListKind): ListExtension {
+  return createExtension({
+    key: `document-list-${kind.type}`,
+    keyboardShortcuts: {
+      Enter: ({ editor }: { editor: ListEditor }) =>
+        handleListEnter(editor, kind.type),
+      [kind.shortcut]: ({ editor }: { editor: ListEditor }) => {
+        const position = editor.getTextCursorPosition();
+        if (
+          editor.schema.blockSchema[position.block.type]?.content !== 'inline'
+        ) {
+          return false;
+        }
+        editor.updateBlock(position.block, { type: kind.type, props: {} });
+        return true;
+      },
+    },
+    inputRules: kind.inputRules.map((rule) => ({
+      find: rule.find,
+      replace({ editor }: { editor: ListEditor }) {
+        if (kind.notInHeadings) {
+          const info = getBlockInfoFromSelection(
+            editor.prosemirrorState as never,
+          );
+          if (info.blockNoteType === 'heading') {
+            return undefined;
+          }
+        }
+        return { type: kind.type, props: { ...(rule.props ?? {}) } };
+      },
+    })),
+  } as never) as ListExtension;
+}
+
+/**
+ * The three list item specs, each with this Space's extension in place of the
+ * one it ships with.
+ *
+ * Replacing rather than adding: each extension becomes its own keymap plugin,
+ * and the ones a block registers are reached before anything the assembly
+ * passes in, so a second Enter binding would never be run.
+ * @returns The three specs, for `withProps` to extend.
+ */
+export function buildListItemSpecs(): {
+  numberedListItem: typeof defaultBlockSpecs.numberedListItem;
+  bulletListItem: typeof defaultBlockSpecs.bulletListItem;
+  checkListItem: typeof defaultBlockSpecs.checkListItem;
+  } {
+  const [ordered, bullet, check] = LIST_KINDS;
   return {
-    ...defaultBlockSpecs.numberedListItem,
-    extensions: [orderedListExtension],
-  } as typeof defaultBlockSpecs.numberedListItem;
+    numberedListItem: {
+      ...defaultBlockSpecs.numberedListItem,
+      extensions: [buildListExtension(ordered!)],
+    },
+    bulletListItem: {
+      ...defaultBlockSpecs.bulletListItem,
+      extensions: [buildListExtension(bullet!)],
+    },
+    checkListItem: {
+      ...defaultBlockSpecs.checkListItem,
+      extensions: [buildListExtension(check!)],
+    },
+  };
 }
