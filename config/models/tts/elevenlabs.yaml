@@ -119,9 +119,20 @@ models:
         default: "Alice"
       stability:
         description: "Voice consistency (0-1)"
+        # Three stops, not a range. The API takes any 0-1 double, but v3 gives
+        # this slider three named positions and describes only those:
+        # Creative 0.0 / Natural 0.5 / Robust 1.0
+        # (elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices).
+        # Offering 0.37 would promise a behaviour the vendor never describes.
+        values: [0.0, 0.5, 1.0]
         default: 0.5
       similarity:
         description: "Closeness to base voice (0-1)"
+        # 0.0-1.0, default 0.75 (elevenlabs/skills, text-to-speech/references/
+        # voice-settings.md).
+        min: 0.0
+        max: 1.0
+        step: 0.05
         default: 0.75
     providers:
       - name: elevenlabs

@@ -54,6 +54,17 @@ export interface ParamDescriptor {
   values?: readonly (string | number | boolean)[];
   min?: number;
   max?: number;
+  /**
+   * The increment a continuous control moves this value by (#1960).
+   *
+   * Bounds alone do not say how finely a value may be set — 0 to 1 is three
+   * stops for ElevenLabs' stability and twenty for its similarity — and that
+   * is the model's statement about its own parameter, not a decision for
+   * whichever control happens to render it. Only params meant to be set
+   * continuously carry one; a param stating `values` is a list of choices and
+   * has nothing to step through.
+   */
+  step?: number;
   type?: string;
   max_items?: number;
   /**
@@ -254,6 +265,7 @@ const paramDescriptorSchema = z
       .catch(undefined),
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
+    step: z.number().optional().catch(undefined),
     type: z.string().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     // An unrecognised name would send the panel looking for a picker that does

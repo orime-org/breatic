@@ -333,4 +333,30 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image[0]?.params.seed?.remote_source).toBeUndefined();
     expect(out.image[0]?.params.seed?.default).toBe(0);
   });
+
+  it("keeps a param's step, the increment a continuous control moves by", () => {
+    // Bounds alone do not say how finely a value may be set: 0 to 1 is a
+    // handful of stops for one param and a hundred for another, and the answer
+    // belongs to the model, not to whichever control happens to render it.
+    const raw = catalog([
+      entry("elevenlabs-v3", {
+        params: {
+          similarity: { description: "", default: 0.75, min: 0, max: 1, step: 0.05 },
+        },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.similarity?.step).toBe(0.05);
+  });
+
+  it("drops a non-numeric step but keeps the descriptor", () => {
+    const raw = catalog([
+      entry("flux", {
+        params: { seed: { description: "", default: 0, min: 0, max: 1, step: "fine" } },
+      }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.params.seed?.step).toBeUndefined();
+    expect(out.image[0]?.params.seed?.max).toBe(1);
+  });
 });
