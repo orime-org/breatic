@@ -573,6 +573,30 @@ body {
   content: attr(data-label);
 }
 
+/* ---- The document Space's block numbers ----
+   BlockNote draws an ordered item's number through `content: var(--index) "."`,
+   keyed off `data-content-type=numberedListItem`. Neither shape this Space
+   needs can travel that way: a numbered heading is a `heading` block, which
+   that selector never matches, and a level path would come out as `1.1.`
+   because the dot is welded into the rule.
+
+   So `document-numbering-decoration.ts` puts the finished string — punctuation
+   and all — on `data-doc-number`, and this one rule draws it for both kinds of
+   block. `content` carries `!important` because the rule it has to beat,
+   `.bn-block-outer:not([data-prev-type])>.bn-block>.bn-block-content[data-content-type=numberedListItem]:before`,
+   is more specific than any attribute selector can be; the box below outranks
+   the two bare `.bn-block-content:before` rules on specificity alone.
+
+   The box repeats what BlockNote gives an ordered item's marker, so that a
+   heading's number and a list item's land on the same vertical line. */
+.bn-block-content[data-doc-number]::before {
+  content: attr(data-doc-number) !important;
+  display: flex;
+  justify-content: center;
+  min-width: 24px;
+  padding-right: 4px;
+}
+
 /* ---- The document Space's body typography ----
    Tailwind's preflight resets `h1..h6` to inherit their size and weight, and
    strips `list-style` off `ol, ul`. TipTap renders those as bare elements, so
