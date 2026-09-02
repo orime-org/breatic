@@ -249,30 +249,6 @@ describe('AudioGeneratePanel — reference material (#1960 A16)', () => {
     expect(onInsertReference).toHaveBeenCalledWith(TEXT_ROW);
   });
 
-  it('refuses insert on a node that has no prompt to insert into', () => {
-    // A node built before generation reached audio has no prompt container, so
-    // there is nowhere for a reference to go.
-    renderPanel(<AudioGeneratePanel {...BASE} references={[TEXT_ROW]} promptSlot={null} />);
-    expect(screen.getByTestId('generate-ref-insert-e1')).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-  });
-
-  it('still lets that node clear a row', () => {
-    // Removing is what a row this node cannot use is FOR.
-    const onRemoveReference = vi.fn();
-    renderPanel(
-      <AudioGeneratePanel
-        {...BASE}
-        references={[TEXT_ROW]}
-        promptSlot={null}
-        onRemoveReference={onRemoveReference}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('generate-ref-remove-e1'));
-    expect(onRemoveReference).toHaveBeenCalledWith(TEXT_ROW);
-  });
 });
 
 describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
@@ -312,20 +288,37 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
 });
 
 describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () => {
-  it('says so in the prompt position instead of showing an editor', () => {
-    // Audio was never in GENERATIVE_MODALITIES, so no audio node on the canvas
-    // today has a prompt container. An editor rendered here would take typing
-    // and store none of it.
-    renderPanel(<AudioGeneratePanel {...BASE} promptSlot={null} />);
+  it('says the node is too old, and offers nothing but the way out', () => {
+    // Audio joined GENERATIVE_MODALITIES on this branch, so every audio node
+    // made before it has no prompt container and can never generate. The panel
+    // states that once; a control that changes nothing would argue with it.
+    const textRow = {
+      refId: 'e1',
+      sourceNodeId: 'src',
+      sourceNodeType: 'text' as const,
+      sourceNodeName: 'The script',
+      thumbnail: undefined,
+      content: 'Good evening.',
+    };
+    renderPanel(
+      <AudioGeneratePanel {...BASE} references={[textRow]} promptSlot={null} />,
+    );
     expect(screen.getByTestId('generate-audio-legacy')).toHaveTextContent(
       'canvas.generatePanel.audioLegacyNoPrompt',
     );
-    expect(screen.queryByTestId('prompt-editor')).toBeNull();
-  });
-
-  it('keeps the footer usable, so the panel is not a dead end', () => {
-    renderPanel(<AudioGeneratePanel {...BASE} promptSlot={null} />);
-    expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-exit')).toBeInTheDocument();
+    for (const gone of [
+      'prompt-editor',
+      'generate-audio-tool-reference',
+      'generate-ref-insert-e1',
+      'generate-audio-mode-trigger',
+      'generate-model-trigger',
+      'generate-voice-trigger',
+      'generate-audio-params-trigger',
+      'generate-audio-rate',
+      'generate-audio-execute',
+    ]) {
+      expect(screen.queryByTestId(gone)).toBeNull();
+    }
   });
 });

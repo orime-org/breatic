@@ -162,6 +162,43 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
   const rate = currentModel?.rate;
+
+  const exitButton = (
+    <Button
+      type='button'
+      variant={null}
+      size={null}
+      data-testid='generate-audio-exit'
+      aria-label={t('canvas.generatePanel.exit')}
+      onClick={onExit}
+      className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+    >
+      <X className='h-4 w-4' aria-hidden='true' />
+    </Button>
+  );
+
+  // Audio joined GENERATIVE_MODALITIES on this slice, and only nodes that can
+  // generate are born with a prompt container — so every audio node made
+  // before it has none and can never generate, however the panel is set up.
+  // The sentence is the whole panel: a picker or a rail beside it would offer
+  // work that changes nothing, and argue with what the sentence just said
+  // (user 2026-09-02).
+  if (promptSlot === null) {
+    return (
+      <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+        <div className='flex items-start justify-between gap-2'>
+          <p
+            data-testid='generate-audio-legacy'
+            className='py-1 text-sm text-muted-foreground'
+          >
+            {t('canvas.generatePanel.audioLegacyNoPrompt')}
+          </p>
+          {exitButton}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
@@ -169,17 +206,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           onReference={onAddReference}
           referenceActive={referencePicking}
         />
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='generate-audio-exit'
-          aria-label={t('canvas.generatePanel.exit')}
-          onClick={onExit}
-          className='flex h-7 w-7 items-center justify-center rounded-overlay text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <X className='h-4 w-4' aria-hidden='true' />
-        </Button>
+        {exitButton}
       </div>
 
       <ReferenceRail
@@ -188,24 +215,12 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         onInsert={onInsertReference}
         // An audio node collects only text rows, and a text row is prompt
         // material — outside the `modeTakesReferences` question entirely. What
-        // it does answer to is whether there IS a prompt: a node built before
-        // generation reached audio has no prompt container, so a reference has
-        // nowhere to go and insert is refused (removal stays live).
-        modelTakesPrompt={promptSlot !== null}
+        // it answers to is the model's own `takes_prompt`, the fact this prop
+        // is named for.
+        modelTakesPrompt={currentModel?.takes_prompt !== false}
       />
 
-      {promptSlot ?? (
-        <p
-          data-testid='generate-audio-legacy'
-          // Takes the editor's place, so it takes the editor's chrome and
-          // padding too: PromptEditor.tsx:391 for the frame, and the padding
-          // its Radix viewport carries. Without them this row would read as
-          // loose text where every other panel shows a bordered field.
-          className='min-h-[6.5rem] rounded-overlay border border-border bg-background px-2.5 py-2 text-sm text-muted-foreground'
-        >
-          {t('canvas.generatePanel.audioLegacyNoPrompt')}
-        </p>
-      )}
+      {promptSlot}
 
       <div className='flex items-center gap-1.5'>
         <ModeToggle
@@ -244,32 +259,26 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
               {t(rateKey(rate.unit), { credits: rate.credits, per: rate.per })}
             </span>
           )}
-          {/* A node with no prompt container can never generate, and the row
-              above already says so where the editor would be. A submit button
-              beside that sentence contradicts it: its only possible answer is
-              to ask for lines, into a box this node does not have. */}
-          {promptSlot !== null && (
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              data-testid='generate-audio-execute'
-              aria-label={t('canvas.generatePanel.execute')}
-              disabled={isExecuteButtonDisabled(executeRefusal)}
-              onClick={onExecute}
-              className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
-            >
-              {executeRefusal === 'submitting' ? (
-                <Loader2
-                  data-testid='generate-audio-execute-pending'
-                  className='h-4 w-4 animate-spin'
-                  aria-hidden='true'
-                />
-              ) : (
-                <ArrowUp className='h-4 w-4' aria-hidden='true' />
-              )}
-            </Button>
-          )}
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            data-testid='generate-audio-execute'
+            aria-label={t('canvas.generatePanel.execute')}
+            disabled={isExecuteButtonDisabled(executeRefusal)}
+            onClick={onExecute}
+            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+          >
+            {executeRefusal === 'submitting' ? (
+              <Loader2
+                data-testid='generate-audio-execute-pending'
+                className='h-4 w-4 animate-spin'
+                aria-hidden='true'
+              />
+            ) : (
+              <ArrowUp className='h-4 w-4' aria-hidden='true' />
+            )}
+          </Button>
         </div>
       </div>
     </div>

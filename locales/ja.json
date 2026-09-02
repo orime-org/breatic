@@ -305,7 +305,7 @@
       "rateCharacters": "{credits} クレジット / {per} 文字",
       "rateBytes": "{credits} クレジット / {per} バイト",
       "audioPromptPlaceholder": "読み上げるセリフを入力してください。@ で参照を追加",
-      "audioLegacyNoPrompt": "このノードは生成できません。音声ノードを新規作成してください。",
+      "audioLegacyNoPrompt": "このノードは古すぎます。音声ノードを新規作成してください。",
       "voiceParams": "音声設定",
       "voiceStability": "安定性",
       "voiceStabilityCreative": "クリエイティブ",

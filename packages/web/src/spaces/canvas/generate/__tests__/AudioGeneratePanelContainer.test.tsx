@@ -258,11 +258,10 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     expect(screen.queryByTestId('generate-model-option-elevenlabs-sfx-v2')).toBeNull();
   });
 
-  it('offers no way to submit a node that has no prompt container', async () => {
+  it('opens a node with no prompt container on the sentence alone', async () => {
     // A node built before generation reached audio has nowhere to put the
-    // lines. The panel says so where the editor would be — and a live submit
-    // button beside that sentence invites a click whose only answer is "write
-    // the lines" into a box that is not there.
+    // lines, and nothing the panel offers can change that. It says so once and
+    // leaves the way out.
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     seedAudioNode({ model: 'elevenlabs-v3' });
     nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.delete('prompt');
@@ -272,7 +271,17 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     });
 
     await screen.findByTestId('generate-audio-legacy');
-    expect(screen.queryByTestId('generate-audio-execute')).toBeNull();
+    expect(screen.getByTestId('generate-audio-exit')).toBeInTheDocument();
+    for (const gone of [
+      'generate-audio-execute',
+      'generate-model-trigger',
+      'generate-voice-trigger',
+      'generate-audio-params-trigger',
+      'generate-audio-tool-reference',
+      'generate-audio-rate',
+    ]) {
+      expect(screen.queryByTestId(gone)).toBeNull();
+    }
   });
 
   it('asks for lines to speak, not for a picture', async () => {

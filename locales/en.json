@@ -314,7 +314,7 @@
       "rateCharacters": "{credits} credits / {per} characters",
       "rateBytes": "{credits} credits / {per} bytes",
       "audioPromptPlaceholder": "Write the lines to speak, @ to add a reference",
-      "audioLegacyNoPrompt": "This node cannot generate. Create a new audio node.",
+      "audioLegacyNoPrompt": "This node is too old. Create a new audio node.",
       "voiceParams": "Voice settings",
       "voiceStability": "Stability",
       "voiceStabilityCreative": "Creative",
