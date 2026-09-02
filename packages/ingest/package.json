@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "deploy": "pnpm --filter @breatic/shared build && wrangler deploy --env production",
+    "deploy:worker": "pnpm --filter @breatic/shared build && wrangler deploy --env production",
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"

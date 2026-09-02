@@ -42,7 +42,7 @@ enough on its own.
 ### wrangler.toml
 
 Every setting appears once per environment. The top level is what
-`wrangler dev` runs; `[env.production]` is what `pnpm deploy` deploys. The two
+`wrangler dev` runs; `[env.production]` is what `pnpm deploy:worker` deploys. The two
 environments differ only in what the values are.
 
 | Setting | Local value | Production value |
@@ -81,7 +81,7 @@ before anything reads a binding, so it holds for the preflight too.
 |---|---|
 | Locally | `pnpm dev` from the repo root, or `npx wrangler dev` here — listens on the `[dev] port` |
 | Tests | `pnpm test` from the repo root |
-| Deploy | `pnpm deploy` (it passes `--env production`) |
+| Deploy | `pnpm deploy:worker` (it passes `--env production`) |
 
 Point the repo-root `.env`'s `INGEST_BASE_URL` at whichever one the browser
 should talk to, and restart the server so it reads the new value — `.env` is not

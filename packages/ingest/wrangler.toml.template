@@ -3,12 +3,12 @@
 # what the repository carries. See README.md for what each value is.
 #
 # Every setting below appears once per environment: the top level is what
-# `wrangler dev` runs, `[env.production]` is what `pnpm deploy` deploys. The
+# `wrangler dev` runs, `[env.production]` is what `pnpm deploy:worker` deploys. The
 # two differ only in what the values are.
 
 # `wrangler dev` runs this one. Its name differs from the production one so a
 # deploy missing `--env production` lands somewhere else instead of over the
-# live Worker; the package's `deploy` script passes that flag.
+# live Worker; the package's `deploy:worker` script passes that flag.
 name = "breatic-ingest-dev"
 main = "src/index.ts"
 # Pinned to what the workerd bundled with @cloudflare/vitest-pool-workers
