@@ -127,10 +127,9 @@ describe("lazySeedMeta", () => {
 
     const doc = new Y.Doc();
     Y.applyUpdate(doc, call?.[1] as Uint8Array);
-    // 一个块，不是空文档（#904 定稿 §5.4）：空 fragment 下两个客户端各自
-    // 补一个块，合并成两个顶层 blockGroup，下一个连上的客户端删掉一个并把
-    // 那次删除当成自己的编辑广播出去。它唯一的名字仍在 meta 的 Space 条目上。
-    expect(documentBodyFragment(doc).length).toBe(1);
+    // Empty on purpose: a document starts with no blocks at all (#121 定稿
+    // §6.2)。它唯一的名字在 meta 的 Space 条目上，内容文档不带名字。
+    expect(documentBodyFragment(doc).length).toBe(0);
   });
 
   it("leaves a canvas's content doc empty — its editor builds its own structure", async () => {

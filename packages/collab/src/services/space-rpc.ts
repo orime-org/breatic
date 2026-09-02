@@ -654,9 +654,7 @@ async function handleCreate(
     seeded = await yjsDocumentsRepo.seedInitialState(
       spaceContentDocName(projectId, spaceId, type),
       // The name the creator gave the Space lives on its tab, in meta — the
-      // content document carries no name of its own. What it does carry is
-      // whatever that kind's initial content is: one empty paragraph for a
-      // document, nothing for the other two.
+      // content document starts empty and carries no name of its own.
       encodeInitialSpaceContent(type),
     );
   } catch (seedError) {

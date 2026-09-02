@@ -15,25 +15,23 @@
  *
  * ```
  * content
- *   └─ blockGroup           exactly one at the top
- *        └─ blockContainer  one per block, carrying its id
- *             └─ …content   the block's own node: paragraph, heading, …
+ *   └─ …blocks        zero or more; an empty document is a legal state
  * ```
  *
  * There is no title block. The document's only name is the Space's name on
  * its tab, held in the project's meta document — one name, one home. A user
  * who wants a visual heading writes one.
  *
- * A fresh document is seeded with one empty paragraph rather than left empty.
- * Both hazards here were measured. Under a schema that demanded content and
- * an empty fragment (2026-08-16), two clients opening the same fresh document
- * each papered over the gap locally and one keystroke on each side merged
- * into two paragraphs nobody wrote together. Leaving the fragment empty under
- * this schema (2026-09-02) reproduces it a level up: each client fills the
- * top-level group itself, the merge yields two of them where the schema
- * allows one, and the next client to connect deletes one and broadcasts that
- * deletion as its own edit. Seeding one block leaves nothing for either side
- * to invent, so what merges is only what users actually did.
+ * Emptiness is safe because the editor's schema allows it (`block*`): a
+ * fragment with nothing in it maps to a document with no blocks, so no client
+ * ever has to invent a filler block to satisfy the schema, and there is
+ * nothing for a merge to duplicate. The hazard this replaces was measured
+ * (2026-08-16): under a schema that demanded content, two clients opening the
+ * same fresh document each papered over the gap locally, and one keystroke on
+ * each side merged into two paragraphs nobody wrote together. With emptiness
+ * legal, what merges is only what users actually did — and two people each
+ * starting a paragraph in an empty document converging on two paragraphs is
+ * the accepted, expected outcome.
  *
  * The selection ruling, the empty-state interaction and the select-all tiers
  * that sit on top of this shape are the editor's business — the decision
@@ -41,7 +39,6 @@
  * 2026-08-17).
  */
 
-import { v4 as uuidv4 } from "uuid";
 import * as Y from "yjs";
 
 import type { SpaceType } from "@shared/types/space.js";
@@ -65,50 +62,17 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
 }
 
 /**
- * Build the one block a fresh document Space starts with.
- *
- * Node names are camelCase because that is what the editor registers them as.
- * `Y.XmlElement.toString()` lowercases them when printing, so a shape copied
- * out of a probe's output would arrive as an element name the schema does not
- * know — and the failure is silent: the first client to connect deletes what
- * it cannot recognise and broadcasts that deletion as its own edit.
- *
- * The paragraph carries the three attributes the editor's paragraph declares
- * defaults for. Writing them here keeps the first client from filling them in
- * itself, which would be a write to the shared document performed by merely
- * opening it.
- * @returns The `blockGroup` element, ready to insert into a fragment.
- */
-function buildInitialDocumentBlock(): Y.XmlElement {
-  const group = new Y.XmlElement("blockGroup");
-  const container = new Y.XmlElement("blockContainer");
-  container.setAttribute("id", uuidv4());
-
-  const paragraph = new Y.XmlElement("paragraph");
-  paragraph.setAttribute("backgroundColor", "default");
-  paragraph.setAttribute("textColor", "default");
-  paragraph.setAttribute("textAlignment", "left");
-
-  container.insert(0, [paragraph]);
-  group.insert(0, [container]);
-  return group;
-}
-
-/**
  * Encode the initial state for a fresh Space's content document.
  *
- * A document starts with one empty paragraph. Canvas and timeline start with
- * nothing — their editors build their own structure on first bind.
- *
- * The document seed exists because an empty fragment is not a safe starting
- * point under the editor's schema: two clients each binding to it fill the
- * gap locally and merge into two top-level groups, which the next client to
- * connect repairs by deleting one and broadcasting that deletion. Seeding one
- * block means what merges is only what users actually did.
+ * Every kind starts with nothing: canvas and timeline editors build their own
+ * structure on first bind, and a document's empty state is legal by schema —
+ * the editor offers a placeholder and opens a paragraph on the first click or
+ * keystroke.
  *
  * The `kind` parameter is what keeps this function the single home for the
- * initial-content policy: a future kind that needs a seed changes one switch
- * here, not a call site somewhere else.
+ * initial-content policy even though the three answers are currently the
+ * same: a future kind that needs a seed changes one switch here, not a call
+ * site somewhere else.
  * @param kind - The kind of Space this content document belongs to.
  * @returns The encoded Yjs update, ready to persist as the initial state.
  */
@@ -119,8 +83,6 @@ export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   // point — a new kind must state its initial content on purpose.
   switch (kind) {
     case "document":
-      documentBodyFragment(doc).insert(0, [buildInitialDocumentBlock()]);
-      return Y.encodeStateAsUpdate(doc);
     case "canvas":
     case "timeline":
       return Y.encodeStateAsUpdate(doc);
