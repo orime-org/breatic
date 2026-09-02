@@ -1,0 +1,182 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Which rows the block-type menu ticks, and which one the slot shows.
+ *
+ * Every fact the nine rows are judged on sits on the block's own content node
+ * in BlockNote's flat model: its type name, its `level`, and the `numbered`
+ * and `quoted` props. Asking a block what it is therefore costs one node
+ * lookup, where the nested model had to walk outwards through list and quote
+ * ancestors to find out.
+ *
+ * Two rules from §3.1 decide the rest:
+ *
+ * - The eight content rows are mutually exclusive, except that an ordered list
+ *   coexists with any one heading. Quote sits across all eight.
+ * - A row ticks only when EVERY block the selection covers is that row. An
+ *   empty selection ticks nothing: "every block is" would otherwise hold for
+ *   all nine at once over an empty set.
+ */
+
+import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Selection } from '@tiptap/pm/state';
+
+/** The nine rows the menu offers. */
+export type BlockTypeId =
+  | 'paragraph'
+  | 'heading-1'
+  | 'heading-2'
+  | 'heading-3'
+  | 'bullet-list'
+  | 'ordered-list'
+  | 'quote'
+  | 'code-block'
+  | 'task-list';
+
+/**
+ * Every row, in the order the face is looked up.
+ *
+ * The three headings come before `ordered-list` because those two rows can
+ * both hold at once, and what the reader sees on such a line is a heading —
+ * the heading's size, with a heading path where a list marker would be. The
+ * face answers "what am I looking at", so it answers with that.
+ */
+const ROWS: readonly BlockTypeId[] = [
+  'heading-1',
+  'heading-2',
+  'heading-3',
+  'bullet-list',
+  'ordered-list',
+  'task-list',
+  'code-block',
+  'paragraph',
+  'quote',
+];
+
+/**
+ * The eight the face is chosen from.
+ *
+ * Quote is left out because it is orthogonal: a quoted heading's face is the
+ * heading (#928). Expressing that by leaving the row out of the list, rather
+ * than by testing for it at the lookup, is what keeps the rule from depending
+ * on where Quote happens to sit in `ROWS`.
+ */
+export const CONTENT_ROWS: readonly BlockTypeId[] = ROWS.filter(
+  (id) => id !== 'quote',
+);
+
+/** The row each plain block type stands for. */
+const ROW_OF_TYPE: Readonly<Record<string, BlockTypeId>> = {
+  paragraph: 'paragraph',
+  codeBlock: 'code-block',
+  bulletListItem: 'bullet-list',
+  numberedListItem: 'ordered-list',
+  checkListItem: 'task-list',
+};
+
+/** The heading level each heading row stands for. */
+const LEVEL_OF_ROW: Readonly<Partial<Record<BlockTypeId, number>>> = {
+  'heading-1': 1,
+  'heading-2': 2,
+  'heading-3': 3,
+};
+
+/**
+ * The content node of the block a position sits in.
+ * @param doc - The document.
+ * @param pos - A position inside a block.
+ * @returns That block's content node, or null when the position is not in one.
+ */
+function contentAt(doc: PMNode, pos: number): PMNode | null {
+  if (pos < 0 || pos > doc.content.size) {
+    return null;
+  }
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const node = $pos.node(depth);
+    if (node.type.name in ROW_OF_TYPE || node.type.name === 'heading') {
+      return node;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether one block is a given row.
+ * @param content - The block's content node.
+ * @param id - Which row.
+ * @returns Whether the row holds for it.
+ */
+function isRow(content: PMNode, id: BlockTypeId): boolean {
+  if (id === 'quote') {
+    return content.attrs['quoted'] === true;
+  }
+  const level = LEVEL_OF_ROW[id];
+  if (level !== undefined) {
+    return content.type.name === 'heading' && content.attrs['level'] === level;
+  }
+  if (id === 'ordered-list' && content.type.name === 'heading') {
+    // An ordered list and a heading coexist: the block stays an ordered item
+    // and shows a heading (§3.1).
+    return content.attrs['numbered'] === true;
+  }
+  return ROW_OF_TYPE[content.type.name] === id;
+}
+
+/**
+ * The content node of every block the selection covers, in document order.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @returns Those nodes.
+ */
+function blocksUnder(doc: PMNode, selection: Selection): PMNode[] {
+  const found: PMNode[] = [];
+  doc.nodesBetween(selection.from, selection.to, (node) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+    found.push(node);
+    return false;
+  });
+  return found;
+}
+
+/**
+ * Every row ticked over a selection.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @returns The ticked rows.
+ */
+export function tickedOver(
+  doc: PMNode,
+  selection: Selection,
+): Set<BlockTypeId> {
+  const blocks = blocksUnder(doc, selection);
+  if (blocks.length === 0) {
+    return new Set();
+  }
+  return new Set(
+    ROWS.filter((id) => blocks.every((content) => isRow(content, id))),
+  );
+}
+
+/**
+ * Which row the slot shows as this selection's face.
+ *
+ * The end the reader anchored on, so the face answers "what am I in" rather
+ * than going blank over a selection spanning two types (user 2026-08-27). An
+ * anchor that resolves outside any block — a select-all, a node selection —
+ * falls to the first block the selection covers.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @returns That row, `paragraph` when the selection covers no block at all.
+ */
+export function faceOf(doc: PMNode, selection: Selection): BlockTypeId {
+  const anchored = contentAt(doc, selection.anchor);
+  const content = anchored ?? blocksUnder(doc, selection)[0];
+  if (content === undefined) {
+    return 'paragraph';
+  }
+  return CONTENT_ROWS.find((id) => isRow(content, id)) ?? 'paragraph';
+}
