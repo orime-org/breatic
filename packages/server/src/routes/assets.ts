@@ -346,7 +346,7 @@ assets.post(
   "/ingest-report",
   // First, because this route takes no session: the address is all anybody
   // needs to reach it, and a caller who cannot prove they hold the secret
-  // should cost one header comparison and nothing else.
+  // should cost one header comparison and the line below it.
   async (c, next) => {
     const presented = c.req.header("x-ingest-secret") ?? "";
     if (
@@ -363,7 +363,6 @@ assets.post(
       );
     }
     await next();
-    return undefined;
   },
   validate("json", ingestReportSchema),
   async (c) => {

@@ -38,9 +38,12 @@ upload-ticket:  { max: 30,  window_seconds: 60 }
 # 120/60s covers clearing out a whole selection while capping a flood loop
 # against the append-only feed table. The ingest Worker's own report
 # (/assets/ingest-report) is not throttled: a shared-secret comparison is the
-# first thing that route does, so a caller who does not hold it costs one
-# header read — less than the Redis round trip a limiter would add — and the
-# only caller who does hold it sends one report per upload.
+# first thing that route does, so a caller who does not hold it costs that
+# comparison and one warn line — less than the Redis round trip a limiter
+# would add. The caller who does hold it is our own Worker, which one upload
+# can send several reports from: the browser retries a 502 from `/complete`
+# and the Durable Object's alarm retries alongside it, both landing on a route
+# that is idempotent on the grant.
 asset-report:   { max: 120, window_seconds: 60 }
 
 # Reading the membership panel. It reconciles with Stripe on every read

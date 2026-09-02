@@ -369,11 +369,13 @@ export class UploadSession implements DurableObject {
         },
         body: JSON.stringify(body),
       });
-      // Two 4xx say nothing about this upload, because the server never read
-      // the report: 401 when the shared secret did not match, 429 when a limit
-      // answered ahead of the route. Both leave the same next attempt open, so
-      // both are the server being unreachable rather than the server deciding.
-      // Every other one in the range is the server having read it and decided.
+      // Two 4xx say nothing about this upload, because nothing on our side
+      // read the report: 401 when the shared secret did not match, 429 when
+      // something in front of the server — a CDN, a reverse proxy, a gateway —
+      // turned the request away before it arrived. Both leave the same next
+      // attempt open, so both are the server being unreachable rather than the
+      // server deciding. Every other one in the range is the server having
+      // read it and decided.
       if (response.status === 401 || response.status === 429) {
         return "unavailable";
       }

@@ -296,10 +296,10 @@ describe("a server that will not accept our credentials", () => {
   });
 });
 
-// The other 4xx that says nothing about this upload. A rate limiter answers
-// before the route runs, so the report was never read: taking it as the
-// outcome strands an upload whose bytes are already in R2 over a limit that
-// would have let the next attempt through.
+// The other 4xx that says nothing about this upload. Something in front of the
+// server turned the request away, so the report was never read: taking it as
+// the outcome strands an upload whose bytes are already in R2 over a limit
+// that would have let the next attempt through.
 describe("a server that is turning us away for now", () => {
   it("keeps retrying rather than taking it as this upload's outcome", async () => {
     expectReport(429);
