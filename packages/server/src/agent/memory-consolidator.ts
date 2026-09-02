@@ -212,7 +212,9 @@ async function bill(input: ConsolidationBill): Promise<void> {
 /**
  * Fold one window of a conversation into memory.
  * @param window - The turns to fold and where they sit.
- * @returns How it ended; the caller reassembles for every outcome but `aborted`.
+ * @returns How it ended. The caller reassembles when something changed --
+ * `written`, `superseded` or `discarded` -- and leaves the request alone for
+ * `aborted` and `untouched`, where the history it measured still stands.
  */
 export async function consolidateWindow(
   window: ConsolidationWindow,

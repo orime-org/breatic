@@ -65,8 +65,9 @@ memory_conversation_max_size: 3072
 max_output_tokens: 16384
 
 # How long one turn's question may be, in characters. Measured on what
-# reaches the model: the message with the canvas content the reader attached
-# folded in front of it.
+# reaches the model: a message carries the canvas content the reader attached
+# folded in front of it, and a skill command carries its name and input.
+# Both entrances measure the same way.
 #
 # The browser draws a lower line (10,000) and says so as the reader types;
 # this one is where a client cannot skip it.

@@ -283,10 +283,10 @@ function ChatComposerInner({
         }}
         placeholder={t('chat.composer.placeholder')}
         // The browser owns the ceiling: it refuses the keystroke past it and
-        // cuts a paste down to it. The line below says the ceiling was
-        // reached, which is the part a reader cannot see for themselves —
-        // a box that has quietly stopped accepting text looks like one that
-        // is working.
+        // cuts a paste down to it. The line on this box's top edge says the
+        // ceiling was reached, which is the part a reader cannot see for
+        // themselves — a box that has quietly stopped accepting text looks
+        // like one that is working.
         maxLength={CHAT_MESSAGE_MAX_CHARS}
         rows={3}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'

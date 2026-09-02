@@ -10,9 +10,8 @@
 -- the next consolidation writes a fresh row. The rows present today were all
 -- made during development.
 --
--- `deleted_at` is not the tool here: the three read functions in
--- `memory.repo.ts` do not filter on it, so a soft-deleted row is still handed
--- to the model.
+-- `deleted_at` is not the tool here: neither read in `memory.repo.ts`
+-- filters on it, so a soft-deleted row is still handed to the model.
 
 DELETE FROM "project_memories";--> statement-breakpoint
 ALTER TABLE "project_memories" ADD COLUMN "user_id" uuid NOT NULL;--> statement-breakpoint

@@ -221,7 +221,7 @@ const agentConfigSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["memory_conversation_max_size"],
-      message: `memory_conversation_max_size + memory_project_max_size (${reserved}) must be below memory_keep_chars (${config.memory_keep_chars})`,
+      message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_chars (${config.memory_keep_chars})`,
     });
   }
 });

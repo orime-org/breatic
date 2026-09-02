@@ -162,7 +162,7 @@ export class MainAgent {
    * still closes the books. Folding memory is not among them: it belongs in
    * front of the reply, on the turn whose assembled request it can shorten.
    * Assembling what the model is asked happens inside `execute`, not before
-   * the stream is built. Everything it takes -- three round trips for memory,
+   * the stream is built. Everything it takes -- the two memory reads,
    * the conversation and its history, then the compression -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
