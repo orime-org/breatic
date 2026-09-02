@@ -113,13 +113,6 @@ export interface FullModelEntry {
 export interface ProviderConnectionConfig {
   base_url?: string;
   api_key_env?: string;
-  /**
-   * Second credential for vendors that authenticate with a key pair, named
-   * the same way as `api_key_env`. KlingAI signs a JWT per request with the
-   * access key as the `iss` claim and the secret key as the signing secret,
-   * so both halves have to reach the transport.
-   */
-  api_secret_env?: string;
   timeout?: number;
   max_concurrency?: number;
   [extra: string]: unknown;

@@ -8,10 +8,7 @@ wavespeed:
   max_concurrency: 50
 klingai:
   base_url: "https://api.klingai.com/v1"
-  # Signs a JWT per request: the access key is the `iss` claim, the secret key
-  # signs it. Both halves reach the transport as one `access:secret` string.
-  api_key_env: KLINGAI_ACCESS_KEY
-  api_secret_env: KLINGAI_SECRET_KEY
+  api_key_env: KLING_ACCESS_KEY
   timeout: 300
   max_concurrency: 20
 dashscope:

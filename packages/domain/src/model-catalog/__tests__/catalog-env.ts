@@ -28,17 +28,13 @@ import {
  * 从配置读而不是写死一份清单：加一个 provider 就多一个变量名，写死的那份会在
  * 没人注意的时候漏掉它，而漏掉的后果正是这个模块要防的（那个 provider 的模型
  * 被过滤掉，依赖它的测试悄悄改走逃生分支）。
- *
- * 密钥对的两半都要收：klingai 靠 access key 加 secret key 签 JWT，只配上一半
- * 等于没配（`resolveActiveProvider`），那个 provider 照样被过滤掉。
- * @returns 全部 provider 的凭据变量名，去重。
+ * @returns 全部 provider 的 `api_key_env` 变量名，去重。
  */
 export function allProviderKeyNames(): string[] {
   const names = new Set<string>();
   for (const modality of MODALITIES) {
     for (const config of Object.values(getFullModelConfig(modality).providers)) {
       if (config.api_key_env) names.add(config.api_key_env);
-      if (config.api_secret_env) names.add(config.api_secret_env);
     }
   }
   return [...names];

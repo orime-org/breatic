@@ -90,31 +90,21 @@ function isSet(name: string): boolean {
 }
 
 /**
- * Find a model in the media catalog and list what each of its providers needs.
- *
- * Grouped per provider rather than flattened, because reachability is decided
- * per provider: one of them fully configured makes the model runnable, and a
- * provider authenticated by a key pair needs both halves to count. Flattening
- * first would call a deployment with one half of one pair runnable, which is
- * not how `resolveActiveProvider` reads the same yaml.
+ * Find a model in the media catalog and list its providers' key names.
  * @param modelName - The model a skill named.
- * @returns One group of env var names per provider, or null when no modality
- *   has this model.
+ * @returns The env var names of its providers, or null when no modality has this model.
  */
-function mediaProviderKeyGroups(modelName: string): string[][] | null {
+function mediaProviderKeys(modelName: string): string[] | null {
   for (const modality of MODALITIES) {
     const config = getFullModelConfig(modality);
     const entry = config.models.find((m) => m.name === modelName);
     if (!entry) continue;
-    const groups: string[][] = [];
+    const names: string[] = [];
     for (const p of entry.providers ?? []) {
-      const connection = config.providers[p.name];
-      const group = [connection?.api_key_env, connection?.api_secret_env].filter(
-        (name): name is string => Boolean(name),
-      );
-      if (group.length > 0) groups.push(group);
+      const keyName = config.providers[p.name]?.api_key_env;
+      if (keyName) names.push(keyName);
     }
-    return groups;
+    return names;
   }
   return null;
 }
@@ -140,13 +130,13 @@ export function checkSkillModelRunnable(
 
   // A model in the media catalog needs its own provider too — the text route
   // carries the request, the media provider answers it.
-  const mediaGroups = mediaProviderKeyGroups(modelName);
-  if (mediaGroups !== null) {
-    const mediaOk = mediaGroups.some((group) => group.every(isSet));
+  const mediaKeys = mediaProviderKeys(modelName);
+  if (mediaKeys !== null) {
+    const mediaOk = mediaKeys.some(isSet);
     if (mediaOk && textOk) return { ok: true, missing: [] };
     return {
       ok: false,
-      missing: [...(mediaOk ? [] : mediaGroups.flat()), ...(textOk ? [] : textMissing)],
+      missing: [...(mediaOk ? [] : mediaKeys), ...(textOk ? [] : textMissing)],
     };
   }
 
