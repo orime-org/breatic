@@ -538,6 +538,45 @@ describe("POST /assets/ingest-report — the same report twice", () => {
     expect(events).toHaveLength(2);
     expect(events[1]!.update.content).toBe(a.data.fileUrl);
   });
+
+  // The grant is what tells a repeat report apart from a first one, so it is
+  // consumed only once everything a first one owes has been written. Consuming
+  // it earlier would make the retry take a half-finished upload for a finished
+  // one, and the rows the first attempt never got to write would have nobody
+  // left to write them.
+  it("writes the history and feed rows the interrupted attempt never got to", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const body = completed(key);
+
+    // The history write fails for this one node and nothing else. A constraint
+    // rather than a stubbed module: the two writes at stake are the ones the
+    // retry has to reach, and only a failure the database itself raises puts
+    // the report on the path a real interruption takes.
+    await sql.unsafe(
+      `ALTER TABLE node_history ADD CONSTRAINT node_history_report_retry_probe
+       CHECK (node_id <> '${nodeId}')`,
+    );
+    const first = await report(body);
+    await sql.unsafe(
+      `ALTER TABLE node_history DROP CONSTRAINT node_history_report_retry_probe`,
+    );
+
+    expect(first.status).toBeGreaterThanOrEqual(500);
+    expect((await report(body)).status).toBe(200);
+
+    const history = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM node_history
+      WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `;
+    expect(history[0]!.n).toBe("1");
+    const feed = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM project_activities
+      WHERE project_id = ${seed.projectId} AND type = 'asset:uploaded'
+    `;
+    expect(feed[0]!.n).toBe("1");
+  });
 });
 
 describe("a video, which needs a cover before the node hears anything", () => {

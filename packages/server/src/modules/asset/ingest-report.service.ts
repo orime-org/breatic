@@ -105,9 +105,9 @@ export type IngestOutcome =
 /**
  * A grant whose upload has a node behind it.
  *
- * A focus crop (design §9) has no node: its `nodeId` and `spaceId` are null,
- * while `projectId` is set on every grant. All three are judged together so
- * that `canvasSpaceDocName(projectId, spaceId)` gets non-null arguments.
+ * A focus crop (design §9) has no node: its `nodeId` and `spaceId` are null.
+ * All three columns are nullable, and all three are judged together so that
+ * `canvasSpaceDocName(projectId, spaceId)` gets non-null arguments.
  */
 type GrantWithNode = UploadGrant & {
   projectId: string;
@@ -320,25 +320,17 @@ export async function applyIngestReport(
   const coverQueued =
     kind === "video" && (await queueVideoCover(grant, asset, contentType));
 
-  // After the ledger row exists AND the job that owns the rest of a video's
-  // outcome is queued, so an interruption anywhere above leaves the grant
-  // unconsumed and the retry finishes the job. It is also what lets the
-  // already-consumed branch take a queued cover job as given.
-  // The answer is a CAS: false means another delivery of this same report got
-  // there first. Both are then doing the work below against one registered
-  // asset, which every downstream keys on — so the loser has nothing to undo
-  // and nothing to say.
-  await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
-
+  // A video's remaining downstreams belong to the cover job, so the moment
+  // that job is queued there is nothing left here for a retry to finish.
   if (coverQueued) {
+    await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
     return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind };
   }
 
-  // Whether the node history row is new. It gates the feed write below,
-  // which has no key of its own: on this path the grant's `consumedAt` already
-  // turns a repeat report away long before here, so it is only ever true —
-  // but the video job writes the same two downstreams and does get replayed,
-  // and reading the flag in both places keeps one rule instead of two.
+  // Whether the node history row is new. It gates the feed write below, which
+  // has no key of its own. A retry does reach here — the grant is consumed at
+  // the very end — and so does the video job, which writes the same two
+  // downstreams; reading the flag keeps one rule instead of two.
   let historyIsNew = true;
   if (grant.nodeId !== null && grant.projectId !== null) {
     const recorded = await nodeHistoryService.recordUpload({
@@ -380,5 +372,15 @@ export async function applyIngestReport(
   }
 
   await announceSuccess(grant, asset.fileUrl);
+
+  // Last, because the grant is what tells a repeat report from a first one: an
+  // interruption anywhere above leaves it unconsumed, and the retry runs the
+  // whole stretch again. Every step in it is safe to repeat — the ledger row
+  // dedups onto itself, the history row is keyed, the feed row is gated on
+  // that key, and the event is applied last-write-wins.
+  // The answer is a CAS: false means another delivery of this same report got
+  // there first, and both did the same work against one registered asset — so
+  // the loser has nothing to undo and nothing to say.
+  await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
   return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind };
 }
