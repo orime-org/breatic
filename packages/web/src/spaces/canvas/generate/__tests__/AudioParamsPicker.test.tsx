@@ -145,3 +145,56 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
     expect(screen.queryByTestId('generate-audio-params-trigger')).toBeNull();
   });
 });
+
+describe('AudioParamsPicker — when a slider writes', () => {
+  /**
+   * Give a slider a real box and stub pointer capture, neither of which jsdom
+   * provides, so Radix can turn a pointer position into a value.
+   * @param root - The slider's Radix root.
+   */
+  function makeDraggable(root: HTMLElement): void {
+    root.setPointerCapture = vi.fn();
+    root.releasePointerCapture = vi.fn();
+    root.hasPointerCapture = vi.fn(() => true);
+    root.getBoundingClientRect = (): DOMRect =>
+      ({ left: 0, right: 100, width: 100, top: 0, bottom: 10, height: 10 }) as DOMRect;
+  }
+
+  it('writes nothing while a drag is in flight, and shows where the thumb went', () => {
+    // Every step a drag crosses is one Yjs write, and the canvas undo stack
+    // holds 50 entries with no time-based merging — so one drag of a 41-stop
+    // param would push out most of what the user could still undo.
+    const onChange = vi.fn();
+    open(FISH, { speed: 1, volume: 0 }, onChange);
+    const root = screen.getByTestId('generate-audio-speed-slider');
+    makeDraggable(root);
+
+    fireEvent.pointerDown(root, { pointerId: 1, clientX: 50, button: 0, ctrlKey: false });
+    fireEvent.pointerMove(root, { pointerId: 1, clientX: 80 });
+
+    expect(onChange).not.toHaveBeenCalled();
+    // The thumb still has to follow the finger, or the control reads as broken.
+    expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('1.70x');
+  });
+
+  it('writes once, when the drag ends', () => {
+    const onChange = vi.fn();
+    open(FISH, { speed: 1, volume: 0 }, onChange);
+    const root = screen.getByTestId('generate-audio-speed-slider');
+    makeDraggable(root);
+
+    fireEvent.pointerDown(root, { pointerId: 1, clientX: 50, button: 0, ctrlKey: false });
+    fireEvent.pointerMove(root, { pointerId: 1, clientX: 80 });
+    fireEvent.pointerUp(root, { pointerId: 1, clientX: 80 });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ speed: 1.7 });
+  });
+
+  it('still writes per keypress, because each one is its own decision', () => {
+    const onChange = vi.fn();
+    open(FISH, { speed: 1, volume: 0 }, onChange);
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Speed' }), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledWith({ speed: 1.05 });
+  });
+});

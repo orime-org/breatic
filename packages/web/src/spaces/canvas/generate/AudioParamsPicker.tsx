@@ -212,7 +212,65 @@ function ParamControlRow({
   }
 
   return (
-    <div className={spacing}>
+    <ParamSliderRow
+      control={control}
+      label={label}
+      value={value}
+      onChange={onChange}
+      className={spacing}
+    />
+  );
+}
+
+/** What {@link ParamSliderRow} needs. */
+interface ParamSliderRowProps {
+  control: Extract<AudioParamControl, { kind: 'range' }>;
+  label: string;
+  value: number | undefined;
+  onChange: (partial: AudioParamsValue) => void;
+  className: string | undefined;
+}
+
+/**
+ * One numeric param as a slider, written to the document once per gesture.
+ *
+ * A drag crosses every step between where it starts and where it ends, and
+ * Radix reports each one. Each report written straight through is one canvas
+ * undo entry — that stack holds 50 and merges nothing by time — so a single
+ * drag of `volume` (41 stops) would push out nearly everything the user could
+ * still undo. `onValueCommit` fires once when a gesture ends and once per key
+ * press, which is the granularity a person would name as one change.
+ * @param root0 - Props.
+ * @param root0.control - The control this param calls for.
+ * @param root0.label - The localized param name.
+ * @param root0.value - The stored value.
+ * @param root0.onChange - Called with the committed param.
+ * @param root0.className - Row spacing.
+ * @returns The row.
+ */
+function ParamSliderRow({
+  control,
+  label,
+  value,
+  onChange,
+  className,
+}: ParamSliderRowProps): React.JSX.Element {
+  // Where the thumb sits until the gesture ends. Held apart from `value` so
+  // the control follows the pointer while the document does not.
+  const [dragged, setDragged] = React.useState<number | null>(null);
+  const shown = dragged ?? value;
+
+  const onValueChange = React.useCallback(([next]: number[]) => setDragged(next), []);
+  const onValueCommit = React.useCallback(
+    ([next]: number[]) => {
+      setDragged(null);
+      onChange({ [control.name]: next });
+    },
+    [onChange, control.name],
+  );
+
+  return (
+    <div className={className}>
       <div className='mb-1.5 flex items-center justify-between'>
         <span className='text-xs font-medium text-muted-foreground'>{label}</span>
         <span
@@ -220,20 +278,22 @@ function ParamControlRow({
           // Digits line up as the value changes rather than shifting the label.
           className='text-xs tabular-nums text-muted-foreground'
         >
-          {value === undefined ? '' : formatAudioParam(control.name, value)}
+          {shown === undefined ? '' : formatAudioParam(control.name, shown)}
         </span>
       </div>
       <Slider
         className='text-foreground'
+        data-testid={`generate-audio-${control.name}-slider`}
         aria-label={label}
         min={control.min}
         max={control.max}
         step={control.step}
-        value={value === undefined ? [control.min] : [value]}
+        value={shown === undefined ? [control.min] : [shown]}
         // Radix reports a value already rounded to the step's decimal count
         // (`roundValue(…, getDecimalCount(step))` in its own snapping), so the
         // float error of repeated addition never reaches here.
-        onValueChange={([next]) => onChange({ [control.name]: next })}
+        onValueChange={onValueChange}
+        onValueCommit={onValueCommit}
       />
     </div>
   );
