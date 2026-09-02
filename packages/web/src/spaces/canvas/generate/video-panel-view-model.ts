@@ -43,9 +43,9 @@ import type {
   VideoSlotSpec,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-import type {
-  ContentNodeView,
-  NodeView,
+import {
+  asContentView,
+  type ContentNodeView,
 } from '@web/spaces/canvas/types/node-view';
 
 /**
@@ -194,17 +194,6 @@ function resolveVideoMode(
 
 /** Where a node lands when nothing it stored can be served (#1951). */
 const NO_AVAILABLE_MODE_FALLBACK: VideoGenMode = 't2v';
-
-/**
- * Narrows a node view to a content view (the only kind carrying generate
- * inputs). `status` is a required field on every content view and absent on
- * annotation / group, so it is a reliable runtime discriminant.
- * @param data - The node view to narrow.
- * @returns The content view, or undefined for annotation / group / missing.
- */
-function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
-  return data && 'status' in data ? data : undefined;
-}
 
 /**
  * Reads every slot's picked URL off the node.

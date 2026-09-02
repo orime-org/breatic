@@ -29,7 +29,7 @@ import {
   isVoiceChosen,
   voiceParamName,
 } from '@web/spaces/canvas/generate/voice-param';
-import type { ContentNodeView, NodeView } from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/spaces/canvas/types/node-view';
 
 /** Everything the audio panel and its submit read off the node. */
 export interface AudioPanelViewModel {
@@ -52,15 +52,6 @@ export interface AudioPanelViewModel {
   voiceChosen: boolean;
   /** The held voice id, or null when none is held (or none is taken). */
   voiceSelectedId: string | null;
-}
-
-/**
- * The node's content view, when it has one.
- * @param data - The node's data.
- * @returns The content view, or undefined for a node without one.
- */
-function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
-  return data && 'status' in data ? data : undefined;
 }
 
 /**

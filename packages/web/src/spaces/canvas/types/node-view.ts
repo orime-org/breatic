@@ -366,3 +366,20 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
 export function isContentNodeView(view: NodeView): view is ContentNodeView {
   return view.kind !== 'annotation';
 }
+
+/**
+ * Narrows a node view to a content view, absent views included.
+ *
+ * `status` is a required field on every content view and carried by neither
+ * the annotation sticky nor the group container, so it tells all three apart
+ * at runtime. Every Generate panel asks this of the node it is open on — the
+ * generate inputs it reads live on content views alone — which is why it is
+ * here rather than in one of them.
+ * @param data - The node view to narrow, or nothing.
+ * @returns The content view, or undefined for annotation / group / missing.
+ */
+export function asContentView(
+  data: NodeView | undefined,
+): ContentNodeView | undefined {
+  return data && 'status' in data ? data : undefined;
+}
