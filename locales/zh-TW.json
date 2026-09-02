@@ -285,6 +285,7 @@
       "styleTip": "從畫布選一張圖作為風格參考",
       "focusTip": "取節點上的一塊區域作為參考",
       "referenceTip": "從畫布選圖作為參考",
+      "referenceTipAudio": "從畫布選文字作為要念的台詞",
       "emptyImageReference": "尚未生成或上傳",
       "emptyTextReference": "暫無內容",
       "refuseInsertModeOff": "這一檔不使用參考素材",

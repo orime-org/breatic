@@ -79,4 +79,17 @@ describe('AudioGenerateToolbar — Reference is the row', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
     expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
   });
+
+  it('sends the user after text, the only thing an audio node accepts', async () => {
+    // The image and video toolbars share a tip naming images. An audio node's
+    // whitelist is text alone (connection-rules.ts:29), so that tip would point
+    // at the one kind of node this pick greys out and then refuses.
+    setup();
+    fireEvent.pointerMove(screen.getByTestId('generate-audio-tool-reference'), {
+      pointerType: 'mouse',
+    });
+    const tip = await screen.findByRole('tooltip');
+    expect(tip.textContent?.toLowerCase()).toContain('text');
+    expect(tip.textContent?.toLowerCase()).not.toContain('image');
+  });
 });

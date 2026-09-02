@@ -285,6 +285,7 @@
       "styleTip": "이미지 하나를 스타일 참조로 선택",
       "focusTip": "노드의 일부 영역을 참조로 지정",
       "referenceTip": "캔버스에서 이미지를 참조로 선택",
+      "referenceTipAudio": "캔버스에서 읽을 텍스트를 선택",
       "emptyImageReference": "아직 생성 또는 업로드되지 않음",
       "emptyTextReference": "내용 없음",
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",

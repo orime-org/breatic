@@ -41,7 +41,10 @@ export const AudioGenerateToolbar = React.memo(function AudioGenerateToolbar({
       <ToggleTool
         testId='generate-audio-tool-reference'
         label={t('canvas.generatePanel.reference')}
-        tip={t('canvas.generatePanel.referenceTip')}
+        // Its own tip, not the one the image and video rows share: those name
+        // images, and an audio node accepts a text node alone
+        // (`connection-rules.ts`), which is the pick this button starts.
+        tip={t('canvas.generatePanel.referenceTipAudio')}
         Icon={Plus}
         onClick={onReference}
         active={referenceActive}

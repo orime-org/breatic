@@ -285,6 +285,7 @@
       "styleTip": "画像を1枚選んでスタイル参照にします",
       "focusTip": "ノードの一部の領域を参照にします",
       "referenceTip": "キャンバスから画像を選んで参照にします",
+      "referenceTipAudio": "キャンバスから読み上げるテキストを選びます",
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
