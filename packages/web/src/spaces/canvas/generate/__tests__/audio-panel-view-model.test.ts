@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
+import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 
 /**
@@ -158,6 +159,24 @@ describe('buildAudioPanelViewModel — whether a voice has been chosen', () => {
     const vm = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
     expect(vm.voiceRequired).toBe(true);
     expect(vm.voiceChosen).toBe(false);
+  });
+
+  it('still says no voice is chosen after the user merely picked a MODEL', () => {
+    // Picking a model runs `resolveModelSwitch`, which writes every declared
+    // param's yaml default into the record — including the voice one. Building
+    // the record through that path rather than by hand is the whole point: a
+    // hand-built record can never carry `Alice`, so a test that writes its own
+    // fixture cannot see this.
+    const { paramsByModel } = resolveModelSwitch(
+      { kind: 'audio', status: 'idle' } as never,
+      ELEVEN,
+    );
+    const vm = buildAudioPanelViewModel({
+      ...BASE,
+      nodes: nodes({ model: 'elevenlabs-v3', paramsByModel }),
+    });
+    expect(vm.voiceChosen).toBe(false);
+    expect(vm.voiceSelectedId).toBeNull();
   });
 
   it('says a voice is chosen once the record holds one', () => {

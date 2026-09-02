@@ -80,6 +80,13 @@ export function resolveParamsForModel(
   // model.params is trusted (the catalog is sanitized at the API boundary): it
   // is always a Record<string, ParamDescriptor>.
   for (const [key, descriptor] of Object.entries(model.params)) {
+    // A param whose value can only come from a live upstream list keeps
+    // nothing but what the user actually chose. Its yaml default is a
+    // placeholder that no deployment is guaranteed to accept — ElevenLabs
+    // declares the display name `Alice`, which the direct connection rejects —
+    // and writing it into the record makes "has a voice been chosen" answer
+    // yes for a picker the user never opened.
+    if (descriptor.remote_source && current[key] === undefined) continue;
     next[key] = resolveParamValue(descriptor, current[key]);
   }
   return next;
