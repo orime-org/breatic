@@ -69,7 +69,6 @@ const BASE = {
   nodeId: 'n1',
   models: [ELEVEN, FISH],
   mode: 'tts',
-  edges: [],
   textById: new Map<string, string>(),
 };
 

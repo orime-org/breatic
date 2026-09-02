@@ -1,0 +1,246 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * The audio container's props for its memoized children keep their identity
+ * while their content is unchanged.
+ *
+ * `AudioGeneratePanel` is `React.memo`, and the view model behind it rebuilds
+ * on every canvas mutation — every frame of any node drag. A prop rebuilt with
+ * it defeats the memo, which is the same as not having one. The image panel
+ * shipped exactly that and had to be repaired; the video one carries the same
+ * case for its slot objects.
+ *
+ * Asserted on the object the container hands down rather than on a render
+ * count: a count would also rise for unrelated reasons and pass for the wrong
+ * reason, while identity is exactly what `React.memo` compares.
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactFlow } from '@xyflow/react';
+import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import type { ReactNode } from 'react';
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}));
+
+vi.mock('@web/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children?: ReactNode }) => children,
+  TooltipTrigger: ({ children }: { children?: ReactNode }) => children,
+  TooltipContent: () => null,
+  TooltipProvider: ({ children }: { children?: ReactNode }) => children,
+}));
+
+vi.mock('@web/data/yjs/use-socket', () => ({
+  useSocket: vi.fn(() => ({
+    provider: null,
+    synced: false,
+    status: 'connecting' as const,
+    authFailedReason: null,
+  })),
+}));
+
+vi.mock('@web/data/api/voices', () => ({
+  voicesApi: {
+    list: () => Promise.resolve({ voices: [], hasMore: false }),
+    get: () => Promise.resolve({ id: 'Aria', name: 'Aria' }),
+  },
+}));
+
+/** Every `params` object the panel has been handed, newest last. */
+const seenParams: unknown[] = [];
+/** Every `references` array it has been handed, newest last. */
+const seenReferences: unknown[] = [];
+
+// Standing in for the real panel is what lets the case read the prop objects
+// themselves. Deliberately NOT wrapped in React.memo: a memo here would hide
+// the very re-render being measured.
+vi.mock('@web/spaces/canvas/generate/AudioGeneratePanel', () => ({
+  AudioGeneratePanel: (props: {
+    params: unknown;
+    references: unknown;
+  }): null => {
+    seenParams.push(props.params);
+    seenReferences.push(props.references);
+    return null;
+  },
+}));
+
+import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
+import { addNode } from '@web/data/yjs/canvas-space';
+import { _resetForTests } from '@web/data/yjs/manager';
+import {
+  CanvasContext,
+  type CanvasContextValue,
+} from '@web/spaces/canvas/canvas-context';
+import { modelsApi } from '@web/data/api';
+import { useCanvasStore } from '@web/stores';
+
+const CANVAS: CanvasContextValue = {
+  projectId: 'p',
+  spaceId: 's',
+  readOnly: false,
+  caretProvider: null,
+};
+
+const ELEVEN: ModelEntry = {
+  name: 'elevenlabs-v3',
+  display_name: 'ElevenLabs V3',
+  modality: 'tts',
+  mode: 'tts',
+  description: '',
+  guide: '',
+  tier: 'recommended',
+  cost_per_call: 10,
+  generation_time: 30,
+  takes_prompt: true,
+  params: {
+    voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
+    stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
+  },
+  providers: [],
+  sourcesByMode: {},
+};
+
+/**
+ * A catalog holding the one voiceover model this case needs.
+ * @returns The catalog.
+ */
+function catalog(): ModelCatalog {
+  return {
+    image: [],
+    video: [],
+    audio: [],
+    tts: [ELEVEN],
+    three_d: [],
+    understand: [],
+    total: 1,
+  };
+}
+
+/**
+ * The container's node list, freshly built each call.
+ *
+ * A new array every time is what the canvas really hands down — ReactFlow
+ * rebuilds it on every board mutation — so this is the input that must not
+ * reach the memoized panel as a new params or references object.
+ * @returns One audio node and one text node feeding it.
+ */
+function nodes(): Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'] {
+  return [
+    {
+      id: 'target',
+      data: {
+        kind: 'audio',
+        status: 'idle',
+        model: 'elevenlabs-v3',
+        paramsByModel: { 'elevenlabs-v3': { stability: 1 } },
+      },
+    },
+    { id: 'src', data: { kind: 'text', status: 'idle', name: 'The script' } },
+  ] as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'];
+}
+
+/**
+ * Mounts the container around that node, with one incoming text edge.
+ * @returns The render result, so the case can force a re-render.
+ */
+function mount(): ReturnType<typeof render> {
+  return render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ReactFlow
+        nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+        edges={[]}
+        panOnDrag={false}
+      >
+        <CanvasContext.Provider value={CANVAS}>
+          <AudioGeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            edges={[{ id: 'e1', source: 'src', target: 'target' }]}
+            nodes={nodes()}
+          />
+        </CanvasContext.Provider>
+      </ReactFlow>
+    </QueryClientProvider>,
+  );
+}
+
+describe('the audio container keeps its memoized panel bail-able', () => {
+  beforeEach(() => {
+    seenParams.length = 0;
+    seenReferences.length = 0;
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+    addNode('p', 's', {
+      id: 'target',
+      type: 'audio',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'A',
+        createdAt: 1000,
+        createdBy: 'u1',
+        locked: false,
+        state: 'idle',
+        attachments: [],
+        model: 'elevenlabs-v3',
+        paramsByModel: { 'elevenlabs-v3': { stability: 1 } },
+      },
+    } as Parameters<typeof addNode>[2]);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('hands down the SAME params and references while their content is unchanged', async () => {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    const { rerender } = mount();
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+    });
+    await waitFor(() => {
+      expect(seenParams.length).toBeGreaterThan(0);
+    });
+    const paramsBefore = seenParams.at(-1);
+    const referencesBefore = seenReferences.at(-1);
+
+    // What a node drag does: the same board, a new nodes array.
+    rerender(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ReactFlow
+          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+          edges={[]}
+          panOnDrag={false}
+        >
+          <CanvasContext.Provider value={CANVAS}>
+            <AudioGeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              edges={[{ id: 'e1', source: 'src', target: 'target' }]}
+              nodes={nodes()}
+            />
+          </CanvasContext.Provider>
+        </ReactFlow>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(seenParams.length).toBeGreaterThan(1);
+    });
+    expect(seenParams.at(-1)).toBe(paramsBefore);
+    expect(seenReferences.at(-1)).toBe(referencesBefore);
+  });
+});

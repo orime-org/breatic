@@ -181,14 +181,32 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, edges],
   );
   const textById = useTextBodies(projectId, spaceId, textNodeIds);
-  const references = React.useMemo(
+  const derivedReferences = React.useMemo(
     () => deriveReferences(nodeId, nodes, edges, textById),
     [nodeId, nodes, edges, textById],
   );
 
   const vm = React.useMemo(
-    () => buildAudioPanelViewModel({ nodeId, nodes, models, mode, edges }),
-    [nodeId, nodes, models, mode, edges],
+    () => buildAudioPanelViewModel({ nodeId, nodes, models, mode }),
+    [nodeId, nodes, models, mode],
+  );
+
+  // Both of these rebuild with the view model, which rebuilds on every canvas
+  // mutation — every frame of any node drag — and both flow into React.memo
+  // components (the panel, and the rail and params picker under it). Keyed on
+  // their CONTENT so an unchanged one keeps its identity and those memos can
+  // bail; the image and video containers carry the same discipline.
+  const referencesKey = JSON.stringify(derivedReferences);
+  const references = React.useMemo(
+    () => derivedReferences,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: referencesKey IS the input, serialized
+    [referencesKey],
+  );
+  const paramsKey = JSON.stringify(vm.params);
+  const params = React.useMemo(
+    () => vm.params,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- content identity: paramsKey IS the input, serialized
+    [paramsKey],
   );
 
   // Every write re-derives from live Yjs at click time: the render closure goes
@@ -200,13 +218,7 @@ function AudioGeneratePanelBody({
   }, [projectId, spaceId, nodeId]);
   const freshVm = React.useCallback(() => {
     const graph = readCanvasGraph(projectId, spaceId);
-    return buildAudioPanelViewModel({
-      nodeId,
-      nodes: graph.nodes,
-      models,
-      mode,
-      edges: graph.edges,
-    });
+    return buildAudioPanelViewModel({ nodeId, nodes: graph.nodes, models, mode });
   }, [projectId, spaceId, nodeId, models, mode]);
 
   const voices = useVoiceList(vm.model);
@@ -429,7 +441,7 @@ function AudioGeneratePanelBody({
       voiceSelectedName={selectedVoice?.name ?? null}
       references={references}
       referencePicking={referencePicking}
-      params={vm.params}
+      params={params}
       executeRefusal={evaluateExecute({
         promptText,
         model: vm.model,

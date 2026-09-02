@@ -19,7 +19,7 @@
 
 import type { ModelEntry } from '@breatic/shared';
 
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
   filterModelsByMode,
   pickModelForMode,
@@ -61,7 +61,6 @@ export interface AudioPanelViewModel {
  * @param input.nodes - Live canvas node views.
  * @param input.models - The models this panel offers.
  * @param input.mode - The active generation mode.
- * @param input.edges - Live canvas edges.
  * @returns The derived view model.
  */
 export function buildAudioPanelViewModel(input: {
@@ -69,7 +68,6 @@ export function buildAudioPanelViewModel(input: {
   nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
   models: ModelEntry[];
   mode: string;
-  edges: ReadonlyArray<CanvasEdge>;
 }): AudioPanelViewModel {
   const { nodeId, nodes, mode } = input;
   const content = asContentView(nodes.find((n) => n.id === nodeId)?.data);
