@@ -244,26 +244,32 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
               {t(rateKey(rate.unit), { credits: rate.credits, per: rate.per })}
             </span>
           )}
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            data-testid='generate-audio-execute'
-            aria-label={t('canvas.generatePanel.execute')}
-            disabled={isExecuteButtonDisabled(executeRefusal)}
-            onClick={onExecute}
-            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
-          >
-            {executeRefusal === 'submitting' ? (
-              <Loader2
-                data-testid='generate-audio-execute-pending'
-                className='h-4 w-4 animate-spin'
-                aria-hidden='true'
-              />
-            ) : (
-              <ArrowUp className='h-4 w-4' aria-hidden='true' />
-            )}
-          </Button>
+          {/* A node with no prompt container can never generate, and the row
+              above already says so where the editor would be. A submit button
+              beside that sentence contradicts it: its only possible answer is
+              to ask for lines, into a box this node does not have. */}
+          {promptSlot !== null && (
+            <Button
+              type='button'
+              variant={null}
+              size={null}
+              data-testid='generate-audio-execute'
+              aria-label={t('canvas.generatePanel.execute')}
+              disabled={isExecuteButtonDisabled(executeRefusal)}
+              onClick={onExecute}
+              className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+            >
+              {executeRefusal === 'submitting' ? (
+                <Loader2
+                  data-testid='generate-audio-execute-pending'
+                  className='h-4 w-4 animate-spin'
+                  aria-hidden='true'
+                />
+              ) : (
+                <ArrowUp className='h-4 w-4' aria-hidden='true' />
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>

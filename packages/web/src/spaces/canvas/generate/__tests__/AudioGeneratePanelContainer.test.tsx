@@ -45,8 +45,13 @@ import { toast } from 'sonner';
 import { t } from '@breatic/shared';
 
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
-import { addNode, getPromptFragment, readCanvasGraph } from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
+import {
+  addNode,
+  getPromptFragment,
+  nodeDataMap,
+  readCanvasGraph,
+} from '@web/data/yjs/canvas-space';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api';
 import {
@@ -251,6 +256,23 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     expect(screen.getByTestId('generate-model-option-elevenlabs-v3')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-option-fish-s2-pro')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-model-option-elevenlabs-sfx-v2')).toBeNull();
+  });
+
+  it('offers no way to submit a node that has no prompt container', async () => {
+    // A node built before generation reached audio has nowhere to put the
+    // lines. The panel says so where the editor would be — and a live submit
+    // button beside that sentence invites a click whose only answer is "write
+    // the lines" into a box that is not there.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    seedAudioNode({ model: 'elevenlabs-v3' });
+    nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.delete('prompt');
+    render(panelTree({ model: 'elevenlabs-v3' }));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+    });
+
+    await screen.findByTestId('generate-audio-legacy');
+    expect(screen.queryByTestId('generate-audio-execute')).toBeNull();
   });
 
   it('asks for lines to speak, not for a picture', async () => {
