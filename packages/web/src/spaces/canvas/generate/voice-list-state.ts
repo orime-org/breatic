@@ -46,7 +46,6 @@ export interface VoiceListState {
 export type VoiceListEvent =
   | { type: 'opened' }
   | { type: 'collapsed' }
-  | { type: 'panelClosed' }
   | { type: 'queryChanged'; query: string }
   | { type: 'modelChanged' }
   | { type: 'arrived'; requestId: number; page: VoicePage }
@@ -114,12 +113,11 @@ export function voiceListReducer(
         ? startLoading(state, state.query)
         : state;
 
-    // Collapsing the picker and closing the panel leave the same nothing
-    // behind. Reaching idle is what matters: cancelling the request without
-    // changing state would read as "already loading" on the next open, and no
-    // second request would ever be sent.
+    // Reaching idle is what matters: cancelling the request without changing
+    // state would read as "already loading" on the next open, and no second
+    // request would ever be sent. Closing the whole panel needs no event of
+    // its own — it unmounts the container this state lives in.
     case 'collapsed':
-    case 'panelClosed':
       return reset(state);
 
     case 'queryChanged':

@@ -96,12 +96,6 @@ describe('opening and closing (#1960 §7.1)', () => {
     expect(s.query).toBe('');
   });
 
-  it('resets the same way when the whole panel closes', () => {
-    const s = voiceListReducer(readyState(), { type: 'panelClosed' });
-    expect(s.status).toBe('idle');
-    expect(s.voices).toEqual([]);
-  });
-
   it('reopens into loading after a collapse, rather than staying put', () => {
     const collapsed = voiceListReducer(readyState(), { type: 'collapsed' });
     expect(voiceListReducer(collapsed, { type: 'opened' }).status).toBe('loading');
