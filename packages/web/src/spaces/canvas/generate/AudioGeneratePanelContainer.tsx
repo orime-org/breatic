@@ -13,9 +13,11 @@
  * prompt editor, the reference rail — they share by calling the same code.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 import type * as Y from 'yjs';
+
+import type { Voice } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
@@ -110,6 +112,7 @@ function AudioGeneratePanelBody({
   );
   const { caretProvider } = useCanvasContext();
 
+  const queryClient = useQueryClient();
   const { data: catalog } = useQuery(modelCatalogQuery());
   const models = React.useMemo(() => modelsForModality(catalog, 'audio'), [catalog]);
   const availableModes = React.useMemo(
@@ -277,13 +280,25 @@ function AudioGeneratePanelBody({
   );
 
   const onVoicePick = React.useCallback(
-    (voice: { id: string }) => {
+    (voice: Voice) => {
       const fresh = freshVm();
+      // The list belongs to the model the panel rendered with. A collaborator
+      // switching the model between that render and this click leaves an id
+      // from the outgoing vendor's domain in hand, and the incoming model's
+      // record is no place for it.
+      if (fresh.model !== vm.model) {
+        toast.warning(t('canvas.generatePanel.modelUnavailable'));
+        return;
+      }
       const name = voiceParamName(fresh.modelEntry);
       // A model with no voice param has no picker open, so this is unreachable
       // from the UI; writing under a made-up key would put a value where the
       // submit reads none.
       if (!name) return;
+      // The row carries the name the trigger shows. Seeding it here is what
+      // keeps that trigger off a round trip whose only job is to fetch back
+      // what the user just clicked.
+      queryClient.setQueryData(['voice', fresh.model, voice.id], voice);
       const paramsByModel = resolveParamsEdit(
         freshContent(),
         { [name]: voice.id },
@@ -295,7 +310,7 @@ function AudioGeneratePanelBody({
       // `useVoiceList` hands back a fresh object each render, so depending on
       // it rebuilds this on every render and the memoized panel never bails.
     },
-    [projectId, spaceId, nodeId, freshVm, freshContent],
+    [projectId, spaceId, nodeId, freshVm, freshContent, vm.model, queryClient, t],
   );
 
   const onAddReference = React.useCallback(() => {

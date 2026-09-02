@@ -282,6 +282,23 @@ export const VoicePicker = React.memo(function VoicePicker({
                   {t('canvas.generatePanel.voiceLoading')}
                 </p>
               )}
+              {list.moreFailed && !list.loadingMore && (
+                // Scrolling again would retry on its own, but only after the
+                // reader scrolls up and back down — from where they are
+                // standing the list just stopped.
+                <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
+                  <span>{t('canvas.generatePanel.voiceError')}</span>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    data-testid='generate-voice-more-retry'
+                    onClick={onLoadMore}
+                  >
+                    {t('canvas.generatePanel.voiceRetry')}
+                  </Button>
+                </div>
+              )}
             </div>
           </CommandList>
         </Command>

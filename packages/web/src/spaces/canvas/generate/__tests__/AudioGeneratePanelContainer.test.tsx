@@ -171,7 +171,10 @@ function typePrompt(text: string): void {
  * @param nodeData - Extra fields on the target node's view data.
  * @returns The element to render.
  */
-function panelTree(nodeData: Record<string, unknown> = {}): React.ReactElement {
+function panelTree(
+  nodeData: Record<string, unknown> = {},
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
     spaceId: 's',
@@ -179,9 +182,7 @@ function panelTree(nodeData: Record<string, unknown> = {}): React.ReactElement {
     caretProvider: null,
   };
   return (
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+    <QueryClientProvider client={client}>
       {/* panOnDrag off: a pointer sequence in the panel bubbles to ReactFlow's
           d3-zoom, which reads `event.view.document` — null in jsdom. */}
       <ReactFlow
@@ -316,6 +317,59 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
         .paramsByModel?.['elevenlabs-v3'];
       expect(record?.voice_id).toBe('Aria');
     });
+  });
+
+  it('keeps the name off the row it was clicked on, sparing a round trip', async () => {
+    // The trigger shows a name while the record holds an id, and the query
+    // that turns one into the other is keyed by both. Seeding it from the
+    // clicked row spares that query a request whose whole job is to fetch back
+    // what the user just saw — and which, until it lands or if it fails,
+    // leaves a raw id on the trigger.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+    seedAudioNode({ model: 'elevenlabs-v3' });
+    render(panelTree({ model: 'elevenlabs-v3' }, client));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'audio');
+    });
+    await screen.findByTestId('generate-audio-execute');
+    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    await screen.findByTestId('generate-voice-option-Aria');
+    fireEvent.click(screen.getByTestId('generate-voice-option-Aria'));
+
+    await waitFor(() => {
+      expect(client.getQueryData(['voice', 'elevenlabs-v3', 'Aria'])).toEqual({
+        id: 'Aria',
+        name: 'Aria',
+      });
+    });
+  });
+
+  it('refuses a voice whose model is no longer the one on the node', async () => {
+    // A collaborator switched the model while this picker was open. The id in
+    // hand belongs to the outgoing model's domain; writing it into the
+    // incoming model's record submits a value that vendor never issued.
+    await openPanel({ model: 'elevenlabs-v3' });
+    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    await screen.findByTestId('generate-voice-option-Aria');
+    nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.set(
+      'model',
+      'fish-s2-pro',
+    );
+    fireEvent.click(screen.getByTestId('generate-voice-option-Aria'));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalled();
+    });
+    const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+    const records = (
+      node?.data as {
+        paramsByModel?: Record<string, Record<string, unknown>>;
+      }
+    ).paramsByModel;
+    expect(records?.['fish-s2-pro']?.reference_id).toBeUndefined();
   });
 
   it('stores a changed param on that same record', async () => {

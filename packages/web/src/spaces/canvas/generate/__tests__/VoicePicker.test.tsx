@@ -47,6 +47,7 @@ function state(over: Partial<VoiceListState> = {}): VoiceListState {
     query: '',
     hasMore: false,
     loadingMore: false,
+    moreFailed: false,
     requestId: 1,
     ...over,
   };
@@ -353,5 +354,21 @@ describe('VoicePicker samples (#1960 A2)', () => {
     pause.mockClear();
     fireEvent.click(screen.getByTestId('generate-voice-sample-beta'));
     expect(pause).toHaveBeenCalled();
+  });
+});
+
+describe('VoicePicker when a next page fails (#1960 A6)', () => {
+  it('says so at the end of the list, with a way to try again', () => {
+    // Without a line of its own this renders exactly like reaching the end:
+    // the loading row disappears and the list simply stops.
+    const onLoadMore = vi.fn();
+    open({ list: state({ hasMore: true, moreFailed: true }), onLoadMore });
+    fireEvent.click(screen.getByTestId('generate-voice-more-retry'));
+    expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it('says nothing there while a page is still on its way', () => {
+    open({ list: state({ hasMore: true, loadingMore: true }) });
+    expect(screen.queryByTestId('generate-voice-more-retry')).toBeNull();
   });
 });

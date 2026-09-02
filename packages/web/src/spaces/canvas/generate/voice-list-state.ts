@@ -38,6 +38,14 @@ export interface VoiceListState {
   hasMore: boolean;
   /** A page is on its way. The list stays on screen while it is. */
   loadingMore: boolean;
+  /**
+   * The last next-page request came back failed.
+   *
+   * Its own field because the list has no other way to show it: with only
+   * `loadingMore` falling back, a failed page renders exactly like reaching
+   * the end — the loading line goes away and nothing takes its place.
+   */
+  moreFailed: boolean;
   /** Only an answer carrying this id is accepted. */
   requestId: number;
 }
@@ -61,6 +69,7 @@ export const initialVoiceListState: VoiceListState = {
   query: '',
   hasMore: false,
   loadingMore: false,
+  moreFailed: false,
   requestId: 0,
 };
 
@@ -79,6 +88,7 @@ function startLoading(state: VoiceListState, query: string): VoiceListState {
     cursor: undefined,
     hasMore: false,
     loadingMore: false,
+    moreFailed: false,
     requestId: state.requestId + 1,
   };
 }
@@ -124,9 +134,14 @@ export function voiceListReducer(
       return startLoading(state, event.query);
 
     // A different model reads a different value domain, so nothing carries
-    // over — not the voices, not the cursor, and not the search term.
+    // over — not the voices, not the cursor, and not the search term. From
+    // idle there is nothing to carry and nothing to show, and opening the
+    // picker is what sends the first request: fetching here would ask a vendor
+    // for a list nobody has looked at.
     case 'modelChanged':
-      return startLoading(state, '');
+      return state.status === 'idle'
+        ? { ...state, requestId: state.requestId + 1 }
+        : startLoading(state, '');
 
     case 'arrived':
       if (event.requestId !== state.requestId) return state;
@@ -137,6 +152,7 @@ export function voiceListReducer(
         cursor: event.page.nextCursor,
         hasMore: event.page.hasMore,
         loadingMore: false,
+        moreFailed: false,
       };
 
     case 'failed':
@@ -145,7 +161,7 @@ export function voiceListReducer(
 
     case 'moreRequested':
       if (state.loadingMore || !state.hasMore) return state;
-      return { ...state, loadingMore: true };
+      return { ...state, loadingMore: true, moreFailed: false };
 
     // Takes only what this page adds. Neither vendor promises a stable order
     // across requests — Fish pages by number over a list sorted by task count,
@@ -161,13 +177,14 @@ export function voiceListReducer(
         cursor: event.page.nextCursor,
         hasMore: event.page.hasMore,
         loadingMore: false,
+        moreFailed: false,
       };
     }
 
-    // Only the flag falls back. The voices already loaded stay on screen: the
-    // user can still pick one, and can ask for the next page again.
+    // The voices already loaded stay on screen: the user can still pick one,
+    // and can ask for the next page again.
     case 'moreFailed':
       if (event.requestId !== state.requestId) return state;
-      return { ...state, loadingMore: false };
+      return { ...state, loadingMore: false, moreFailed: true };
   }
 }

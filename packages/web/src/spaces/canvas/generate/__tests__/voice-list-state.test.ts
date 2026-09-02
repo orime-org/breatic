@@ -178,6 +178,14 @@ describe('what comes back (#1960 §7.1)', () => {
 });
 
 describe('searching and switching models (#1960 §7.1)', () => {
+  it('asks for nothing when the model changes before the picker was opened', () => {
+    // Opening the picker is what sends the first request. Going to loading
+    // here would fetch a vendor list for a picker nobody has looked at.
+    const s = voiceListReducer(initialVoiceListState, { type: 'modelChanged' });
+    expect(s.status).toBe('idle');
+    expect(s.requestId).not.toBe(initialVoiceListState.requestId);
+  });
+
   it('goes back to loading when the search term changes', () => {
     const s = voiceListReducer(readyState(), {
       type: 'queryChanged',
@@ -250,6 +258,29 @@ describe('paging (#1960 §7.1, a flag rather than a state)', () => {
       page: { voices: [VOICE_A, VOICE_B], hasMore: false },
     });
     expect(s.voices).toEqual([VOICE_A, VOICE_B]);
+  });
+
+  it('says a next page failed, so the list does not read as finished', () => {
+    // Without a mark of its own, a failed page renders exactly like reaching
+    // the end: the loading line goes away and nothing takes its place.
+    const ready = readyState();
+    const loadingMore = voiceListReducer(ready, { type: 'moreRequested' });
+    const s = voiceListReducer(loadingMore, {
+      type: 'moreFailed',
+      requestId: ready.requestId,
+    });
+    expect(s.moreFailed).toBe(true);
+  });
+
+  it('clears that mark when the next attempt starts', () => {
+    const ready = readyState();
+    const failed = voiceListReducer(
+      voiceListReducer(ready, { type: 'moreRequested' }),
+      { type: 'moreFailed', requestId: ready.requestId },
+    );
+    expect(voiceListReducer(failed, { type: 'moreRequested' }).moreFailed).toBe(
+      false,
+    );
   });
 
   it('keeps the loaded voices when the next page fails', () => {
