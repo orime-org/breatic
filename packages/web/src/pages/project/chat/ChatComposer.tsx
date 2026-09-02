@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
+import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 
 /**
  * The id the at-limit line carries, so the box can point at it.
@@ -118,6 +119,7 @@ function ChatComposerInner({
   const t = useTranslation();
   const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating;
   const box = React.useRef<HTMLTextAreaElement>(null);
+  const atLimit = useAtLimitNotice(draft.length, CHAT_MESSAGE_MAX_CHARS);
 
   /**
    * Submit the draft message when the composer is in a ready state.
@@ -220,11 +222,9 @@ function ChatComposerInner({
           ))}
         </div>
       </div>
-      {draft.length >= CHAT_MESSAGE_MAX_CHARS ? (
+      {atLimit.showing ? (
         // On the box's own top edge, where this panel puts everything it has
-        // to say about the box below. `maxLength` refuses the keystroke
-        // without a word, and a box that has quietly stopped taking text
-        // looks exactly like one that is working.
+        // to say about the box below.
         <p
           id={CHAT_LIMIT_NOTICE_ID}
           data-testid='chat-composer-limit'
@@ -255,7 +255,31 @@ function ChatComposerInner({
           if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             submit();
+            return;
           }
+          // A full box turns a letter away in silence: no `input` event, no
+          // change to show. Only a key that would have added one counts --
+          // `key.length === 1` is that key, a composition is still being
+          // chosen, a shortcut is not text, and a selection is about to be
+          // replaced rather than grown.
+          const b = box.current;
+          if (
+            draft.length >= CHAT_MESSAGE_MAX_CHARS &&
+            e.key.length === 1 &&
+            !e.nativeEvent.isComposing &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            !e.altKey &&
+            b !== null &&
+            b.selectionStart === b.selectionEnd
+          ) {
+            atLimit.sayAgain();
+          }
+        }}
+        // A paste into a full box is turned away the same way, and the browser
+        // cuts an oversized one down to the ceiling without a word either.
+        onPaste={() => {
+          if (draft.length >= CHAT_MESSAGE_MAX_CHARS) atLimit.sayAgain();
         }}
         placeholder={t('chat.composer.placeholder')}
         // The browser owns the ceiling: it refuses the keystroke past it and
@@ -267,9 +291,7 @@ function ChatComposerInner({
         rows={3}
         className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
         aria-label={t('chat.composer.inputAria')}
-        {...(draft.length >= CHAT_MESSAGE_MAX_CHARS
-          ? { 'aria-describedby': CHAT_LIMIT_NOTICE_ID }
-          : {})}
+        {...(atLimit.showing ? { 'aria-describedby': CHAT_LIMIT_NOTICE_ID } : {})}
         data-testid='chat-composer-textarea'
       />
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
