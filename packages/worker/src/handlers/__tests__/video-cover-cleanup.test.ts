@@ -120,7 +120,13 @@ describe("a terminal failure", () => {
   // unconditional "video only" would leave that cover in the ledger, charged
   // for, and never on screen.
   it("carries the cover the job managed to register before dying", async () => {
-    mockFindCoverOf.mockResolvedValue({ storageKey: "image/existing_cover.png" });
+    // Both fields, because `findCoverOf` returns a whole StudioAssetEntity and
+    // the row's own `fileUrl` is what the URL is read from — a double carrying
+    // only the key describes a row that cannot exist.
+    mockFindCoverOf.mockResolvedValue({
+      storageKey: "image/existing_cover.png",
+      fileUrl: "https://cdn/image/existing_cover.png",
+    });
     const queue = queueHolding({ data: DATA, finishedOn: 1_700_000_000_000 });
 
     await reclaimFailedCoverJobById(queue, "job-1");

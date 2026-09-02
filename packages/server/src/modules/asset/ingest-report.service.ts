@@ -97,10 +97,36 @@ export type IngestReport =
 
 /** What the report handler decided, for the route to answer with. */
 export type IngestOutcome =
-  | { status: "registered"; fileUrl: string; kind: string; deduped: boolean }
+  | { status: "registered"; fileUrl: string; kind: string }
   | { status: "already_registered"; fileUrl: string; kind: string }
   | { status: "rejected"; reason: "over_cap" }
   | { status: "voided" };
+
+/**
+ * A grant whose upload has a node behind it.
+ *
+ * The three fields travel together: an upload with no node — a focus crop
+ * (design §9) — has all three null, and one with a node has all three set.
+ */
+type GrantWithNode = UploadGrant & {
+  projectId: string;
+  spaceId: string;
+  nodeId: string;
+};
+
+/**
+ * Whether this upload has a node behind it.
+ *
+ * One predicate for every caller, and the narrowing lets each read the three
+ * values without asserting they are there.
+ * @param grant - The grant.
+ * @returns True when the grant names a node.
+ */
+function hasNode(grant: UploadGrant): grant is GrantWithNode {
+  return (
+    grant.projectId !== null && grant.spaceId !== null && grant.nodeId !== null
+  );
+}
 
 /**
  * Tell the node this upload succeeded, and hand it the URL to pin.
@@ -111,9 +137,7 @@ async function announceSuccess(
   grant: UploadGrant,
   fileUrl: string,
 ): Promise<void> {
-  if (grant.projectId === null || grant.spaceId === null || grant.nodeId === null) {
-    return;
-  }
+  if (!hasNode(grant)) return;
   await emitNodeStateDone(
     getStreamRedis(),
     canvasSpaceDocName(grant.projectId, grant.spaceId),
@@ -132,9 +156,7 @@ async function announceFailure(
   grant: UploadGrant,
   message: string,
 ): Promise<void> {
-  if (grant.projectId === null || grant.spaceId === null || grant.nodeId === null) {
-    return;
-  }
+  if (!hasNode(grant)) return;
   await emitNodeStateFailed(
     getStreamRedis(),
     canvasSpaceDocName(grant.projectId, grant.spaceId),
@@ -164,13 +186,7 @@ async function queueVideoCover(
   asset: { id: string; fileUrl: string; sizeBytes: number },
   contentType: string,
 ): Promise<boolean> {
-  if (
-    grant.projectId === null ||
-    grant.spaceId === null ||
-    grant.nodeId === null
-  ) {
-    return false;
-  }
+  if (!hasNode(grant)) return false;
   await getCoverQueue().add(
     VIDEO_COVER_JOB,
     {
@@ -265,7 +281,7 @@ export async function applyIngestReport(
   // The hash the Worker computed is the one the ledger keys on. The browser's
   // claim answered "have we got this already?" before a byte moved; only this
   // one names what is actually stored.
-  const { asset, deduped, reclaimQueueFailed } = await assetService.register({
+  const { asset, reclaimQueueFailed } = await assetService.register({
     projectId: grant.projectId ?? "",
     actingUserId: grant.userId,
     // Both come off the same row, and the row got its studio by resolving that
@@ -314,7 +330,7 @@ export async function applyIngestReport(
   await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
 
   if (coverQueued) {
-    return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind, deduped };
+    return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind };
   }
 
   // Whether the node history row is new. It gates the feed write below,
@@ -363,5 +379,5 @@ export async function applyIngestReport(
   }
 
   await announceSuccess(grant, asset.fileUrl);
-  return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind, deduped };
+  return { status: "registered", fileUrl: asset.fileUrl, kind: asset.kind };
 }

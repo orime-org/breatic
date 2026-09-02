@@ -17,7 +17,10 @@
  */
 
 import { verifyUploadTicket } from "@breatic/shared";
-import { verifySessionToken } from "@ingest/session-token.js";
+import {
+  verifySessionToken,
+  type SessionTokenPayload,
+} from "@ingest/session-token.js";
 
 export { UploadSession } from "@ingest/upload-session.js";
 
@@ -128,6 +131,32 @@ async function startUpload(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * The session this request may write into, or null when it may write into none.
+ *
+ * One place decides it for both endpoints that take bytes. The upload id is
+ * inside the signature as well as in the path, so a token names the one upload
+ * it opened rather than any upload at all.
+ * @param request - The incoming request.
+ * @param env - The bound resources and configuration.
+ * @param uploadId - The upload named in the path.
+ * @returns The verified session, or null when this caller may not write here.
+ */
+async function authorizedSession(
+  request: Request,
+  env: Env,
+  uploadId: string,
+): Promise<SessionTokenPayload | null> {
+  const token = request.headers.get("x-upload-token");
+  if (token === null) return null;
+  const session = await verifySessionToken(
+    token,
+    env.INGEST_SHARED_SECRET,
+    Date.now(),
+  );
+  return session !== null && session.uploadId === uploadId ? session : null;
+}
+
+/**
  * Hand one part's bytes to the instance that owns this upload.
  *
  * The bytes are read into memory here and written to R2 by the instance, so
@@ -145,19 +174,8 @@ async function uploadPart(
   uploadId: string,
   partNumber: number,
 ): Promise<Response> {
-  const token = request.headers.get("x-upload-token");
-  if (token === null) return new Response("Unauthorized", { status: 401 });
-
-  const session = await verifySessionToken(
-    token,
-    env.INGEST_SHARED_SECRET,
-    Date.now(),
-  );
-  // The upload id is inside the signature as well as in the path, so a token
-  // names the one upload it may write into rather than any upload at all.
-  if (session === null || session.uploadId !== uploadId) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const session = await authorizedSession(request, env, uploadId);
+  if (session === null) return new Response("Unauthorized", { status: 401 });
 
   const body = await request.arrayBuffer();
   return sessionFor(env, session.storageKey).fetch(
@@ -185,17 +203,8 @@ async function completeUpload(
   env: Env,
   uploadId: string,
 ): Promise<Response> {
-  const token = request.headers.get("x-upload-token");
-  if (token === null) return new Response("Unauthorized", { status: 401 });
-
-  const session = await verifySessionToken(
-    token,
-    env.INGEST_SHARED_SECRET,
-    Date.now(),
-  );
-  if (session === null || session.uploadId !== uploadId) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const session = await authorizedSession(request, env, uploadId);
+  if (session === null) return new Response("Unauthorized", { status: 401 });
 
   return sessionFor(env, session.storageKey).fetch(
     new Request("https://session/complete", { method: "POST" }),

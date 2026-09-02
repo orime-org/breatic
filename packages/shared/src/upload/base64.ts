@@ -18,10 +18,7 @@
  * @returns Its base64 form.
  */
 export function encodeBase64Utf8(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
+  return encodeBase64Bytes(new TextEncoder().encode(value));
 }
 
 /**
@@ -31,18 +28,16 @@ export function encodeBase64Utf8(value: string): string {
  * @throws {Error} When the input is not valid base64.
  */
 export function decodeBase64Utf8(value: string): string {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
+  return new TextDecoder().decode(decodeBase64Bytes(value));
 }
 
 /**
- * Base64 a signature, which is bytes rather than text.
+ * Base64 raw bytes. The text pair above is written in terms of this one, so
+ * a change to how bytes are encoded cannot leave the two disagreeing.
  * @param signature - The raw signature bytes.
  * @returns Its base64 form.
  */
-export function encodeBase64Bytes(signature: ArrayBuffer): string {
+export function encodeBase64Bytes(signature: ArrayBuffer | Uint8Array): string {
   let binary = "";
   for (const byte of new Uint8Array(signature)) {
     binary += String.fromCharCode(byte);

@@ -25,7 +25,6 @@
  * live instance receives.
  */
 
-import { getStorageAdapter } from "@breatic/core";
 import { assetRepo, type VideoCoverJobData } from "@breatic/domain";
 import { announceUpload } from "@worker/handlers/video-cover-job.js";
 
@@ -71,10 +70,6 @@ export async function reclaimFailedCoverJobById(
   if (!job.finishedOn) return false;
 
   const cover = await assetRepo.findCoverOf(job.data.videoAssetId);
-  const adapter = await getStorageAdapter();
-  await announceUpload(
-    job.data,
-    cover ? adapter.publicUrl(cover.storageKey) : undefined,
-  );
+  await announceUpload(job.data, cover?.fileUrl);
   return true;
 }

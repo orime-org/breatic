@@ -21,7 +21,6 @@
  */
 
 import {
-  getStorageAdapter,
   getStreamRedis,
   logger,
   projectActivitiesRepo,
@@ -49,8 +48,7 @@ export interface VideoCoverJobLike {
  */
 export async function runVideoCover(job: VideoCoverJobLike): Promise<void> {
   const data = job.data;
-  const adapter = await getStorageAdapter();
-  const coverUrl = await resolveCover(data, adapter.publicUrl.bind(adapter));
+  const coverUrl = await resolveCover(data);
   await announceUpload(data, coverUrl);
 }
 
@@ -110,12 +108,10 @@ export async function announceUpload(
  * different key. Pinning the fresh key would point the node at the object the
  * offline reclaim job is about to remove.
  * @param data - The job payload.
- * @param publicUrl - Resolves a storage key to its canonical URL.
  * @returns The cover's canonical URL, or undefined when there is none.
  */
 async function resolveCover(
   data: VideoCoverJobData,
-  publicUrl: (key: string) => string,
 ): Promise<string | undefined> {
   const { extractVideoCover } = await import(
     "@worker/providers/video-cover.js"
@@ -170,7 +166,7 @@ async function resolveCover(
   // it would leave that row with nothing pointing at it and a node that never
   // gets a cover.
   await assetRepo.setCoverAsset(data.videoAssetId, registered.asset.id);
-  return publicUrl(registered.asset.storageKey);
+  return registered.asset.fileUrl;
 }
 
 /**
