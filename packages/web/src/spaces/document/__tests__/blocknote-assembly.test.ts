@@ -26,7 +26,7 @@
  * makes the write structurally impossible rather than a matter of timing.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Mark } from '@tiptap/core';
 import { createExtension } from '@blocknote/core';
 import { Awareness } from 'y-protocols/awareness';
@@ -43,6 +43,19 @@ const Sentinel = createExtension(() => ({
   key: 'assemblySentinel',
   tiptapExtensions: [SentinelMark],
 }) as never);
+
+/**
+ * Editors mounted by this file, taken down after each case: the whole suite
+ * shares one process, so an editor left standing keeps its listeners and
+ * observers alive for every file after this one.
+ */
+const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
+
+afterEach(() => {
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
+  });
+});
 
 /**
  * Reads the plugin keys off a mounted editor.
@@ -73,6 +86,7 @@ function open(): {
     extensions: [Sentinel()],
   });
   editor.mount(document.createElement('div'));
+  mounted.push(editor);
   return { editor, doc, awareness };
 }
 
@@ -123,6 +137,7 @@ describe('the document editor assembly', () => {
       extensions: [Sentinel()],
     });
     editor.mount(document.createElement('div'));
+    mounted.push(editor);
 
     expect(frames).toEqual([]);
     expect(awareness.getLocalState()).toEqual({});

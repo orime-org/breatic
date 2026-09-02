@@ -38,12 +38,13 @@ function schemaWithFallbacks(): ReturnType<
   typeof buildDocumentEditor
 >['pmSchema'] {
   const doc = new Y.Doc();
-  const editor = buildDocumentEditor({
+  // Never mounted: the schema is assembled at creation, and the whole suite
+  // shares one process, where a mounted editor keeps its listeners alive for
+  // every file after this one.
+  return buildDocumentEditor({
     fragment: documentBodyFragment(doc),
     extensions: [documentFallbackExtension()],
-  });
-  editor.mount(document.createElement('div'));
-  return editor.pmSchema;
+  }).pmSchema;
 }
 
 describe('the cross-version fallbacks', () => {

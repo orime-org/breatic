@@ -121,6 +121,10 @@ function visit(build: (fragment: Y.XmlFragment) => void): {
     return true;
   });
 
+  // The whole suite shares one process, so an editor left standing keeps its
+  // listeners and observers alive for every file after this one.
+  editor.unmount();
+
   return { before, after: fragment.toString(), standIns };
 }
 
