@@ -252,7 +252,7 @@ export async function listVoices(
     return {
       voices: rawVoices.map(fromElevenLabs).filter((v): v is Voice => v !== null),
       hasMore,
-      ...(hasMore ? { nextCursor: nextToken as string } : {}),
+      ...(hasMore ? { nextCursor: nextToken } : {}),
     };
   }
 

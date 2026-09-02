@@ -29,7 +29,9 @@ describe("extractPromptText — what it strips", () => {
   });
 
   it("removes zero-width and invisible characters", () => {
-    expect(extractPromptText("a​b﻿c")).toBe("abc");
+    // Escaped, not literal: a source file carrying the characters themselves
+    // is the thing `no-trojan-source` exists to catch.
+    expect(extractPromptText("a\u200Bb\uFEFFc")).toBe("abc");
   });
 });
 
