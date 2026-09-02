@@ -278,9 +278,12 @@ function AudioGeneratePanelBody({
         fresh.model,
       );
       setNodeParams(projectId, spaceId, nodeId, paramsByModel);
-      voices.onOpenChange(false);
+      // Collapsing the picker is the picker's own doing (VoicePicker closes on
+      // pick). Doing it here too would only cost this callback its identity:
+      // `useVoiceList` hands back a fresh object each render, so depending on
+      // it rebuilds this on every render and the memoized panel never bails.
     },
-    [projectId, spaceId, nodeId, freshVm, freshContent, voices],
+    [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
   const onAddReference = React.useCallback(() => {
