@@ -281,11 +281,7 @@ function ParamSliderRow({
     [onChange, control.name],
   );
 
-  const onKeyDown = React.useCallback((event: React.KeyboardEvent): void => {
-    if (event.repeat) repeatingRef.current = true;
-  }, []);
-
-  const onKeyUp = React.useCallback((): void => {
+  const endKeyGesture = React.useCallback((): void => {
     repeatingRef.current = false;
     const reached = repeatedToRef.current;
     repeatedToRef.current = null;
@@ -296,6 +292,21 @@ function ParamSliderRow({
     setDragged(null);
     if (reached !== null) onChange({ [control.name]: reached });
   }, [onChange, control.name]);
+
+  // Four ways a key gesture ends, and every one of them has to write. Keyup
+  // alone leaves the flag set when the release lands on another window, and
+  // a set flag holds back every commit after it — the pointer's included, so
+  // the thumb would move under drags the node never hears about.
+  const onKeyDown = React.useCallback(
+    (event: React.KeyboardEvent): void => {
+      if (event.repeat) {
+        repeatingRef.current = true;
+        return;
+      }
+      endKeyGesture();
+    },
+    [endKeyGesture],
+  );
 
   return (
     <div className={className}>
@@ -323,7 +334,9 @@ function ParamSliderRow({
         onValueChange={onValueChange}
         onValueCommit={onValueCommit}
         onKeyDown={onKeyDown}
-        onKeyUp={onKeyUp}
+        onKeyUp={endKeyGesture}
+        onBlur={endKeyGesture}
+        onPointerDown={endKeyGesture}
       />
     </div>
   );

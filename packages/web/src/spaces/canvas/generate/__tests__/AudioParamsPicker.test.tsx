@@ -211,6 +211,47 @@ describe('AudioParamsPicker — when a slider writes', () => {
     expect(onChange).toHaveBeenNthCalledWith(2, { speed: 1.2 });
   });
 
+  it('writes the held value when the release lands somewhere else', () => {
+    // A key released after the window was switched away never reaches this
+    // page. The gesture still ended, and what the user dialled in has to
+    // reach the node.
+    const onChange = vi.fn();
+    open(FISH, { speed: 1, volume: 0 }, onChange);
+    const thumb = screen.getByRole('slider', { name: 'Speed' });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
+    fireEvent.blur(screen.getByTestId('generate-audio-speed-slider'));
+
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith({ speed: 1.15 });
+  });
+
+  it('answers the pointer again after a key release it never saw', () => {
+    // Whether a key is still down is remembered in a ref, and every commit
+    // reads it — the pointer's included. Left set by a release that landed
+    // elsewhere, it swallows drags the user makes afterwards, and they see
+    // the thumb move while the node keeps the old value.
+    const onChange = vi.fn();
+    open(FISH, { speed: 1, volume: 0 }, onChange);
+    const thumb = screen.getByRole('slider', { name: 'Speed' });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
+    onChange.mockClear();
+
+    const root = screen.getByTestId('generate-audio-speed-slider');
+    root.setPointerCapture = vi.fn();
+    root.releasePointerCapture = vi.fn();
+    root.hasPointerCapture = vi.fn(() => true);
+    root.getBoundingClientRect = (): DOMRect =>
+      ({ left: 0, right: 100, width: 100, top: 0, bottom: 10, height: 10 }) as DOMRect;
+    fireEvent.pointerDown(root, { pointerId: 1, clientX: 50, button: 0, ctrlKey: false });
+    fireEvent.pointerMove(root, { pointerId: 1, clientX: 80 });
+    fireEvent.pointerUp(root, { pointerId: 1, clientX: 80 });
+
+    expect(onChange).toHaveBeenCalledWith({ speed: 1.7 });
+  });
+
   it('lets go of the drafted value once the key is up', () => {
     // Radix reports a keyboard commit before it reports the change, so the
     // draft cleared inside the commit is written straight back. Left set, the
