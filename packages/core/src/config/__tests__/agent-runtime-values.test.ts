@@ -128,6 +128,31 @@ describe("the two memory lines", () => {
     ).toBe(true);
   });
 
+  it("refuses ceilings that take the keep line exactly", () => {
+    // The line the pass runs to is the keep line less the reserve. Take
+    // exactly the whole of it and that line is zero: the loop's `remaining
+    // <= keep` is false only while something is left, so a fold takes every
+    // turn there is. Doubled, because the reserve is counted in code units.
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 125_000,
+        memory_project_max_size: 125_000,
+      }).success,
+    ).toBe(false);
+    // One code point under it passes, which is what makes the line above a
+    // boundary rather than a range.
+    expect(
+      agentConfigSchemaForTests.safeParse({
+        memory_budget_chars: 850_000,
+        memory_keep_chars: 500_000,
+        memory_conversation_max_size: 125_000,
+        memory_project_max_size: 124_999,
+      }).success,
+    ).toBe(true);
+  });
+
   it("refuses memory ceilings that leave a pass nothing to run to", () => {
     // A pass runs to the keep line less the room the fold may add to memory,
     // so the two ceilings together have to leave something under it. Take the

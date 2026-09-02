@@ -67,16 +67,15 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   };
 
   if (assembled <= budget) return nothing;
-  // Over the budget with no history to give: the fixed cost alone is the
-  // whole payload, and there is nothing this pass could take.
-  if (turns.length === 0) return nothing;
 
   let remainingChars = assembled;
   let newWatermark: number | null = null;
 
   // The turns arrive oldest first and are taken from that end without a gap,
   // so where the pass stopped says everything about which turns it took: the
-  // ones at or below it.
+  // ones at or below it. With no history to take, the loop runs zero times
+  // and the watermark stays null — over the budget on the fixed cost alone,
+  // which no pass can shorten.
   for (const turn of turns) {
     if (remainingChars <= keep) break;
     newWatermark = turn.turnIndex;

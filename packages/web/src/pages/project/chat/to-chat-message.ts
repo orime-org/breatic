@@ -112,7 +112,6 @@ export function toChatMessage(
     else if (part.type === INTERRUPTED) interrupted = true;
     else if (part.type === FAILED) failed = true;
     else if (part.type === TRUNCATED) truncated = true;
-
   }
 
   return {

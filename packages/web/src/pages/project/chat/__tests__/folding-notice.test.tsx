@@ -12,9 +12,9 @@
  * 正是那几秒的等待。
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { t } from '@breatic/shared';
+import { resetLocales, setLocale, setLocaleMessages, t } from '@breatic/shared';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import { MessageList } from '@web/pages/project/chat/MessageList';
@@ -74,17 +74,28 @@ describe('归纳中的那一行', () => {
   });
 });
 
-// 本次新加的三句界面文字。少一份，那个语种的用户读到的是裸 key 或者一句
-// 英文，而三条都不会有任何东西报出来。
-describe.each([
-  'chat.message.consolidating',
-  'chat.composer.atLimit',
-  'chat.message.truncated',
-])('%s', (key) => {
-  it.each(LOCALE_CATALOGS)('%s 有这句话且不是空的', (_tag, catalog) => {
-    const message = readPath(catalog, key);
-    expect(typeof message).toBe('string');
-    expect((message as string).trim()).not.toBe('');
+// 本次新加的四句界面文字。逐个语种真渲染一次：只查字符串在不在，占位符改
+// 名照样过——而那种改动会让 IntlMessageFormat 把参数原样留在句子里，用户读到
+// 的是一句夹着大括号的话。
+const NEW_COPY = [
+  ['chat.message.consolidating', {}],
+  ['chat.composer.atLimit', { limit: 10_000 }],
+  ['chat.message.truncated', {}],
+  ['server.chat.message_too_long', { limit: 15_000, actual: 15_001 }],
+] as const;
+
+describe.each(NEW_COPY)('%s', (key, params) => {
+  it.each(LOCALE_CATALOGS)('%s 渲染得出一句完整的话', (tag, catalog) => {
+    setLocaleMessages(tag, catalog as Record<string, unknown>);
+    setLocale(tag);
+
+    const rendered = t(key, params);
+
+    // 键名原样返回 = 这个语种没有这句话。
+    expect(rendered, tag).not.toBe(key);
+    expect(rendered.trim(), tag).not.toBe('');
+    // 占位符还在 = 参数名对不上，用户读到的是带大括号的句子。
+    expect(rendered, tag).not.toMatch(/[{}]/);
   });
 
   it('四个非英文语种都真的翻过，不是把英文抄过去', () => {
@@ -93,4 +104,8 @@ describe.each([
       expect(readPath(catalog, key), tag).not.toBe(english);
     }
   });
+});
+
+afterEach(() => {
+  resetLocales();
 });

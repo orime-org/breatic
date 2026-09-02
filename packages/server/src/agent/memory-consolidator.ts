@@ -231,6 +231,27 @@ export async function consolidateWindow(
   // The watermark stays where it is, so the next turn folds the same window.
   if (signal?.aborted) return "aborted";
 
+  /** Which window this is, on every line written about it. */
+  const where = { userId, conversationId, projectId, watermarkBefore, newWatermark };
+
+  /**
+   * Whether the reader left, said so on the way out.
+   *
+   * Asked of the signal rather than of the error's name — a name says what
+   * the provider called it, and one of the names the SDK treats as
+   * cancellation is a timeout, which is the opposite case. Recorded here
+   * because asking the signal answers who stopped the turn and not what went
+   * wrong in it: a write that deadlocked while the reader happened to close
+   * the tab leaves by this door too, and would otherwise leave no trace.
+   * @param err - What the failing step threw.
+   * @returns True when the reader had already gone.
+   */
+  const readerLeft = (err: unknown): boolean => {
+    if (signal?.aborted !== true) return false;
+    logger.error({ err, ...where }, "memory_consolidation_aborted");
+    return true;
+  };
+
   const config = getAgentConfig();
 
   // Everything the call is built from, gathered before a single token is
@@ -273,15 +294,9 @@ export async function consolidateWindow(
 
     model = getModel(config.consolidation_model);
   } catch (err) {
-    if (signal?.aborted) {
-      logger.error(
-        { err, userId, conversationId, watermarkBefore, newWatermark },
-        "memory_consolidation_aborted",
-      );
-      return "aborted";
-    }
+    if (readerLeft(err)) return "aborted";
     logger.error(
-      { err, userId, conversationId, watermarkBefore, newWatermark },
+      { err, ...where },
       "memory_consolidation_untouched",
     );
     return "untouched";
@@ -358,22 +373,8 @@ export async function consolidateWindow(
   } catch (err) {
     // The reader leaving is the one ending here that keeps the window: they
     // come back to a conversation that folds it again, and the charge is
-    // already keyed so the second attempt is not paid for twice. Asked of the
-    // signal rather than of the error's name — a name says what the provider
-    // called it, and one of the names the SDK treats as cancellation is a
-    // timeout, which is the opposite case.
-    //
-    // Logged on the way out, because asking the signal answers who stopped
-    // the turn and not what went wrong in it: a write that deadlocked while
-    // the reader happened to close the tab leaves by this door too, and
-    // without this line it leaves without a trace.
-    if (signal?.aborted) {
-      logger.error(
-        { err, userId, conversationId, watermarkBefore, newWatermark },
-        "memory_consolidation_aborted",
-      );
-      return "aborted";
-    }
+    // already keyed so the second attempt is not paid for twice.
+    if (readerLeft(err)) return "aborted";
 
     let lost: boolean;
     try {
@@ -383,7 +384,7 @@ export async function consolidateWindow(
       // reason this fails too. Both errors go in the line: the one that lost
       // the window and the one that could not record it.
       logger.error(
-        { err, discardErr, userId, conversationId, watermarkBefore, newWatermark },
+        { err, discardErr, ...where },
         "memory_consolidation_discard_failed",
       );
       return "untouched";
@@ -394,7 +395,7 @@ export async function consolidateWindow(
     // whether this turn's window went with it depends on whether anyone else
     // had already folded it, and `windowLost` is that answer.
     logger.error(
-      { err, userId, conversationId, watermarkBefore, newWatermark, windowLost: lost },
+      { err, ...where, windowLost: lost },
       "memory_consolidation_failed",
     );
     return lost ? "discarded" : "superseded";

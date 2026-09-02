@@ -140,6 +140,7 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     if (part.type === "failed") return { type: FAILED, data: {} };
     if (part.type === "truncated") return { type: TRUNCATED, data: {} };
 
+
     const base = {
       type: `tool-${part.toolName}`,
       toolCallId: part.toolCallId,

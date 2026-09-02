@@ -389,7 +389,9 @@ describe("a consolidation that fails", () => {
 
     const said = vi.mocked(logger.error).mock.calls.map((call) => call[1]);
     expect(said).toContain("memory_consolidation_discard_failed");
-    expect(said).not.toContain("memory_consolidation_discarded");
+    // The other line says what became of the window, and this path never
+    // found out: the discard threw before the watermark moved.
+    expect(said).not.toContain("memory_consolidation_failed");
   });
 
   it("does not call the window lost when another tab had already folded it", async () => {

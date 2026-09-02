@@ -229,12 +229,6 @@ export interface MessageData {
    * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
    */
   failed?: true;
-  /**
-   * The turn hit the per-call output ceiling, so `content` stops mid-sentence.
-   *
-   * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
-   */
-  truncated?: true;
 }
 
 /**

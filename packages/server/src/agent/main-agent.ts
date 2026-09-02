@@ -41,7 +41,6 @@ import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
  */
 const FAILED_TEXT = "The assistant could not finish this turn.";
 
-
 /**
  * Main Agent for streaming chat interactions.
  *
@@ -475,7 +474,6 @@ export class MainAgent {
         // finished answer.
         if (exit === "aborted") replyParts.push({ type: "interrupted" });
         if (exit === "failed") replyParts.push({ type: "failed" });
-
 
         // Put the reasons back. What came off the wire says only that
         // something went wrong, and that sentence is what the model would
