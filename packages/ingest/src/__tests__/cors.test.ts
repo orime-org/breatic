@@ -39,6 +39,13 @@ async function fromOrigin(
   return response;
 }
 
+/** Every endpoint the browser reaches, with the method it uses. */
+const ENDPOINTS: { path: string; method: string }[] = [
+  { path: "/uploads", method: "POST" },
+  { path: "/uploads/abc/parts/1", method: "PUT" },
+  { path: "/uploads/abc/complete", method: "POST" },
+];
+
 describe("the preflight a part triggers", () => {
   it("answers an allowed origin with what it may send", async () => {
     const response = await fromOrigin(
@@ -82,19 +89,49 @@ describe("the preflight a part triggers", () => {
   });
 });
 
+// Each endpoint separately. One shared exit adds the headers today, and
+// checking only the one endpoint would leave the other two unguarded the day
+// that stops being true.
 describe("a real request", () => {
-  it("carries the allow-origin header an allowed page needs to read it", async () => {
-    const response = await fromOrigin(ALLOWED, { method: "POST" });
+  it.each(ENDPOINTS)(
+    "$method $path carries the allow-origin header an allowed page needs to read it",
+    async ({ path, method }) => {
+      const response = await fromOrigin(ALLOWED, { method }, path);
 
-    expect(response.status).toBe(401);
+      // Refused for want of a credential, which is as far as a request with no
+      // ticket and no token gets — and far enough to answer what this asks.
+      expect(response.status).toBe(401);
+      expect(response.headers.get("access-control-allow-origin")).toBe(ALLOWED);
+    },
+  );
+
+  it.each(ENDPOINTS)(
+    "$method $path carries none for an unlisted origin",
+    async ({ path, method }) => {
+      const response = await fromOrigin(
+        "https://not-ours.example",
+        { method },
+        path,
+      );
+
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    },
+  );
+});
+
+describe("the preflight each endpoint answers", () => {
+  it.each(ENDPOINTS)("$method $path answers its own", async ({ path, method }) => {
+    const response = await fromOrigin(
+      ALLOWED,
+      {
+        method: "OPTIONS",
+        headers: { "access-control-request-method": method },
+      },
+      path,
+    );
+
+    expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(ALLOWED);
-  });
-
-  it("carries none for an unlisted origin", async () => {
-    const response = await fromOrigin("https://not-ours.example", {
-      method: "POST",
-    });
-
-    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect(response.headers.get("access-control-allow-methods")).toContain(method);
   });
 });
