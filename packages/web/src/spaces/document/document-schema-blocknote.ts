@@ -28,6 +28,8 @@ import {
   defaultStyleSpecs,
 } from '@blocknote/core';
 
+import { buildOrderedListItemSpec } from '@web/spaces/document/document-list-block';
+
 /** A prop declaration in BlockNote's shape. */
 type PropDecl = Readonly<Record<string, unknown>>;
 
@@ -98,7 +100,7 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     heading: withProps(enabled.heading, { ...QUOTED_PROP, ...NUMBERED_PROPS }),
     codeBlock: withProps(enabled.codeBlock, QUOTED_PROP),
     bulletListItem: withProps(enabled.bulletListItem, QUOTED_PROP),
-    numberedListItem: withProps(enabled.numberedListItem, {
+    numberedListItem: withProps(buildOrderedListItemSpec(), {
       ...QUOTED_PROP,
       ...NUMBER_PROP,
     }),
