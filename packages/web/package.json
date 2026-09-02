@@ -109,6 +109,7 @@
     "three": "^0.173.0",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5",
+    "y-prosemirror": "catalog:",
     "yjs": "catalog:",
     "zod": "catalog:",
     "zundo": "^2.3.0",
