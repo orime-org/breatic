@@ -223,3 +223,83 @@ describe("SpaceRpcRequestSchema — tab RPCs", () => {
     }
   });
 });
+
+describe("SpaceRpcRequestSchema — tab:reorder", () => {
+  it("parses a move in front of another tab", () => {
+    const req = SpaceRpcRequestSchema.parse({
+      id: "r1",
+      type: "tab:reorder",
+      payload: { spaceId: "sp-1", beforeSpaceId: "sp-2" },
+    });
+    expect(req.type).toBe("tab:reorder");
+    expect(req.payload).toEqual({ spaceId: "sp-1", beforeSpaceId: "sp-2" });
+  });
+
+  it("parses a move to the end, where there is no tab to sit in front of", () => {
+    const req = SpaceRpcRequestSchema.parse({
+      id: "r2",
+      type: "tab:reorder",
+      payload: { spaceId: "sp-1", beforeSpaceId: null },
+    });
+    expect(req.payload).toEqual({ spaceId: "sp-1", beforeSpaceId: null });
+  });
+
+  it("refuses a payload that leaves out beforeSpaceId", () => {
+    // Landing at the end is `null`, spelled out. An absent field would make
+    // "put it last" and "the sender forgot" the same request.
+    const r = SpaceRpcRequestSchema.safeParse({
+      id: "r3",
+      type: "tab:reorder",
+      payload: { spaceId: "sp-1" },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("refuses a reorder that names a user", () => {
+    const r = SpaceRpcRequestSchema.safeParse({
+      id: "r4",
+      type: "tab:reorder",
+      payload: {
+        spaceId: "sp-1",
+        beforeSpaceId: null,
+        userId: "someone-else",
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("refuses an empty spaceId", () => {
+    const r = SpaceRpcRequestSchema.safeParse({
+      id: "r5",
+      type: "tab:reorder",
+      payload: { spaceId: "", beforeSpaceId: null },
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("SpaceRpcResponseSchema — did the reorder change anything", () => {
+  it("carries wrote on a success", () => {
+    const changed = SpaceRpcResponseSchema.parse({
+      id: "r1",
+      ok: true,
+      result: { wrote: true },
+    });
+    expect(changed.ok && changed.result).toEqual({ wrote: true });
+
+    const idempotent = SpaceRpcResponseSchema.parse({
+      id: "r2",
+      ok: true,
+      result: { wrote: false },
+    });
+    expect(idempotent.ok && idempotent.result).toEqual({
+      wrote: false,
+    });
+  });
+
+  it("still parses a success carrying no result at all", () => {
+    // tab:open, tab:close and the space mutations answer with nothing.
+    const r = SpaceRpcResponseSchema.parse({ id: "r3", ok: true });
+    expect(r.ok).toBe(true);
+  });
+});

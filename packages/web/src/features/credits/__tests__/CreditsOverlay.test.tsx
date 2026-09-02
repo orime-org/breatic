@@ -10,6 +10,10 @@ import type { CreditOverview } from '@breatic/shared';
 
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 const fetchCreditOverview = vi.fn();
 const fetchCreditLots = vi.fn();
@@ -118,6 +122,13 @@ describe('CreditsOverlay', () => {
       'tabindex',
       '-1',
     );
+  });
+
+  it('fills the open entry past the fill the others take under the pointer', async () => {
+    setup();
+
+    expectChosenFill(await screen.findByRole('tab', { name: /Overview/ }));
+    expectHoverableSiblingFill(screen.getByRole('tab', { name: /Spending/ }));
   });
 
   it('switches on a click and reads only what that entry needs', async () => {

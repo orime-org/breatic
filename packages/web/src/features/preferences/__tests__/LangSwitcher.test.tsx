@@ -9,6 +9,10 @@ import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { getLocale } from '@breatic/shared';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import {
+  expectChosenFill,
+  expectHoverableSiblingFill,
+} from '@web/test-utils/selection-fill';
 
 // Shared language switcher (features/preferences) — rendered identically by
 // the project AND studio top bars. The i18n engine is the single source of
@@ -43,6 +47,14 @@ describe('LangSwitcher', () => {
         await screen.findByTestId(`lang-option-${code}`),
       ).toBeInTheDocument();
     }
+  });
+
+  it('marks the active locale past the fill the others take under the pointer', async () => {
+    const user = userEvent.setup();
+    render(<LangSwitcher />);
+    await user.click(screen.getByTestId('lang-trigger'));
+    expectChosenFill(await screen.findByTestId('lang-option-en'));
+    expectHoverableSiblingFill(screen.getByTestId('lang-option-ja'));
   });
 
   it('selecting 简体中文 switches the active locale', async () => {

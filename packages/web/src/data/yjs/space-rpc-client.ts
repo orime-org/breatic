@@ -21,6 +21,35 @@ export interface RpcCapableProvider {
   off(event: 'stateless', cb: (data: { payload: string }) => void): void;
 }
 
+/**
+ * The request was handed to the transport and no answer came back for it.
+ *
+ * What became of it is open: the server may have carried it out and the reply
+ * been lost, it may never have arrived, or it may still be queued for a
+ * reconnect. A caller holding optimistic state has to tell this apart from a
+ * server that answered no — undoing a move the server made leaves the two
+ * ends disagreeing until the page is reloaded.
+ */
+export class SpaceRpcUnanswered extends Error {
+  /**
+   * Names the request that drew no answer.
+   * @param message - What went unanswered.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = 'SpaceRpcUnanswered';
+  }
+}
+
+/**
+ * Whether a rejection means the request went out and drew no answer.
+ * @param err - What a caller caught.
+ * @returns True for {@link SpaceRpcUnanswered}.
+ */
+export function isUnanswered(err: unknown): boolean {
+  return err instanceof SpaceRpcUnanswered;
+}
+
 export interface SendSpaceRpcOptions {
   /** Round-trip timeout in ms. Default 10000 (user-confirmed 2026-05-25). */
   timeoutMs?: number;
@@ -44,7 +73,8 @@ export interface SendSpaceRpcOptions {
  * @param request - The Space RPC request without its correlation id (generated here).
  * @param opts - Optional timeout and correlation-id-generator overrides.
  * @returns The matching Space RPC response from the collab process.
- * @throws {Error} When no response arrives within the round-trip timeout.
+ * @throws {SpaceRpcUnanswered} When no response arrives within the round-trip
+ *   timeout.
  */
 export async function sendSpaceRpc(
   provider: RpcCapableProvider,
@@ -92,7 +122,7 @@ export async function sendSpaceRpc(
     timer = setTimeout(() => {
       cleanup();
       reject(
-        new Error(
+        new SpaceRpcUnanswered(
           `Space RPC timeout for type=${request.type} (id=${id}, ${timeoutMs}ms)`,
         ),
       );

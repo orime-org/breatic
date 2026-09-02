@@ -94,7 +94,11 @@ export const ModelPicker = React.memo(function ModelPicker({
                 size='menu-item'
                 aria-pressed={m.name === value}
                 data-testid={`generate-model-option-${m.name}`}
-                className={cn('justify-start', m.name === value && 'bg-accent')}
+                className={cn(
+                  'justify-start',
+                  m.name === value &&
+                    'bg-accent-strong hover:bg-accent-strong',
+                )}
                 onClick={() => {
                   onChange(m.name);
                   setOpen(false);

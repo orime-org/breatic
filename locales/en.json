@@ -594,6 +594,8 @@
         "create": "Failed to create space",
         "openTab": "Failed to open the tab",
         "closeTab": "Failed to close the tab",
+        "reorderTab": "Failed to move the tab",
+        "reorderTabUnanswered": "The server did not answer. Reload to see the current tab order.",
         "unreachable": "No answer from the server — check your connection and try again",
         "notSynced": "Project is still syncing — try again in a moment"
       },
@@ -1165,6 +1167,7 @@
       "share": "Invite",
       "notifications": "Notifications",
       "newSpace": "New space",
+      "revealActiveTab": "Show the current Space",
       "allSpaces": "All spaces",
       "agentHide": "Hide agent panel",
       "agentShow": "Show agent panel",

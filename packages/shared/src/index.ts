@@ -302,6 +302,18 @@ export {
 
 export { newId, deriveId } from "@shared/ids.js";
 
+// The rules the per-user tab order needs on both sides of the wire: collab
+// seeds a user's list and moves one tab within it, the browser dedupes what it
+// reads, builds the first-visit default, and lays a released drag over what
+// arrives. Same rules, or the two put a different order on screen than the one
+// in the document.
+export {
+  applyTabMove,
+  dedupeTabOrder,
+  sameTabOrder,
+  sortSpaceIdsForTabOrder,
+} from "@shared/tab-order.js";
+
 // How many beats in a row may go missing before the agent chat stream is
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
