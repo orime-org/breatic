@@ -35,8 +35,14 @@ export type AudioParamsValue = Record<string, number>;
 interface AudioParamsPickerProps {
   /** The current model, whose declarations decide what is offered. */
   model: ModelEntry;
-  /** The current selection, by param name. */
-  value: AudioParamsValue;
+  /**
+   * Everything the node holds for the active model, by param name.
+   *
+   * Not {@link AudioParamsValue}: one record holds every param the model
+   * declares, and the voice id among them is a string. Only the numeric ones
+   * reach a control here, and {@link shownValue} is what decides that.
+   */
+  value: Record<string, unknown>;
   /** Called with the changed param only. */
   onChange: (partial: AudioParamsValue) => void;
 }
@@ -55,7 +61,7 @@ interface AudioParamsPickerProps {
 function shownValue(
   model: ModelEntry,
   name: string,
-  held: number | undefined,
+  held: unknown,
 ): number | undefined {
   if (typeof held === 'number') return held;
   const fallback = model.params?.[name]?.default;

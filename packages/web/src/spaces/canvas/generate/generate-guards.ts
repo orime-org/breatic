@@ -42,8 +42,12 @@ export interface ExecuteGateInput {
   /**
    * Whether the selected model picks its voice from a catalog (#1960) — true
    * for a model declaring a param filled from the voice list.
+   *
+   * Optional because only one panel has voices at all: absent reads as "this
+   * modality has none", which is the truth for image and video and spares
+   * their four call sites a pair of literal falses that say nothing.
    */
-  voiceRequired: boolean;
+  voiceRequired?: boolean;
   /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
@@ -53,8 +57,11 @@ export interface ExecuteGateInput {
    * not the other. Which it is depends on the resolved provider, which this
    * module has no way to consult — the caller decides and passes the answer,
    * the same way it does for `promptRequired`.
+   *
+   * Optional for the same reason as `voiceRequired`, and only read when that
+   * one is true.
    */
-  voiceChosen: boolean;
+  voiceChosen?: boolean;
 }
 
 /**

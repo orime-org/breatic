@@ -626,10 +626,6 @@ function VideoGeneratePanelBody({
       nodeStatus: fresh.nodeStatus,
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
-      // This panel's models take no voice, so that branch of the gate
-      // never applies here.
-      voiceRequired: false,
-      voiceChosen: false,
     });
     if (refusal != null) {
       // WHICH refusal speaks is policy, and it lives in one place for the same
@@ -831,8 +827,6 @@ function VideoGeneratePanelBody({
         nodeStatus: vm.nodeStatus,
         isSubmitting,
         promptRequired: vm.promptRequired,
-        voiceRequired: false,
-        voiceChosen: false,
       })}
       promptSlot={promptSlot}
       onExit={closeActivePanel}

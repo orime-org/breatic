@@ -70,8 +70,8 @@ interface AudioGeneratePanelProps {
   references: ReferenceRailItem[];
   /** Whether the reference pick is running — highlights the tool. */
   referencePicking?: boolean;
-  /** The speaking params held for the active model. */
-  params: AudioParamsValue;
+  /** Everything the node holds for the active model, the voice id included. */
+  params: Record<string, unknown>;
   /** Enter / exit the reference pick. */
   onAddReference: () => void;
   /** Remove one reference row. */
@@ -118,7 +118,7 @@ interface AudioGeneratePanelProps {
  * @param root0.promptSlot - The injected prompt editor, or null.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
- * @param root0.params - The speaking params held for the active model.
+ * @param root0.params - Everything the node holds for the active model.
  * @param root0.onAddReference - Called to enter / exit the reference pick.
  * @param root0.onRemoveReference - Called to remove a row.
  * @param root0.onInsertReference - Called to insert a row into the prompt.

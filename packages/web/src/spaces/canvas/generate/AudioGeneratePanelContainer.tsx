@@ -429,7 +429,7 @@ function AudioGeneratePanelBody({
       voiceSelectedName={selectedVoice?.name ?? null}
       references={references}
       referencePicking={referencePicking}
-      params={vm.params as AudioParamsValue}
+      params={vm.params}
       executeRefusal={evaluateExecute({
         promptText,
         model: vm.model,
