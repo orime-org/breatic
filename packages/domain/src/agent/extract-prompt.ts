@@ -42,8 +42,16 @@ export function extractPromptText(prompt: unknown): string {
   // Remove zero-width and invisible characters
   text = text.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "");
 
-  // Normalize whitespace
-  text = text.replace(/\s+/g, " ").trim();
+  // Normalize horizontal whitespace, keep the line structure. A line break is
+  // content in a voiceover script — both tts vendors read it as a pause — so
+  // flattening it changes what gets spoken. Tag removal above substitutes a
+  // space, never a break, so nothing that was one line becomes two.
+  text = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
   return text;
 }
