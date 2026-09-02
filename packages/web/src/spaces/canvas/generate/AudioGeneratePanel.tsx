@@ -8,12 +8,19 @@ import type { ModelEntry, ModelRate, Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
+import {
+  AudioParamsPicker,
+  type AudioParamsValue,
+} from '@web/spaces/canvas/generate/AudioParamsPicker';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
 } from '@web/spaces/canvas/generate/generate-guards';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
+import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
@@ -59,6 +66,20 @@ interface AudioGeneratePanelProps {
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
+  /** The node's derived reference rows (from `deriveReferences`). */
+  references: ReferenceRailItem[];
+  /** Whether the reference pick is running — highlights the tool. */
+  referencePicking?: boolean;
+  /** The speaking params held for the active model. */
+  params: AudioParamsValue;
+  /** Enter / exit the reference pick. */
+  onAddReference: () => void;
+  /** Remove one reference row. */
+  onRemoveReference: (item: ReferenceRailItem) => void;
+  /** Insert a row's @-mention into the prompt at the caret. */
+  onInsertReference: (item: ReferenceRailItem) => void;
+  /** A speaking param changed. */
+  onChangeParams: (partial: AudioParamsValue) => void;
   /** The voice list opened or collapsed. */
   onVoiceOpenChange: (open: boolean) => void;
   /** What was typed into the voice search. */
@@ -95,6 +116,13 @@ interface AudioGeneratePanelProps {
  * @param root0.voiceSelectedName - That voice's name, once known.
  * @param root0.executeRefusal - Which execute precondition fails.
  * @param root0.promptSlot - The injected prompt editor, or null.
+ * @param root0.references - The derived reference rows.
+ * @param root0.referencePicking - Whether the reference pick is running.
+ * @param root0.params - The speaking params held for the active model.
+ * @param root0.onAddReference - Called to enter / exit the reference pick.
+ * @param root0.onRemoveReference - Called to remove a row.
+ * @param root0.onInsertReference - Called to insert a row into the prompt.
+ * @param root0.onChangeParams - Called with the changed speaking param.
  * @param root0.onToggleMode - Called with the picked mode.
  * @param root0.onSelectModel - Called with the picked model id.
  * @param root0.onVoiceOpenChange - Called when the voice list opens or collapses.
@@ -115,6 +143,13 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   voiceSelectedName,
   executeRefusal,
   promptSlot,
+  references,
+  referencePicking = false,
+  params,
+  onAddReference,
+  onRemoveReference,
+  onInsertReference,
+  onChangeParams,
   onToggleMode,
   onSelectModel,
   onVoiceOpenChange,
@@ -125,10 +160,15 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onExecute,
 }: AudioGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
-  const rate = models.find((m) => m.name === model)?.rate;
+  const currentModel = models.find((m) => m.name === model);
+  const rate = currentModel?.rate;
   return (
     <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
-      <div className='flex justify-end'>
+      <div className='flex items-start justify-between'>
+        <AudioGenerateToolbar
+          onReference={onAddReference}
+          referenceActive={referencePicking}
+        />
         <Button
           type='button'
           variant={null}
@@ -141,6 +181,18 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           <X className='h-4 w-4' aria-hidden='true' />
         </Button>
       </div>
+
+      <ReferenceRail
+        references={references}
+        onRemove={onRemoveReference}
+        onInsert={onInsertReference}
+        // An audio node collects only text rows, and a text row is prompt
+        // material — outside the `modeTakesReferences` question entirely. What
+        // it does answer to is whether there IS a prompt: a node built before
+        // generation reached audio has no prompt container, so a reference has
+        // nowhere to go and insert is refused (removal stays live).
+        modelTakesPrompt={promptSlot !== null}
+      />
 
       {promptSlot ?? (
         <p
@@ -172,6 +224,15 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           onPick={onVoicePick}
           onLoadMore={onVoiceLoadMore}
         />
+        {currentModel ? (
+          // Renders nothing when this model declares no param it can show, so
+          // there is no second copy here of what it already decides.
+          <AudioParamsPicker
+            model={currentModel}
+            value={params}
+            onChange={onChangeParams}
+          />
+        ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
           {rate && (

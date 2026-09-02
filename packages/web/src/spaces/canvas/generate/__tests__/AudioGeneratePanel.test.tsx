@@ -21,7 +21,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import type * as React from 'react';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
@@ -70,6 +72,16 @@ const FISH = ttsModel('fish-s2-pro', {
   unit: 'utf8_bytes',
 });
 
+/**
+ * Renders inside the app-level TooltipProvider (App.tsx mounts the real one) —
+ * the toolbar's tools are tooltip-wrapped and bare Radix Tooltips throw.
+ * @param ui - The panel element.
+ * @returns The render result.
+ */
+function renderPanel(ui: React.ReactElement): ReturnType<typeof render> {
+  return render(<TooltipProvider>{ui}</TooltipProvider>);
+}
+
 /** The props every case supplies, so a case names only what it exercises. */
 const BASE = {
   models: [ELEVEN, FISH],
@@ -81,6 +93,13 @@ const BASE = {
   voiceSelectedName: null,
   executeRefusal: null,
   promptSlot: <div data-testid='prompt-editor' />,
+  references: [],
+  params: {},
+  referencePicking: false,
+  onAddReference: (): void => {},
+  onRemoveReference: (): void => {},
+  onInsertReference: (): void => {},
+  onChangeParams: (): void => {},
   onToggleMode: (): void => {},
   onSelectModel: (): void => {},
   onVoiceOpenChange: (): void => {},
@@ -93,12 +112,12 @@ const BASE = {
 
 describe('AudioGeneratePanel (#1960 A1)', () => {
   it('shows the prompt editor the container injected', () => {
-    render(<AudioGeneratePanel {...BASE} />);
+    renderPanel(<AudioGeneratePanel {...BASE} />);
     expect(screen.getByTestId('prompt-editor')).toBeInTheDocument();
   });
 
   it('offers the mode picker, the model picker and the voice picker', () => {
-    render(<AudioGeneratePanel {...BASE} />);
+    renderPanel(<AudioGeneratePanel {...BASE} />);
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
@@ -106,21 +125,21 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
 
   it('closes without generating', () => {
     const onExit = vi.fn();
-    render(<AudioGeneratePanel {...BASE} onExit={onExit} />);
+    renderPanel(<AudioGeneratePanel {...BASE} onExit={onExit} />);
     fireEvent.click(screen.getByTestId('generate-audio-exit'));
     expect(onExit).toHaveBeenCalled();
   });
 
   it('submits when the button is pressed', () => {
     const onExecute = vi.fn();
-    render(<AudioGeneratePanel {...BASE} onExecute={onExecute} />);
+    renderPanel(<AudioGeneratePanel {...BASE} onExecute={onExecute} />);
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
     expect(onExecute).toHaveBeenCalled();
   });
 
   it('hands the picked model up', () => {
     const onSelectModel = vi.fn();
-    render(<AudioGeneratePanel {...BASE} onSelectModel={onSelectModel} />);
+    renderPanel(<AudioGeneratePanel {...BASE} onSelectModel={onSelectModel} />);
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     fireEvent.click(screen.getByTestId('generate-model-option-fish-s2-pro'));
     expect(onSelectModel).toHaveBeenCalledWith('fish-s2-pro');
@@ -129,7 +148,7 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
 
 describe('AudioGeneratePanel rate (#1960 A5)', () => {
   it('states what the model charges per unit of text, not a total', () => {
-    render(<AudioGeneratePanel {...BASE} />);
+    renderPanel(<AudioGeneratePanel {...BASE} />);
     expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
       'canvas.generatePanel.rateCharacters',
     );
@@ -141,14 +160,14 @@ describe('AudioGeneratePanel rate (#1960 A5)', () => {
   it('counts bytes for the vendor that bills that way', () => {
     // Fish charges per UTF-8 byte and a Chinese character is three of them, so
     // one shared "per 1000 characters" wording would understate it threefold.
-    render(<AudioGeneratePanel {...BASE} model='fish-s2-pro' />);
+    renderPanel(<AudioGeneratePanel {...BASE} model='fish-s2-pro' />);
     expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
       'canvas.generatePanel.rateBytes',
     );
   });
 
   it('says nothing where the model declares no rate', () => {
-    render(
+    renderPanel(
       <AudioGeneratePanel
         {...BASE}
         models={[ttsModel('no-rate')]}
@@ -163,22 +182,132 @@ describe('AudioGeneratePanel execute button (#1960 A12)', () => {
   it('stays pressable when a voice is still to be picked', () => {
     // The refusal is one the user can act on, so the button says what is
     // missing rather than going grey with nothing to explain it.
-    render(<AudioGeneratePanel {...BASE} executeRefusal='voice-missing' />);
+    renderPanel(<AudioGeneratePanel {...BASE} executeRefusal='voice-missing' />);
     expect(screen.getByTestId('generate-audio-execute')).not.toBeDisabled();
   });
 
   it('greys out for a refusal the user cannot act on', () => {
     // `no-model` is an environment fact: no amount of typing changes it, so
     // there is nothing for a pressable button to say.
-    render(<AudioGeneratePanel {...BASE} executeRefusal='no-model' />);
+    renderPanel(<AudioGeneratePanel {...BASE} executeRefusal='no-model' />);
     expect(screen.getByTestId('generate-audio-execute')).toBeDisabled();
   });
 
   it('spins while a submit is in flight', () => {
-    render(<AudioGeneratePanel {...BASE} executeRefusal='submitting' />);
+    renderPanel(<AudioGeneratePanel {...BASE} executeRefusal='submitting' />);
     expect(
       screen.getByTestId('generate-audio-execute-pending'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('AudioGeneratePanel — reference material (#1960 A16)', () => {
+  // An audio node's only accepted input is a text one
+  // (`lib/connection-rules.ts:30`), and a text row is prompt material — so a
+  // line already written on the canvas becomes the lines to speak.
+  const TEXT_ROW = {
+    refId: 'e1',
+    sourceNodeId: 'src',
+    sourceNodeType: 'text' as const,
+    sourceNodeName: 'The script',
+    thumbnail: undefined,
+    content: 'Good evening.',
+  };
+
+  it('carries the Reference tool in the top row', () => {
+    renderPanel(<AudioGeneratePanel {...BASE} />);
+    expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
+  });
+
+  it('starts the reference pick, and highlights while it runs', () => {
+    const onAddReference = vi.fn();
+    renderPanel(
+      <AudioGeneratePanel {...BASE} onAddReference={onAddReference} referencePicking />,
+    );
+    const tool = screen.getByTestId('generate-audio-tool-reference');
+    fireEvent.click(tool);
+    expect(onAddReference).toHaveBeenCalledTimes(1);
+    expect(tool).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows the collected rows in the rail', () => {
+    renderPanel(<AudioGeneratePanel {...BASE} references={[TEXT_ROW]} />);
+    expect(screen.getByTestId('generate-reference-rail')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-ref-e1')).toHaveTextContent('The script');
+  });
+
+  it('inserts a row into the prompt at the caret', () => {
+    const onInsertReference = vi.fn();
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        references={[TEXT_ROW]}
+        onInsertReference={onInsertReference}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e1'));
+    expect(onInsertReference).toHaveBeenCalledWith(TEXT_ROW);
+  });
+
+  it('refuses insert on a node that has no prompt to insert into', () => {
+    // A node built before generation reached audio has no prompt container, so
+    // there is nowhere for a reference to go.
+    renderPanel(<AudioGeneratePanel {...BASE} references={[TEXT_ROW]} promptSlot={null} />);
+    expect(screen.getByTestId('generate-ref-insert-e1')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('still lets that node clear a row', () => {
+    // Removing is what a row this node cannot use is FOR.
+    const onRemoveReference = vi.fn();
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        references={[TEXT_ROW]}
+        promptSlot={null}
+        onRemoveReference={onRemoveReference}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-ref-remove-e1'));
+    expect(onRemoveReference).toHaveBeenCalledWith(TEXT_ROW);
+  });
+});
+
+describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
+  const WITH_PARAMS = {
+    ...ELEVEN,
+    params: {
+      stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
+    },
+  };
+
+  it('offers the params picker for a model that declares one', () => {
+    renderPanel(
+      <AudioGeneratePanel {...BASE} models={[WITH_PARAMS]} model={WITH_PARAMS.name} />,
+    );
+    expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
+  });
+
+  it('offers none for a model that declares nothing it can show', () => {
+    renderPanel(<AudioGeneratePanel {...BASE} />);
+    expect(screen.queryByTestId('generate-audio-params-trigger')).toBeNull();
+  });
+
+  it('reports a changed param', () => {
+    const onChangeParams = vi.fn();
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        models={[WITH_PARAMS]}
+        model={WITH_PARAMS.name}
+        onChangeParams={onChangeParams}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-stability-option-1'));
+    expect(onChangeParams).toHaveBeenCalledWith({ stability: 1 });
   });
 });
 
@@ -187,7 +316,7 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
     // Audio was never in GENERATIVE_MODALITIES, so no audio node on the canvas
     // today has a prompt container. An editor rendered here would take typing
     // and store none of it.
-    render(<AudioGeneratePanel {...BASE} promptSlot={null} />);
+    renderPanel(<AudioGeneratePanel {...BASE} promptSlot={null} />);
     expect(screen.getByTestId('generate-audio-legacy')).toHaveTextContent(
       'canvas.generatePanel.audioLegacyNoPrompt',
     );
@@ -195,7 +324,7 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
   });
 
   it('keeps the footer usable, so the panel is not a dead end', () => {
-    render(<AudioGeneratePanel {...BASE} promptSlot={null} />);
+    renderPanel(<AudioGeneratePanel {...BASE} promptSlot={null} />);
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-exit')).toBeInTheDocument();
   });
