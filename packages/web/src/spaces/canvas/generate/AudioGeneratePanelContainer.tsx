@@ -364,7 +364,7 @@ function AudioGeneratePanelBody({
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
   // whose identity never changes on an in-session locale switch, so depending
   // on it alone would freeze this copy in the old language.
-  const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
+  const promptPlaceholder = t('canvas.generatePanel.audioPromptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   const promptSlot = React.useMemo(

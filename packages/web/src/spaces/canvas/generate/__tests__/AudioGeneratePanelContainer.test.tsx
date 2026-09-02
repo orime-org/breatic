@@ -42,6 +42,7 @@ vi.mock('@web/data/api/voices', () => ({
 
 import * as Y from 'yjs';
 import { toast } from 'sonner';
+import { t } from '@breatic/shared';
 
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { addNode, getPromptFragment, readCanvasGraph } from '@web/data/yjs/canvas-space';
@@ -250,6 +251,19 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     expect(screen.getByTestId('generate-model-option-elevenlabs-v3')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-option-fish-s2-pro')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-model-option-elevenlabs-sfx-v2')).toBeNull();
+  });
+
+  it('asks for lines to speak, not for a picture', async () => {
+    // The prompt box carries the panel's only instruction on what to type. The
+    // image panel's copy asks for a picture, which is the wrong thing to write
+    // into a box whose text a voice will read out.
+    await openPanel({ model: 'elevenlabs-v3' });
+    const placeholder = screen
+      .getByTestId('generate-prompt-editor')
+      .querySelector('[data-placeholder]')
+      ?.getAttribute('data-placeholder');
+    expect(placeholder).toBe(t('canvas.generatePanel.audioPromptPlaceholder'));
+    expect(placeholder).not.toBe(t('canvas.generatePanel.promptPlaceholder'));
   });
 
   it('states the rate of the model it is on, in that vendor\'s unit', async () => {
