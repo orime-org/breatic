@@ -47,7 +47,10 @@ import {
   IMAGE_MODE_OPTIONS,
   resolveMode,
 } from '@web/spaces/canvas/generate/image-mode-selection';
-import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
+import {
+  asContentView,
+  type ContentNodeView,
+} from '@web/spaces/canvas/types/node-view';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
@@ -351,12 +354,9 @@ function GeneratePanelBody({
    * this render.
    * @returns The node's content view, or undefined.
    */
-  const freshContent = React.useCallback(():
-    | ContentNodeView
-    | undefined => {
+  const freshContent = React.useCallback((): ContentNodeView | undefined => {
     const graph = readCanvasGraph(projectId, spaceId);
-    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
-    return data && 'status' in data ? data : undefined;
+    return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
   }, [projectId, spaceId, nodeId]);
 
   const executeRefusal = evaluateExecute({

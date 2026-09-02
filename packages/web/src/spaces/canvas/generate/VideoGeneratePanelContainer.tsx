@@ -49,7 +49,10 @@ import {
   filterAvailableModes,
   resolveModeSwitch,
 } from '@web/spaces/canvas/generate/mode-selection';
-import type { ContentNodeView } from '@web/spaces/canvas/types/node-view';
+import {
+  asContentView,
+  type ContentNodeView,
+} from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
   type PromptEditorHandle,
@@ -303,8 +306,7 @@ function VideoGeneratePanelBody({
    */
   const freshContent = React.useCallback((): ContentNodeView | undefined => {
     const graph = readCanvasGraph(projectId, spaceId);
-    const data = graph.nodes.find((n) => n.id === nodeId)?.data;
-    return data && 'status' in data ? data : undefined;
+    return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
   }, [projectId, spaceId, nodeId]);
 
   // Stable identities for the memoized children: the view model rebuilds on
