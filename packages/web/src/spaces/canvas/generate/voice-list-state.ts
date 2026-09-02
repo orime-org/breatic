@@ -149,15 +149,22 @@ export function voiceListReducer(
       if (state.loadingMore || !state.hasMore) return state;
       return { ...state, loadingMore: true };
 
-    case 'moreArrived':
+    // Takes only what this page adds. Neither vendor promises a stable order
+    // across requests — Fish pages by number over a list sorted by task count,
+    // which moves while the user reads — so a voice can cross the page
+    // boundary and come back. Appending blind would then render its id twice.
+    case 'moreArrived': {
       if (event.requestId !== state.requestId) return state;
+      const loaded = new Set(state.voices.map((voice) => voice.id));
+      const added = event.page.voices.filter((voice) => !loaded.has(voice.id));
       return {
         ...state,
-        voices: [...state.voices, ...event.page.voices],
+        voices: [...state.voices, ...added],
         cursor: event.page.nextCursor,
         hasMore: event.page.hasMore,
         loadingMore: false,
       };
+    }
 
     // Only the flag falls back. The voices already loaded stay on screen: the
     // user can still pick one, and can ask for the next page again.

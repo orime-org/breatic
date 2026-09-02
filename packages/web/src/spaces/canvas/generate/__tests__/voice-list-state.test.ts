@@ -242,6 +242,22 @@ describe('paging (#1960 §7.1, a flag rather than a state)', () => {
     expect(s.loadingMore).toBe(false);
   });
 
+  it('takes only what the next page adds, never a repeat', () => {
+    // Neither vendor promises a stable order across page requests: Fish pages
+    // by number over a list sorted by task count, a figure that moves while
+    // the user reads. A voice that shifts across the page boundary comes back
+    // a second time, and appending it blind puts the same name on two rows
+    // that both claim its id.
+    const ready = readyState();
+    const loadingMore = voiceListReducer(ready, { type: 'moreRequested' });
+    const s = voiceListReducer(loadingMore, {
+      type: 'moreArrived',
+      requestId: ready.requestId,
+      page: { voices: [VOICE_A, VOICE_B], hasMore: false },
+    });
+    expect(s.voices).toEqual([VOICE_A, VOICE_B]);
+  });
+
   it('keeps the loaded voices when the next page fails', () => {
     const ready = readyState();
     const loadingMore = voiceListReducer(ready, { type: 'moreRequested' });
