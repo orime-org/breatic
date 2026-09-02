@@ -312,8 +312,6 @@
       "voiceError": "Voices unavailable",
       "voiceRetry": "Retry",
       "voiceSample": "Play {name}",
-      "rateCharacters": "{credits} credits / {per} characters",
-      "rateBytes": "{credits} credits / {per} bytes",
       "audioPromptPlaceholder": "Write the lines to speak, @ to add a reference",
       "audioLegacyNoPrompt": "This node is too old. Create a new audio node.",
       "voiceParams": "Voice settings",

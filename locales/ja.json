@@ -303,8 +303,6 @@
       "voiceError": "音声を利用できません",
       "voiceRetry": "再試行",
       "voiceSample": "{name} を再生",
-      "rateCharacters": "{credits} クレジット / {per} 文字",
-      "rateBytes": "{credits} クレジット / {per} バイト",
       "audioPromptPlaceholder": "読み上げるセリフを入力してください。@ で参照を追加",
       "audioLegacyNoPrompt": "このノードは古すぎます。音声ノードを新規作成してください。",
       "voiceParams": "音声設定",

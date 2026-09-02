@@ -93,6 +93,7 @@ const BASE = {
   voiceList: initialVoiceListState,
   voiceSelectedId: null,
   voiceSelectedName: null,
+  creditEstimate: 10,
   executeRefusal: null,
   promptSlot: <div data-testid='prompt-editor' />,
   references: [],
@@ -148,26 +149,21 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
   });
 });
 
-describe('AudioGeneratePanel rate (#1960 A5)', () => {
-  it('states what the model charges per unit of text, not a total', () => {
-    renderPanel(<AudioGeneratePanel {...BASE} />);
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
-      'canvas.generatePanel.rateCharacters',
-    );
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
-      '"credits":10',
+describe('AudioGeneratePanel credit estimate (#1960 A5)', () => {
+  it('prints the number and nothing around it, as the video panel does', () => {
+    // A bare figure beside the star: same shape as VideoGeneratePanel, and no
+    // wording to translate. What it costs follows the prompt, so the container
+    // works the figure out and this prints it.
+    renderPanel(<AudioGeneratePanel {...BASE} creditEstimate={20} />);
+    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('20');
+    expect(screen.getByTestId('generate-audio-rate').textContent).not.toMatch(
+      /[a-zA-Z]/,
     );
   });
 
-  it('counts bytes for the vendor that bills that way', () => {
-    // Fish charges per UTF-8 byte and a Chinese character is three of them, so
-    // one shared "per 1000 characters" wording would understate it threefold.
-    renderPanel(
-      <AudioGeneratePanel {...BASE} model='fish-s2-pro' currentModel={FISH} />,
-    );
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
-      'canvas.generatePanel.rateBytes',
-    );
+  it('prints a zero before anything is typed, rather than going away', () => {
+    renderPanel(<AudioGeneratePanel {...BASE} creditEstimate={0} />);
+    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('0');
   });
 
   it('says nothing where the model declares no rate', () => {
@@ -177,6 +173,7 @@ describe('AudioGeneratePanel rate (#1960 A5)', () => {
         models={[ttsModel('no-rate')]}
         currentModel={ttsModel('no-rate')}
         model='no-rate'
+        creditEstimate={undefined}
       />,
     );
     expect(screen.queryByTestId('generate-audio-rate')).toBeNull();

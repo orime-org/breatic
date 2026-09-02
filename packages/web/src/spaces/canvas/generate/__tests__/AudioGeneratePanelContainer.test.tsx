@@ -309,9 +309,12 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     expect(placeholder).not.toBe(t('canvas.generatePanel.promptPlaceholder'));
   });
 
-  it('states the rate of the model it is on, in that vendor\'s unit', async () => {
+  it('costs nothing on a panel whose prompt is still empty', async () => {
+    // The figure follows the prompt, so a panel just opened on an empty one
+    // reads zero. What it does as text arrives is `estimateAudioCredits`, and
+    // its own tests cover the two vendors' units.
     await openPanel({ model: 'fish-s2-pro' });
-    expect(screen.getByTestId('generate-audio-rate').textContent).toContain('1.5');
+    expect(screen.getByTestId('generate-audio-rate').textContent).toBe('0');
   });
 });
 

@@ -37,6 +37,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
+import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import type { AudioParamsValue } from '@web/spaces/canvas/generate/AudioParamsPicker';
@@ -438,6 +439,7 @@ function AudioGeneratePanelBody({
       models={modeModels}
       model={vm.model}
       currentModel={vm.modelEntry}
+      creditEstimate={estimateAudioCredits(vm.modelEntry?.rate, promptText)}
       modelTakesPrompt={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}

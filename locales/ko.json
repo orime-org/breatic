@@ -303,8 +303,6 @@
       "voiceError": "음성을 사용할 수 없습니다",
       "voiceRetry": "재시도",
       "voiceSample": "{name} 재생",
-      "rateCharacters": "{credits} 크레딧 / {per}자",
-      "rateBytes": "{credits} 크레딧 / {per}바이트",
       "audioPromptPlaceholder": "읽을 대사를 입력하세요. @ 로 참조 추가",
       "audioLegacyNoPrompt": "이 노드는 너무 오래되었습니다. 오디오 노드를 새로 만드세요.",
       "voiceParams": "음성 설정",

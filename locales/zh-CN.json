@@ -303,8 +303,6 @@
       "voiceError": "音色暂不可用",
       "voiceRetry": "重试",
       "voiceSample": "试听 {name}",
-      "rateCharacters": "{credits} 积分 / {per} 字符",
-      "rateBytes": "{credits} 积分 / {per} 字节",
       "audioPromptPlaceholder": "写下要念的台词，@ 引用参考",
       "audioLegacyNoPrompt": "此节点过旧。请新建音频节点。",
       "voiceParams": "语音参数",

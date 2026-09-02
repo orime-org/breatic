@@ -303,8 +303,6 @@
       "voiceError": "音色暫不可用",
       "voiceRetry": "重試",
       "voiceSample": "試聽 {name}",
-      "rateCharacters": "{credits} 積分 / {per} 字元",
-      "rateBytes": "{credits} 積分 / {per} 位元組",
       "audioPromptPlaceholder": "寫下要唸的台詞，@ 引用參考",
       "audioLegacyNoPrompt": "此節點過舊。請新建音訊節點。",
       "voiceParams": "語音參數",

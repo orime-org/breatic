@@ -4,7 +4,7 @@
 import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry, ModelRate, Voice } from '@breatic/shared';
+import type { ModelEntry, Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -25,15 +25,14 @@ import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
 /**
- * The i18n key stating a rate in the unit its vendor counts.
- * @param unit - What the vendor bills by.
- * @returns The message key.
+ * The panel's outer surface: width, corners, border, fill, padding, spacing.
+ *
+ * One constant because this component returns it from two branches — the
+ * legacy node's single line and the panel proper — and two literals can drift
+ * into two different panels without anything failing.
  */
-function rateKey(unit: ModelRate['unit']): string {
-  return unit === 'characters'
-    ? 'canvas.generatePanel.rateCharacters'
-    : 'canvas.generatePanel.rateBytes';
-}
+const SHELL =
+  'flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
 
 interface AudioGeneratePanelProps {
   /** The tts models this panel offers. */
@@ -48,6 +47,13 @@ interface AudioGeneratePanelProps {
    * needed, and a second lookup is a second chance to answer differently.
    */
   currentModel: ModelEntry | undefined;
+  /**
+   * What one generation off the current prompt would cost, in credits.
+   *
+   * A number that moves as the prompt is typed: a tts model bills by how much
+   * text it is handed. Undefined where the model states no rate.
+   */
+  creditEstimate: number | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
   /** The selected mode. */
@@ -107,12 +113,11 @@ interface AudioGeneratePanelProps {
 /**
  * The audio-node Generate panel: the injected collaborative prompt editor over
  * a footer carrying the mode picker, the model picker, the voice picker, the
- * rate and the submit button.
+ * speaking params, the credit figure and the submit button.
  *
- * The footer states a RATE rather than a total. Both tts vendors bill by how
- * much text is sent, so what a generation costs is not known until it is
- * written, and the unit each counts differs — one per character, the other per
- * UTF-8 byte.
+ * The figure is one number beside a star, the shape VideoGeneratePanel uses.
+ * There it is the model's cost per call; here it follows the prompt, since a
+ * tts model bills by how much text it is handed (`estimateAudioCredits`).
  *
  * Presentational throughout; every piece of node data and every Yjs write is
  * threaded in by the container.
@@ -120,6 +125,7 @@ interface AudioGeneratePanelProps {
  * @param root0.models - The tts models to offer.
  * @param root0.model - The selected model id.
  * @param root0.currentModel - That model's catalog entry.
+ * @param root0.creditEstimate - What this prompt would cost, in credits.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
@@ -149,6 +155,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   models,
   model,
   currentModel,
+  creditEstimate,
   modelTakesPrompt,
   mode,
   modeOptions,
@@ -174,7 +181,6 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onExecute,
 }: AudioGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
-  const rate = currentModel?.rate;
 
   const exitButton = (
     <Button
@@ -198,7 +204,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   // (user 2026-09-02).
   if (promptSlot === null) {
     return (
-      <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+      <div className={SHELL}>
         <div className='flex items-start justify-between gap-2'>
           <p
             data-testid='generate-audio-legacy'
@@ -213,7 +219,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   }
 
   return (
-    <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div className={SHELL}>
       <div className='flex items-start justify-between'>
         <AudioGenerateToolbar
           onReference={onAddReference}
@@ -263,13 +269,13 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {rate && (
+          {creditEstimate !== undefined && (
             <span
               data-testid='generate-audio-rate'
               className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
             >
               <Star className='h-3.5 w-3.5' aria-hidden='true' />
-              {t(rateKey(rate.unit), { credits: rate.credits, per: rate.per })}
+              {creditEstimate}
             </span>
           )}
           <Button
