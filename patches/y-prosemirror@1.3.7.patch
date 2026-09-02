@@ -1,0 +1,194 @@
+diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
+index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..6bbe0ab6998e628876cbc58ef765cdd5facd25c8 100644
+--- a/src/plugins/sync-plugin.js
++++ b/src/plugins/sync-plugin.js
+@@ -730,6 +730,150 @@ export const createNodeFromYElement = (
+   prevSnapshot,
+   computeYChange
+ ) => {
++  // PATCH: an element whose NAME this build does not know goes into a fallback
++  // node, instead of being deleted from the shared document.
++  //
++  // Decided here, before the try, rather than inside the catch below. The catch
++  // fires for every construction failure, and most of them have nothing to do
++  // with an unknown vocabulary: two clients on the SAME build, each deleting a
++  // different child of one container, can merge into a shape the schema
++  // rejects. Deleting that is the binding healing itself, and answering it with
++  // a fallback would show two fully up-to-date people "unsupported content" and
++  // stop them editing. Asking only "is this name unknown" leaves every other
++  // failure to the repair below, untouched.
++  //
++  // BlockNote's document is three levels deep, and the slot an unknown element
++  // lands in decides what can stand in for it:
++  //
++  //   doc            content: "blockGroup"                 names one exact type
++  //    blockGroup      content: "blockGroupChild+"         a group
++  //     blockContainer content: "blockContent blockGroup?"
++  //       slot 1: blockContent   a group  -> the stand-in joins by declaration
++  //       slot 2: blockGroup?    names one exact type
++  //        paragraph    inline content
++  //
++  // Only slot 1 takes the stand-in unwrapped. The three that name an exact type
++  // take it WRAPPED, up to the type they name — that is what `wrapUpTo` builds.
++  //
++  // A parent can also accept neither, and leaving that case out is what made
++  // the original destructive: a code block holds `text*`, so forcing a stand-in
++  // into it makes the PARENT fail to build, and the parent's failure lands in
++  // the untouched catch below, which deletes the code block and every character
++  // in it. Answering "no stand-in here" leaves this one element to that same
++  // catch: it alone is removed.
++  if (schema.nodes[el.nodeName] === undefined) {
++    const parent = el.parent
++    const parentIsFragment = !(parent instanceof Y.XmlElement)
++    const parentType = parentIsFragment
++      ? undefined
++      : schema.nodes[parent.nodeName]
++    const inlineFallback = schema.nodes.unsupportedInline
++    const blockFallback = schema.nodes.unsupportedBlock
++
++    /**
++     * Wraps the block stand-in until it satisfies `expected`.
++     *
++     * The wrapper chain is read off the schema rather than hardcoded, so a
++     * container renamed upstream stops matching instead of silently producing
++     * a node the slot rejects.
++     *
++     * @param {any} expected The content match a node has to satisfy.
++     * @param {string} originalName The name this build could not use.
++     * @returns {any} A node the slot accepts, or null.
++     */
++    const wrapUpTo = (expected, originalName) => {
++      if (blockFallback === undefined) return null
++      let node = blockFallback.create({ originalName })
++      // blockContent -> blockContainer -> blockGroup is the only chain in this
++      // document shape; three attempts is one more than it needs.
++      for (let depth = 0; depth < 3; depth++) {
++        if (expected.matchType(node.type) !== null) return node
++        const container = schema.nodes.blockContainer
++        const grouping = schema.nodes.blockGroup
++        if (node.type === blockFallback && container !== undefined) {
++          node = container.create(null, node)
++          continue
++        }
++        if (node.type === container && grouping !== undefined) {
++          node = grouping.create(null, node)
++          continue
++        }
++        return null
++      }
++      return null
++    }
++
++    /**
++     * The content-match state at el's own position, reached by walking the
++     * parent's content expression through the types of the siblings BEFORE el
++     * — so the question asked below is "does THIS position take the stand-in",
++     * not "does any position".
++     *
++     * A sibling this build does not know either is walked as what IT will
++     * become: this same decision runs for that sibling when its own turn
++     * comes.
++     *
++     * @returns {any} The match at el's position, or undefined.
++     */
++    const matchAtElement = () => {
++      if (parentType === undefined) return undefined
++      let match = parentType.contentMatch
++      for (const sibling of parent.toArray()) {
++        if (sibling === el) return match
++        let siblingType
++        if (sibling instanceof Y.XmlText) {
++          siblingType = schema.nodes.text
++        } else if (sibling instanceof Y.XmlElement) {
++          siblingType = schema.nodes[sibling.nodeName]
++          if (siblingType === undefined) {
++            let substituted = null
++            if (inlineFallback !== undefined) {
++              substituted = match.matchType(inlineFallback)
++            }
++            if (substituted === null) {
++              const wrapped = wrapUpTo(match, sibling.nodeName)
++              if (wrapped !== null) substituted = match.matchType(wrapped.type)
++            }
++            if (substituted !== null) match = substituted
++            continue
++          }
++        }
++        if (siblingType === undefined) return undefined
++        const next = match.matchType(siblingType)
++        if (next === null) return undefined
++        match = next
++      }
++      return undefined
++    }
++
++    let fallbackNode
++    if (parentIsFragment) {
++      // The fragment root holds one `blockGroup`, so the stand-in is wrapped
++      // all the way up to it. Reading the root's own content expression keeps
++      // this correct if that shape ever changes.
++      const docType = schema.topNodeType
++      if (docType !== undefined) {
++        fallbackNode = wrapUpTo(docType.contentMatch, el.nodeName)
++      }
++    } else {
++      const match = matchAtElement()
++      if (match !== undefined) {
++        if (
++          inlineFallback !== undefined &&
++          match.matchType(inlineFallback) !== null
++        ) {
++          fallbackNode = inlineFallback.create({ originalName: el.nodeName })
++        } else {
++          const wrapped = wrapUpTo(match, el.nodeName)
++          if (wrapped !== null) fallbackNode = wrapped
++        }
++      }
++    }
++    if (fallbackNode !== undefined && fallbackNode !== null) {
++      meta.mapping.set(el, fallbackNode)
++      return fallbackNode
++    }
++  }
+   const children = []
+   /**
+    * @param {Y.XmlElement | Y.XmlText} type
+@@ -1109,7 +1253,25 @@ export const attributesToMarks = (attrs, schema) => {
+   const marks = []
+   for (const markName in attrs) {
+     // remove hashes if necessary
+-    marks.push(schema.mark(yattr2markname(markName), attrs[markName]))
++    const resolvedName = yattr2markname(markName)
++    // PATCH: a mark this build does not know is carried by a fallback mark that
++    // keeps the original key and value, so a round trip through this client is
++    // lossless. Without this the `schema.mark` call throws, and the caller's
++    // error handler deletes the whole Y.XmlText — every character it carried
++    // goes with the mark.
++    if (schema.marks[resolvedName] === undefined) {
++      const fallbackMarkType = schema.marks.unsupportedMark
++      if (fallbackMarkType !== undefined) {
++        marks.push(
++          fallbackMarkType.create({
++            originalName: markName,
++            originalValue: attrs[markName]
++          })
++        )
++      }
++      continue
++    }
++    marks.push(schema.mark(resolvedName, attrs[markName]))
+   }
+   return marks
+ }
+@@ -1121,6 +1283,11 @@ export const attributesToMarks = (attrs, schema) => {
+ const marksToAttributes = (marks, meta) => {
+   const pattrs = {}
+   marks.forEach((mark) => {
++    if (mark.type.name === 'unsupportedMark') {
++      // PATCH: put the original key and value back untouched.
++      pattrs[mark.attrs.originalName] = mark.attrs.originalValue
++      return
++    }
+     if (mark.type.name !== 'ychange') {
+       const isOverlapping = map.setIfUndefined(meta.isOMark, mark.type, () => !mark.type.excludes(mark.type))
+       pattrs[isOverlapping ? `${mark.type.name}--${utils.hashOfJSON(mark.toJSON())}` : mark.type.name] = mark.attrs

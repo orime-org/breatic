@@ -135,6 +135,25 @@ export const UnsupportedMark = Mark.create({
       0,
     ];
   },
+
+  /**
+   * Keeps this mark out of BlockNote's block JSON.
+   *
+   * `nodeToBlock` walks every mark on a text node and looks it up in the style
+   * schema; a mark it cannot find there throws `style ... not found in
+   * styleSchema` unless the spec carries this flag. Registering the stand-in
+   * as a style instead would be worse: it would then appear as a formatting
+   * option and round-trip through a shape that has no room for the original
+   * key and value.
+   * @param extension - The extension being asked.
+   * @returns The spec addition, for this mark only.
+   */
+  extendMarkSchema(extension) {
+    if (extension.name !== this.name) {
+      return {};
+    }
+    return { blocknoteIgnore: true };
+  },
 });
 
 /**
