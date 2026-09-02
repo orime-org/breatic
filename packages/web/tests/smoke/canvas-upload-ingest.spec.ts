@@ -265,6 +265,77 @@ test('a multi-part video lands with the cover our worker pulled out of it', asyn
   expect(poster).not.toBe(videoUrl);
 });
 
+// A4: the second drop of a file this studio already stores sends no bytes and
+// lands on the URL of the row that is already there. The answer that decides
+// this is given at the ticket, which is the one place a unit test cannot reach
+// with a real hash of real bytes.
+test('a file already stored is answered without sending it again', async () => {
+  // Counted from where the earlier cases left the canvas, so what is measured
+  // is what this one adds.
+  const before = (await imageSources(page)).length;
+  const bytes = Buffer.concat([TINY_PNG, randomBytes(16)]);
+  await dropFile(page, 'twice.png', 'image/png', bytes);
+  await expect
+    .poll(async () => (await imageSources(page)).length, { timeout: 30_000 })
+    .toBe(before + 1);
+  const first = (await imageSources(page))[before] as string;
+
+  // Counted from here, so what it counts is the second drop alone. A dedup hit
+  // is answered by the ticket endpoint and never reaches the Worker.
+  let sentToWorker = 0;
+  await page.route('**/uploads**', (route) => {
+    sentToWorker += 1;
+    return route.continue();
+  });
+
+  await dropFile(page, 'twice-again.png', 'image/png', bytes);
+
+  await expect
+    .poll(async () => (await imageSources(page)).length, { timeout: 30_000 })
+    .toBe(before + 2);
+  // Both nodes resolve to the row that was already there, whichever order the
+  // canvas renders them in.
+  const added = (await imageSources(page)).slice(before);
+  expect(new Set(added)).toEqual(new Set([first]));
+  expect(sentToWorker).toBe(0);
+
+  await page.unroute('**/uploads**');
+});
+
+// B1: the cover is a second asset on its own job. When ffmpeg cannot cut a
+// frame the video is still stored, still registered and still on the node —
+// what it lacks is a poster. Nothing below a real run reaches this: it needs
+// our worker to actually try, and fail, on bytes that really landed in R2.
+test('a video whose frame cannot be cut still lands, without a cover', async () => {
+  test.setTimeout(180_000);
+
+  // Declared as a video and stored as one; the pipeline takes the ticket's
+  // word for the type and never measures the bytes. ffmpeg is what finds out,
+  // which is exactly the failure this case is about.
+  await dropFile(
+    page,
+    'not-really.mp4',
+    'video/mp4',
+    Buffer.concat([Buffer.from('ftypmp42'), randomBytes(4096)]),
+  );
+
+  await expect
+    .poll(async () => (await videoSources(page)).length, { timeout: 120_000 })
+    .toBeGreaterThan(1);
+  const sources = await videoSources(page);
+  const landed = sources[sources.length - 1] as string;
+  expect(landed).toMatch(/^https?:\/\//);
+
+  // Held for a while: a poster that arrives late would make this pass on
+  // timing rather than on the outcome.
+  await page.waitForTimeout(5_000);
+  const poster = await page.evaluate(() => {
+    const videos = [...document.querySelectorAll('.react-flow__node video')];
+    return (videos[videos.length - 1] as HTMLVideoElement | undefined)?.poster ?? '';
+  });
+  expect(poster).toBe('');
+});
+
 // Design §5.6 and the §6.6 table put this write on the browser: once its own
 // retries are spent the node fails there and then, keeps its Retry stash, and
 // says so in the language of the person who tried.
