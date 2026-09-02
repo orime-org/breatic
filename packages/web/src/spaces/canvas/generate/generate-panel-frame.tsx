@@ -30,7 +30,7 @@ import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-optio
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 
 /** The panel kinds this frame serves — the node-anchored generate panels. */
-type GeneratePanelKind = 'generate' | 'generateVideo';
+type GeneratePanelKind = 'generate' | 'generateVideo' | 'generateAudio';
 
 /**
  * The node whose panel of this kind is open, or null.
