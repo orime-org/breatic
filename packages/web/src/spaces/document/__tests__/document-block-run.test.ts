@@ -494,3 +494,114 @@ describe('the selection a press leaves behind', () => {
     });
   });
 });
+
+describe('a stored heading below level three', () => {
+  // Level 4 to 6 are not offered — the menu names three — but a document
+  // written elsewhere can carry one, and the reader can put the caret in it
+  // and press a row. What that renders as is #920; that it does not throw, and
+  // that nothing touches the level until a row IS pressed, is here.
+  /**
+   * Opens a document whose one block is a level four heading.
+   * @returns The editor.
+   */
+  function openLevelFour(): ReturnType<typeof buildDocumentEditor> {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'heading', props: { level: 1 }, content: 'x' },
+    ] as never);
+
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at === -1 && node.type.name === 'heading') at = pos;
+      return at === -1;
+    });
+    const tr = view.state.tr;
+    const heading = tr.doc.nodeAt(at)!;
+    view.dispatch(
+      tr.setNodeMarkup(at, undefined, { ...heading.attrs, level: 4 }),
+    );
+    const { doc } = view.state;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(doc, 1, doc.content.size - 1),
+      ),
+    );
+    return editor;
+  }
+
+  /** The level the one heading in the document carries. */
+  function levelOf(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): unknown {
+    let level: unknown;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'heading') level = node.attrs['level'];
+      return level === undefined;
+    });
+    return level;
+  }
+
+  it('holds the level it was stored with until a row is pressed', () => {
+    expect(levelOf(openLevelFour())).toBe(4);
+  });
+
+  CONTENT_ROWS.concat('quote').forEach((id) => {
+    it(`does not throw when ${id} is pressed on it`, () => {
+      const editor = openLevelFour();
+
+      expect(() => {
+        runBlockType(editor, id);
+      }).not.toThrow();
+    });
+  });
+});
+
+describe('a selection no row reaches', () => {
+  it('writes nothing when a row is pressed on it anyway', () => {
+    // The menu greys every row over such a selection, and a greyed row is not
+    // pressable. The write is guarded on its own so that a route to the same
+    // command that does not go through the menu — a chord — cannot land one.
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+      extensions: [documentFallbackExtension()],
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+
+    const view = editor.prosemirrorView!;
+    const opening = view.state.tr;
+    let at = -1;
+    let size = 0;
+    opening.doc.descendants((node, pos) => {
+      if (at === -1 && node.isTextblock) {
+        at = pos;
+        size = node.nodeSize;
+      }
+      return at === -1;
+    });
+    const fallback = opening.doc.type.schema.nodes['unsupportedBlock']!;
+    view.dispatch(
+      opening
+        .replaceWith(at, at + size, fallback.create({ originalName: 'x' }))
+        .setSelection(NodeSelection.create(opening.doc, at)),
+    );
+
+    expect(canRunBlockType(editor)).toBe(false);
+
+    const before = editor.prosemirrorState.doc.toString();
+    CONTENT_ROWS.concat('quote').forEach((id) => {
+      runBlockType(editor, id);
+    });
+
+    expect(editor.prosemirrorState.doc.toString()).toBe(before);
+  });
+});
