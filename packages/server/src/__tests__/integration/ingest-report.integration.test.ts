@@ -20,6 +20,16 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
+/**
+ * A ticket for a node now opens a task and arms the timer that will judge it
+ * (#186 §4.6.5), and that timer lives in a Worker no harness runs. Without an
+ * alarm the endpoint refuses the ticket, which is the behaviour under test
+ * elsewhere; here it would stop every upload before a byte moved.
+ */
+vi.mock("@server/modules/asset/task-timer.client.js", () => ({
+  armTaskTimer: vi.fn(async () => true),
+}));
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({

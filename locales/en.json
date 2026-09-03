@@ -276,7 +276,8 @@
     },
     "task": {
       "stillRunning": "This task is still running.",
-      "expired": "This task ran out of time."
+      "expired": "This task ran out of time.",
+      "notStarted": "This upload could not be started. Try again."
     },
     "nodeMenu": {
       "generate": "Generate",

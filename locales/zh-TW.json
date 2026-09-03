@@ -276,7 +276,8 @@
     },
     "task": {
       "stillRunning": "這個任務還在跑。",
-      "expired": "這個任務逾時了。"
+      "expired": "這個任務逾時了。",
+      "notStarted": "這次上傳沒能開始，再試一次。"
     },
     "generatePanel": {
       "style": "風格",

@@ -276,7 +276,8 @@
     },
     "task": {
       "stillRunning": "这个任务还在跑。",
-      "expired": "这个任务超时了。"
+      "expired": "这个任务超时了。",
+      "notStarted": "这次上传没能开始，再试一次。"
     },
     "generatePanel": {
       "style": "风格",

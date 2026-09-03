@@ -18,8 +18,14 @@ import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
-import { signUploadTicket, t } from "@breatic/shared";
+import { signUploadTicket, t, canvasSpaceDocName } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
+import {
+  nodeTaskService,
+  emitNodeTaskCounts,
+  uploadBudgetMs,
+} from "@breatic/domain";
+import { armTaskTimer } from "@server/modules/asset/task-timer.client.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -35,6 +41,8 @@ import {
   env,
   logger,
   ValidationError,
+  AppError,
+  getStreamRedis,
 } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
@@ -212,16 +220,26 @@ assets.post(
     // the secret the Worker would reject every ticket we sign; without the
     // base URL the browser has nowhere to send its parts. Neither is anything
     // the user did, so this is our own misconfiguration and reads as a 500.
-    if (!env.INGEST_SHARED_SECRET || !env.INGEST_BASE_URL) {
+    // A third joins them once a node is involved: the timer that will judge
+    // this upload dead runs at Cloudflare's edge and knocks back here, so it
+    // needs the address the internet knows us by. Unset, it would be handed a
+    // path with no host and the knock would land nowhere.
+    if (
+      !env.INGEST_SHARED_SECRET ||
+      !env.INGEST_BASE_URL ||
+      !env.PUBLIC_API_BASE_URL
+    ) {
       logger.error(
         {
           hasSecret: Boolean(env.INGEST_SHARED_SECRET),
           hasBaseUrl: Boolean(env.INGEST_BASE_URL),
+          hasPublicApiUrl: Boolean(env.PUBLIC_API_BASE_URL),
         },
         "upload_ticket_ingest_unconfigured",
       );
       throw new Error(
-        "ingest Worker is not configured: INGEST_BASE_URL and INGEST_SHARED_SECRET are both required",
+        "ingest Worker is not configured: INGEST_BASE_URL, INGEST_SHARED_SECRET " +
+          "and PUBLIC_API_BASE_URL are all required",
       );
     }
 
@@ -249,6 +267,61 @@ assets.post(
         filename: body.filename,
       },
     });
+
+    // The task this upload is, and the deadline that will judge it (#186,
+    // design §4.6.5). Order is fixed: the row, then the alarm, then the
+    // ticket. An upload nobody holds a deadline for has no one to judge it,
+    // so a timer that could not be armed stops the request here.
+    //
+    // An upload with no node behind it — a focus crop — opens nothing: the
+    // counts live in a node's corner, and there is no corner.
+    if (body.node_id !== undefined && body.space_id !== undefined) {
+      const budgetMs = uploadBudgetMs(body.size);
+      const opened = await nodeTaskService.open({
+        projectId: body.project_id,
+        spaceId: body.space_id,
+        nodeId: body.node_id,
+        kind: "upload",
+        startedByUserId: user.id,
+        budgetMs,
+        label: body.filename,
+        storageKey: key,
+      });
+
+      const armed = await armTaskTimer({
+        taskId: opened.id,
+        deadlineAt: Date.now() + budgetMs,
+        callbackUrl: `${env.PUBLIC_API_BASE_URL}/api/v1/canvas/node-tasks/expired`,
+      });
+
+      if (!armed) {
+        // The row stays, as failed. The user did start something, and the
+        // node's counts are computed from these rows.
+        const settled = await nodeTaskService.settle({
+          taskId: opened.id,
+          outcome: "failed",
+          errorMessage: t("canvas.task.notStarted"),
+        });
+        logger.error(
+          { taskId: opened.id, key, userId: user.id },
+          "upload_ticket_timer_unarmed",
+        );
+        await emitNodeTaskCounts(
+          getStreamRedis(),
+          canvasSpaceDocName(body.project_id, body.space_id),
+          body.node_id,
+          settled.counts,
+        );
+        throw new AppError(503, t("canvas.task.notStarted"));
+      }
+
+      await emitNodeTaskCounts(
+        getStreamRedis(),
+        canvasSpaceDocName(body.project_id, body.space_id),
+        body.node_id,
+        opened.counts,
+      );
+    }
 
     // A single-part upload is exempt from R2's 5 MiB floor, so a small file
     // travels as one part rather than being padded up to the configured size.

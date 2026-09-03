@@ -276,7 +276,8 @@
     },
     "task": {
       "stillRunning": "이 작업은 아직 실행 중입니다.",
-      "expired": "이 작업은 시간이 초과되었습니다."
+      "expired": "이 작업은 시간이 초과되었습니다.",
+      "notStarted": "이 업로드를 시작하지 못했습니다. 다시 시도해 주세요."
     },
     "generatePanel": {
       "style": "스타일",

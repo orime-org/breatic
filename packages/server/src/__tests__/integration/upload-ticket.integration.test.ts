@@ -24,6 +24,15 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
+/**
+ * The timer that will judge this upload dead lives in a Worker (#186 §4.6).
+ * Mocked so this suite can drive both of its answers; whether the alarm was
+ * really set is covered where that call is made.
+ */
+vi.mock("@server/modules/asset/task-timer.client.js", () => ({
+  armTaskTimer: vi.fn(async () => true),
+}));
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -203,6 +212,30 @@ async function requestTicket(
     headers: { "content-type": "application/json", cookie },
     body: JSON.stringify(payload),
   });
+}
+
+/** Every task-counts event on the stream for `docName`, oldest first. */
+async function countEventsFor(docName: string): Promise<
+  { nodeId: string; counts: Record<string, number> }[]
+> {
+  const raw = (await getStreamRedis().xrange(
+    taskEventsStreamKey(),
+    "-",
+    "+",
+  )) as [string, string[]][];
+  return raw
+    .map(([, fields]) => {
+      const idx = fields.indexOf("payload");
+      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+    })
+    .filter(
+      (e): e is Record<string, unknown> =>
+        e !== null && e.type === "node-task-counts" && e.docName === docName,
+    )
+    .map((e) => ({
+      nodeId: e.nodeId as string,
+      counts: e.counts as Record<string, number>,
+    }));
 }
 
 /** Every node-state event on the stream for `docName`, oldest first. */
@@ -708,5 +741,229 @@ describe("POST /assets/upload-ticket", () => {
     });
 
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * The task this ticket opens (#186, design §4.2 E1 and §4.6.5).
+ *
+ * A ticket is the moment an upload becomes a thing that can fail, so it is
+ * also the moment the node gets a row for it. The order is fixed: the row,
+ * then the deadline, then the ticket. An upload whose deadline nobody holds
+ * has no one to judge it, so a timer that could not be armed stops the whole
+ * request rather than letting the browser start sending.
+ */
+describe("POST /assets/upload-ticket — the task it opens", () => {
+  /** Every task row on one node, newest first. */
+  async function tasksOn(nodeId: string): Promise<
+    {
+      id: string;
+      status: string;
+      kind: string;
+      budget_ms: number;
+      label: string;
+      storage_key: string | null;
+      started_by_user_id: string;
+      space_id: string;
+      project_id: string;
+    }[]
+  > {
+    return sql`
+      SELECT id, status, kind, budget_ms, label, storage_key,
+             started_by_user_id, space_id, project_id
+      FROM node_tasks WHERE node_id = ${nodeId}
+      ORDER BY started_at DESC
+    ` as never;
+  }
+
+  it("opens one running row carrying who, where and what", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const spaceId = crypto.randomUUID();
+
+    const res = await requestTicket(
+      cookie,
+      body({ project_id: projectId, node_id: nodeId, space_id: spaceId }),
+    );
+    expect(res.status).toBe(201);
+
+    const rows = await tasksOn(nodeId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      status: "running",
+      kind: "upload",
+      label: "clip.mp4",
+      started_by_user_id: userId,
+      space_id: spaceId,
+      project_id: projectId,
+    });
+  });
+
+  it("points the row at the grant the bytes will land under", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+
+    const res = await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+    const payload = (await res.json()) as { data: { storageKey: string } };
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.storage_key).toBe(payload.data.storageKey);
+  });
+
+  it("gives the row the budget the file size works out to", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+        size: 40 * 1024 * 1024,
+      }),
+    );
+
+    const { uploadBudgetMs } = await import("@breatic/domain");
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.budget_ms).toBe(uploadBudgetMs(40 * 1024 * 1024));
+  });
+
+  it("arms the timer for that row, at that budget", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const { armTaskTimer } = await import(
+      "@server/modules/asset/task-timer.client.js"
+    );
+    vi.mocked(armTaskTimer).mockClear();
+
+    const before = Date.now();
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+
+    const rows = await tasksOn(nodeId);
+    expect(armTaskTimer).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(armTaskTimer).mock.calls[0]![0];
+    expect(call.taskId).toBe(rows[0]!.id);
+    expect(call.deadlineAt).toBeGreaterThanOrEqual(before + rows[0]!.budget_ms);
+    expect(call.callbackUrl).toContain("/canvas/node-tasks/expired");
+  });
+
+  it("publishes the node's counts so everyone sees one running", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const spaceId = crypto.randomUUID();
+
+    await requestTicket(
+      cookie,
+      body({ project_id: projectId, node_id: nodeId, space_id: spaceId }),
+    );
+
+    const counts = await countEventsFor(canvasSpaceDocName(projectId, spaceId));
+    expect(counts.at(-1)).toMatchObject({
+      nodeId,
+      counts: { running: 1, done: 0, failed: 0, expired: 0 },
+    });
+  });
+
+  it("mints no ticket and leaves no running row when the timer refuses", async () => {
+    // Nobody would judge this upload dead, and the row would sit running
+    // for good. The request stops here instead.
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const { armTaskTimer } = await import(
+      "@server/modules/asset/task-timer.client.js"
+    );
+    vi.mocked(armTaskTimer).mockResolvedValueOnce(false);
+
+    const res = await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+
+    expect(res.status).toBe(503);
+    const rows = await tasksOn(nodeId);
+    expect(rows.map((r) => r.status)).not.toContain("running");
+  });
+
+  it("marks that row failed rather than deleting it", async () => {
+    // The row is what the node's counts are computed from, and the user did
+    // start something. It reads as a failure, which is what it was.
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const { armTaskTimer } = await import(
+      "@server/modules/asset/task-timer.client.js"
+    );
+    vi.mocked(armTaskTimer).mockResolvedValueOnce(false);
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+
+    const rows = await tasksOn(nodeId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("failed");
+  });
+
+  it("opens nothing for an upload with no node behind it", async () => {
+    // A focus crop has no node, so there is no corner to count it in.
+    const { projectId, cookie } = await seedEditor();
+    const { armTaskTimer } = await import(
+      "@server/modules/asset/task-timer.client.js"
+    );
+    vi.mocked(armTaskTimer).mockClear();
+
+    const res = await requestTicket(cookie, body({ project_id: projectId }));
+
+    expect(res.status).toBe(201);
+    expect(armTaskTimer).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing when the studio already holds the file", async () => {
+    // A dedup hit sends no bytes, so there is nothing to time.
+    const { studioId, userId, projectId, cookie } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await registerAsset(studioId, userId, hash, 40 * 1024 * 1024);
+    const nodeId = crypto.randomUUID();
+    const { armTaskTimer } = await import(
+      "@server/modules/asset/task-timer.client.js"
+    );
+    vi.mocked(armTaskTimer).mockClear();
+
+    const res = await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+        client_hash: hash,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await tasksOn(nodeId)).toHaveLength(0);
+    expect(armTaskTimer).not.toHaveBeenCalled();
   });
 });
