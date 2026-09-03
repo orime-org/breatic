@@ -129,6 +129,10 @@ export const VoicePicker = React.memo(function VoicePicker({
     [onPick, handleOpenChange],
   );
 
+  // Which attempt is the current one. `play()` settles whenever it settles,
+  // and a rejection from an attempt the reader has already moved on from must
+  // not darken the button of the sample now on the speakers.
+  const attemptRef = React.useRef(0);
   const toggleSample = React.useCallback(
     (voice: Voice) => {
       audioRef.current?.pause();
@@ -136,6 +140,7 @@ export const VoicePicker = React.memo(function VoicePicker({
         setPlayingId(null);
         return;
       }
+      const attempt = ++attemptRef.current;
       const audio = new Audio(voice.previewUrl);
       audioRef.current = audio;
       audio.addEventListener('ended', () => setPlayingId(null));
@@ -143,7 +148,7 @@ export const VoicePicker = React.memo(function VoicePicker({
       void audio.play().catch(() => {
         // Autoplay policy, a dead url, an unsupported codec: the sample is a
         // convenience, and the voice stays pickable either way.
-        setPlayingId(null);
+        if (attemptRef.current === attempt) setPlayingId(null);
       });
     },
     [playingId],
@@ -203,7 +208,6 @@ export const VoicePicker = React.memo(function VoicePicker({
         // rather than auto because the list changes with every keystroke, and
         // a width that follows its content would jump as the user types.
         className='w-80 p-0'
-        style={{ '--voice-list-body': LIST_BODY_HEIGHT } as React.CSSProperties}
       >
         <div className='border-b border-border p-2'>
           <Input
@@ -219,7 +223,11 @@ export const VoicePicker = React.memo(function VoicePicker({
           popover opens upward and a search changes how many rows there are —
           so a short result set leaves the space below it empty instead
           (user 2026-09-03). */}
-        <div className='p-1' style={{ height: 'var(--voice-list-body)' }}>
+        <div
+          data-testid='generate-voice-list-body'
+          className='p-1'
+          style={{ height: LIST_BODY_HEIGHT }}
+        >
           {list.status === 'loading' && (
           // A line rather than blocks of grey standing in for rows: this
           // popover opens over a canvas someone is working on, and those

@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
@@ -293,6 +293,23 @@ describe('VoicePicker paging (#1960 §7.1)', () => {
   });
 });
 
+describe('VoicePicker keeps one height for every state it can be in', () => {
+  // The popover opens upward over a canvas someone is working on, and a search
+  // changes how many rows there are — a box sized to its contents would move
+  // under the reader on each keystroke (user 2026-09-03).
+  it.each([
+    ['loading', state({ status: 'loading', voices: [] })],
+    ['empty', state({ status: 'empty', voices: [] })],
+    ['failed', state({ status: 'failed', voices: [] })],
+    ['a full page', state()],
+    ['a single row', state({ voices: [ALPHA] })],
+  ])('is the same height showing %s', (_label, list) => {
+    open({ list });
+    const body = screen.getByTestId('generate-voice-list-body');
+    expect(body.style.height).toBe('238px');
+  });
+});
+
 describe('VoicePicker samples (#1960 A2)', () => {
   let play: ReturnType<typeof vi.fn>;
   let pause: ReturnType<typeof vi.fn>;
@@ -365,6 +382,58 @@ describe('VoicePicker samples (#1960 A2)', () => {
     pause.mockClear();
     fireEvent.click(screen.getByTestId('generate-voice-sample-beta'));
     expect(pause).toHaveBeenCalled();
+  });
+
+  it('leaves the playing sample lit when a superseded one fails late', async () => {
+    // A dead url, a codec the browser will not take, a blocked autoplay: the
+    // rejection lands whenever it lands, and by then the reader may have
+    // started something else. Clearing on it would darken the button of the
+    // voice that is actually on the speakers.
+    let failBeta: () => void = () => {};
+    play
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            failBeta = (): void => reject(new Error('dead url'));
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+
+    open({
+      list: state({
+        voices: [ALPHA, { ...BETA, previewUrl: 'https://example.test/beta.mp3' }],
+      }),
+    });
+    fireEvent.click(screen.getByTestId('generate-voice-sample-alpha'));
+    fireEvent.click(screen.getByTestId('generate-voice-sample-beta'));
+    fireEvent.click(screen.getByTestId('generate-voice-sample-alpha'));
+
+    failBeta();
+    // Flushed rather than awaited through `waitFor`: the assertion here is
+    // that nothing changes, and `waitFor` would pass on its first synchronous
+    // look, before the rejection had a chance to change anything.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('generate-voice-sample-alpha')).toHaveAttribute(
+      'data-playing',
+      'true',
+    );
+  });
+
+  it('still darkens the button when the sample it started fails', async () => {
+    play.mockRejectedValueOnce(new Error('dead url'));
+    open();
+    fireEvent.click(screen.getByTestId('generate-voice-sample-alpha'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-voice-sample-alpha')).toHaveAttribute(
+        'data-playing',
+        'false',
+      );
+    });
   });
 });
 

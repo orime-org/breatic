@@ -317,4 +317,24 @@ describe("when there are no voices to answer with", () => {
       statusCode: 502,
     });
   });
+
+  // A 200 carrying something that is not an object is the same failure as a
+  // refusal — the vendor did not answer with a voice list — and the caller
+  // has one branch for that. Reading fields off it instead would surface as
+  // an unhandled type error, which no layer above is written to expect.
+  it.each([["null"], ['"not a list"'], ["42"]])(
+    "answers 502 when a 200 carries %s instead of a body",
+    async (payload) => {
+      deployWith({ ELEVENLABS_API_KEY: "el-key" });
+      httpRequestMock.mockResolvedValueOnce(
+        new Response(payload, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      await expect(listVoices("elevenlabs-v3", {})).rejects.toMatchObject({
+        statusCode: 502,
+      });
+    },
+  );
 });

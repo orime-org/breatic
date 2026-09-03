@@ -55,7 +55,10 @@ export async function generate(
   }
 
   const resp = await httpRequest(
-    `${resolved.baseUrl}/text-to-speech/${voiceId}`,
+    // Escaped because it goes in as one path segment: the gateway deployment
+    // names its voices in words, and a name carrying a space or a slash would
+    // otherwise build a URL the vendor never sees whole.
+    `${resolved.baseUrl}/text-to-speech/${encodeURIComponent(voiceId)}`,
     {
       method: "POST",
       headers,

@@ -95,6 +95,25 @@ describe("elevenlabs tts transport upstream contract (#1960 A7)", () => {
     expect(body).not.toHaveProperty("voice_id");
   });
 
+  // A path segment has to be escaped as one. The gateway deployment names its
+  // voices in words rather than ids, and the day one of those names carries a
+  // space the raw value would build a URL the vendor never sees whole.
+  it("escapes the voice for the path segment it goes into", async () => {
+    await generate("", RESOLVED, { text: "hello", voice_id: "Bill Oxley" });
+
+    expect(sentRequest().url).toBe(
+      "https://api.elevenlabs.test/v1/text-to-speech/Bill%20Oxley",
+    );
+  });
+
+  it("escapes a value that would otherwise leave the endpoint", async () => {
+    await generate("", RESOLVED, { text: "hello", voice_id: "../../user" });
+
+    expect(sentRequest().url).toBe(
+      "https://api.elevenlabs.test/v1/text-to-speech/..%2F..%2Fuser",
+    );
+  });
+
   it("renames similarity to similarity_boost, nested under voice_settings", async () => {
     await generate("", RESOLVED, {
       text: "hello",

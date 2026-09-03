@@ -116,7 +116,15 @@ async function readJson(
   if (!resp.ok) {
     throw new AppError(502, t("server.canvas.voices_upstream_failed"));
   }
-  return (await resp.json()) as unknown;
+  const body: unknown = await resp.json().catch(() => null);
+  // A 200 whose payload is not an object failed the same way a refusal did:
+  // every caller here reads named fields off this value, so a bare one either
+  // throws where no layer above expects it, or reads as zero voices — which
+  // tells the user the model offers none when the upstream is what broke.
+  if (body === null || typeof body !== "object") {
+    throw new AppError(502, t("server.canvas.voices_upstream_failed"));
+  }
+  return body;
 }
 
 /**
