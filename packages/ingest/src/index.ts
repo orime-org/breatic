@@ -23,6 +23,7 @@ import {
 } from "@ingest/session-token.js";
 
 export { UploadSession } from "@ingest/upload-session.js";
+export { TaskTimer } from "@ingest/task-timer.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -46,6 +47,8 @@ const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 export interface Env {
   BUCKET: R2Bucket;
   UPLOAD_SESSION: DurableObjectNamespace;
+  /** One instance per task, addressed by task id. Judges it dead (#186). */
+  TASK_TIMER: DurableObjectNamespace;
   /** Signs the ticket we verify, and authenticates the report we send back. */
   INGEST_SHARED_SECRET: string;
   /** Where an upload's outcome is reported. */
@@ -71,6 +74,7 @@ const REQUIRED_SETTINGS = [
   "ALLOWED_ORIGINS",
   "BUCKET",
   "UPLOAD_SESSION",
+  "TASK_TIMER",
 ] as const;
 
 /**
@@ -331,6 +335,41 @@ async function answer(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * Arm the timer that will judge one task dead (#186, design §4.6.5).
+ *
+ * Our server is the only caller and proves it with the shared secret, the
+ * same one the ingest report carries the other way. A browser has no business
+ * here: what it holds says an upload may send bytes, and nothing it holds
+ * should be able to say when a task stops counting as alive.
+ *
+ * The body is passed through to the Durable Object, which is what decides
+ * whether it is well formed — one place holds that shape.
+ * @param request - The arm request.
+ * @param env - The bound resources and configuration.
+ * @returns 204 once armed, 401 for a caller we cannot identify, and whatever
+ *   the timer answered otherwise.
+ */
+async function armTaskTimer(request: Request, env: Env): Promise<Response> {
+  if (request.headers.get("x-ingest-secret") !== env.INGEST_SHARED_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as {
+    taskId?: unknown;
+  } | null;
+  const taskId = body?.taskId;
+  if (typeof taskId !== "string" || taskId === "") {
+    return new Response("Expected taskId", { status: 400 });
+  }
+
+  const timer = env.TASK_TIMER.get(env.TASK_TIMER.idFromName(taskId));
+  return timer.fetch("https://timer.invalid/arm", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
  * Match one request to its endpoint.
  * @param request - The incoming request.
  * @param env - The bound resources and configuration.
@@ -351,6 +390,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   const finish = COMPLETE_PATH.exec(pathname);
   if (request.method === "POST" && finish) {
     return completeUpload(request, env, finish[1] ?? "");
+  }
+
+  if (request.method === "POST" && pathname === "/task-timers/arm") {
+    return armTaskTimer(request, env);
   }
 
   return new Response("Not found", { status: 404 });

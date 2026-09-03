@@ -47,9 +47,19 @@ class_name = "UploadSession"
 # SQLite-backed. Cloudflare no longer creates key-value backed namespaces for
 # accounts without existing ones, so this is the only kind a new deployment
 # gets: https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/
+# One instance per task, addressed by task id. It holds a deadline and knocks
+# on the server when it passes; the server decides what that means (#186).
+[[durable_objects.bindings]]
+name = "TASK_TIMER"
+class_name = "TaskTimer"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UploadSession"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["TaskTimer"]
 
 # The port `wrangler dev` listens on. Every checkout on one machine runs its own
 # Worker, so each needs its own — the same way each already has its own `PORT`
@@ -84,3 +94,7 @@ bucket_name = "<the live R2 bucket>"
 [[env.production.durable_objects.bindings]]
 name = "UPLOAD_SESSION"
 class_name = "UploadSession"
+
+[[env.production.durable_objects.bindings]]
+name = "TASK_TIMER"
+class_name = "TaskTimer"

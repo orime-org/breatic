@@ -38,6 +38,7 @@ export default defineWorkersConfig({
           r2Buckets: ["BUCKET"],
           durableObjects: {
             UPLOAD_SESSION: { className: "UploadSession", useSQLite: true },
+            TASK_TIMER: { className: "TaskTimer", useSQLite: true },
           },
           // Values, kept apart from what any deployment holds: an assertion
           // written against a deployment's ports or domain turns every
