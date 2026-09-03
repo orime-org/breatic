@@ -27,7 +27,7 @@ import { yUndoPluginKey } from 'y-prosemirror';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { documentNumberingExtension } from '@web/spaces/document/document-numbering-decoration';
+import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -53,7 +53,7 @@ function open(blocks: readonly BlockSpec[]): {
   const doc = new Y.Doc();
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    extensions: [documentNumberingExtension()],
+    extensions: [documentDecorationsExtension()],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -126,7 +126,7 @@ describe('the number reaches the screen', () => {
     const source = new Y.Doc();
     const writer = buildDocumentEditor({
       fragment: documentBodyFragment(source),
-      extensions: [documentNumberingExtension()],
+      extensions: [documentDecorationsExtension()],
     });
     writer.mount(document.createElement('div'));
     mounted.push(writer);
@@ -139,7 +139,7 @@ describe('the number reaches the screen', () => {
     Y.applyUpdate(arrived, Y.encodeStateAsUpdate(source));
     const reader = buildDocumentEditor({
       fragment: documentBodyFragment(arrived),
-      extensions: [documentNumberingExtension()],
+      extensions: [documentDecorationsExtension()],
     });
     const root = document.createElement('div');
     document.body.appendChild(root);

@@ -27,6 +27,8 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { quoteRuns } from '@web/spaces/document/document-quote-runs';
+
 /** How deep a heading path goes; §3.4 names exactly three levels. */
 const DEEPEST_LEVEL = 3;
 
@@ -51,10 +53,8 @@ interface Walk {
   /** One counter per list, keyed by parent and quote run. */
   readonly runs: Map<string, number>;
   readonly out: Map<string, string>;
-  /** How many runs of quoted blocks have opened so far. */
-  quoteRuns: number;
-  /** Whether the block just visited was inside a quote. */
-  prevQuoted: boolean;
+  /** Which run of quote each quoted block belongs to. */
+  readonly runOf: ReadonlyMap<string, number>;
 }
 
 /**
@@ -143,11 +143,8 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
 
   containers.forEach((container) => {
     const block = describe(container);
-    if (block.quoted && !walk.prevQuoted) {
-      walk.quoteRuns += 1;
-    }
-    walk.prevQuoted = block.quoted;
-    const key = `${parentKey}|${block.quoted ? `quote${String(walk.quoteRuns)}` : NOT_QUOTED}`;
+    const run = walk.runOf.get(block.id);
+    const key = `${parentKey}|${run === undefined ? NOT_QUOTED : `quote${String(run)}`}`;
 
     if (
       block.type === 'heading' &&
@@ -180,12 +177,15 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
  * @returns Block id to the literal string the reader sees.
  */
 export function computeNumbering(doc: PMNode): Map<string, string> {
+  const runOf = new Map<string, number>();
+  quoteRuns(doc).forEach((run, index) => {
+    run.forEach((id) => runOf.set(id, index));
+  });
   const walk: Walk = {
     counters: new Array<number>(DEEPEST_LEVEL).fill(0),
     runs: new Map<string, number>(),
     out: new Map<string, string>(),
-    quoteRuns: 0,
-    prevQuoted: false,
+    runOf,
   };
   if (doc.childCount > 0) {
     walkGroup(doc.child(0), 'root', walk);

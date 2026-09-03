@@ -580,7 +580,7 @@ body {
    that selector never matches, and a level path would come out as `1.1.`
    because the dot is welded into the rule.
 
-   So `document-numbering-decoration.ts` puts the finished string — punctuation
+   So `document-decorations.ts` puts the finished string — punctuation
    and all — on `data-doc-number`, and this one rule draws it for both kinds of
    block. `content` carries `!important` because the rule it has to beat,
    `.bn-block-outer:not([data-prev-type])>.bn-block>.bn-block-content[data-content-type=numberedListItem]:before`,

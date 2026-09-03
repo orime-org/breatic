@@ -8,7 +8,7 @@
  * rule, two keyboard shortcuts and an indexing plugin. That plugin is the sole
  * writer of the `data-index` attribute its built-in number is drawn from, and
  * this Space draws numbers from its own decoration instead
- * (`document-numbering-decoration.ts`): two node decorations writing the same
+ * (`document-decorations.ts`): two node decorations writing the same
  * attribute would leave the winner to plugin order. There is no way to drop
  * one plugin out of that extension, so the extension is rebuilt without it,
  * and everything else it carried is rebuilt alongside.
