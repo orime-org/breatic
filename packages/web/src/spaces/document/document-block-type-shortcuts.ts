@@ -5,7 +5,7 @@
  * The chord each block type row answers to.
  *
  * One table, because a key printed beside a row has to do what the row does
- * (user 2026-08-29): `document-block-type-keys.ts` binds these and the menu
+ * (user 2026-08-29): `document-block-chords.ts` binds these and the menu
  * prints these, so neither side can be changed without the other following.
  *
  * A descriptor rather than a string: the same chord reads `⌘⌥1` on macOS and

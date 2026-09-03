@@ -46,7 +46,6 @@ import {
 import { DocumentPlaceholders } from '@web/spaces/document/document-placeholders';
 import { DocumentSelectAll } from '@web/spaces/document/document-select-all';
 import { DocumentSplitBlock } from '@web/spaces/document/document-split-block';
-import { DocumentBlockTypeKeys } from '@web/spaces/document/document-block-type-keys';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
 import { DEFAULT_LINK_PROTOCOL } from '@web/spaces/document/document-link';
@@ -134,7 +133,6 @@ export function buildDocumentExtensions(
     DocumentSplitBlock,
     // Takes over the eight chords the block type menu prints; see the file for
     // why priority rather than order settles it.
-    DocumentBlockTypeKeys,
     StarterKit.configure({
       // StarterKit's own Document is `block+`, which would re-open the
       // filler-block hazard emptiness closes.

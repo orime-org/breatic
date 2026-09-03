@@ -22,7 +22,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -205,5 +205,15 @@ describe('the face the slot shows', () => {
   it('falls back to paragraph when the selection is over nothing', () => {
     const doc = docOf([{ type: 'paragraph' }]);
     expect(faceOf(doc, TextSelection.create(doc, 0, 0))).toBe('paragraph');
+  });
+
+  it('names the one block type a select-all covers', () => {
+    // A select-all anchors at 0, which resolves inside no block, so the face
+    // comes from the first block the selection covers.
+    const doc = docOf([
+      { type: 'heading', props: { level: 2 } },
+      { type: 'heading', props: { level: 2 } },
+    ]);
+    expect(faceOf(doc, new AllSelection(doc))).toBe('heading-2');
   });
 });
