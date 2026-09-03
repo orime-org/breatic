@@ -448,6 +448,13 @@ interface SelectionBubbleBarProps {
   /** The editor this bar acts on. */
   editor: BubbleEditor;
   /**
+   * The body scroller's viewport, which already holds the editor.
+   *
+   * The bar needs it in two places that admit no null — the portal it mounts
+   * into and the box `flip` measures against.
+   */
+  viewport: HTMLElement;
+  /**
    * True for a viewer, and then the bar is not rendered at all.
    *
    * Not "rendered but disabled": this bar only appears because someone
@@ -460,42 +467,24 @@ interface SelectionBubbleBarProps {
 /**
  * The formatting bar that follows the selection.
  *
- * Resolves the body's scroll container and renders nothing until it has it.
- * The bar below needs that element in two places that admit no null — the
- * portal it mounts into and the box `flip` measures against — and it exists
- * one commit after this component first renders. Waiting that commit out costs
- * nothing: there is no selection to float above on the first frame either.
- *
- * Splitting the resolution from the bar is what keeps every branch below live:
- * with the viewport known non-null, nothing downstream has to ask again.
+ * The viewport arrives as a prop from whoever mounted the editor, because that
+ * is the only place it is known to exist. Resolving it here from the editor's
+ * own element cannot work: the mount happens in the parent's effect and a
+ * child's effect runs before its parent's, so this component would look while
+ * the editor's DOM is still outside the scroller, find nothing, and never look
+ * again — the bar would not appear at all.
  * @param root0 - Bar props.
  * @param root0.editor - The editor this bar acts on.
+ * @param root0.viewport - The body scroller's viewport, holding the editor.
  * @param root0.readOnly - True for a viewer; the bar stays away entirely.
- * @returns The bar, or null for a viewer and until the scroller is in hand.
+ * @returns The bar, or null for a viewer.
  */
 export function SelectionBubbleBar({
   editor,
+  viewport,
   readOnly = false,
 }: SelectionBubbleBarProps): React.JSX.Element | null {
-  const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
-  // Looked up from the editor's own element rather than from the document: the
-  // body's scroller is the one this editor sits in, and `ScrollArea` puts its
-  // children inside the viewport, so walking up from `view.dom` answers that by
-  // construction. Asking the document for the first match instead would tie the
-  // bar to "at most one body scroller exists", which nothing enforces.
-  //
-  // In an effect because the element exists one commit after this component
-  // first renders, so it cannot be read during that first render.
-  React.useEffect(() => {
-    setViewport(
-      viewOf(editor)?.dom.closest<HTMLElement>(
-        '[data-radix-scroll-area-viewport]',
-      ) ?? null,
-    );
-  }, [editor]);
-
   if (readOnly) return null;
-  if (!viewport) return null;
   return <BubbleBar editor={editor} viewport={viewport} />;
 }
 

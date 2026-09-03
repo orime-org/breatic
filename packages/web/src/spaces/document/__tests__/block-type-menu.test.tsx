@@ -8,24 +8,53 @@
  * is, and the row fill that used to say the same thing is gone — two marks for
  * one fact, one of them a shade of the hover fill.
  *
- * One row is drawn greyed: the task list, which has no schema node to turn
- * anything into (#13). Every other row answers for what it can do to the
- * selection, and a block the schema will not let move is one it leaves alone
- * (user 2026-08-30).
+ * Greying answers one question for all nine rows at once. In the flat model
+ * any block can become any of them, so the only selection a row cannot reach
+ * is one covering no block at all, and every row is drawn greyed there
+ * together.
+ *
+ * What the menu shows while it stays open is its own group below. The rows are
+ * read through `useEditorSnapshot`, which follows the document and the
+ * selection separately, and a row that answered from the moment the menu
+ * opened would say one thing and do another as soon as either moved.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { screen, act, waitFor, fireEvent } from '@testing-library/react';
-import type { Editor } from '@tiptap/react';
+import * as Y from 'yjs';
 
+import { documentBodyFragment } from '@breatic/shared';
 
 import {
   mountDocumentEditor,
   hoverOpenSlot,
   openSharedBody,
   closeShared,
+  focusBody,
+  selectBlockText,
+  selectWholeBody,
+  waitForBar,
+  sharedDoc,
+  type HarnessEditor,
 } from './bubble-bar-harness';
-import { selectWholeBody } from './block-type-fixtures';
+
+/**
+ * The one heading element in the shared document.
+ * @param node - Where to look.
+ * @returns That element.
+ * @throws {Error} When the body holds no heading.
+ */
+function headingElement(node: Y.XmlFragment | Y.XmlElement): Y.XmlElement {
+  for (let i = 0; i < node.length; i += 1) {
+    const child: unknown = node.get(i);
+    if (child instanceof Y.XmlElement) {
+      if (child.nodeName === 'heading') return child;
+      const deeper = headingElement(child);
+      if (deeper.nodeName === 'heading') return deeper;
+    }
+  }
+  throw new Error('no heading in the body');
+}
 
 afterEach(() => {
   closeShared();
@@ -38,43 +67,28 @@ const SLOT = 'doc-bubble-block-type';
  * Select the whole body, with the editor really holding the focus.
  * @param editor - The editor.
  */
-async function selectFirstBlock(editor: Editor, text?: string): Promise<void> {
-  let from = 1;
-  let to = 1;
-  let found = false;
-  editor.state.doc.descendants((node, pos) => {
-    if (!node.isTextblock || found) return !found;
-    if (text !== undefined && node.textContent !== text) return false;
-    from = pos + 1;
-    to = pos + node.nodeSize - 1;
-    found = true;
-    return false;
-  });
+async function selectAll(editor: HarnessEditor): Promise<void> {
   act(() => {
-    editor.view.dom.focus();
-    editor.commands.setTextSelection({ from, to });
+    focusBody(editor);
+    selectWholeBody(editor);
   });
-  await waitFor(() => {
-    expect(
-      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
-    ).toBeGreaterThan(0);
-  });
+  await waitForBar();
 }
 
 /**
- * Select the whole body, with the editor really holding the focus.
+ * Select the block holding the given text, with the editor holding the focus.
  * @param editor - The editor.
+ * @param text - The text to look for.
  */
-async function selectAll(editor: Editor): Promise<void> {
+async function selectBlock(
+  editor: HarnessEditor,
+  text: string,
+): Promise<void> {
   act(() => {
-    editor.view.dom.focus();
-    selectWholeBody(editor);
+    focusBody(editor);
+    selectBlockText(editor, text);
   });
-  await waitFor(() => {
-    expect(
-      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
-    ).toBeGreaterThan(0);
-  });
+  await waitForBar();
 }
 
 /**
@@ -95,6 +109,45 @@ function rowIds(menu: HTMLElement): string[] {
 function tickedIds(menu: HTMLElement): string[] {
   return rowIds(menu).filter((id) =>
     menu.querySelector(`[data-testid="${SLOT}-tick-${id}"]`) !== null);
+}
+
+/**
+ * The rows the open menu greys, in the order they are drawn.
+ * @param menu - The menu element.
+ * @returns Their block type ids.
+ */
+function greyedIds(menu: HTMLElement): string[] {
+  return rowIds(menu).filter((id) =>
+    menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`)
+      ?.getAttribute('aria-disabled') === 'true');
+}
+
+/** Puts the first block of the shared document inside a quote. */
+function quoteFirstBlock(): void {
+  const shared = sharedDoc();
+  const first = (node: Y.XmlFragment | Y.XmlElement): Y.XmlElement | null => {
+    for (let i = 0; i < node.length; i += 1) {
+      const child: unknown = node.get(i);
+      if (child instanceof Y.XmlElement) {
+        if (child.nodeName === 'heading' || child.nodeName === 'paragraph') {
+          return child;
+        }
+        const deeper = first(child);
+        if (deeper !== null) return deeper;
+      }
+    }
+    return null;
+  };
+  const block = first(documentBodyFragment(shared));
+  if (block === null) throw new Error('no block to quote');
+  shared.transact(() => {
+    block.setAttribute('quoted', true as never);
+  });
+}
+
+/** The body as the shared document holds it, read off the editor. */
+function bodyText(editor: HarnessEditor): string {
+  return editor.prosemirrorState.doc.textContent;
 }
 
 describe('the menu', () => {
@@ -129,80 +182,28 @@ describe('the menu', () => {
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  /**
-   * The rows the open menu greys, in the order they are drawn.
-   * @param menu - The menu element.
-   * @returns Their block type ids.
-   */
-  function greyedIds(menu: HTMLElement): string[] {
-    return rowIds(menu).filter((id) =>
-      menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`)
-        ?.getAttribute('aria-disabled') === 'true');
-  }
-
   it.each([
     ['a plain paragraph', '<p>the quick brown fox</p>'],
     ['a list item', '<ul><li><p>an item</p></li></ul>'],
-    ['a quoted line', '<blockquote><p>a quoted line</p></blockquote>'],
+    ['a code block', '<pre><code>npm install</code></pre>'],
     ['a selection across two blocks', '<h1>a heading</h1><p>a paragraph</p>'],
-  ])('greys the task list row and nothing else on %s', async (_name, body) => {
+  ])('greys nothing on %s', async (_name, body) => {
     const editor = openSharedBody(body);
     mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await hoverOpenSlot(SLOT);
-    expect(greyedIds(menu)).toEqual(['task-list']);
+    expect(greyedIds(menu)).toEqual([]);
   });
 
-  it('greys the task list and nothing else on a nested list item too', async () => {
-    // The one row without a schema node is the one row greyed, whatever the
-    // selection is (user 2026-08-30). An item that opens a sub-list comes
-    // apart rather than holding its first block back.
-    const editor = openSharedBody('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
-    mountDocumentEditor(editor);
-    await selectFirstBlock(editor, 'one');
-    const menu = await hoverOpenSlot(SLOT);
-    expect(greyedIds(menu)).toEqual(['task-list']);
-  });
-
-  it.each([
-    ['a quote below the item\'s own line', '<ul><li><p>a</p><blockquote><p>b</p></blockquote></li></ul>'],
-    ['the same on an ordered list', '<ol><li><p>a</p><blockquote><p>b</p></blockquote></li></ol>'],
-    ['a quote holding a list', '<ul><li><p>a</p><blockquote><ul><li><p>b</p></li></ul></blockquote></li></ul>'],
-    ['a quote one level further in', '<ul><li><p>a</p><ul><li><p>b</p><blockquote><p>c</p></blockquote></li></ul></li></ul>'],
-  ])('greys Quote as well where the wrapping would stack two of them: %s', async (_name, body) => {
-    // Rule 5: a document holds one level of quote. Wrapping the item would put
-    // one around a quote it already holds, so the row answers that it cannot
-    // reach this selection — and the menu has to draw both rows greyed, not
-    // just the one row that is always greyed.
-    const editor = openSharedBody(body);
-    mountDocumentEditor(editor);
-    await selectFirstBlock(editor, 'a');
-    const menu = await hoverOpenSlot(SLOT);
-    expect(greyedIds(menu)).toEqual(['task-list', 'quote']);
-  });
-
-  it('leaves Quote lit where the quote sits in a sibling item', async () => {
-    // The split at the selection's edges cuts that item away before the
-    // wrapping is looked for, so nothing it holds is in the way.
-    const editor = openSharedBody(
-      '<ul><li><p>a</p></li><li><p>b</p><blockquote><p>c</p></blockquote></li></ul>',
-    );
-    mountDocumentEditor(editor);
-    await selectFirstBlock(editor, 'a');
-    const menu = await hoverOpenSlot(SLOT);
-    expect(greyedIds(menu)).toEqual(['task-list']);
-  });
-
-  it('draws the greyed task list apart from the rows that are lit', async () => {
+  it('draws every row live over a selection the rows reach', async () => {
     const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await hoverOpenSlot(SLOT);
     const row = (id: string): Element | null =>
       menu.querySelector(`[data-testid="${SLOT}-item-${id}"]`);
-    expect(row('task-list')?.getAttribute('aria-disabled')).toBe('true');
-    expect(row('paragraph')?.className).not.toBe(row('task-list')?.className);
     expect(row('paragraph')?.getAttribute('aria-disabled')).not.toBe('true');
+    expect(row('paragraph')?.className).toContain('cursor');
   });
 
   it('carries no row fill and no data-active', async () => {
@@ -221,9 +222,56 @@ describe('the menu', () => {
   });
 });
 
+describe('what the menu shows while it stays open', () => {
+  it('follows a co-editor’s change to the block under the selection', async () => {
+    // Their edit reaches this editor with no render behind it. A tick read
+    // when the menu opened would go on saying the selection is a level one
+    // heading after they made it a level two.
+    const editor = openSharedBody('<h1>a heading</h1>');
+    mountDocumentEditor(editor);
+    await selectAll(editor);
+    const menu = await hoverOpenSlot(SLOT);
+    expect(tickedIds(menu)).toEqual(['heading-1']);
+
+    const shared = sharedDoc();
+    await act(async () => {
+      headingElement(documentBodyFragment(shared));
+      const heading = headingElement(documentBodyFragment(shared));
+      shared.transact(() => {
+        heading.setAttribute('level', 2 as never);
+      }, 'a-collaborator');
+      await new Promise((resolve) => {
+        setTimeout(resolve, 40);
+      });
+    });
+
+    expect(tickedIds(screen.getByTestId(`${SLOT}-menu`))).toEqual(['heading-2']);
+  });
+
+  it('follows the selection', async () => {
+    const editor = openSharedBody('<h1>a heading</h1><p>a paragraph</p>');
+    mountDocumentEditor(editor);
+    await selectBlock(editor, 'a heading');
+    const menu = await hoverOpenSlot(SLOT);
+    expect(tickedIds(menu)).toEqual(['heading-1']);
+
+    act(() => {
+      selectBlockText(editor, 'a paragraph');
+    });
+
+    await waitFor(() => {
+      expect(tickedIds(screen.getByTestId(`${SLOT}-menu`))).toEqual(['paragraph']);
+    });
+  });
+});
+
 describe('the tick', () => {
   it('marks the one exclusive row the selection is, alongside Quote', async () => {
-    const editor = openSharedBody('<blockquote><h1>the quick brown fox</h1></blockquote>');
+    // Quote is a prop on the block rather than a container, so it is set here
+    // rather than written as markup: there is no `blockquote` node to parse
+    // into.
+    const editor = openSharedBody('<h1>the quick brown fox</h1>');
+    quoteFirstBlock();
     mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await hoverOpenSlot(SLOT);
@@ -301,8 +349,17 @@ describe('pressing a row', () => {
       fireEvent.click(menu.querySelector(`[data-testid="${SLOT}-item-heading-2"]`) as Element);
     });
     await waitFor(() => {
-      expect(editor.getHTML()).toBe('<h2>the quick brown fox</h2>');
+      expect(
+        editor.prosemirrorState.doc.textContent,
+      ).toBe('the quick brown fox');
     });
+    const heading = editor.document as unknown as {
+      type: string;
+      props: Record<string, unknown>;
+    }[];
+    expect(heading[0]?.type).toBe('heading');
+    expect(heading[0]?.props['level']).toBe(2);
+    expect(bodyText(editor)).toBe('the quick brown fox');
     expect(warn).not.toHaveBeenCalled();
   });
 

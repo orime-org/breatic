@@ -18,8 +18,10 @@
  * become.
  */
 
+import { expect } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { DOMParser } from '@tiptap/pm/model';
+import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -40,11 +42,14 @@ let doc: Y.Doc | null = null;
  * a command's effect off the shared document. `closeShared` takes the doc down
  * with the editors, so each case gets its own.
  *
- * The body arrives after construction: content given at construction collides
- * with the collaboration layer's initial sync — the body never lands and the
- * selection falls on an empty document.
+ * The body arrives after the first mount. Measured, the collaboration layer's
+ * initial sync runs at mount and replaces whatever the document held, so a
+ * body written before it lands is gone by the time the bar looks — the case
+ * then runs against an empty document. Mounting here and again in
+ * {@link mountDocumentEditor} is what the eviction path does anyway, and the
+ * text survives it.
  * @param bodyHtml - The body's HTML, or an empty string for an empty document.
- * @returns The editor, not yet mounted.
+ * @returns The editor, mounted off-screen and holding the body.
  */
 export function openSharedBody(bodyHtml: string): HarnessEditor {
   if (!doc) {
@@ -55,14 +60,23 @@ export function openSharedBody(bodyHtml: string): HarnessEditor {
     fragment: documentBodyFragment(doc),
   });
   live.push(editor);
+  const seeding = document.createElement('div');
+  document.body.appendChild(seeding);
+  editor.mount(seeding);
   if (bodyHtml) {
     const holder = document.createElement('div');
     holder.innerHTML = bodyHtml;
     const parsed = DOMParser.fromSchema(editor.pmSchema).parse(holder);
-    editor.transact((tr) => {
-      tr.replaceWith(0, tr.doc.content.size, parsed.content);
-    });
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.replaceWith(0, view.state.doc.content.size, parsed.content),
+    );
   }
+  // The body reached the shared document through that dispatch, so the mount
+  // in `mountDocumentEditor` syncs it back rather than replacing it, and the
+  // page is left holding one editable.
+  editor.unmount();
+  seeding.remove();
   return editor;
 }
 
@@ -81,6 +95,16 @@ export function sharedBodyMarkup(): string {
     .toArray()
     .map((node) => node.toString())
     .join('');
+}
+
+/**
+ * The shared document these editors are bound to.
+ * @returns That document.
+ * @throws {Error} When no editor has been opened yet.
+ */
+export function sharedDoc(): Y.Doc {
+  if (!doc) throw new Error('no shared document — call openSharedBody first');
+  return doc;
 }
 
 /** Takes down every editor and the Y.Doc behind them. Put this in `afterEach`. */
@@ -102,6 +126,64 @@ export function mountDocumentEditor(editor: HarnessEditor): void {
       <DocumentEditor editor={editor} />
     </TooltipProvider>,
   );
+}
+
+/**
+ * Puts the caret's own element in focus, so the bar counts the selection.
+ * @param editor - The editor, mounted.
+ */
+export function focusBody(editor: HarnessEditor): void {
+  editor.prosemirrorView?.dom.focus();
+}
+
+/**
+ * Selects the block holding the given text.
+ * @param editor - The editor.
+ * @param text - The text to look for.
+ * @throws {Error} When no block holds it.
+ */
+export function selectBlockText(editor: HarnessEditor, text: string): void {
+  let span: { from: number; to: number } | null = null;
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    if (span !== null || !node.isTextblock) return span === null;
+    if (node.textContent !== text) return true;
+    span = { from: pos + 1, to: pos + node.nodeSize - 1 };
+    return false;
+  });
+  if (span === null) throw new Error(`no block holding ${JSON.stringify(text)}`);
+  const view = editor.prosemirrorView!;
+  const { from, to } = span;
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
+  );
+}
+
+/**
+ * Selects from the first character of the body to the last.
+ * @param editor - The editor.
+ */
+export function selectWholeBody(editor: HarnessEditor): void {
+  const view = editor.prosemirrorView!;
+  const { doc } = view.state;
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(doc, 1, doc.content.size - 1),
+    ),
+  );
+}
+
+/**
+ * Waits for the bar to reach the document.
+ *
+ * It arrives one render after the selection moves, so a query that runs
+ * straight after a dispatch finds nothing.
+ */
+export async function waitForBar(): Promise<void> {
+  await waitFor(() => {
+    expect(
+      document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
+    ).toBeGreaterThan(0);
+  });
 }
 
 /**

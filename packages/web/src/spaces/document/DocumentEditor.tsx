@@ -36,6 +36,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   readOnly = false,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
+  // Held here because this is where the editor's DOM enters the scroller, and
+  // the bar needs the element that now holds it. A child looking it up for
+  // itself would look before this effect has run.
+  const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
 
   // Mounting is a hand-off, not a construction: the editor belongs to
   // `document-editor-cache` and outlives every one of these mounts. Its DOM
@@ -49,6 +53,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const container = body.current;
     if (container === null) return;
     editor.mount(container);
+    setViewport(
+      container.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
+    );
   }, [editor]);
 
   return (
@@ -87,7 +94,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           portals itself there, so the viewport's own overflow is what takes it
           away once it has been carried out of sight. Over a select-all it is
           pinned to the pointer and stays put instead (E2). */}
-      <SelectionBubbleBar editor={editor} readOnly={readOnly} />
+      {viewport !== null && (
+        <SelectionBubbleBar
+          editor={editor}
+          viewport={viewport}
+          readOnly={readOnly}
+        />
+      )}
     </div>
   );
 });
