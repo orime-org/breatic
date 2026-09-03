@@ -35,7 +35,12 @@
  */
 
 import { Mark, Node } from '@tiptap/core';
-import { createExtension, NON_FORMATTING_MARK_GROUP } from '@blocknote/core';
+import {
+  createExtension,
+  createBlockSpecFromTiptapNode,
+  createInlineContentSpecFromTipTapNode,
+  NON_FORMATTING_MARK_GROUP,
+} from '@blocknote/core';
 
 /** The attribute every stand-in carries: the name this build could not use. */
 const ORIGINAL_NAME = 'originalName';
@@ -157,13 +162,58 @@ export const UnsupportedMark = Mark.create({
 });
 
 /**
- * The extension that registers all three, for the assembly to pass through.
+ * What the block and the inline node declare to BlockNote's own schemas.
  *
- * They go in as plain tiptap types rather than through `createBlockSpec` and
- * friends: those wrap a node in BlockNote's block model, while these are built
- * by the patched binding calling `type.create(...)` straight from Yjs.
+ * `originalName` arrives as null on a node the binding built without one, and
+ * `nodeToBlock` copies an attribute named here whatever its value, so the
+ * declaration says the type and leaves the default absent.
+ */
+const NAME_PROP = {
+  [ORIGINAL_NAME]: { default: undefined, type: 'string' },
+} as const;
+
+/**
+ * The block, declared to the block schema as well as to ProseMirror's.
+ *
+ * BlockNote keeps a second registry beside the ProseMirror schema, and every
+ * route that hands out a block object looks a node up in it: `nodeToBlock.ts:427`
+ * throws for a type it cannot find, and `getTextCursorPosition` — which
+ * `SourceBlockWithPreview` calls on every selection change — converts the
+ * block at the cursor along with its previous, next and parent. A stand-in
+ * absent from that registry therefore raises out of `view.dispatch` when the
+ * caret so much as arrives in a neighbouring block, which is the opposite of
+ * what these three are for.
+ *
+ * The tiptap node goes in unchanged, so the patched binding still reaches it by
+ * name through `type.create(...)` and builds it straight from Yjs.
+ */
+export const unsupportedBlockSpec = createBlockSpecFromTiptapNode(
+  { node: UnsupportedBlock, type: 'unsupportedBlock', content: 'none' },
+  NAME_PROP,
+);
+
+/**
+ * The inline node, declared to the inline content schema.
+ *
+ * This one fails the other way. `nodeToBlock.ts:180-185` writes a console
+ * warning for an inline type absent from that schema and returns, so the
+ * stand-in is dropped from the block object without a word — and a document
+ * read back that way has lost the element the stand-in was carrying.
+ */
+export const unsupportedInlineSpec = createInlineContentSpecFromTipTapNode(
+  UnsupportedInline,
+  NAME_PROP,
+  { render: () => ({ dom: document.createElement('span') }) },
+);
+
+/**
+ * The extension that registers the mark, for the assembly to pass through.
+ *
+ * The other two are registered by the schema, which is where BlockNote reads
+ * both of their declarations from. A mark has neither: `blocknoteIgnore` above
+ * is what keeps this one out of the same conversion.
  */
 export const documentFallbackExtension = createExtension(() => ({
   key: 'documentFallbacks',
-  tiptapExtensions: [UnsupportedBlock, UnsupportedInline, UnsupportedMark],
+  tiptapExtensions: [UnsupportedMark],
 }) as never);

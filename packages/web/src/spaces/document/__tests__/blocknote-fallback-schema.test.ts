@@ -22,7 +22,8 @@
  *   not allow. Without it, an unknown mark inside a code block is dropped.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -93,5 +94,144 @@ describe('the cross-version fallbacks', () => {
     );
     expect(markAttrs).toContain('originalName');
     expect(markAttrs).toContain('originalValue');
+  });
+});
+
+describe('the fallbacks in BlockNote’s own registry', () => {
+  // The second half of registration. BlockNote keeps a block schema and an
+  // inline content schema beside the ProseMirror one, and every route that
+  // hands out a block object looks a node up in them — `nodeToBlock.ts:427`
+  // and `:358` throw for a type they cannot find. `getTextCursorPosition`
+  // converts the block at the cursor along with its previous, next and parent,
+  // and `SourceBlockWithPreview` calls it on every selection change, so a
+  // stand-in absent from those registries raises out of `view.dispatch` when
+  // the caret merely arrives beside one.
+  /**
+   * Opens a document of three paragraphs whose middle block is a stand-in.
+   * @returns The editor, mounted.
+   */
+  function openAroundFallback(): ReturnType<typeof buildDocumentEditor> {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+      extensions: [documentFallbackExtension()],
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'before' },
+      { type: 'paragraph', content: 'middle' },
+      { type: 'paragraph', content: 'after' },
+    ] as never);
+
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    let size = 0;
+    view.state.doc.descendants((node, pos) => {
+      if (node.isTextblock && node.textContent === 'middle') {
+        at = pos;
+        size = node.nodeSize;
+      }
+      return at === -1;
+    });
+    const stand = view.state.schema.nodes['unsupportedBlock']!;
+    view.dispatch(
+      view.state.tr.replaceWith(
+        at,
+        at + size,
+        stand.create({ originalName: 'somethingNewer' }),
+      ),
+    );
+    return editor;
+  }
+
+  /**
+   * A position inside the block holding the given text.
+   * @param editor - The editor.
+   * @param text - The text to look for.
+   * @returns That position.
+   */
+  function caretIn(
+    editor: ReturnType<typeof buildDocumentEditor>,
+    text: string,
+  ): number {
+    let at = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (at === -1 && node.isTextblock && node.textContent === text) {
+        at = pos + 1;
+      }
+      return at === -1;
+    });
+    return at;
+  }
+
+  const held: ReturnType<typeof buildDocumentEditor>[] = [];
+
+  afterEach(() => {
+    held.splice(0).forEach((editor) => {
+      editor.unmount();
+    });
+  });
+
+  it('lets the caret into the block before one', () => {
+    const editor = openAroundFallback();
+    held.push(editor);
+
+    expect(() => {
+      const view = editor.prosemirrorView!;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, caretIn(editor, 'before')),
+        ),
+      );
+    }).not.toThrow();
+  });
+
+  it('lets the caret into the block after one', () => {
+    const editor = openAroundFallback();
+    held.push(editor);
+
+    expect(() => {
+      const view = editor.prosemirrorView!;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, caretIn(editor, 'after')),
+        ),
+      );
+    }).not.toThrow();
+  });
+
+  it('lets one be selected', () => {
+    const editor = openAroundFallback();
+    held.push(editor);
+    let at = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (at === -1 && node.type.name === 'unsupportedBlock') at = pos;
+      return at === -1;
+    });
+
+    expect(() => {
+      const view = editor.prosemirrorView!;
+      view.dispatch(
+        view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)),
+      );
+    }).not.toThrow();
+  });
+
+  it('reads the document back with one in it, name and all', () => {
+    const editor = openAroundFallback();
+    held.push(editor);
+
+    const blocks = editor.document as unknown as {
+      type: string;
+      props: Record<string, unknown>;
+    }[];
+
+    expect(blocks.map((block) => block.type)).toEqual([
+      'paragraph',
+      'unsupportedBlock',
+      'paragraph',
+    ]);
+    expect(blocks[1]?.props['originalName']).toBe('somethingNewer');
   });
 });

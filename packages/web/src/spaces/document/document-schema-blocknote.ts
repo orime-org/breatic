@@ -30,6 +30,10 @@ import {
 import { createCodeBlockSpec } from '@blocknote/core/blocks';
 
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import {
+  unsupportedBlockSpec,
+  unsupportedInlineSpec,
+} from '@web/spaces/document/document-unsupported-blocknote';
 
 /** A prop declaration in BlockNote's shape. */
 type PropDecl = Readonly<Record<string, unknown>>;
@@ -113,11 +117,15 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
       ...NUMBER_PROP,
     }),
     checkListItem: withProps(lists.checkListItem, QUOTED_PROP),
+    unsupportedBlock: unsupportedBlockSpec,
   };
 
   return BlockNoteSchema.create({
     blockSpecs,
-    inlineContentSpecs: { ...defaultInlineContentSpecs },
+    inlineContentSpecs: {
+      ...defaultInlineContentSpecs,
+      unsupportedInline: unsupportedInlineSpec,
+    },
     styleSpecs: { ...defaultStyleSpecs },
   } as never);
 }
