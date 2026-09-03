@@ -244,8 +244,8 @@ describe('searching and switching models (#1960 §7.1)', () => {
   });
 
   // What is on screen when the term changes is the same model's voices: still
-  // pickable, still worth reading. Sweeping them away for a placeholder would
-  // do it on every keystroke, since each one restarts the request.
+  // pickable, still worth reading. Sweeping them away for a loading line
+  // would do it on every keystroke, since each one restarts the request.
   it('leaves the loaded voices on screen while a new search travels', () => {
     const s = voiceListReducer(readyState(), {
       type: 'queryChanged',
@@ -288,7 +288,7 @@ describe('searching and switching models (#1960 §7.1)', () => {
   });
 
   // Nothing on screen worth holding: the first request has not answered yet.
-  it('shows the placeholder for a term typed before anything has loaded', () => {
+  it('goes to loading for a term typed before anything has loaded', () => {
     const s = voiceListReducer(initialVoiceListState, {
       type: 'queryChanged',
       query: 'deep',
@@ -298,7 +298,7 @@ describe('searching and switching models (#1960 §7.1)', () => {
   });
 
   // Holding the error would read as a picker that stopped trying.
-  it('shows the placeholder for a term typed after a failure', () => {
+  it('goes to loading for a term typed after a failure', () => {
     const opened = voiceListReducer(initialVoiceListState, { type: 'opened' });
     const failed = voiceListReducer(opened, {
       type: 'failed',

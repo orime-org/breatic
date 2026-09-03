@@ -479,13 +479,14 @@ describe('VoicePicker rows are the option shape the rest of the app uses', () =>
 });
 
 describe('VoicePicker while the first page is on its way', () => {
-  it('holds the list open at its own height with placeholder rows', () => {
-    // A single line of centred text collapses the popover, and the popover
-    // grows upward — so the search box the user is typing into moves under
-    // their hands on every keystroke.
+  it('says it is loading, spinner and all', () => {
+    // Blocks of grey standing in for rows read as movement, and this surface
+    // is one someone is working on rather than one they are reading
+    // (user 2026-09-03). The box holds its height either way — that belongs to
+    // the shell around this, not to what stands in it.
     open({ list: state({ status: 'loading', voices: [] }) });
-    expect(
-      screen.getAllByTestId('generate-voice-skeleton').length,
-    ).toBeGreaterThan(1);
+    const line = screen.getByTestId('generate-voice-loading');
+    expect(line).toHaveTextContent('canvas.generatePanel.voiceLoading');
+    expect(line.querySelector('svg')).toBeInTheDocument();
   });
 });

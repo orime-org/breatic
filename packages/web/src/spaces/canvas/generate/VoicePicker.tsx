@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ChevronDown, Pause, Play, Volume2 } from 'lucide-react';
+import { ChevronDown, Loader2, Pause, Play, Volume2 } from 'lucide-react';
 import * as React from 'react';
 
 import type { Voice } from '@breatic/shared';
@@ -14,7 +14,6 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
@@ -26,11 +25,11 @@ const PAGE_TRIGGER_DISTANCE = 24;
 /**
  * How tall the list stands, counted in rows.
  *
- * The height is the same in every state: the placeholder fills it, a full
- * result set scrolls inside it, and a short one leaves the space below empty.
- * The popover opens upward, so a box that grew and shrank with its contents
- * would take the search box with it, out from under the reader's hands — and
- * it would do that on every keystroke, since each one restarts the request.
+ * The height is the same in every state: a full result set scrolls inside it,
+ * a short one leaves the space below empty, and the loading and empty lines
+ * centre in it. The popover opens upward, so a box that grew and shrank with
+ * its contents would take the search box with it, out from under the reader's
+ * hands — and on every keystroke, since each one restarts the request.
  */
 const LIST_ROWS = 5;
 
@@ -39,11 +38,7 @@ const ROW_HEIGHT = 46;
 /** The `gap-0.5` between two rows. */
 const ROW_GAP = 2;
 
-/**
- * The list body's height, which the placeholder fills exactly and the results
- * are capped at. Both read it off this one value, so the two agree whatever a
- * row turns out to measure.
- */
+/** The one height every state of this list stands at. */
 const LIST_BODY_HEIGHT = `${LIST_ROWS * ROW_HEIGHT + (LIST_ROWS - 1) * ROW_GAP}px`;
 
 interface VoicePickerProps {
@@ -226,17 +221,20 @@ export const VoicePicker = React.memo(function VoicePicker({
           (user 2026-09-03). */}
         <div className='p-1' style={{ height: 'var(--voice-list-body)' }}>
           {list.status === 'loading' && (
-          // One block of the body's own height sharing itself between rows,
-          // rather than rows of a height guessed here.
-            <div className='flex h-full flex-col gap-0.5'>
-              {Array.from({ length: LIST_ROWS }, (_, i) => (
-                <Skeleton
-                  key={i}
-                  data-testid='generate-voice-skeleton'
-                  className='min-h-0 flex-1'
-                />
-              ))}
-            </div>
+          // A line rather than blocks of grey standing in for rows: this
+          // popover opens over a canvas someone is working on, and those
+          // blocks read as movement on a surface that is already busy
+          // (user 2026-09-03).
+            <p
+              data-testid='generate-voice-loading'
+              className='flex h-full items-center justify-center gap-2 text-sm text-muted-foreground'
+            >
+              <Loader2
+                className='h-3.5 w-3.5 animate-spin'
+                aria-hidden='true'
+              />
+              {t('canvas.generatePanel.voiceLoading')}
+            </p>
           )}
           {list.status === 'empty' && (
           // Centred, and outside the ScrollArea: its viewport wraps content in

@@ -22,7 +22,7 @@
  * time a request is out: the loaded voices stay on screen through a new search
  * and through a next page, so the picture is `ready` while a request travels.
  * Only a first list with nothing yet to show, and a retry after a failure,
- * put a placeholder up — everything else replaces one picture with the next.
+ * go to `loading` — everything else replaces one picture with the next.
  */
 
 import type { Voice, VoicePage } from '@breatic/shared';
@@ -89,7 +89,7 @@ export const initialVoiceListState: VoiceListState = {
 
 /**
  * Starts a fresh request over what is on screen: the list empties and the
- * placeholder takes its place until the answer lands.
+ * picker says it is loading until the answer lands.
  * @param state - The state to start from.
  * @param query - The search term the new request carries.
  * @returns A loading state with nothing shown yet.
