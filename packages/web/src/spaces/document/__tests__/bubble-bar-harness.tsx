@@ -21,7 +21,7 @@
 import { expect } from 'vitest';
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
 import { DOMParser } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -118,12 +118,20 @@ export function closeShared(): void {
 
 /**
  * Render the editor, carrier and all, into the document.
+ *
+ * Wrapped in a provider to stand in for App: the whole product has one
+ * `TooltipProvider`, mounted in `App.tsx`, and the bar's entries that are not
+ * open yet explain themselves through a tooltip.
  * @param editor - An editor with its body already in place.
+ * @param readOnly - True for a viewer.
  */
-export function mountDocumentEditor(editor: HarnessEditor): void {
+export function mountDocumentEditor(
+  editor: HarnessEditor,
+  readOnly = false,
+): void {
   render(
     <TooltipProvider>
-      <DocumentEditor editor={editor} />
+      <DocumentEditor editor={editor} readOnly={readOnly} />
     </TooltipProvider>,
   );
 }
@@ -208,6 +216,20 @@ export function selectWholeBody(editor: HarnessEditor): void {
     view.state.tr.setSelection(
       TextSelection.create(doc, 1, doc.content.size - 1),
     ),
+  );
+}
+
+/**
+ * Selects the whole document, the way `Mod-a`'s second tier does.
+ *
+ * An `AllSelection` rather than a text range over the same characters: the two
+ * are different kinds, and the bar pins itself to the pointer for one of them.
+ * @param editor - The editor.
+ */
+export function selectEverything(editor: HarnessEditor): void {
+  const view = editor.prosemirrorView!;
+  view.dispatch(
+    view.state.tr.setSelection(new AllSelection(view.state.doc)),
   );
 }
 
