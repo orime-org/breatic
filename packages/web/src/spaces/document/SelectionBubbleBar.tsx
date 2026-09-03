@@ -57,8 +57,13 @@
  */
 
 import * as React from 'react';
-import type { BlockNoteEditor } from '@blocknote/core';
 import { posToDOMRect } from '@tiptap/core';
+
+import {
+  domElementOf,
+  viewOf,
+  type ViewedEditor,
+} from '@web/spaces/document/document-editor-view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection } from '@tiptap/pm/state';
@@ -97,33 +102,7 @@ import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 
 /** The document editor, as far as the bar needs to know. */
-type BubbleEditor = BlockNoteEditor<never, never, never>;
-
-/**
- * The editor's view, or null once it has been unmounted.
- *
- * Every route to an unmounted editor's view ends at tiptap's accessor, which
- * raises rather than answering nothing. The bar can outlive its editor by a
- * frame when a tab closes, so asking has to be safe.
- * @param editor - The editor to ask.
- * @returns The view, or null.
- */
-function viewOf(editor: BubbleEditor): EditorView | null {
-  try {
-    return editor.prosemirrorView ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The editable element, or null once the editor has been unmounted.
- * @param editor - The editor to ask.
- * @returns The element, or null.
- */
-function domElementOf(editor: BubbleEditor): HTMLElement | null {
-  return viewOf(editor)?.dom ?? null;
-}
+type BubbleEditor = ViewedEditor;
 
 /**
  * Calls back whenever anything the bar reads may have moved.

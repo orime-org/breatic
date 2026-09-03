@@ -18,9 +18,7 @@
 
 import * as React from 'react';
 import { Link as LinkIcon } from 'lucide-react';
-import type { Editor } from '@tiptap/core';
-import { useEditorState } from '@tiptap/react';
-import type { Transaction } from '@tiptap/pm/state';
+import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import {
   useFloating,
   useDismiss,
@@ -37,6 +35,12 @@ import {
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
+import {
+  domElementOf,
+  viewOf,
+  type ViewedEditor,
+} from '@web/spaces/document/document-editor-view';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { Input } from '@web/components/ui/input';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
 import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all';
@@ -95,14 +99,21 @@ const LINK_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
  */
 const LINK_TEXT_LEADING = 'leading-[1.6]';
 
+/** The document editor, as far as the link panel needs to know. */
+type LinkEditor = ViewedEditor;
+
 /**
  * The body's scroll container, which the anchor is measured against and lives
  * inside.
  * @param editor - The editor whose body to find the scroller of.
  * @returns The scroller, or null before the editor is in the document.
  */
-function bodyScroller(editor: Editor): HTMLElement | null {
-  return editor.view.dom.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+function bodyScroller(editor: LinkEditor): HTMLElement | null {
+  return (
+    domElementOf(editor)?.closest<HTMLElement>(
+      '[data-radix-scroll-area-viewport]',
+    ) ?? null
+  );
 }
 
 /**
@@ -123,10 +134,17 @@ function bodyScroller(editor: Editor): HTMLElement | null {
  * @returns The reference, or null while the target cannot be measured.
  * @throws {never}
  */
-function panelReference(editor: Editor, span: LinkRange | null): ReferenceType | null {
-  const { view } = editor;
+function panelReference(
+  editor: LinkEditor,
+  span: LinkRange | null,
+): ReferenceType | null {
+  const view = viewOf(editor);
+  if (view === null) return null;
   const contextElement = view.dom as HTMLElement;
-  const extent = span ?? { from: view.state.selection.from, to: view.state.selection.to };
+  const extent = span ?? {
+    from: view.state.selection.from,
+    to: view.state.selection.to,
+  };
   const range = domRangeOver(editor, extent);
   if (!range) return null;
   return {
@@ -146,10 +164,12 @@ function panelReference(editor: Editor, span: LinkRange | null): ReferenceType |
  * @returns The range, or null when the positions have no DOM yet.
  * @throws {never}
  */
-function domRangeOver(editor: Editor, span: LinkRange): Range | null {
+function domRangeOver(editor: LinkEditor, span: LinkRange): Range | null {
   try {
-    const start = editor.view.domAtPos(span.from);
-    const end = editor.view.domAtPos(span.to);
+    const view = viewOf(editor);
+    if (view === null) return null;
+    const start = view.domAtPos(span.from);
+    const end = view.domAtPos(span.to);
     const range = document.createRange();
     range.setStart(start.node, start.offset);
     range.setEnd(end.node, end.offset);
@@ -174,10 +194,13 @@ function domRangeOver(editor: Editor, span: LinkRange): Range | null {
  * @returns The link and its span, or nulls when it is gone.
  * @throws {never}
  */
-function followedLink(editor: Editor, tracked: TrackedLink | null): LinkSelection {
+function followedLink(
+  editor: LinkEditor,
+  tracked: TrackedLink | null,
+): LinkSelection {
   const span = tracked ? resolveTrackedSpan(editor, tracked) : null;
   if (!span) return { range: null, href: null };
-  return resolveLinkInSpan(editor.state, span.from, span.to);
+  return resolveLinkInSpan(editor.prosemirrorState, span.from, span.to);
 }
 
 /**
@@ -192,7 +215,7 @@ export function DocumentLinkPopover({
   editor,
   onPanelOpenChange,
 }: {
-  editor: Editor;
+  editor: LinkEditor;
   onPanelOpenChange: (open: boolean) => void;
 }): React.JSX.Element | null {
   const t = useTranslation();
@@ -204,31 +227,27 @@ export function DocumentLinkPopover({
   // Subscribed rather than read while rendering: a co-editor's change arrives
   // with no React render behind it, so a value computed in the render body
   // would show whatever was true last time this happened to re-render.
-  const holdsLink = useEditorState({
+  const holdsLink = useEditorSnapshot(
     editor,
-    selector: ({ editor: e }) => (e ? resolveLinkSelection(e.state).range !== null : false),
-  });
+    (e) => resolveLinkSelection(e.prosemirrorState).range !== null,
+  );
 
   // Subscribed for the same reason: a select-all arrives as a transaction with
   // no React render behind it. Read in the render body instead, the button
   // stayed on screen after `Mod-a` and vanished only when something else
   // re-rendered — measured in a browser, that something else was the press
   // itself, so the button was there to be pressed and the panel never opened.
-  const wholeDocument = useEditorState({
-    editor,
-    selector: ({ editor: e }) => (e ? isWholeDocumentSelection(e.state) : false),
-  });
+  const wholeDocument = useEditorSnapshot(editor, (e) =>
+    isWholeDocumentSelection(e.prosemirrorState.selection),
+  );
 
   // Text a link cannot be written onto — see `canLinkSpan` for the two ways a
   // span refuses one. A write that lands nowhere, or on half of what the user
   // selected, is what the button says no to.
-  const canLink = useEditorState({
-    editor,
-    selector: ({ editor: e }) => {
-      if (!e) return false;
-      const { from, to } = e.state.selection;
-      return canLinkSpan(e.state, from, to);
-    },
+  const canLink = useEditorSnapshot(editor, (e) => {
+    const state = e.prosemirrorState;
+    const { from, to } = state.selection;
+    return canLinkSpan(state, from, to);
   });
 
   /** Put the panel away and drop the draft. */
@@ -240,12 +259,19 @@ export function DocumentLinkPopover({
     // The selection goes with the panel. The bar shows on a selection, and a
     // reader who wants it back makes one — leaving the old selection standing
     // would put the bar back over text the reader has finished with.
-    editor.commands.setTextSelection(editor.state.selection.to);
+    editor.exec((state, dispatch) => {
+      dispatch?.(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, state.selection.to),
+        ),
+      );
+      return true;
+    });
   }, [editor]);
 
   /** Read the selection and show the face that fits it. */
   const openFromSelection = React.useCallback((): void => {
-    const resolved = resolveLinkSelection(editor.state);
+    const resolved = resolveLinkSelection(editor.prosemirrorState);
     setTarget({
       range: resolved.range,
       href: resolved.href,
@@ -264,8 +290,8 @@ export function DocumentLinkPopover({
     }
     const href = normalizeLinkUrl(draft);
     const range = target.range ?? {
-      from: editor.state.selection.from,
-      to: editor.state.selection.to,
+      from: editor.prosemirrorState.selection.from,
+      to: editor.prosemirrorState.selection.to,
     };
     applyLink(editor, range, href);
     close();
@@ -386,9 +412,11 @@ export function DocumentLinkPopover({
         href: resolved.href ?? prev.href,
       }));
     };
-    editor.on('transaction', follow);
+    const stopChange = editor.onChange(follow);
+    const stopSelection = editor.onSelectionChange(follow);
     return () => {
-      editor.off('transaction', follow);
+      stopChange?.();
+      stopSelection();
     };
   }, [close, editor, mode, refs, target.tracked]);
 
