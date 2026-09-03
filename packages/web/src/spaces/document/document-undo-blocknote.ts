@@ -37,6 +37,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
 let protectedNodesCache: Set<string> | null = null;
@@ -132,7 +133,15 @@ export function documentUndoExtension(
 ): ExtensionFactoryInstance {
   return createExtension(() => ({
     key: 'yUndo',
-    prosemirrorPlugins: [yUndoPlugin({ undoManager: manager })],
+    // The selection plugin sits SECOND on purpose. Both it and `yUndoPlugin`
+    // subscribe `stack-item-added`, and the one that writes last is the one
+    // whose selection ends up on the stack item; plugin views run in array
+    // order, so this is what settles that without depending on the extension
+    // sort.
+    prosemirrorPlugins: [
+      yUndoPlugin({ undoManager: manager }),
+      documentUndoSelectionPlugin(),
+    ],
     dependsOn: ['yCursor', 'ySync'],
     undoCommand,
     redoCommand,
