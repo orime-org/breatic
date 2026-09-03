@@ -159,6 +159,45 @@ export function selectBlockText(editor: HarnessEditor, text: string): void {
 }
 
 /**
+ * Selects a span of the body's text, counted in characters.
+ *
+ * Offsets rather than ProseMirror positions: the flat model wraps every block
+ * in two more nodes than the nested one did, so a position written as a number
+ * would say nothing about what it points at and would have to be re-derived by
+ * hand on the next structural change. Characters are what the cases mean.
+ * @param editor - The editor.
+ * @param from - The first character of the span.
+ * @param to - One past its last character.
+ * @throws {Error} When the body holds fewer characters than that.
+ */
+export function selectTextRange(
+  editor: HarnessEditor,
+  from: number,
+  to: number,
+): void {
+  let seen = 0;
+  let start: number | null = null;
+  let end: number | null = null;
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    if (!node.isText) return true;
+    const length = node.text?.length ?? 0;
+    if (start === null && seen + length >= from) start = pos + (from - seen);
+    if (end === null && seen + length >= to) end = pos + (to - seen);
+    seen += length;
+    return true;
+  });
+  if (start === null || end === null) {
+    throw new Error(`the body holds fewer than ${String(to)} characters`);
+  }
+  const view = editor.prosemirrorView!;
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, start, end),
+    ),
+  );
+}
+
+/**
  * Selects from the first character of the body to the last.
  * @param editor - The editor.
  */
