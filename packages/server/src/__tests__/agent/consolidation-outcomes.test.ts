@@ -18,6 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import type * as DomainModule from "@breatic/domain";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
@@ -56,7 +57,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
-  const actual = await importOriginal<typeof import("@breatic/domain")>();
+  const actual = await importOriginal<typeof DomainModule>();
   return {
     ...base,
     generateTextRetry,

@@ -17,6 +17,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import type * as DomainModule from "@breatic/domain";
 import { saying } from "../helpers/model-double.js";
 import type { MockLanguageModelV4 } from "ai/test";
 
@@ -71,7 +72,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
-  const actual = await importOriginal<typeof import("@breatic/domain")>();
+  const actual = await importOriginal<typeof DomainModule>();
   const { modelProducing } = await import("../helpers/model-double.js");
   return {
     ...base,

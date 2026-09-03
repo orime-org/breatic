@@ -19,9 +19,12 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import type * as LlmModule from "@domain/agent/llm.js";
+import type { generateText, LanguageModel } from "ai";
 
 /** What this deployment has for each provider key, per test. */
-const keys = vi.hoisted(() => ({ current: {} as Record<string, string> }));
+const keys: { current: Record<string, string> } = vi.hoisted(() => ({ current: {} }));
+
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -33,7 +36,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     env: new Proxy(
       {},
       { get: (_t, name: string) => keys.current[name] ?? "" },
-    ) as typeof CoreModule.env,
+    ) as unknown as typeof CoreModule.env,
   };
 });
 
@@ -105,7 +108,7 @@ function interceptFetch(): void {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  }) as typeof globalThis.fetch;
+  });
 }
 
 /**
@@ -116,7 +119,7 @@ function interceptFetch(): void {
  * by the instance an earlier test built.
  * @returns The module's exports.
  */
-async function freshLlm(): Promise<typeof import("@domain/agent/llm.js")> {
+async function freshLlm(): Promise<typeof LlmModule> {
   vi.resetModules();
   return import("@domain/agent/llm.js");
 }
@@ -129,7 +132,7 @@ async function freshLlm(): Promise<typeof import("@domain/agent/llm.js")> {
  */
 async function callWith(
   modelString: string,
-  reasoning?: Parameters<typeof import("ai").generateText>[0]["providerOptions"],
+  reasoning?: Parameters<typeof generateText>[0]["providerOptions"],
 ): Promise<Seen> {
   const { getModel } = await freshLlm();
   const { generateText } = await import("ai");
@@ -151,7 +154,7 @@ async function callWith(
  * @param model - A model the table built.
  * @returns Its self-reported provider name.
  */
-function selfReport(model: import("ai").LanguageModel): string {
+function selfReport(model: LanguageModel): string {
   return typeof model === "string" ? model : model.provider;
 }
 
