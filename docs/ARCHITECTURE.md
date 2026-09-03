@@ -224,17 +224,21 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 <a id="agent-provider-routing"></a>
 
-**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,五条:`anthropic/` · `google/` · `openai/` · `deepseek/` 四条直连,加一条兜底的 openrouter。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一条。
+**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一张表。
 
 **判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起整个产品,而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
 
-**兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定。这一条以前是 `createOpenAI` 指着 OpenRouter 的地址,那个 provider 默认走 `/responses`,两边的响应形状不同。
+**每条只写一次自己那把 key 的名字**,类型是 `Extract<keyof CoreConfig, \`${string}_API_KEY\`>` —— 写一个 schema 里没有的名字是编译错误,而不是一条静默永不打开的路由。
+
+**兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定;它把上游的 `usage.cost` 搬进 `providerMetadata.openrouter.usage.cost`。**直连那四条各自的端点不同**(DeepSeek 走 `/chat/completions`,Anthropic 走 `/v1/messages`,Google 走 `:generateContent`,OpenAI 走 `/responses`),响应形状也各不相同。
 
 **有偏好的调用自己说,怎么说由表决定**。调用方传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
 
 **说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**六个模型调用点里今天有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余四处(text mini-tool · nano-banana · skill agent · understand)拿它们各自 provider 的默认值。
 
 **这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
+
+**从布尔到字节都有断言**(`packages/domain/src/agent/__tests__/llm.test.ts`):调用方传的布尔 → 表交回的 `providerOptions` → SDK 发出的请求体 → 认证用的 header,五家逐条走完。中间那一步差别不小 —— DeepSeek 的 `reasoningEffort` 到线上叫 `reasoning_effort`,Google 的整个对象嵌在 `generationConfig` 下,OpenAI 自己补一个 `summary`。断言只停在第二步的话,厂商换掉命名空间时它照样绿,而 reasoning 已经不再被索取。
 
 ### Configuration files
 
