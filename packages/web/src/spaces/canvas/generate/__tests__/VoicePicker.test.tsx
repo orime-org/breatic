@@ -455,6 +455,19 @@ describe('VoicePicker when a next page fails (#1960 A6)', () => {
     open({ list: state({ hasMore: true, loadingMore: true }) });
     expect(screen.queryByTestId('generate-voice-more-retry')).toBeNull();
   });
+
+  it('does not tell the reader voices are unavailable while showing them', () => {
+    // The whole-list failure and this one used one sentence between them, and
+    // that sentence is written for an empty list. Here a full page is on
+    // screen, so "voices unavailable" contradicts what the reader can see.
+    open({ list: state({ hasMore: true, moreFailed: true }) });
+    expect(screen.getByTestId('generate-voice-option-alpha')).toBeInTheDocument();
+    const whole = screen.queryByText('canvas.generatePanel.voiceError');
+    expect(whole).toBeNull();
+    expect(
+      screen.getByText('canvas.generatePanel.voiceMoreError'),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('the voice list answers Enter on its own buttons', () => {

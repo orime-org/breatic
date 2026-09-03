@@ -311,6 +311,7 @@
       "voiceLoading": "Loading voices…",
       "voiceEmpty": "No matching voices",
       "voiceError": "Voices unavailable",
+      "voiceMoreError": "Could not load more voices",
       "voiceRetry": "Retry",
       "voiceSample": "Play {name}",
       "audioPromptPlaceholder": "Write the lines to speak, @ to add a reference",

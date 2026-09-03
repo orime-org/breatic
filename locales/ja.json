@@ -302,6 +302,7 @@
       "voiceLoading": "音声を読み込み中…",
       "voiceEmpty": "一致する音声がありません",
       "voiceError": "音声を利用できません",
+      "voiceMoreError": "音声をこれ以上読み込めませんでした",
       "voiceRetry": "再試行",
       "voiceSample": "{name} を再生",
       "audioPromptPlaceholder": "読み上げるセリフを入力してください。@ で参照を追加",

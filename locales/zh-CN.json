@@ -302,6 +302,7 @@
       "voiceLoading": "正在加载音色…",
       "voiceEmpty": "没有匹配的音色",
       "voiceError": "音色暂不可用",
+      "voiceMoreError": "加载更多音色失败",
       "voiceRetry": "重试",
       "voiceSample": "试听 {name}",
       "audioPromptPlaceholder": "写下要念的台词，@ 引用参考",

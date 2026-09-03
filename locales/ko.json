@@ -302,6 +302,7 @@
       "voiceLoading": "음성 불러오는 중…",
       "voiceEmpty": "일치하는 음성이 없습니다",
       "voiceError": "음성을 사용할 수 없습니다",
+      "voiceMoreError": "음성을 더 불러오지 못했습니다",
       "voiceRetry": "재시도",
       "voiceSample": "{name} 재생",
       "audioPromptPlaceholder": "읽을 대사를 입력하세요. @ 로 참조 추가",

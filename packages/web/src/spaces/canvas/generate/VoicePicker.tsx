@@ -378,7 +378,9 @@ export const VoicePicker = React.memo(function VoicePicker({
                 // reader scrolls up and back down — from where they are
                 // standing the list just stopped.
                   <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
-                    <span>{t('canvas.generatePanel.voiceError')}</span>
+                    {/* Its own sentence: the whole-list one is written for an
+                        empty list, and here a full page is on screen. */}
+                    <span>{t('canvas.generatePanel.voiceMoreError')}</span>
                     <Button
                       type='button'
                       variant='outline'
