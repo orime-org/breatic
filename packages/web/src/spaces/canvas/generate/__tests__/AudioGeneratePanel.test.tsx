@@ -257,7 +257,10 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
   const WITH_PARAMS = {
     ...ELEVEN,
     params: {
-      stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
+      // The shape elevenlabs.yaml declares: a continuous range, which the
+      // panel renders as a slider with the vendor's three named stops beneath
+      // it. A list of values here would be a model no catalog ships.
+      stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
     },
   };
 
@@ -290,7 +293,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
-    fireEvent.click(screen.getByTestId('generate-audio-stability-option-1'));
+    fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
     expect(onChangeParams).toHaveBeenCalledWith({ stability: 1 });
   });
 });

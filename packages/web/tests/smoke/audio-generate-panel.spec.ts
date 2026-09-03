@@ -216,11 +216,14 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   // The rate, not a total: both vendors bill by how much text is sent.
   await expect(page.getByTestId('generate-audio-rate')).toBeVisible();
 
-  // ElevenLabs v3 documents stability as three named stops, so it renders as
-  // options; similarity is a range, so it renders as a slider.
+  // Both params are 0-1 ranges, so both render as sliders. Stability carries
+  // the three positions ElevenLabs names on that scale beneath its own.
   await page.getByTestId('generate-audio-params-trigger').click();
-  await expect(page.getByTestId('generate-audio-stability-option-0.5')).toBeVisible();
+  await expect(page.getByRole('slider', { name: /stability/i })).toBeVisible();
   await expect(page.getByRole('slider', { name: /similarity/i })).toBeVisible();
+  await expect(page.getByTestId('generate-audio-stability-stop-0')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-stability-stop-0.5')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-stability-stop-1')).toBeVisible();
   await page.keyboard.press('Escape');
 
   await page.getByTestId('generate-prompt-editor').click();

@@ -84,7 +84,9 @@ const ELEVEN: ModelEntry = {
   takes_prompt: true,
   params: {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
-    stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
+    // The shape elevenlabs.yaml declares: a continuous range, rendered as a
+    // slider with the vendor's three named stops beneath it.
+    stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   },
   providers: [],
   sourcesByMode: { tts: [] },
@@ -413,7 +415,7 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
   it('stores a changed param on that same record', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
     fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
-    fireEvent.click(screen.getByTestId('generate-audio-stability-option-1'));
+    fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
 
     await waitFor(() => {
       const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
