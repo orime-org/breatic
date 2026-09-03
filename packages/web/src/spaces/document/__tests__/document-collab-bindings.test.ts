@@ -7,8 +7,9 @@
  *
  * `collab-plugin-keys.ts` locates y-prosemirror's plugins by NAME rather than
  * by importing their keys, and says so in its own header — a lookup that
- * misses is silent, so whether those two names are still there is a fact worth
- * asserting rather than assuming.
+ * misses is silent, so whether those plugins are there at all, and whether the
+ * names that file spells still match, are facts worth asserting rather than
+ * assuming.
  *
  * The identity invariant is here too. #1886 delivered "this client never
  * states who it is": the id is written by the server from a validated
@@ -23,6 +24,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
+import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -31,6 +33,15 @@ import {
   Y_SYNC_PLUGIN_KEY_NAME,
   Y_UNDO_PLUGIN_KEY_NAME,
 } from '@web/features/collab-editor/collab-plugin-keys';
+
+/**
+ * The string a `PluginKey` registers plugins under, which its type omits.
+ * @param key - The plugin key.
+ * @returns That string.
+ */
+function keyName(key: unknown): string {
+  return (key as { key: string }).key;
+}
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -68,28 +79,38 @@ function pluginKeyNames(
   );
 }
 
-describe('the plugin names the shared layer looks up', () => {
-  it('still finds the sync and undo plugins by name', () => {
+describe('the plugins the shared layer looks up', () => {
+  it('registers the sync and undo plugins, one of each', () => {
     const { editor } = open();
     const names = pluginKeyNames(editor);
 
-    expect(names).toContain(Y_SYNC_PLUGIN_KEY_NAME);
-    expect(names).toContain(Y_UNDO_PLUGIN_KEY_NAME);
+    // Compared against the keys this test imports rather than against the
+    // string constants, because the SUFFIX is a property of the run rather
+    // than of the build. `PluginKey` numbers a repeated name off a table in
+    // `prosemirror-state`, and vitest resets the module registry between
+    // files while that table can outlive the reset — so a run where
+    // y-prosemirror is loaded a second time mints `y-sync$1`, and both this
+    // editor and the lookups in `collab-plugin-keys.ts` then agree on that
+    // name instead. What the build guarantees is that there is exactly one of
+    // each plugin, which is what is asserted.
+    expect(
+      names.filter((name) => name === keyName(ySyncPluginKey)),
+    ).toHaveLength(1);
+    expect(
+      names.filter((name) => name === keyName(yUndoPluginKey)),
+    ).toHaveLength(1);
   });
 
-  it('registers exactly one of each, so no lookup lands on a second copy', () => {
-    // A duplicate copy in the bundle mints the second key as `y-sync$1`, and
-    // the name lookup then answers with whichever registered first.
-    const { editor } = open();
-    const names = pluginKeyNames(editor);
-
-    expect(names.filter((name) => name === Y_SYNC_PLUGIN_KEY_NAME)).toHaveLength(
-      1,
+  it('names them the way `collab-plugin-keys.ts` spells them', () => {
+    // The two constants that file exports, checked against the keys the
+    // plugins actually carry. A rename upstream turns this red rather than
+    // leaving every name lookup silently answering undefined.
+    expect(keyName(ySyncPluginKey).startsWith(Y_SYNC_PLUGIN_KEY_NAME)).toBe(
+      true,
     );
-    expect(names.filter((name) => name === Y_UNDO_PLUGIN_KEY_NAME)).toHaveLength(
-      1,
+    expect(keyName(yUndoPluginKey).startsWith(Y_UNDO_PLUGIN_KEY_NAME)).toBe(
+      true,
     );
-    expect(names.filter((name) => name.startsWith('y-sync$1'))).toHaveLength(0);
   });
 });
 
