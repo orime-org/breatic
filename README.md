@@ -172,7 +172,8 @@ All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for t
 | `OPENAI_API_KEY` | OpenAI direct access |
 
 A model whose vendor has a key here is called at that vendor; everything else
-goes through OpenRouter. One `OPENROUTER_API_KEY` is enough to run all of it.
+goes through OpenRouter, so one `OPENROUTER_API_KEY` covers every text model
+call. Image, video, audio and 3D generation run on their own vendor keys.
 
 ### Optional
 
