@@ -33,7 +33,41 @@ import {
   Underline,
 } from 'lucide-react';
 
-import type { ToolDef } from '@web/spaces/document/document-tool-button';
+import { toggleMark } from '@tiptap/pm/commands';
+
+import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
+
+/**
+ * The five inline tools are named after the five styles the schema declares,
+ * which is what lets the pressed state read straight off the selection.
+ * @param id - The tool's id, which is also the style's name.
+ * @returns The three answers a tool owes, wired to that style.
+ */
+function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
+  /**
+   * The ProseMirror command behind this style.
+   * @param editor - The editor to read the schema off.
+   * @returns The command, or null when this build has no such mark.
+   */
+  const command = (editor: ToolEditor): ReturnType<typeof toggleMark> | null => {
+    const mark = editor.pmSchema.marks[id];
+    return mark === undefined ? null : toggleMark(mark);
+  };
+  return {
+    // A style is a property of the selection rather than a mark the caller
+    // names, so this is the editor's own answer rather than a schema lookup.
+    isActive: (editor) =>
+      (editor.getActiveStyles() as Record<string, unknown>)[id] === true,
+    canRun: (editor) => {
+      const run = command(editor);
+      return run !== null && editor.canExec(run);
+    },
+    run: (editor) => {
+      const run = command(editor);
+      if (run !== null) editor.exec(run);
+    },
+  };
+}
 
 /** The four marks the demo groups together as `B I S U`. */
 export const MARK_TOOLS: ToolDef[] = [
@@ -41,33 +75,25 @@ export const MARK_TOOLS: ToolDef[] = [
     id: 'bold',
     labelKey: 'spaces.document.commands.bold',
     Icon: Bold,
-    isActive: (e) => e.isActive('bold'),
-    canRun: (e) => e.can().chain().toggleBold().run(),
-    run: (e) => e.chain().focus().toggleBold().run(),
+    ...styleTool('bold'),
   },
   {
     id: 'italic',
     labelKey: 'spaces.document.commands.italic',
     Icon: Italic,
-    isActive: (e) => e.isActive('italic'),
-    canRun: (e) => e.can().chain().toggleItalic().run(),
-    run: (e) => e.chain().focus().toggleItalic().run(),
+    ...styleTool('italic'),
   },
   {
     id: 'strike',
     labelKey: 'spaces.document.commands.strike',
     Icon: Strikethrough,
-    isActive: (e) => e.isActive('strike'),
-    canRun: (e) => e.can().chain().toggleStrike().run(),
-    run: (e) => e.chain().focus().toggleStrike().run(),
+    ...styleTool('strike'),
   },
   {
     id: 'underline',
     labelKey: 'spaces.document.commands.underline',
     Icon: Underline,
-    isActive: (e) => e.isActive('underline'),
-    canRun: (e) => e.can().chain().toggleUnderline().run(),
-    run: (e) => e.chain().focus().toggleUnderline().run(),
+    ...styleTool('underline'),
   },
 ];
 
@@ -85,9 +111,7 @@ export const INLINE_TOOLS: ToolDef[] = [
     id: 'code',
     labelKey: 'spaces.document.commands.code',
     Icon: Code,
-    isActive: (e) => e.isActive('code'),
-    canRun: (e) => e.can().chain().toggleCode().run(),
-    run: (e) => e.chain().focus().toggleCode().run(),
+    ...styleTool('code'),
   },
 ];
 

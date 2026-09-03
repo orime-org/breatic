@@ -22,8 +22,7 @@
  */
 
 import * as React from 'react';
-import type { Editor } from '@tiptap/react';
-import { useEditorState } from '@tiptap/react';
+import type { BlockNoteEditor } from '@blocknote/core';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -41,12 +40,15 @@ export const BUBBLE_CONTROL_HEIGHT = 'h-[var(--btn-inline)]';
 /** The height above plus the 28 the same demo rule gives an icon button. */
 export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
 
+/** The document editor, as far as a tool needs to know. */
+export type ToolEditor = BlockNoteEditor<never, never, never>;
+
 /** A toggle whose pressed state mirrors what is under the cursor. */
 export interface ToolDef {
   id: string;
   labelKey: string;
   Icon: typeof Bold;
-  isActive: (e: Editor) => boolean;
+  isActive: (e: ToolEditor) => boolean;
   /**
    * Whether the command can run against the current selection.
    *
@@ -64,8 +66,8 @@ export interface ToolDef {
    * forbids a live button that does nothing, not a dark button that would have
    * worked.
    */
-  canRun: (e: Editor) => boolean;
-  run: (e: Editor) => void;
+  canRun: (e: ToolEditor) => boolean;
+  run: (e: ToolEditor) => void;
 }
 
 /**
@@ -80,21 +82,31 @@ export const ToolButton = React.memo(function ToolButton({
   editor,
 }: {
   tool: ToolDef;
-  editor: Editor;
+  editor: ToolEditor;
 }): React.JSX.Element {
   const t = useTranslation();
-  const state = useEditorState({
-    editor,
-    selector: ({ editor: e }) => ({
-      active: e ? tool.isActive(e) : false,
-      available: e ? tool.canRun(e) : false,
-    }),
-    // Compared field by field: the selector builds a fresh object on every
-    // transaction, so identity would report a change on every keystroke and
-    // re-render all five buttons for nothing.
-    equalityFn: (a, b) =>
-      b !== null && a.active === b.active && a.available === b.available,
-  });
+  // Both answers change with the document AND with the selection, and the
+  // editor reports those separately. Read as two scalars so that a keystroke
+  // that changes neither re-renders nothing: a snapshot returning a fresh
+  // object would report a change every time it was asked.
+  const subscribe = React.useCallback(
+    (onStoreChange: () => void) => {
+      const stopChange = editor.onChange(onStoreChange);
+      const stopSelection = editor.onSelectionChange(onStoreChange);
+      return () => {
+        stopChange?.();
+        stopSelection();
+      };
+    },
+    [editor],
+  );
+  const active = React.useSyncExternalStore(subscribe, () =>
+    tool.isActive(editor),
+  );
+  const available = React.useSyncExternalStore(subscribe, () =>
+    tool.canRun(editor),
+  );
+  const state = { active, available };
   const Icon = tool.Icon;
   return (
     <Button
