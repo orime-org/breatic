@@ -180,19 +180,26 @@ describe("nothing in the schema caps how many tasks a node may run", () => {
   });
 
   it("takes a second running row on the same node", async () => {
-    const project = await sql<{ id: string }[]>`
-      SELECT id FROM projects WHERE deleted_at IS NULL LIMIT 1
+    // The integration database starts empty, so the row this case needs has
+    // to be seeded here. Reading whatever happens to be lying around would
+    // make the case depend on suite order.
+    const users = await sql<{ id: string }[]>`
+      INSERT INTO users (email, email_verified)
+      VALUES (${`nts-${crypto.randomUUID()}@example.com`}, true) RETURNING id
     `;
-    const user = await sql<{ id: string }[]>`
-      SELECT id FROM users WHERE deleted_at IS NULL LIMIT 1
+    const userId = users[0]!.id;
+    const studios = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${userId}, ${`nts-${crypto.randomUUID()}`}, 'personal', 'P')
+      RETURNING id
     `;
-    // A repo with no project or no user cannot answer this question at all,
-    // and a silent pass would read as "concurrency works".
-    expect(project).toHaveLength(1);
-    expect(user).toHaveLength(1);
-
-    const projectId = project[0]!.id;
-    const userId = user[0]!.id;
+    const slug = `nts-${crypto.randomUUID()}`;
+    const projects = await sql<{ id: string }[]>`
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
+      VALUES (${studios[0]!.id}, ${userId}, ${slug}, ${slug}, 'private')
+      RETURNING id
+    `;
+    const projectId = projects[0]!.id;
     const nodeId = crypto.randomUUID();
     const spaceId = crypto.randomUUID();
 
