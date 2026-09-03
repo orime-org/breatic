@@ -450,27 +450,32 @@ describe('mergeCanvasNodes reference stability (#1647 — React.memo needs stabl
     expect(merged[0]).toBe(prev[0]); // SAME reference → memo bails, `a` not re-rendered
   });
 
-  it('sees a generation changing hands', () => {
-    // The starter's id rides in `data` alongside the derived status, and a
-    // handover keeps that status at `handling` — so the status compare says
-    // nothing changed and only the id itself can catch it. Reuse the previous
-    // reference here and the node keeps naming the wrong person.
+  it('sees a field change that the derived status hides', () => {
+    // Several fields ride in `data` alongside the derived status, and a change
+    // to one of them can leave that status where it was — so the status
+    // compare says nothing changed and only the field itself can catch it.
+    // Reuse the previous reference here and the node keeps showing the stale
+    // one.
     //
     // The comparison is by own keys, so a flat field on `data` is covered the
     // moment it exists; this pins that the projection keeps putting it there.
-    const at = (userId: string): Node[] =>
+    const at = (errorMessage: string): Node[] =>
       [
         {
           id: 'a',
           type: 'image',
           position: { x: 0, y: 0 },
-          data: { status: 'handling', handlingByUserId: userId },
+          data: { status: 'error', errorMessage },
           selected: false,
         },
       ] as Node[];
-    const prev = at('alice');
-    expect(mergeCanvasNodes(prev, at('bob'), QUIET)[0]).not.toBe(prev[0]);
-    expect(mergeCanvasNodes(prev, at('alice'), QUIET)[0]).toBe(prev[0]);
+    const prev = at('could not read the file');
+    expect(mergeCanvasNodes(prev, at('not a text file'), QUIET)[0]).not.toBe(
+      prev[0],
+    );
+    expect(
+      mergeCanvasNodes(prev, at('could not read the file'), QUIET)[0],
+    ).toBe(prev[0]);
   });
 
   it('carries the holders the occupant table brings with it', () => {

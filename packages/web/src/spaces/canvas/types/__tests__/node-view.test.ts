@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { HANDLING_TIMEOUT_MS, type CanvasNodeFields, type NodeType } from '@breatic/shared';
+import {
+  type CanvasNodeFields,
+  type NodeTaskCounts,
+  type NodeType,
+} from '@breatic/shared';
 
 import {
   deriveStatus,
@@ -35,6 +39,16 @@ function fields(
       ...data,
     },
   };
+}
+
+/**
+ * Builds the four task counts a node projects, so each test only names the
+ * ones it is about.
+ * @param over - The counts this test cares about; the rest are zero.
+ * @returns A complete set of four counts.
+ */
+function counts(over: Partial<NodeTaskCounts> = {}): NodeTaskCounts {
+  return { running: 0, done: 0, failed: 0, expired: 0, ...over };
 }
 
 describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
@@ -124,36 +138,14 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
-  it('projects who started a running generation onto a content view', () => {
-    // Everything else about `handlingBy` collapses into the derived status
-    // string; the user id is what lets the node say WHO is generating, which
-    // is the one part of the actor a viewer can act on.
+  it('names nobody on a node with a task running (#186)', () => {
+    // The document says how many tasks are in each state and nothing else, so
+    // who started one is not on the node at all — the task list answers that.
     const v = toNodeView(
-      fields('image', {
-        state: 'handling',
-        handlingBy: {
-          userId: 'alice',
-          type: 'backend',
-          startedAt: Date.now(),
-          gen: 1,
-        },
-      }),
+      fields('image', { taskCounts: counts({ running: 1 }) }),
     );
-    expect(v).toMatchObject({ status: 'handling', handlingByUserId: 'alice' });
-  });
-
-  it('drops the starter once the lease has run out', () => {
-    // An expired lease already derives `error` at the display level, and a
-    // node showing an error is not generating for anybody — carrying the
-    // starter across would put a name above a node nobody is working on.
-    const startedAt = Date.now() - HANDLING_TIMEOUT_MS - 1;
-    const v = toNodeView(
-      fields('image', {
-        state: 'handling',
-        handlingBy: { userId: 'alice', type: 'backend', startedAt, gen: 1 },
-      }),
-    );
-    expect(v).toMatchObject({ status: 'error', handlingByUserId: undefined });
+    expect(v).toMatchObject({ status: 'handling' });
+    expect(v).not.toHaveProperty('handlingByUserId');
   });
 
   it('projects Generate inputs (prompt/model/mode/modelByMode) onto a content view', () => {
@@ -240,48 +232,52 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
   });
 });
 
-describe('deriveStatus — wire state + errorMessage → 3-state display status', () => {
-  it('handling state maps to handling', () => {
-    expect(deriveStatus({ state: 'handling' })).toBe('handling');
+describe('deriveStatus — task counts → 3-state display status (#186 §7.6)', () => {
+  it('shows the loading branch while any task is still running', () => {
+    expect(
+      deriveStatus({ taskCounts: counts({ running: 1 }) }),
+    ).toBe('handling');
   });
 
-  it('idle with an errorMessage maps to error', () => {
-    expect(deriveStatus({ state: 'idle', errorMessage: 'boom' })).toBe('error');
+  it('keeps showing loading when an earlier task already failed', () => {
+    // A node may carry several tasks at once. One of them having failed says
+    // nothing about the one still writing to this node.
+    expect(
+      deriveStatus({ taskCounts: counts({ running: 1, failed: 2 }) }),
+    ).toBe('handling');
   });
 
-  it('idle with no errorMessage maps to idle', () => {
-    expect(deriveStatus({ state: 'idle' })).toBe('idle');
+  it('shows the error branch once the last task failed and nothing landed', () => {
+    expect(deriveStatus({ taskCounts: counts({ failed: 1 }) })).toBe('error');
   });
 
-  it('handling past the lease budget derives error — display-level timeout fallback (#1569)', () => {
-    // The collab sweeper is the authority that WRITES the timeout back to
-    // Yjs; this is only the render-side safety net so a viewer never stares
-    // at an hours-old skeleton while the sweep is pending. Clock injected
-    // for determinism.
-    const startedAt = 1_700_000_000_000;
-    const withinBudget = startedAt + 3_599_000;
-    const pastBudget = startedAt + 3_600_001;
-    const data = {
-      state: 'handling' as const,
-      handlingBy: { userId: 'u1', type: 'frontend' as const, startedAt, gen: 1 },
-    };
-    expect(deriveStatus(data, withinBudget)).toBe('handling');
-    expect(deriveStatus(data, pastBudget)).toBe('error');
+  it('shows the error branch for a task judged expired', () => {
+    expect(deriveStatus({ taskCounts: counts({ expired: 1 }) })).toBe('error');
   });
 
-  it('handling with no handlingBy stays handling at the display level (sweeper owns reclaiming legacy zombies)', () => {
-    // Pre-#1569 zombie nodes have state='handling' with no handlingBy at
-    // all. The display keeps showing handling (no lease to measure); the
-    // collab sweeper reclaims them server-side.
-    expect(deriveStatus({ state: 'handling' }, Number.MAX_SAFE_INTEGER)).toBe(
-      'handling',
-    );
+  it('shows the error branch for the local text extraction that failed', () => {
+    // `data.errorMessage` survives as the one field the browser still writes,
+    // and only for the extraction that never reaches the task table (§3.7.4).
+    expect(deriveStatus({ errorMessage: 'boom' })).toBe('error');
   });
 
-  it('handling wins even if an errorMessage lingers', () => {
-    expect(deriveStatus({ state: 'handling', errorMessage: 'old' })).toBe(
-      'handling',
-    );
+  it('shows the content once a task landed something, failures and all', () => {
+    // One upload failed, another succeeded. What the node shows is the
+    // content; the failure is a row in the task list.
+    expect(
+      deriveStatus({
+        taskCounts: counts({ done: 1, failed: 1 }),
+        content: 'https://cdn.invalid/out.png',
+      }),
+    ).toBe('idle');
+  });
+
+  it('shows nothing for a node whose tasks all finished', () => {
+    expect(deriveStatus({ taskCounts: counts({ done: 2 }) })).toBe('idle');
+  });
+
+  it('shows nothing for a node that has never carried a task', () => {
+    expect(deriveStatus({})).toBe('idle');
   });
 });
 

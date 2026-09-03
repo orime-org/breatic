@@ -316,6 +316,17 @@ export interface CanvasNodeFields {
     leaseGen?: number;
     /** Last failure message; present when state === 'idle' AND last operation failed. */
     errorMessage?: string;
+    /**
+     * How many tasks this node carries in each state (#186) — the whole of
+     * what the document says about them. The server recounts after every
+     * change and collab replaces this object; there are no entries, no ids
+     * and no increments here, so nothing can be applied to the wrong row.
+     *
+     * Absent on a node no task has ever touched, which reads as four zeros.
+     * The details behind these numbers live in the `node_tasks` table and
+     * reach the browser only when somebody opens the task list.
+     */
+    taskCounts?: NodeTaskCounts;
 
     // ─── Data node fields ───────────────────────────────────
     /**
