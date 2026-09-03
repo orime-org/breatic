@@ -63,9 +63,9 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
-import type { PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -138,30 +138,16 @@ function AudioGeneratePanelBody({
     [models, mode],
   );
 
-  // Two mirrors of the prompt: state drives the button's enabled look, and the
-  // ref is read synchronously at click time so a rapid re-click, or a
-  // collaborator keystroke React has batched but not flushed, cannot submit a
-  // stale prompt.
-  const [promptText, setPromptText] = React.useState('');
-  const promptTextRef = React.useRef('');
-  const handlePromptChange = React.useCallback((text: string) => {
-    promptTextRef.current = text;
-    setPromptText(text);
-  }, []);
-  const promptEditorRef = React.useRef<PromptEditorHandle>(null);
-
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const submittingRef = React.useRef(false);
-  // Marks THIS mount stale on unmount: the body is keyed by nodeId, so closing
-  // and reopening on the same node remounts a fresh instance, and an in-flight
-  // submit from the old one must not close the new panel.
-  const isMountedRef = React.useRef(true);
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
+  const {
+    promptText,
+    promptTextRef,
+    onPromptChange,
+    promptEditorRef,
+    isSubmitting,
+    setIsSubmitting,
+    submittingRef,
+    isMountedRef,
+  } = useGenerateSubmitState();
 
   // Read during render: `getPromptFragment` is a synchronous document read with
   // no side effect, and null means the node predates prompt seeding — the panel
@@ -319,7 +305,7 @@ function AudioGeneratePanelBody({
   );
   const onInsertReference = React.useCallback((item: ReferenceRailItem) => {
     promptEditorRef.current?.insertReference(item);
-  }, []);
+  }, [promptEditorRef]);
 
   const onExecute = React.useCallback(async () => {
     // Every execute-critical value is read synchronously here, never from a
@@ -398,7 +384,21 @@ function AudioGeneratePanelBody({
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [nodeId, projectId, spaceId, freshVm, closeActivePanel, t]);
+  }, [
+    nodeId,
+    projectId,
+    spaceId,
+    freshVm,
+    closeActivePanel,
+    t,
+    // Stable for this mount's lifetime; listed because they come from a hook,
+    // where the linter cannot see that for itself.
+    isMountedRef,
+    promptEditorRef,
+    promptTextRef,
+    setIsSubmitting,
+    submittingRef,
+  ]);
 
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
   // whose identity never changes on an in-session locale switch, so depending
@@ -413,7 +413,7 @@ function AudioGeneratePanelBody({
           ref={promptEditorRef}
           fragment={fragment}
           placeholder={promptPlaceholder}
-          onTextChange={handlePromptChange}
+          onTextChange={onPromptChange}
           // An audio node collects only text rows, and a text chip serializes
           // into the prompt itself — no id ever becomes a model input here.
           onAtMentionsChange={noop}
@@ -430,11 +430,12 @@ function AudioGeneratePanelBody({
     [
       fragment,
       promptPlaceholder,
-      handlePromptChange,
+      onPromptChange,
       references,
       mentionEmptyLabel,
       mentionNoMatchLabel,
       caretProvider,
+      promptEditorRef,
     ],
   );
 

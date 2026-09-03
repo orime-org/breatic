@@ -55,7 +55,6 @@ import {
 } from '@web/spaces/canvas/types/node-view';
 import {
   PromptEditor,
-  type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import type { VideoParamsValue } from '@web/spaces/canvas/generate/VideoParamsPicker';
@@ -81,6 +80,7 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -163,16 +163,17 @@ function VideoGeneratePanelBody({
   // sanitizeModelCatalog, so catalog.video is a guaranteed ModelEntry[].
   const models = React.useMemo(() => modelsForModality(catalog, 'video'), [catalog]);
 
-  // Two mirrors of the prompt: state drives the button's enabled look (a frame
-  // of lag is fine there); the ref is read SYNCHRONOUSLY in onExecute so a
-  // rapid re-click, or a collaborator keystroke React has batched but not
-  // flushed, cannot submit a stale prompt.
-  const [promptText, setPromptText] = React.useState('');
-  const promptTextRef = React.useRef('');
-  const handlePromptChange = React.useCallback((text: string) => {
-    promptTextRef.current = text;
-    setPromptText(text);
-  }, []);
+  const {
+    promptText,
+    promptTextRef,
+    onPromptChange,
+    promptEditorRef,
+    isSubmitting,
+    setIsSubmitting,
+    submittingRef,
+    isMountedRef,
+  } = useGenerateSubmitState();
+
   // The ids the prompt `@`-mentions right now. Kept in a ref rather than in
   // state because the only reader is the click handler: re-rendering the panel
   // on every keystroke that touches a chip would buy nothing, and reading the
@@ -183,23 +184,6 @@ function VideoGeneratePanelBody({
   const atMentionedRef = React.useRef<string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
-  }, []);
-  // Holds the prompt editor when one is mounted. Inserting a reference-rail
-  // chip goes through `handleInsertReference` below, which only forwards —
-  // the rail refuses on its own since #1966.
-  const promptEditorRef = React.useRef<PromptEditorHandle>(null);
-
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const submittingRef = React.useRef(false);
-  // Marks THIS mount stale on unmount. The body is keyed by nodeId, so closing
-  // and reopening on the same node remounts a fresh instance; without this an
-  // in-flight submit from the old one would close the new panel.
-  const isMountedRef = React.useRef(true);
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
   }, []);
 
   // Resolved in an effect, not during render: the node id can change under a
@@ -265,7 +249,7 @@ function VideoGeneratePanelBody({
     (item: ReferenceRailItem) => {
       promptEditorRef.current?.insertReference(item);
     },
-    [],
+    [promptEditorRef],
   );
   const references = vm.references;
 
@@ -593,7 +577,7 @@ function VideoGeneratePanelBody({
     // A model that declares no `prompt` sends none, and that takes this
     // explicit branch (#1950): not mounting the editor only stops someone
     // typing HERE. The mirror still holds whatever was typed under the
-    // previous mode — `handlePromptChange` is the only writer and nothing
+    // previous mode — `onPromptChange` is the only writer and nothing
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
     const freshPrompt = fresh.promptRequired
@@ -704,7 +688,21 @@ function VideoGeneratePanelBody({
       submittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [nodeId, projectId, spaceId, freshVm, closeActivePanel, t]);
+  }, [
+    nodeId,
+    projectId,
+    spaceId,
+    freshVm,
+    closeActivePanel,
+    t,
+    // Stable for this mount's lifetime; listed because they come from a hook,
+    // where the linter cannot see that for itself.
+    isMountedRef,
+    promptEditorRef,
+    promptTextRef,
+    setIsSubmitting,
+    submittingRef,
+  ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
   // stable module-level function whose identity never changes on an in-session
@@ -754,7 +752,7 @@ function VideoGeneratePanelBody({
           ref={promptEditorRef}
           fragment={fragment}
           placeholder={promptPlaceholder}
-          onTextChange={handlePromptChange}
+          onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
           // Same signal as the rail's, from the same table: an image `@` chip
@@ -774,7 +772,7 @@ function VideoGeneratePanelBody({
       mentionEmptyLabel,
       mentionNoMatchLabel,
       stableReferences,
-      handlePromptChange,
+      onPromptChange,
       handleAtMentionsChange,
       // A mode switch changes this, and the editor is what shows it: without
       // the dependency the chips already in the prompt would stay at full
@@ -782,6 +780,7 @@ function VideoGeneratePanelBody({
       // cannot use.
       imageRefsDisabled,
       caretProvider,
+      promptEditorRef,
     ],
   );
 

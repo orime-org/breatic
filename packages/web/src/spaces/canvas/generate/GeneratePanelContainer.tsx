@@ -71,12 +71,12 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import {
   PromptEditor,
-  type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
 import { useCanvasStore } from '@web/stores';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -172,23 +172,17 @@ function GeneratePanelBody({
   // per-field guarding needed here.
   const models = React.useMemo(() => modelsForModality(catalog, 'image'), [catalog]);
 
-  // Two mirrors of each execute-critical value. The ref is read SYNCHRONOUSLY
-  // in onExecute so a rapid re-click or a collaborator's keystroke that React
-  // has batched-but-not-flushed can't submit a stale prompt or double-fire.
-  //
-  // The state feeds the button's own `evaluateExecute` call, so both sides ask
-  // the same question of their own inputs (#1949). What the button DRAWS is the
-  // same either way — `prompt-missing` and `null` both leave it live and
-  // arrow-shaped — but the two are different values, so `GeneratePanel` (a
-  // default-shallow `React.memo`) does re-render on the transition. It is an
-  // INPUT to a gate that must stay complete, not a line whose answer nothing
-  // reads.
-  const [promptText, setPromptText] = React.useState('');
-  const promptTextRef = React.useRef('');
-  const handlePromptChange = React.useCallback((text: string) => {
-    promptTextRef.current = text;
-    setPromptText(text);
-  }, []);
+  const {
+    promptText,
+    promptTextRef,
+    onPromptChange,
+    promptEditorRef,
+    isSubmitting,
+    setIsSubmitting,
+    submittingRef,
+    isMountedRef,
+  } = useGenerateSubmitState();
+
   // The `@`-picked source ids, mirrored to a ref for the same reason as the
   // prompt text: onExecute reads them SYNCHRONOUSLY so the i2i source subset is
   // the prompt's state at click time (state would lag a frame). No React state
@@ -200,24 +194,9 @@ function GeneratePanelBody({
   }, []);
   // Click a reference-rail chip → insert its @-mention at the prompt cursor
   // (user 2026-07-10 item 8); the editor places it at the caret or the end.
-  const promptEditorRef = React.useRef<PromptEditorHandle>(null);
   const handleInsertReference = React.useCallback((item: ReferenceRailItem) => {
     promptEditorRef.current?.insertReference(item);
-  }, []);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const submittingRef = React.useRef(false);
-  // Marks this specific mount stale on unmount. Because the body is keyed by
-  // nodeId, closing + reopening the panel on the SAME node remounts a fresh
-  // instance; without this, an in-flight submit from the OLD instance would
-  // close / mutate the NEW panel (the getState node check can't tell them
-  // apart — same node id).
-  const isMountedRef = React.useRef(true);
-  React.useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
+  }, [promptEditorRef]);
 
   // Resolve the prompt fragment in an effect, NOT during render. Reading is
   // pure since #1880, but the node id can change under a mounted panel and an
@@ -603,7 +582,7 @@ function GeneratePanelBody({
     // A model that declares no `prompt` sends none, and that takes this
     // explicit branch (#1950, #1966): not mounting the editor only stops
     // someone typing HERE. The mirror still holds whatever was typed under the
-    // previous model — `handlePromptChange` is the only writer and nothing
+    // previous model — `onPromptChange` is the only writer and nothing
     // clears it, and the editor does not call back on unmount — so without this
     // line a task for a model that wants no prompt would carry the last one's
     // words. Same line, same reason, as `VideoGeneratePanelContainer.tsx`.
@@ -712,6 +691,13 @@ function GeneratePanelBody({
     freshVm,
     closeActivePanel,
     t,
+    // Stable for this mount's lifetime; listed because they come from a hook,
+    // where the linter cannot see that for itself.
+    isMountedRef,
+    promptEditorRef,
+    promptTextRef,
+    setIsSubmitting,
+    submittingRef,
   ]);
 
   // Stabilize the prompt-editor element (#1783): `GeneratePanel` is `React.memo`,
@@ -742,7 +728,7 @@ function GeneratePanelBody({
           ref={promptEditorRef}
           fragment={fragment}
           placeholder={promptPlaceholder}
-          onTextChange={handlePromptChange}
+          onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
           imageRefsDisabled={imageRefsOff}
@@ -757,11 +743,12 @@ function GeneratePanelBody({
       promptPlaceholder,
       mentionEmptyLabel,
       mentionNoMatchLabel,
-      handlePromptChange,
+      onPromptChange,
       handleAtMentionsChange,
       stableReferences,
       imageRefsOff,
       caretProvider,
+      promptEditorRef,
     ],
   );
 
