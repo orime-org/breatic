@@ -174,6 +174,40 @@ export async function findById(taskId: string): Promise<
 }
 
 /**
+ * Find the task an upload grant belongs to.
+ *
+ * The report names a storage key and nothing else, so this is how the upload
+ * leg gets from what the Worker said back to the row the ticket opened.
+ * @param storageKey - The grant the bytes landed under.
+ * @returns The row, or null when no task was opened for that key.
+ */
+export async function findByStorageKey(
+  storageKey: string,
+): Promise<NodeTaskRow | null> {
+  const rows = await db
+    .select()
+    .from(nodeTasks)
+    .where(eq(nodeTasks.storageKey, storageKey))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    spaceId: row.spaceId,
+    nodeId: row.nodeId,
+    kind: row.kind,
+    status: row.status as NodeTaskStatus,
+    startedByUserId: row.startedByUserId,
+    startedAt: row.startedAt,
+    budgetMs: row.budgetMs,
+    label: row.label,
+    errorMessage: row.errorMessage,
+    nodeHistoryId: row.nodeHistoryId,
+  };
+}
+
+/**
  * Count the live rows on a node, one number per state.
  *
  * This is the whole of what the canvas document holds about tasks, so it is

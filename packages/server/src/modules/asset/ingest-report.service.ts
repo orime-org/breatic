@@ -28,6 +28,8 @@ import {
   assetRepo,
   assetService,
   nodeHistoryService,
+  nodeTaskService,
+  emitNodeTaskCounts,
   emitNodeStateDone,
   emitNodeStateFailed,
   videoCoverJobId,
@@ -45,6 +47,7 @@ import {
   NotFoundError,
 } from "@breatic/core";
 import { canvasSpaceDocName, t } from "@breatic/shared";
+import type { NodeTaskResult } from "@breatic/shared";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import {
   findGrantByKey,
@@ -133,10 +136,13 @@ function hasNode(grant: UploadGrant): grant is GrantWithNode {
  * Tell the node this upload succeeded, and hand it the URL to pin.
  * @param grant - The grant, which carries where the node lives and its gen.
  * @param fileUrl - The registered row's canonical URL.
+ * @param nodeHistoryId - The history row holding the result, when one was
+ *   written on this pass.
  */
 async function announceSuccess(
   grant: UploadGrant,
   fileUrl: string,
+  nodeHistoryId?: string,
 ): Promise<void> {
   if (!hasNode(grant)) return;
   await emitNodeStateDone(
@@ -146,6 +152,11 @@ async function announceSuccess(
     { content: fileUrl },
     grant.leaseGen,
   );
+  await settleUploadTask(grant, {
+    outcome: "done",
+    ...(nodeHistoryId !== undefined && { nodeHistoryId }),
+    result: { content: fileUrl, coverUrl: null, width: null, height: null, duration: null },
+  });
 }
 
 /**
@@ -164,6 +175,60 @@ async function announceFailure(
     grant.nodeId,
     message,
     grant.leaseGen,
+  );
+  await settleUploadTask(grant, {
+    outcome: "failed",
+    errorMessage: message,
+  });
+}
+
+/**
+ * Move the task this grant opened to a terminal state and publish the node's
+ * recounted numbers (#186, design §3.6).
+ *
+ * The report names a storage key, which is how this gets from what the Worker
+ * said back to the row the ticket opened. An upload with no task behind it —
+ * one that predates this table, or a focus crop, which has no node to count
+ * on — leaves nothing to settle and nothing to publish.
+ * @param grant - The grant, which names the node and the key.
+ * @param outcome - Where the row lands, and what rides along.
+ * @param outcome.outcome - `done` or `failed`.
+ * @param outcome.nodeHistoryId - The history row holding the result.
+ * @param outcome.errorMessage - What the list shows for a failure.
+ * @param outcome.result - The content fields, on the transition into `done`.
+ */
+async function settleUploadTask(
+  grant: GrantWithNode,
+  outcome: {
+    outcome: "done" | "failed";
+    nodeHistoryId?: string;
+    errorMessage?: string;
+    result?: NodeTaskResult;
+  },
+): Promise<void> {
+  const task = await nodeTaskService.findByStorageKey(grant.storageKey);
+  if (task === null) return;
+
+  const settled = await nodeTaskService.settle({
+    taskId: task.id,
+    outcome: outcome.outcome,
+    ...(outcome.nodeHistoryId !== undefined && {
+      nodeHistoryId: outcome.nodeHistoryId,
+    }),
+    ...(outcome.errorMessage !== undefined && {
+      errorMessage: outcome.errorMessage,
+    }),
+  });
+
+  await emitNodeTaskCounts(
+    getStreamRedis(),
+    canvasSpaceDocName(grant.projectId, grant.spaceId),
+    grant.nodeId,
+    settled.counts,
+    // The content rides only on the transition that reached `done`. A late
+    // report finding the row already settled leaves the node's content alone:
+    // the user may have retried, and choosing for them is not ours to do.
+    settled.applied ? outcome.result : undefined,
   );
 }
 
@@ -332,6 +397,8 @@ export async function applyIngestReport(
   // the very end — and so does the video job, which writes the same two
   // downstreams; reading the flag keeps one rule instead of two.
   let historyIsNew = true;
+  /** The history row this pass wrote or found, which the task row points at. */
+  let historyEntryId: string | undefined;
   if (grant.nodeId !== null && grant.projectId !== null) {
     const recorded = await nodeHistoryService.recordUpload({
       projectId: grant.projectId,
@@ -346,6 +413,7 @@ export async function applyIngestReport(
       },
     });
     historyIsNew = recorded.inserted;
+    historyEntryId = recorded.entry.id;
   }
 
   // The project feed. A byproduct — today a focus crop — is in the ledger for
@@ -371,7 +439,7 @@ export async function applyIngestReport(
     });
   }
 
-  await announceSuccess(grant, asset.fileUrl);
+  await announceSuccess(grant, asset.fileUrl, historyEntryId);
 
   // Last, because the grant is what tells a repeat report from a first one: an
   // interruption anywhere above leaves it unconsumed, and the retry runs the

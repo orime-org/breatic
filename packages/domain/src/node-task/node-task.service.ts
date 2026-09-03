@@ -179,6 +179,17 @@ export async function findById(
 }
 
 /**
+ * Find the task an upload grant belongs to.
+ * @param storageKey - The grant the bytes landed under.
+ * @returns The row, or null when no task was opened for that key.
+ */
+export async function findByStorageKey(
+  storageKey: string,
+): Promise<NodeTaskRow | null> {
+  return repo.findByStorageKey(storageKey);
+}
+
+/**
  * Read the four numbers the node's corner shows.
  * @param opts - Project and node.
  * @param opts.projectId - Owning project.

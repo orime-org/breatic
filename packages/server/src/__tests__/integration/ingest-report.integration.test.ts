@@ -831,3 +831,231 @@ describe("a video, which needs a cover before the node hears anything", () => {
     expect(await coverJobFor(key)).toBeNull();
   });
 });
+
+/**
+ * What the report does to the task the ticket opened (#186, design §3.6).
+ *
+ * The ticket left a running row on the node. This is where it stops running:
+ * a registered upload settles it as done and points it at the history row
+ * holding the result, an abort or a refusal settles it as failed. Either way
+ * the node's four counts are recomputed and published, because those numbers
+ * are the whole of what the canvas document knows about tasks.
+ */
+describe("POST /assets/ingest-report — the task it settles", () => {
+  /** Every task row on one node, newest first. */
+  async function tasksOn(nodeId: string): Promise<
+    { id: string; status: string; node_history_id: string | null; error_message: string | null }[]
+  > {
+    return sql`
+      SELECT id, status, node_history_id, error_message
+      FROM node_tasks WHERE node_id = ${nodeId}
+      ORDER BY started_at DESC
+    ` as never;
+  }
+
+  /** Every task-counts event for `docName`, oldest first. */
+  async function countEvents(
+    docName: string,
+  ): Promise<{ nodeId: string; counts: Record<string, number> }[]> {
+    const raw = (await getStreamRedis().xrange(
+      taskEventsStreamKey(),
+      "-",
+      "+",
+    )) as [string, string[]][];
+    return raw
+      .map(([, fields]) => {
+        const idx = fields.indexOf("payload");
+        return idx === -1
+          ? null
+          : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+      })
+      .filter(
+        (e): e is Record<string, unknown> =>
+          e !== null && e.type === "node-task-counts" && e.docName === docName,
+      )
+      .map((e) => ({
+        nodeId: e.nodeId as string,
+        counts: e.counts as Record<string, number>,
+      }));
+  }
+
+  it("settles the row as done once the upload is registered", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    expect((await report(completed(key))).status).toBe(200);
+
+    const rows = await tasksOn(nodeId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("done");
+  });
+
+  it("points the settled row at the history row holding the result", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await report(completed(key));
+
+    const rows = await tasksOn(nodeId);
+    const history = (await sql`
+      SELECT id FROM node_history WHERE node_id = ${nodeId}
+    `) as unknown as { id: string }[];
+    expect(history).toHaveLength(1);
+    expect(rows[0]!.node_history_id).toBe(history[0]!.id);
+  });
+
+  it("publishes the node's counts with one done and nothing running", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await report(completed(key));
+
+    const events = await countEvents(
+      canvasSpaceDocName(seed.projectId, seed.spaceId),
+    );
+    expect(events.at(-1)).toMatchObject({
+      nodeId,
+      counts: { running: 0, done: 1, failed: 0, expired: 0 },
+    });
+  });
+
+  it("settles the row as failed when the Worker reports an abort", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await report({ storage_key: key, outcome: "aborted", reason: "parts" });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+    expect(rows[0]!.error_message).not.toBeNull();
+  });
+
+  it("publishes the counts on that failure too", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    await report({ storage_key: key, outcome: "aborted", reason: "parts" });
+
+    const events = await countEvents(
+      canvasSpaceDocName(seed.projectId, seed.spaceId),
+    );
+    expect(events.at(-1)).toMatchObject({
+      nodeId,
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    });
+  });
+
+  it("settles the row as failed when what landed is over the cap", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    const { getStorageConfig } = await import("@breatic/core");
+    const over = getStorageConfig().upload.max_upload_bytes + 1;
+    await report(completed(key, { size_bytes: over }));
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("failed");
+  });
+
+  it("leaves a settled row alone when the same report arrives again", async () => {
+    // The grant is what tells a repeat from a first report, and the task row
+    // has its own state machine: a second `done` is a fact that already
+    // happened, so it changes nothing and throws nothing.
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const body = completed(key);
+
+    await report(body);
+    const first = await tasksOn(nodeId);
+
+    expect((await report(body)).status).toBe(200);
+    const second = await tasksOn(nodeId);
+
+    expect(second).toHaveLength(1);
+    expect(second[0]).toMatchObject({
+      status: "done",
+      node_history_id: first[0]!.node_history_id,
+    });
+  });
+
+  it("settles nothing for an upload with no node behind it", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });
+
+    expect((await report(completed(key))).status).toBe(200);
+
+    const rows = (await sql`
+      SELECT id FROM node_tasks WHERE storage_key = ${key}
+    `) as unknown as { id: string }[];
+    expect(rows).toHaveLength(0);
+  });
+});
+
+/**
+ * The report that arrives after the deadline already passed (#186, §4.5).
+ *
+ * The timer judged this task dead, the user may have started another one, and
+ * then the bytes turn up after all. The result becomes reachable from the task
+ * list, and the node's content is left where it is: choosing between the two
+ * for the user is not ours to do.
+ */
+describe("POST /assets/ingest-report — a report that lost its race", () => {
+  it("attaches the result without putting it back on the node", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    // The deadline passes first.
+    await sql`
+      UPDATE node_tasks SET status = 'expired' WHERE storage_key = ${key}
+    `;
+    const before = await getStreamRedis().xlen(taskEventsStreamKey());
+
+    await report(completed(key));
+
+    const raw = (await getStreamRedis().xrange(
+      taskEventsStreamKey(),
+      "-",
+      "+",
+    )) as [string, string[]][];
+    const counts = raw
+      .slice(before)
+      .map(([, fields]) => {
+        const idx = fields.indexOf("payload");
+        return idx === -1
+          ? null
+          : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+      })
+      .filter(
+        (e): e is Record<string, unknown> =>
+          e !== null && e.type === "node-task-counts",
+      );
+
+    expect(counts).toHaveLength(1);
+    expect(counts[0]!.result).toBeUndefined();
+  });
+
+  it("leaves the row expired and fills in where its result went", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await sql`
+      UPDATE node_tasks SET status = 'expired' WHERE storage_key = ${key}
+    `;
+
+    await report(completed(key));
+
+    const rows = (await sql`
+      SELECT status, node_history_id FROM node_tasks WHERE storage_key = ${key}
+    `) as unknown as { status: string; node_history_id: string | null }[];
+    expect(rows[0]!.status).toBe("expired");
+    expect(rows[0]!.node_history_id).not.toBeNull();
+  });
+});
