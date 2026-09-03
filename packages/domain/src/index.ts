@@ -96,5 +96,6 @@ export {
   emitNodeStateDone,
   emitNodeStateFailed,
   emitNodeLeaseRunning,
+  emitNodeTaskCounts,
   type NodeStateDoneFields,
 } from "@domain/canvas-node/node-state-events.js";

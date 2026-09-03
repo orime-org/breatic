@@ -31,6 +31,7 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
+import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
 import { assertSkillUsable } from "@breatic/domain";
 import {
   assertStorageAllowance,
@@ -447,6 +448,104 @@ canvas.get(
     // with the single `apiGet` `{ data: T }` unwrap (#1619) — the endpoint is
     // greenfield, so this aligns it with the rest of the list endpoints.
     return c.json({ data: { entries: result.entries, total: result.total } });
+  },
+);
+
+/**
+ * `GET /canvas/nodes/:nodeId/tasks` — the rows behind a node's four counts.
+ *
+ * The canvas document carries four numbers (#186 design §3.3); the detail
+ * comes from here, and only when the user opens the panel. Same cross-tenant
+ * guard as the history endpoint above: the rows name who started each task
+ * and why one failed.
+ * @param c - Hono context; `project_id` in the query, node id in the path.
+ * @returns `{ data: { tasks: NodeTaskRow[] } }`, newest first.
+ */
+canvas.get(
+  "/nodes/:nodeId/tasks",
+  validate("param", z.object({ nodeId: z.string().uuid() })),
+  validate("query", z.object({ project_id: z.string().uuid() })),
+  async (c) => {
+    const user = c.get("user");
+    const { nodeId } = c.req.valid("param");
+    const { project_id } = c.req.valid("query");
+
+    await projectService.assertAccess(project_id, user.id, "viewer");
+
+    const tasks = await nodeTaskService.listLive({
+      projectId: project_id,
+      nodeId,
+    });
+    return c.json({ data: { tasks } });
+  },
+);
+
+/**
+ * `DELETE /canvas/node-tasks/:taskId` — the user is done with one record.
+ *
+ * One endpoint for both buttons the list shows. "Finish" and "Clear" are the
+ * same request; which one it was is decided by the state the row is already
+ * in, and a row still running is neither — the service answers 409.
+ *
+ * The query carries the caller's own node so the counts can still be
+ * recomputed when this table does not hold the row: the user is acting on a
+ * projection the server cannot see, and "clear this" means clear it (design
+ * §7.4). That case is logged and answered 200, not refused.
+ * @param c - Hono context; task id in the path, the caller's project, space
+ *   and node in the query.
+ * @returns `{ data: { removed: boolean, counts: NodeTaskCounts } }`
+ * @throws {AppError} 403 when the caller may not write the project the row
+ *   belongs to; 409 when the task has not settled yet.
+ */
+canvas.delete(
+  "/node-tasks/:taskId",
+  validate("param", z.object({ taskId: z.string().uuid() })),
+  validate(
+    "query",
+    z.object({
+      project_id: z.string().uuid(),
+      space_id: z.string().uuid(),
+      node_id: z.string().uuid(),
+    }),
+  ),
+  async (c) => {
+    const user = c.get("user");
+    const { taskId } = c.req.valid("param");
+    const { project_id, space_id, node_id } = c.req.valid("query");
+
+    const row = await nodeTaskService.findById(taskId);
+
+    // Cross-tenant guard. The path holds a task id and nothing else, so the
+    // project to check against is read from the row — never from the query,
+    // which the caller controls. With no row there is nothing to read and
+    // the caller's own project is all there is; they still have to prove
+    // they may write it.
+    const projectId = row?.projectId ?? project_id;
+    const spaceId = row?.spaceId ?? space_id;
+    const nodeId = row?.nodeId ?? node_id;
+    await projectService.assertAccess(projectId, user.id, "editor");
+
+    const result = await nodeTaskService.dismiss({
+      taskId,
+      projectId,
+      nodeId,
+    });
+
+    if (row === null) {
+      logger.warn(
+        { taskId, projectId, nodeId, userId: user.id },
+        "node_task dismiss: no such row, recounting anyway",
+      );
+    }
+
+    await emitNodeTaskCounts(
+      getStreamRedis(),
+      canvasSpaceDocName(projectId, spaceId),
+      nodeId,
+      result.counts,
+    );
+
+    return c.json({ data: result });
   },
 );
 

@@ -148,6 +148,18 @@ export const mocks = {
     recordGenerationFailure: vi.fn(),
     recordUpload: vi.fn(),
   },
+  // #186 — the task table behind a node's four counts.
+  emitNodeTaskCounts: vi.fn(),
+  nodeTaskService: {
+    open: vi.fn(),
+    settle: vi.fn(),
+    dismiss: vi.fn(),
+    findById: vi.fn().mockResolvedValue(null),
+    countsFor: vi.fn().mockResolvedValue({
+      running: 0, done: 0, failed: 0, expired: 0,
+    }),
+    listLive: vi.fn().mockResolvedValue([]),
+  },
   attachmentService: {
     listByConversation: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
@@ -386,6 +398,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     db: {},
     closeDb: () => Promise.resolve(),
     getRedis: () => mockRedis,
+    // The stream client is only ever handed to an emitter, which these
+    // suites mock. Real one needs an initialised core.
+    getStreamRedis: () => mockRedis,
     closeRedis: () => Promise.resolve(),
     runMigrations: vi.fn(),
     createQueue: (name: string) => {
@@ -468,6 +483,8 @@ export const domainMock = () => ({
   videoCoverJobId: (storageKey: string) => storageKey,
   emitNodeStateDone: vi.fn(),
   emitNodeStateFailed: vi.fn(),
+  emitNodeTaskCounts: mocks.emitNodeTaskCounts,
+  nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
   creditLotService: mocks.creditLotService,

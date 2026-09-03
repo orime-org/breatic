@@ -164,6 +164,21 @@ export async function dismiss(opts: {
 }
 
 /**
+ * Read one task row, whatever state it is in.
+ *
+ * The route layer's guard runs on this: the path carries only a task id,
+ * which anyone could guess, so the project to check access against comes
+ * from the row rather than from the request.
+ * @param taskId - Which task.
+ * @returns The row, or null when the table does not hold it.
+ */
+export async function findById(
+  taskId: string,
+): Promise<(NodeTaskRow & { deletedAt: Date | null }) | null> {
+  return repo.findById(taskId);
+}
+
+/**
  * Read the four numbers the node's corner shows.
  * @param opts - Project and node.
  * @param opts.projectId - Owning project.
