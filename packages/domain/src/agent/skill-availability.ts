@@ -61,17 +61,6 @@ export interface SkillModelCheck {
   missing: string[];
 }
 
-/**
- * The direct-provider prefixes and their keys, read off the routing table
- * `getModel` itself routes by.
- *
- * Written out here before, which meant a provider added to that table and
- * not to this list read as unreachable while running fine.
- */
-const TEXT_DIRECT_KEYS: ReadonlyArray<readonly [string, string]> = DIRECT_ROUTES.map(
-  (route) => [route.prefix, route.keyName] as const,
-);
-
 /** The universal text fallback, which `getModel` uses for everything else. */
 const TEXT_FALLBACK_KEY = FALLBACK_ROUTE.keyName;
 
@@ -129,9 +118,9 @@ export function checkSkillModelRunnable(
 
   // The route the run will actually take. Both callers hand `modelId` to
   // `getModel`, so this decides reachability for every model, media or not.
-  const direct = TEXT_DIRECT_KEYS.find(([prefix]) => modelName.startsWith(prefix));
-  const textOk = (direct !== undefined && isSet(direct[1])) || isSet(TEXT_FALLBACK_KEY);
-  const textMissing = direct ? [direct[1], TEXT_FALLBACK_KEY] : [TEXT_FALLBACK_KEY];
+  const direct = DIRECT_ROUTES.find((route) => modelName.startsWith(route.prefix));
+  const textOk = (direct !== undefined && isSet(direct.keyName)) || isSet(TEXT_FALLBACK_KEY);
+  const textMissing = direct ? [direct.keyName, TEXT_FALLBACK_KEY] : [TEXT_FALLBACK_KEY];
 
   // A model in the media catalog needs its own provider too — the text route
   // carries the request, the media provider answers it.

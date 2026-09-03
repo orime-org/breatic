@@ -245,19 +245,21 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
 });
 
 /**
- * The two keys that decide which model runs cannot be blank.
+ * The two keys that decide which model runs must name a model.
  *
- * `getModel("")` builds a model with an empty id and hands it to the vendor,
- * which answers 400 on the first message someone sends; `getModel("deepseek/")`
- * strips the prefix and does the same against DeepSeek directly. Neither
- * fails at startup, so a half-finished edit here surfaces as a broken chat.
- * Every numeric knob in this same object already carries a bound.
+ * Both ways of failing to reach the vendor with an id start clean and break
+ * on the first message someone sends: `getModel("")` hands over an empty id,
+ * and `getModel("deepseek/")` matches the prefix, strips it, and hands over
+ * what is left, which is also nothing. Every numeric knob in this same object
+ * already carries a bound.
  */
 describe("agent config — the model a run is sent to", () => {
   it.each([
     ["default_model", ""],
     ["consolidation_model", ""],
-  ])("refuses a blank %s", async (key, value) => {
+    ["default_model", "deepseek/"],
+    ["consolidation_model", "anthropic/"],
+  ])("refuses %s = %j", async (key, value) => {
     const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
     expect(agentConfigSchemaForTests.safeParse({ [key]: value }).success).toBe(false);
   });

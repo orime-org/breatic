@@ -42,7 +42,11 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 /** The last request the SDK handed to fetch. */
-type Seen = { url: string; body: Record<string, unknown> };
+type Seen = {
+  url: string;
+  body: Record<string, unknown>;
+  headers: Record<string, string>;
+};
 
 let seen: Seen | undefined;
 let realFetch: typeof globalThis.fetch;
@@ -89,22 +93,56 @@ const RESPONSES_REPLY = {
   usage: { input_tokens: 11, output_tokens: 3, total_tokens: 14 },
 };
 
+/** One answer in Anthropic's Messages shape. */
+const MESSAGES_REPLY = {
+  id: "msg_test",
+  type: "message",
+  role: "assistant",
+  model: "claude-test",
+  content: [{ type: "text", text: "ok" }],
+  stop_reason: "end_turn",
+  usage: { input_tokens: 11, output_tokens: 3 },
+};
+
+/** One answer in Gemini's generateContent shape. */
+const GENERATE_CONTENT_REPLY = {
+  candidates: [
+    { content: { parts: [{ text: "ok" }], role: "model" }, finishReason: "STOP", index: 0 },
+  ],
+  usageMetadata: { promptTokenCount: 11, candidatesTokenCount: 3, totalTokenCount: 14 },
+};
+
 /**
  * Answers every model call and records what was asked.
  *
- * The reply shape follows the endpoint the caller chose. Answering both in
- * one shape would make every endpoint assertion fail for the wrong reason:
- * the request would be refused while being parsed, and the test would report
- * a schema complaint rather than the address it was sent to.
+ * The reply shape follows the endpoint the caller chose. Answering them all in
+ * one shape would make every assertion fail for the wrong reason: the request
+ * would be refused while being parsed, and the test would report a schema
+ * complaint rather than what was sent.
+ *
+ * Headers are recorded too, because which key a route authenticates with is a
+ * separate fact from which key it routes on, and the two are written in
+ * separate places.
  */
 function interceptFetch(): void {
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const address = String(url);
+    const headers: Record<string, string> = {};
+    new Headers(init?.headers).forEach((value, key) => {
+      headers[key.toLowerCase()] = value;
+    });
     seen = {
       url: address,
       body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+      headers,
     };
-    const reply = address.endsWith("/responses") ? RESPONSES_REPLY : CHAT_REPLY;
+    const reply = address.includes(":generateContent")
+      ? GENERATE_CONTENT_REPLY
+      : address.endsWith("/messages")
+        ? MESSAGES_REPLY
+        : address.endsWith("/responses")
+          ? RESPONSES_REPLY
+          : CHAT_REPLY;
     return new Response(JSON.stringify(reply), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -234,52 +272,86 @@ describe("the DeepSeek direct route", () => {
 });
 
 /**
- * Both directions, spelled out, for all five providers.
+ * Every route, from the boolean a caller passes to the bytes that leave.
  *
- * Written here as literals rather than read off the table: a test that asks
- * the table what the table says holds nothing in place. These are the ten
- * cells, and swapping any pair in `llm.ts` turns one of them red.
+ * Three separate facts per row, and the whole chain has to be walked because
+ * each one can be right while the next is wrong:
  *
- * Asserting the provider's *name* is not enough. The bug this change exists
- * to remove was a switch that addressed the right provider and asked it for
- * nothing -- it read as working from the outside. So each cell asserts the
- * whole object, which is what goes on the wire.
+ *   `on` / `off`         what `reasoningFor` hands back
+ *   `onWire` / `offWire` what the vendor's SDK turns that into
+ *   `authHeader`         which key the provider authenticates with
+ *
+ * The first two differ, and not cosmetically: DeepSeek's `reasoningEffort`
+ * reaches the wire as `reasoning_effort`, Google's whole object is nested
+ * under `generationConfig`, and OpenAI adds `summary` on its own. An
+ * assertion that stopped at the first column would pass while an SDK
+ * upgrade renamed a namespace and quietly stopped asking for anything --
+ * which is the bug this change exists to remove.
+ *
+ * The third is here because a route names its key twice, in two places
+ * nothing ties together: once to route on, once to build the provider with.
+ *
+ * Written as literals rather than read off the table: a test that asks the
+ * table what the table says holds nothing in place.
  */
 const SPELLINGS = [
   {
-    model: "deepseek/x",
+    model: "deepseek/deepseek-v4-pro",
     key: "DEEPSEEK_API_KEY",
     name: "deepseek",
+    authHeader: "authorization",
+    authPrefix: "Bearer ",
     on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
     off: { thinking: { type: "disabled" } },
+    onWire: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+    offWire: { thinking: { type: "disabled" } },
   },
   {
-    model: "anthropic/x",
+    model: "anthropic/claude-sonnet-4-6",
     key: "ANTHROPIC_API_KEY",
     name: "anthropic",
+    authHeader: "x-api-key",
+    authPrefix: "",
     on: { thinking: { type: "adaptive", display: "summarized" } },
     off: { thinking: { type: "disabled" } },
+    onWire: { thinking: { type: "adaptive", display: "summarized" } },
+    offWire: { thinking: { type: "disabled" } },
   },
   {
-    model: "google/x",
+    model: "google/gemini-2.5-flash",
     key: "GOOGLE_API_KEY",
     name: "google",
+    authHeader: "x-goog-api-key",
+    authPrefix: "",
     on: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
     off: { thinkingConfig: { thinkingBudget: 0 } },
+    onWire: { generationConfig: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } } },
+    offWire: { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } },
   },
   {
-    model: "openai/x",
+    // An id the SDK recognises as one that reasons. `@ai-sdk/openai` decides
+    // that from the id and drops the option for anything else, so an invented
+    // id here would assert that nothing is sent.
+    model: "openai/gpt-5",
     key: "OPENAI_API_KEY",
     name: "openai",
+    authHeader: "authorization",
+    authPrefix: "Bearer ",
     on: { reasoningEffort: "high" },
     off: { reasoningEffort: "none" },
+    onWire: { reasoning: { effort: "high", summary: "detailed" } },
+    offWire: { reasoning: { effort: "none" } },
   },
   {
-    model: "meta/x",
+    model: "meta/llama-4",
     key: "OPENROUTER_API_KEY",
     name: "openrouter",
+    authHeader: "authorization",
+    authPrefix: "Bearer ",
     on: { reasoning: { effort: "high" } },
     off: { reasoning: { effort: "none" } },
+    onWire: { reasoning: { effort: "high" } },
+    offWire: { reasoning: { effort: "none" } },
   },
 ] as const;
 
@@ -301,6 +373,55 @@ describe("reasoningFor", () => {
       openrouter: { reasoning: { effort: "high" } },
     });
   });
+});
+
+describe("what each route actually sends", () => {
+  /**
+   * Runs one turn on a route with its key set, and hands back the request.
+   * @param spelling - The row under test.
+   * @param thinking - Which direction to ask for.
+   * @returns The intercepted request.
+   */
+  async function send(
+    spelling: (typeof SPELLINGS)[number],
+    thinking: boolean,
+  ): Promise<Seen> {
+    keys.current = { [spelling.key]: `REAL-${spelling.name}` };
+    const { getModel, reasoningFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({
+      model: getModel(spelling.model),
+      prompt: "hi",
+      ...reasoningFor(spelling.model, thinking),
+    });
+    if (!seen) throw new Error(`${spelling.name} made no request`);
+    return seen;
+  }
+
+  it.each(SPELLINGS)("puts $name's reasoning request on the wire", async (spelling) => {
+    expect((await send(spelling, true)).body).toMatchObject(spelling.onWire);
+    expect((await send(spelling, false)).body).toMatchObject(spelling.offWire);
+  });
+
+  // The one asymmetric pair: DeepSeek's effort level rides along with the on
+  // position and has no counterpart in the off one, so `toMatchObject` above
+  // cannot see it going missing.
+  it("drops DeepSeek's effort level when reasoning is turned off", async () => {
+    const spelling = SPELLINGS.find((s) => s.name === "deepseek");
+    if (!spelling) throw new Error("the deepseek row is gone");
+    expect((await send(spelling, false)).body["reasoning_effort"]).toBeUndefined();
+  });
+
+  it.each(SPELLINGS)(
+    "authenticates $name with the key its own row names",
+    async (spelling) => {
+      const req = await send(spelling, true);
+      expect(req.headers[spelling.authHeader]).toBe(
+        `${spelling.authPrefix}REAL-${spelling.name}`,
+      );
+    },
+  );
 });
 
 /**
@@ -336,3 +457,4 @@ describe("the table is what every consumer reads", () => {
     expect(spelled).toEqual(inTable);
   });
 });
+

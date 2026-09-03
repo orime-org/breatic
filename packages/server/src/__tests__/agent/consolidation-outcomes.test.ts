@@ -249,9 +249,15 @@ describe("a consolidation that works", () => {
     const call = generateTextRetry.mock.calls[0]?.[0] as {
       providerOptions?: Record<string, Record<string, unknown>>;
     };
-    const addressed = Object.values(call.providerOptions ?? {});
-    expect(addressed).toHaveLength(1);
-    expect(Object.keys(addressed[0] ?? {}).length).toBeGreaterThan(0);
+    // The whole object, because the direction is the point. Asserting that
+    // one provider is addressed and its object is non-empty is true of the
+    // on spelling as well, so it holds the call to no direction at all.
+    //
+    // `openrouter` because this suite's `getAgentConfig` double names no
+    // consolidation model, so the route falls back the way any unnamed one does.
+    expect(call.providerOptions).toEqual({
+      openrouter: { reasoning: { effort: "none" } },
+    });
   });
 
   it("tells the model the ceiling its answer is read through", async () => {

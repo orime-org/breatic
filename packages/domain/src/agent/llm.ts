@@ -35,7 +35,7 @@ import type { CoreConfig } from "@breatic/core";
  * export this type by name, and a hand-written copy of it would be a second
  * answer that goes stale.
  */
-export type ReasoningOptions = Pick<Parameters<typeof streamText>[0], "providerOptions">;
+type ReasoningOptions = Pick<Parameters<typeof streamText>[0], "providerOptions">;
 
 /** What one provider's slot in that object holds. */
 type ProviderOptionsFor = NonNullable<ReasoningOptions["providerOptions"]>[string];
@@ -56,7 +56,14 @@ type ProviderKeyName = Extract<keyof CoreConfig, `${string}_API_KEY`>;
 interface Route {
   /** The env var holding its key. */
   keyName: ProviderKeyName;
-  /** What a credit ledger entry records as the provider. */
+  /**
+   * The provider, named twice over.
+   *
+   * A credit ledger entry records it, and the SDK looks up this call's
+   * `providerOptions` under it -- so a name the vendor's package does not
+   * answer to is not a mislabelled row, it is reasoning silently not asked
+   * for. The wire-level cases in the tests are what hold this down.
+   */
   name: string;
   /** The provider, built on first use and kept. */
   provider: () => (modelId: string) => LanguageModel;
