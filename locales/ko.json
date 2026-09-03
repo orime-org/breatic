@@ -291,6 +291,7 @@
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",
       "refuseExecuteNoPrompt": "프롬프트를 먼저 입력하세요",
       "refuseExecuteNoVoice": "음성을 선택하세요",
+      "refuseExecuteTooLong": "텍스트가 {max, number}자 제한을 초과했습니다",
       "refuseInsertTypeUnused": "{kind, select, audio {참조는 이미지만 받습니다. 오디오는 사용할 수 없습니다} video {참조는 이미지만 받습니다. 비디오는 사용할 수 없습니다} other {참조는 이미지만 받습니다. 이런 종류의 소재는 사용할 수 없습니다}}",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 참조 추가",

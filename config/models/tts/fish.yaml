@@ -15,6 +15,11 @@ models:
     description: "TTS-Arena #1, 80+ languages, emotion"
     guide: "Fish Audio's flagship TTS ranked #1 on TTS-Arena. Dual-AR architecture (4B + 400M params), 80+ languages with auto-detection, free-form emotion control via natural language tags like [whisper], [excited], [professional broadcast tone], [pitch up]. Sub-word-level prosody control, 15,000+ expression tags. 70-80% cheaper than ElevenLabs. Choose for any TTS task where cost-effectiveness matters without sacrificing quality."
     cost_per_call: 3
+    # No `max_input_chars` on purpose: Fish states no per-request cap. Its
+    # OpenAPI schema declares no maxLength on `text`
+    # (docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech), and
+    # the vendor describes usage as a fair-use policy instead. A number written
+    # here would refuse text this upstream accepts.
     # $15.00 / M UTF-8 bytes on the vendor's pricing page, at 1 credit =
     # 1 US cent. Billed by byte, not character: a Chinese character is three
     # of them, which is why the unit travels with the number.

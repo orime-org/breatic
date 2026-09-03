@@ -100,6 +100,11 @@ export interface FullModelEntry {
    * before generating. Optional: models that bill per call declare none.
    */
   rate?: ModelRate;
+  /**
+   * How much input text this model accepts in one request (#1960). Optional:
+   * absent when the upstream publishes no cap.
+   */
+  max_input_chars?: number;
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];
   /**
@@ -269,6 +274,10 @@ function projectModelEntry(
     // #1960: what the model charges per unit of input, for the panel to state
     // before generating. Absent on per-call models.
     rate: m.rate,
+    // #1960: how much text this model takes, so the panel can say so before
+    // sending text the upstream will reject. Absent on models whose upstream
+    // publishes no cap.
+    max_input_chars: m.max_input_chars,
     // #1675 cross-modality execute gate: precompute per-mode source needs so
     // the frontend reads them off the wire (the rule stays backend-side).
     sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),

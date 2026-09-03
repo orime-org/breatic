@@ -13,8 +13,13 @@ models:
     takes_prompt: true
     tier: recommended
     description: "Most natural, emotional speech"
-    guide: "Most expressive TTS model with natural emotion and intonation. 70+ languages, 5000 char limit. 50+ preset voices covering diverse accents, ages, and styles. Choose for the highest-quality single-speaker voiceover, narration, or dialogue where naturalness matters most."
+    guide: "Most expressive TTS model with natural emotion and intonation. 70+ languages. 50+ preset voices covering diverse accents, ages, and styles. Choose for the highest-quality single-speaker voiceover, narration, or dialogue where naturalness matters most."
     cost_per_call: 10
+    # elevenlabs.io/docs/models, the per-model character-limit table: Eleven v3
+    # takes 5,000 per request. It holds through a gateway too — a reseller
+    # forwards the same request to the same API and cannot raise the vendor's
+    # own limit.
+    max_input_chars: 5000
     # $0.10 / 1000 characters on the vendor's pricing page, at 1 credit =
     # 1 US cent. Stated to the user before generating; the actual charge is
     # taken afterwards, on actual usage.

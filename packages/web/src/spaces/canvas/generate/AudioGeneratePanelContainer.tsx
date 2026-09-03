@@ -343,6 +343,7 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
+    const maxInputChars = fresh.modelEntry?.max_input_chars;
     const refusal = evaluateExecute({
       promptText: freshPrompt,
       model: fresh.model,
@@ -351,12 +352,15 @@ function AudioGeneratePanelBody({
       // state flag can.
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
+      maxInputChars,
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
     });
     if (refusal != null) {
       const key = refusalToastKey(refusal);
-      if (key) toast.warning(t(key));
+      // `max` comes from the same value the gate judged by, so the sentence
+      // can never name a limit other than the one that refused.
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
     // Unreachable past the gate above — `no-model` covers it — and stated so
@@ -455,6 +459,7 @@ function AudioGeneratePanelBody({
         nodeStatus: vm.nodeStatus,
         isSubmitting,
         promptRequired: vm.promptRequired,
+        maxInputChars: vm.modelEntry?.max_input_chars,
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
       })}

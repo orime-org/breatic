@@ -291,6 +291,7 @@
       "refuseInsertModeOff": "这一档不使用参考素材",
       "refuseExecuteNoPrompt": "先写提示词",
       "refuseExecuteNoVoice": "请选择音色",
+      "refuseExecuteTooLong": "文本超过 {max, number} 字上限",
       "refuseInsertTypeUnused": "{kind, select, audio {参考只收图片，不收音频} video {参考只收图片，不收视频} other {参考只收图片，不收这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",

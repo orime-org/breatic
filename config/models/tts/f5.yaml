@@ -15,6 +15,8 @@ models:
     description: "Zero-shot cloning, single sample"
     guide: "Zero-shot voice cloning from a single audio sample — no fine-tuning needed. Supports multilingual voice transfer. Provide reference audio URL and optionally its transcript for better quality. Choose for instant voice cloning."
     cost_per_call: 5
+    # fal.ai/models/fal-ai/f5-tts/api, on `gen_text`: "Maximum 5000 characters".
+    max_input_chars: 5000
     generation_time: 30
     languages:
       - English

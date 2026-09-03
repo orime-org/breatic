@@ -40,6 +40,15 @@ export interface ExecuteGateInput {
    */
   promptRequired: boolean;
   /**
+   * How many characters the selected model takes in one request (#1960), read
+   * off its catalog entry.
+   *
+   * Optional, and absent means uncapped: a model whose upstream publishes no
+   * limit declares none, and a number invented for it would refuse text the
+   * vendor accepts.
+   */
+  maxInputChars?: number;
+  /**
    * Whether the selected model picks its voice from a catalog (#1960) — true
    * for a model declaring a param filled from the voice list.
    *
@@ -78,6 +87,7 @@ export type ExecuteRefusal =
   | 'no-model'
   | 'submitting'
   | 'prompt-missing'
+  | 'prompt-too-long'
   | 'voice-missing';
 
 /**
@@ -115,6 +125,19 @@ export function evaluateExecute(
   if (input.promptRequired && input.promptText.trim().length === 0) {
     return 'prompt-missing';
   }
+  // Counted in characters, the unit the vendors state their limits in, and on
+  // the text as it will be sent: the payload carries `promptText` itself, so
+  // the whitespace the emptiness check above trims still reaches the upstream.
+  // Spread rather than `.length` because the latter counts UTF-16 units — two
+  // per emoji and per rarer CJK glyph — and would refuse a message half the
+  // length of the one the vendor would take.
+  if (
+    input.promptRequired &&
+    input.maxInputChars !== undefined &&
+    [...input.promptText].length > input.maxInputChars
+  ) {
+    return 'prompt-too-long';
+  }
   // Both remaining refusals are the user's to fix, so they follow the panel's
   // own order: the prompt editor sits above the voice picker.
   if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
@@ -128,13 +151,13 @@ export function evaluateExecute(
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * `prompt-missing` and `voice-missing` leave the button live, because they are
- * the ones the user can act on — the click then says what is missing, which a
- * greyed-out button cannot (GOV.UK and Adam Silver both name the
- * disabled-until-valid button an anti-pattern for exactly this: it never tells
- * anyone why). The other three are facts about the environment, and a button
- * that invites a click it will not honour is worse than one that plainly
- * cannot be pressed.
+ * `prompt-missing`, `prompt-too-long` and `voice-missing` leave the button
+ * live, because they are the ones the user can act on — the click then says
+ * what is wrong, which a greyed-out button cannot (GOV.UK and Adam Silver both
+ * name the disabled-until-valid button an anti-pattern for exactly this: it
+ * never tells anyone why). The other three are facts about the environment,
+ * and a button that invites a click it will not honour is worse than one that
+ * plainly cannot be pressed.
  * @param refusal - The failing condition from {@link evaluateExecute}, or null.
  * @returns True when the button must be disabled.
  */
@@ -142,7 +165,10 @@ export function isExecuteButtonDisabled(
   refusal: ExecuteRefusal | null,
 ): boolean {
   return (
-    refusal != null && refusal !== 'prompt-missing' && refusal !== 'voice-missing'
+    refusal != null &&
+    refusal !== 'prompt-missing' &&
+    refusal !== 'prompt-too-long' &&
+    refusal !== 'voice-missing'
   );
 }
 
@@ -176,6 +202,9 @@ export function isExecuteButtonDisabled(
 export function refusalToastKey(refusal: ExecuteRefusal): string | null {
   if (refusal === 'prompt-missing') {
     return 'canvas.generatePanel.refuseExecuteNoPrompt';
+  }
+  if (refusal === 'prompt-too-long') {
+    return 'canvas.generatePanel.refuseExecuteTooLong';
   }
   if (refusal === 'voice-missing') {
     return 'canvas.generatePanel.refuseExecuteNoVoice';

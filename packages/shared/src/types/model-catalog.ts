@@ -144,6 +144,16 @@ export interface ModelEntry {
    */
   rate?: ModelRate;
   /**
+   * How much input text this model accepts in one request (#1960), so the
+   * panel can refuse before sending text the upstream would reject.
+   *
+   * The vendor of the model states it, and a gateway reselling that model
+   * cannot raise it — it forwards the same request to the same API. Absent
+   * when the vendor publishes no cap, and absent means uncapped: a number
+   * invented here would refuse text the vendor accepts.
+   */
+  max_input_chars?: number;
+  /**
    * Per-mode source requirements (#1675 cross-modality execute gate),
    * computed backend-side (the rule lives in domain). Maps each of the
    * model's modes to the source types that mode needs (`t2i` → `[]`,

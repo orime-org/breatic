@@ -232,6 +232,7 @@ describe('refusalToastKey — which refusal says something out loud', () => {
       'no-model',
       'submitting',
       'prompt-missing',
+      'prompt-too-long',
       'voice-missing',
     ];
     for (const refusal of all) {
@@ -239,5 +240,73 @@ describe('refusalToastKey — which refusal says something out loud', () => {
         !isExecuteButtonDisabled(refusal),
       );
     }
+  });
+});
+
+describe('evaluateExecute — text the model will not take (#1960 A16)', () => {
+  // A cap the catalog states, from the model vendor's own documentation.
+  const capped = { ...ok, maxInputChars: 10 };
+
+  it('names the length once the text is past the cap', () => {
+    expect(evaluateExecute({ ...capped, promptText: 'x'.repeat(11) })).toBe(
+      'prompt-too-long',
+    );
+  });
+
+  it('lets text exactly at the cap through', () => {
+    expect(evaluateExecute({ ...capped, promptText: 'x'.repeat(10) })).toBeNull();
+  });
+
+  // Absent means uncapped: fish states no per-request limit, and inventing one
+  // would refuse text its upstream accepts.
+  it('never refuses on length when the model states no cap', () => {
+    expect(
+      evaluateExecute({ ...ok, promptText: 'x'.repeat(100_000) }),
+    ).toBeNull();
+  });
+
+  // The text travels to the vendor exactly as typed — the payload sends
+  // `promptText` itself — so the surrounding whitespace is part of what the
+  // upstream counts, even though the emptiness check above trims it.
+  it('counts the text as sent, whitespace included', () => {
+    expect(evaluateExecute({ ...capped, promptText: `  ${'x'.repeat(9)}` })).toBe(
+      'prompt-too-long',
+    );
+  });
+
+  // Vendors count characters; JS string length counts UTF-16 units, which is
+  // two for every emoji and every rarer CJK glyph. Counting units would refuse
+  // a message half the length of the one the vendor would accept.
+  it('counts characters, not UTF-16 units', () => {
+    const tenEmoji = '🎙'.repeat(10);
+    expect(tenEmoji.length).toBe(20);
+    expect(evaluateExecute({ ...capped, promptText: tenEmoji })).toBeNull();
+  });
+
+  // Order: an empty prompt is empty whatever the cap says, and a cap of zero
+  // must not turn "write something" into "that is too long".
+  it('still names an empty prompt first', () => {
+    expect(evaluateExecute({ ...capped, promptText: '' })).toBe(
+      'prompt-missing',
+    );
+  });
+
+  // A model that consumes no prompt has nothing to measure, and its panel
+  // offers no editor to shorten.
+  it('leaves a model that takes no prompt alone', () => {
+    expect(
+      evaluateExecute({
+        ...capped,
+        promptRequired: false,
+        promptText: 'x'.repeat(50),
+      }),
+    ).toBeNull();
+  });
+
+  it('leaves the button live, because the user can shorten the text', () => {
+    expect(isExecuteButtonDisabled('prompt-too-long')).toBe(false);
+    expect(refusalToastKey('prompt-too-long')).toBe(
+      'canvas.generatePanel.refuseExecuteTooLong',
+    );
   });
 });
