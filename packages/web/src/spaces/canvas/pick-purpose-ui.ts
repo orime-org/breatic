@@ -25,7 +25,7 @@ import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
 /** The panel kinds that own pick tools (the other panel kinds start none). */
-type PickingPanelKind = 'generate' | 'generateVideo';
+type PickingPanelKind = 'generate' | 'generateVideo' | 'generateAudio';
 
 interface PickPurposeUi {
   /** Translation key for the pick banner's instruction. */
@@ -35,7 +35,8 @@ interface PickPurposeUi {
    * when the banner unmounts. Partial on purpose: most purposes belong to one
    * panel — style is the image panel's, and the five source slots (both
    * frames, the character image, the driving video and the driving audio) are
-   * the video panel's. Reference and focus are the two both panels offer.
+   * the video panel's. Focus is the image and video panels'; reference is
+   * every panel's, the audio one included.
    */
   trigger: Partial<Record<PickingPanelKind, string>>;
 }
@@ -47,6 +48,7 @@ export const PICK_PURPOSE_UI = {
     trigger: {
       generate: 'generate-tool-reference',
       generateVideo: 'generate-video-tool-reference',
+      generateAudio: 'generate-audio-tool-reference',
     },
   },
   style: {

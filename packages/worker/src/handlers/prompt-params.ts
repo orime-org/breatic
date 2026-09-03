@@ -21,7 +21,7 @@
  * could drift, and what lets the declaration be deleted at all.
  */
 
-import { extractPromptText } from "@breatic/domain";
+import { extractPromptText } from "@breatic/shared";
 
 /**
  * Lift the prompt out of a params bag, leaving the bag without it.

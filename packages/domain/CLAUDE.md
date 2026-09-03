@@ -9,7 +9,7 @@
 是不是 —— 只有 server + worker 共享、collab 绝不碰的业务(积分"花" / 任务 / 节点历史 / agent / model-catalog / canvas-lock)?是 → domain。若 collab 也要用 → 进 core;若只一个服务用 → 留那个服务。
 
 ## 装啥
-积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务 · 节点历史 · agent(模型 / 工具 / skill 加载 / extract-prompt / llm)· model-catalog(含每次成本)· canvas-lock(节点覆盖锁)。
+积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务 · 节点历史 · agent(模型 / 工具 / skill 加载 / llm)· model-catalog(含每次成本)· canvas-lock(节点覆盖锁)。
 
 ## agent 这块的抽象判定线(MANDATORY)
 

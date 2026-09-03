@@ -150,7 +150,13 @@ interface CanvasState {
    * host + kind is the correct abstraction for N mutually-exclusive node-
    * anchored panels — cheaper and inherently exclusive versus parallel states.
    */
-  panelKind: 'generate' | 'generateVideo' | 'resetEmpty' | 'history' | null;
+  panelKind:
+    | 'generate'
+    | 'generateVideo'
+    | 'generateAudio'
+    | 'resetEmpty'
+    | 'history'
+    | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -199,10 +205,10 @@ interface CanvasState {
   /**
    * Open the Generate panel for a node (replaces any currently open panel).
    *
-   * Image and video have separate panels (#1896), and this decides which one
-   * from the node's modality so callers never have to know how many exist:
-   * adding text generation (#1778) is one more case here, not a branch at
-   * every call site.
+   * Image, video and audio have separate panels (#1896, #1960), and this
+   * decides which one from the node's modality so callers never have to know
+   * how many exist: adding text generation (#1778) is one more case here, not
+   * a branch at every call site.
    */
   openGeneratePanel: (nodeId: string, type: NodeType) => void;
   /** Open the reset-empty-image panel for a node (replaces any open panel). */
@@ -244,18 +250,20 @@ interface CanvasState {
 }
 
 /**
- * Which Generate panel a modality opens (#1896). Image and video have separate
- * panels, so this map — not the call site — decides which body renders.
+ * Which Generate panel a modality opens (#1896, #1960). Image, video and audio
+ * each have their own panel, so this map — not the call site — decides which
+ * body renders.
  *
  * It is deliberately partial: a modality absent here has no Generate panel,
  * and `openGeneratePanel` opens nothing for it. Adding text generation (#1778)
  * means one entry here and no change anywhere else.
  */
 const GENERATE_PANEL_BY_TYPE: Partial<
-  Record<NodeType, 'generate' | 'generateVideo'>
+  Record<NodeType, 'generate' | 'generateVideo' | 'generateAudio'>
 > = {
   image: 'generate',
   video: 'generateVideo',
+  audio: 'generateAudio',
 };
 
 export const useCanvasStore = create<CanvasState>()(
@@ -366,14 +374,15 @@ export const useCanvasStore = create<CanvasState>()(
       }),
     openGeneratePanel: (nodeId, type) =>
       set((s) => {
-        // Image and video have separate panels (#1896). Deciding here rather
-        // than at the call site keeps the number of panels a detail of this
-        // store: a third generative modality is one more entry in the map,
-        // not a new branch wherever Generate is opened from.
+        // Image, video and audio have separate panels (#1896, #1960).
+        // Deciding here rather than at the call site keeps the number of
+        // panels a detail of this store: a fourth generative modality is one
+        // more entry in the map, not a new branch wherever Generate is
+        // opened from.
         const kind = GENERATE_PANEL_BY_TYPE[type];
         // A modality with no panel opens nothing. The unmapped modalities are
-        // the ones with no Generate panel yet (text / audio / 3d / web /
-        // annotation / group), and the menu never offers Generate on them
+        // the ones with no Generate panel yet (text / 3d / web / annotation /
+        // group), and the menu never offers Generate on them
         // (canGenerate gates it) — so arriving here means a caller is wrong.
         // Falling back to the image panel would put such a node's host id
         // under an image body, which reads as a working panel operating on

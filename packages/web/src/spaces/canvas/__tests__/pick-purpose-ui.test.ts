@@ -65,10 +65,25 @@ describe('聚焦这个挑选在表里两个面板都有触发器（#1978）', ()
     );
   });
 
-  // 只有 reference 和 focus 是两个面板共有的：style 是图片面板独有，五个源
-  // 槽位（两个帧、人物图、驱动视频、驱动音频）是视频面板独有。把这条数出来
-  // 钉住，防止将来给某个单面板的 purpose 顺手补上另一个面板的入口。
-  it('恰好这两个 purpose 是两个面板共有的', () => {
+  // 音频面板的参考工具也起同一个 purpose。表里少它这一条，那次挑选退出时
+  // 焦点会掉在 body 上，键盘用户要从文档开头重新 Tab 回面板 —— 跟上面
+  // 首帧那次是同一个失败，只是换了一个面板。
+  it('参考这个挑选在表里三个面板都有触发器', () => {
+    expect(PICK_PURPOSE_UI.reference.trigger.generate).toBe(
+      'generate-tool-reference',
+    );
+    expect(PICK_PURPOSE_UI.reference.trigger.generateVideo).toBe(
+      'generate-video-tool-reference',
+    );
+    expect(PICK_PURPOSE_UI.reference.trigger.generateAudio).toBe(
+      'generate-audio-tool-reference',
+    );
+  });
+
+  // style 是图片面板独有，五个源槽位（两个帧、人物图、驱动视频、驱动音频）
+  // 是视频面板独有。把这条数出来钉住，防止将来给某个单面板的 purpose 顺手
+  // 补上另一个面板的入口。
+  it('恰好这两个 purpose 是图片和视频面板共有的', () => {
     const both = (Object.keys(PICK_PURPOSE_UI) as PickPurpose[]).filter((p) => {
       // 先加宽成普通字典再读：每一行的 trigger 被收窄成它自己点名的那几个
       // 面板，直接读一个它没有的键是类型错误。

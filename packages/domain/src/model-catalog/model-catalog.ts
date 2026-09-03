@@ -25,8 +25,10 @@ import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js
 import type {
   ModelCatalog,
   ModelEntry,
+  ModelRate,
   ModelTier,
   ParamDescriptor,
+  RemoteParamSource,
 } from "@breatic/shared";
 
 /** Root directory for model YAML configs. */
@@ -54,6 +56,12 @@ export interface FullParamSpec {
   min?: number;
   max?: number;
   max_items?: number;
+  /**
+   * Names the picker that fills this param, for params whose value domain
+   * lives upstream instead of in `values` (#1960). Projected onto the wire
+   * `ParamDescriptor` unchanged.
+   */
+  remote_source?: RemoteParamSource;
   [extra: string]: unknown;
 }
 
@@ -87,8 +95,29 @@ export interface FullModelEntry {
    * error, so the wire type (`ModelEntry.takes_prompt`) can be non-optional.
    */
   takes_prompt?: boolean;
+  /**
+   * What this model charges per unit of input (#1960), stated to the user
+   * before generating. Optional: models that bill per call declare none.
+   */
+  rate?: ModelRate;
+  /**
+   * How much input text this model accepts in one request (#1960). Optional:
+   * absent when the upstream publishes no cap.
+   */
+  max_input_chars?: number;
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];
+  /**
+   * The voices a tts model writes inline, for a deployment behind a gateway
+   * with no voice endpoint of its own (#1960). `sample_url` may be null: yaml
+   * states absence that way, and this interface mirrors what is on disk.
+   */
+  voices?: Array<{
+    id: string;
+    gender?: string;
+    description?: string;
+    sample_url?: string | null;
+  }>;
   [extra: string]: unknown;
 }
 
@@ -242,6 +271,13 @@ function projectModelEntry(
     // already refused any modality where a model omits it, so the wire
     // field is a plain boolean the panels can read without a fallback.
     takes_prompt: m.takes_prompt as boolean,
+    // #1960: what the model charges per unit of input, for the panel to state
+    // before generating. Absent on per-call models.
+    rate: m.rate,
+    // #1960: how much text this model takes, so the panel can say so before
+    // sending text the upstream will reject. Absent on models whose upstream
+    // publishes no cap.
+    max_input_chars: m.max_input_chars,
     // #1675 cross-modality execute gate: precompute per-mode source needs so
     // the frontend reads them off the wire (the rule stays backend-side).
     sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),

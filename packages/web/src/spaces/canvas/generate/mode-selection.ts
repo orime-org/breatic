@@ -4,12 +4,13 @@
 /**
  * Model and mode resolution shared by every generate panel.
  *
- * The image and video panels are separate components with separate params and
- * separate mode sets (user 2026-08-08), but every question about WHICH model a
- * mode gets is one rule, not one per modality: which models a mode offers,
- * which one to open with, which one to render, and what a mode switch
- * persists. Keeping one implementation of each is what stops the two panels
- * from drifting — they did drift, on the per-mode memory, until #1948.
+ * The image, video and audio panels are separate components with separate
+ * params and separate mode sets (user 2026-08-08), but every question about
+ * WHICH model a mode gets is one rule, not one per modality: which models a
+ * mode offers, which one to open with, which one to render, and what a mode
+ * switch persists. Keeping one implementation of each is what stops the
+ * panels from drifting — two of them did drift, on the per-mode memory,
+ * until #1948.
  */
 
 import type { ModelEntry } from '@breatic/shared';

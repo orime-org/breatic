@@ -5,6 +5,8 @@
  * Guards for the Generate panel's execute action.
  */
 
+import { extractPromptText } from '@breatic/shared';
+
 /** Everything the execute gate must weigh before a task may be submitted. */
 export interface ExecuteGateInput {
   /** The current prompt's plain text (rich-text prompt projected to text). */
@@ -39,6 +41,38 @@ export interface ExecuteGateInput {
    * everything it weighs, and it has no catalog to consult.
    */
   promptRequired: boolean;
+  /**
+   * How many characters the selected model takes in one request (#1960), read
+   * off its catalog entry.
+   *
+   * Optional, and absent means uncapped: a model whose upstream publishes no
+   * limit declares none, and a number invented for it would refuse text the
+   * vendor accepts.
+   */
+  maxInputChars?: number;
+  /**
+   * Whether the selected model picks its voice from a catalog (#1960) — true
+   * for a model declaring a param filled from the voice list.
+   *
+   * Optional because only one panel has voices at all: absent reads as "this
+   * modality has none", which is the truth for image and video and spares
+   * their four call sites a pair of literal falses that say nothing.
+   */
+  voiceRequired?: boolean;
+  /**
+   * Whether the stored voice is one this deployment's provider accepts.
+   *
+   * Not "is the value non-null": one model defaults to null while the other
+   * defaults to a display name that the direct connection rejects and the
+   * gateway accepts, so the same stored value is valid on one deployment and
+   * not the other. Which it is depends on the resolved provider, which this
+   * module has no way to consult — the caller decides and passes the answer,
+   * the same way it does for `promptRequired`.
+   *
+   * Optional for the same reason as `voiceRequired`, and only read when that
+   * one is true.
+   */
+  voiceChosen?: boolean;
 }
 
 /**
@@ -54,7 +88,9 @@ export type ExecuteRefusal =
   | 'node-gone'
   | 'no-model'
   | 'submitting'
-  | 'prompt-missing';
+  | 'prompt-missing'
+  | 'prompt-too-long'
+  | 'voice-missing';
 
 /**
  * Which execute precondition fails, or null when Generate may proceed.
@@ -91,6 +127,26 @@ export function evaluateExecute(
   if (input.promptRequired && input.promptText.trim().length === 0) {
     return 'prompt-missing';
   }
+  // Counted on the text the vendor will actually receive. The worker cleans
+  // every AIGC prompt through this same function before the request goes out
+  // (`prompt-params.ts`), and every rule in it shortens: counting the raw
+  // editor text instead refuses messages the upstream would have taken — one
+  // trailing space at exactly the cap is enough.
+  //
+  // In characters, the unit the vendors state their limits in. Spread rather
+  // than `.length` because the latter counts UTF-16 units — two per emoji and
+  // per rarer CJK glyph — and would refuse a message half the length of the
+  // one the vendor would take.
+  if (
+    input.promptRequired &&
+    input.maxInputChars !== undefined &&
+    [...extractPromptText(input.promptText)].length > input.maxInputChars
+  ) {
+    return 'prompt-too-long';
+  }
+  // Both remaining refusals are the user's to fix, so they follow the panel's
+  // own order: the prompt editor sits above the voice picker.
+  if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
   return null;
 }
 
@@ -101,19 +157,25 @@ export function evaluateExecute(
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * Only `prompt-missing` leaves the button live, because it is the only one the
- * user can act on — the click then says what is missing, which a greyed-out
- * button cannot (GOV.UK and Adam Silver both name the disabled-until-valid
- * button an anti-pattern for exactly this: it never tells anyone why). The
- * other three are facts about the environment, and a button that invites a
- * click it will not honour is worse than one that plainly cannot be pressed.
+ * `prompt-missing`, `prompt-too-long` and `voice-missing` leave the button
+ * live, because they are the ones the user can act on — the click then says
+ * what is wrong, which a greyed-out button cannot (GOV.UK and Adam Silver both
+ * name the disabled-until-valid button an anti-pattern for exactly this: it
+ * never tells anyone why). The other three are facts about the environment,
+ * and a button that invites a click it will not honour is worse than one that
+ * plainly cannot be pressed.
  * @param refusal - The failing condition from {@link evaluateExecute}, or null.
  * @returns True when the button must be disabled.
  */
 export function isExecuteButtonDisabled(
   refusal: ExecuteRefusal | null,
 ): boolean {
-  return refusal != null && refusal !== 'prompt-missing';
+  return (
+    refusal != null &&
+    refusal !== 'prompt-missing' &&
+    refusal !== 'prompt-too-long' &&
+    refusal !== 'voice-missing'
+  );
 }
 
 /**
@@ -144,7 +206,14 @@ export function isExecuteButtonDisabled(
  * @returns The i18n key to warn with, or null to refuse in silence.
  */
 export function refusalToastKey(refusal: ExecuteRefusal): string | null {
-  return refusal === 'prompt-missing'
-    ? 'canvas.generatePanel.refuseExecuteNoPrompt'
-    : null;
+  if (refusal === 'prompt-missing') {
+    return 'canvas.generatePanel.refuseExecuteNoPrompt';
+  }
+  if (refusal === 'prompt-too-long') {
+    return 'canvas.generatePanel.refuseExecuteTooLong';
+  }
+  if (refusal === 'voice-missing') {
+    return 'canvas.generatePanel.refuseExecuteNoVoice';
+  }
+  return null;
 }

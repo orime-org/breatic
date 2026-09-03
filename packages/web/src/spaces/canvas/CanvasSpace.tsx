@@ -198,6 +198,7 @@ import {
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -3968,6 +3969,16 @@ function CanvasSpaceInner({
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
           />
+          {/* Audio Generate panel: its own panel kind, opened by an audio node.
+              It takes no `getLastWriteWasLocal` — that getter exists for the
+              picks that write a copy onto the node, and this panel collects
+              references, which are edges. */}
+          <AudioGeneratePanelContainer
+            nodes={nodes}
+            edges={edges}
+            projectId={projectId}
+            spaceId={spaceId}
+          />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}
@@ -4096,7 +4107,7 @@ function CanvasSpaceInner({
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Generate opens on any editable node of a modality that generates
-          // (`canGenerate` — image and video today), the AIGC "generate into
+          // (`canGenerate`), the AIGC "generate into
           // self" flow. Which PANEL opens is the opener's decision, not this
           // one's: the store maps the node's modality to a panel kind.
           // INCLUDING a locked or handling node, so the user can open the panel

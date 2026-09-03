@@ -3,7 +3,7 @@
 > 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩,细节见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md)。
 
 ## 角色
-**web + 后端共用**的纯协议层:zod schema · 类型 · 常量 · 跨服务事件契约的数据格式 · **统一 HTTP 传输层**(`http/`)与退避原语(`backoff.ts`)。
+**web + 后端共用**的纯协议层:zod schema · 类型 · 常量 · 跨服务事件契约的数据格式 · **统一 HTTP 传输层**(`http/`)与退避原语(`backoff.ts`)· 两端都要按同一规则算的纯文本处理(`agent/extract-prompt.ts` —— 前端按它数字数,worker 按它清洗后发上游,两份实现会各自漂移)。
 
 ## 统一 HTTP 传输层(`src/http/`,#36)
 
