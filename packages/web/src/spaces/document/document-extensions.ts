@@ -49,15 +49,9 @@ import { DocumentSplitBlock } from '@web/spaces/document/document-split-block';
 import { DocumentBlockTypeKeys } from '@web/spaces/document/document-block-type-keys';
 import { LocaleRedraw } from '@web/spaces/document/locale-redraw';
 
-/**
- * What an address typed without one is stored as.
- *
- * The href reaches every peer and the markdown export, so a bare `breatic.ai`
- * is qualified before it is written. Both paths that write one read this: the
- * extension recognising a URL as it is typed, and the popover normalising what
- * was pasted into it.
- */
-export const DEFAULT_LINK_PROTOCOL = 'https';
+import { DEFAULT_LINK_PROTOCOL } from '@web/spaces/document/document-link';
+
+export { DEFAULT_LINK_PROTOCOL };
 
 /** The body fragment, plus the optional collaborative layers. */
 export interface DocumentExtensionOptions {

@@ -18,7 +18,7 @@
 
 import * as React from 'react';
 import { Link as LinkIcon } from 'lucide-react';
-import { TextSelection, type Transaction } from '@tiptap/pm/state';
+import { TextSelection } from '@tiptap/pm/state';
 import {
   useFloating,
   useDismiss,
@@ -43,7 +43,7 @@ import {
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { Input } from '@web/components/ui/input';
 import { BUBBLE_ICON_BUTTON_SIZE } from '@web/spaces/document/document-tool-button';
-import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all';
+import { isWholeDocumentSelection } from '@web/spaces/document/document-select-all-guard';
 import {
   resolveLinkSelection,
   resolveLinkInSpan,
@@ -198,7 +198,9 @@ function followedLink(
   editor: LinkEditor,
   tracked: TrackedLink | null,
 ): LinkSelection {
-  const span = tracked ? resolveTrackedSpan(editor, tracked) : null;
+  const span = tracked
+    ? resolveTrackedSpan(editor.prosemirrorState, tracked)
+    : null;
   if (!span) return { range: null, href: null };
   return resolveLinkInSpan(editor.prosemirrorState, span.from, span.to);
 }
@@ -275,7 +277,9 @@ export function DocumentLinkPopover({
     setTarget({
       range: resolved.range,
       href: resolved.href,
-      tracked: resolved.range ? trackLink(editor, resolved.range) : null,
+      tracked: resolved.range
+        ? trackLink(editor.prosemirrorState, resolved.range)
+        : null,
     });
     setDraft('');
     setShowInvalid(false);
@@ -381,11 +385,13 @@ export function DocumentLinkPopover({
     if (mode === 'closed') return undefined;
     /**
      * Follow the document.
-     * @param props - What the editor passes its transaction handler.
-     * @param props.transaction - The transaction that just landed.
+     *
+     * Subscribed to the document alone. Measured on a mounted editor, a peer's
+     * insert fires `onChange` once and `onSelectionChange` not at all, so this
+     * is the whole of what the panel has to follow — the selection moving
+     * under a user who is typing is not something the panel reacts to.
      */
-    const follow = ({ transaction }: { transaction: Transaction }): void => {
-      if (!transaction.docChanged) return;
+    const follow = (): void => {
       // `create` opened on a selection holding no link, and that selection is
       // what it writes to. A link a co-editor makes inside it belongs to them:
       // adopting it would narrow the write to their span and put this user's
@@ -413,10 +419,8 @@ export function DocumentLinkPopover({
       }));
     };
     const stopChange = editor.onChange(follow);
-    const stopSelection = editor.onSelectionChange(follow);
     return () => {
       stopChange?.();
-      stopSelection();
     };
   }, [close, editor, mode, refs, target.tracked]);
 

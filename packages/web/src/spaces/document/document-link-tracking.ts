@@ -24,19 +24,19 @@
  * because they name a place in the shared structure rather than an offset.
  */
 
-import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { EditorState } from '@tiptap/pm/state';
 import type * as Y from 'yjs';
 import {
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
   ySyncPluginKey,
-} from '@tiptap/y-tiptap';
+} from 'y-prosemirror';
 
 /**
  * The binding's index from Yjs types to the nodes it produced.
  *
- * Restated here because `@tiptap/y-tiptap` declares `ProsemirrorMapping` in an
+ * Restated here because `y-prosemirror` declares `ProsemirrorMapping` in an
  * inner module its entry point does not re-export, while the two functions
  * below take it by that name.
  */
@@ -72,23 +72,23 @@ interface SyncPluginState {
 
 /**
  * Read the collaboration binding, when there is one.
- * @param editor - The editor to read from.
+ * @param editorState - The editor state to read from.
  * @returns The three things a position conversion needs, or null when this
  *   editor is not bound to a shared document.
  */
-function binding(editor: Editor): {
+function binding(editorState: EditorState): {
   doc: Y.Doc;
   type: Y.XmlFragment;
   mapping: ProsemirrorMapping;
 } | null {
-  const state = ySyncPluginKey.getState(editor.state) as SyncPluginState | undefined;
+  const state = ySyncPluginKey.getState(editorState) as SyncPluginState | undefined;
   if (!state?.type || !state.binding || !state.doc) return null;
   return { doc: state.doc, type: state.type, mapping: state.binding.mapping };
 }
 
 /**
  * Take hold of the link now occupying the given span.
- * @param editor - The editor the span belongs to.
+ * @param editorState - The state the span belongs to.
  * @param span - Where the link is at this moment.
  * @param span.from - Its start.
  * @param span.to - Its end.
@@ -98,10 +98,10 @@ function binding(editor: Editor): {
  * @throws {never}
  */
 export function trackLink(
-  editor: Editor,
+  editorState: EditorState,
   span: { from: number; to: number },
 ): TrackedLink | null {
-  const bound = binding(editor);
+  const bound = binding(editorState);
   if (!bound) return null;
   return {
     start: absolutePositionToRelativePosition(
@@ -129,16 +129,16 @@ export function trackLink(
  * not need telling — a zero-width span holds no link either, so it reaches the
  * same answer through `resolveLinkInSpan`. What the comparison is here for is
  * the reversed case, which would hand `nodesBetween` a backwards range.
- * @param editor - The editor to resolve against.
+ * @param editorState - The state to resolve against.
  * @param tracked - The handle from {@link trackLink}.
  * @returns The span the link now occupies, or null when it has gone.
  * @throws {never}
  */
 export function resolveTrackedSpan(
-  editor: Editor,
+  editorState: EditorState,
   tracked: TrackedLink,
 ): { from: number; to: number } | null {
-  const bound = binding(editor);
+  const bound = binding(editorState);
   if (!bound) return null;
   const from = relativePositionToAbsolutePosition(
     bound.doc,
