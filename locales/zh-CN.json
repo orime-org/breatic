@@ -275,7 +275,8 @@
       "remote": "这项内容正被他人移动。"
     },
     "task": {
-      "stillRunning": "这个任务还在跑。"
+      "stillRunning": "这个任务还在跑。",
+      "expired": "这个任务超时了。"
     },
     "generatePanel": {
       "style": "风格",

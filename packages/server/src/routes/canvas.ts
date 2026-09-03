@@ -11,6 +11,7 @@
 
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
+import { secretsMatch } from "@server/utils/secrets-match.js";
 
 import { z } from "zod";
 import {
@@ -47,12 +48,78 @@ import {
   publishNodeEvent,
   getStreamRedis,
   logger,
+  env,
 } from "@breatic/core";
 import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
+
+/**
+ * `POST /canvas/node-tasks/expired` — a task timer saying one task is out of
+ * time (#186, design §4.6.1).
+ *
+ * Registered above the session middleware because the caller is our own
+ * timer Durable Object, which holds the shared secret and no session. The
+ * suite covering this endpoint asserts a secret-bearing call gets a 200, so
+ * moving this below that line turns red.
+ *
+ * The timer knows only the task id. Every judgement is here: a row still
+ * running becomes expired, a row already terminal is left alone because the
+ * task finished before its deadline and the timer has no cancel. Both answer
+ * 200 — a failure is retried by the timer forever, so only something a retry
+ * could fix may fail.
+ */
+canvas.post(
+  "/node-tasks/expired",
+  async (c, next) => {
+    const presented = c.req.header("x-ingest-secret") ?? "";
+    if (
+      !env.INGEST_SHARED_SECRET ||
+      !secretsMatch(presented, env.INGEST_SHARED_SECRET)
+    ) {
+      logger.warn(
+        { hasSecret: presented.length > 0 },
+        "node_task_expiry_unauthorized",
+      );
+      return c.json(
+        { error: { code: 401, message: t("server.auth.not_authenticated") } },
+        401,
+      );
+    }
+    await next();
+  },
+  validate("json", z.object({ task_id: z.string().uuid() })),
+  async (c) => {
+    const { task_id } = c.req.valid("json");
+
+    const row = await nodeTaskService.findById(task_id);
+    if (row === null) {
+      // Knocking again cannot make this row appear. Answering anything but
+      // 200 leaves the timer retrying for good.
+      logger.warn({ taskId: task_id }, "node_task_expiry_no_such_task");
+      return c.json({ data: { applied: false } });
+    }
+
+    const result = await nodeTaskService.settle({
+      taskId: task_id,
+      outcome: "expired",
+      errorMessage: t("canvas.task.expired"),
+    });
+
+    // Sent whether or not this call moved the row: the counts were recomputed
+    // either way, and a node whose numbers had drifted comes back into line.
+    await emitNodeTaskCounts(
+      getStreamRedis(),
+      canvasSpaceDocName(row.projectId, row.spaceId),
+      row.nodeId,
+      result.counts,
+    );
+
+    return c.json({ data: { applied: result.applied } });
+  },
+);
 
 canvas.use("*", requireAuth);
 

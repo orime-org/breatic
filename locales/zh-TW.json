@@ -275,7 +275,8 @@
       "remote": "這項內容正被他人移動。"
     },
     "task": {
-      "stillRunning": "這個任務還在跑。"
+      "stillRunning": "這個任務還在跑。",
+      "expired": "這個任務逾時了。"
     },
     "generatePanel": {
       "style": "風格",

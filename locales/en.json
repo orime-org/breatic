@@ -275,7 +275,8 @@
       "remote": "Someone else is moving this."
     },
     "task": {
-      "stillRunning": "This task is still running."
+      "stillRunning": "This task is still running.",
+      "expired": "This task ran out of time."
     },
     "nodeMenu": {
       "generate": "Generate",

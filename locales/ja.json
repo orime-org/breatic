@@ -275,7 +275,8 @@
       "remote": "他のユーザーがこの項目を移動しています。"
     },
     "task": {
-      "stillRunning": "このタスクはまだ実行中です。"
+      "stillRunning": "このタスクはまだ実行中です。",
+      "expired": "このタスクは時間切れになりました。"
     },
     "generatePanel": {
       "style": "スタイル",

@@ -275,7 +275,8 @@
       "remote": "다른 사용자가 이 항목을 옮기고 있습니다."
     },
     "task": {
-      "stillRunning": "이 작업은 아직 실행 중입니다."
+      "stillRunning": "이 작업은 아직 실행 중입니다.",
+      "expired": "이 작업은 시간이 초과되었습니다."
     },
     "generatePanel": {
       "style": "스타일",

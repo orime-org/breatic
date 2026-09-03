@@ -15,8 +15,8 @@
  */
 
 import { Hono } from "hono";
-import { timingSafeEqual } from "node:crypto";
 import { validate } from "@server/middleware/validate.js";
+import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
 import { signUploadTicket, t } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
@@ -317,21 +317,6 @@ const ingestReportSchema = z.discriminatedUnion("outcome", [
     reason: z.string().max(200).optional(),
   }),
 ]);
-
-/**
- * Compare two secrets without leaking where they diverge.
- * @param a - The value the caller sent.
- * @param b - The value we hold.
- * @returns True when they are the same string.
- */
-function secretsMatch(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  // `timingSafeEqual` throws on a length mismatch, which would itself be a
-  // signal, so the lengths are compared first and the result folded in.
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
-}
 
 /**
  * `POST /assets/ingest-report` — the ingest Worker telling us how an upload
