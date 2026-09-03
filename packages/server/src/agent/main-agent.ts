@@ -361,6 +361,11 @@ export class MainAgent {
         messages,
         tools: agentConfig.tools,
         stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
+        // Not in effect while the line above asks for reasoning: DeepSeek's
+        // provider drops it and says so ("temperature has no effect when
+        // DeepSeek thinking is enabled", observed 2026-09-03 on a real turn).
+        // It stays because it is what this call wants whenever it reaches a
+        // provider that takes it -- another vendor, or reasoning turned off.
         temperature: 0.2,
         // Per call, which is the only unit there is: the `stopWhen` above
         // lets one turn make many, and each of them is bounded by this. An

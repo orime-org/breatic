@@ -212,13 +212,29 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **线上格式就是 AI SDK 的 UI message stream 协议**:server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用 SDK 的 chunk 类型。**我们自己定名字、自己定含义的 data part 有四个**:心跳(`data-heartbeat`,transient)· 归纳中(`data-memory-consolidating`,transient)· 撞到输出上限(`data-truncated`,非 transient)· 会话自动命名(`data-conversation-titled`,非 transient)。**另有两个名字不走这条流,但两端都在写**(`data-interrupted` / `data-failed`):浏览器在流断掉或读者按停止时给这一轮的回复打上去(`stores/chat-sessions.ts` 的 `markTheReply`),服务端在 `onFinish` 里按 `exit` 落库(`main-agent.ts`),再由会话历史响应原样发回(`message-part-mapping.ts` 的 `toUiMessages`)。**流上不发它们** —— 一轮正在跑的时候,这两件事只有浏览器这一端知道。
 
-**要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 不上流,所以流上没有任何跟它有关的名字。`config/agent.yaml` 的 `thinking_enabled` 是另一回事 —— 它关的是要不要向 provider 索取思考,不是「声明了没人发」。
+**要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这四个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`reasoningFor`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
 
 **每条流的第一帧是心跳**,服务端一拿到 socket 就写一次、不等任何工作做完(`routes/chat.ts`)。它带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进消息、不推 `status` —— 所以它到达不代表这一轮开口了,前端判「服务端开始答了」的判据是**第一个不是 transient 的帧**(`stores/chat-sessions.ts` 的 `isAnswering`)。线上紧跟其后的通常是 `data-conversation-titled`(这一轮的会话名字,每轮都写,哪怕名字没变)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这一轮 Agent 自己的输出。**次序仍然是硬的**:鉴权 → 把用户这句话落库 → 开流 → 才去读记忆、压缩历史、调模型;落库排在最前,是因为一轮跑到一半断掉时,这句话必须已经在库里。**压缩必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):它刚落库,压进去等于把用户这句话喂给模型两遍,一遍在历史里一遍在提问里。**流里出错的出口**:`createUIMessageStream` 的 `execute` 抛出的异常由路由层接住,`logger.error({ err, userId, conversationId, projectId })` 之后写一帧 `error` 再关流 —— 框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样,屏幕上会留一个没人解释的空回复。
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;客户端连着三个间隔没收到就当这条流没了,走跟用户点停止**完全同一条路**(标中断、输入框恢复可按),**只多一句话** —— 向正在看的人闪一句「网络错误」,四个字、不解释也不建议;它是一次性事件不是常驻提示条,4 秒后自己消失,而用户自己点停止是零提示的(他知道自己干了什么)。
 
 **间隔是部署配置,次数写死**:间隔在 `config/agent.yaml` 的 `sse_heartbeat_interval_ms`,经只读端点 `GET /chat/stream-config` 下发给浏览器;客户端的耐心由它乘 `SSE_HEARTBEAT_MISSES_ALLOWED`(3,写死在 `packages/shared/src/agent/heartbeat.ts`)得出:发送节奏和接收耐心是**同一个事实的两面**,一个部署只改一边,要么把健康的流判死、要么等得比自己以为的久。这跟统一 HTTP 传输层把重试次数写死是同一条理由。**两个入口共用一份实现**(`routes/chat.ts` 的 `streamTurn`),定时器在流结束时清掉:每条结束的流留一个活着的计时器,就是往没人读的 socket 里一直写、并把进程挂住。
+
+### Agent 的 provider 路由
+
+<a id="agent-provider-routing"></a>
+
+**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,五条:`anthropic/` · `google/` · `openai/` · `deepseek/` 四条直连,加一条兜底的 openrouter。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一条。
+
+**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起整个产品,而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
+
+**兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定。这一条以前是 `createOpenAI` 指着 OpenRouter 的地址,那个 provider 默认走 `/responses`,两边的响应形状不同。
+
+**要不要 reasoning 由发起调用的那处说,怎么说由表决定**。调用方只传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
+
+**开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。今天聊天要 reasoning、记忆归纳不要,两处各自说各自的。
+
+**这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
 
 ### Configuration files
 
