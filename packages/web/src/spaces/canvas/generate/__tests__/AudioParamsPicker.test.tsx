@@ -83,6 +83,59 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
     expect(slider).toHaveAttribute('aria-valuenow', '0.5');
   });
 
+  it('names the three positions the vendor described, under the slider', () => {
+    // Nothing about 0.50 says what it will sound like, and the vendor
+    // describes exactly three points on that scale (user 2026-09-03).
+    open(ELEVENLABS, { stability: 0.5, similarity: 0.75 });
+    for (const [at, name] of [
+      ['0', 'Creative'],
+      ['0.5', 'Natural'],
+      ['1', 'Robust'],
+    ]) {
+      expect(
+        screen.getByTestId(`generate-audio-stability-stop-${at}`),
+      ).toHaveTextContent(name);
+    }
+  });
+
+  it('marks the stop the value is sitting on', () => {
+    open(ELEVENLABS, { stability: 0.5, similarity: 0.75 });
+    expect(screen.getByTestId('generate-audio-stability-stop-0.5')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('generate-audio-stability-stop-0')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('marks none of them between two stops', () => {
+    // The value is continuous and 0.35 is not a position anyone described;
+    // lighting the nearest would name it something the vendor did not.
+    open(ELEVENLABS, { stability: 0.35, similarity: 0.75 });
+    for (const at of ['0', '0.5', '1']) {
+      expect(screen.getByTestId(`generate-audio-stability-stop-${at}`)).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    }
+  });
+
+  it('jumps to a stop when it is pressed', () => {
+    const onChange = vi.fn();
+    open(ELEVENLABS, { stability: 0.5, similarity: 0.75 }, onChange);
+    fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
+    expect(onChange).toHaveBeenCalledWith({ stability: 1 });
+  });
+
+  it('leaves similarity without stops — nobody named a position on it', () => {
+    open(ELEVENLABS, { stability: 0.5, similarity: 0.75 });
+    expect(
+      screen.queryByTestId('generate-audio-similarity-stop-0'),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers similarity as a slider carrying the model\'s own bounds', () => {
     open(ELEVENLABS, { stability: 0.5, similarity: 0.75 });
     const slider = screen.getByRole('slider', { name: 'Similarity' });

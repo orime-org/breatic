@@ -36,6 +36,14 @@ export type AudioParamControl =
     min: number;
     max: number;
     step: number;
+    /**
+     * Positions on this range that the vendor gave a name, in ascending order.
+     *
+     * Absent on a range whose numbers speak for themselves. Present on one
+     * where they do not: nothing about 0.50 says what it will sound like, and
+     * the vendor describes exactly three points on that scale.
+     */
+    stops?: readonly { value: number; labelKey: string }[];
   };
 
 /** How one parameter is named and read, for the params this panel shows. */
@@ -43,12 +51,23 @@ interface AudioParamSpec {
   labelKey: string;
   /** Renders a value for display — the unit belongs to the number. */
   format: (value: number) => string;
+  /** Named positions on this param's scale, ascending. */
+  stops?: readonly { value: number; labelKey: string }[];
 }
 
 const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
     labelKey: 'canvas.generatePanel.voiceStability',
     format: (v) => v.toFixed(2),
+    // ElevenLabs describes v3's stability at three points and nowhere else
+    // (elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices).
+    // The value travels as the 0-1 double every upstream takes; these are what
+    // tell a reader which part of that range they are dragging into.
+    stops: [
+      { value: 0, labelKey: 'canvas.generatePanel.voiceStabilityCreative' },
+      { value: 0.5, labelKey: 'canvas.generatePanel.voiceStabilityNatural' },
+      { value: 1, labelKey: 'canvas.generatePanel.voiceStabilityRobust' },
+    ],
   },
   similarity: {
     labelKey: 'canvas.generatePanel.voiceSimilarity',
@@ -102,7 +121,15 @@ function controlFor(
   // A step of zero or one that runs backwards leaves a control with no reachable
   // stop, and an empty range leaves it with exactly one.
   if (step <= 0 || max <= min) return null;
-  return { name, labelKey: spec.labelKey, kind: 'range', min, max, step };
+  return {
+    name,
+    labelKey: spec.labelKey,
+    kind: 'range',
+    min,
+    max,
+    step,
+    ...(spec.stops ? { stops: spec.stops } : {}),
+  };
 }
 
 /**

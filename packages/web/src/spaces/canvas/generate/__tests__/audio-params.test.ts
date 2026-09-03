@@ -35,7 +35,7 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
 // The two shipped tts models, as their yaml declares them.
 const ELEVENLABS = model({
   voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
-  stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
+  stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   similarity: { description: '', min: 0, max: 1, step: 0.05, default: 0.75 },
 });
 const FISH = model({
@@ -45,13 +45,23 @@ const FISH = model({
 });
 
 describe('audioParamControls — each model states its own speaking params', () => {
-  it('reads ElevenLabs\' pair: stability as named stops, similarity as a range', () => {
+  it('reads ElevenLabs\' pair, both ranges, stability carrying its stops', () => {
     expect(audioParamControls(ELEVENLABS)).toEqual([
       {
         name: 'stability',
         labelKey: 'canvas.generatePanel.voiceStability',
-        kind: 'choice',
-        options: [0, 0.5, 1],
+        kind: 'range',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        // The vendor describes these three positions and no others, so the
+        // slider names them where they sit rather than leaving a reader to
+        // guess what 0.50 sounds like.
+        stops: [
+          { value: 0, labelKey: 'canvas.generatePanel.voiceStabilityCreative' },
+          { value: 0.5, labelKey: 'canvas.generatePanel.voiceStabilityNatural' },
+          { value: 1, labelKey: 'canvas.generatePanel.voiceStabilityRobust' },
+        ],
       },
       {
         name: 'similarity',
@@ -62,6 +72,15 @@ describe('audioParamControls — each model states its own speaking params', () 
         step: 0.05,
       },
     ]);
+  });
+
+  it('leaves a range without stops when nobody named a position on it', () => {
+    // Similarity runs the same 0-1 as stability and has no named positions:
+    // the stops belong to the param, not to the shape of the control.
+    const similarity = audioParamControls(ELEVENLABS).find(
+      (c) => c.name === 'similarity',
+    );
+    expect(similarity).not.toHaveProperty('stops');
   });
 
   it('reads Fish\'s pair: speed and volume, both ranges', () => {

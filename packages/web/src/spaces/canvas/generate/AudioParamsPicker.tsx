@@ -14,6 +14,7 @@ import {
 } from '@web/components/ui/popover';
 import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import {
   audioParamControls,
   formatAudioParam,
@@ -218,6 +219,20 @@ function ParamControlRow({
 }
 
 /** What {@link ParamSliderRow} needs. */
+/**
+ * Whether the value has landed on a named stop.
+ *
+ * Radix rounds to the step's decimal count before reporting, and the stops are
+ * written at that precision, so the two meet exactly — the tolerance is what
+ * keeps that true if a step ever divides less evenly.
+ * @param shown - The value the slider is showing.
+ * @param stop - The stop's value.
+ * @returns True when the slider is sitting on that stop.
+ */
+function atStop(shown: number | undefined, stop: number): boolean {
+  return shown !== undefined && Math.abs(shown - stop) < 1e-9;
+}
+
 interface ParamSliderRowProps {
   control: Extract<AudioParamControl, { kind: 'range' }>;
   label: string;
@@ -250,6 +265,7 @@ function ParamSliderRow({
   onChange,
   className,
 }: ParamSliderRowProps): React.JSX.Element {
+  const t = useTranslation();
   // Where the thumb sits until the gesture ends. Held apart from `value` so
   // the control follows the pointer while the document does not.
   const [dragged, setDragged] = React.useState<number | null>(null);
@@ -333,6 +349,33 @@ function ParamSliderRow({
         onBlur={endKeyGesture}
         onPointerDown={endKeyGesture}
       />
+      {control.stops && (
+        // Under the track, at the positions they name: `justify-between` puts
+        // the first at its start and the last at its end, and the negative
+        // margin pulls each label's own padding back off those ends so the
+        // words line up with the track rather than sitting inside it.
+        <div className='-mx-1 mt-1.5 flex justify-between'>
+          {control.stops.map((stop) => (
+            <Button
+              key={stop.value}
+              type='button'
+              variant='ghost'
+              size={null}
+              aria-pressed={atStop(shown, stop.value)}
+              data-testid={`generate-audio-${control.name}-stop-${stop.value}`}
+              className={cn(
+                'px-1 text-2xs',
+                atStop(shown, stop.value)
+                  ? 'text-foreground'
+                  : 'font-normal text-muted-foreground',
+              )}
+              onClick={() => onChange({ [control.name]: stop.value })}
+            >
+              {t(stop.labelKey)}
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
