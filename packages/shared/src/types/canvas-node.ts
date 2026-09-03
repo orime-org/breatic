@@ -588,8 +588,49 @@ export interface NodeStateUpdateEvent {
   renewLease?: HandlingPhase;
 }
 
+/** The four numbers a node shows about its tasks. */
+export interface NodeTaskCounts {
+  running: number;
+  done: number;
+  failed: number;
+  expired: number;
+}
+
+/** The five content fields a finished task writes onto its node. */
+export interface NodeTaskResult {
+  content: string;
+  coverUrl: string | null;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+}
+
+/**
+ * The server recounted a node's tasks (#186).
+ *
+ * One event type covers every state change, because the document holds only
+ * the four counts: which task moved is not on the wire, so nothing here can
+ * be applied to the wrong row. Repeating an event lands the same numbers.
+ *
+ * `result` rides on the transition that reached `done` and on no other, so a
+ * task judged expired before its report arrived leaves the node's content
+ * alone — the user may already have retried, and choosing for them is not
+ * ours to do. Its result is still reachable from the task list.
+ */
+export interface NodeTaskCountsEvent {
+  type: 'node-task-counts';
+  /** Yjs doc name, `project-{projectId}/canvas-{spaceId}`. */
+  docName: string;
+  /** The node whose counts these are. */
+  nodeId: string;
+  /** All four, freshly counted from the table. */
+  counts: NodeTaskCounts;
+  /** Present only on the transition into `done`. */
+  result?: NodeTaskResult;
+}
+
 /** Single union for forward-compat. */
-export type NodeEvent = NodeStateUpdateEvent;
+export type NodeEvent = NodeStateUpdateEvent | NodeTaskCountsEvent;
 
 // ── Edges ──────────────────────────────────────────────────────────
 // Edges carry no shared wire data fields. `isPrimary` (the generative

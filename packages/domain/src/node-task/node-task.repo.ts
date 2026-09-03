@@ -45,6 +45,15 @@ export interface NodeTaskRow {
 /**
  * Open a task in `running`.
  * @param data - Everything the row needs at birth.
+ * @param data.projectId - Owning project.
+ * @param data.spaceId - The space, so an event can name the document.
+ * @param data.nodeId - The node this task runs on.
+ * @param data.kind - `upload` or `generation`.
+ * @param data.startedByUserId - Who started it.
+ * @param data.budgetMs - The conservative allowance the timer is set from.
+ * @param data.label - Filename or model name, what the user reads.
+ * @param data.taskId - The AIGC job; absent on uploads.
+ * @param data.storageKey - The upload grant; absent on generations.
  * @returns The new row's id.
  */
 export async function insertRunning(data: {
@@ -70,6 +79,8 @@ export async function insertRunning(data: {
  * @param taskId - Which task.
  * @param status - Where it lands.
  * @param fields - The result pointer or the reason, whichever applies.
+ * @param fields.nodeHistoryId - The history row holding the result.
+ * @param fields.errorMessage - Why it failed or timed out.
  * @returns True when this call is the one that moved it.
  */
 export async function settleRunning(

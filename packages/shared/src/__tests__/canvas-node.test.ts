@@ -27,6 +27,7 @@ import type {
   FocusImage,
   CanvasNodeFields,
   NodeStateUpdateEvent,
+  NodeTaskCountsEvent,
   NodeEvent,
 } from "../types/canvas-node.js";
 
@@ -542,8 +543,28 @@ describe("NodeStateUpdateEvent", () => {
 // ── NodeEvent alias ────────────────────────────────────────────────
 
 describe("NodeEvent", () => {
-  it("is an alias of NodeStateUpdateEvent", () => {
-    expectTypeOf<NodeEvent>().toEqualTypeOf<NodeStateUpdateEvent>();
+  // Two members since #186: the counts event carries a node's four task
+  // numbers, and `type` is what tells a consumer which one it is holding.
+  it("is the union of the events collab consumes", () => {
+    expectTypeOf<NodeEvent>().toEqualTypeOf<
+      NodeStateUpdateEvent | NodeTaskCountsEvent
+    >();
+  });
+
+  it("discriminates on type", () => {
+    expectTypeOf<NodeEvent["type"]>().toEqualTypeOf<
+      "node-state-update" | "node-task-counts"
+    >();
+  });
+
+  it("accepts a NodeTaskCountsEvent as NodeEvent", () => {
+    const event: NodeEvent = {
+      type: "node-task-counts",
+      docName: "project-abc/canvas-def",
+      nodeId: "node-1",
+      counts: { running: 1, done: 0, failed: 0, expired: 0 },
+    };
+    expect(event.type).toBe("node-task-counts");
   });
 
   it("accepts a NodeStateUpdateEvent as NodeEvent", () => {

@@ -53,6 +53,15 @@ export interface DismissResult {
  * Open a task in `running` on a node.
  * @param opts - Project, space and node it belongs to, who started it, the
  *   conservative allowance, and the label the user reads.
+ * @param opts.projectId - Owning project.
+ * @param opts.spaceId - The space, so an event can name the document.
+ * @param opts.nodeId - The node this task runs on.
+ * @param opts.kind - `upload` or `generation`.
+ * @param opts.startedByUserId - Who started it.
+ * @param opts.budgetMs - The conservative allowance the timer is set from.
+ * @param opts.label - Filename or model name, what the user reads.
+ * @param opts.taskId - The AIGC job; absent on uploads.
+ * @param opts.storageKey - The upload grant; absent on generations.
  * @returns The new task's id and the node's counts after it.
  */
 export async function open(opts: {
@@ -78,6 +87,10 @@ export async function open(opts: {
  * terminal is late, not wrong, and the caller has other work riding on the
  * same request.
  * @param opts - Which task, where it lands, and the result pointer or reason.
+ * @param opts.taskId - Which task.
+ * @param opts.outcome - Where it lands.
+ * @param opts.nodeHistoryId - The history row holding the result.
+ * @param opts.errorMessage - Why it failed or timed out.
  * @returns Whether this call moved the row, plus the node's counts.
  * @throws {Error} When the task id names no row at all — a machine reporting
  *   about a task nobody opened is a wiring fault, not a late message.
@@ -115,6 +128,10 @@ export async function settle(opts: {
 /**
  * Clear one record from the list at the user's request.
  * @param opts - Which task.
+ * @param opts.taskId - Which task.
+ * @param opts.projectId - The caller's project, used to recount when this
+ *   table never held the row.
+ * @param opts.nodeId - The caller's node, same purpose.
  * @returns Whether a row was hidden, plus the node's counts.
  * @throws {ConflictError} When the row is still running: a task that has not
  *   settled is not a record to clear yet.
@@ -149,6 +166,8 @@ export async function dismiss(opts: {
 /**
  * Read the four numbers the node's corner shows.
  * @param opts - Project and node.
+ * @param opts.projectId - Owning project.
+ * @param opts.nodeId - The node.
  * @returns One count per state.
  */
 export async function countsFor(opts: {
@@ -161,6 +180,8 @@ export async function countsFor(opts: {
 /**
  * List the live tasks on a node, for the panel the user just opened.
  * @param opts - Project and node.
+ * @param opts.projectId - Owning project.
+ * @param opts.nodeId - The node.
  * @returns Every row the user may still act on, newest first.
  */
 export async function listLive(opts: {

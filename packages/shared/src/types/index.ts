@@ -56,6 +56,9 @@ export type {
   FocusImage,
   CanvasNodeFields,
   NodeStateUpdateEvent,
+  NodeTaskCounts,
+  NodeTaskResult,
+  NodeTaskCountsEvent,
   NodeEvent,
 } from "@shared/types/canvas-node.js";
 
