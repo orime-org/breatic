@@ -26,13 +26,21 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { screen, act, waitFor, fireEvent } from '@testing-library/react';
-import type { Editor } from '@tiptap/react';
+
+import * as Y from 'yjs';
+
+import { documentBodyFragment } from '@breatic/shared';
+import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 
 import {
   mountDocumentEditor,
+  focusBody,
+  selectTextRange,
   hoverOpenSlot,
   openSharedBody,
   closeShared,
+  sharedDoc,
+  type HarnessEditor,
   sharedBodyMarkup,
 } from './bubble-bar-harness';
 
@@ -48,17 +56,17 @@ afterEach(() => {
  * editor holds it, and without it the bar never enters the document at all, so
  * every query comes back empty.
  * @param editor - The editor.
- * @param from - Where the selection starts.
- * @param to - Where it ends.
+ * @param from - The first character of the span.
+ * @param to - One past its last character.
  */
 async function selectWithFocus(
-  editor: Editor,
+  editor: HarnessEditor,
   from: number,
   to: number,
 ): Promise<void> {
   act(() => {
-    editor.view.dom.focus();
-    editor.commands.setTextSelection({ from, to });
+    focusBody(editor);
+    selectTextRange(editor, from, to);
   });
   // The bar reaches the document one render after the selection changes, so a
   // synchronous assertion would run ahead of it and find nothing.
@@ -66,6 +74,27 @@ async function selectWithFocus(
     expect(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]').length,
     ).toBeGreaterThan(0);
+  });
+}
+
+/** Puts the shared document's one paragraph inside a quote. */
+function quoteTheParagraph(): void {
+  const shared = sharedDoc();
+  const blocks: Y.XmlElement[] = [];
+  const walk = (node: Y.XmlFragment | Y.XmlElement): void => {
+    for (let i = 0; i < node.length; i += 1) {
+      const child: unknown = node.get(i);
+      if (child instanceof Y.XmlElement) {
+        if (child.nodeName === 'paragraph') blocks.push(child);
+        walk(child);
+      }
+    }
+  };
+  walk(documentBodyFragment(shared));
+  const paragraph = blocks[0];
+  if (paragraph === undefined) throw new Error('no paragraph to quote');
+  shared.transact(() => {
+    paragraph.setAttribute('quoted', true as never);
   });
 }
 
@@ -88,7 +117,7 @@ describe('the bubble bar shell', () => {
     ])('reads %s off the block the selection sits in', async (blockType, body) => {
       const editor = openSharedBody(body);
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 3, 8);
+      await selectWithFocus(editor, 2, 7);
 
       const slot = screen.getByTestId('doc-bubble-block-type');
       expect(slot.getAttribute('data-block-type')).toBe(blockType);
@@ -116,13 +145,13 @@ describe('the bubble bar shell', () => {
       const editor = openSharedBody('<h1>a heading</h1><p>a paragraph</p>');
       mountDocumentEditor(editor);
 
-      await selectWithFocus(editor, 2, 6);
+      await selectWithFocus(editor, 1, 5);
       expect(
         screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
       ).toBe('heading-1');
 
       await act(async () => {
-        editor.commands.setTextSelection({ from: 14, to: 20 });
+        selectTextRange(editor, 13, 19);
       });
       await waitFor(() => {
         expect(
@@ -151,7 +180,7 @@ describe('the bubble bar shell', () => {
     ])('greys the alignment slot in %s: %s', async (body, greyed) => {
       const editor = openSharedBody(body);
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 3, 8);
+      await selectWithFocus(editor, 2, 7);
 
       const slot = screen.getByTestId('doc-bubble-align');
       const classes = slot.className.split(/\s+/);
@@ -167,7 +196,7 @@ describe('the bubble bar shell', () => {
       const editor = openSharedBody('<h1>a heading</h1><pre><code>some code</code></pre>');
       mountDocumentEditor(editor);
       // Anchored in the code block, reaching back into the heading.
-      await selectWithFocus(editor, 20, 2);
+      await selectWithFocus(editor, 15, 2);
 
       expect(
         screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
@@ -181,7 +210,7 @@ describe('the bubble bar shell', () => {
       const editor = openSharedBody('<h1>a heading</h1><p>a paragraph</p>');
       mountDocumentEditor(editor);
       // From inside the heading through into the paragraph: two block types.
-      await selectWithFocus(editor, 2, 20);
+      await selectWithFocus(editor, 1, 19);
 
       expect(
         screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
@@ -193,7 +222,7 @@ describe('the bubble bar shell', () => {
       mountDocumentEditor(editor);
       // Dragged from the heading back up into the paragraph: the anchor is
       // the heading end.
-      await selectWithFocus(editor, 20, 2);
+      await selectWithFocus(editor, 19, 1);
 
       expect(
         screen.getByTestId('doc-bubble-block-type').getAttribute('data-block-type'),
@@ -224,14 +253,16 @@ describe('the bubble bar shell', () => {
     });
 
     // A7 greys the slot where nothing in the selection is alignable. One
-    // alignable block is enough, and the paragraph inside the quote is one —
-    // the list item beside it is not.
-    it('leaves the alignment slot live where a quote is one of two wrappers', async () => {
+    // alignable block is enough, and a quoted paragraph is one — quote is a
+    // prop on the block and takes no part in the answer, while the list item
+    // beside it is not alignable at all.
+    it('leaves the alignment slot live where one of the two is quoted', async () => {
       const editor = openSharedBody(
-        '<ul><li><p>an item</p></li></ul><blockquote><p>a line</p></blockquote>',
+        '<p>a line</p><ul><li><p>an item</p></li></ul>',
       );
+      quoteTheParagraph();
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 5, 17);
+      await selectWithFocus(editor, 2, 10);
 
       expect(
         screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
@@ -245,10 +276,10 @@ describe('the bubble bar shell', () => {
     it('leaves focus in the body while a menu is open', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       await hoverOpenSlot('doc-bubble-block-type');
 
-      expect(document.activeElement).toBe(editor.view.dom);
+      expect(document.activeElement).toBe(domElementOf(editor));
     });
 
     // Moving along the bar opens each slot in turn. The one being left behind
@@ -256,7 +287,7 @@ describe('the bubble bar shell', () => {
     it('leaves the second menu open when the pointer moves between slots', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       await hoverOpenSlot('doc-bubble-align');
       const second = await hoverOpenSlot('doc-bubble-block-type');
 
@@ -265,7 +296,7 @@ describe('the bubble bar shell', () => {
         setTimeout(resolve, 300);
       });
       expect(second.isConnected).toBe(true);
-      expect(document.activeElement).toBe(editor.view.dom);
+      expect(document.activeElement).toBe(domElementOf(editor));
     });
   });
 
@@ -274,14 +305,14 @@ describe('the bubble bar shell', () => {
   it('takes the alignment menu away when the slot greys out under it', async () => {
     const editor = openSharedBody('<pre><code>some code</code></pre><p>a paragraph</p>');
     mountDocumentEditor(editor);
-    await selectWithFocus(editor, 3, 18);
+    await selectWithFocus(editor, 2, 17);
     expect(
       screen.getByTestId('doc-bubble-align').getAttribute('aria-disabled'),
     ).toBeNull();
     await hoverOpenSlot('doc-bubble-align');
 
     await act(async () => {
-      editor.commands.setTextSelection({ from: 3, to: 8 });
+      selectTextRange(editor, 2, 7);
     });
     await waitFor(() => {
       expect(
@@ -298,23 +329,20 @@ describe('the bubble bar shell', () => {
   it('leaves no menu recorded as open once the alignment slot greys out', async () => {
     const editor = openSharedBody('<pre><code>some code</code></pre><p>a paragraph</p>');
     mountDocumentEditor(editor);
-    await selectWithFocus(editor, 3, 18);
+    await selectWithFocus(editor, 2, 17);
     await hoverOpenSlot('doc-bubble-align');
 
     await act(async () => {
-      editor.commands.setTextSelection({ from: 3, to: 8 });
+      selectTextRange(editor, 2, 7);
     });
     await waitFor(() => {
       expect(screen.queryByTestId('doc-bubble-align-menu')).toBeNull();
     });
 
     act(() => {
-      editor.view.dom.blur();
-      editor.emit('blur', {
-        editor,
-        event: new FocusEvent('blur'),
-        transaction: editor.state.tr,
-      });
+      // The real thing a departing reader sends: the bar listens for
+      // `focusout` on the body, and jsdom raises it from `blur()`.
+      domElementOf(editor)?.blur();
     });
     await waitFor(() => {
       expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
@@ -328,16 +356,13 @@ describe('the bubble bar shell', () => {
   it('takes the bar away once the last menu closes after a blur', async () => {
     const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
-    await selectWithFocus(editor, 1, 10);
+    await selectWithFocus(editor, 0, 9);
     await hoverOpenSlot('doc-bubble-block-type');
 
     act(() => {
-      editor.view.dom.blur();
-      editor.emit('blur', {
-        editor,
-        event: new FocusEvent('blur'),
-        transaction: editor.state.tr,
-      });
+      // The real thing a departing reader sends: the bar listens for
+      // `focusout` on the body, and jsdom raises it from `blur()`.
+      domElementOf(editor)?.blur();
     });
     expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeNull();
 
@@ -364,7 +389,7 @@ describe('the bubble bar shell', () => {
     ])('draws %s as an ordinary control', async (id) => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
 
       const slot = screen.getByTestId(id);
       expect(slot.getAttribute('aria-disabled')).toBeNull();
@@ -384,7 +409,7 @@ describe('the bubble bar shell', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const editor = openSharedBody('<p>hello world</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 6);
+      await selectWithFocus(editor, 0, 5);
       const before = sharedBodyMarkup();
 
       const menu = await hoverOpenSlot(slot);
@@ -413,19 +438,17 @@ describe('the bubble bar shell', () => {
     // The task list is the one row the demo greys, because it has
     // no schema node to turn a paragraph into. The rest of the block type menu
     // reads as available.
-    it('greys the task list row, and only that one', async () => {
+    it('greys no row over a selection every row reaches', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-block-type');
 
       const greyed = Array.from(
         menu.querySelectorAll('[data-testid^="doc-bubble-block-type-item-"]'),
       ).filter((n) => n.getAttribute('aria-disabled') === 'true');
 
-      expect(greyed.map((n) => n.getAttribute('data-testid'))).toEqual([
-        'doc-bubble-block-type-item-task-list',
-      ]);
+      expect(greyed.map((n) => n.getAttribute('data-testid'))).toEqual([]);
     });
 
   });
@@ -440,7 +463,7 @@ describe('the bubble bar shell', () => {
     it('keeps the four new openers out of the tab order', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
 
       for (const id of [
         'doc-bubble-block-type',
@@ -456,7 +479,7 @@ describe('the bubble bar shell', () => {
     it('opens on hover, and again on click', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
 
       await hoverOpenSlot('doc-bubble-block-type');
 
@@ -470,7 +493,7 @@ describe('the bubble bar shell', () => {
       expect(screen.queryByTestId('doc-bubble-block-type')).not.toBeNull();
       // Closing hands the focus back to the body, so the bar has no reason to
       // judge focus-has-left and take itself away.
-      expect(editor.view.hasFocus()).toBe(true);
+      expect(viewOf(editor)?.hasFocus()).toBe(true);
 
       // R4 again: the opener also answers a click.
       act(() => {
@@ -487,7 +510,7 @@ describe('the bubble bar shell', () => {
     it('keeps the menu up when the slot is clicked while already open', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       await hoverOpenSlot('doc-bubble-block-type');
 
       act(() => {
@@ -507,7 +530,7 @@ describe('the bubble bar shell', () => {
     it('keeps the menu up while the pointer crosses the gap onto it', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-block-type');
 
       // Leaving the ZONE is what starts the close: the pointer is in the gap
@@ -534,7 +557,7 @@ describe('the bubble bar shell', () => {
     it('takes the menu away when the pointer stops in the gap', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       await hoverOpenSlot('doc-bubble-block-type');
 
       // The other half of the same countdown: nothing cancels it, so it runs
@@ -552,7 +575,7 @@ describe('the bubble bar shell', () => {
     it('hands the open menu over when the pointer moves to another slot', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       await hoverOpenSlot('doc-bubble-block-type');
 
       act(() => {
@@ -567,7 +590,7 @@ describe('the bubble bar shell', () => {
     it('leaves the bar on screen while a menu is up', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       await hoverOpenSlot('doc-bubble-block-type');
 
       const bar = screen.getByTestId('doc-selection-bubble-bar');
@@ -577,8 +600,8 @@ describe('the bubble bar shell', () => {
     it('keeps the bar and the selection through open and close', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
-      const before = editor.state.selection;
+      await selectWithFocus(editor, 0, 9);
+      const before = editor.prosemirrorState.selection;
       await hoverOpenSlot('doc-bubble-block-type');
 
       // One of the bar's conditions is that the editor holds the focus, and
@@ -587,7 +610,7 @@ describe('the bubble bar shell', () => {
       // the link panel needs — so the bar stays on screen either way, and the
       // selection is untouched.
       expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
-      expect(editor.state.selection.eq(before)).toBe(true);
+      expect(editor.prosemirrorState.selection.eq(before)).toBe(true);
 
       act(() => {
         fireEvent.pointerLeave(screen.getByTestId('doc-bubble-block-type-zone'));
@@ -596,13 +619,13 @@ describe('the bubble bar shell', () => {
         expect(screen.queryByTestId('doc-bubble-block-type-menu')).toBeNull();
       });
       expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
-      expect(editor.state.selection.eq(before)).toBe(true);
+      expect(editor.prosemirrorState.selection.eq(before)).toBe(true);
     });
 
     it('swallows the wheel over the menu, and closes once the body really scrolls', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-block-type');
 
       // With the pointer resting on the menu the body does not scroll (B5).
@@ -635,7 +658,7 @@ describe('the bubble bar shell', () => {
     it('lists the nine block types the demo draws, with their shortcuts', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-block-type');
 
       const items = Array.from(menu.querySelectorAll('[data-testid^="doc-bubble-block-type-item-"]'));
@@ -678,7 +701,7 @@ describe('the bubble bar shell', () => {
       vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-block-type');
 
       expect(
@@ -694,7 +717,7 @@ describe('the bubble bar shell', () => {
     it('gives each alignment row an icon', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-align');
 
       const rows = Array.from(
@@ -709,22 +732,22 @@ describe('the bubble bar shell', () => {
       expect(new Set(shapes).size).toBe(3);
     });
 
-    it('greys the task list item out, the way the demo draws it', async () => {
+    it('draws the task list item live, like the eight beside it', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-block-type');
 
       const taskList = menu.querySelector(
         '[data-testid="doc-bubble-block-type-item-task-list"]',
       ) as HTMLElement;
-      expect(taskList.getAttribute('aria-disabled')).toBe('true');
+      expect(taskList.getAttribute('aria-disabled')).not.toBe('true');
     });
 
     it('lists the three alignments the demo draws', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-align');
 
       expect(
@@ -741,7 +764,7 @@ describe('the bubble bar shell', () => {
     it('lays the colour panel out in two rows of eight with a reset, the way the demo draws it', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-color');
 
       // Eight, not seven: the demo puts a default in front of the seven
@@ -778,7 +801,7 @@ describe('the bubble bar shell', () => {
     it('lists the eight AI commands the ruling draws', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       const menu = await hoverOpenSlot('doc-bubble-ai');
 
       expect(
@@ -816,13 +839,16 @@ describe('the bubble bar shell', () => {
     // These three moved off the bar into this menu, and they really change
     // the document from there (C1).
     it.each([
-      ['bullet-list', '<bulletlist>'],
-      ['ordered-list', '<orderedlist'],
-      ['quote', '<blockquote>'],
+      // A list item is a block type in the flat model and a quote is a prop
+      // on one, so what a press leaves behind is a node name for two of the
+      // three and an attribute for the third.
+      ['bullet-list', '<bulletlistitem'],
+      ['ordered-list', '<numberedlistitem'],
+      ['quote', 'quoted="true"'],
     ])('running %s from the menu still changes the document', async (id, marker) => {
       const editor = openSharedBody('<p>hello world</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 6);
+      await selectWithFocus(editor, 0, 5);
       expect(sharedBodyMarkup()).not.toContain(marker);
 
       const menu = await hoverOpenSlot('doc-bubble-block-type');
@@ -838,14 +864,15 @@ describe('the bubble bar shell', () => {
     // tell it apart from a row that did nothing at all — `document-block-type`
     // has its outcome instead.
     it.each([
-      ['heading-1', '<heading level="1">'],
-      ['heading-2', '<heading level="2">'],
-      ['heading-3', '<heading level="3">'],
-      ['code-block', '<codeblock>'],
-    ])('clicking %s makes %s', async (item, marker) => {
+      ['heading-1', 'heading', 1],
+      ['heading-2', 'heading', 2],
+      ['heading-3', 'heading', 3],
+      ['code-block', 'codeBlock', undefined],
+      ['task-list', 'checkListItem', undefined],
+    ])('clicking %s makes a %s', async (item, type, level) => {
       const editor = openSharedBody('<p>hello world</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 6);
+      await selectWithFocus(editor, 0, 5);
 
       const menu = await hoverOpenSlot('doc-bubble-block-type');
       act(() => {
@@ -856,26 +883,14 @@ describe('the bubble bar shell', () => {
         ).click();
       });
 
-      expect(sharedBodyMarkup()).toContain(marker);
+      const blocks = editor.document as unknown as {
+        type: string;
+        props: Record<string, unknown>;
+      }[];
+      expect(blocks[0]?.type).toBe(type);
+      if (level !== undefined) expect(blocks[0]?.props['level']).toBe(level);
     });
 
-    it('clicking the task list row leaves the document alone', async () => {
-      const editor = openSharedBody('<p>hello world</p>');
-      mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 6);
-      const before = sharedBodyMarkup();
-
-      const menu = await hoverOpenSlot('doc-bubble-block-type');
-      act(() => {
-        (
-          menu.querySelector(
-            '[data-testid="doc-bubble-block-type-item-task-list"]',
-          ) as HTMLElement
-        ).click();
-      });
-
-      expect(sharedBodyMarkup()).toBe(before);
-    });
   });
 
   describe('when it appears', () => {
@@ -890,7 +905,7 @@ describe('the bubble bar shell', () => {
     it('stays away while the pointer is down, and comes back when it lifts', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
 
       // The bar steps aside the same way it does while the link panel is up:
       // the element stays in the DOM, carrying `invisible` and
@@ -898,7 +913,7 @@ describe('the bubble bar shell', () => {
       // bar's own show/hide question, which a transaction that alters nothing
       // would not re-ask.
       act(() => {
-        fireEvent.pointerDown(editor.view.dom);
+        fireEvent.pointerDown(viewOf(editor)!.dom);
       });
       await waitFor(() => {
         expect(screen.getByTestId('doc-selection-bubble-bar').className).toContain('invisible');
@@ -907,13 +922,13 @@ describe('the bubble bar shell', () => {
       // Held down while the selection keeps changing: the bar must not appear
       // once.
       act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 14 });
-        editor.commands.setTextSelection({ from: 1, to: 18 });
+        selectTextRange(editor, 0, 13);
+        selectTextRange(editor, 0, 17);
       });
       expect(screen.getByTestId('doc-selection-bubble-bar').className).toContain('invisible');
 
       act(() => {
-        fireEvent.pointerUp(editor.view.root as unknown as Element);
+        fireEvent.pointerUp(viewOf(editor)!.root as unknown as Element);
       });
       await waitFor(() => {
         expect(screen.getByTestId('doc-selection-bubble-bar').className).not.toContain('invisible');
@@ -925,7 +940,7 @@ describe('the bubble bar shell', () => {
       mountDocumentEditor(editor);
       // The selection changes with no pointer event at all — the shift-arrow
       // route.
-      await selectWithFocus(editor, 1, 10);
+      await selectWithFocus(editor, 0, 9);
       expect(screen.queryByTestId('doc-selection-bubble-bar')).not.toBeNull();
     });
 
@@ -937,21 +952,21 @@ describe('the bubble bar shell', () => {
       // from a selection that is already there, so the bar never goes away and
       // "when does it come back" cannot be measured in them.
       act(() => {
-        editor.view.dom.focus();
-        editor.commands.setTextSelection({ from: 1, to: 1 });
+        viewOf(editor)!.dom.focus();
+        selectTextRange(editor, 0, 0);
       });
       await waitFor(() => {
         expect(screen.queryByTestId('doc-selection-bubble-bar')).toBeNull();
       });
 
       act(() => {
-        fireEvent.pointerDown(editor.view.dom);
+        fireEvent.pointerDown(viewOf(editor)!.dom);
       });
       act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 10 });
+        selectTextRange(editor, 0, 9);
       });
       act(() => {
-        fireEvent.pointerUp(editor.view.root as unknown as Element);
+        fireEvent.pointerUp(viewOf(editor)!.root as unknown as Element);
       });
 
       // Microtasks flushed and nothing else: user 2026-08-26 asked for the bar
