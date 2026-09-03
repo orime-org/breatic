@@ -18,10 +18,18 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
     }
   });
 
-  it('covers the three picker vendors (midjourney / nano-banana / seedream)', () => {
-    expect(MODEL_ICON_NAMES).toEqual(
-      expect.arrayContaining(['midjourney', 'nano-banana', 'seedream']),
-    );
+  it('covers every picker vendor, image and audio alike', () => {
+    // Exact rather than containing: a name dropped from the registry while a
+    // model's yaml still declares it draws nothing at all, and nothing else
+    // would say so.
+    expect([...MODEL_ICON_NAMES].sort()).toEqual([
+      'elevenlabs',
+      'f5-tts',
+      'fish-audio',
+      'midjourney',
+      'nano-banana',
+      'seedream',
+    ]);
   });
 
   it('renders nothing for an absent icon name (undefined) rather than a fallback', () => {

@@ -8,6 +8,7 @@
 models:
   - name: "f5-tts"
     display_name: "F5 TTS"
+    icon: "f5-tts"
     mode: "voice_clone"
     takes_prompt: true
     tier: recommended

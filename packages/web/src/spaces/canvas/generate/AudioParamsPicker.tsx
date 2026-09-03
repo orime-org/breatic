@@ -16,7 +16,6 @@ import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   audioParamControls,
-  audioParamOptionLabelKey,
   formatAudioParam,
   type AudioParamControl,
 } from '@web/spaces/canvas/generate/audio-params';
@@ -69,8 +68,8 @@ function shownValue(
  *
  * The pill is the shape VideoParamsPicker uses, down to the class string —
  * the same slot in the same row of the same panel family. Values read in
- * their own units, and a stop the vendor named reads by that name, so the
- * label is `Natural · 0.75` rather than a pair of bare numbers.
+ * their own units, so the label is `0.50 · 0.75` for a voice and `1.00x ·
+ * +2 dB` for the model that speaks in those.
  *
  * Which params appear, and whether one is a row of stops or a slider, comes
  * from the model's own declaration (see `audio-params.ts`). Nothing here knows
@@ -101,11 +100,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
     .map((control) => {
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
-      const named =
-        control.kind === 'choice'
-          ? audioParamOptionLabelKey(control.name, shown)
-          : undefined;
-      return named ? t(named) : formatAudioParam(control.name, shown);
+      return formatAudioParam(control.name, shown);
     })
     .filter(Boolean)
     .join(' · ');
@@ -193,22 +188,16 @@ function ParamControlRow({
   onChange,
   last,
 }: ParamControlRowProps): React.JSX.Element {
-  const t = useTranslation();
   const spacing = last ? undefined : 'mb-3';
 
   if (control.kind === 'choice') {
     return (
       <ParamOptionGroup
         label={label}
-        options={control.options.map((option) => {
-          const key = audioParamOptionLabelKey(control.name, option);
-          return {
-            value: option,
-            // A stop the vendor names reads by that name; one it does not
-            // reads as the number it is.
-            label: key ? t(key) : formatAudioParam(control.name, option),
-          };
-        })}
+        options={control.options.map((option) => ({
+          value: option,
+          label: formatAudioParam(control.name, option),
+        }))}
         value={value}
         onSelect={(next) => onChange({ [control.name]: Number(next) })}
         testIdPrefix={`generate-audio-${control.name}-option`}

@@ -6,7 +6,6 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import {
   audioParamControls,
-  audioParamOptionLabelKey,
   formatAudioParam,
 } from '@web/spaces/canvas/generate/audio-params';
 
@@ -187,29 +186,5 @@ describe('formatAudioParam — a value reads in its own unit', () => {
 
   it('falls back to the bare number for a param it does not know', () => {
     expect(formatAudioParam('latency_mode', 2)).toBe('2');
-  });
-});
-
-describe('audioParamOptionLabelKey — a vendor\'s own name for a stop', () => {
-  it('names ElevenLabs v3\'s three stability stops', () => {
-    // The vendor documents these three as Creative / Natural / Robust and never
-    // as numbers; showing 0 / 0.5 / 1 would name them something else.
-    expect(audioParamOptionLabelKey('stability', 0)).toBe(
-      'canvas.generatePanel.voiceStabilityCreative',
-    );
-    expect(audioParamOptionLabelKey('stability', 0.5)).toBe(
-      'canvas.generatePanel.voiceStabilityNatural',
-    );
-    expect(audioParamOptionLabelKey('stability', 1)).toBe(
-      'canvas.generatePanel.voiceStabilityRobust',
-    );
-  });
-
-  it('has no name for a stop outside the documented three', () => {
-    expect(audioParamOptionLabelKey('stability', 0.25)).toBeUndefined();
-  });
-
-  it('has no names for a param whose stops read as plain numbers', () => {
-    expect(audioParamOptionLabelKey('speed', 1)).toBeUndefined();
   });
 });

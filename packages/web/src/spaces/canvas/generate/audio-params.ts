@@ -38,33 +38,17 @@ export type AudioParamControl =
     step: number;
   };
 
-/**
- * How one parameter is named and read, for the params this panel shows.
- *
- * A vendor's own name for a value is part of that value: ElevenLabs describes
- * v3's three stability stops as Creative / Natural / Robust and never as
- * numbers, so showing 0 / 0.5 / 1 would name them something the vendor's own
- * documentation does not.
- */
+/** How one parameter is named and read, for the params this panel shows. */
 interface AudioParamSpec {
   labelKey: string;
   /** Renders a value for display — the unit belongs to the number. */
   format: (value: number) => string;
-  /** Translation key per stop, for a `choice` param whose stops are named. */
-  optionLabelKeys?: Readonly<Record<string, string>>;
 }
 
 const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
     labelKey: 'canvas.generatePanel.voiceStability',
     format: (v) => v.toFixed(2),
-    // ElevenLabs v3's three named stops
-    // (elevenlabs.io/docs/overview/capabilities/text-to-speech/best-practices).
-    optionLabelKeys: {
-      '0': 'canvas.generatePanel.voiceStabilityCreative',
-      '0.5': 'canvas.generatePanel.voiceStabilityNatural',
-      '1': 'canvas.generatePanel.voiceStabilityRobust',
-    },
   },
   similarity: {
     labelKey: 'canvas.generatePanel.voiceSimilarity',
@@ -148,18 +132,4 @@ export function audioParamControls(model: ModelEntry): AudioParamControl[] {
  */
 export function formatAudioParam(name: string, value: number): string {
   return PARAMS[name]?.format(value) ?? String(value);
-}
-
-/**
- * The translation key naming one stop of a `choice` param, when its stops have
- * names of their own.
- * @param name - The catalog param name.
- * @param option - The stop's value.
- * @returns The key, or undefined when this stop is read as a plain number.
- */
-export function audioParamOptionLabelKey(
-  name: string,
-  option: number,
-): string | undefined {
-  return PARAMS[name]?.optionLabelKeys?.[String(option)];
 }

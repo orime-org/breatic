@@ -8,6 +8,7 @@
 models:
   - name: "fish-s2-pro"
     display_name: "Fish S2 Pro"
+    icon: "fish-audio"
     mode: "tts"
     takes_prompt: true
     tier: recommended

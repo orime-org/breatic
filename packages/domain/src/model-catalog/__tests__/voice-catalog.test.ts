@@ -255,15 +255,15 @@ describe("listVoices against a WaveSpeed deployment (#1960 §6.1.1)", () => {
     // Against the yaml rather than against zero: this table IS the product
     // surface on such a deployment, so serving one of its rows and serving all
     // of them have to be told apart.
-    const declared = (
+    const declared =
       getFullModelConfig("tts").models.find((m) => m.name === "elevenlabs-v3")
-        ?.voices ?? []
-    ) as Array<{ id: string }>;
+        ?.voices ?? [];
     expect(page.voices.map((v) => v.id)).toEqual(declared.map((v) => v.id));
-    const alice = page.voices.find((v) => v.id === "Alice");
-    expect(alice).toBeDefined();
-    // No previews: every sample_url in that table is null.
-    expect(alice?.previewUrl).toBeUndefined();
+    // Every row carries the sample the upstream publishes for it, which is the
+    // play button on a deployment that has no voice endpoint to ask.
+    for (const voice of page.voices) {
+      expect(voice.previewUrl, voice.id).toMatch(/^https:\/\/\S+\.mp3$/);
+    }
   });
 
   it("filters that table by the search term", async () => {

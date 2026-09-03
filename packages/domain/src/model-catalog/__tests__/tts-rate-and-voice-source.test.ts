@@ -103,13 +103,8 @@ describe("the speaking params declare what a control needs (#1960 A15)", () => {
   // declaration missing any of the three renders nothing at all while its
   // value still travels to the vendor. Pinned against the real yaml because
   // that silence is what a fixture copy cannot show.
-  it("gives elevenlabs-v3's stability the three stops the vendor documents", () => {
-    expect(ttsEntry("elevenlabs-v3").params.stability?.values).toEqual([
-      0, 0.5, 1,
-    ]);
-  });
-
   it.each([
+    ["elevenlabs-v3", "stability"],
     ["elevenlabs-v3", "similarity"],
     ["fish-s2-pro", "speed"],
     ["fish-s2-pro", "volume"],
@@ -118,5 +113,33 @@ describe("the speaking params declare what a control needs (#1960 A15)", () => {
     expect(typeof spec?.min).toBe("number");
     expect(typeof spec?.max).toBe("number");
     expect(typeof spec?.step).toBe("number");
+  });
+
+  // A param carrying both is a param whose control has two answers, and the
+  // panel reads one of them.
+  it("leaves a ranged param without a list of stops", () => {
+    for (const entry of getModelCatalog().tts) {
+      for (const [name, spec] of Object.entries(entry.params)) {
+        if (typeof spec.min !== "number") continue;
+        expect(spec.values, `${entry.name}.${name}`).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe("the inline voice list carries a sample (#1960 A2)", () => {
+  // These are the voices behind an aggregating gateway, which has no voice
+  // endpoint to ask: the panel shows exactly what this file writes, so a
+  // sample the file omits is a play button the user never gets. The upstream
+  // publishes one per voice
+  // (wavespeed.ai/docs/docs-api/elevenlabs/elevenlabs-voice-id).
+  it("gives every elevenlabs-v3 voice a sample url", () => {
+    const voices = getFullModelConfig("tts").models.find(
+      (m) => m.name === "elevenlabs-v3",
+    )?.voices;
+    expect(voices?.length).toBeGreaterThan(0);
+    for (const voice of voices ?? []) {
+      expect(voice.sample_url, voice.id).toMatch(/^https:\/\/\S+\.mp3$/);
+    }
   });
 });

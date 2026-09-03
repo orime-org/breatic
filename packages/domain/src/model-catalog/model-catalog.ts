@@ -102,6 +102,17 @@ export interface FullModelEntry {
   rate?: ModelRate;
   params?: Record<string, FullParamSpec>;
   providers?: FullProviderEndpoint[];
+  /**
+   * The voices a tts model writes inline, for a deployment behind a gateway
+   * with no voice endpoint of its own (#1960). `sample_url` may be null: yaml
+   * states absence that way, and this interface mirrors what is on disk.
+   */
+  voices?: Array<{
+    id: string;
+    gender?: string;
+    description?: string;
+    sample_url?: string | null;
+  }>;
   [extra: string]: unknown;
 }
 

@@ -24,13 +24,30 @@ import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-stat
 const PAGE_TRIGGER_DISTANCE = 24;
 
 /**
- * How many placeholder rows stand in while the first page is on its way.
+ * How tall the list stands, counted in rows.
  *
- * The popover opens upward, so a list that collapses to one line of text
- * pulls the search box down under the user's hands and pushes it back when
- * the results land — on every keystroke, since each one restarts the request.
+ * The placeholder shows this many rows and the loaded list is capped at the
+ * same height, so the popover neither collapses while a page is on its way
+ * nor grows when one lands. Both matter on every keystroke, since each one
+ * restarts the request, and the popover opens upward: a height that moved
+ * would take the search box with it, out from under the reader's hands.
+ *
+ * Fewer results than this make it shorter, which is what a short list should
+ * look like.
  */
-const PLACEHOLDER_ROWS = 5;
+const LIST_ROWS = 7;
+
+/** A row's height on a real browser: `size='menu-item'` around two lines. */
+const ROW_HEIGHT = 46;
+/** The `gap-0.5` between two rows. */
+const ROW_GAP = 2;
+
+/**
+ * The list body's height, which the placeholder fills exactly and the results
+ * are capped at. Both read it off this one value, so the two agree whatever a
+ * row turns out to measure.
+ */
+const LIST_BODY_HEIGHT = `${LIST_ROWS * ROW_HEIGHT + (LIST_ROWS - 1) * ROW_GAP}px`;
 
 interface VoicePickerProps {
   /** Where the list is, owned by the container's reducer. */
@@ -194,6 +211,7 @@ export const VoicePicker = React.memo(function VoicePicker({
         // rather than auto because the list changes with every keystroke, and
         // a width that follows its content would jump as the user types.
         className='w-80 p-0'
+        style={{ '--voice-list-body': LIST_BODY_HEIGHT } as React.CSSProperties}
       >
         <div className='border-b border-border p-2'>
           <Input
@@ -208,16 +226,30 @@ export const VoicePicker = React.memo(function VoicePicker({
             answer to: that one offers a handful of models under no search box,
             this one offers every voice the deployment has (52 on the inline
             catalogue) under one (user 2026-09-02). */}
-        <ScrollArea viewportRef={setScroller} viewportClassName='max-h-80 p-1'>
+        <ScrollArea
+          viewportRef={setScroller}
+          // The body plus the `p-1` this same class states, so the loaded list
+          // stops exactly where the placeholder stood.
+          viewportClassName='max-h-[calc(var(--voice-list-body)+0.5rem)] p-1'
+        >
           <div className='flex flex-col gap-0.5'>
-            {list.status === 'loading' &&
-              Array.from({ length: PLACEHOLDER_ROWS }, (_, i) => (
-                <Skeleton
-                  key={i}
-                  data-testid='generate-voice-skeleton'
-                  className='h-[38px] shrink-0'
-                />
-              ))}
+            {list.status === 'loading' && (
+              // The placeholder is one block of the body's own height sharing
+              // itself between rows, rather than rows of a height guessed here:
+              // that way it fills the body exactly whatever a real row measures.
+              <div
+                className='flex flex-col gap-0.5'
+                style={{ height: 'var(--voice-list-body)' }}
+              >
+                {Array.from({ length: LIST_ROWS }, (_, i) => (
+                  <Skeleton
+                    key={i}
+                    data-testid='generate-voice-skeleton'
+                    className='min-h-0 flex-1'
+                  />
+                ))}
+              </div>
+            )}
             {list.status === 'empty' && (
               <p
                 data-testid='generate-voice-empty'

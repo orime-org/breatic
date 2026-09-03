@@ -44,12 +44,19 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
 
 const ELEVENLABS = model({
   voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
-  stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
+  stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   similarity: { description: '', min: 0, max: 1, step: 0.05, default: 0.75 },
 });
 const FISH = model({
   speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
   volume: { description: '', min: -20, max: 20, step: 1, default: 0 },
+});
+// No tts model in the catalogue states a param as a list of stops today, and
+// the panel still reads one as a row of options. Written here rather than left
+// to a real model, because a declaration the panel cannot show renders nothing
+// at all while its value still travels to the vendor.
+const STOPPED = model({
+  speed: { description: '', values: [0.5, 1, 2], default: 1 },
 });
 
 /**
@@ -68,19 +75,12 @@ function open(
 }
 
 describe('AudioParamsPicker — the speaking params the active model declares', () => {
-  it('offers ElevenLabs\' stability stops by the vendor\'s own names', () => {
-    // The vendor documents v3's three stops as Creative / Natural / Robust and
-    // never as numbers.
+  it('offers stability as a slider carrying the model\'s own bounds', () => {
     open(ELEVENLABS, { stability: 0.5, similarity: 0.75 });
-    expect(screen.getByTestId('generate-audio-stability-option-0')).toHaveTextContent(
-      'Creative',
-    );
-    expect(screen.getByTestId('generate-audio-stability-option-0.5')).toHaveTextContent(
-      'Natural',
-    );
-    expect(screen.getByTestId('generate-audio-stability-option-1')).toHaveTextContent(
-      'Robust',
-    );
+    const slider = screen.getByRole('slider', { name: 'Stability' });
+    expect(slider).toHaveAttribute('aria-valuemin', '0');
+    expect(slider).toHaveAttribute('aria-valuemax', '1');
+    expect(slider).toHaveAttribute('aria-valuenow', '0.5');
   });
 
   it('offers similarity as a slider carrying the model\'s own bounds', () => {
@@ -105,13 +105,20 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
     expect(screen.getByTestId('generate-audio-volume-value')).toHaveTextContent('-5 dB');
   });
 
-  it('picking a stability stop fires onChange with the NUMBER', () => {
+  it('reads a param stated as stops as a row of options', () => {
+    open(STOPPED, { speed: 1 });
+    expect(screen.getByTestId('generate-audio-speed-option-0.5')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-speed-option-1')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-speed-option-2')).toBeInTheDocument();
+  });
+
+  it('picking a stop fires onChange with the NUMBER', () => {
     // The catalog states these as numbers and the vendor expects numbers; a
-    // display string would reach the provider as "1" and be rejected.
+    // display string would reach the provider as "2.00x" and be rejected.
     const onChange = vi.fn();
-    open(ELEVENLABS, { stability: 0.5, similarity: 0.75 }, onChange);
-    fireEvent.click(screen.getByTestId('generate-audio-stability-option-1'));
-    expect(onChange).toHaveBeenCalledWith({ stability: 1 });
+    open(STOPPED, { speed: 1 }, onChange);
+    fireEvent.click(screen.getByTestId('generate-audio-speed-option-2'));
+    expect(onChange).toHaveBeenCalledWith({ speed: 2 });
   });
 
   it('moving a slider fires onChange with the stepped value', async () => {
@@ -276,7 +283,7 @@ describe('AudioParamsPicker trigger carries the values, like the video panel', (
   it('prints what the params are set to, each in its own unit', () => {
     // VideoParamsPicker joins the declared values with a middot and prints
     // them on the trigger; the row reads as four pills each naming what it
-    // holds. A stop the vendor named reads by that name.
+    // holds.
     render(
       <AudioParamsPicker
         model={ELEVENLABS}
@@ -285,8 +292,7 @@ describe('AudioParamsPicker trigger carries the values, like the video panel', (
       />,
     );
     const trigger = screen.getByTestId('generate-audio-params-trigger');
-    expect(trigger).toHaveTextContent('Natural');
-    expect(trigger).toHaveTextContent('0.75');
+    expect(trigger).toHaveTextContent('0.50 · 0.75');
   });
 
   it('prints Fish\'s pair in their own units', () => {
