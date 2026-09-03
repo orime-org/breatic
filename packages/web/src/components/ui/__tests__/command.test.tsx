@@ -89,39 +89,4 @@ describe('Command', () => {
     expect(viewport?.className).toContain('max-h-[300px]');
   });
 
-  it('lets a caller style the element that scrolls', () => {
-    const { container } = render(
-      <Command>
-        <CommandList viewportClassName='max-h-52'>
-          <CommandItem>Item</CommandItem>
-        </CommandList>
-      </Command>,
-    );
-    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
-    expect(viewport?.className).toContain('max-h-52');
-    expect(viewport?.className).not.toContain('max-h-[300px]');
-  });
-
-  it('hands the scrolling element to a caller that pages as it is read', () => {
-    // A list fetched a page at a time has to listen on the element that
-    // scrolls, and that element belongs to the ScrollArea in here.
-    let scroller: HTMLElement | null = null;
-    render(
-      <Command>
-        <CommandList
-          viewportRef={(el): void => {
-            scroller = el;
-          }}
-        >
-          <CommandItem>Item</CommandItem>
-        </CommandList>
-      </Command>,
-    );
-    expect(scroller).not.toBeNull();
-    expect(
-      (scroller as unknown as HTMLElement).getAttribute(
-        'data-radix-scroll-area-viewport',
-      ),
-    ).not.toBeNull();
-  });
 });

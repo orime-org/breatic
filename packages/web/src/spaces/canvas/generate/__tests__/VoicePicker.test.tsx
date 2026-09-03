@@ -306,7 +306,11 @@ describe('VoicePicker keeps one height for every state it can be in', () => {
   ])('is the same height showing %s', (_label, list) => {
     open({ list });
     const body = screen.getByTestId('generate-voice-list-body');
-    expect(body.style.height).toBe('238px');
+    // Five 46px rows, the four 2px gaps between them, and the box's own 4px
+    // padding at each end — the box is `border-box`, so a height counting only
+    // the rows has that padding taken out of it and the fifth row lands 8px
+    // short of a row.
+    expect(body.style.height).toBe(`${5 * 46 + 4 * 2 + 2 * 4}px`);
   });
 });
 

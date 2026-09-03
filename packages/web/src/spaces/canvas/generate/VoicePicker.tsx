@@ -38,8 +38,38 @@ const ROW_HEIGHT = 46;
 /** The `gap-0.5` between two rows. */
 const ROW_GAP = 2;
 
-/** The one height every state of this list stands at. */
-const LIST_BODY_HEIGHT = `${LIST_ROWS * ROW_HEIGHT + (LIST_ROWS - 1) * ROW_GAP}px`;
+/** The `p-1` the rows sit inside, top and bottom. */
+const LIST_PADDING = 4;
+
+/**
+ * What the sample button wears while its voice is the one playing
+ * (design §6.3, user 2026-09-01).
+ *
+ * Painted OUTSIDE the button as a pseudo-element, so the 24px target the
+ * pointer-size standard is measured against keeps its size — a ring laid out
+ * in the box would have grown it. Only one voice plays at a time, so only one
+ * ring turns, and the eye finds the playing row without reading the glyphs.
+ *
+ * Under `prefers-reduced-motion` it holds still as a complete ring rather than
+ * disappearing: the row still has to say which voice is speaking.
+ */
+const PLAYING_RING = [
+  'after:pointer-events-none after:absolute after:-inset-[3px]',
+  'after:rounded-full after:border after:border-border',
+  'after:border-t-foreground after:animate-spin after:content-[""]',
+  'motion-reduce:after:animate-none motion-reduce:after:border-foreground',
+].join(' ');
+
+/**
+ * The one height every state of this list stands at.
+ *
+ * Counts the padding as well as the rows: the box is `border-box`, so a height
+ * of just the rows has its own inset taken out of that same number and the
+ * last row comes up a padding short of a row.
+ */
+const LIST_BODY_HEIGHT = `${
+  LIST_ROWS * ROW_HEIGHT + (LIST_ROWS - 1) * ROW_GAP + 2 * LIST_PADDING
+}px`;
 
 interface VoicePickerProps {
   /** Where the list is, owned by the container's reducer. */
@@ -319,7 +349,10 @@ export const VoicePicker = React.memo(function VoicePicker({
                           aria-label={t('canvas.generatePanel.voiceSample', {
                             name: voice.name,
                           })}
-                          className='mr-1 flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong'
+                          className={cn(
+                            'relative mr-1 flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong',
+                            playingId === voice.id && PLAYING_RING,
+                          )}
                           onClick={() => toggleSample(voice)}
                         >
                           {playingId === voice.id ? (

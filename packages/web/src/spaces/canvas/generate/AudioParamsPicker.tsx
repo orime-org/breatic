@@ -364,7 +364,13 @@ function ParamSliderRow({
               aria-pressed={atStop(shown, stop.value)}
               data-testid={`generate-audio-${control.name}-stop-${stop.value}`}
               className={cn(
-                'px-1 text-2xs',
+                // 24px tall so the word is a pointer target the standard takes
+                // (WCAG 2.2 SC 2.5.8 AA). The words sit 6px under a 12px slider
+                // thumb, close enough that the spacing exception cannot rescue
+                // an undersized one: at 16px the two 24px circles were 20.3px
+                // apart, so a click meant for a label dragged the value instead.
+                // The text keeps its own size — only the box around it grows.
+                'h-6 px-1 text-2xs',
                 atStop(shown, stop.value)
                   ? 'text-foreground'
                   : 'font-normal text-muted-foreground',

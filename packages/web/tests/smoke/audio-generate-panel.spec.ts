@@ -335,3 +335,106 @@ test('an audio node with a produced asset can be picked into the talking-head dr
     page.getByTestId('generate-video-driving-audio-clear'),
   ).toBeVisible({ timeout: 10_000 });
 });
+
+test('the stability tick labels are a pointer target the standard accepts', async () => {
+  // WCAG 2.2 SC 2.5.8 (AA) takes 24x24 CSS px, or 24px-diameter circles on
+  // each undersized target that do not intersect. The three ticks sit 6px
+  // under a 12px slider thumb, so the spacing exception cannot rescue them —
+  // measured at 20.32px between the two circles' centres before this case
+  // existed. A pointer aimed at "Natural" that lands 4px high drags the value
+  // instead.
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio');
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-audio-params-trigger').click();
+  const ticks = page.locator('[data-testid^="generate-audio-stability-stop-"]');
+  await expect(ticks.first()).toBeVisible({ timeout: 10_000 });
+
+  const count = await ticks.count();
+  expect(count).toBe(3);
+  for (let i = 0; i < count; i += 1) {
+    // In CSS pixels, the unit the criterion is written in. A bounding box
+    // would answer in screen pixels, and this panel lives on a canvas the
+    // reader zooms — at 96% every target measures under its own size, which
+    // says nothing about the design.
+    const height = await ticks
+      .nth(i)
+      .evaluate((el) => parseFloat(getComputedStyle(el).height));
+    expect(height, `tick ${i} height`).toBeGreaterThanOrEqual(24);
+  }
+});
+
+test('the voice list stands the five rows it is sized for', async () => {
+  // The height constant counts five rows of content, and the box it is set on
+  // carries its own padding — which `border-box` takes out of that same
+  // number, leaving the fifth row 8px short of a row. Measured against the
+  // rows themselves: the fifth one is either a whole row tall inside the
+  // scroller, or it is not there.
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio');
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-voice-trigger').click();
+  const body = page.getByTestId('generate-voice-list-body');
+  await expect(body).toBeVisible({ timeout: 20_000 });
+  const options = page.locator('[data-testid^="generate-voice-option-"]');
+  await expect(options.first()).toBeVisible({ timeout: 20_000 });
+  if ((await options.count()) < 5) test.skip(true, 'deployment serves under five voices');
+
+  const room = await body.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return (
+      el.getBoundingClientRect().height -
+      parseFloat(cs.paddingTop) -
+      parseFloat(cs.paddingBlockEnd || cs.paddingBottom)
+    );
+  });
+  const fifthBottom = await options.nth(4).evaluate((el) => el.getBoundingClientRect().bottom);
+  const contentTop = await body.evaluate(
+    (el) => el.getBoundingClientRect().top + parseFloat(getComputedStyle(el).paddingTop),
+  );
+  expect(fifthBottom - contentTop).toBeLessThanOrEqual(room + 0.5);
+});
+
+test('the voice playing is marked by a ring drawn outside its button', async () => {
+  // Design §6.3 (user 2026-09-01): the sample button gets a turning ring on
+  // its outside — an `inset:-3px` pseudo-element that leaves the 24x24 target
+  // alone — and it holds still under `prefers-reduced-motion`. Swapping the
+  // glyph is the whole of what the row said before this case existed.
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio');
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-voice-trigger').click();
+  const samples = page.locator('[data-testid^="generate-voice-sample-"]');
+  await expect(page.locator('[data-testid^="generate-voice-option-"]').first()).toBeVisible({
+    timeout: 20_000,
+  });
+  if ((await samples.count()) === 0) test.skip(true, 'this deployment previews nothing');
+
+  const button = samples.first();
+  const boxBefore = await button.boundingBox();
+  await button.click();
+
+  await expect
+    .poll(
+      async () =>
+        button.evaluate((el) => {
+          const ring = getComputedStyle(el, '::after');
+          return {
+            drawn: ring.content !== 'none' && parseFloat(ring.borderTopWidth) > 0,
+            outside: parseFloat(ring.top) < 0,
+            round: ring.borderTopLeftRadius,
+          };
+        }),
+      { timeout: 10_000 },
+    )
+    .toMatchObject({ drawn: true, outside: true });
+
+  // The ring is painted, not laid out: the target keeps the size the standard
+  // was measured against.
+  const boxAfter = await button.boundingBox();
+  expect(boxAfter!.height).toBe(boxBefore!.height);
+  expect(boxAfter!.width).toBe(boxBefore!.width);
+});
