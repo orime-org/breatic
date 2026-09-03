@@ -57,7 +57,7 @@
  */
 
 import * as React from 'react';
-import type { Editor } from '@tiptap/react';
+import type { BlockNoteEditor } from '@blocknote/core';
 import { posToDOMRect } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -96,6 +96,55 @@ import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 
+/** The document editor, as far as the bar needs to know. */
+type BubbleEditor = BlockNoteEditor<never, never, never>;
+
+/**
+ * The editor's view, or null once it has been unmounted.
+ *
+ * Every route to an unmounted editor's view ends at tiptap's accessor, which
+ * raises rather than answering nothing. The bar can outlive its editor by a
+ * frame when a tab closes, so asking has to be safe.
+ * @param editor - The editor to ask.
+ * @returns The view, or null.
+ */
+function viewOf(editor: BubbleEditor): EditorView | null {
+  try {
+    return editor.prosemirrorView ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The editable element, or null once the editor has been unmounted.
+ * @param editor - The editor to ask.
+ * @returns The element, or null.
+ */
+function domElementOf(editor: BubbleEditor): HTMLElement | null {
+  return viewOf(editor)?.dom ?? null;
+}
+
+/**
+ * Calls back whenever anything the bar reads may have moved.
+ *
+ * The editor reports a document change and a selection change separately, and
+ * the bar depends on both: what it offers follows the content, where it sits
+ * follows the selection.
+ * @param editor - The editor to watch.
+ * @param react - What to run.
+ * @returns Unsubscribe.
+ */
+function onEditorSettled(editor: BubbleEditor, react: () => void): () => void {
+  const stopChange = editor.onChange(react);
+  const stopSelection = editor.onSelectionChange(react);
+  return () => {
+    stopChange?.();
+    stopSelection();
+  };
+}
+
+
 /** One run of controls, drawn between two separators. */
 interface BubbleGroup {
   /** Names the separator drawn before this group. */
@@ -110,7 +159,7 @@ interface BubbleGroup {
    * commands have any use for.
    */
   panels: React.ComponentType<{
-    editor: Editor;
+    editor: BubbleEditor;
     onPanelOpenChange: (open: boolean) => void;
   }>[];
   /**
@@ -121,7 +170,7 @@ interface BubbleGroup {
    * and the setter, each compares.
    */
   slot?: React.ComponentType<{
-    editor: Editor;
+    editor: BubbleEditor;
     container: HTMLElement | null;
     scroller: HTMLElement | null;
     openId: string | null;
@@ -418,7 +467,7 @@ function isInside(point: { x: number; y: number }, box: DOMRect): boolean {
 
 interface SelectionBubbleBarProps {
   /** The editor this bar acts on. */
-  editor: Editor;
+  editor: BubbleEditor;
   /**
    * True for a viewer, and then the bar is not rendered at all.
    *
@@ -460,7 +509,9 @@ export function SelectionBubbleBar({
   // first renders, so it cannot be read during that first render.
   React.useEffect(() => {
     setViewport(
-      editor.view.dom.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
+      viewOf(editor)?.dom.closest<HTMLElement>(
+        '[data-radix-scroll-area-viewport]',
+      ) ?? null,
     );
   }, [editor]);
 
@@ -481,7 +532,7 @@ function BubbleBar({
   editor,
   viewport,
 }: {
-  editor: Editor;
+  editor: BubbleEditor;
   viewport: HTMLElement;
 }): React.JSX.Element | null {
   // The bar element, as state rather than only a ref: the four slots mount
@@ -516,7 +567,7 @@ function BubbleBar({
   // resets the selection each time. So this is not a fix for a reachable
   // defect — it is the initial value meaning what the name says.)
   const wasSelectAllRef = React.useRef(
-    editor.state.selection instanceof AllSelection,
+    editor.prosemirrorState.selection instanceof AllSelection,
   );
 
   /**
@@ -537,11 +588,10 @@ function BubbleBar({
    * focusable; the bar now refuses the focus change a press would cause (see
    * the note further down), so that branch had no way left to be true.
    *
-   * Takes the view rather than reading it off the editor. Once the editor has
-   * torn its view down, `editor.view` hands back a Proxy that stubs a handful
-   * of properties and throws on everything else
-   * (`@tiptap/core@3.29.2/dist/index.js:5875-5905`) — `hasFocus` below is one
-   * of the ones it throws on.
+   * Takes the view rather than reading it off the editor. An editor that has
+   * been unmounted answers every route to its view by raising rather than by
+   * returning nothing, and the bar can outlive the editor by a frame when a
+   * tab closes; {@link viewOf} is where that is absorbed.
    * @param view - The editor view the caller already holds.
    * @returns True when a bar is warranted at all.
    */
@@ -588,7 +638,7 @@ function BubbleBar({
    * @returns The point the bar sits at, or null.
    */
   const pinnedPoint = React.useCallback((): { x: number; y: number } | null => {
-    if (!(editor.state.selection instanceof AllSelection)) return null;
+    if (!(editor.prosemirrorState.selection instanceof AllSelection)) return null;
     return pinnedScreenPoint(pinnedRef.current, viewport.getBoundingClientRect());
   }, [editor, viewport]);
 
@@ -601,7 +651,7 @@ function BubbleBar({
    * @returns True when the bar has a place to be.
    */
   const pinToPointer = React.useCallback((): boolean => {
-    if (!(editor.state.selection instanceof AllSelection)) return false;
+    if (!(editor.prosemirrorState.selection instanceof AllSelection)) return false;
     if (pinnedPoint()) return true;
     const pointer = pointerRef.current;
     if (!pointer) return false;
@@ -623,7 +673,8 @@ function BubbleBar({
      * empty selection, which is the one transition the drop has to catch.
      */
     const follow = (): void => {
-      const { view } = editor;
+      const view = viewOf(editor);
+      if (view === null) return;
       const isAll = view.state.selection instanceof AllSelection;
       // The ruling's FIRST moment is the INSTANT the selection becomes a
       // select-all, not every transaction that happens to find one.
@@ -647,10 +698,7 @@ function BubbleBar({
       if (!isWarranted(view)) return;
       pinToPointer();
     };
-    editor.on('transaction', follow);
-    return () => {
-      editor.off('transaction', follow);
-    };
+    return onEditorSettled(editor, follow);
   }, [editor, isWarranted, pinToPointer]);
 
 
@@ -672,7 +720,14 @@ function BubbleBar({
    * @param root0.view - The editor view.
    * @returns True when the bar belongs on screen.
    */
-  const shouldShow = React.useCallback(({ view }: { view: EditorView }): boolean => {
+  const shouldShow = React.useCallback(({
+    view,
+  }: {
+    view: EditorView | null;
+  }): boolean => {
+    // No view means the editor has been unmounted out from under the bar,
+    // which a tab closing does; there is nothing left to sit over.
+    if (view === null) return false;
     if (!isWarranted(view)) return false;
     if (view.state.selection instanceof AllSelection) {
       return pinnedPoint() !== null;
@@ -719,7 +774,8 @@ function BubbleBar({
       // cheap half of what `pinToPointer` asks, and skipping the call keeps
       // this handler's reading of the rules in one place.
       if (pinnedRef.current) return;
-      const { view } = editor;
+      const view = viewOf(editor);
+      if (view === null) return;
       if (!(view.state.selection instanceof AllSelection)) return;
       // `isWarranted` before `pinToPointer`, not after: pinning is a write,
       // and a pin made while no bar is warranted would sit there waiting. The
@@ -777,11 +833,11 @@ function BubbleBar({
    * This bar's anchor rectangle, read fresh.
    * @returns The rectangle, or null while the selection is empty.
    */
-  const anchorLine = React.useCallback(
-    (): DOMRect | null =>
-      bubbleAnchorRect(editor.view, viewport.getBoundingClientRect(), pinnedPoint()),
-    [editor, viewport, pinnedPoint],
-  );
+  const anchorLine = React.useCallback((): DOMRect | null => {
+    const view = viewOf(editor);
+    if (view === null) return null;
+    return bubbleAnchorRect(view, viewport.getBoundingClientRect(), pinnedPoint());
+  }, [editor, viewport, pinnedPoint]);
 
   /**
    * Step aside while a panel is up.
@@ -823,7 +879,7 @@ function BubbleBar({
   // blur carries no transaction, and a reader who has left sends no further
   // events. So closing the last one is itself a moment to re-ask.
   React.useEffect(() => {
-    if (!overlayOpen) setWarranted(shouldShow({ view: editor.view }));
+    if (!overlayOpen) setWarranted(shouldShow({ view: viewOf(editor) }));
   }, [overlayOpen, editor, shouldShow]);
   const setMenuOpen = React.useCallback((id: string, open: boolean): void => {
     setOpenMenu((current) => {
@@ -850,7 +906,8 @@ function BubbleBar({
   // nowhere in the file), and Plate's `useFloatingToolbar` does the same.
   const [pointerDown, setPointerDown] = React.useState(false);
   React.useEffect(() => {
-    const { view } = editor;
+    const view = viewOf(editor);
+    if (view === null) return undefined;
     /** Pressed: the bar steps aside and any menu closes. */
     const down = (): void => {
       setPointerDown(true);
@@ -894,7 +951,7 @@ function BubbleBar({
   const anchor = React.useMemo<VirtualElement>(
     () => ({
       getBoundingClientRect: () => anchorLine() ?? new DOMRect(0, 0, 0, 0),
-      contextElement: editor.view.dom,
+      contextElement: viewOf(editor)?.dom,
     }),
     [anchorLine, editor],
   );
@@ -1031,7 +1088,7 @@ function BubbleBar({
   React.useEffect(() => {
     /** Re-ask whether the bar belongs on screen, and where it belongs. */
     const ask = (): void => {
-      setWarranted(shouldShow({ view: editor.view }));
+      setWarranted(shouldShow({ view: viewOf(editor) }));
       // Which anchor, asked at the same three moments: a selection becoming or
       // ceasing to be a select-all is a transaction, and the answer decides
       // the coordinate system the position is computed in.
@@ -1051,23 +1108,26 @@ function BubbleBar({
      * change the active element is `<body>` for the length of the `blur`, and
      * a check reading it there judges every menu opening as focus leaving for
      * nowhere. `relatedTarget` names the element about to receive it.
-     * @param payload - What tiptap passes its `blur` event.
-     * @param payload.event - The DOM focus event.
+     * @param event - The DOM focus event.
      */
-    const askOnBlur = ({ event }: { event: FocusEvent }): void => {
+    const askOnFocusOut = (event: FocusEvent): void => {
       const next = event.relatedTarget;
       const bar = barRef.current;
       if (bar && next instanceof Node && bar.contains(next)) return;
       ask();
     };
-    editor.on('transaction', ask);
-    editor.on('focus', ask);
-    editor.on('blur', askOnBlur);
+    const stopSettled = onEditorSettled(editor, ask);
+    // Focus is a DOM fact here. BlockNote publishes no focus or blur event, so
+    // these come off the editable element itself; `relatedTarget` reads the
+    // same on `focusout` as it did on the editor's `blur`.
+    const body = domElementOf(editor);
+    body?.addEventListener('focusin', ask);
+    body?.addEventListener('focusout', askOnFocusOut);
     ask();
     return () => {
-      editor.off('transaction', ask);
-      editor.off('focus', ask);
-      editor.off('blur', askOnBlur);
+      stopSettled();
+      body?.removeEventListener('focusin', ask);
+      body?.removeEventListener('focusout', askOnFocusOut);
     };
   }, [editor, shouldShow, pinnedPoint, update]);
 
