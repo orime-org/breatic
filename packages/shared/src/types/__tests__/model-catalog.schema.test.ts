@@ -307,6 +307,21 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image[0]?.rate).toBeUndefined();
   });
 
+  it("keeps a model's input cap, which the panel refuses longer text by", () => {
+    const raw = catalog([entry("elevenlabs-v3", { max_input_chars: 5000 })]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.max_input_chars).toBe(5000);
+  });
+
+  // Absent means uncapped, and a malformed one has to read the same way: a cap
+  // invented here would refuse text the vendor accepts.
+  it("leaves the cap undefined when a model declares none or a bad one", () => {
+    expect(sanitizeModelCatalog(catalog([entry("flux")])).image[0]?.max_input_chars)
+      .toBeUndefined();
+    const bad = catalog([entry("flux", { max_input_chars: "lots" })]);
+    expect(sanitizeModelCatalog(bad).image[0]?.max_input_chars).toBeUndefined();
+  });
+
   it("keeps a param's remote_source, which names the picker that fills it", () => {
     const raw = catalog([
       entry("elevenlabs-v3", {

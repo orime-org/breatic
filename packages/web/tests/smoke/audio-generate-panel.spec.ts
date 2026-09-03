@@ -237,6 +237,27 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   });
 });
 
+test('text past the model’s limit is refused before anything is sent', async () => {
+  test.setTimeout(90_000);
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio');
+  await openGenerate(page, nodeId);
+
+  // elevenlabs-v3 takes 5,000 characters (elevenlabs.io/docs/models). Inserted
+  // in one go rather than keystroke by keystroke: 5,001 of those would take
+  // minutes, and what is under test is the length, not the typing.
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.insertText('x'.repeat(5001));
+
+  await page.getByTestId('generate-audio-execute').click();
+
+  // Named, not merely refused: the reader has to know how much to cut.
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText(
+    '5,000',
+    { timeout: 10_000 },
+  );
+});
+
 test('the voice list matches the deployment it is served from, and a pick survives a reopen', async () => {
   test.setTimeout(90_000);
   const nodeId = crypto.randomUUID();

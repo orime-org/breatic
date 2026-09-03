@@ -359,6 +359,10 @@ const modelEntrySchema = z.object({
     })
     .optional()
     .catch(undefined),
+  // How much text the model takes (#1960). Absent reads as uncapped, and a
+  // malformed one degrades to absent for the same reason a bad rate does: a
+  // number this side invented would refuse text the vendor accepts.
+  max_input_chars: z.number().optional().catch(undefined),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */
