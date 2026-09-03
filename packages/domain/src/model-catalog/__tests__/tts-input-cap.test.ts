@@ -36,7 +36,7 @@ function ttsEntry(name: string): ReturnType<typeof getModelCatalog>["tts"][numbe
   return found;
 }
 
-describe("a tts model states how much text it takes (#1960 A16)", () => {
+describe("a tts model states how much text it takes (#1960 A17)", () => {
   it("gives elevenlabs-v3 the vendor's 5000 characters", () => {
     // elevenlabs.io/docs/models, per-model character-limit table.
     useFullCatalog();

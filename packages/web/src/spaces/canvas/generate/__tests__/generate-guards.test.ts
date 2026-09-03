@@ -243,7 +243,7 @@ describe('refusalToastKey — which refusal says something out loud', () => {
   });
 });
 
-describe('evaluateExecute — text the model will not take (#1960 A16)', () => {
+describe('evaluateExecute — text the model will not take (#1960 A17)', () => {
   // A cap the catalog states, from the model vendor's own documentation.
   const capped = { ...ok, maxInputChars: 10 };
 
