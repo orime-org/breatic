@@ -252,7 +252,16 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
       logger.warn({ taskId }, "billing_query_empty");
       return 0;
     }
-    return deducted.reduce((sum, line) => sum + (line.order?.price ?? 0), 0);
+    let total = 0;
+    for (const line of deducted) {
+      const price = line.order?.price;
+      if (typeof price !== "number") {
+        logger.warn({ taskId }, "billing_line_without_price");
+        continue;
+      }
+      total += price;
+    }
+    return total;
   } catch (err) {
     logger.warn({ err, taskId }, "billing_query_failed");
     return 0;

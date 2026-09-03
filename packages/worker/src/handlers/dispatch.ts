@@ -35,7 +35,7 @@ import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
-import { extractPromptText } from "@breatic/domain";
+import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {

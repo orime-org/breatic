@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { extractPromptText } from "@domain/agent/extract-prompt.js";
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 
 describe("extractPromptText — what it strips", () => {
   it("removes HTML tags", () => {

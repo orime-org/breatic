@@ -126,6 +126,18 @@ describe("queryBilling reads the vendor's real answer", () => {
     expect(await queryBilling(RESOLVED, "t")).toBe(0.0026);
   });
 
+  // A deducting line the vendor gave no readable price for. Skipping it in
+  // silence would report a smaller charge than was taken, which reads exactly
+  // like a cheaper generation.
+  it("says so when a deducting line carries no price", async () => {
+    httpRequestMock.mockResolvedValue(
+      billing([deduct(0.002), { billing_type: "deduct", order: { state: "done" } }]),
+    );
+
+    expect(await queryBilling(RESOLVED, "t")).toBe(0.002);
+    expect(warnMock).toHaveBeenCalled();
+  });
+
   it("says so when the vendor lists no billing line for the prediction", async () => {
     httpRequestMock.mockResolvedValue(billing([]));
 

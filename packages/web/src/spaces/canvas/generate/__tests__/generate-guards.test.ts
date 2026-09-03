@@ -265,11 +265,21 @@ describe('evaluateExecute — text the model will not take (#1960 A16)', () => {
     ).toBeNull();
   });
 
-  // The text travels to the vendor exactly as typed — the payload sends
-  // `promptText` itself — so the surrounding whitespace is part of what the
-  // upstream counts, even though the emptiness check above trims it.
-  it('counts the text as sent, whitespace included', () => {
-    expect(evaluateExecute({ ...capped, promptText: `  ${'x'.repeat(9)}` })).toBe(
+  // The worker cleans the prompt before the vendor sees it — `extractPromptText`
+  // trims the ends, folds runs of spaces into one and collapses blank lines —
+  // so counting the raw editor text refuses messages the upstream would take.
+  it('does not count whitespace the worker strips before sending', () => {
+    expect(evaluateExecute({ ...capped, promptText: `  ${'x'.repeat(9)}  ` })).toBeNull();
+  });
+
+  it('does not count the runs of spaces the worker folds into one', () => {
+    // 11 raw characters, 9 once the run between the words is one space.
+    expect(evaluateExecute({ ...capped, promptText: 'xxxx   xxxx' })).toBeNull();
+  });
+
+  it('still refuses when the cleaned text is what goes over', () => {
+    // Nothing here folds: 11 characters reach the vendor as 11.
+    expect(evaluateExecute({ ...capped, promptText: 'x'.repeat(11) })).toBe(
       'prompt-too-long',
     );
   });

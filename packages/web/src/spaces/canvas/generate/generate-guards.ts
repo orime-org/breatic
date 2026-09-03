@@ -5,6 +5,8 @@
  * Guards for the Generate panel's execute action.
  */
 
+import { extractPromptText } from '@breatic/shared';
+
 /** Everything the execute gate must weigh before a task may be submitted. */
 export interface ExecuteGateInput {
   /** The current prompt's plain text (rich-text prompt projected to text). */
@@ -125,16 +127,20 @@ export function evaluateExecute(
   if (input.promptRequired && input.promptText.trim().length === 0) {
     return 'prompt-missing';
   }
-  // Counted in characters, the unit the vendors state their limits in, and on
-  // the text as it will be sent: the payload carries `promptText` itself, so
-  // the whitespace the emptiness check above trims still reaches the upstream.
-  // Spread rather than `.length` because the latter counts UTF-16 units — two
-  // per emoji and per rarer CJK glyph — and would refuse a message half the
-  // length of the one the vendor would take.
+  // Counted on the text the vendor will actually receive. The worker cleans
+  // every AIGC prompt through this same function before the request goes out
+  // (`prompt-params.ts`), and every rule in it shortens: counting the raw
+  // editor text instead refuses messages the upstream would have taken — one
+  // trailing space at exactly the cap is enough.
+  //
+  // In characters, the unit the vendors state their limits in. Spread rather
+  // than `.length` because the latter counts UTF-16 units — two per emoji and
+  // per rarer CJK glyph — and would refuse a message half the length of the
+  // one the vendor would take.
   if (
     input.promptRequired &&
     input.maxInputChars !== undefined &&
-    [...input.promptText].length > input.maxInputChars
+    [...extractPromptText(input.promptText)].length > input.maxInputChars
   ) {
     return 'prompt-too-long';
   }

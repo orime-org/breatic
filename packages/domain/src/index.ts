@@ -56,7 +56,6 @@ export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
 export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";
 export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
-export { extractPromptText } from "@domain/agent/extract-prompt.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";

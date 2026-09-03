@@ -322,6 +322,7 @@ export {
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
+export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export {
   carrying,
   FAILURE_LINES,
