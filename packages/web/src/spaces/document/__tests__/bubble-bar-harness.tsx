@@ -7,18 +7,30 @@
  * The waits are not decoration. The bar reaches the document one render after
  * the selection changes, and a slot's menu one render after the pointer
  * arrives, so a synchronous query runs ahead of both and finds nothing.
+ *
+ * The body still arrives as HTML. ProseMirror's own parser reads it against
+ * the flat schema and produces the wrappers the model wants — measured,
+ * `<p>a</p><h2>b</h2>` comes back as
+ * `blockGroup(blockContainer(paragraph), blockContainer(heading))` — so the
+ * cases go on saying what they mean in markup rather than in a block shape
+ * they would have to keep in step with the schema. BlockNote's own HTML
+ * parser is asynchronous, which every case that opens a body would have to
+ * become.
  */
 
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
-import { Editor } from '@tiptap/react';
+import { DOMParser } from '@tiptap/pm/model';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 
-const live: Editor[] = [];
+/** The editor these cases open. */
+export type HarnessEditor = ReturnType<typeof buildDocumentEditor>;
+
+const live: HarnessEditor[] = [];
 let doc: Y.Doc | null = null;
 
 /**
@@ -29,21 +41,28 @@ let doc: Y.Doc | null = null;
  * with the editors, so each case gets its own.
  *
  * The body arrives after construction: content given at construction collides
- * with the collaboration extension's initial sync — the body never lands and
- * the selection falls on an empty document.
+ * with the collaboration layer's initial sync — the body never lands and the
+ * selection falls on an empty document.
  * @param bodyHtml - The body's HTML, or an empty string for an empty document.
- * @returns The editor.
+ * @returns The editor, not yet mounted.
  */
-export function openSharedBody(bodyHtml: string): Editor {
+export function openSharedBody(bodyHtml: string): HarnessEditor {
   if (!doc) {
     doc = new Y.Doc();
     Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   }
-  const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
+  const editor = buildDocumentEditor({
+    fragment: documentBodyFragment(doc),
   });
   live.push(editor);
-  if (bodyHtml) editor.commands.setContent(bodyHtml);
+  if (bodyHtml) {
+    const holder = document.createElement('div');
+    holder.innerHTML = bodyHtml;
+    const parsed = DOMParser.fromSchema(editor.pmSchema).parse(holder);
+    editor.transact((tr) => {
+      tr.replaceWith(0, tr.doc.content.size, parsed.content);
+    });
+  }
   return editor;
 }
 
@@ -51,8 +70,8 @@ export function openSharedBody(bodyHtml: string): Editor {
  * The body as Yjs wrote it down, markup and all.
  *
  * Read off the Y.Doc rather than the editor: whether a command really ran is a
- * question about the shared document, and `getHTML()` answers about one
- * client's rendering of it.
+ * question about the shared document, and a client's own rendering answers
+ * about one client.
  * @returns The body's nodes, serialised.
  * @throws {Error} When no editor has been opened yet.
  */
@@ -64,10 +83,10 @@ export function sharedBodyMarkup(): string {
     .join('');
 }
 
-/** Destroys every editor and the Y.Doc behind them. Put this in `afterEach`. */
+/** Takes down every editor and the Y.Doc behind them. Put this in `afterEach`. */
 export function closeShared(): void {
   live.splice(0).forEach((editor) => {
-    editor.destroy();
+    editor.unmount();
   });
   doc?.destroy();
   doc = null;
@@ -77,7 +96,7 @@ export function closeShared(): void {
  * Render the editor, carrier and all, into the document.
  * @param editor - An editor with its body already in place.
  */
-export function mountDocumentEditor(editor: Editor): void {
+export function mountDocumentEditor(editor: HarnessEditor): void {
   render(
     <TooltipProvider>
       <DocumentEditor editor={editor} />
