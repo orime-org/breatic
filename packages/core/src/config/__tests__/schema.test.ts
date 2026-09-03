@@ -244,6 +244,34 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
   });
 });
 
+/**
+ * The two keys that decide which model runs cannot be blank.
+ *
+ * `getModel("")` builds a model with an empty id and hands it to the vendor,
+ * which answers 400 on the first message someone sends; `getModel("deepseek/")`
+ * strips the prefix and does the same against DeepSeek directly. Neither
+ * fails at startup, so a half-finished edit here surfaces as a broken chat.
+ * Every numeric knob in this same object already carries a bound.
+ */
+describe("agent config — the model a run is sent to", () => {
+  it.each([
+    ["default_model", ""],
+    ["consolidation_model", ""],
+  ])("refuses a blank %s", async (key, value) => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    expect(agentConfigSchemaForTests.safeParse({ [key]: value }).success).toBe(false);
+  });
+
+  it("accepts a model id", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.safeParse({
+      default_model: "deepseek/deepseek-v4-pro",
+      consolidation_model: "anthropic/claude-sonnet-4-6",
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
 describe("agent config — a title longer than the column can hold", () => {
   it("refuses a conversation title cap above what the column stores", async () => {
     // 这个数决定首句截到多长,而截出来的东西要存进一个定宽的列。让它超过列宽,

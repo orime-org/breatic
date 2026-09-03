@@ -26,6 +26,7 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel, streamText } from "ai";
 import { env } from "@breatic/core";
+import type { CoreConfig } from "@breatic/core";
 
 /**
  * What a model call carries to ask for reasoning, if it asks at all.
@@ -39,85 +40,50 @@ export type ReasoningOptions = Pick<Parameters<typeof streamText>[0], "providerO
 /** What one provider's slot in that object holds. */
 type ProviderOptionsFor = NonNullable<ReasoningOptions["providerOptions"]>[string];
 
-/** One provider: how to recognise it, how to reach it, how it is spoken to. */
+/**
+ * The name of an env var this deployment can hold a provider key in.
+ *
+ * Narrowed to the schema's own key names so a name it does not carry is a
+ * compile error naming the correct spelling. A plain `string` here would let
+ * a typo through to runtime, where it reads as undefined: the route silently
+ * never opens, every call for that vendor goes to OpenRouter instead, and
+ * the charge is recorded against OpenRouter too. This repo has made exactly
+ * that typo before -- see the `KLING_ACCESS_KEY` note in `skill-availability`.
+ */
+type ProviderKeyName = Extract<keyof CoreConfig, `${string}_API_KEY`>;
+
+/** One provider: how to reach it, and how it is spoken to. */
 interface Route {
-  /** The model-id prefix that names this provider, absent on the fallback. */
-  prefix?: string;
   /** The env var holding its key. */
-  keyName: string;
+  keyName: ProviderKeyName;
   /** What a credit ledger entry records as the provider. */
   name: string;
-  /** Builds the provider, lazily and once. */
+  /** The provider, built on first use and kept. */
   provider: () => (modelId: string) => LanguageModel;
   /** How this provider is told to reason, and how it is told not to. */
   reasoning: { on: ProviderOptionsFor; off: ProviderOptionsFor };
 }
 
-// Providers are built LAZILY (on first use), not at module import: each
-// reads an API key from the injected config (`env.*`), which is only
-// available after the application entry runs `initCore`. This mirrors the
-// lazy db / Redis singletons — importing this module has no env dependency,
-// so the `@breatic/core` barrel stays importable before initialization.
-
-let _openrouter: ReturnType<typeof createOpenRouter> | null = null;
-let _anthropic: ReturnType<typeof createAnthropic> | null = null;
-let _google: ReturnType<typeof createGoogleGenerativeAI> | null = null;
-let _openai: ReturnType<typeof createOpenAI> | null = null;
-let _deepseek: ReturnType<typeof createDeepSeek> | null = null;
-
-/**
- * OpenRouter provider — the fallback every unprefixed model reaches.
- * @returns The lazily-built, cached OpenRouter provider instance.
- */
-function getOpenrouter(): ReturnType<typeof createOpenRouter> {
-  if (_openrouter === null) {
-    _openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY || undefined });
-  }
-  return _openrouter;
+/** A route a model id reaches by carrying its prefix. */
+interface DirectRoute extends Route {
+  /** The model-id prefix that names this provider. */
+  prefix: string;
 }
 
 /**
- * Direct Anthropic provider (for Claude models).
- * @returns The lazily-built, cached Anthropic provider instance.
+ * Builds the value on first call and hands back the same one after.
+ *
+ * Providers are built lazily rather than at module import because each reads
+ * an API key from the injected config (`env.*`), which is only there after
+ * the application entry runs `initCore`. This mirrors the lazy db / Redis
+ * singletons -- importing this module has no env dependency, so the
+ * `@breatic/core` barrel stays importable before initialization.
+ * @param make - Builds the value.
+ * @returns A getter that builds once.
  */
-function getAnthropic(): ReturnType<typeof createAnthropic> {
-  if (_anthropic === null) {
-    _anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY || undefined });
-  }
-  return _anthropic;
-}
-
-/**
- * Direct Google provider (for Gemini models).
- * @returns The lazily-built, cached Google provider instance.
- */
-function getGoogle(): ReturnType<typeof createGoogleGenerativeAI> {
-  if (_google === null) {
-    _google = createGoogleGenerativeAI({ apiKey: env.GOOGLE_API_KEY || undefined });
-  }
-  return _google;
-}
-
-/**
- * Direct OpenAI provider.
- * @returns The lazily-built, cached OpenAI provider instance.
- */
-function getOpenai(): ReturnType<typeof createOpenAI> {
-  if (_openai === null) {
-    _openai = createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined });
-  }
-  return _openai;
-}
-
-/**
- * Direct DeepSeek provider.
- * @returns The lazily-built, cached DeepSeek provider instance.
- */
-function getDeepseek(): ReturnType<typeof createDeepSeek> {
-  if (_deepseek === null) {
-    _deepseek = createDeepSeek({ apiKey: env.DEEPSEEK_API_KEY || undefined });
-  }
-  return _deepseek;
+function memo<T>(make: () => T): () => T {
+  let value: T | undefined;
+  return () => (value ??= make());
 }
 
 /**
@@ -130,12 +96,12 @@ function getDeepseek(): ReturnType<typeof createDeepSeek> {
  * no `thinking` field at all when neither side asks. Saying nothing means a
  * different thing to each of them, which is why both directions are stated.
  */
-const DIRECT_ROUTES: readonly Route[] = [
+export const DIRECT_ROUTES: readonly DirectRoute[] = [
   {
     prefix: "anthropic/",
     keyName: "ANTHROPIC_API_KEY",
     name: "anthropic",
-    provider: getAnthropic,
+    provider: memo(() => createAnthropic({ apiKey: env.ANTHROPIC_API_KEY || undefined })),
     reasoning: {
       on: { thinking: { type: "adaptive", display: "summarized" } },
       off: { thinking: { type: "disabled" } },
@@ -145,7 +111,7 @@ const DIRECT_ROUTES: readonly Route[] = [
     prefix: "google/",
     keyName: "GOOGLE_API_KEY",
     name: "google",
-    provider: getGoogle,
+    provider: memo(() => createGoogleGenerativeAI({ apiKey: env.GOOGLE_API_KEY || undefined })),
     reasoning: {
       // Gemini 3 Pro takes only LOW or HIGH and has no off position, so on
       // that model this is the instruction going out rather than a promise
@@ -158,14 +124,14 @@ const DIRECT_ROUTES: readonly Route[] = [
     prefix: "openai/",
     keyName: "OPENAI_API_KEY",
     name: "openai",
-    provider: getOpenai,
+    provider: memo(() => createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined })),
     reasoning: { on: { reasoningEffort: "high" }, off: { reasoningEffort: "none" } },
   },
   {
     prefix: "deepseek/",
     keyName: "DEEPSEEK_API_KEY",
     name: "deepseek",
-    provider: getDeepseek,
+    provider: memo(() => createDeepSeek({ apiKey: env.DEEPSEEK_API_KEY || undefined })),
     reasoning: {
       on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
       off: { thinking: { type: "disabled" } },
@@ -174,10 +140,10 @@ const DIRECT_ROUTES: readonly Route[] = [
 ] as const;
 
 /** Where everything else goes, and what it is called when it gets there. */
-const FALLBACK_ROUTE: Route = {
+export const FALLBACK_ROUTE: Route = {
   keyName: "OPENROUTER_API_KEY",
   name: "openrouter",
-  provider: getOpenrouter,
+  provider: memo(() => createOpenRouter({ apiKey: env.OPENROUTER_API_KEY || undefined })),
   reasoning: {
     // `max_tokens` or `effort` is required alongside; `enabled` alone does
     // not compile. `none` is the documented way to turn it off.
@@ -186,38 +152,22 @@ const FALLBACK_ROUTE: Route = {
   },
 };
 
-/** Every route a model id can land on, fallback last. */
-export const ROUTES: readonly Route[] = [...DIRECT_ROUTES, FALLBACK_ROUTE];
-
 /**
- * The route a model id lands on.
+ * The direct route a model id lands on, if any.
  *
  * A direct route needs both its prefix and its key: a deployment that names
  * a model it holds no key for still reaches it through the fallback, which
  * is what makes a single OpenRouter key enough to run everything.
- * @param modelString - Model identifier, `provider/model` or plain.
- * @returns The matching direct route, or the fallback.
+ * @param modelString - Model identifier, `provider/model` or plain. An
+ *   absent one belongs to no vendor in particular and takes the fallback.
+ * @returns The matching direct route, or undefined for the fallback.
  */
-function routeFor(modelString: string): Route {
-  return (
-    DIRECT_ROUTES.find(
-      (route) =>
-        route.prefix !== undefined &&
-        modelString.startsWith(route.prefix) &&
-        Boolean((env as unknown as Record<string, string>)[route.keyName]),
-    ) ?? FALLBACK_ROUTE
+function directRouteFor(modelString: string | undefined): DirectRoute | undefined {
+  if (modelString === undefined) return undefined;
+  return DIRECT_ROUTES.find(
+    (route) => modelString.startsWith(route.prefix) && Boolean(env[route.keyName]),
   );
 }
-
-/**
- * The model this build calls when a caller names none.
- *
- * Every caller passes one; this is what the signature promises if one ever
- * does not. The default that decides what a turn actually runs on lives in
- * `config/agent.yaml`, and this string is kept in step with it so the two
- * never name different models.
- */
-const DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
 
 /**
  * Get an AI SDK model instance by model string.
@@ -226,14 +176,16 @@ const DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
  * the `model` option of `generateText` / `streamText` — which is where every
  * caller sends it. It used to say `ReturnType<OpenAIProvider>`, borrowing one
  * branch's type to describe a function that returns a model from several.
- * @param modelString - Model identifier. Defaults to the build's own model.
+ * @param modelString - Model identifier. Required: a call that names no model
+ *   used to land on a literal that happened to match, which is the bug
+ *   `agent-config.ts` records.
  * @returns AI SDK LanguageModel instance
  */
-export function getModel(modelString?: string): LanguageModel {
-  const model = modelString ?? DEFAULT_MODEL;
-  const route = routeFor(model);
-  const id = route.prefix === undefined ? model : model.slice(route.prefix.length);
-  return route.provider()(id);
+export function getModel(modelString: string): LanguageModel {
+  const direct = directRouteFor(modelString);
+  return direct
+    ? direct.provider()(modelString.slice(direct.prefix.length))
+    : FALLBACK_ROUTE.provider()(modelString);
 }
 
 /**
@@ -241,11 +193,13 @@ export function getModel(modelString?: string): LanguageModel {
  *
  * Returns the provider that `getModel()` would route to. Used for recording
  * the actual provider in credit transactions.
- * @param modelString - Model identifier. Defaults to the build's own model.
+ * @param modelString - Model identifier, or undefined where the caller has
+ *   no record of one — that call reaches the fallback like any other id no
+ *   direct route claims.
  * @returns The resolved provider name.
  */
-export function resolveProvider(modelString?: string): string {
-  return routeFor(modelString ?? DEFAULT_MODEL).name;
+export function resolveProvider(modelString: string | undefined): string {
+  return (directRouteFor(modelString) ?? FALLBACK_ROUTE).name;
 }
 
 /**
@@ -255,11 +209,14 @@ export function resolveProvider(modelString?: string): string {
  * and how that vendor takes the request are settled here. Both directions
  * are stated outright, because leaving the field off means something
  * different to every provider and those defaults are theirs to change.
- * @param modelString - Model identifier. Defaults to the build's own model.
+ * @param modelString - Model identifier, or undefined for the fallback.
  * @param thinking - Whether this call wants the model's working.
  * @returns Provider options to spread into the model call.
  */
-export function reasoningFor(modelString: string | undefined, thinking: boolean): ReasoningOptions {
-  const route = routeFor(modelString ?? DEFAULT_MODEL);
+export function reasoningFor(
+  modelString: string | undefined,
+  thinking: boolean,
+): ReasoningOptions {
+  const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
   return { providerOptions: { [route.name]: thinking ? route.reasoning.on : route.reasoning.off } };
 }

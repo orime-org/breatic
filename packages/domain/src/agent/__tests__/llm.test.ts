@@ -21,6 +21,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as LlmModule from "@domain/agent/llm.js";
 import type { generateText, LanguageModel } from "ai";
+import { DIRECT_ROUTES, FALLBACK_ROUTE } from "@domain/agent/llm.js";
 
 /** What this deployment has for each provider key, per test. */
 const keys: { current: Record<string, string> } = vi.hoisted(() => ({ current: {} }));
@@ -232,62 +233,106 @@ describe("the DeepSeek direct route", () => {
   });
 });
 
+/**
+ * Both directions, spelled out, for all five providers.
+ *
+ * Written here as literals rather than read off the table: a test that asks
+ * the table what the table says holds nothing in place. These are the ten
+ * cells, and swapping any pair in `llm.ts` turns one of them red.
+ *
+ * Asserting the provider's *name* is not enough. The bug this change exists
+ * to remove was a switch that addressed the right provider and asked it for
+ * nothing -- it read as working from the outside. So each cell asserts the
+ * whole object, which is what goes on the wire.
+ */
+const SPELLINGS = [
+  {
+    model: "deepseek/x",
+    key: "DEEPSEEK_API_KEY",
+    name: "deepseek",
+    on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
+    off: { thinking: { type: "disabled" } },
+  },
+  {
+    model: "anthropic/x",
+    key: "ANTHROPIC_API_KEY",
+    name: "anthropic",
+    on: { thinking: { type: "adaptive", display: "summarized" } },
+    off: { thinking: { type: "disabled" } },
+  },
+  {
+    model: "google/x",
+    key: "GOOGLE_API_KEY",
+    name: "google",
+    on: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
+    off: { thinkingConfig: { thinkingBudget: 0 } },
+  },
+  {
+    model: "openai/x",
+    key: "OPENAI_API_KEY",
+    name: "openai",
+    on: { reasoningEffort: "high" },
+    off: { reasoningEffort: "none" },
+  },
+  {
+    model: "meta/x",
+    key: "OPENROUTER_API_KEY",
+    name: "openrouter",
+    on: { reasoning: { effort: "high" } },
+    off: { reasoning: { effort: "none" } },
+  },
+] as const;
+
 describe("reasoningFor", () => {
-  /** Every route, plus the fallback, and the key each one answers to. */
-  const CASES = [
-    { model: "deepseek/x", key: "DEEPSEEK_API_KEY", name: "deepseek" },
-    { model: "anthropic/x", key: "ANTHROPIC_API_KEY", name: "anthropic" },
-    { model: "google/x", key: "GOOGLE_API_KEY", name: "google" },
-    { model: "openai/x", key: "OPENAI_API_KEY", name: "openai" },
-    { model: "meta/x", key: "OPENROUTER_API_KEY", name: "openrouter" },
-  ] as const;
-
-  it.each(CASES)("addresses $name when asked to reason", async ({ model, key, name }) => {
-    keys.current = { [key]: "k" };
-    const { reasoningFor } = await freshLlm();
-    const options = reasoningFor(model, true).providerOptions;
-    expect(Object.keys(options ?? {})).toEqual([name]);
-  });
-
-  it.each(CASES)("addresses $name when asked not to", async ({ model, key, name }) => {
-    keys.current = { [key]: "k" };
-    const { reasoningFor } = await freshLlm();
-    const options = reasoningFor(model, false).providerOptions;
-    expect(Object.keys(options ?? {})).toEqual([name]);
-  });
-
-  it("says something in both directions, for every provider", async () => {
-    for (const { model, key } of CASES) {
+  it.each(SPELLINGS)(
+    "spells $name's on and off the way $name takes them",
+    async ({ model, key, name, on, off }) => {
       keys.current = { [key]: "k" };
       const { reasoningFor } = await freshLlm();
-      for (const asked of [true, false]) {
-        const options = reasoningFor(model, asked).providerOptions;
-        const only = Object.values(options ?? {})[0];
-        expect(Object.keys(only ?? {}).length).toBeGreaterThan(0);
-      }
-    }
+      expect(reasoningFor(model, true).providerOptions).toEqual({ [name]: on });
+      expect(reasoningFor(model, false).providerOptions).toEqual({ [name]: off });
+    },
+  );
+
+  it("takes the fallback when the caller has no model to name", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const { reasoningFor } = await freshLlm();
+    expect(reasoningFor(undefined, true).providerOptions).toEqual({
+      openrouter: { reasoning: { effort: "high" } },
+    });
   });
 });
 
+/**
+ * Every route in the table, whatever is in it.
+ *
+ * Driven off the export rather than a hand-written list: a list here would be
+ * the fifth copy of the table, and the fifth copy is what this change exists
+ * to delete. A route added to `llm.ts` and not to a list here would be
+ * covered by nothing -- which is where `openai/` already stood.
+ *
+ * The prefixes and key names are literals, identical in every instance the
+ * module loader hands out, so listing them from the statically-imported copy
+ * is safe while each case still asserts against a freshly-loaded one.
+ */
 describe("the table is what every consumer reads", () => {
-  const ROUTES = [
-    { prefix: "deepseek/", key: "DEEPSEEK_API_KEY", name: "deepseek" },
-    { prefix: "anthropic/", key: "ANTHROPIC_API_KEY", name: "anthropic" },
-    { prefix: "google/", key: "GOOGLE_API_KEY", name: "google" },
-    { prefix: "openai/", key: "OPENAI_API_KEY", name: "openai" },
-  ] as const;
-
-  it.each(ROUTES)("routes and charges $name alike", async ({ prefix, key, name }) => {
-    keys.current = { [key]: "k", OPENROUTER_API_KEY: "sk-or-test" };
+  it.each(DIRECT_ROUTES)("routes and charges $name alike", async ({ prefix, keyName, name }) => {
+    keys.current = { [keyName]: "k", OPENROUTER_API_KEY: "sk-or-test" };
     const { getModel, resolveProvider } = await freshLlm();
     expect(resolveProvider(`${prefix}x`)).toBe(name);
     expect(selfReport(getModel(`${prefix}x`))).toMatch(new RegExp(`^${name}`));
   });
 
-  it.each(ROUTES)("falls $name back to OpenRouter with no key", async ({ prefix }) => {
+  it.each(DIRECT_ROUTES)("falls $name back to OpenRouter with no key", async ({ prefix }) => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     const { getModel, resolveProvider } = await freshLlm();
-    expect(resolveProvider(`${prefix}x`)).toBe("openrouter");
+    expect(resolveProvider(`${prefix}x`)).toBe(FALLBACK_ROUTE.name);
     expect(selfReport(getModel(`${prefix}x`))).toMatch(/^openrouter/);
+  });
+
+  it("has a spelling case above for every route it holds", () => {
+    const spelled = SPELLINGS.map((s) => s.name).sort();
+    const inTable = [...DIRECT_ROUTES.map((r) => r.name), FALLBACK_ROUTE.name].sort();
+    expect(spelled).toEqual(inTable);
   });
 });

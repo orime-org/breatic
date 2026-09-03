@@ -111,9 +111,10 @@ web_search_timeout_ms: 10000
 # shows it, memory consolidation does not. One setting across all of them
 # would have to be wrong for one of the two.
 #
-# Each call site says which it wants at the point it makes the call, and
-# `reasoningFor` in `@breatic/domain` turns that into whatever the provider
-# on the other end takes.
+# A call that has a preference states it where it makes the call, by passing
+# a boolean to `reasoningFor` in `@breatic/domain`, which turns that into
+# whatever the provider on the other end takes. Chat and memory consolidation
+# do that today; the rest take whatever their provider does by default.
 
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call

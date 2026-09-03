@@ -57,8 +57,12 @@ const agentConfigSchema = z.object({
    * Both used to be literals in three places, disagreeing 40 against 15.
    */
   skill_agent_max_steps: z.number().int().positive().default(15),
-  default_model: z.string().default("deepseek/deepseek-v4-pro"),
-  consolidation_model: z.string().default("deepseek/deepseek-v4-pro"),
+  // `.min(1)` because a blank one reaches the vendor as an empty model id and
+  // fails on the first message rather than at startup. A half-typed prefix
+  // (`deepseek/`) does the same: the routing table strips it and sends what
+  // is left, which is nothing.
+  default_model: z.string().min(1).default("deepseek/deepseek-v4-pro"),
+  consolidation_model: z.string().min(1).default("deepseek/deepseek-v4-pro"),
   /**
    * How much of the first message a conversation keeps as its name.
    *

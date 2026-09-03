@@ -230,9 +230,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定。这一条以前是 `createOpenAI` 指着 OpenRouter 的地址,那个 provider 默认走 `/responses`,两边的响应形状不同。
 
-**要不要 reasoning 由发起调用的那处说,怎么说由表决定**。调用方只传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
+**有偏好的调用自己说,怎么说由表决定**。调用方传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
 
-**开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。今天聊天要 reasoning、记忆归纳不要,两处各自说各自的。
+**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**六个模型调用点里今天有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余四处(text mini-tool · nano-banana · skill agent · understand)拿它们各自 provider 的默认值。
 
 **这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
 

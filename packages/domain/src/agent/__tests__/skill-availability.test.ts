@@ -36,6 +36,7 @@ import {
   assertSkillModelRunnable,
   checkSkillModelRunnable,
 } from "@domain/agent/skill-availability.js";
+import { DIRECT_ROUTES, FALLBACK_ROUTE } from "@domain/agent/llm.js";
 
 const keys: Record<string, string> = {};
 
@@ -113,6 +114,19 @@ describe("whether a skill's model can actually run", () => {
     keys.ANTHROPIC_API_KEY = "sk-ant";
     keys.OPENROUTER_API_KEY = "";
     expect(checkSkillModelRunnable("anthropic/claude-sonnet-4-6").ok).toBe(true);
+  });
+
+  // Every route, off the table itself. Naming them here instead left
+  // `openai/` covered by nothing, and would leave the next one added the
+  // same way. Each case sets only its own key, so a route reading as
+  // runnable off somebody else's key fails here.
+  it.each(DIRECT_ROUTES)("says yes for $name on its own key, and no without it", ({ prefix, keyName }) => {
+    keys[keyName] = "k";
+    keys[FALLBACK_ROUTE.keyName] = "";
+    expect(checkSkillModelRunnable(`${prefix}some-model`).ok).toBe(true);
+
+    keys[keyName] = "";
+    expect(checkSkillModelRunnable(`${prefix}some-model`).ok).toBe(false);
   });
 
   it("says yes for a DeepSeek model whose own key is set", () => {
