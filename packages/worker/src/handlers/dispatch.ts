@@ -797,6 +797,27 @@ async function runTaskBody(
   await taskService.setResolvedSkills(taskId, resolvedSkills);
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
 
+  const usedModel = (result.model as string | undefined) ?? model;
+  // One line per finished generation, whatever it cost and whether or not a
+  // charge follows. Not every modality carries a price yet, and a run whose
+  // upstream reports nothing would otherwise leave no trace of the usage at
+  // all — the charge below is skipped for exactly those.
+  if (wasFirst) {
+    logger.info(
+      {
+        taskId,
+        taskType,
+        model: usedModel,
+        provider: resolveProvider(usedModel),
+        credits: creditsUsed,
+        durationMs,
+        userId,
+        projectId: projectId ?? null,
+      },
+      "generation_usage",
+    );
+  }
+
   if (wasFirst && creditsUsed > 0) {
     try {
       const outcome = await creditLotService.chargeForGeneration({
@@ -805,8 +826,8 @@ async function runTaskBody(
         amount: creditsUsed,
         description: `Task: ${taskType}`,
         referenceId: taskId,
-        model: (result.model as string | undefined) ?? model,
-        provider: resolveProvider((result.model as string | undefined) ?? model),
+        model: usedModel,
+        provider: resolveProvider(usedModel),
       });
       if (outcome.shortfall > 0) {
         // The studio's pool ran out mid-flight, or its credits were reassigned
