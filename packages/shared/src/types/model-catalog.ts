@@ -57,8 +57,8 @@ export interface ParamDescriptor {
   /**
    * The increment a continuous control moves this value by (#1960).
    *
-   * Bounds alone do not say how finely a value may be set — 0 to 1 is three
-   * stops for ElevenLabs' stability and twenty for its similarity — and that
+   * Bounds alone do not say how finely a value may be set — ElevenLabs states
+   * 0 to 1 in steps of 0.05, Fish states -20 to 20 dB in steps of 1 — and that
    * is the model's statement about its own parameter, not a decision for
    * whichever control happens to render it. Only params meant to be set
    * continuously carry one; a param stating `values` is a list of choices and

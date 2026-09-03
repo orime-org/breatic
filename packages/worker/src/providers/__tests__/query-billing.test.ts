@@ -10,9 +10,10 @@
  * `billing_type`. This endpoint has no public documentation — that observation
  * is the whole specification, which is why it is written down as cases.
  *
- * Every path that answers zero says so in the log. A silent zero here is
- * indistinguishable from a free generation, and the number it produces is what
- * a charge would be taken on.
+ * Every path where the lookup goes wrong says so in the log, so the one quiet
+ * zero left — lines the vendor priced at zero — reads as the vendor calling
+ * the generation free. The number this returns is what a charge is taken on,
+ * so those two have to stay tellable apart.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

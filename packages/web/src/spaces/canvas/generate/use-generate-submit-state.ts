@@ -4,7 +4,7 @@
 /**
  * What a Generate panel reads at the instant its execute button is clicked.
  *
- * Each of the three panels (image, video, audio) keeps the same five things,
+ * Each of the three panels (image, video, audio) keeps the same six things,
  * and each one is here for a reason a click makes: the prompt and the
  * in-flight flag are mirrored into refs because React state lags a frame and
  * the handler reads them synchronously; the editor handle is what serializes
@@ -12,7 +12,7 @@
  * its way tells that the panel it started from has gone.
  *
  * Held together rather than declared per panel because they are one mechanism:
- * a fourth panel that copied four of the five would look right and drop a
+ * a fourth panel that copied five of the six would look right and drop a
  * guarantee.
  *
  * The state halves are not spare copies of the refs. Each panel's button runs

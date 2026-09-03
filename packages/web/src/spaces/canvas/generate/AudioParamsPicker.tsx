@@ -169,11 +169,11 @@ interface ParamControlRowProps {
 /**
  * One parameter, in the form its declaration calls for.
  *
- * A short list of stops reuses {@link ParamOptionGroup} — the shape every
- * option-style param in this product already has — so a stability row and a
- * ratio row cannot drift apart. A range gets its name and current value on one
- * line with the slider under them, because a slider position alone does not
- * say what value it is at.
+ * A param stating a short list of values reuses {@link ParamOptionGroup} — the
+ * shape every option-style param in this product already has — so it cannot
+ * drift from the ratio and camera rows. A range gets its name and current
+ * value on one line with the slider under them, because a slider position
+ * alone does not say what value it is at.
  * @param root0 - Component props.
  * @param root0.control - The control this param calls for.
  * @param root0.label - The localized param name.

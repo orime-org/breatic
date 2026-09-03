@@ -281,7 +281,8 @@ models:
         default: "Alice"
       stability:
         description: "Voice consistency (0-1)"
-        # 0.0-1.0, default 0.5, on all three upstreams that carry this model
+        # 0.0-1.0, default 0.5, on both upstreams that carry this model and on
+        # fal, which serves it too
         # (elevenlabs.io/docs/api-reference/text-to-speech/convert,
         # wavespeed.ai/docs/docs-api/elevenlabs/elevenlabs-eleven-v3,
         # fal.ai/models/fal-ai/elevenlabs/tts/eleven-v3/api).

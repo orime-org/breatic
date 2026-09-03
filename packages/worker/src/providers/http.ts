@@ -221,9 +221,11 @@ interface BillingLine {
  * the deducting ones count — adding a refund would state the opposite of what
  * happened.
  *
- * Every zero it answers is logged. Zero is a real answer for a free
- * generation, so a silent one is indistinguishable from a lookup that failed,
- * and a charge would be taken on the difference.
+ * Every zero that comes from a lookup going wrong is logged — a refused
+ * request, no deducting line, a line carrying no price. What is left, a zero
+ * summed from lines the vendor priced at zero, is the vendor saying the
+ * generation was free, and it answers quietly. A charge is taken on this
+ * number, so the two have to stay tellable apart.
  * @param resolved - Resolved provider endpoint.
  * @param taskId - The vendor's prediction uuid.
  * @returns What the prediction cost in USD, or 0 when the vendor did not say.
