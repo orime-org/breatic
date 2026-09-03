@@ -173,7 +173,64 @@ describe('what comes back (#1960 §7.1)', () => {
       type: 'failed',
       requestId: ready.requestId,
     });
-    expect(s.status).toBe('loading');
+    expect(s.status).toBe('ready');
+    expect(s.fetching).toBe(true);
+  });
+});
+
+// `status` says what is on screen; this says whether a list is on its way.
+// They came apart when a search learned to hold the old list: the picture
+// stays `ready` while the request travels, and something still has to send it.
+describe('whether a list is in flight (#1960 §7.1)', () => {
+  it('has nothing in flight before the picker is opened', () => {
+    expect(initialVoiceListState.fetching).toBe(false);
+  });
+
+  it('marks one in flight when the picker opens', () => {
+    expect(
+      voiceListReducer(initialVoiceListState, { type: 'opened' }).fetching,
+    ).toBe(true);
+  });
+
+  it('marks one in flight for a search that holds the old list', () => {
+    const s = voiceListReducer(readyState(), { type: 'queryChanged', query: 'x' });
+    expect(s.status).toBe('ready');
+    expect(s.fetching).toBe(true);
+  });
+
+  it('marks one in flight when the model changes', () => {
+    expect(voiceListReducer(readyState(), { type: 'modelChanged' }).fetching).toBe(
+      true,
+    );
+  });
+
+  it('clears it when the page arrives', () => {
+    expect(readyState().fetching).toBe(false);
+  });
+
+  it('clears it when the request fails', () => {
+    const opened = voiceListReducer(initialVoiceListState, { type: 'opened' });
+    const s = voiceListReducer(opened, {
+      type: 'failed',
+      requestId: opened.requestId,
+    });
+    expect(s.fetching).toBe(false);
+  });
+
+  it('clears it when the picker collapses', () => {
+    const opened = voiceListReducer(initialVoiceListState, { type: 'opened' });
+    expect(voiceListReducer(opened, { type: 'collapsed' }).fetching).toBe(false);
+  });
+
+  it('leaves it alone while the next page loads', () => {
+    const s = voiceListReducer(readyState(), { type: 'moreRequested' });
+    expect(s.fetching).toBe(false);
+    expect(s.loadingMore).toBe(true);
+  });
+
+  it('opening on a list already shown sends nothing', () => {
+    const ready = readyState();
+    expect(voiceListReducer(ready, { type: 'opened' }).fetching).toBe(false);
   });
 });
 
@@ -186,13 +243,23 @@ describe('searching and switching models (#1960 §7.1)', () => {
     expect(s.requestId).not.toBe(initialVoiceListState.requestId);
   });
 
-  it('goes back to loading when the search term changes', () => {
+  // What is on screen when the term changes is the same model's voices: still
+  // pickable, still worth reading. Sweeping them away for a placeholder would
+  // do it on every keystroke, since each one restarts the request.
+  it('leaves the loaded voices on screen while a new search travels', () => {
     const s = voiceListReducer(readyState(), {
       type: 'queryChanged',
       query: 'deep',
     });
-    expect(s.status).toBe('loading');
+    expect(s.status).toBe('ready');
+    expect(s.voices).toEqual([VOICE_A]);
     expect(s.query).toBe('deep');
+  });
+
+  it('takes a new request id, so the previous term cannot answer', () => {
+    const ready = readyState();
+    const s = voiceListReducer(ready, { type: 'queryChanged', query: 'deep' });
+    expect(s.requestId).not.toBe(ready.requestId);
   });
 
   it('drops the page that the previous search term asked for', () => {
@@ -206,8 +273,39 @@ describe('searching and switching models (#1960 §7.1)', () => {
       requestId: ready.requestId,
       page: { voices: [VOICE_B], hasMore: false },
     });
-    expect(stale.status).toBe('loading');
     expect(stale.voices).not.toContainEqual(VOICE_B);
+  });
+
+  it('holds the empty message while a new search travels', () => {
+    const opened = voiceListReducer(initialVoiceListState, { type: 'opened' });
+    const empty = voiceListReducer(opened, {
+      type: 'arrived',
+      requestId: opened.requestId,
+      page: { voices: [], hasMore: false },
+    });
+    const s = voiceListReducer(empty, { type: 'queryChanged', query: 'deep' });
+    expect(s.status).toBe('empty');
+  });
+
+  // Nothing on screen worth holding: the first request has not answered yet.
+  it('shows the placeholder for a term typed before anything has loaded', () => {
+    const s = voiceListReducer(initialVoiceListState, {
+      type: 'queryChanged',
+      query: 'deep',
+    });
+    expect(s.status).toBe('loading');
+    expect(s.voices).toEqual([]);
+  });
+
+  // Holding the error would read as a picker that stopped trying.
+  it('shows the placeholder for a term typed after a failure', () => {
+    const opened = voiceListReducer(initialVoiceListState, { type: 'opened' });
+    const failed = voiceListReducer(opened, {
+      type: 'failed',
+      requestId: opened.requestId,
+    });
+    const s = voiceListReducer(failed, { type: 'queryChanged', query: 'deep' });
+    expect(s.status).toBe('loading');
   });
 
   it('starts over on a model switch, since the value domain changed', () => {

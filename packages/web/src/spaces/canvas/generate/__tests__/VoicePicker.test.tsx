@@ -47,6 +47,7 @@ function state(over: Partial<VoiceListState> = {}): VoiceListState {
     voices: [ALPHA, BETA],
     query: '',
     hasMore: false,
+    fetching: false,
     loadingMore: false,
     moreFailed: false,
     requestId: 1,

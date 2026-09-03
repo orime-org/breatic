@@ -26,16 +26,13 @@ const PAGE_TRIGGER_DISTANCE = 24;
 /**
  * How tall the list stands, counted in rows.
  *
- * The placeholder shows this many rows and the loaded list is capped at the
- * same height, so the popover neither collapses while a page is on its way
- * nor grows when one lands. Both matter on every keystroke, since each one
- * restarts the request, and the popover opens upward: a height that moved
- * would take the search box with it, out from under the reader's hands.
- *
- * Fewer results than this make it shorter, which is what a short list should
- * look like.
+ * The height is the same in every state: the placeholder fills it, a full
+ * result set scrolls inside it, and a short one leaves the space below empty.
+ * The popover opens upward, so a box that grew and shrank with its contents
+ * would take the search box with it, out from under the reader's hands — and
+ * it would do that on every keystroke, since each one restarts the request.
  */
-const LIST_ROWS = 7;
+const LIST_ROWS = 5;
 
 /** A row's height on a real browser: `size='menu-item'` around two lines. */
 const ROW_HEIGHT = 46;
@@ -222,144 +219,142 @@ export const VoicePicker = React.memo(function VoicePicker({
             className='h-8 text-sm'
           />
         </div>
-        {/* Taller than the model picker's list, which this height does not
-            answer to: that one offers a handful of models under no search box,
-            this one offers every voice the deployment has (52 on the inline
-            catalogue) under one (user 2026-09-02). */}
-        <ScrollArea
-          viewportRef={setScroller}
-          // The body plus the `p-1` this same class states, so the loaded list
-          // stops exactly where the placeholder stood.
-          viewportClassName='max-h-[calc(var(--voice-list-body)+0.5rem)] p-1'
-        >
-          <div className='flex flex-col gap-0.5'>
-            {list.status === 'loading' && (
-              // The placeholder is one block of the body's own height sharing
-              // itself between rows, rather than rows of a height guessed here:
-              // that way it fills the body exactly whatever a real row measures.
-              <div
-                className='flex flex-col gap-0.5'
-                style={{ height: 'var(--voice-list-body)' }}
+        {/* One height for every state this list can be in. A box that grew with
+          its contents would move under the reader on each keystroke, since the
+          popover opens upward and a search changes how many rows there are —
+          so a short result set leaves the space below it empty instead
+          (user 2026-09-03). */}
+        <div className='p-1' style={{ height: 'var(--voice-list-body)' }}>
+          {list.status === 'loading' && (
+          // One block of the body's own height sharing itself between rows,
+          // rather than rows of a height guessed here.
+            <div className='flex h-full flex-col gap-0.5'>
+              {Array.from({ length: LIST_ROWS }, (_, i) => (
+                <Skeleton
+                  key={i}
+                  data-testid='generate-voice-skeleton'
+                  className='min-h-0 flex-1'
+                />
+              ))}
+            </div>
+          )}
+          {list.status === 'empty' && (
+          // Centred, and outside the ScrollArea: its viewport wraps content in
+          // an auto-height table box, where a full-height child collapses.
+            <p
+              data-testid='generate-voice-empty'
+              className='flex h-full items-center justify-center text-sm text-muted-foreground'
+            >
+              {t('canvas.generatePanel.voiceEmpty')}
+            </p>
+          )}
+          {list.status === 'failed' && (
+            <div
+              data-testid='generate-voice-error'
+              className='flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground'
+            >
+              <span>{t('canvas.generatePanel.voiceError')}</span>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                data-testid='generate-voice-retry'
+                onClick={() => onOpenChange(true)}
               >
-                {Array.from({ length: LIST_ROWS }, (_, i) => (
-                  <Skeleton
-                    key={i}
-                    data-testid='generate-voice-skeleton'
-                    className='min-h-0 flex-1'
-                  />
-                ))}
-              </div>
-            )}
-            {list.status === 'empty' && (
-              <p
-                data-testid='generate-voice-empty'
-                className='py-6 text-center text-sm text-muted-foreground'
-              >
-                {t('canvas.generatePanel.voiceEmpty')}
-              </p>
-            )}
-            {list.status === 'failed' && (
-              <div
-                data-testid='generate-voice-error'
-                className='flex flex-col items-center gap-2 py-6 text-sm text-muted-foreground'
-              >
-                <span>{t('canvas.generatePanel.voiceError')}</span>
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  data-testid='generate-voice-retry'
-                  onClick={() => onOpenChange(true)}
-                >
-                  {t('canvas.generatePanel.voiceRetry')}
-                </Button>
-              </div>
-            )}
-            {list.voices.map((voice) => {
-              const chosen = voice.id === selectedId;
-              return (
-                // The row carries the fill and the hover, and the two controls
-                // sit inside it as siblings: a sample button nested in the row
-                // button would be a button inside a button, which the content
-                // model does not allow. The model picker's rows have one
-                // control and are a single Button.
-                <div
-                  key={voice.id}
-                  className={cn(
-                    'flex items-center gap-1 rounded-chrome',
-                    chosen ? 'bg-accent-strong' : 'hover:bg-accent',
-                  )}
-                >
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='menu-item'
-                    aria-pressed={chosen}
-                    data-testid={`generate-voice-option-${voice.id}`}
-                    className='min-w-0 flex-1 justify-start hover:bg-transparent'
-                    onClick={() => handlePick(voice)}
-                  >
-                    <span className='flex min-w-0 flex-1 flex-col items-start'>
-                      <span className='w-full truncate text-left'>
-                        {voice.name}
-                      </span>
-                      {voice.description !== undefined && (
-                        <span className='w-full truncate text-left text-xs text-muted-foreground'>
-                          {voice.description}
-                        </span>
+                {t('canvas.generatePanel.voiceRetry')}
+              </Button>
+            </div>
+          )}
+          {(list.status === 'ready' || list.status === 'idle') && (
+            <ScrollArea viewportRef={setScroller} className='h-full'>
+              <div className='flex flex-col gap-0.5'>
+                {list.voices.map((voice) => {
+                  const chosen = voice.id === selectedId;
+                  return (
+                  // The row carries the fill and the hover, and the two controls
+                  // sit inside it as siblings: a sample button nested in the row
+                  // button would be a button inside a button, which the content
+                  // model does not allow. The model picker's rows have one
+                  // control and are a single Button.
+                    <div
+                      key={voice.id}
+                      className={cn(
+                        'flex items-center gap-1 rounded-chrome',
+                        chosen ? 'bg-accent-strong' : 'hover:bg-accent',
                       )}
-                    </span>
-                  </Button>
-                  {voice.previewUrl !== undefined && (
+                    >
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='menu-item'
+                        aria-pressed={chosen}
+                        data-testid={`generate-voice-option-${voice.id}`}
+                        className='min-w-0 flex-1 justify-start hover:bg-transparent'
+                        onClick={() => handlePick(voice)}
+                      >
+                        <span className='flex min-w-0 flex-1 flex-col items-start'>
+                          <span className='w-full truncate text-left'>
+                            {voice.name}
+                          </span>
+                          {voice.description !== undefined && (
+                            <span className='w-full truncate text-left text-xs text-muted-foreground'>
+                              {voice.description}
+                            </span>
+                          )}
+                        </span>
+                      </Button>
+                      {voice.previewUrl !== undefined && (
+                        <Button
+                          type='button'
+                          variant={null}
+                          size={null}
+                          data-testid={`generate-voice-sample-${voice.id}`}
+                          data-playing={playingId === voice.id}
+                          aria-label={t('canvas.generatePanel.voiceSample', {
+                            name: voice.name,
+                          })}
+                          className='mr-1 flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong'
+                          onClick={() => toggleSample(voice)}
+                        >
+                          {playingId === voice.id ? (
+                            <Pause className='h-3 w-3' aria-hidden='true' />
+                          ) : (
+                            <Play className='h-3 w-3' aria-hidden='true' />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+                {list.loadingMore && (
+                  <p
+                    data-testid='generate-voice-loading-more'
+                    className='py-2 text-center text-xs text-muted-foreground'
+                  >
+                    {t('canvas.generatePanel.voiceLoading')}
+                  </p>
+                )}
+                {list.moreFailed && !list.loadingMore && (
+                // Scrolling again would retry on its own, but only after the
+                // reader scrolls up and back down — from where they are
+                // standing the list just stopped.
+                  <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
+                    <span>{t('canvas.generatePanel.voiceError')}</span>
                     <Button
                       type='button'
-                      variant={null}
-                      size={null}
-                      data-testid={`generate-voice-sample-${voice.id}`}
-                      data-playing={playingId === voice.id}
-                      aria-label={t('canvas.generatePanel.voiceSample', {
-                        name: voice.name,
-                      })}
-                      className='mr-1 flex h-[var(--btn-compact)] w-[var(--btn-compact)] shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:bg-accent-strong'
-                      onClick={() => toggleSample(voice)}
+                      variant='outline'
+                      size='sm'
+                      data-testid='generate-voice-more-retry'
+                      onClick={onLoadMore}
                     >
-                      {playingId === voice.id ? (
-                        <Pause className='h-3 w-3' aria-hidden='true' />
-                      ) : (
-                        <Play className='h-3 w-3' aria-hidden='true' />
-                      )}
+                      {t('canvas.generatePanel.voiceRetry')}
                     </Button>
-                  )}
-                </div>
-              );
-            })}
-            {list.loadingMore && (
-              <p
-                data-testid='generate-voice-loading-more'
-                className='py-2 text-center text-xs text-muted-foreground'
-              >
-                {t('canvas.generatePanel.voiceLoading')}
-              </p>
-            )}
-            {list.moreFailed && !list.loadingMore && (
-              // Scrolling again would retry on its own, but only after the
-              // reader scrolls up and back down — from where they are
-              // standing the list just stopped.
-              <div className='flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground'>
-                <span>{t('canvas.generatePanel.voiceError')}</span>
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  data-testid='generate-voice-more-retry'
-                  onClick={onLoadMore}
-                >
-                  {t('canvas.generatePanel.voiceRetry')}
-                </Button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </ScrollArea>
+            </ScrollArea>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );

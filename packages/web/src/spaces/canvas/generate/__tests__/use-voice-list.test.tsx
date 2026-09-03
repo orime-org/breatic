@@ -95,8 +95,8 @@ describe('useVoiceList — asks upstream only when the list is open', () => {
 
 describe('useVoiceList — searching', () => {
   it('waits for typing to settle before asking upstream', async () => {
-    // Each keystroke empties the list and reloads it; asking per character
-    // would flash the list five times for one five-letter search.
+    // Each keystroke restarts the search; asking per character would spend one
+    // upstream call on every abandoned prefix.
     vi.useFakeTimers();
     list.mockResolvedValue(page(['Alice']));
     const { result } = renderHook(() => useVoiceList('elevenlabs-v3'));

@@ -24,10 +24,10 @@ import {
 /**
  * How long typing has to settle before the search is sent.
  *
- * Each keystroke empties the list and reloads it, so asking per character
- * flashes the list once per letter and spends one upstream call on each
- * abandoned prefix. A quarter of a second is the interval a typist does not
- * notice and a five-letter search collapses into one request.
+ * Each keystroke restarts the search, so asking per character spends one
+ * upstream call on every abandoned prefix and lands five answers in a row for
+ * a five-letter word. A quarter of a second is the interval a typist does not
+ * notice and that whole word collapses into one request.
  *
  * A constant rather than config: it describes how this control feels, not
  * something an operator would tune per deployment.
@@ -48,12 +48,12 @@ export interface VoiceListHandle {
 /**
  * Holds one model's voice list: its state, and the requests that fill it.
  *
- * A request is sent for exactly two states — `loading` (a fresh list) and
+ * A request is sent for exactly two flags — `fetching` (a whole list) and
  * `loadingMore` (the next page) — and each is keyed by the request id the
  * machine minted for it, so an effect that re-runs for any other reason sends
- * nothing. A search waits {@link SEARCH_SETTLE_MS} for typing to settle; the
- * loading state shows from the first keystroke, because the wait is about which
- * request to send, not about whether to say something is happening.
+ * nothing. A search waits {@link SEARCH_SETTLE_MS} for typing to settle, and
+ * what is on screen holds through the wait: the machine decides that, and this
+ * only decides when to ask.
  * @param model - The model whose voices these are; changing it voids the list.
  * @returns The list state and the picker's callbacks.
  */
@@ -73,9 +73,9 @@ export function useVoiceList(model: string | undefined): VoiceListHandle {
 
   const query = state.query;
   const requestId = state.requestId;
-  const loading = state.status === 'loading';
+  const fetching = state.fetching;
   React.useEffect(() => {
-    if (!loading || !model) return;
+    if (!fetching || !model) return;
     // Every fresh list waits out the settle window, including the one an open
     // starts: the timer is cleared on unmount and superseded by the next id,
     // so the only cost to a plain open is the wait itself.
@@ -86,7 +86,7 @@ export function useVoiceList(model: string | undefined): VoiceListHandle {
         .catch(() => dispatch({ type: 'failed', requestId }));
     }, SEARCH_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [loading, model, query, requestId]);
+  }, [fetching, model, query, requestId]);
 
   const loadingMore = state.loadingMore;
   const cursor = state.cursor;

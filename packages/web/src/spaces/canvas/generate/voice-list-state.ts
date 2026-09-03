@@ -17,9 +17,12 @@
  * flight, so a page that was asked for under an earlier question can never
  * land as if it answered this one.
  *
- * Paging is a flag, not a sixth state: the user is looking at the list while
- * the next page loads, so `status` stays `ready` and the list keeps rendering.
- * A page that fails takes nothing down with it.
+ * `status` says what the reader sees; `fetching` and `loadingMore` say what is
+ * on its way. They are separate because both are true at once for most of the
+ * time a request is out: the loaded voices stay on screen through a new search
+ * and through a next page, so the picture is `ready` while a request travels.
+ * Only a first list with nothing yet to show, and a retry after a failure,
+ * put a placeholder up — everything else replaces one picture with the next.
  */
 
 import type { Voice, VoicePage } from '@breatic/shared';
@@ -36,6 +39,16 @@ export interface VoiceListState {
   /** The token for the next page, absent when there is none. */
   cursor?: string;
   hasMore: boolean;
+  /**
+   * A whole list is on its way.
+   *
+   * Separate from `status` because the two answer different questions:
+   * `status` is what the reader sees, and a search holds the loaded voices on
+   * screen while its answer travels — so `ready` and "a request is out" are
+   * true at once, and only this says the second one. It is what decides
+   * whether a request gets sent at all.
+   */
+  fetching: boolean;
   /** A page is on its way. The list stays on screen while it is. */
   loadingMore: boolean;
   /**
@@ -68,14 +81,15 @@ export const initialVoiceListState: VoiceListState = {
   voices: [],
   query: '',
   hasMore: false,
+  fetching: false,
   loadingMore: false,
   moreFailed: false,
   requestId: 0,
 };
 
 /**
- * Starts a fresh request: empties what was on screen and takes a new id, which
- * is what voids whatever was in flight.
+ * Starts a fresh request over what is on screen: the list empties and the
+ * placeholder takes its place until the answer lands.
  * @param state - The state to start from.
  * @param query - The search term the new request carries.
  * @returns A loading state with nothing shown yet.
@@ -87,6 +101,39 @@ function startLoading(state: VoiceListState, query: string): VoiceListState {
     query,
     cursor: undefined,
     hasMore: false,
+    fetching: true,
+    loadingMore: false,
+    moreFailed: false,
+    requestId: state.requestId + 1,
+  };
+}
+
+/**
+ * Starts a fresh request under what is on screen: the picture holds until the
+ * answer replaces it.
+ *
+ * Which of the two a search takes turns on whether the reader is looking at
+ * anything worth holding. `ready` and `empty` are answers to a question about
+ * the same model, and a new term does not make them wrong to look at — while
+ * sweeping them away would do it on every keystroke, since each one restarts
+ * the request. `idle` and `loading` have nothing to hold. `failed` is the one
+ * picture that must go: held through a retry it reads as a picker that stopped
+ * trying.
+ * @param state - The state to start from.
+ * @param query - The search term the new request carries.
+ * @returns The same picture under a new request, or a loading state when there
+ *   is no picture to keep.
+ */
+function startSearch(state: VoiceListState, query: string): VoiceListState {
+  if (state.status !== 'ready' && state.status !== 'empty') {
+    return startLoading(state, query);
+  }
+  return {
+    ...state,
+    query,
+    cursor: undefined,
+    hasMore: false,
+    fetching: true,
     loadingMore: false,
     moreFailed: false,
     requestId: state.requestId + 1,
@@ -131,7 +178,7 @@ export function voiceListReducer(
       return reset(state);
 
     case 'queryChanged':
-      return startLoading(state, event.query);
+      return startSearch(state, event.query);
 
     // A different model reads a different value domain, so nothing carries
     // over — not the voices, not the cursor, and not the search term. From
@@ -151,13 +198,14 @@ export function voiceListReducer(
         voices: event.page.voices,
         cursor: event.page.nextCursor,
         hasMore: event.page.hasMore,
+        fetching: false,
         loadingMore: false,
         moreFailed: false,
       };
 
     case 'failed':
       if (event.requestId !== state.requestId) return state;
-      return { ...state, status: 'failed', loadingMore: false };
+      return { ...state, status: 'failed', fetching: false, loadingMore: false };
 
     case 'moreRequested':
       if (state.loadingMore || !state.hasMore) return state;
