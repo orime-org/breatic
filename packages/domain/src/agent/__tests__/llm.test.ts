@@ -6,10 +6,11 @@
  * told to reason -- all three read the same routing table.
  *
  * The three used to be written out separately, and adding a provider meant
- * remembering all of them. What that produced is in the design for #202: the
- * default model `deepseek/deepseek-v4-pro` matched no direct prefix and fell
- * through to OpenRouter, while the reasoning switch addressed a provider name
- * that the OpenRouter instance never answered to.
+ * remembering all of them. What that produced is in the design for #202:
+ * OpenRouter was reached through `createOpenAI`, which decides from the model
+ * id whether a model reasons, and the default `deepseek/deepseek-v4-pro` is
+ * not an id it knows -- so the reasoning option was dropped before the
+ * request was built.
  *
  * The requests here are intercepted at the global fetch, which is what the
  * SDK reaches for when a provider is built without one. Asserting on the

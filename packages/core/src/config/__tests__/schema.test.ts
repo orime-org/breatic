@@ -247,11 +247,11 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
 /**
  * The two keys that decide which model runs must name a model.
  *
- * Both ways of failing to reach the vendor with an id start clean and break
- * on the first message someone sends: `getModel("")` hands over an empty id,
- * and `getModel("deepseek/")` matches the prefix, strips it, and hands over
- * what is left, which is also nothing. Every numeric knob in this same object
- * already carries a bound.
+ * Both ways of failing to name one start clean and break on the first
+ * message someone sends: `getModel("")` hands over an empty id, and
+ * `getModel("deepseek/")` does the same on a deployment holding the DeepSeek
+ * key, because matching a direct route strips the prefix that matched. Every
+ * numeric knob in this same object already carries a bound.
  */
 describe("agent config — the model a run is sent to", () => {
   it.each([

@@ -8,8 +8,9 @@
  * and covered by its own tests; what is only observable from here is whether
  * the turn puts the answer on the call at all. A turn that worked it out and
  * dropped it looks identical from outside, and that is what used to happen:
- * the switch read as though it worked while the key it wrote was addressed
- * to a provider the OpenRouter instance never answered to.
+ * OpenRouter was reached through `createOpenAI`, which decides from the model
+ * id whether a model reasons at all, so the option was dropped before the
+ * request was built.
  *
  * The model is a double so the options can be read off the call; the routing
  * and the translation are both real, because those are the parts that decide

@@ -59,9 +59,10 @@ const agentConfigSchema = z.object({
   skill_agent_max_steps: z.number().int().positive().default(15),
   // A model id has to end in something other than the prefix separator, so
   // that neither a blank value nor a half-typed prefix gets through. Both
-  // reach the vendor as an empty id -- the routing table strips `deepseek/`
-  // and sends what is left -- and both fail on the first message rather than
-  // at startup.
+  // start clean and fail on the first message: a blank one reaches whatever
+  // provider it lands on as an empty id, and `deepseek/` reaches DeepSeek as
+  // an empty id too once that key is set, because a direct route strips the
+  // prefix it matched.
   default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4-pro"),
   consolidation_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4-pro"),
   /**

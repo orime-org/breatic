@@ -7,10 +7,15 @@
  * One table answers all of it. Three questions used to be answered in three
  * places -- where the call goes, who the charge is recorded against, and how
  * reasoning is asked for -- and adding a provider meant remembering all
- * three. What that produced: the default model `deepseek/deepseek-v4-pro`
- * matched no direct prefix and fell through to OpenRouter, while the
- * reasoning switch addressed a provider name the OpenRouter instance never
- * answered to, so the switch read as working and asked for nothing.
+ * three.
+ *
+ * What that produced: OpenRouter was reached through `createOpenAI` pointed
+ * at its address, and `@ai-sdk/openai` decides from the model id whether a
+ * model reasons at all. The default `deepseek/deepseek-v4-pro` is not an id
+ * it knows, so the reasoning option was dropped with a warning and never
+ * reached the request. The switch read as working and asked for nothing.
+ * The same borrowed adapter is why the cost OpenRouter reports was
+ * unreachable: it moves the fields it knows, and `cost` is not one of them.
  *
  * Reasoning is settled here rather than by the caller. Each vendor takes the
  * request its own way -- one wants `thinking: { type }`, another an effort

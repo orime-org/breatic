@@ -353,9 +353,10 @@ export class MainAgent {
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
-        // Chat is the one place that reasons: it plans, searches and decides
-        // between tools. Said outright in both directions, because leaving
-        // the field off means a different thing to every provider.
+        // Chat is the one call site that asks for reasoning: it plans,
+        // searches and decides between tools, and shows its working. Said
+        // outright in both directions, because leaving the field off means a
+        // different thing to every provider.
         ...reasoningFor(agentConfig.modelId, true),
         system: agentConfig.instructions,
         messages,

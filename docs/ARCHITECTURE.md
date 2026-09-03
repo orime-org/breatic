@@ -226,9 +226,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一张表。
 
-**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起整个产品,而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
+**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · skill agent · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走各自 vendor 的 key(`config/models/*/providers.yaml` 的 `api_key_env`),而且还要文本那条路同时可达(`skill-availability.ts` 的 `checkSkillModelRunnable` 两条都查)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
 
-**每条只写一次自己那把 key 的名字**,类型是 `Extract<keyof CoreConfig, \`${string}_API_KEY\`>` —— 写一个 schema 里没有的名字是编译错误,而不是一条静默永不打开的路由。
+**`keyName` 收窄成 schema 自己的键名**(`Extract<keyof CoreConfig, \`${string}_API_KEY\`>`),写一个 schema 里没有的名字是编译错误,而不是一条静默永不打开的路由。**每条路由仍然把 key 名写两遍** —— `keyName` 用来判路由,provider 闭包里那一遍用来建实例,两者之间没有类型把它们绑住;拿测试盯着(`llm.test.ts` 断言每条路由的认证 header 用的是它自己 `keyName` 那把 key)。
 
 **兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定;它把上游的 `usage.cost` 搬进 `providerMetadata.openrouter.usage.cost`。**直连那四条各自的端点不同**(DeepSeek 走 `/chat/completions`,Anthropic 走 `/v1/messages`,Google 走 `:generateContent`,OpenAI 走 `/responses`),响应形状也各不相同。
 
