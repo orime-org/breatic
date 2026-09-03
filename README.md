@@ -19,7 +19,7 @@ The AI-native operating system for content creators — a unified workspace wher
 | Database | PostgreSQL (Drizzle ORM + postgres.js) |
 | Cache & Pub/Sub | Redis (ioredis) |
 | Task Queue | BullMQ |
-| LLM Integration | Vercel AI SDK (OpenRouter, Anthropic, Google, OpenAI) |
+| LLM Integration | Vercel AI SDK (OpenRouter, DeepSeek, Anthropic, Google, OpenAI) |
 | AIGC Providers | Wavespeed, Google, BytePlus, DashScope, Topaz, + more |
 | Auth | Email+Password (bcrypt) / Google OAuth |
 | Payment | Stripe (optional) |
@@ -74,17 +74,18 @@ User Chat → MainAgent (AI SDK streamText) → TaskPlan → BullMQ → Worker
                                                         Yjs sync → all connected clients
 ```
 
-### Three-Layer Memory
+### Two-Layer Memory
 
 | Layer | Scope | Storage |
 |-------|-------|---------|
-| User Memory | Cross-project preferences | `user_memories` table |
-| Project Memory | Shared among collaborators | `project_memories` table |
+| Project Memory | One row per member per project | `project_memories` table |
 | Conversation Memory | Per-conversation context | `conversation_memories` table |
 
-Memory is automatically consolidated by the LLM when the conversation exceeds `memory_window` **turns** (default 20). Each consolidation **rewrites** the full memory content (not append), keeping it concise.
+Both layers are the member's own: a project row is keyed by `(user_id, project_id)`, so what one member's agent summarised is never handed to another's prompt.
 
-**Turn-based context management**: Each message carries a `turnIndex` (increments on every user message). When building LLM context, the last `full_detail_turns` (default 3) turns keep full step detail (tool calls + results); older turns are compressed to user message + assistant final reply only. Model `thinking` content is stored for debugging but never sent back to the LLM.
+Memory is consolidated by the LLM in front of the reply, on a turn whose assembled request measures past `memory_budget_chars` (default 850,000). The oldest turns are taken until what remains is under `memory_keep_chars` (default 500,000) less what the fold itself may add back — twice the two ceilings, since the request is measured in code units and memory is cut in code points. Each consolidation **rewrites** the full memory content (not append), bounded by `memory_project_max_size` and `memory_conversation_max_size`.
+
+**Turn-based context management**: Each message carries a `turnIndex` (increments on every user message). When building LLM context, tool results older than the last `tool_result_keep` (default 3) tool uses are replaced with a placeholder; the calls themselves, assistant text and user prose are kept. Model `thinking` content is stored for debugging but never sent back to the LLM.
 
 ### Agent & Skill System
 
@@ -163,10 +164,16 @@ All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for t
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | Text generation (Claude, GPT, Gemini via OpenRouter) |
+| `OPENROUTER_API_KEY` | Text generation for every model with no key of its own below |
 | `WAVESPEED_API_KEY` | Image/video/audio/3D generation |
+| `DEEPSEEK_API_KEY` | DeepSeek direct access |
 | `GOOGLE_API_KEY` | Google Gemini direct access |
 | `ANTHROPIC_API_KEY` | Anthropic Claude direct access |
+| `OPENAI_API_KEY` | OpenAI direct access |
+
+A model whose vendor has a key here is called at that vendor; everything else
+goes through OpenRouter, so one `OPENROUTER_API_KEY` covers every text model
+call. Image, video, audio and 3D generation run on their own vendor keys.
 
 ### Optional
 

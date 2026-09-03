@@ -145,6 +145,31 @@ describe("history on its way to the model", () => {
     expect(String((note as { content: string }).content)).toMatch(/did not finish/i);
   });
 
+  it("tells the model a turn ran out of room rather than out of things to say", () => {
+    const history = [
+      stored("assistant", [{ type: "text", text: "half a sen" }, { type: "truncated" }]),
+    ];
+
+    const [said, note] = toModelMessages(history);
+    expect(String((said as { content: string }).content)).toBe("half a sen");
+    expect(String((note as { content: string }).content)).toMatch(/output limit/i);
+  });
+
+  it("says a turn was stopped rather than cut off when it was both", () => {
+    // A reader who presses stop on a turn already at the ceiling leaves both
+    // marks. What the next turn needs to know is that nobody wants the rest.
+    const history = [
+      stored("assistant", [
+        { type: "text", text: "half a sen" },
+        { type: "truncated" },
+        { type: "interrupted" },
+      ]),
+    ];
+
+    const [, note] = toModelMessages(history);
+    expect(String((note as { content: string }).content)).toMatch(/connection to the user/i);
+  });
+
   it("keeps what a stopped turn managed to say, and marks it as cut off", () => {
     const history = [
       stored("assistant", [{ type: "text", text: "half a sen" }, { type: "interrupted" }]),

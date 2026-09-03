@@ -75,7 +75,6 @@ describe("buildAgentConfig", () => {
       skillName: "researchy",
       basePrompt: "chat base prompt",
       memoryContext: {
-        userMemory: "u",
         projectMemory: "p",
         conversationMemory: "c",
       },

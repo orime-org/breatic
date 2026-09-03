@@ -7,8 +7,10 @@
  * Handles all Google Gemini image models (Nano Banana Pro/original and
  * their Edit variants). In the Python source, an LLM (DeepSeek V3 via
  * OpenRouter) converts user input into JSON-structured prompts. In this
- * TypeScript port calls DeepSeek via OpenRouter using Vercel AI SDK
- * `generateText()`, with the original JSON construction as fallback.
+ * TypeScript port calls DeepSeek through Vercel AI SDK `generateText()`,
+ * with the original JSON construction as fallback. Which route that call
+ * takes is settled by the table in `@breatic/domain`: the vendor directly
+ * where this deployment holds its key, OpenRouter otherwise.
  *
  * Parameter mapping (YAML user-facing vs API):
  * - aspect_ratio   -> aspect_ratio (pass-through)
@@ -184,8 +186,8 @@ function buildJsonPrompt(
 /**
  * Build a JSON-structured prompt with optional LLM enhancement.
  *
- * For t2i models, calls DeepSeek via OpenRouter to convert the user's
- * text prompt and camera params into a rich JSON structured prompt.
+ * For t2i models, calls DeepSeek to convert the user's text prompt and
+ * camera params into a rich JSON structured prompt.
  * Falls back to basic JSON construction on LLM failure.
  * @param prompt - User's image description
  * @param modelName - Resolved model name

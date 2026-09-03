@@ -94,7 +94,7 @@
     },
     "canvas": {
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
-      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
+      "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
       "stream_unavailable": "任务事件流暂时不可用，请重试。",
       "history_entry_not_found": "找不到这条历史记录",
       "node_locked": "这个节点正在被其他人生成",
@@ -102,9 +102,6 @@
       "voices_not_offered": "这个模型没有音色列表",
       "voices_provider_unconfigured": "这台服务器上音色不可用",
       "voices_upstream_failed": "音色加载失败，请重试。"
-    },
-    "memory": {
-      "version_conflict": "有人同时修改了它，请重试。"
     },
     "asset": {
       "direct_upload_unavailable": "当前服务器不支持直接上传"
@@ -136,6 +133,9 @@
       "consent_heading": "你在购买时同意的内容",
       "refund_heading": "积分包退款规则",
       "support": "对这笔购买有疑问，请写信到 {email}。"
+    },
+    "chat": {
+      "message_too_long": "这条消息太长了。连同附带的内容最多 {limit, number} 个字符，这条有 {actual, number} 个。"
     }
   },
   "chat": {
@@ -152,7 +152,8 @@
         "title": "选择 Skill"
       },
       "send": "发送",
-      "sending": "发送中"
+      "sending": "发送中",
+      "atLimit": "已达 {limit, number} 字上限"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -188,7 +189,9 @@
     },
     "message": {
       "interrupted": "已停止",
-      "waiting": "正在回复"
+      "truncated": "已达长度上限",
+      "waiting": "正在回复",
+      "consolidating": "正在整理这条会话的记忆…"
     },
     "tool": {
       "unfinished": "已停止",

@@ -2,7 +2,7 @@
 
 breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(7 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(头号原则 / DD / TDD / 红线 / 判定题)在仓库根 [`CLAUDE.md`](../CLAUDE.md);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
-- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 三层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
+- [Backend](#backend) — 技术栈 / 7 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / Skill / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
 - [Coding standards (function definition format)](#coding-standards-function-definition-format) — 函数注释 / 显式返回类型 / 异常类型格式 + CI 强制
 
@@ -83,17 +83,28 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 - **页面被浏览器收起来再恢复,必须把协作本地状态设回去** —— 浏览器对「暂存后恢复」的页面有两半约定:`pagehide` 拆、`pageshow` 装。协作库替我们做了前一半(它自己的 `pagehide` 处理器把本客户端的 awareness 状态**删掉**),后一半留给应用,而我们一直没写。少这一半,**同一处会静默坏掉两样东西**:① 心跳永久停(y-protocols 只在 `getLocalState() !== null` 时续时钟,条件读的正是被删掉的那个东西,定时器照跑但什么都不做),于是在场清扫把一个连着的人关掉、而且再也回不来(复活要靠心跳);② 光标对所有人消失(`setLocalStateField` 在状态为 null 时是空操作,而它是本客户端发布光标和焦点的唯一途径)。**这个状态只有一处来源**:`Awareness` 构造函数最后一行 `setLocalState({})`,只在建 provider 时跑一次;恢复的页面把整个 JS 环境原样搬回来,那一行不会再跑,重连也只恢复连接、不恢复它。所以恢复动作放在统一管理 provider 的那一处(`data/yjs/collab-socket.tsx`),监听 `pageshow` 且 `persisted` 为真时,把还是 null 的那些设回 `{}`。判定题:**这个东西的初值是不是只在「创建时」设过一次?是 → 页面被恢复时它不会自己回来**。
 - 节点结构 + 字段归属 + 状态机详细规范跟 `@breatic/shared/types/canvas-node.ts` 类型定义保持一致
 
-### Three-layer memory + Turn compression
+### Two-layer memory + tool-pair compression
 
 | Layer | Scope | Table |
 |---|---|---|
-| User | 跨项目偏好 | `user_memories` |
-| Project | 协作者共享 | `project_memories` |
+| Project | 一个成员在一个 project 里一行,键是 `(user_id, project_id)` | `project_memories` |
 | Conversation | 当前对话摘要 | `conversation_memories` |
 
-- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。`memory_window`(默认 20)按 Turn 计数,超出时自动归纳旧 Turn 到记忆摘要。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
-- **Context 压缩**:最近 `full_detail_turns`(默认 3)个 Turn 保留完整 step(tool_call + tool_result),更早 Turn 只保留 user + assistant 最终回复。`thinking` 字段永远不发回 LLM。**压缩靠 `turnIndex` 分组,所以读历史那一步必须把它留着**:`getMessagesForLlm` 曾经把它连同时间戳一起剥掉再强转回完整消息类型,理由是「模型看不到这些」—— 但模型本来就是被 `toModelMessages` 逐个点名字段喂的,剥掉谁也没挡住;真正被挡住的是压缩器,它每条消息都落进同一组、一组永远不超过窗口,于是丢掉旧轮工具调用的那条分支在生产路径上一次都没跑过
-- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool-call` / `tool-result`)。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
+两层都限于用户自己:项目记忆按成员分行,一个成员归纳出来的东西不会进另一个成员的提示词。
+
+**每一轮装载给模型的量由四道闸各管一段**,全部在 `config/agent.yaml`:
+
+| 闸 | 键 | 默认 | 管什么 |
+|---|---|---|---|
+| 输入 | `user_message_max_chars` | 15,000 | 一条用户消息进得来多长(浏览器同一道闸在 10,000 字先拦一次,后端这道是真判据) |
+| 输出 | `max_output_tokens` | 16,384 | **一次模型调用**答得出多长 —— 一轮可以调很多次(上限 `max_tool_iterations`),每次各受它约束;撞上它这一轮标 `truncated` |
+| 归纳线 | `memory_budget_chars` | 850,000 | 装配后的请求超过它,这一轮回复之前先归纳 |
+| 归纳后 | `memory_keep_chars` | 500,000 | 归纳取到剩余落在它以下 |
+
+
+- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求长度超过 `memory_budget_chars`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_chars`(默认 500,000)**再减去这次归纳自己可能写回去的量**以下(`effectiveKeepChars`,预留 = 两个记忆上限之和的两倍 —— 请求按 UTF-16 码元量,记忆按码点裁,基本平面以外一个字占两个码元)。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
+- **Context 压缩**:按工具调用对切,不按轮切。超出最近 `tool_result_keep`(默认 3)对的工具**结果**换成占位文本,`tool-call` 记录、助手文本、用户原文一律保留。`thinking` 字段永远不发回 LLM。**归纳按整轮取,所以读历史那一步必须把 `turnIndex` 留着**:归纳的边界是一个轮次号,水位线记的也是它,`getMessagesForLlm` 剥掉它就没有边界可算
+- **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool` / `interrupted` / `failed` / `truncated`)。**一次工具调用连同它的结果是一个零件**,靠 `status` 说它停在哪儿 —— 调用和结果是同一件发生过的事,拆成两个零件就要再按 id 配对回去;线上那一侧 SDK 的部件名是 `tool-<工具名>`,跟存储这边不是同一套名字。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
 ### Chat conversation ownership
 
@@ -199,15 +210,35 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Agent 聊天的 SSE 事件契约
 
-**线上格式就是 AI SDK 的 UI message stream 协议**:server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用 SDK 的 chunk 类型。**只有两样东西仍是我们自己定名字、自己定含义的 data part**:心跳(`data-heartbeat`,transient)和会话自动命名(`data-conversation-titled`,非 transient),两样都在下面写明。
+**线上格式就是 AI SDK 的 UI message stream 协议**:server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用 SDK 的 chunk 类型。**我们自己定名字、自己定含义的 data part 有四个**:心跳(`data-heartbeat`,transient)· 归纳中(`data-memory-consolidating`,transient)· 撞到输出上限(`data-truncated`,非 transient)· 会话自动命名(`data-conversation-titled`,非 transient)。**另有两个名字不走这条流,但两端都在写**(`data-interrupted` / `data-failed`):浏览器在流断掉或读者按停止时给这一轮的回复打上去(`stores/chat-sessions.ts` 的 `markTheReply`),服务端在 `onFinish` 里按 `exit` 落库(`main-agent.ts`),再由会话历史响应原样发回(`message-part-mapping.ts` 的 `toUiMessages`)。**流上不发它们** —— 一轮正在跑的时候,这两件事只有浏览器这一端知道。
 
-**要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 不上流,所以流上没有任何跟它有关的名字。`config/agent.yaml` 的 `thinking_enabled` 是另一回事 —— 它关的是要不要向 provider 索取思考,不是「声明了没人发」。
+**要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这四个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`reasoningFor`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
 
 **每条流的第一帧是心跳**,服务端一拿到 socket 就写一次、不等任何工作做完(`routes/chat.ts`)。它带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进消息、不推 `status` —— 所以它到达不代表这一轮开口了,前端判「服务端开始答了」的判据是**第一个不是 transient 的帧**(`stores/chat-sessions.ts` 的 `isAnswering`)。线上紧跟其后的通常是 `data-conversation-titled`(这一轮的会话名字,每轮都写,哪怕名字没变)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这一轮 Agent 自己的输出。**次序仍然是硬的**:鉴权 → 把用户这句话落库 → 开流 → 才去读记忆、压缩历史、调模型;落库排在最前,是因为一轮跑到一半断掉时,这句话必须已经在库里。**压缩必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):它刚落库,压进去等于把用户这句话喂给模型两遍,一遍在历史里一遍在提问里。**流里出错的出口**:`createUIMessageStream` 的 `execute` 抛出的异常由路由层接住,`logger.error({ err, userId, conversationId, projectId })` 之后写一帧 `error` 再关流 —— 框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样,屏幕上会留一个没人解释的空回复。
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;客户端连着三个间隔没收到就当这条流没了,走跟用户点停止**完全同一条路**(标中断、输入框恢复可按),**只多一句话** —— 向正在看的人闪一句「网络错误」,四个字、不解释也不建议;它是一次性事件不是常驻提示条,4 秒后自己消失,而用户自己点停止是零提示的(他知道自己干了什么)。
 
 **间隔是部署配置,次数写死**:间隔在 `config/agent.yaml` 的 `sse_heartbeat_interval_ms`,经只读端点 `GET /chat/stream-config` 下发给浏览器;客户端的耐心由它乘 `SSE_HEARTBEAT_MISSES_ALLOWED`(3,写死在 `packages/shared/src/agent/heartbeat.ts`)得出:发送节奏和接收耐心是**同一个事实的两面**,一个部署只改一边,要么把健康的流判死、要么等得比自己以为的久。这跟统一 HTTP 传输层把重试次数写死是同一条理由。**两个入口共用一份实现**(`routes/chat.ts` 的 `streamTurn`),定时器在流结束时清掉:每条结束的流留一个活着的计时器,就是往没人读的 socket 里一直写、并把进程挂住。
+
+### Agent 的 provider 路由
+
+<a id="agent-provider-routing"></a>
+
+**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一张表。
+
+**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · skill agent · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走各自 vendor 的 key(`config/models/*/providers.yaml` 的 `api_key_env`),而且还要文本那条路同时可达(`skill-availability.ts` 的 `checkSkillModelRunnable` 两条都查)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
+
+**`keyName` 收窄成 schema 自己的键名**(`Extract<keyof CoreConfig, \`${string}_API_KEY\`>`),写一个 schema 里没有的名字是编译错误,而不是一条静默永不打开的路由。**每条路由仍然把 key 名写两遍** —— `keyName` 用来判路由,provider 闭包里那一遍用来建实例,两者之间没有类型把它们绑住;拿测试盯着(`llm.test.ts` 断言每条路由的认证 header 用的是它自己 `keyName` 那把 key)。
+
+**兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定;它把上游的 `usage.cost` 搬进 `providerMetadata.openrouter.usage.cost`。**直连那四条各自的端点不同**(DeepSeek 走 `/chat/completions`,Anthropic 走 `/v1/messages`,Google 走 `:generateContent`,OpenAI 走 `/responses`),响应形状也各不相同。
+
+**有偏好的调用自己说,怎么说由表决定**。调用方传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
+
+**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**六个模型调用点里今天有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余四处(text mini-tool · nano-banana · skill agent · understand)拿它们各自 provider 的默认值。
+
+**这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
+
+**从布尔到字节都有断言**(`packages/domain/src/agent/__tests__/llm.test.ts`):调用方传的布尔 → 表交回的 `providerOptions` → SDK 发出的请求体 → 认证用的 header,五家逐条走完。中间那一步差别不小 —— DeepSeek 的 `reasoningEffort` 到线上叫 `reasoning_effort`,Google 的整个对象嵌在 `generationConfig` 下,OpenAI 自己补一个 `summary`。断言只停在第二步的话,厂商换掉命名空间时它照样绿,而 reasoning 已经不再被索取。
 
 ### Configuration files
 
@@ -216,7 +247,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `.env` | 运行时配置(从 `.env.dev` 或 `.env.docker` 复制) |
 | `.env.dev` | 本地开发模板(localhost URLs) |
 | `.env.docker` | Docker 部署模板(容器名 URLs) |
-| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、memory Turn 窗口(20)、Turn 压缩(3) |
+| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、四道闸(输入 15,000 字 / 输出 16,384 token / 归纳线 850,000 字 / 归纳后留 500,000 字)、留几对工具结果(`tool_result_keep` 3)|
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/worker.yaml` | Worker 并发、重试、轮询 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、一条 socket 承载多少文档。**单文档并发可写连接数上限不在这里**——它来自档位,见 `config/membership.yaml` 的 `concurrent_editors` |
@@ -340,6 +371,7 @@ lib/        工具(cn / format / env / analytics)
 - **等待从按下发送那一刻开始,不是从拿到会话那一刻** — 一次发送里有两段没有轮次可以承载这个等待:开会话,以及会话失效后开一条替代的。两段都是一整次请求,都由 project 级的标记(`sendingByProject`)顶着,走同一个 `whileOpening`;三态判定(`turnPhaseOf`)只有一处,面板和 `send` 的守卫都读它。**不这样的话那段窗口里发送按钮是活的**,再按一次就是同一句话跑两轮:存两遍、问模型两遍、扣两次钱,而且第一轮的记录会被第二轮盖掉、界面上再也够不着它。**同一个 project 同时只有一次发送在跑**,判据就是「有没有 project 级的标记、或者当前会话有没有一轮」。
 - **输入框只在它还是原样时清空,动过一个字就不碰** — 判据试过三种(相等 → 包含 → 前缀),后两种都在切用户正在写的句子:「包含」把发了 `hi` 之后打的 `This is…` 变成 `Ts is…`,「前缀」把发了 `ok` 之后重打的 `ok, now…` 变成 `, now…`。**任何写在文本上的规则都分不出「我们那句还在」和「他打的碰巧长得像」**,所以不猜:框里跟发出去那句一字不差才清空,一旦被动过就一个字都不动。代价是他接着打字时那句已发的会留在框里 —— 那是一行他自己删得掉的字,而切错是删他正在写的字,两者不对等。
 - **服务端说这一轮失败了,要有人把它讲出来** — `error` 帧可能在这一轮开口**之前**到达(存消息、读记忆这些步骤都会失败,`routes/chat.ts` 在 `execute` 抛异常时写的就是它),那时回复气泡还不存在,给消息打标记会落在空处。所以 ERROR 分支除了打标记还要 `tell` 一句(`chat.error.turnFailed`),并且跟别的结束方式一样先判这帧属不属于当前这一轮。
+- **一轮怎么结束的,气泡末尾有一行说出来** — 三种:用户按了停止(`interrupted`)· 这一轮出错了(`failed`)· 模型撞到输出上限被截断(`truncated`)。前两种由浏览器自己判断并打标记(`markTheReply`),它这一端就知道;第三种只有服务端知道 —— `finishReason === "length"` 出现在 `streamText` 的 `onFinish` 里,服务端据此写一帧 `data-truncated`。**「这件事会不会发生」和「发生了用户知不知道」是两回事**:模型要不要截断、网络断不断,我们决定不了;而这三件事发生之后屏幕上说不说,永远在我们手里。三者都排在气泡最后、在这一轮产出的一切之后,各跟前文隔一段的距离(`mt-[0.85em]`);前两种是一行灰字,出错那种是一个红框(`status-error` 那组 token)。
 - **一轮有三态,中间那态屏幕上什么都不加** — `idle` / `sending` / `running`(`TurnPhase`,同一个字段而不是两个布尔,免得「在跑但没发出去」这种写得出来)。点发送之后、这一轮开口(第一个不是 transient 的帧)之前是 `sending`:**输入框里的字还在、而且不接受输入**(`readOnly`,不是 `disabled` —— 那会连同焦点一起夺走)、发送按钮换成一个不能按也不进 tab 序的等待指示、**消息列表一条不加**。这几样是同一个理由 —— 这一刻这句话只存在于输入框里,浏览器没有任何依据说它到了;而既然它已经发出去了、又还在框里,这段时间里再打进来的字就会跟它混成一句、事后谁也分不开,所以这个状态压根不收字。**这段等待只有两个出口**:服务端答复,或者心跳看门狗判成网络错误。走第二个出口时那句话原样留在框里、发送按钮恢复可按,读者再按一次就是了 —— 那可能存出两条一模一样的问题(消息其实到了、线断在回程),这件事避免不了也不必避免。此前是反过来做的:点下去就把用户那句话和一个空回复放上屏幕、把输入框清空,然后每次服务端拒绝这一轮(余额不足 / 没权限 / 请求根本没发出去)再把两条撤下来、把字还回去 —— 屏幕当着读者的面改口,而「还回去」本身还得先判断这中间他有没有接着打字。第一个不是 transient 的帧到达,才是问题出现、回复有了落点、**输入框无条件清空并重新收字**、等待指示变成停止按钮的那一刻。清空不做任何判断:等待期间不收字,所以框里只可能是发出去的那一句。**停止按钮不在 `sending` 露面**:那时没有任何东西可撤,而这一端连「它到底跑没跑」都不知道。**这个位置依次是发送、等待、停止,所以按发送和按停止都把键盘交回输入框** —— 一个元素的意思正要改变,就不该有人还站在上面按下一次键。**清空这件事归会话做,不归面板** —— 面板可能在按下发送的下一刻就被折叠掉(那正是这次改动承诺要支持的动作),住在面板里的规则会恰好在那时停摆,留下已经发出去的那句话躺在输入框里等着被再发一遍。
 - **Hover 规范** — `packages/web/src/` 里**禁用** Tailwind 的 `hover:bg-<token>/<两位数>` 透明度修饰(如 `hover:bg-accent/40`、`hover:bg-primary/90`)。透明默认的行 / outline / ghost 按钮用实色 token 切换(`hover:bg-accent`、`hover:bg-muted`),实色 CTA 按钮用 `transition-opacity hover:opacity-90`。**例外:`hover:bg-black/<N>` / `hover:bg-white/<N>` 放行**——black / white 是固定色(非 mode-aware token),alpha 叠加不会随 surface 混色、明暗模式读数一致,用于图片蒙层控件(如卡片缩略图上的 ⋯ 菜单)。由 ESLint 规则 `breatic/hover-pattern`(CI 硬失败,放行规则在规则定义里)+ `components/ui/` 里 shadcn 原语默认值强制。理由:透明 hover 会跟底层 surface 混色、对比度随上下文变;实色切换 + opacity-90 跟 chrome-baseline mock 一致、跨 surface 视觉统一。
 - **一个元素只挂一个 hover 浮层** — 同一个元素上**禁止**同时挂 `Tooltip` 和 `HoverPreview`(Radix HoverCard)。两者都从 hover 开、也都从 focus 开,叠在一起就必须有个「谁先谁后」的机制,而两种写法都不成立:**按状态换组件**会让 React 重挂触发器、焦点掉进 `<body>`;**两个都挂着再把 tooltip 按住**则 Radix 的受控状态在压制期照样被写成开,而内容一旦扣下,那个唯一会在指针离开时关掉它的内部组件就不再挂载 —— 提示条从此搁浅、弹到没人 hover 的地方,还会带走全站下一个 tooltip 的 skip-delay。**要给一个已有 tooltip 的元素加预览,就把那句提示并进预览**(`HoverPreview` 的 `emptyHint` 参数专为此:填了显内容、空着显该去做什么),别造轮流机制。判定题:**这个元素上已经有一个 hover 浮层了吗?有 → 第二个的内容并进第一个。** 跟 `title` 当 tooltip 那条一样**只能人守**:「是不是同一个元素」静态分析判不了——同一个文件里两个浮层包着两个不同元素完全合法(`ProjectActivityButton.tsx` 就是这样),任何按文件或按祖先链数的守卫都会误报它。

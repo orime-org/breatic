@@ -103,6 +103,23 @@ describe('一个工具调用走到哪了', () => {
     expect(view.toolCalls?.[0]?.failureKind).toBeUndefined();
   });
 
+  it('撞上输出上限的一轮标成 truncated，不标成停止也不标成失败', () => {
+    const cutOff = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Half a sen' },
+        { type: 'data-truncated', data: {} },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(cutOff, { streaming: false });
+
+    expect(view.truncated).toBe(true);
+    expect(view.interrupted).toBeUndefined();
+    expect(view.failed).toBeUndefined();
+  });
+
   it('这一轮被用户停掉时，还在跑的调用算「用户停止」不算失败', () => {
     // 停止之后 part 停在 input-available，SDK 客户端不会把它推到任何终态。
     // 这条消息带着 data-interrupted，那就是「谁停的」这个问题的答案。

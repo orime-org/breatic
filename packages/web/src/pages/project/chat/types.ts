@@ -76,6 +76,15 @@ export interface ChatMessage {
    */
   failed?: true;
   /**
+   * The turn hit the per-call output ceiling, so this stops mid-sentence.
+   *
+   * Stored like {@link ChatMessage.interrupted}, and kept apart from it: what
+   * ran out is room we set, not the reader's patience.
+   *
+   * Only ever `true`; its absence is the ordinary case.
+   */
+  truncated?: true;
+  /**
    * The failure happened just now, with the reader waiting on this reply.
    *
    * It is the difference between living through a failure and reading about

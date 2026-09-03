@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gt, max } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -253,11 +253,10 @@ export async function getMessages(
  * time — so withholding them here reached nobody, and it cost a cast that
  * told the compiler a message with no timestamp was a whole one.
  *
- * What it did reach is the compressor, the one caller that stands between
- * here and the model, whose first act is to group messages by turn. Without
- * the field every message landed in a single group, a single group is never
- * more than the full-detail window, and the branch that drops old tool calls
- * was unreachable for as long as this function stripped it.
+ * What it did reach is the budget, which prices the history one turn at a
+ * time (`turn-budget.ts`, `costPerTurn`) and hands a fold the turns it took.
+ * Both key on this field, and a consolidation that cannot tell one turn from
+ * another takes nothing at all.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
  * @param beforeTurn - Stop short of this turn, leaving the running turn out
@@ -299,89 +298,6 @@ export async function getMessagesForLlm(
     const { thinking: _th, ...rest } = toMessageData(row);
     return rest;
   });
-}
-
-/**
- * Count the turns past the consolidation watermark.
- * @param id - Conversation UUID to inspect
- * @returns Turns not yet folded into memory, 0 when the conversation is gone
- */
-export async function getUnconsolidatedTurnCount(id: string): Promise<number> {
-  const convRows = await db
-    .select({ lastConsolidatedTurn: conversations.lastConsolidatedTurn })
-    .from(conversations)
-    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-    .limit(1);
-
-  if (!convRows[0]) return 0;
-
-  const turnRows = await db
-    .select({ maxTurn: max(conversationMessages.turnIndex) })
-    .from(conversationMessages)
-    .where(
-      and(
-        eq(conversationMessages.conversationId, id),
-        isNull(conversationMessages.deletedAt),
-      ),
-    );
-
-  return (turnRows[0]?.maxTurn ?? 0) - convRows[0].lastConsolidatedTurn;
-}
-
-/**
- * Get the messages eligible for consolidation.
- *
- * The window runs from the turn after the watermark up to `keepTurns` short of
- * the newest turn, so recent context stays out of the summary. Full step
- * detail is preserved — the summariser reads it.
- * @param id - Conversation UUID
- * @param lastConsolidatedTurn - Turn index already consolidated
- * @param keepTurns - How many recent turns to hold back
- * @returns Messages inside the window, empty when nothing is eligible yet
- */
-export async function getMessagesForConsolidation(
-  id: string,
-  lastConsolidatedTurn: number,
-  keepTurns: number,
-): Promise<MessageData[]> {
-  const turnRows = await db
-    .select({ maxTurn: max(conversationMessages.turnIndex) })
-    .from(conversationMessages)
-    .where(
-      and(
-        eq(conversationMessages.conversationId, id),
-        isNull(conversationMessages.deletedAt),
-      ),
-    );
-
-  const maxTurn = turnRows[0]?.maxTurn;
-  if (maxTurn == null) return [];
-
-  const consolidateUpToTurn = maxTurn - keepTurns;
-  if (consolidateUpToTurn <= lastConsolidatedTurn) return [];
-
-  const rows = await db
-    .select({
-      id: conversationMessages.id,
-      role: conversationMessages.role,
-      turnIndex: conversationMessages.turnIndex,
-      parts: conversationMessages.parts,
-      createdAt: conversationMessages.createdAt,
-    })
-    .from(conversationMessages)
-    .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
-    .where(
-      and(
-        eq(conversationMessages.conversationId, id),
-        gt(conversationMessages.turnIndex, lastConsolidatedTurn),
-        lte(conversationMessages.turnIndex, consolidateUpToTurn),
-        isNull(conversationMessages.deletedAt),
-        isNull(conversations.deletedAt),
-      ),
-    )
-    .orderBy(asc(conversationMessages.turnIndex), asc(conversationMessages.seq));
-
-  return rows.map(toMessageData);
 }
 
 /**

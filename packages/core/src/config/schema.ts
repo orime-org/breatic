@@ -237,6 +237,7 @@ export const coreConfigSchema = z.object({
   ANTHROPIC_API_KEY: z.string().default(""),
   OPENAI_API_KEY: z.string().default(""),
   GOOGLE_API_KEY: z.string().default(""),
+  DEEPSEEK_API_KEY: z.string().default(""),
   WAVESPEED_API_KEY: z.string().default(""),
   DASHSCOPE_API_KEY: z.string().default(""),
   BYTEPLUS_API_KEY: z.string().default(""),

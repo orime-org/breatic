@@ -37,8 +37,10 @@ catalog:
   # The AI SDK and its providers move together — a provider built against a
   # different core version fails at the call site, not at install.
   "@ai-sdk/anthropic": ^4.0.37
+  "@ai-sdk/deepseek": ^3.0.39
   "@ai-sdk/google": ^4.0.41
   "@ai-sdk/openai": ^4.0.37
+  "@openrouter/ai-sdk-provider": ^3.0.0
   # The React bindings depend on an exact core version, so the core entry
   # follows theirs. Anything looser risks two copies of `ai` in one install —
   # the browser holding one and the server the other, agreeing at the type

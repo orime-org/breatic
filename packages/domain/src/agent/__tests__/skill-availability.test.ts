@@ -36,6 +36,7 @@ import {
   assertSkillModelRunnable,
   checkSkillModelRunnable,
 } from "@domain/agent/skill-availability.js";
+import { DIRECT_ROUTES, FALLBACK_ROUTE } from "@domain/agent/llm.js";
 
 const keys: Record<string, string> = {};
 
@@ -113,6 +114,38 @@ describe("whether a skill's model can actually run", () => {
     keys.ANTHROPIC_API_KEY = "sk-ant";
     keys.OPENROUTER_API_KEY = "";
     expect(checkSkillModelRunnable("anthropic/claude-sonnet-4-6").ok).toBe(true);
+  });
+
+  // Every route, off the table itself. Naming them here instead left
+  // `openai/` covered by nothing, and would leave the next one added the
+  // same way. Each case sets only its own key, so a route reading as
+  // runnable off somebody else's key fails here.
+  it.each(DIRECT_ROUTES)("says yes for $name on its own key, and no without it", ({ prefix, keyName }) => {
+    keys[keyName] = "k";
+    keys[FALLBACK_ROUTE.keyName] = "";
+    expect(checkSkillModelRunnable(`${prefix}some-model`).ok).toBe(true);
+
+    keys[keyName] = "";
+    expect(checkSkillModelRunnable(`${prefix}some-model`).ok).toBe(false);
+  });
+
+  it("says yes for a DeepSeek model whose own key is set", () => {
+    // The default model this build calls is a DeepSeek one, so a deployment
+    // holding only that key has to read as runnable. Before the direct route
+    // existed, `deepseek/` matched no prefix and the answer came from the
+    // OpenRouter fallback alone.
+    keys.DEEPSEEK_API_KEY = "sk-ds";
+    keys.OPENROUTER_API_KEY = "";
+    expect(checkSkillModelRunnable("deepseek/deepseek-v4-pro").ok).toBe(true);
+  });
+
+  it("names the DeepSeek key among the ways to fix an unreachable one", () => {
+    keys.DEEPSEEK_API_KEY = "";
+    keys.OPENROUTER_API_KEY = "";
+    const result = checkSkillModelRunnable("deepseek/deepseek-v4-pro");
+    expect(result.ok).toBe(false);
+    expect(result.missing).toContain("DEEPSEEK_API_KEY");
+    expect(result.missing).toContain("OPENROUTER_API_KEY");
   });
 
   it("says yes for a text model with no direct key but an OpenRouter one", () => {

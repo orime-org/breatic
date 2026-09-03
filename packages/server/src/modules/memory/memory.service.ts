@@ -2,148 +2,155 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Memory service — orchestrates the three-layer memory system.
+ * Memory service — orchestrates the two memory layers.
  *
- * Reads and writes across conversation, project, and user memory
- * layers, applying optimistic locking where versioned. Used by the
- * agent system to build LLM context and persist consolidation results.
+ * Reads and writes conversation and project memory. Used by the agent system
+ * to build LLM context and persist consolidation results.
+ *
+ * Both layers are the reader's own: project memory is keyed by member as well
+ * as project, so nothing one person's agent summarised reaches another's
+ * prompt.
  */
 
 import * as memoryRepo from "@server/modules/memory/memory.repo.js";
-import { getAgentConfig } from "@breatic/core";
-import { ConflictError } from "@breatic/core";
+import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import { db, getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 
-/** Scenarios determining which memory layers are loaded. */
-type Scenario = "agent_chat" | "canvas_node" | "edit_area";
-
 /**
- * Assemble memory context for injection into an LLM system prompt.
+ * Assemble project + conversation memory for injection into a system prompt.
  *
- * Injection strategy by scenario:
- * - `agent_chat`: user + project + conversation memory
- * - `canvas_node` / `edit_area`: user + project only (no conversation)
+ * Each id is half of a key: conversation memory is keyed by the conversation,
+ * project memory by the member and the project together. All three are
+ * required because a missing one is not a smaller context, it is a layer that
+ * comes back empty with nothing saying so.
  *
- * Content is truncated to the max sizes defined in agent config.
- * @param userId - The current user's ID
- * @param conversationId - The active conversation ID (may be undefined)
- * @param projectId - The associated project ID (may be undefined)
- * @param scenario - Where the AI is being invoked
- * @returns A MemoryContext with the appropriate fields populated
+ * Both layers are truncated to the max sizes in agent config. The
+ * conversation layer needs its own ceiling because consolidation rewrites it
+ * whole every time it runs, so it is the one segment that grows itself.
+ * @param userId - Whose memory to read.
+ * @param conversationId - The conversation being spoken in.
+ * @param projectId - The project it belongs to.
+ * @returns Both layers, each within its ceiling.
  */
 export async function buildContext(
   userId: string,
-  conversationId?: string,
-  projectId?: string,
-  scenario: Scenario = "agent_chat",
+  conversationId: string,
+  projectId: string,
 ): Promise<MemoryContext> {
   const config = getAgentConfig();
-
-  const userMemoryRaw = await memoryRepo.getUserMemory(userId);
-
-  let projectMemory = "";
-  if (projectId) {
-    projectMemory = await memoryRepo.getProjectMemory(projectId);
-  }
-
-  let conversationMemory = "";
-  if (scenario === "agent_chat" && conversationId) {
-    conversationMemory =
-      await memoryRepo.getConversationMemory(conversationId);
-  }
+  // Together: neither read is an input to the other, and this sits on the
+  // path of every turn, in front of a reader waiting for the first word.
+  const [projectMemory, conversationMemory] = await Promise.all([
+    memoryRepo.getProjectMemory(userId, projectId),
+    memoryRepo.getConversationMemory(conversationId),
+  ]);
 
   return {
-    userMemory: truncate(userMemoryRaw, config.memory_user_max_size),
     projectMemory: truncate(projectMemory, config.memory_project_max_size),
-    conversationMemory,
+    conversationMemory: truncate(conversationMemory, config.memory_conversation_max_size),
   };
 }
 
 /** Consolidation data from the LLM memory rewriter. */
-interface ConsolidationData {
+export interface ConsolidationData {
   conversationUpdate: string;
   projectUpdate?: string;
-  userUpdate?: string;
   historyEntry: string;
 }
 
+/** One consolidation's results, and how far it says the conversation is folded. */
+export interface ConsolidationCommit {
+  /** Whose memory this is. */
+  userId: string;
+  /** The conversation that was read. */
+  conversationId: string;
+  /** The project it belongs to. */
+  projectId: string;
+  /** What the model produced. */
+  data: ConsolidationData;
+  /** The turn the window ended on. */
+  newWatermark: number;
+}
+
 /**
- * Persist three-layer consolidation results.
+ * Write one consolidation, or nothing at all.
  *
- * Always updates conversation memory and appends a history entry.
- * Optionally updates project and user memory with optimistic locking;
- * version conflicts are logged as warnings rather than propagated.
- * @param userId - The current user's ID
- * @param conversationId - The conversation being consolidated
- * @param projectId - The associated project ID (may be undefined)
- * @param data - Consolidation payloads from the LLM rewriter
+ * The memory and the watermark go in one transaction because the invariant
+ * that makes the watermark meaningful spans both: everything under it is
+ * supposed to be in memory. Written separately, a crash between them leaves
+ * turns that are in neither — gone from the history because the watermark
+ * passed them, and absent from memory because that write never happened.
+ *
+ * The watermark moves first and only forwards. Two tabs on one conversation
+ * compute different windows, and the narrower one must not overwrite memory
+ * that already covers more; finding the watermark already further along is
+ * that answer, and it costs the caller a reassembly rather than any data.
+ * @param commit - The results and the watermark they cover.
+ * @returns Whether this call's memory landed.
  */
-export async function applyConsolidation(
-  userId: string,
-  conversationId: string,
-  projectId: string | undefined,
-  data: ConsolidationData,
-): Promise<void> {
-  // (1) Always persist conversation memory + history
-  await memoryRepo.upsertConversationMemory(
-    conversationId,
+export async function commitConsolidation(
+  commit: ConsolidationCommit,
+): Promise<"written" | "superseded"> {
+  const { userId, conversationId, projectId, data, newWatermark } = commit;
+  const config = getAgentConfig();
+  // Cut where the row is made, so the row itself is within the ceiling. A
+  // model answering longer than it was asked to is the ordinary case: the
+  // ceiling reaches it as a line in a prompt and nothing else. Storing the
+  // overflow would mean paying to write characters that the read side then
+  // cuts off on every single read, for as long as the row lives.
+  const conversationUpdate = truncate(
     data.conversationUpdate,
+    config.memory_conversation_max_size,
   );
-  await memoryRepo.appendHistory(conversationId, data.historyEntry);
+  const projectUpdate = data.projectUpdate
+    ? truncate(data.projectUpdate, config.memory_project_max_size)
+    : undefined;
 
-  // (2) Project memory — optimistic locking with conflict tolerance
-  if (data.projectUpdate && projectId) {
-    await memoryRepo.appendProjectEntry(
-      projectId,
-      userId,
-      data.projectUpdate,
+  return db.transaction(async (tx) => {
+    const moved = await conversationRepo.advanceConsolidatedTurn(
       conversationId,
+      newWatermark,
+      tx,
     );
-    try {
-      const version =
-        await memoryRepo.getProjectMemoryVersion(projectId);
-      await memoryRepo.upsertProjectMemory(
+    if (!moved) return "superseded";
+
+    await memoryRepo.upsertConversationMemory(conversationId, conversationUpdate, tx);
+    await memoryRepo.appendHistory(conversationId, data.historyEntry, tx);
+
+    if (projectUpdate) {
+      await memoryRepo.appendProjectEntry(
         projectId,
-        data.projectUpdate,
-        version,
-      );
-    } catch (error: unknown) {
-      if (error instanceof ConflictError) {
-        // Concurrent project-memory upsert lost the optimistic
-        // version race. Swallowing is intentional (consolidator is
-        // background, idempotent retries are safe), but the
-        // application caller can observe the no-op via the missing
-        // `applyConsolidation` follow-up event if needed.
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  // (3) User memory — same optimistic locking pattern
-  if (data.userUpdate) {
-    await memoryRepo.appendUserEntry(
-      userId,
-      data.userUpdate,
-      conversationId,
-    );
-    try {
-      const version =
-        await memoryRepo.getUserMemoryVersion(userId);
-      await memoryRepo.upsertUserMemory(
         userId,
-        data.userUpdate,
-        version,
+        projectUpdate,
+        conversationId,
+        tx,
       );
-    } catch (error: unknown) {
-      if (error instanceof ConflictError) {
-        // Same as the project-memory branch — concurrent upsert
-        // lost the version race; intentionally silent.
-      } else {
-        throw error;
-      }
+      await memoryRepo.upsertProjectMemory(userId, projectId, projectUpdate, tx);
     }
-  }
+    return "written";
+  });
+}
+
+/**
+ * Move the watermark past a window whose summary never arrived.
+ *
+ * The turns it covered are lost. Leaving the watermark where it is would be
+ * worse: the consolidating call is `temperature: 0`, so the next turn sends a
+ * strictly larger version of an input that already failed, and does so on
+ * every turn from then on. Nothing the reader can do — refreshing, relogging,
+ * another tab — changes any of the inputs.
+ * @param conversationId - The conversation whose window was discarded.
+ * @param newWatermark - The turn the window ended on.
+ * @returns Whether this call moved it. False means the write matched no row:
+ *   the watermark is already at or past this turn, or the conversation is
+ *   soft-deleted.
+ */
+export async function discardConsolidation(
+  conversationId: string,
+  newWatermark: number,
+): Promise<boolean> {
+  return await conversationRepo.advanceConsolidatedTurn(conversationId, newWatermark);
 }
 
 /**
@@ -153,6 +160,12 @@ export async function applyConsolidation(
  * @returns The original string if within the limit, otherwise the first `maxLength` characters.
  */
 function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength);
+  // Counted and cut in code points. A code-unit cut lands between the halves
+  // of a surrogate pair — every emoji is one, and a model summarising in the
+  // reader's language reaches for them — and half a pair is stored, and read
+  // back, as the replacement character, in every prompt this memory is put
+  // into from then on. `conversation.service.ts` states the same for titles.
+  const characters = [...text];
+  if (characters.length <= maxLength) return text;
+  return characters.slice(0, maxLength).join("");
 }

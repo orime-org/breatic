@@ -107,6 +107,19 @@ describe('MessageBubble', () => {
     expect(screen.getByTestId('message-bubble-interrupted')).toBeInTheDocument();
   });
 
+  it('says so when the ceiling cut the answer off', () => {
+    // Its own wording, not the stop mark's: nobody stopped this one, and a
+    // reader told they did would go looking for a stop they never made.
+    render(
+      <MessageBubble
+        message={{ id: 'm3', role: 'assistant', content: 'half a sen', truncated: true }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-truncated')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-bubble-interrupted')).toBeNull();
+  });
+
   it('does not say that about a reply that finished', () => {
     render(<MessageBubble message={{ id: 'm2', role: 'assistant', content: 'all of it' }} />);
 

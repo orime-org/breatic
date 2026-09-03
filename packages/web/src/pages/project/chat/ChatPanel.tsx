@@ -7,6 +7,7 @@ import {
   conversationRuntime,
   useConversationRuntime,
 } from '@web/stores/conversation-runtime';
+import { useConsolidating } from '@web/stores/consolidating';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -97,6 +98,13 @@ export function ChatPanel({
   // Collapsing them into one would put the empty-conversation greeting on
   // screen during the wait, which is a whole screenful of the wrong thing.
   const ready = status === 'ready';
+  // A long conversation folds its oldest part into memory before this turn is
+  // answered, which is a second model call in front of the reply. Read here
+  // rather than passed down the turn: the panel can be unmounted when the
+  // word arrives and mounted again while the same turn runs.
+  const consolidating = useConsolidating((s) =>
+    currentId ? s.byConversation[currentId] === true : false,
+  );
   const [skeleton, setSkeleton] = React.useState(false);
   React.useEffect(() => {
     if (ready || status === 'failed') {
@@ -254,6 +262,7 @@ export function ChatPanel({
         // project, from the moment the first one opened.
         conversationId={currentId}
         messages={messages}
+        consolidating={consolidating}
         ready={ready}
         skeleton={skeleton}
         sentCount={sentCount}

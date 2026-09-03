@@ -14,6 +14,13 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  /**
+   * Whether this turn stopped to fold its memory before answering.
+   *
+   * A property of the turn rather than of the message: nothing about it is
+   * stored, and it is true of the reply that has not started yet.
+   */
+  consolidating?: boolean;
 }
 
 /**
@@ -27,10 +34,12 @@ interface MessageBubbleProps {
  * it, several dozen bubbles at a time.
  * @param root0 - The component props.
  * @param root0.message - The chat message to render.
+ * @param root0.consolidating - Whether this turn stopped to fold memory.
  * @returns The message bubble with optional thinking fold and tool-call cards.
  */
 export const MessageBubble = React.memo(function MessageBubble({
   message,
+  consolidating,
 }: MessageBubbleProps): React.JSX.Element {
   const t = useTranslation();
   const isUser = message.role === 'user';
@@ -82,17 +91,35 @@ export const MessageBubble = React.memo(function MessageBubble({
                 rendering, and what the reply is made of never enters into it
                 (user 2026-08-25). The space between the two is in the
                 stylesheet, beside the mark's own figures. */}
-            {message.streaming ? <WaitingDot /> : null}
+            {message.streaming ? <WaitingDot consolidating={consolidating} /> : null}
           </div>
         ) : null}
+        {message.toolCalls?.map((tc) => (
+          <ToolCallCard key={tc.id} toolCall={tc} />
+        ))}
+        {/* How the turn ended goes last, after everything it produced: this
+            is the line that says there is no more, so nothing may follow it.
+            Each is a paragraph's distance from what it follows, which is what
+            separates any two blocks in this scope. */}
         {message.interrupted ? (
           // The backend stores this mark so a cut-off answer can be told apart
           // from a complete one; without drawing it the whole chain is wasted.
           <div
             data-testid='message-bubble-interrupted'
-            className='text-xs text-muted-foreground'
+            className='mt-[0.85em] text-xs text-muted-foreground'
           >
             {t('chat.message.interrupted')}
+          </div>
+        ) : null}
+        {message.truncated ? (
+          // Its own line rather than the stop mark's: nobody stopped this
+          // reply and nothing about it failed. What ran out is the room one
+          // model call gets, and the reader's next move is to ask it to go on.
+          <div
+            data-testid='message-bubble-truncated'
+            className='mt-[0.85em] text-xs text-muted-foreground'
+          >
+            {t('chat.message.truncated')}
           </div>
         ) : null}
         {message.failed ? (
@@ -111,14 +138,11 @@ export const MessageBubble = React.memo(function MessageBubble({
           <div
             data-testid='message-bubble-error'
             {...(message.failedJustNow ? { role: 'alert' } : {})}
-            className='rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
+            className='mt-[0.85em] rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
           >
             {t('chat.error.turnFailed')}
           </div>
         ) : null}
-        {message.toolCalls?.map((tc) => (
-          <ToolCallCard key={tc.id} toolCall={tc} />
-        ))}
       </div>
     </div>
   );

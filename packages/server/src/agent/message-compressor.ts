@@ -2,127 +2,98 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Message compressor — reduces token usage by trimming old turn details.
+ * Message compressor — drops the body of tool results older than the window.
  *
- * Recent turns keep full step detail (tool calls + results). Older turns
- * are compressed to only user message + assistant final reply, dropping
- * intermediate tool_call / tool_result messages.
+ * The unit is the tool use/result pair, not the turn. `turnIndex` counts user
+ * questions, and one question can run forty model calls whose entire output
+ * lands in a single stored assistant row, so "the last three turns" is "the
+ * last hundred and twenty steps, verbatim" — three orders of magnitude coarser
+ * than the thing actually filling the context. Every implementation surveyed
+ * counts pairs; Anthropic's `clear_tool_uses_20250919` defaults to `keep: 3
+ * tool uses`.
  *
- * This runs at context-build time only — stored messages are never mutated.
+ * What a call was and what it asked for stays: the name and the arguments are
+ * the record of what the assistant did, and they are small. Only what came
+ * back — which is the part with no upper bound — is replaced.
+ *
+ * This runs at context-build time only; stored messages are never mutated.
  */
 
-import type { MessageData } from "@breatic/shared";
+import type { MessageData, MessagePart } from "@breatic/shared";
+import { reachesTheModel } from "@server/agent/model-messages.js";
+
+/** A tool part, once narrowed out of the union. */
+type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
 /**
- * Group flat messages by turnIndex.
- * @param messages - Flat array of messages (all with turnIndex set)
- * @returns Map from turnIndex to its messages in order
+ * Whether this part is a use of a tool the window is measured over.
+ *
+ * The same set the conversion emits: counting a use the model never sees
+ * would spend one of the configured slots on it, and the reader would get
+ * fewer recent results than the number they set.
+ * @param part - A part of a message's content.
+ * @returns True when it is a tool use the model is shown.
  */
-export function groupByTurn(messages: readonly MessageData[]): Map<number, MessageData[]> {
-  const groups = new Map<number, MessageData[]>();
-
-  for (const msg of messages) {
-    const turn = msg.turnIndex;
-    const arr = groups.get(turn);
-    if (arr) {
-      arr.push(msg);
-    } else {
-      groups.set(turn, [msg]);
-    }
-  }
-
-  return groups;
+function isCountedUse(part: MessagePart): part is ToolPart {
+  return part.type === "tool" && reachesTheModel(part);
 }
 
 /**
- * Compress a single turn's messages to just user + assistant final reply.
+ * What an old tool result reads as once its body is gone.
  *
- * Keeps:
- * - The first `role: "user"` message
- * - The last `role: "assistant"` message that has non-empty content
- *   (skips a reply that only used tools and never spoke)
- *
- * Drops:
- * - Every message between those two
- * - Everything but the prose out of the two it keeps: tool use lives in the
- *   reply's own parts, so dropping those parts is what drops the tool use
- * - The `thinking` field from both
- * @param turnMessages - All messages for a single turn, in order
- * @returns Compressed messages (1-2 items)
+ * Says the result was dropped rather than leaving an empty string: an empty
+ * result is a claim that the tool answered with nothing, and the model plans
+ * its next call on that claim.
  */
-export function compressTurn(turnMessages: readonly MessageData[]): MessageData[] {
-  const result: MessageData[] = [];
+export const DROPPED_TOOL_RESULT = "[earlier tool result omitted from context]";
 
-  // Keep the user message
-  const userMsg = turnMessages.find((m) => m.role === "user");
-  if (userMsg) {
-    result.push(proseOnly(userMsg));
+/**
+ * Replace what one use of a tool gave back.
+ *
+ * Which field that is depends on how the call ended: a call that succeeded is
+ * read off `output`, and one that failed is read off `failure.forModel` —
+ * `toModelMessages` never looks at `output` for a failed call. Replacing only
+ * the first leaves every failed call in the history at full length, and the
+ * text of an invalid-arguments failure quotes back everything the model sent.
+ * @param part - The tool part to shorten.
+ * @returns The same part with its account of itself replaced.
+ */
+function withoutItsResult(part: ToolPart): ToolPart {
+  if (part.status === "error") {
+    return part.failure
+      ? { ...part, failure: { ...part.failure, forModel: DROPPED_TOOL_RESULT } }
+      : part;
   }
-
-  // Keep the last assistant message with actual text content
-  for (let i = turnMessages.length - 1; i >= 0; i--) {
-    const msg = turnMessages[i]!;
-    if (msg.role === "assistant" && msg.content.trim().length > 0) {
-      result.push(proseOnly(msg));
-      break;
-    }
-  }
-
-  return result;
+  return part.output === undefined ? part : { ...part, output: DROPPED_TOOL_RESULT };
 }
 
 /**
- * Reduce a message to what it said.
- *
- * An old turn is kept for what it established, not for how it got there, so
- * the reasoning and the tool use go — the parts as well as the flat fields
- * read off them, since the parts are the message and dropping only the flat
- * view would leave the whole of it still there.
- * @param msg - The message to reduce
- * @returns The same message carrying its prose and nothing else
- */
-function proseOnly(msg: MessageData): MessageData {
-  const { thinking: _thinking, ...rest } = msg;
-  return { ...rest, parts: msg.parts.filter((p) => p.type === "text") };
-}
-
-/**
- * Compress messages for LLM context, preserving full detail for recent turns.
- * @param messages - All unconsolidated messages (turnIndex > lastConsolidatedTurn)
- * @param fullDetailTurns - Number of most recent turns to keep uncompressed
- * @returns Messages ready for LLM, with old turns compressed
+ * Compress history for the model by dropping old tool result bodies.
+ * @param messages - The unconsolidated history, oldest first.
+ * @param toolResultKeep - How many of the most recent tool uses keep their result.
+ * @returns The same history with older tool results replaced.
  */
 export function compressForContext(
   messages: readonly MessageData[],
-  fullDetailTurns: number,
+  toolResultKeep: number,
 ): MessageData[] {
-  if (messages.length === 0) return [];
+  const totalUses = messages.reduce(
+    (sum, message) => sum + message.parts.filter(isCountedUse).length,
+    0,
+  );
 
-  const groups = groupByTurn(messages);
-  const turnIndices = [...groups.keys()].sort((a, b) => a - b);
+  const dropBefore = totalUses - toolResultKeep;
+  if (dropBefore <= 0) return [...messages];
 
-  if (turnIndices.length <= fullDetailTurns) {
-    // All turns fit within the full-detail window — strip thinking only
-    return messages.map(({ thinking: _th, ...rest }) => rest);
-  }
-
-  const cutoff = turnIndices[turnIndices.length - fullDetailTurns]!;
-  const result: MessageData[] = [];
-
-  for (const turnIdx of turnIndices) {
-    const turnMsgs = groups.get(turnIdx)!;
-
-    if (turnIdx < cutoff) {
-      // Old turn — compress
-      result.push(...compressTurn(turnMsgs));
-    } else {
-      // Recent turn — keep full detail, strip thinking
-      for (const msg of turnMsgs) {
-        const { thinking: _th, ...rest } = msg;
-        result.push(rest);
-      }
-    }
-  }
-
-  return result;
+  let seen = 0;
+  return messages.map((message) => {
+    if (!message.parts.some(isCountedUse)) return message;
+    const parts = message.parts.map((part): MessagePart => {
+      if (!isCountedUse(part)) return part;
+      const isOld = seen < dropBefore;
+      seen += 1;
+      return isOld ? withoutItsResult(part) : part;
+    });
+    return { ...message, parts };
+  });
 }

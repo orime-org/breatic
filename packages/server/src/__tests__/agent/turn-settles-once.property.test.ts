@@ -38,7 +38,7 @@ import { FINISHED } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const consolidateIfNeeded = vi.fn(async () => undefined);
+const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 
 /** What the model produces this run. */
@@ -46,7 +46,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { userMemory: "", projectMemory: "", conversationMemory: "" },
+    memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
@@ -103,7 +103,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateIfNeeded }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 /** One thing a model can do, as the parts that do it. */
@@ -195,7 +195,7 @@ async function settle(
 }
 
 beforeEach(() => {
-  [addMessage, consolidateIfNeeded, chargeOnceForGeneration].forEach((m) => {
+  [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => {
     m.mockClear();
   });
 });

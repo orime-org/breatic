@@ -10,22 +10,23 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { ModelMessage, StopCondition, ToolSet, UIMessageChunk } from "ai";
+import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
-import { getModel, resolveProvider } from "@breatic/domain";
+import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
-import { env } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
+import { skillCommandText } from "@server/agent/skill-command.js";
 import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
-import { consolidateIfNeeded } from "@server/agent/memory-consolidator.js";
+import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
+import { foldIfOverBudget } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
@@ -90,7 +91,7 @@ export class MainAgent {
     // before a message was saved or a stream opened. Asking again would be a
     // second answer to a settled question, which is how the two entry points
     // drifted apart in the first place.
-    return this.runTurn(`/skill ${skillName} ${userInput}`, signal, skillName);
+    return this.runTurn(skillCommandText(skillName, userInput), signal, skillName);
   }
 
   /**
@@ -153,13 +154,14 @@ export class MainAgent {
    * result reach the client because the protocol has a place for them, not
    * because we remembered to forward them.
    *
-   * The obligations are unchanged and all of them live in `onFinish`: the
-   * reply is written down, the tokens are charged for, memories are
-   * consolidated, and one line says how it went. That callback runs when the
-   * stream ends *and* when a reader lets go of it -- the SDK attaches it to
-   * both `flush` and `cancel` -- so a closed page still closes the books.
+   * What the turn owes at the end lives in `onFinish`: the reply is written
+   * down, the tokens are charged for, and one line says how it went. That
+   * callback runs when the stream ends *and* when a reader lets go of it --
+   * the SDK attaches it to both `flush` and `cancel` -- so a closed page
+   * still closes the books. Folding memory is not among them: it belongs in
+   * front of the reply, on the turn whose assembled request it can shorten.
    * Assembling what the model is asked happens inside `execute`, not before
-   * the stream is built. Everything it takes -- three round trips for memory,
+   * the stream is built. Everything it takes -- the two memory reads,
    * the conversation and its history, then the compression -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
@@ -260,16 +262,21 @@ export class MainAgent {
     const whatToolAnswered = new Map<string, unknown>();
 
     /**
-     * Ask the model, once everything it needs has been read.
-     * @returns The model's answer, as the stream the protocol is made of.
+     * Read everything the model is given, and lay it out as it will be sent.
+     *
+     * Repeatable on purpose: a consolidation changes both halves of what this
+     * reads — the watermark shortens the history, the summary lands in memory
+     * — so the turn runs it again afterwards rather than editing the first
+     * result, which would leave the folded turns missing from both places.
+     * @returns The request, and what it was built from.
      */
-    const askTheModel = async (): Promise<ReadableStream<UIMessageChunk>> => {
+    const assemble = async (): Promise<Assembly> => {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the
       // history would be the same question asked twice -- and it would be a
       // candidate for compression, which could shorten the very thing being
       // asked.
-      const { memoryContext, compressedHistory } = await buildTurnContext(
+      const { memoryContext, compressedHistory, watermark } = await buildTurnContext(
         userId,
         conversationId,
         projectId,
@@ -284,20 +291,88 @@ export class MainAgent {
         memoryContext,
         interactive: true,
       });
-      modelId = agentConfig.modelId;
 
-      const messages: ModelMessage[] = [
-        ...toModelMessages(compressedHistory),
-        { role: "user", content: said },
-      ];
+      return {
+        agentConfig,
+        history: compressedHistory,
+        watermark,
+        messages: [...toModelMessages(compressedHistory), { role: "user", content: said }],
+      };
+    };
+
+    /**
+     * Ask the model, once everything it needs has been read.
+     * @param writer - The stream, for the one thing that happens before the
+     *   answer starts and is worth saying out loud.
+     * @returns The model's answer, as the stream the protocol is made of.
+     */
+    const askTheModel = async (
+      writer: UIMessageStreamWriter,
+    ): Promise<ReadableStream<UIMessageChunk>> => {
+      let assembly = await assemble();
+
+      // Measured here rather than inside the assembly because this is where
+      // the request is whole: the instructions carry the persona, the skill
+      // and the memory, and the tool definitions reach the provider as an
+      // argument of their own.
+      if (
+        await foldIfOverBudget(assembly, {
+          userId,
+          conversationId,
+          projectId,
+          ...(signal ? { signal } : {}),
+          // A fold is a model call of its own in front of the reply, seconds
+          // long, on a turn where the panel is empty and somebody is watching
+          // it. This does not make the wait shorter; it makes it explainable.
+          onStart: () =>
+            // Transient, like the heartbeat: it is a word about the turn,
+            // not a piece of the answer, so it must not become a message
+            // part or count as the turn having started to speak.
+            writer.write({ type: "data-memory-consolidating", transient: true, data: {} }),
+        })
+      ) {
+        try {
+          assembly = await assemble();
+        } catch (err) {
+          // The fold moved the watermark, so the window is out of the history
+          // whichever way it ended. Failing here would spend it and give the
+          // reader nothing, and the reply is what was promised. What is still
+          // in hand is the pre-fold assembly, over the character budget by
+          // however much this conversation had grown: sending it is the one
+          // move left that answers at all, and the provider is what decides
+          // whether it fits.
+          logger.error(
+            { err, userId, conversationId, projectId },
+            "turn_reassembly_failed",
+          );
+        }
+      }
+
+      const { agentConfig, messages } = assembly;
+      modelId = agentConfig.modelId;
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
+        // Chat is the one call site that asks for reasoning: it plans,
+        // searches and decides between tools, and shows its working. Said
+        // outright in both directions, because leaving the field off means a
+        // different thing to every provider.
+        ...reasoningFor(agentConfig.modelId, true),
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
         stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
+        // Not in effect while the line above asks for reasoning: DeepSeek's
+        // provider drops it and says so ("temperature has no effect when
+        // DeepSeek thinking is enabled", observed 2026-09-03 on a real turn).
+        // It stays because it is what this call wants whenever it reaches a
+        // provider that takes it -- another vendor, or reasoning turned off.
         temperature: 0.2,
+        // Per call, which is the only unit there is: the `stopWhen` above
+        // lets one turn make many, and each of them is bounded by this. An
+        // answer with no ceiling is carried whole by every later turn's
+        // history.
+        maxOutputTokens: agentCfg.max_output_tokens,
         // The middle ring of the stop chain. Without it the route can notice
         // the client leaving and the end of the stream can settle up, and the
         // model keeps running regardless: a signal handed in here ends the
@@ -346,7 +421,17 @@ export class MainAgent {
         // replaces, which writes the provider's error -- endpoint and key
         // hints included -- straight to the console, around our logger.
         onError: () => undefined,
-        ...reasoningOptionsFor(resolveProvider(agentConfig.modelId), agentCfg.thinking_enabled),
+        // Whether the model runs out of room is not ours to decide; whether
+        // the reader is told it happened is. Said on the wire rather than
+        // only in storage, because this is the one signal the browser cannot
+        // work out for itself -- the same reason a failed turn puts its own
+        // mark on the reply as it happens. The SDK turns the frame into a
+        // part of the reply, which is what carries it into storage and back.
+        onFinish: ({ finishReason }) => {
+          if (finishReason === "length") {
+            writer.write({ type: "data-truncated", data: {} });
+          }
+        },
       });
 
       // The one field the wire has for a failure, filled with the line a
@@ -368,7 +453,7 @@ export class MainAgent {
         if (title !== null) {
           writer.write({ type: "data-conversation-titled", data: { title } });
         }
-        writer.merge(await askTheModel());
+        writer.merge(await askTheModel(writer));
       },
       // The one place a failed turn is noticed, whichever way it failed: the
       // SDK hands this callback both an error chunk arriving on the stream
@@ -381,15 +466,6 @@ export class MainAgent {
         return FAILED_TEXT;
       },
       onFinish: async ({ responseMessage, isAborted }) => {
-        // Nobody is waiting for consolidation -- the reader is waiting for
-        // the turn to be over. Started rather than awaited so it stays out
-        // from in front of the ending, and started here so a disconnect
-        // still triggers it. Its failure is logged here because it has
-        // nobody left to return to.
-        void consolidateIfNeeded(userId, conversationId, projectId).catch((err: unknown) =>
-          logger.warn({ err, userId, conversationId }, "memory_consolidation_failed"),
-        );
-
         const exit = isAborted
           ? "aborted"
           : failure !== undefined
@@ -472,7 +548,7 @@ export class MainAgent {
             bill: async () => {
               if (tokensUsed === 0) return;
 
-              creditsUsed = Math.ceil((tokensUsed / 1000) * env.CREDIT_MULTIPLIER);
+              creditsUsed = creditsForTokens(tokensUsed);
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
               const outcome = await creditLotService.chargeOnceForGeneration(
