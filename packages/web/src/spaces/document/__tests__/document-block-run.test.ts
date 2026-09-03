@@ -377,3 +377,120 @@ describe('which rows the menu offers', () => {
     expect(canRunBlockType({ transact: (run) => run(tr) })).toBe(false);
   });
 });
+
+describe('one press, one transaction', () => {
+  // Undo granularity. A press that lands as two transactions takes two
+  // presses of undo to walk back, and the reader pressed once.
+  /**
+   * Opens a flat body and counts the transactions one press dispatches.
+   * @param blocks - The body.
+   * @param id - The row to press.
+   * @returns How many transactions reached the view.
+   */
+  function dispatchesOf(
+    blocks: readonly Record<string, unknown>[],
+    id: BlockTypeId,
+  ): number {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, blocks as never);
+
+    const view = editor.prosemirrorView!;
+    const { doc } = view.state;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(doc, 1, doc.content.size - 1),
+      ),
+    );
+
+    let dispatches = 0;
+    const original = view.dispatch.bind(view);
+    vi.spyOn(view, 'dispatch').mockImplementation((tr) => {
+      dispatches += 1;
+      original(tr);
+    });
+    runBlockType(editor, id);
+    return dispatches;
+  }
+
+  const BODIES: readonly (readonly Record<string, unknown>[])[] = [
+    [{ type: 'bulletListItem', content: 'x' }],
+    [{ type: 'heading', props: { level: 1, quoted: true }, content: 'x' }],
+    [
+      { type: 'numberedListItem', content: 'one' },
+      { type: 'numberedListItem', content: 'two' },
+    ],
+  ];
+
+  BODIES.forEach((blocks, index) => {
+    CONTENT_ROWS.concat('quote').forEach((id) => {
+      it(`dispatches once pressing ${id} over body ${String(index)}`, () => {
+        expect(dispatchesOf(blocks, id)).toBeLessThanOrEqual(1);
+      });
+    });
+  });
+});
+
+describe('the selection a press leaves behind', () => {
+  // The reader's own selection comes back at the end. A press that collapses
+  // it takes the bar off screen with it (`SelectionBubbleBar`'s `isWarranted`
+  // wants text in the selection), so the reader would have to select the same
+  // text again before pressing a second row.
+  /**
+   * Opens the given blocks with everything selected.
+   * @param blocks - The body.
+   * @returns The editor.
+   */
+  function openWithAllSelected(
+    blocks: readonly Record<string, unknown>[],
+  ): ReturnType<typeof buildDocumentEditor> {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, blocks as never);
+    const view = editor.prosemirrorView!;
+    const { doc } = view.state;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(doc, 1, doc.content.size - 1),
+      ),
+    );
+    return editor;
+  }
+
+  CONTENT_ROWS.concat('quote').forEach((id) => {
+    it(`keeps all three paragraphs selected: ${id}`, () => {
+      const editor = openWithAllSelected([
+        { type: 'paragraph', content: 'one' },
+        { type: 'paragraph', content: 'two' },
+        { type: 'paragraph', content: 'three' },
+      ]);
+
+      runBlockType(editor, id);
+
+      const { doc, selection } = editor.prosemirrorState;
+      expect(doc.textBetween(selection.from, selection.to, '|')).toBe(
+        'one|two|three',
+      );
+    });
+
+    it(`leaves one paragraph still selected: ${id}`, () => {
+      const editor = openWithAllSelected([
+        { type: 'paragraph', content: 'one' },
+      ]);
+
+      runBlockType(editor, id);
+
+      expect(editor.prosemirrorState.selection.empty).toBe(false);
+    });
+  });
+});

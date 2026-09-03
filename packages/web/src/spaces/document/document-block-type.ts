@@ -5,7 +5,7 @@
  * The nine rows of the block type menu: what each one is called and drawn as.
  *
  * What a row DOES, and which of them the selection counts as, live in
- * `document-block-model.ts` — this file is the menu's presentation alone.
+ * `document-block-ticks.ts` — this file is the menu's presentation alone.
  *
  * The slot shows an ICON that tracks the current block and carries no text, so
  * nothing here goes through i18n (user 2026-08-26): it stands in the same run
@@ -31,7 +31,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import type { BlockTypeId } from '@web/spaces/document/document-block-model';
+import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 
 /** One row of the menu. */
 export interface BlockTypeItem {

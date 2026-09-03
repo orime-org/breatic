@@ -6,16 +6,15 @@
  *
  * Alignment reaches the block types that carry a line of text the reader sets
  * the edge of; it says nothing about a list item's marker or a code block's
- * gutter. The block types themselves come from `document-block-model.ts`.
+ * gutter. The block types themselves come from `document-block-ticks.ts`.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
 
 import {
-  blockTypeAt,
-  selectedBlocks,
+  rowsUnder,
   type BlockTypeId,
-} from '@web/spaces/document/document-block-model';
+} from '@web/spaces/document/document-block-ticks';
 
 /** The block types alignment has anything to say about. */
 const ALIGNABLE = new Set<BlockTypeId>([
@@ -36,10 +35,6 @@ const ALIGNABLE = new Set<BlockTypeId>([
 export function selectionCanAlign(
   editor: BlockNoteEditor<never, never, never>,
 ): boolean {
-  const state = editor.prosemirrorState;
-  const { doc } = state;
-  return selectedBlocks(state).some((pos) => {
-    const type = blockTypeAt(doc, pos);
-    return type !== null && ALIGNABLE.has(type);
-  });
+  const { doc, selection } = editor.prosemirrorState;
+  return rowsUnder(doc, selection).some((row) => ALIGNABLE.has(row));
 }

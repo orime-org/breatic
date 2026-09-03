@@ -25,6 +25,7 @@
 
 import { updateBlockTr } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { TextSelection } from '@tiptap/pm/state';
 import type { Selection, Transaction } from '@tiptap/pm/state';
 
 import {
@@ -154,6 +155,13 @@ function updateFor(
  * Nothing is dispatched where every block is left alone: `transact` only sends
  * a transaction that was written into, which is what makes pressing a content
  * row the block already is cost nothing (A6).
+ *
+ * The reader's selection is put back at the end. `updateBlockTr` replaces the
+ * node it changes, and a replacement collapses whatever selection sat inside
+ * it — measured, a press over three selected paragraphs left the selection
+ * empty, which takes the bar off screen (`SelectionBubbleBar`'s `isWarranted`
+ * wants text in it) and leaves the reader selecting the same text again to
+ * press a second row.
  * @param editor - The editor.
  * @param id - Which row.
  */
@@ -161,6 +169,8 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
   editor.transact((tr) => {
     const positions = blockPositions(tr.doc, tr.selection);
     const cancelling = tickedOver(tr.doc, tr.selection).has(id);
+    const written = tr.mapping.maps.length;
+    const { anchor, head } = tr.selection;
     for (const origin of positions) {
       const at = tr.mapping.map(origin);
       const content = tr.doc.nodeAt(at)?.firstChild;
@@ -169,6 +179,18 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
       }
       updateBlockTr(tr, at, updateFor(content, id, cancelling) as never);
     }
+    if (tr.mapping.maps.length === written) {
+      return;
+    }
+    // Only the steps this press added, so the two ends travel the same
+    // distance the text under them did.
+    const carry = tr.mapping.slice(written);
+    tr.setSelection(
+      TextSelection.between(
+        tr.doc.resolve(carry.map(anchor)),
+        tr.doc.resolve(carry.map(head)),
+      ),
+    );
   });
 }
 
