@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { EditorContent } from '@tiptap/react';
-import type { Editor } from '@tiptap/react';
+import type { BlockNoteEditor } from '@blocknote/core';
 import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -11,8 +10,8 @@ import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 
 interface DocumentEditorProps {
-  /** The live editor, created and owned by the container. */
-  editor: Editor;
+  /** The live editor, created and owned by the cache. */
+  editor: BlockNoteEditor<never, never, never>;
   /** True for a viewer. */
   readOnly?: boolean;
 }
@@ -36,6 +35,22 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   editor,
   readOnly = false,
 }: DocumentEditorProps): React.JSX.Element {
+  const body = React.useRef<HTMLDivElement>(null);
+
+  // Mounting is a hand-off, not a construction: the editor belongs to
+  // `document-editor-cache` and outlives every one of these mounts. Its DOM
+  // moves into whichever container is current, and the cleanup deliberately
+  // does NOT unmount — `unmount()` runs the plugin views' destroy, which takes
+  // the collaboration binding and the undo manager apart, so a Space-tab
+  // switch would hand back an editor bound to nothing. Evicting a closed tab
+  // is where that teardown belongs. Mounting into the same element twice is
+  // what StrictMode does and leaves one copy of the DOM.
+  React.useEffect(() => {
+    const container = body.current;
+    if (container === null) return;
+    editor.mount(container);
+  }, [editor]);
+
   return (
     // `isolate` keeps the z-values below local: the entry has to paint over
     // the body and the bubble bar over the entry, and neither of those two
@@ -62,8 +77,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         viewportClassName='relative px-[var(--doc-body-gutter)]'
       >
         <DocumentMenuEntry />
-        <EditorContent
-          editor={editor}
+        <div
+          ref={body}
           data-testid='document-editor-content'
           className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
         />

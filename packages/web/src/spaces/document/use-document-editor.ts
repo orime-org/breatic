@@ -127,8 +127,8 @@ export function useDocumentEditor({
   // (#108; pinned in no-client-side-repair.test.ts).
   React.useEffect(() => {
     const editor = handle?.editor;
-    if (!editor || editor.isDestroyed) return;
-    if (editor.isEditable !== editable) editor.setEditable(editable);
+    if (!editor) return;
+    if (editor.isEditable !== editable) editor.isEditable = editable;
   }, [handle, editable]);
 
   // Dim collaborators who have switched away, and tell them when we do.

@@ -21,6 +21,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
 import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutdated';
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
+import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -146,7 +147,7 @@ export function DocumentSpace({
     return handle.onClearDocumentRequest(() => setClearAsked(true));
   }, [handle]);
   const onClearConfirm = React.useCallback(() => {
-    handle?.editor.commands.clearDocument();
+    if (handle) clearDocument(handle.editor);
   }, [handle]);
   // Focus is handed back HERE, on every way out of the dialog — confirm,
   // cancel, Escape. There is no trigger element to return to (a keystroke
@@ -156,11 +157,13 @@ export function DocumentSpace({
     (event: Event) => {
       event.preventDefault();
       // The dialog's unmount can outlive the editor: closing a tab while the
-      // dialog is up destroys the editor first, and a destroyed editor's
-      // `commands` getter throws rather than answering.
-      const editor = handle?.editor;
-      if (!editor || editor.isDestroyed) return;
-      editor.commands.focus();
+      // dialog is up unmounts the editor first, and every route to the view of
+      // an unmounted editor raises rather than answering nothing.
+      try {
+        handle?.editor.focus();
+      } catch {
+        // The editor is gone; there is nowhere to put the focus back.
+      }
     },
     [handle],
   );
