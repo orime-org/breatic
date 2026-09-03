@@ -29,8 +29,7 @@ import {
   TextAlignEnd,
   Sparkles,
 } from 'lucide-react';
-import type { Editor } from '@tiptap/core';
-import { useEditorState } from '@tiptap/react';
+import type { BlockNoteEditor } from '@blocknote/core';
 
 import { Button } from '@web/components/ui/button';
 import { DropdownMenuShortcut } from '@web/components/ui/dropdown-menu';
@@ -40,6 +39,7 @@ import {
   BubbleMenuRule,
 } from '@web/spaces/document/document-bubble-rows';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { cn } from '@web/lib/utils';
 import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
 import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
@@ -49,13 +49,16 @@ import {
 } from '@web/spaces/document/document-block-type';
 import { printedShortcut } from '@web/spaces/document/document-block-type-shortcuts';
 import {
-  currentBlockType,
-  isExclusiveRow,
-  markedIds,
-} from '@web/spaces/document/document-block-model';
-import { canRunBlockType, runBlockType } from '@web/spaces/document/document-block-press';
+  CONTENT_ROWS,
+  faceOf,
+  tickedOver,
+  type BlockTypeId,
+} from '@web/spaces/document/document-block-ticks';
+import {
+  canRunBlockType,
+  runBlockType,
+} from '@web/spaces/document/document-block-run';
 import { selectionCanAlign } from '@web/spaces/document/document-align-model';
-import type { BlockTypeId } from '@web/spaces/document/document-block-model';
 import { BUBBLE_CONTROL_HEIGHT } from '@web/spaces/document/document-tool-button';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 
@@ -76,9 +79,22 @@ function pressedWithNothingBehindIt(what: string): void {
 // `group` is what lets the chevron inside read the trigger's `data-state`.
 const SLOT = `group flex ${BUBBLE_CONTROL_HEIGHT} items-center gap-[3px] px-1.5`;
 
+/** The document editor, as far as a slot needs to know. */
+export type SlotEditor = BlockNoteEditor<never, never, never>;
+
+/**
+ * Whether two id sets hold the same members.
+ * @param a - One set.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+function sameIds(a: Set<BlockTypeId>, b: Set<BlockTypeId>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id));
+}
+
 /** What every slot receives from the bar. */
 interface SlotProps {
-  editor: Editor;
+  editor: SlotEditor;
   /** Which element the menu mounts inside; the bar passes itself. */
   container: HTMLElement | null;
   /** The body's scroller. */
@@ -214,41 +230,29 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
 }: SlotProps): React.JSX.Element {
   const t = useTranslation();
   const id = 'doc-bubble-block-type';
-  const current = useEditorState({
+  const current = useEditorSnapshot(editor, (e) =>
+    faceOf(e.prosemirrorState.doc, e.prosemirrorState.selection),
+  );
+  // Compared by membership, so a fresh Set every read costs nothing and the
+  // reference stays put — a set rebuilt per read is never the same object.
+  const marked = useEditorSnapshot(
     editor,
-    selector: ({ editor: e }) => (e ? currentBlockType(e) : 'paragraph'),
-  });
-  // `useEditorState` compares what the selector returns with `fast-equals`'
-  // `deepEqual` (`@tiptap/react@3.29.2` `dist/index.js:240`), which reads a Set
-  // by value, and hands back the previous one where they match — so a fresh Set
-  // every read costs nothing and the reference stays put.
-  const marked = useEditorState({
-    editor,
-    selector: ({ editor: e }) => (e ? markedIds(e) : new Set<BlockTypeId>()),
-  });
-  // The rows this selection cannot reach (§6.7). The judgement builds the very
-  // transaction the press would build, so the row's look and the row's effect
-  // are one answer.
+    (e) => tickedOver(e.prosemirrorState.doc, e.prosemirrorState.selection),
+    sameIds,
+  );
+  // Whether any row can act at all. On the flat model every block can become
+  // any of the nine, so the rows are live together; what greys them is a
+  // selection that covers no text block — a stand-in for content this build
+  // cannot read is the reachable case.
   //
-  // Asked on every transaction the menu is down for, and on none of the ones it
-  // is shut for. Both halves matter. The press reads the state it is given at
-  // the moment of the press, so an answer from when the menu opened would draw
-  // a row greyed while the press behind it goes through — a co-editor taking a
-  // quote away is enough (A37, A38). And building nine transactions costs with
-  // the square of the selection — over a select-all, 42ms at 200 list items,
-  // 303ms at 600, 764ms at 1000 (measured 2026-08-31) — which is why the rows
-  // nobody is looking at are not asked about at all. The cost of the open menu
-  // is the price of the row telling the truth; #932 holds the square itself.
+  // Asked on every change the menu is down for, and on none of the ones it is
+  // shut for. The press reads the state it is given at the moment of the
+  // press, so an answer from when the menu opened could draw a row greyed
+  // while the press behind it goes through.
   const open = openId === id;
-  const unreachable = useEditorState({
-    editor,
-    selector: ({ editor: e }) =>
-      new Set<BlockTypeId>(
-        e && open
-          ? BLOCK_TYPE_ITEMS.filter((item) => !canRunBlockType(e, item.id)).map((i) => i.id)
-          : [],
-      ),
-  });
+  const reachable = useEditorSnapshot(editor, (e) =>
+    open ? canRunBlockType(e) : true,
+  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -270,8 +274,8 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
           <React.Fragment key={item.id}>
             <BubbleMenuRow
               data-testid={`${id}-item-${item.id}`}
-              aria-disabled={unreachable.has(item.id) ? 'true' : undefined}
-              className={cn(unreachable.has(item.id) && UNAVAILABLE)}
+              aria-disabled={reachable ? undefined : 'true'}
+              className={cn(!reachable && UNAVAILABLE)}
               onSelect={() => {
                 runBlockType(editor, item.id);
               }}
@@ -308,8 +312,11 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
                 ) : null}
               </span>
             </BubbleMenuRow>
-            {/* The demo's `.menu-sep`, ruling the exclusive eight off Quote. */}
-            {isExclusiveRow(item.id) && !isExclusiveRow(BLOCK_TYPE_ITEMS[index + 1]?.id ?? 'quote')
+            {/* The demo's `.menu-sep`, ruling the content rows off Quote,
+                which is orthogonal to them — `CONTENT_ROWS` is where that is
+                said, by leaving Quote out. */}
+            {CONTENT_ROWS.includes(item.id) &&
+            !CONTENT_ROWS.includes(BLOCK_TYPE_ITEMS[index + 1]?.id ?? 'quote')
               ? <BubbleMenuRule />
               : null}
           </React.Fragment>
@@ -346,10 +353,7 @@ export const AlignSlot = React.memo(function AlignSlot({
   const label = t('spaces.document.commands.comingLabel', {
     name: t('spaces.document.commands.align'),
   });
-  const appliesHere = useEditorState({
-    editor,
-    selector: ({ editor: e }) => (e ? selectionCanAlign(e) : true),
-  });
+  const appliesHere = useEditorSnapshot(editor, selectionCanAlign);
   const askOpen = React.useCallback(
     (slotId: string, open: boolean): void => {
       // A slot drawn as unavailable does not open. The demo's treatment for a

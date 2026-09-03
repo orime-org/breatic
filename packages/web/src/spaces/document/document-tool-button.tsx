@@ -26,6 +26,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Bold } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
@@ -85,27 +86,10 @@ export const ToolButton = React.memo(function ToolButton({
   editor: ToolEditor;
 }): React.JSX.Element {
   const t = useTranslation();
-  // Both answers change with the document AND with the selection, and the
-  // editor reports those separately. Read as two scalars so that a keystroke
-  // that changes neither re-renders nothing: a snapshot returning a fresh
-  // object would report a change every time it was asked.
-  const subscribe = React.useCallback(
-    (onStoreChange: () => void) => {
-      const stopChange = editor.onChange(onStoreChange);
-      const stopSelection = editor.onSelectionChange(onStoreChange);
-      return () => {
-        stopChange?.();
-        stopSelection();
-      };
-    },
-    [editor],
-  );
-  const active = React.useSyncExternalStore(subscribe, () =>
-    tool.isActive(editor),
-  );
-  const available = React.useSyncExternalStore(subscribe, () =>
-    tool.canRun(editor),
-  );
+  // Both answers are scalars, so identity is the right comparison and the
+  // default one.
+  const active = useEditorSnapshot(editor, tool.isActive);
+  const available = useEditorSnapshot(editor, tool.canRun);
   const state = { active, available };
   const Icon = tool.Icon;
   return (

@@ -9,7 +9,7 @@
  * gutter. The block types themselves come from `document-block-model.ts`.
  */
 
-import type { Editor } from '@tiptap/core';
+import type { BlockNoteEditor } from '@blocknote/core';
 
 import {
   blockTypeAt,
@@ -33,9 +33,12 @@ const ALIGNABLE = new Set<BlockTypeId>([
  * @param editor - The editor.
  * @returns Whether the selection holds at least one alignable block.
  */
-export function selectionCanAlign(editor: Editor): boolean {
-  const { doc } = editor.state;
-  return selectedBlocks(editor.state).some((pos) => {
+export function selectionCanAlign(
+  editor: BlockNoteEditor<never, never, never>,
+): boolean {
+  const state = editor.prosemirrorState;
+  const { doc } = state;
+  return selectedBlocks(state).some((pos) => {
     const type = blockTypeAt(doc, pos);
     return type !== null && ALIGNABLE.has(type);
   });
