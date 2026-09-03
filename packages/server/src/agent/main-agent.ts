@@ -12,11 +12,10 @@ import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
-import { getModel, resolveProvider } from "@breatic/domain";
+import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { reasoningOptionsFor } from "@server/agent/reasoning-options.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
@@ -354,6 +353,10 @@ export class MainAgent {
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
+        // Chat is the one place that reasons: it plans, searches and decides
+        // between tools. Said outright in both directions, because leaving
+        // the field off means a different thing to every provider.
+        ...reasoningFor(agentConfig.modelId, true),
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
@@ -423,7 +426,6 @@ export class MainAgent {
             writer.write({ type: "data-truncated", data: {} });
           }
         },
-        ...reasoningOptionsFor(resolveProvider(agentConfig.modelId), agentCfg.thinking_enabled),
       });
 
       // The one field the wire has for a failure, filled with the line a

@@ -53,14 +53,18 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@breatic/domain", async () => {
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<typeof import("@breatic/domain")>();
   return {
     ...base,
     generateTextRetry,
     getModel: (id: string) => ({ modelId: id }),
     resolveProvider: () => "test",
+    // The real one. What it puts on the call is the thing being asserted,
+    // and a stub would be answering the question with its own return value.
+    reasoningFor: actual.reasoningFor,
     creditLotService: { chargeOnceForGeneration },
   };
 });
@@ -231,6 +235,22 @@ describe("a consolidation that works", () => {
 
     const call = generateTextRetry.mock.calls[0]?.[0] as { maxOutputTokens?: number };
     expect(call.maxOutputTokens).toBe(OUTPUT_CEILING);
+  });
+
+  it("tells the provider outright that this call wants no reasoning", async () => {
+    // Folding a transcript into a summary has no reasoning step in it, and
+    // saying nothing is not the same as saying no: DeepSeek turns thinking
+    // on by model id unless told otherwise, and this call runs on a DeepSeek
+    // model. Leaving the field off spends reasoning tokens on every fold and
+    // drops the `temperature: 0` this function's own docstring depends on.
+    await consolidate();
+
+    const call = generateTextRetry.mock.calls[0]?.[0] as {
+      providerOptions?: Record<string, Record<string, unknown>>;
+    };
+    const addressed = Object.values(call.providerOptions ?? {});
+    expect(addressed).toHaveLength(1);
+    expect(Object.keys(addressed[0] ?? {}).length).toBeGreaterThan(0);
   });
 
   it("tells the model the ceiling its answer is read through", async () => {

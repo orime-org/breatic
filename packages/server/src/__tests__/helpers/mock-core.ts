@@ -472,6 +472,11 @@ export const domainMock = () => ({
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
+  // Shaped like the real return so a turn built on this stub spreads the
+  // same key it would in production. A bare `{}` would spread to nothing,
+  // which reads as "this turn sent no provider options" -- the one thing
+  // the real function never does.
+  reasoningFor: vi.fn().mockReturnValue({ providerOptions: {} }),
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with

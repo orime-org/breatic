@@ -42,6 +42,7 @@
  */
 import { AppError, getRawEnvVar } from "@breatic/core";
 import { t } from "@breatic/shared";
+import { ROUTES } from "@domain/agent/llm.js";
 import {
   MODALITIES,
   getFullModelConfig,
@@ -60,15 +61,20 @@ export interface SkillModelCheck {
   missing: string[];
 }
 
-/** The direct-provider prefixes `getModel` recognises, and their keys. */
-const TEXT_DIRECT_KEYS: ReadonlyArray<readonly [string, string]> = [
-  ["anthropic/", "ANTHROPIC_API_KEY"],
-  ["google/", "GOOGLE_API_KEY"],
-  ["openai/", "OPENAI_API_KEY"],
-];
+/**
+ * The direct-provider prefixes and their keys, read off the routing table
+ * `getModel` itself routes by.
+ *
+ * Written out here before, which meant a provider added to that table and
+ * not to this list read as unreachable while running fine.
+ */
+const TEXT_DIRECT_KEYS: ReadonlyArray<readonly [string, string]> = ROUTES.filter(
+  (route): route is typeof route & { prefix: string } => route.prefix !== undefined,
+).map((route) => [route.prefix, route.keyName] as const);
 
 /** The universal text fallback, which `getModel` uses for everything else. */
-const TEXT_FALLBACK_KEY = "OPENROUTER_API_KEY";
+const TEXT_FALLBACK_KEY =
+  ROUTES.find((route) => route.prefix === undefined)?.keyName ?? "OPENROUTER_API_KEY";
 
 /**
  * Whether an env var holds something.

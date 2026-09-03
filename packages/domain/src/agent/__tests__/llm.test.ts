@@ -33,7 +33,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     env: new Proxy(
       {},
       { get: (_t, name: string) => keys.current[name] ?? "" },
-    ) as CoreModule.Env,
+    ) as typeof CoreModule.env,
   };
 });
 
@@ -129,7 +129,7 @@ async function freshLlm(): Promise<typeof import("@domain/agent/llm.js")> {
  */
 async function callWith(
   modelString: string,
-  reasoning?: Record<string, unknown>,
+  reasoning?: Parameters<typeof import("ai").generateText>[0]["providerOptions"],
 ): Promise<Seen> {
   const { getModel } = await freshLlm();
   const { generateText } = await import("ai");
@@ -141,6 +141,18 @@ async function callWith(
   });
   if (!seen) throw new Error("no request was made");
   return seen;
+}
+
+/**
+ * What a built model calls its own provider.
+ *
+ * `LanguageModel` is a union of an id string and the object form; only the
+ * object carries the name, and every route here returns the object.
+ * @param model - A model the table built.
+ * @returns Its self-reported provider name.
+ */
+function selfReport(model: import("ai").LanguageModel): string {
+  return typeof model === "string" ? model : model.provider;
 }
 
 beforeEach(() => {
@@ -186,9 +198,14 @@ describe("the OpenRouter fallback", () => {
 
 describe("the DeepSeek direct route", () => {
   it("posts to DeepSeek when the key is configured", async () => {
+    // No `/v1`: the provider's own default is `https://api.deepseek.com`
+    // (`@ai-sdk/deepseek@3.0.39` dist/index.js:1396) and the path is
+    // appended to it. The vendor answers on both, so writing the other one
+    // here would have passed against a live endpoint while saying something
+    // untrue about what this build sends.
     keys.current = { DEEPSEEK_API_KEY: "sk-ds-test", OPENROUTER_API_KEY: "sk-or-test" };
     const req = await callWith("deepseek/deepseek-v4-pro");
-    expect(req.url).toBe("https://api.deepseek.com/v1/chat/completions");
+    expect(req.url).toBe("https://api.deepseek.com/chat/completions");
   });
 
   it("strips the prefix so the vendor sees its own id", async () => {
@@ -261,13 +278,13 @@ describe("the table is what every consumer reads", () => {
     keys.current = { [key]: "k", OPENROUTER_API_KEY: "sk-or-test" };
     const { getModel, resolveProvider } = await freshLlm();
     expect(resolveProvider(`${prefix}x`)).toBe(name);
-    expect(getModel(`${prefix}x`).provider).toMatch(new RegExp(`^${name}`));
+    expect(selfReport(getModel(`${prefix}x`))).toMatch(new RegExp(`^${name}`));
   });
 
   it.each(ROUTES)("falls $name back to OpenRouter with no key", async ({ prefix }) => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     const { getModel, resolveProvider } = await freshLlm();
     expect(resolveProvider(`${prefix}x`)).toBe("openrouter");
-    expect(getModel(`${prefix}x`).provider).toMatch(/^openrouter/);
+    expect(selfReport(getModel(`${prefix}x`))).toMatch(/^openrouter/);
   });
 });
