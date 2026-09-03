@@ -115,6 +115,25 @@ describe("whether a skill's model can actually run", () => {
     expect(checkSkillModelRunnable("anthropic/claude-sonnet-4-6").ok).toBe(true);
   });
 
+  it("says yes for a DeepSeek model whose own key is set", () => {
+    // The default model this build calls is a DeepSeek one, so a deployment
+    // holding only that key has to read as runnable. Before the direct route
+    // existed, `deepseek/` matched no prefix and the answer came from the
+    // OpenRouter fallback alone.
+    keys.DEEPSEEK_API_KEY = "sk-ds";
+    keys.OPENROUTER_API_KEY = "";
+    expect(checkSkillModelRunnable("deepseek/deepseek-v4-pro").ok).toBe(true);
+  });
+
+  it("names the DeepSeek key among the ways to fix an unreachable one", () => {
+    keys.DEEPSEEK_API_KEY = "";
+    keys.OPENROUTER_API_KEY = "";
+    const result = checkSkillModelRunnable("deepseek/deepseek-v4-pro");
+    expect(result.ok).toBe(false);
+    expect(result.missing).toContain("DEEPSEEK_API_KEY");
+    expect(result.missing).toContain("OPENROUTER_API_KEY");
+  });
+
   it("says yes for a text model with no direct key but an OpenRouter one", () => {
     // The fallback is the whole reason text is different from media.
     keys.GOOGLE_API_KEY = "";
