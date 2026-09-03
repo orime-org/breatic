@@ -620,6 +620,75 @@ export const nodeHistory = pgTable(
   ],
 );
 
+// ── Node Tasks ───────────────────────────────────────────────────────
+
+/**
+ * One row per task running on a canvas node (#186).
+ *
+ * A node used to carry a single handling lease, so "busy" was a boolean and
+ * the second upload had to wait. A row per task replaces that, which is why
+ * nothing here caps how many rows a node may have in `running`: a partial
+ * unique index over `node_id` would read as a sensible guard and would put
+ * the single lease straight back.
+ *
+ * The result of a finished task is NOT stored here. `node_history_id` points
+ * at the row that already holds it, so one result has one home and the task
+ * list and the history panel read the same thing. A task whose deadline
+ * passed before its report arrived keeps `expired` and still takes this
+ * column — the bytes really landed, and the user has to be able to reach them.
+ */
+export const nodeTasks = pgTable(
+  "node_tasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    // Rides the event so collab can name the document. Not a foreign key:
+    // spaces live in Yjs, not in a table.
+    spaceId: uuid("space_id").notNull(),
+    // Same: the node lives in the canvas document.
+    nodeId: uuid("node_id").notNull(),
+
+    kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
+    // 'running' | 'done' | 'failed' | 'expired'
+    status: varchar("status", { length: 20 }).notNull(),
+
+    startedByUserId: uuid("started_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // Server clock, stamped when the row is written. The countdown the user
+    // sees is derived from this and `budget_ms`, and the timer Durable Object
+    // is set from the same pair — one source, so they cannot disagree.
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    // The conservative allowance: within it the task certainly finishes, and
+    // past it something outside what we promise has gone wrong.
+    budgetMs: integer("budget_ms").notNull(),
+
+    // Filename or model name — what the user reads in the list.
+    label: text("label").notNull(),
+    errorMessage: text("error_message"),
+
+    nodeHistoryId: uuid("node_history_id").references(() => nodeHistory.id, {
+      onDelete: "restrict",
+    }),
+    // The AIGC job this task runs as; null on uploads.
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    // The upload grant this task was opened for; null on generations.
+    storageKey: text("storage_key"),
+
+    ...timestamps,
+    // Stamped when the user clears the record. The row stays: the system only
+    // ever moves status, and a record disappearing always means someone asked.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("node_tasks_node_idx").on(table.projectId, table.nodeId),
+  ],
+);
+
 // ── Conversation Attachments ─────────────────────────────────────────
 
 /**
