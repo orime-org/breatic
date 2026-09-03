@@ -98,16 +98,30 @@ async function failureFrom(fn: () => Promise<unknown>): Promise<ToolFailure> {
 }
 
 /**
- * A Brave-shaped success body.
- * @returns A 200 carrying one result.
+ * A body shaped like the LLM context endpoint's.
+ * @param sources - One entry per source: its snippets.
+ * @returns A 200 carrying that grounding.
  */
-const braveOk = (): Response =>
+const grounding = (sources: string[][]): Response =>
   new Response(
     JSON.stringify({
-      web: { results: [{ title: "T", url: "https://e.example", description: "D" }] },
+      grounding: {
+        generic: sources.map((snippets, i) => ({
+          url: `https://s${String(i)}.example`,
+          title: `Source ${String(i)}`,
+          snippets,
+        })),
+      },
+      sources: {},
     }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
+
+/**
+ * A Brave-shaped success body.
+ * @returns A 200 carrying one source.
+ */
+const braveOk = (): Response => grounding([["D"]]);
 
 describe("web_search hands the request to the shared transport", () => {
   beforeEach(() => {
@@ -134,18 +148,8 @@ describe("web_search hands the request to the shared transport", () => {
         Accept: "application/json",
         "X-Subscription-Token": "test-key",
       },
+      redirect: "manual",
     });
-  });
-
-  it("addresses the search endpoint with the query and count", async () => {
-    await run({ query: "hello world", count: 3 });
-
-    const url = new URL(String(httpRequestMock.mock.calls[0]![0]));
-    expect(url.origin + url.pathname).toBe(
-      "https://api.search.brave.com/res/v1/web/search",
-    );
-    expect(url.searchParams.get("q")).toBe("hello world");
-    expect(url.searchParams.get("count")).toBe("3");
   });
 
   it("says the key is missing without spending a delivery to find out", async () => {
@@ -267,7 +271,10 @@ describe("web_search says a failure is a failure", () => {
   });
 
   it("does offer a reworded query for a request the service would not take", async () => {
-    httpRequestMock.mockImplementation(async () => new Response(null, { status: 422 }));
+    // 400 rather than 422: on this endpoint a 422 is what this side sent being
+    // refused (an invalid token, or a parameter out of range), and no rewording
+    // reaches either. That case is pinned in its own block below.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 400 }));
 
     const { forModel } = await failureFrom(() => run({ query: "breatic" }));
 
@@ -296,30 +303,6 @@ describe("web_search says a failure is a failure", () => {
     expect(forModel).toContain("breatic"); // what was refused
     expect(forModel).toContain("503"); // why
     expect(forModel.toLowerCase()).toMatch(/without search|do not repeat|tell the user/); // what instead
-  });
-
-  it("calls a search that found nothing a search that found nothing", async () => {
-    // Brave 的 `web` 这一节按它自己的 schema 是 optional (nullable)，官方 API
-    // reference 写着各结果类型「conditionally included based on data
-    // availability」—— 也就是这个词没有网页结果时，整节不出现。这是一次成功的
-    // 搜索，只是搜到零条；报成故障会让模型照着「搜索不可用」去回答用户。
-    httpRequestMock.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ query: { original: "breatic" } }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-    );
-
-    const answer = await run({ query: "breatic" });
-
-    expect(answer).toMatch(/no web results/i);
-    // 而且说了别再换措辞重搜。这个响应有两个成因 —— 真的没人写过这个词，或者
-    // 这个部署的搜索套餐不含网页结果 —— 从响应上分不开，但两者对「换个说法再
-    // 搜一次」的回答一样:没用。不说这一句，套餐那种情形下每次搜索都稳定回
-    // 「搜不到」，而模型会一直换词重试，正是这次要消灭的那个循环。
-    expect(answer.toLowerCase()).toContain("rewording");
-    expect(answer.toLowerCase()).toContain("plan");
   });
 
   it("says a body that stopped arriving may be worth asking for again", async () => {
@@ -509,26 +492,6 @@ describe("web_search says a failure is a failure", () => {
   });
 });
 
-/**
- * A body shaped like the LLM context endpoint's.
- * @param sources - One entry per source: its snippets.
- * @returns A 200 carrying that grounding.
- */
-const grounding = (sources: string[][]): Response =>
-  new Response(
-    JSON.stringify({
-      grounding: {
-        generic: sources.map((snippets, i) => ({
-          url: `https://s${String(i)}.example`,
-          title: `Source ${String(i)}`,
-          snippets,
-        })),
-      },
-      sources: {},
-    }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
-
 describe("web_search asks for page content, not for snippets of a listing", () => {
   beforeEach(() => {
     apiKey = "test-key";
@@ -540,7 +503,10 @@ describe("web_search asks for page content, not for snippets of a listing", () =
     await run({ query: "cyberpunk palette" });
 
     const [url] = httpRequestMock.mock.calls[0] as [string];
-    expect(new URL(url).pathname).toBe("/res/v1/llm/context");
+    expect(new URL(url).origin + new URL(url).pathname).toBe(
+      "https://api.search.brave.com/res/v1/llm/context",
+    );
+    expect(new URL(url).searchParams.get("q")).toBe("cyberpunk palette");
   });
 
   it("puts every source's own text in front of the model", async () => {
@@ -601,10 +567,10 @@ describe("web_search says whose fault a refusal is", () => {
       async () => new Response('{"error":{"code":"SUBSCRIPTION_TOKEN_INVALID"}}', { status: 422 }),
     );
 
-    const { modelReason } = await failureFrom(() => run({ query: "breatic" }));
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
 
-    expect(modelReason).toMatch(/configuration|this side/i);
-    expect(modelReason).not.toMatch(/different wording|try a different/i);
+    expect(forModel).toMatch(/configuration|this side/i);
+    expect(forModel).not.toMatch(/different wording|try a different/i);
   });
 
   it("calls a redirect a fault on this side too", async () => {
@@ -614,10 +580,10 @@ describe("web_search says whose fault a refusal is", () => {
       async () => new Response(null, { status: 302, headers: { location: "https://elsewhere" } }),
     );
 
-    const { modelReason } = await failureFrom(() => run({ query: "breatic" }));
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
 
-    expect(modelReason).toMatch(/configuration|this side/i);
-    expect(modelReason).not.toMatch(/different wording|try a different/i);
+    expect(forModel).toMatch(/configuration|this side/i);
+    expect(forModel).not.toMatch(/different wording|try a different/i);
   });
 });
 
@@ -648,11 +614,11 @@ describe("web_search reports a search that came back empty", () => {
       async () => new Response('{"sources":{}}', { status: 200 }),
     );
 
-    const { modelReason } = await failureFrom(() =>
+    const { forModel } = await failureFrom(() =>
       run({ query: "site:example.invalid pricing" }),
     );
 
-    expect(modelReason).toMatch(/not with results|their side/i);
+    expect(forModel).toMatch(/not with results|their side/i);
   });
 
   it("keeps our subscription state out of what it says", async () => {
@@ -680,11 +646,12 @@ describe("web_search bounds what one search can inject", () => {
 
     const out = await run({ query: "cyberpunk palette" });
 
-    // A source that survived kept all of its text; none was cut mid-snippet.
     const kept = out.split("https://s").length - 1;
     expect(kept).toBeGreaterThan(0);
     expect(kept).toBeLessThan(8);
-    expect(out).not.toMatch(/x{19_999}(?!x)/);
+    // Every source still present kept all of its text: as many whole copies of
+    // the body as there are surviving sources, so none was cut mid-snippet.
+    expect(out.split(fat).length - 1).toBe(kept);
   });
 
   it("says so when it had to drop sources", async () => {

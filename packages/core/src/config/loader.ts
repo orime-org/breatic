@@ -165,9 +165,17 @@ const agentConfigSchema = z.object({
    * lands under the budget, and that promise is the point.
    */
   memory_keep_chars: z.number().int().positive().default(500000),
-  web_fetch_max_chars: z.number().int().positive().default(50000),
   /**
-   * How long ONE DELIVERY of a `web_fetch` request may take, in milliseconds.
+   * How much page text one `web_search` call asks the service for, in tokens.
+   *
+   * Both ends of the range belong to the service, not to us: it refuses
+   * anything under 1024, and names 32768 as its own ceiling in the error it
+   * answers above that. Stating them here is what makes a bad figure fail when
+   * the config loads rather than on every search.
+   */
+  web_search_max_tokens: z.number().int().min(1024).max(32768).default(8192),
+  /**
+   * How long ONE DELIVERY of a `web_search` request may take, in milliseconds.
    *
    * The range is the transport's own, not a second opinion: it refuses
    * anything below 1 or above `MAX_TIMER_MS`, because a timer quietly rewrites
@@ -176,8 +184,6 @@ const agentConfigSchema = z.object({
    * fail when the config loads instead of on every call. `.positive()` would
    * not do: it admits 0.5, which the transport then refuses every time.
    */
-  web_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30000),
-  /** The same, for one `web_search` request. */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),

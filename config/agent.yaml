@@ -90,18 +90,14 @@ memory_budget_chars: 850000
 memory_keep_chars: 500000
 
 # ── Tools ─────────────────────────────────────────────────
-# Maximum characters returned from web_fetch tool output.
-web_fetch_max_chars: 50000
+# How much page text one web_search asks for, in tokens. The service refuses
+# anything under 1024 and states 32768 as its own ceiling. Measured: 8192
+# returns about three times the text of 2048 and costs 19ms more.
+web_search_max_tokens: 8192
 
-# How long ONE DELIVERY of a web_fetch request may take, in milliseconds.
-# Not the whole fetch: the shared HTTP transport may deliver a request up to
-# three times, and each delivery gets this figure. A redirect chain multiplies
-# it again, once per hop.
-web_fetch_timeout_ms: 30000
-
-# The same figure for web_search, which is one request with no redirects.
-# Lower because a search API answers or does not; a page can be slow for
-# reasons of its own.
+# How long ONE DELIVERY of a web_search request may take, in milliseconds.
+# Not the whole search: the shared HTTP transport may deliver a request up to
+# three times, and each delivery gets this figure.
 web_search_timeout_ms: 10000
 
 # ── Thinking ──────────────────────────────────────────────
