@@ -68,7 +68,7 @@ import {
   planWhitespaceInsertions,
   resolveDeletionUnit,
 } from '@web/spaces/canvas/generate/reference-mention-whitespace';
-import { Y_SYNC_PLUGIN_KEY_NAME } from '@web/features/collab-editor/collab-plugin-keys';
+import { ySyncPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
 import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
 
 /**
@@ -99,19 +99,13 @@ interface YSyncState {
 }
 
 /**
- * The y-sync plugin state, located by KEY NAME ({@link Y_SYNC_PLUGIN_KEY_NAME},
- * same pattern as collab-undo-selection.ts) — robust against importing the wrong
- * y-tiptap instance, but see that constant's caveat: a second bundled y-tiptap
- * copy mints the key as `y-sync$1` and this returns null (a silent miss).
+ * The y-sync plugin state, resolved through the key itself
+ * ({@link ySyncPluginKey}, same as `collab-undo-selection.ts`).
  * @param state - The editor state.
  * @returns The y-sync state, or null when Collaboration is absent.
  */
 function ySyncStateOf(state: EditorState): YSyncState | null {
-  const plugin = state.plugins.find(
-    (pl) =>
-      (pl as unknown as { key?: string }).key === Y_SYNC_PLUGIN_KEY_NAME,
-  );
-  return (plugin?.getState(state) as YSyncState | undefined) ?? null;
+  return (ySyncPluginKey.getState(state) as YSyncState | undefined) ?? null;
 }
 
 /**

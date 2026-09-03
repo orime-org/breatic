@@ -5,11 +5,10 @@
  * #904 验收 A22 的接线那半: what the shared collaboration layer can still
  * find on a BlockNote editor.
  *
- * `collab-plugin-keys.ts` locates y-prosemirror's plugins by NAME rather than
- * by importing their keys, and says so in its own header — a lookup that
- * misses is silent, so whether those plugins are there at all, and whether the
- * names that file spells still match, are facts worth asserting rather than
- * assuming.
+ * The shared collaboration readers resolve those plugins through
+ * `collab-plugin-keys.ts`, and a resolution that misses is silent in every one
+ * of them — so whether the plugins are registered at all, and how many of each,
+ * is worth asserting rather than assuming.
  *
  * The identity invariant is here too. #1886 delivered "this client never
  * states who it is": the id is written by the server from a validated
@@ -29,10 +28,6 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import {
-  Y_SYNC_PLUGIN_KEY_NAME,
-  Y_UNDO_PLUGIN_KEY_NAME,
-} from '@web/features/collab-editor/collab-plugin-keys';
 
 /**
  * The string a `PluginKey` registers plugins under, which its type omits.
@@ -84,33 +79,18 @@ describe('the plugins the shared layer looks up', () => {
     const { editor } = open();
     const names = pluginKeyNames(editor);
 
-    // Compared against the keys this test imports rather than against the
-    // string constants, because the SUFFIX is a property of the run rather
-    // than of the build. `PluginKey` numbers a repeated name off a table in
-    // `prosemirror-state`, and vitest resets the module registry between
-    // files while that table can outlive the reset — so a run where
-    // y-prosemirror is loaded a second time mints `y-sync$1`, and both this
-    // editor and the lookups in `collab-plugin-keys.ts` then agree on that
-    // name instead. What the build guarantees is that there is exactly one of
-    // each plugin, which is what is asserted.
+    // Compared against the keys this test imports rather than against a
+    // literal name, because the SUFFIX is a property of the run rather than of
+    // the build: `PluginKey` numbers a repeated name off a table in
+    // `prosemirror-state`, and both y-prosemirror and `@tiptap/y-tiptap` ask
+    // for `y-sync`. What the build guarantees is one plugin of each, which is
+    // what is asserted.
     expect(
       names.filter((name) => name === keyName(ySyncPluginKey)),
     ).toHaveLength(1);
     expect(
       names.filter((name) => name === keyName(yUndoPluginKey)),
     ).toHaveLength(1);
-  });
-
-  it('names them the way `collab-plugin-keys.ts` spells them', () => {
-    // The two constants that file exports, checked against the keys the
-    // plugins actually carry. A rename upstream turns this red rather than
-    // leaving every name lookup silently answering undefined.
-    expect(keyName(ySyncPluginKey).startsWith(Y_SYNC_PLUGIN_KEY_NAME)).toBe(
-      true,
-    );
-    expect(keyName(yUndoPluginKey).startsWith(Y_UNDO_PLUGIN_KEY_NAME)).toBe(
-      true,
-    );
   });
 });
 
