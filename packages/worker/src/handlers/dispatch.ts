@@ -27,7 +27,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
-import { creditLotService, resolveProvider } from "@breatic/domain";
+import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { publishNodeEvent } from "@breatic/core";
 import { releaseCanvasNodeLock, reacquireCanvasNodeLock } from "@breatic/domain";
@@ -394,6 +394,28 @@ export async function resolveVideoCovers(
     }
   } catch (err) {
     logger.warn({ taskId: ctx.taskId, err }, "video_cover_setup_failed_non_fatal");
+  }
+}
+
+/**
+ * Which upstream served a finished generation.
+ *
+ * The same priority-then-key rule the worker sent the request by, so the name
+ * recorded against a charge is the vendor that was actually paid.
+ * @param modality - The task type, which is also the catalog directory.
+ * @param modelName - The model the generation ran on; absent on a task that
+ *   named none.
+ * @returns The provider's name, or `unknown` when the catalog cannot say.
+ */
+function providerOf(modality: string, modelName: string | undefined): string {
+  try {
+    return resolveActiveProvider(modality, modelName).providerName;
+  } catch {
+    // Reached only by a task type with no model catalog behind it, or by a
+    // catalog edited between the request and this line. Answered rather than
+    // thrown: the generation is already delivered, and a name nobody can look
+    // up must not take the charge down with it.
+    return "unknown";
   }
 }
 
@@ -798,6 +820,7 @@ async function runTaskBody(
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
 
   const usedModel = (result.model as string | undefined) ?? model;
+  const usedProvider = providerOf(taskType, usedModel);
   // One line per finished generation, whatever it cost and whether or not a
   // charge follows. Not every modality carries a price yet, and a run whose
   // upstream reports nothing would otherwise leave no trace of the usage at
@@ -808,7 +831,7 @@ async function runTaskBody(
         taskId,
         taskType,
         model: usedModel,
-        provider: resolveProvider(usedModel),
+        provider: usedProvider,
         credits: creditsUsed,
         durationMs,
         userId,
@@ -827,7 +850,7 @@ async function runTaskBody(
         description: `Task: ${taskType}`,
         referenceId: taskId,
         model: usedModel,
-        provider: resolveProvider(usedModel),
+        provider: usedProvider,
       });
       if (outcome.shortfall > 0) {
         // The studio's pool ran out mid-flight, or its credits were reassigned
