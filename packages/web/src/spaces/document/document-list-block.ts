@@ -13,7 +13,7 @@
  * one plugin out of that extension, so the extension is rebuilt without it,
  * and everything else it carried is rebuilt alongside.
  *
- * Two of those three differ from the original:
+ * What the rebuilt extension carries, and how each differs:
  *
  * - The input rule stores no starting number. Where an ordered list starts is
  *   `#944`; until it exists, the digits a user types are the trigger and
@@ -21,6 +21,9 @@
  * - Enter carries the quote across. A quote is a prop on the block here, and
  *   `splitBlockTr` hands the new block `attrs: {}`, so a user pressing Enter
  *   at the end of a quoted line would land outside the quote (A7b).
+ * - The chord that turns a block into this kind is not here. All nine live in
+ *   `document-block-chords.ts`, off the table the menu prints from, so a key
+ *   and the row beside it cannot say different things.
  */
 
 import {
@@ -44,14 +47,6 @@ export const QUOTED = 'quoted';
 export interface ListEditor {
   readonly prosemirrorState: { readonly selection: unknown };
   transact: <T>(run: (tr: Transaction) => T) => T;
-  getTextCursorPosition: () => { block: { type: string } };
-  updateBlock: (
-    block: unknown,
-    update: { type: string; props: Record<string, unknown> },
-  ) => void;
-  readonly schema: {
-    readonly blockSchema: Record<string, { readonly content: string }>;
-  };
 }
 
 /**
@@ -136,8 +131,6 @@ type ListExtension = NonNullable<
 interface ListKind {
   /** The block type. */
   readonly type: string;
-  /** The chord that turns a block into this kind. */
-  readonly shortcut: string;
   /** The markdown shorthands that open this kind, and what each sets. */
   readonly inputRules: readonly {
     readonly find: RegExp;
@@ -157,19 +150,16 @@ interface ListKind {
 const LIST_KINDS: readonly ListKind[] = [
   {
     type: ORDERED_LIST,
-    shortcut: 'Mod-Shift-7',
     inputRules: [{ find: /^\s?(\d+)\.\s$/ }],
     notInHeadings: true,
   },
   {
     type: 'bulletListItem',
-    shortcut: 'Mod-Shift-8',
     inputRules: [{ find: /^\s?[-+*]\s$/ }],
     notInHeadings: true,
   },
   {
     type: 'checkListItem',
-    shortcut: 'Mod-Shift-9',
     inputRules: [
       { find: /^\s?\[\s*\]\s$/, props: { checked: false } },
       { find: /^\s?\[[Xx]\]\s$/, props: { checked: true } },
@@ -193,16 +183,6 @@ function buildListExtension(kind: ListKind): ListExtension {
     keyboardShortcuts: {
       Enter: ({ editor }: { editor: ListEditor }) =>
         handleListEnter(editor, kind.type),
-      [kind.shortcut]: ({ editor }: { editor: ListEditor }) => {
-        const position = editor.getTextCursorPosition();
-        if (
-          editor.schema.blockSchema[position.block.type]?.content !== 'inline'
-        ) {
-          return false;
-        }
-        editor.updateBlock(position.block, { type: kind.type, props: {} });
-        return true;
-      },
     },
     inputRules: kind.inputRules.map((rule) => ({
       find: rule.find,

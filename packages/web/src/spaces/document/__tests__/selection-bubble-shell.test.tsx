@@ -651,10 +651,11 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-quote',
       ]);
 
-      // The demo draws a shortcut on all eight exclusive rows and leaves the
-      // task list blank, which is the row with no command. This environment
-      // reports a non-Mac platform, so they read in the Windows spelling; the
-      // Mac one is asserted below.
+      // All nine rows draw a shortcut. The to-do row's is `Mod-Shift-9`,
+      // which BlockNote's own check list item carries and which sits beside
+      // the ordered `7` and the bullet `8`. This environment reports a non-Mac
+      // platform, so they read in the Windows spelling; the Mac one is
+      // asserted below.
       const shortcuts = items.map(
         (n) => n.querySelector('[data-testid^="doc-bubble-block-type-shortcut-"]')?.textContent?.trim() ?? null,
       );
@@ -665,7 +666,7 @@ describe('the bubble bar shell', () => {
         'Ctrl+Alt+3',
         'Ctrl+Shift+8',
         'Ctrl+Shift+7',
-        null,
+        'Ctrl+Shift+9',
         'Ctrl+Alt+C',
         'Ctrl+Shift+B',
       ]);

@@ -15,7 +15,7 @@
  */
 
 import type { ShortcutSpec } from '@web/spaces/canvas/format-shortcut';
-import type { BlockTypeId } from '@web/spaces/document/document-block-model';
+import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 
 /** One row's chord. */
 export interface BlockTypeShortcut {
@@ -24,11 +24,11 @@ export interface BlockTypeShortcut {
 }
 
 /**
- * The eight chords: seven exclusive rows and Quote.
+ * The nine chords, one per row.
  *
- * The task list is the row with neither — it has no command, so it has nothing
- * to bind and nothing to print. The demo draws the same eight
- * (`demo/2026-08-29-block-type-transitions.html:211-219`).
+ * The to-do row had neither a chord nor a command while the list itself was
+ * unavailable; BlockNote brings the block and `Mod-Shift-9` with it, which sits
+ * beside the ordered `7` and the bullet `8` the same way it does upstream.
  */
 export const BLOCK_TYPE_SHORTCUTS: BlockTypeShortcut[] = [
   { id: 'paragraph', spec: { mod: true, alt: true, key: '0' } },
@@ -37,6 +37,7 @@ export const BLOCK_TYPE_SHORTCUTS: BlockTypeShortcut[] = [
   { id: 'heading-3', spec: { mod: true, alt: true, key: '3' } },
   { id: 'bullet-list', spec: { mod: true, shift: true, key: '8' } },
   { id: 'ordered-list', spec: { mod: true, shift: true, key: '7' } },
+  { id: 'task-list', spec: { mod: true, shift: true, key: '9' } },
   { id: 'code-block', spec: { mod: true, alt: true, key: 'C' } },
   { id: 'quote', spec: { mod: true, shift: true, key: 'B' } },
 ];
