@@ -105,25 +105,16 @@ web_fetch_timeout_ms: 30000
 web_search_timeout_ms: 10000
 
 # ── Thinking ──────────────────────────────────────────────
-# Whether to ask the provider for the model's working while it answers.
+# There is no switch here for the model's working.
 #
-# Off, because asking for it changes nothing that comes back. Measured twice
-# on the model this build actually calls: 2026-08-20, deepseek/deepseek-v4-pro
-# through OpenRouter, this switch on, two turns — one of them asking in so
-# many words for the working to be written out. Both turns opened a reasoning
-# channel and closed it again about 300ms later with zero reasoning-delta
-# between: the stream carries reasoning-start and reasoning-end and nothing
-# else. The earlier measurement said the same thing about a different model
-# (2026-08-11, claude-sonnet-4-6, three turns, nothing).
+# Whether a call wants it is the call's own business: chat asks for it and
+# shows it, memory consolidation does not. One setting across all of them
+# would have to be wrong for one of the two.
 #
-# And the reason is now known: nothing is asked for. `@ai-sdk/openai@4.0.37`
-# decides whether a model reasons from its id (the o-series, gpt-5 and up),
-# and `deepseek/deepseek-v4-pro` matches neither — so `reasoningEffort` is
-# dropped with an `unsupported` warning and never reaches the request body
-# (`dist/index.js:6306-6311`). Turning this on today spends the ask on every
-# turn for a fold with nothing in it. Making it actually work is a separate
-# piece of work; see the agent backlog.
-thinking_enabled: false
+# A call that has a preference states it where it makes the call, by passing
+# a boolean to `reasoningFor` in `@breatic/domain`, which turns that into
+# whatever the provider on the other end takes. Chat and memory consolidation
+# do that today; the rest take whatever their provider does by default.
 
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call

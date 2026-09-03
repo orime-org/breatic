@@ -29,6 +29,7 @@ import type { ModelMessage } from "ai";
 import {
   generateTextRetry,
   getModel,
+  reasoningFor,
   creditLotService,
   resolveProvider,
 } from "@breatic/domain";
@@ -314,6 +315,10 @@ export async function consolidateWindow(
       messages: [{ role: "user" as const, content: prompt }],
       stopWhen: stepCountIs(1),
       temperature: 0,
+      // Folding a transcript into a summary has no reasoning step in it, and
+      // the model this runs on turns thinking on by id unless told otherwise
+      // -- which would also drop the `temperature: 0` above.
+      ...reasoningFor(config.consolidation_model, false),
       // Conversation memory is rewritten whole by this call, so an answer
       // with no ceiling is a segment with no ceiling in every later prompt.
       maxOutputTokens: config.max_output_tokens,

@@ -18,6 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
+import type * as DomainModule from "@breatic/domain";
 import type { ModelMessage } from "ai";
 
 const generateTextRetry = vi.fn();
@@ -53,14 +54,18 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@breatic/domain", async () => {
+vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
+  const actual = await importOriginal<typeof DomainModule>();
   return {
     ...base,
     generateTextRetry,
     getModel: (id: string) => ({ modelId: id }),
     resolveProvider: () => "test",
+    // The real one. What it puts on the call is the thing being asserted,
+    // and a stub would be answering the question with its own return value.
+    reasoningFor: actual.reasoningFor,
     creditLotService: { chargeOnceForGeneration },
   };
 });
@@ -231,6 +236,28 @@ describe("a consolidation that works", () => {
 
     const call = generateTextRetry.mock.calls[0]?.[0] as { maxOutputTokens?: number };
     expect(call.maxOutputTokens).toBe(OUTPUT_CEILING);
+  });
+
+  it("tells the provider outright that this call wants no reasoning", async () => {
+    // Folding a transcript into a summary has no reasoning step in it, and
+    // saying nothing is not the same as saying no: DeepSeek turns thinking
+    // on by model id unless told otherwise, and this call runs on a DeepSeek
+    // model. Leaving the field off spends reasoning tokens on every fold and
+    // drops the `temperature: 0` this function's own docstring depends on.
+    await consolidate();
+
+    const call = generateTextRetry.mock.calls[0]?.[0] as {
+      providerOptions?: Record<string, Record<string, unknown>>;
+    };
+    // The whole object, because the direction is the point. Asserting that
+    // one provider is addressed and its object is non-empty is true of the
+    // on spelling as well, so it holds the call to no direction at all.
+    //
+    // `openrouter` because this suite's `getAgentConfig` double names no
+    // consolidation model, so the route falls back the way any unnamed one does.
+    expect(call.providerOptions).toEqual({
+      openrouter: { reasoning: { effort: "none" } },
+    });
   });
 
   it("tells the model the ceiling its answer is read through", async () => {

@@ -57,8 +57,14 @@ const agentConfigSchema = z.object({
    * Both used to be literals in three places, disagreeing 40 against 15.
    */
   skill_agent_max_steps: z.number().int().positive().default(15),
-  default_model: z.string().default("deepseek/deepseek-v4-pro"),
-  consolidation_model: z.string().default("deepseek/deepseek-v4-pro"),
+  // A model id has to end in something other than the prefix separator, so
+  // that neither a blank value nor a half-typed prefix gets through. Both
+  // start clean and fail on the first message: a blank one reaches whatever
+  // provider it lands on as an empty id, and `deepseek/` reaches DeepSeek as
+  // an empty id too once that key is set, because a direct route strips the
+  // prefix it matched.
+  default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4-pro"),
+  consolidation_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4-pro"),
   /**
    * How much of the first message a conversation keeps as its name.
    *
@@ -173,25 +179,6 @@ const agentConfigSchema = z.object({
   web_fetch_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(30000),
   /** The same, for one `web_search` request. */
   web_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
-  /**
-   * Whether to ask the provider for the model's working while it answers.
-   *
-   * Off, because asking for it changes nothing that comes back. Measured on
-   * the model this build calls: 2026-08-20, deepseek/deepseek-v4-pro through
-   * OpenRouter, two turns with this on — one of them asking in so many words
-   * for the working to be written out. Both opened a reasoning channel and
-   * closed it about 300ms later with zero `reasoning-delta` between. The
-   * earlier measurement said the same of a different model (2026-08-11,
-   * claude-sonnet-4-6, three turns, nothing).
-   *
-   * The pipeline that carries reasoning is built and tested; what is missing
-   * is that nothing is actually asked for. `@ai-sdk/openai@4.0.37` decides
-   * whether a model reasons from its id (the o-series, gpt-5 and up), and
-   * `deepseek/deepseek-v4-pro` matches neither — so `reasoningEffort` is
-   * dropped with an `unsupported` warning rather than sent
-   * (`dist/index.js:6306-6311`).
-   */
-  thinking_enabled: z.boolean().default(false),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {

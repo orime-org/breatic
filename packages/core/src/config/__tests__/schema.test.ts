@@ -26,6 +26,21 @@ function baseEnv(over: Record<string, string> = {}): Record<string, string> {
   };
 }
 
+describe("parseConfig — provider keys", () => {
+  it("accepts DEEPSEEK_API_KEY and hands it back", () => {
+    // The default model this build calls is `deepseek/deepseek-v4-pro`, and
+    // reaching DeepSeek directly needs its own key. A name the schema has
+    // never heard of resolves to undefined through the `env` proxy however
+    // the process was started, so the direct route would never open.
+    const config = parseConfig(baseEnv({ DEEPSEEK_API_KEY: "sk-ds-test" }));
+    expect(config.DEEPSEEK_API_KEY).toBe("sk-ds-test");
+  });
+
+  it("defaults it to empty so a deployment without one still starts", () => {
+    expect(parseConfig(baseEnv()).DEEPSEEK_API_KEY).toBe("");
+  });
+});
+
 describe("parseConfig — yjs DB separation", () => {
   it("rejects YJS_DATABASE_URL == DATABASE_URL (same database) outside dev", () => {
     expect(() =>
@@ -226,6 +241,36 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
       parseConfig(baseEnv({ REDIS_KEY_PREFIX: "  dev-agent  " }))
         .REDIS_KEY_PREFIX,
     ).toBe("dev-agent");
+  });
+});
+
+/**
+ * The two keys that decide which model runs must name a model.
+ *
+ * Both ways of failing to name one start clean and break on the first
+ * message someone sends: `getModel("")` hands over an empty id, and
+ * `getModel("deepseek/")` does the same on a deployment holding the DeepSeek
+ * key, because matching a direct route strips the prefix that matched. Every
+ * numeric knob in this same object already carries a bound.
+ */
+describe("agent config — the model a run is sent to", () => {
+  it.each([
+    ["default_model", ""],
+    ["consolidation_model", ""],
+    ["default_model", "deepseek/"],
+    ["consolidation_model", "anthropic/"],
+  ])("refuses %s = %j", async (key, value) => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    expect(agentConfigSchemaForTests.safeParse({ [key]: value }).success).toBe(false);
+  });
+
+  it("accepts a model id", async () => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    const parsed = agentConfigSchemaForTests.safeParse({
+      default_model: "deepseek/deepseek-v4-pro",
+      consolidation_model: "anthropic/claude-sonnet-4-6",
+    });
+    expect(parsed.success).toBe(true);
   });
 });
 

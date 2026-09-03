@@ -8,9 +8,9 @@
  * reasoning reads as prose rather than as the characters it typed. The fold
  * itself — what is in the DOM, what the toggle announces — does not change.
  *
- * The model does not produce reasoning today (`config/agent.yaml` carries
- * `thinking_enabled: false`), so the text here is constructed rather than
- * captured from a real turn.
+ * The text here is written for the case under test rather than captured from
+ * a turn, so that a case about long reasoning stays long whatever a model
+ * happens to return.
  */
 import { describe, it, expect } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';

@@ -19,7 +19,7 @@ The AI-native operating system for content creators — a unified workspace wher
 | Database | PostgreSQL (Drizzle ORM + postgres.js) |
 | Cache & Pub/Sub | Redis (ioredis) |
 | Task Queue | BullMQ |
-| LLM Integration | Vercel AI SDK (OpenRouter, Anthropic, Google, OpenAI) |
+| LLM Integration | Vercel AI SDK (OpenRouter, DeepSeek, Anthropic, Google, OpenAI) |
 | AIGC Providers | Wavespeed, Google, BytePlus, DashScope, Topaz, + more |
 | Auth | Email+Password (bcrypt) / Google OAuth |
 | Payment | Stripe (optional) |
@@ -164,10 +164,16 @@ All settings validated at startup via Zod. See `.env.dev` or `.env.docker` for t
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | Text generation (Claude, GPT, Gemini via OpenRouter) |
+| `OPENROUTER_API_KEY` | Text generation for every model with no key of its own below |
 | `WAVESPEED_API_KEY` | Image/video/audio/3D generation |
+| `DEEPSEEK_API_KEY` | DeepSeek direct access |
 | `GOOGLE_API_KEY` | Google Gemini direct access |
 | `ANTHROPIC_API_KEY` | Anthropic Claude direct access |
+| `OPENAI_API_KEY` | OpenAI direct access |
+
+A model whose vendor has a key here is called at that vendor; everything else
+goes through OpenRouter, so one `OPENROUTER_API_KEY` covers every text model
+call. Image, video, audio and 3D generation run on their own vendor keys.
 
 ### Optional
 
