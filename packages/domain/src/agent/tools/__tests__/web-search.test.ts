@@ -508,3 +508,195 @@ describe("web_search says a failure is a failure", () => {
     expect(readerKey).not.toContain("brave");
   });
 });
+
+/**
+ * A body shaped like the LLM context endpoint's.
+ * @param sources - One entry per source: its snippets.
+ * @returns A 200 carrying that grounding.
+ */
+const grounding = (sources: string[][]): Response =>
+  new Response(
+    JSON.stringify({
+      grounding: {
+        generic: sources.map((snippets, i) => ({
+          url: `https://s${String(i)}.example`,
+          title: `Source ${String(i)}`,
+          snippets,
+        })),
+      },
+      sources: {},
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+
+describe("web_search asks for page content, not for snippets of a listing", () => {
+  beforeEach(() => {
+    apiKey = "test-key";
+    httpRequestMock.mockReset();
+    httpRequestMock.mockImplementation(async () => grounding([["body text"]]));
+  });
+
+  it("addresses the endpoint that returns extracted page content", async () => {
+    await run({ query: "cyberpunk palette" });
+
+    const [url] = httpRequestMock.mock.calls[0] as [string];
+    expect(new URL(url).pathname).toBe("/res/v1/llm/context");
+  });
+
+  it("puts every source's own text in front of the model", async () => {
+    httpRequestMock.mockImplementation(async () =>
+      grounding([["first half", "second half"], ["other page"]]),
+    );
+
+    const out = await run({ query: "cyberpunk palette" });
+
+    expect(out).toContain("first half");
+    expect(out).toContain("second half");
+    expect(out).toContain("other page");
+    expect(out).toContain("https://s0.example");
+    expect(out).toContain("https://s1.example");
+  });
+
+  it("asks for as many sources as the model wanted", async () => {
+    await run({ query: "cyberpunk palette", count: 3 });
+
+    const [url] = httpRequestMock.mock.calls[0] as [string];
+    expect(new URL(url).searchParams.get("maximum_number_of_urls")).toBe("3");
+  });
+
+  it("asks for the configured amount of content", async () => {
+    await run({ query: "cyberpunk palette" });
+
+    const [url] = httpRequestMock.mock.calls[0] as [string];
+    // The figure is configuration; that one arrives at all is the contract.
+    expect(new URL(url).searchParams.get("maximum_number_of_tokens")).toMatch(/^\d+$/);
+  });
+
+  it("refuses a query with nothing in it before spending a delivery", async () => {
+    // The service answers 422 `too_short` for an empty q, which the tool would
+    // then have to explain to the model. Rejecting it here gives the model the
+    // SDK's input error instead, which is the signal that says: write a query.
+    const parsed = webSearch.inputSchema.safeParse({ query: "   " });
+
+    expect(parsed.success).toBe(false);
+    expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("tells the transport not to follow a redirect", async () => {
+    await run({ query: "cyberpunk palette" });
+
+    const [, init] = httpRequestMock.mock.calls[0] as [string, RequestInit];
+    expect(init.redirect).toBe("manual");
+  });
+});
+
+describe("web_search says whose fault a refusal is", () => {
+  beforeEach(() => {
+    apiKey = "test-key";
+    httpRequestMock.mockReset();
+  });
+
+  it("calls a rejected subscription token a fault on this side", async () => {
+    httpRequestMock.mockImplementation(
+      async () => new Response('{"error":{"code":"SUBSCRIPTION_TOKEN_INVALID"}}', { status: 422 }),
+    );
+
+    const { modelReason } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(modelReason).toMatch(/configuration|this side/i);
+    expect(modelReason).not.toMatch(/different wording|try a different/i);
+  });
+
+  it("calls a redirect a fault on this side too", async () => {
+    // With `redirect: "manual"` a 3xx comes back as an ordinary response. The
+    // address we hold is the stale thing; no wording of the query reaches it.
+    httpRequestMock.mockImplementation(
+      async () => new Response(null, { status: 302, headers: { location: "https://elsewhere" } }),
+    );
+
+    const { modelReason } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(modelReason).toMatch(/configuration|this side/i);
+    expect(modelReason).not.toMatch(/different wording|try a different/i);
+  });
+});
+
+describe("web_search reports a search that came back empty", () => {
+  beforeEach(() => {
+    apiKey = "test-key";
+    httpRequestMock.mockReset();
+  });
+
+  it("calls an empty grounding array a search that found nothing", async () => {
+    // Measured against the live endpoint: a `site:` query against a domain with
+    // nothing on it answers 200 with `generic` as an empty array. This is a
+    // path a model reaches, not a schema drift.
+    httpRequestMock.mockImplementation(async () => grounding([]));
+
+    const out = await run({ query: "site:example.invalid pricing" });
+
+    expect(out).toMatch(/no .*results|found nothing|came back empty/i);
+    expect(out).not.toContain("https://s0.example");
+  });
+
+  it("separates a search that found nothing from an answer it cannot read", async () => {
+    // Both used to look alike: an implementation that does not know this
+    // response shape reads every body as "nothing found". A body with no
+    // grounding at all is the service answering something else, which is a
+    // failure; an empty `generic` is a search that ran and found nothing.
+    httpRequestMock.mockImplementation(
+      async () => new Response('{"sources":{}}', { status: 200 }),
+    );
+
+    const { modelReason } = await failureFrom(() =>
+      run({ query: "site:example.invalid pricing" }),
+    );
+
+    expect(modelReason).toMatch(/not with results|their side/i);
+  });
+
+  it("keeps our subscription state out of what it says", async () => {
+    httpRequestMock.mockImplementation(async () => grounding([]));
+
+    const out = await run({ query: "site:example.invalid pricing" });
+
+    expect(out).not.toMatch(/plan|subscription|deployment/i);
+  });
+});
+
+describe("web_search bounds what one search can inject", () => {
+  beforeEach(() => {
+    apiKey = "test-key";
+    httpRequestMock.mockReset();
+  });
+
+  it("drops whole sources rather than cutting one in half", async () => {
+    // Each source carries far more than the ceiling allows in total, so the
+    // assembled string has to lose some of them.
+    const fat = "x".repeat(20_000);
+    httpRequestMock.mockImplementation(async () =>
+      grounding([[fat], [fat], [fat], [fat], [fat], [fat], [fat], [fat]]),
+    );
+
+    const out = await run({ query: "cyberpunk palette" });
+
+    // A source that survived kept all of its text; none was cut mid-snippet.
+    const kept = out.split("https://s").length - 1;
+    expect(kept).toBeGreaterThan(0);
+    expect(kept).toBeLessThan(8);
+    expect(out).not.toMatch(/x{19_999}(?!x)/);
+  });
+
+  it("says so when it had to drop sources", async () => {
+    const fat = "y".repeat(20_000);
+    httpRequestMock.mockImplementation(async () =>
+      grounding([[fat], [fat], [fat], [fat], [fat], [fat], [fat], [fat]]),
+    );
+
+    const out = await run({ query: "cyberpunk palette" });
+
+    // Without this line the model reads the sources it can see as all there
+    // were, and answers "nothing I found says X" when X was in a dropped one.
+    expect(out).toMatch(/dropped|omitted|not shown|of \d+ sources/i);
+  });
+});
