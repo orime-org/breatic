@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { z } from "zod";
 import { toolFailureOf } from "@breatic/shared";
 import type { ToolFailure } from "@breatic/shared";
 import type * as sharedModule from "@breatic/shared";
@@ -48,9 +49,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-// See the note in safe-fetch.test.ts: before the move this tool calls the
-// global `fetch`, so without this a handoff assertion would quietly reach the
-// real Brave API and fail for the wrong reason.
+// Without this, a handoff assertion that stopped going through `httpRequest`
+// would quietly reach the real Brave API and fail for the wrong reason.
 vi.stubGlobal("fetch", () => {
   throw new Error("a real fetch escaped: web_search must go through httpRequest");
 });
@@ -306,10 +306,10 @@ describe("web_search says a failure is a failure", () => {
   });
 
   it("says a body that stopped arriving may be worth asking for again", async () => {
-    // 连接在读响应体期间被重置。我们从没看见对方最终发的是什么，所以「答了但
-    // 不是结果」这个断言本层给不出；而 web_fetch 对结构完全相同的失败说的是
-    // 「站点答了，是正文没到齐，再取一次可能就好」。同一件事两个工具说反了，
-    // 其中一个必然被违背。
+    // The connection is reset while the body is being read. What the service
+    // meant to send was never seen from here, so "it answered, but not with
+    // results" is a claim this layer cannot make: the answer may well have
+    // been results. Asking once more is what fits what is known.
     httpRequestMock.mockImplementation(async () => ({
       ok: true,
       status: 200,
@@ -542,9 +542,13 @@ describe("web_search asks for page content, not for snippets of a listing", () =
     // The service answers 422 `too_short` for an empty q, which the tool would
     // then have to explain to the model. Rejecting it here gives the model the
     // SDK's input error instead, which is the signal that says: write a query.
-    const parsed = webSearch.inputSchema.safeParse({ query: "   " });
+    // Declared as the SDK's own `FlexibleSchema`, which says nothing about
+    // parsing; what the tool passes it is a zod object, and that is the thing
+    // being asserted here.
+    const schema = webSearch.inputSchema as unknown as z.ZodType<{ query: string }>;
 
-    expect(parsed.success).toBe(false);
+    expect(schema.safeParse({ query: "   " }).success).toBe(false);
+    expect(schema.safeParse({ query: "a real query" }).success).toBe(true);
     expect(httpRequestMock).not.toHaveBeenCalled();
   });
 

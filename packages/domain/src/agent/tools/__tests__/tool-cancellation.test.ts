@@ -22,8 +22,8 @@
  *
  * What this does NOT catch is a tool that declares the parameter and then
  * ignores it. Whether a signal is honoured is a property of what the tool
- * awaits, which no signature can express; `web-fetch` and `web-search` have
- * their own tests for that.
+ * awaits, which no signature can express; `web-search` has its own tests for
+ * that.
  */
 
 import { describe, it, expect } from "vitest";
@@ -53,7 +53,7 @@ function registeredTools(): Array<[string, ExecuteFn]> {
 describe("tools accept the cancellation signal", () => {
   it("covers every registered tool", () => {
     // A named list rather than a count of what happens to be there. The loop
-    // below already gives a seventh tool its own case, so this is not what
+    // below already gives a sixth tool its own case, so this is not what
     // catches an unchecked tool; what it catches is the other direction -- a
     // tool vanishing from the registry, which the loop cannot see -- and it
     // makes the author of a new tool stop here and read why the arity matters.
@@ -62,7 +62,6 @@ describe("tools accept the cancellation signal", () => {
       "ask_user_question",
       "propose_canvas_action",
       "show_search_results",
-      "web_fetch",
       "web_search",
     ]);
   });

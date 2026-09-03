@@ -20,8 +20,8 @@
  *     ignores its signal held its turn for the full four seconds it ran, and
  *     one that honoured it ended in eight milliseconds.
  *
- * `web_fetch` is driven for real here rather than stood in for, because it is
- * the tool with the longest reach: a response body that never finishes is not
+ * `web_search` is driven for real here rather than stood in for, because it is
+ * the tool that reaches outside: a response body that never finishes is not
  * covered by the transport's deadline at all, and nothing short of the real
  * tool would show whether that path was wired.
  */
@@ -29,17 +29,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as DomainModule from "@breatic/domain";
 
-const dnsLookupMock = vi.fn();
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
     compressedHistory: [],
   })),
 }));
-vi.mock("node:dns/promises", () => ({
-  lookup: (...args: unknown[]) => dnsLookupMock(...args),
-}));
-
 /** How many times the provider was asked to produce a step. */
 let providerCalls = 0;
 /** What the provider says for each step, set per test. */
@@ -59,12 +54,17 @@ vi.mock("@breatic/core", async (importOriginal) => {
       max_tool_iterations: 5,
       llm_max_retries: 0,
       tool_result_keep: 3,
-      web_fetch_timeout_ms: 30_000,
       web_search_timeout_ms: 10_000,
-      web_fetch_max_chars: 50_000,
+      web_search_max_tokens: 8_192,
     }),
     env: new Proxy({}, {
-      get: (_t, p: string) => (p === "CREDIT_MULTIPLIER" ? 1 : undefined),
+      get: (_t, p: string) => {
+        if (p === "CREDIT_MULTIPLIER") return 1;
+        // Without a key `buildToolSet` leaves web_search out, and the two
+        // cases below would drive an empty tool set to a silent pass.
+        if (p === "BRAVE_SEARCH_API_KEY") return "test-key";
+        return undefined;
+      },
     }),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
@@ -139,7 +139,7 @@ function callsTool(toolName: string): readonly Record<string, unknown>[] {
       type: "tool-call",
       toolCallId: "call-1",
       toolName,
-      input: JSON.stringify({ url: "https://public.example/page" }),
+      input: JSON.stringify({ url: "https://public.example/page", query: "a page" }),
     },
     {
       type: "finish",
@@ -179,8 +179,6 @@ beforeEach(() => {
   turnTools = {};
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  dnsLookupMock.mockReset();
-  dnsLookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
   [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => m.mockClear());
 });
 
@@ -225,7 +223,7 @@ describe("a stopped turn stops the model", () => {
     expect(providerCalls).toBe(1);
   }, 30_000);
 
-  it("ends within a second of the stop, with web_fetch waiting on a body", async () => {
+  it("ends within a second of the stop, with web_search waiting on a body", async () => {
     // The longest reach any tool has: the transport handed back a response
     // and cleared its deadline, and the body never finishes arriving. Nothing
     // between the route and this read can end the turn.
@@ -234,8 +232,8 @@ describe("a stopped turn stops the model", () => {
     const { buildToolSet } = await import("@breatic/domain");
     const stopped = new AbortController();
 
-    turnTools = buildToolSet(["web_fetch"]);
-    providerParts = () => callsTool("web_fetch");
+    turnTools = buildToolSet(["web_search"]);
+    providerParts = () => callsTool("web_search");
     // The body errors when the request's signal is raised, which is what a
     // real `fetch` does. A stub that leaves that out would have the read hang
     // forever and would say nothing about whether the chain works.
@@ -263,7 +261,7 @@ describe("a stopped turn stops the model", () => {
     expect(providerCalls).toBe(1);
   }, 30_000);
 
-  it("ends within a second of the stop, with web_fetch waiting on a connection", async () => {
+  it("ends within a second of the stop, with web_search waiting on a connection", async () => {
     // The other way a page stalls, and the one the transport does cover. Both
     // are asserted because a chain wired for only one of them passes the other
     // test and leaves the real hazard in place.
@@ -272,8 +270,8 @@ describe("a stopped turn stops the model", () => {
     const { buildToolSet } = await import("@breatic/domain");
     const stopped = new AbortController();
 
-    turnTools = buildToolSet(["web_fetch"]);
-    providerParts = () => callsTool("web_fetch");
+    turnTools = buildToolSet(["web_search"]);
+    providerParts = () => callsTool("web_search");
     fetchMock.mockImplementation(
       (_url: string, init: { signal?: AbortSignal }) =>
         new Promise((_resolve, reject) => {

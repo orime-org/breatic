@@ -8,7 +8,7 @@
  * could simply drop the promise and let the object be collected, and that the
  * three-delivery ceiling bounded how long an abandoned call could carry on.
  * Both remain true, and neither is enough for a person watching a screen: a
- * turn stopped while `web_fetch` is in flight would sit through the rest of
+ * turn stopped while `web_search` is in flight would sit through the rest of
  * this call's deliveries and backoffs before it ended.
  *
  * Cancellation is not a shorter deadline and does not replace one. A deadline
@@ -231,8 +231,8 @@ describe("a call the caller gave up on", () => {
     // `fetch` returns when the HEADERS arrive, so a response is handed over
     // while its body is still streaming; the signal composed into that request
     // stays attached to it. This is a promise rather than an accident —
-    // `web_fetch` and `web_search` both read their bodies plainly and neither
-    // carries a line of cancellation code, so they depend on it.
+    // `web_search` reads its body plainly and carries no line of cancellation
+    // code, so it depends on this.
     const stub = await stallingBodyServer();
     const gaveUp = new AbortController();
 
