@@ -38,7 +38,13 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { initCore } from "@breatic/core";
 import { nodeTaskService } from "@breatic/domain";
+
+// `integration-setup.ts` sets the env vars and deliberately stops there, so
+// that importing it pulls in no part of core. A suite that reaches real core
+// — this one goes through the `db` Proxy — calls initCore itself.
+initCore(process.env);
 
 const PG_DRIVER_LOCAL = "node-task-state-test-driver";
 

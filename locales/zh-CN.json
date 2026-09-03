@@ -274,6 +274,9 @@
       "handling": "此项正忙，请等待当前任务完成。",
       "remote": "这项内容正被他人移动。"
     },
+    "task": {
+      "stillRunning": "这个任务还在跑。"
+    },
     "generatePanel": {
       "style": "风格",
       "focus": "聚焦",

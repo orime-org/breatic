@@ -80,6 +80,16 @@ export {
   reacquireCanvasNodeLock,
 } from "@domain/canvas-lock/canvas-lock.js";
 
+// ── Node tasks (one row per task on a node; the four counts the node shows) ──
+export * as nodeTaskService from "@domain/node-task/node-task.service.js";
+export type {
+  NodeTaskCounts,
+  NodeTaskRow,
+  NodeTaskStatus,
+  SettleResult,
+  DismissResult,
+} from "@domain/node-task/node-task.service.js";
+
 // ── Canvas node state write-back (worker finishes a generation, server
 //    finishes an upload — one shape, one place) ──
 export {

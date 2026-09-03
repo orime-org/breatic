@@ -274,6 +274,9 @@
       "handling": "This item is busy — wait for the current task to finish.",
       "remote": "Someone else is moving this."
     },
+    "task": {
+      "stillRunning": "This task is still running."
+    },
     "nodeMenu": {
       "generate": "Generate",
       "upload": "Upload",

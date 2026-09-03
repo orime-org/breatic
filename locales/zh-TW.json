@@ -274,6 +274,9 @@
       "handling": "此項目正忙，請等待目前的任務完成。",
       "remote": "這項內容正被他人移動。"
     },
+    "task": {
+      "stillRunning": "這個任務還在跑。"
+    },
     "generatePanel": {
       "style": "風格",
       "focus": "聚焦",
