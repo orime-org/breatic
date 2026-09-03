@@ -32,7 +32,11 @@
  */
 import type { getStreamRedis } from "@breatic/core";
 import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import { taskService, emitNodeStateFailed } from "@breatic/domain";
+import {
+  taskService,
+  emitNodeStateFailed,
+  settleTaskForNode,
+} from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import {
   mediaKindForActivity,
@@ -221,6 +225,13 @@ export async function cleanupFailedJobNodes(
         nodeGens?.[nodeId] ?? 0,
       );
       emitted++;
+      // The row this run opened on that node (#186, design §3.6).
+      await settleTaskForNode(streamRedis, docName, {
+        taskId: job.data.taskId,
+        nodeId,
+        outcome: "failed",
+        errorMessage: `Task failed: ${reason}`,
+      });
     } catch {
       // Best-effort: continue with the remaining nodes. The caller
       // (application entry) logs the failure; the collab handling-lease

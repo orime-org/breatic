@@ -34,6 +34,7 @@ import {
   reacquireCanvasNodeLock,
   emitNodeStateDone,
   emitNodeStateFailed,
+  settleTaskForNode,
   emitNodeLeaseRunning,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -188,6 +189,7 @@ export async function verifyJobLockOwnership(
  * @param nodeIds - Target nodes to mark failed.
  * @param genOf - Lease gen resolver for one node (#1580 #7).
  * @param errorMessage - Human-readable failure reason.
+ * @param taskId - The job whose row on each node settles as failed.
  */
 async function emitFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
@@ -195,6 +197,7 @@ async function emitFailedBestEffort(
   nodeIds: string[],
   genOf: (nodeId: string) => number,
   errorMessage: string,
+  taskId: string,
 ): Promise<void> {
   for (const nodeId of nodeIds) {
     try {
@@ -204,6 +207,20 @@ async function emitFailedBestEffort(
         { err, nodeId, docName },
         "Failed to publish NodeStateUpdateEvent (failure)",
       );
+    }
+    // The row this run opened on that node (#186, design §3.6). Best-effort
+    // for the same reason as the line above: the job is already over, and a
+    // node whose count did not update is repaired by the next state change
+    // on it.
+    try {
+      await settleTaskForNode(streamRedis, docName, {
+        taskId,
+        nodeId,
+        outcome: "failed",
+        errorMessage,
+      });
+    } catch (err) {
+      logger.warn({ err, nodeId, taskId }, "node_task settle (failure) failed");
     }
   }
 }
@@ -532,7 +549,7 @@ async function runTaskBody(
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, "Retry not allowed after provider returned a result");
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, "Retry not allowed after provider returned a result", taskId);
     }
     return { failed: true, reason: "no_retry_after_provider" };
   }
@@ -656,7 +673,7 @@ async function runTaskBody(
     // result, node stuck on the stale error. Same contract the QueueEvents
     // net enforces via job.finishedOn.
     if (canvasDocName && isTerminalAttempt(job)) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg, taskId);
     }
     // Terminal attempts only - a retryable failure may still succeed,
     // and the feed records outcomes, not attempts.
@@ -689,7 +706,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, msg);
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, msg, taskId);
     }
     if (projectId) {
       await recordGenerationActivity({
@@ -738,7 +755,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg);
+      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg, taskId);
     }
     if (projectId) {
       await recordGenerationActivity({
@@ -1059,8 +1076,10 @@ export async function recordGenerationForNodes(
   for (const o of outputs) {
     if (typeof o.url !== "string") continue;
     const url = o.url;
+    /** The history row this pass wrote, which the task row points at. */
+    let historyId: string | undefined;
     try {
-      await nodeHistoryService.recordGenerationSuccess({
+      const entry = await nodeHistoryService.recordGenerationSuccess({
         projectId: ctx.projectId,
         nodeId: o.nodeId,
         userId: ctx.userId,
@@ -1069,6 +1088,7 @@ export async function recordGenerationForNodes(
         taskId: ctx.taskId,
         metadata: ctx.metadata,
       });
+      historyId = entry.id;
     } catch (err) {
       // #1618 A: a billed generation MUST land in node_history. On a live run
       // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
@@ -1087,6 +1107,24 @@ export async function recordGenerationForNodes(
       );
     } catch (err) {
       logger.warn({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
+    }
+    // The row this run opened on that node (#186, design §3.6).
+    try {
+      await settleTaskForNode(streamRedis, docName, {
+        taskId: ctx.taskId,
+        nodeId: o.nodeId,
+        outcome: "done",
+        ...(historyId !== undefined && { nodeHistoryId: historyId }),
+        result: {
+          content: url,
+          coverUrl: o.coverUrl ?? null,
+          width: null,
+          height: null,
+          duration: null,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_task settle (success) failed");
     }
   }
 }

@@ -31,6 +31,8 @@ import {
   assetRepo,
   nodeHistoryService,
   emitNodeStateDone,
+  nodeTaskService,
+  emitNodeTaskCounts,
   type VideoCoverJobData,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -89,13 +91,41 @@ export async function announceUpload(
     await recordFeedRow(data, coverUrl);
   }
 
+  const docName = canvasSpaceDocName(data.projectId, data.spaceId);
   await emitNodeStateDone(
     getStreamRedis(),
-    canvasSpaceDocName(data.projectId, data.spaceId),
+    docName,
     data.nodeId,
     { content: data.videoUrl, ...(coverUrl !== undefined && { coverUrl }) },
     data.leaseGen,
   );
+
+  // A video's upload is not done until its cover has had its chance, so this
+  // is where its task row settles rather than in the ingest report (#186,
+  // design §3.6). The row is the one the ticket opened, named by the key.
+  const task = await nodeTaskService.findByStorageKey(data.storageKey);
+  if (task !== null) {
+    const settled = await nodeTaskService.settle({
+      taskId: task.id,
+      outcome: "done",
+      nodeHistoryId: recorded.entry.id,
+    });
+    await emitNodeTaskCounts(
+      getStreamRedis(),
+      docName,
+      data.nodeId,
+      settled.counts,
+      settled.applied
+        ? {
+            content: data.videoUrl,
+            coverUrl: coverUrl ?? null,
+            width: null,
+            height: null,
+            duration: null,
+          }
+        : undefined,
+    );
+  }
 }
 
 /**

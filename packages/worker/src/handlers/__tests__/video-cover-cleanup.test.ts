@@ -38,6 +38,16 @@ vi.mock("@breatic/domain", () => ({
   assetRepo: { setCoverAsset: vi.fn(), findCoverOf: mockFindCoverOf },
   nodeHistoryService: { recordUpload: mockRecordUpload },
   emitNodeStateDone: mockEmitDone,
+  // The task row a video upload settles on (#186): its cover is the last
+  // thing the upload waits for, so this handler is where it lands.
+  nodeTaskService: {
+    findByStorageKey: vi.fn(async () => null),
+    settle: vi.fn(async () => ({
+      applied: true,
+      counts: { running: 0, done: 1, failed: 0, expired: 0 },
+    })),
+  },
+  emitNodeTaskCounts: vi.fn(),
 }));
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,

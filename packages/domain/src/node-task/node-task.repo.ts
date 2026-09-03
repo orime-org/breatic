@@ -208,6 +208,42 @@ export async function findByStorageKey(
 }
 
 /**
+ * Find the row one job left on one node.
+ *
+ * A generation may write several nodes and each has its own row carrying the
+ * shared job id, so the pair is what names exactly one of them.
+ * @param taskId - The job every row of that run points at.
+ * @param nodeId - The node just written to.
+ * @returns The row, or null when that run opened none on that node.
+ */
+export async function findByTaskAndNode(
+  taskId: string,
+  nodeId: string,
+): Promise<NodeTaskRow | null> {
+  const rows = await db
+    .select()
+    .from(nodeTasks)
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.nodeId, nodeId)))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    spaceId: row.spaceId,
+    nodeId: row.nodeId,
+    kind: row.kind,
+    status: row.status as NodeTaskStatus,
+    startedByUserId: row.startedByUserId,
+    startedAt: row.startedAt,
+    budgetMs: row.budgetMs,
+    label: row.label,
+    errorMessage: row.errorMessage,
+    nodeHistoryId: row.nodeHistoryId,
+  };
+}
+
+/**
  * Count the live rows on a node, one number per state.
  *
  * This is the whole of what the canvas document holds about tasks, so it is

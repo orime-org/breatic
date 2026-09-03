@@ -23,6 +23,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { taskService, MIN_TASK_CREDIT_COST } from "@breatic/domain";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import { precheckCredits } from "@server/modules";
+import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -100,6 +101,17 @@ async function enqueueMiniTool(
   );
 
   await taskService.setJobId(task.id, job.id ?? "");
+
+  // One task row per node this run will write to (#186, design §4.2). All
+  // three mini-tool endpoints come through here, so one call covers them.
+  await openGenerationTasks({
+    projectId,
+    spaceId,
+    nodeIds: targetNodeIds,
+    startedByUserId: userId,
+    taskId: task.id,
+    label: toolName,
+  });
 
   return { task_id: task.id, status: "pending" };
 }

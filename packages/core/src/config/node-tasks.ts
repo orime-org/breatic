@@ -21,6 +21,9 @@ const nodeTaskConfigSchema = z.object({
     max_budget_ms: z.number().int().positive().default(43_200_000),
     cover_reserve_ms: z.number().int().nonnegative().default(600_000),
   }),
+  generation: z.object({
+    budget_ms: z.number().int().positive().default(14_400_000),
+  }),
 });
 
 /** Validated node task configuration. */

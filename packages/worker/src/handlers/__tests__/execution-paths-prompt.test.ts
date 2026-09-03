@@ -57,6 +57,7 @@ vi.mock("@breatic/domain", () => ({
   extractPromptText: (x: unknown) => String(x ?? "").replace(/<[^>]*>/g, ""),
   releaseCanvasNodeLock: vi.fn(),
   reacquireCanvasNodeLock: vi.fn(),
+  settleTaskForNode: vi.fn(),
 }));
 
 vi.mock("@breatic/shared", () => ({

@@ -31,6 +31,9 @@ const mockExtract = vi.hoisted(() => vi.fn());
 const mockRegister = vi.hoisted(() => vi.fn());
 const mockSetCover = vi.hoisted(() => vi.fn());
 const mockRecordUpload = vi.hoisted(() => vi.fn());
+const mockFindTask = vi.hoisted(() => vi.fn());
+const mockSettleTask = vi.hoisted(() => vi.fn());
+const mockEmitCounts = vi.hoisted(() => vi.fn());
 const mockEmitDone = vi.hoisted(() => vi.fn());
 const mockActivityInsert = vi.hoisted(() => vi.fn());
 const mockPublishActivity = vi.hoisted(() => vi.fn());
@@ -48,6 +51,13 @@ vi.mock("@breatic/domain", () => ({
   assetRepo: { setCoverAsset: mockSetCover },
   nodeHistoryService: { recordUpload: mockRecordUpload },
   emitNodeStateDone: mockEmitDone,
+  // The task row a video upload settles on (#186): its cover is the last
+  // thing the upload waits for, so this handler is where it lands.
+  nodeTaskService: {
+    findByStorageKey: mockFindTask,
+    settle: mockSettleTask,
+  },
+  emitNodeTaskCounts: mockEmitCounts,
 }));
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
@@ -104,6 +114,11 @@ beforeEach(() => {
   mockExtract.mockResolvedValue(EXTRACTED);
   mockRegister.mockResolvedValue({ asset: REGISTERED_COVER, deduped: true });
   mockRecordUpload.mockResolvedValue({ entry: { id: "hist-1" }, inserted: true });
+  mockFindTask.mockResolvedValue({ id: "row-1" });
+  mockSettleTask.mockResolvedValue({
+    applied: true,
+    counts: { running: 0, done: 1, failed: 0, expired: 0 },
+  });
   mockEmitDone.mockResolvedValue(undefined);
 });
 
@@ -298,5 +313,60 @@ describe("the event cannot be published", () => {
     mockEmitDone.mockRejectedValue(new Error("redis gone"));
 
     await expect(runVideoCover(job())).rejects.toThrow("redis gone");
+  });
+});
+
+/**
+ * The task row a video upload settles on (#186, design §3.6).
+ *
+ * A video's upload is not done until its cover has had its chance, so the
+ * ingest report leaves the row running and this handler is what closes it.
+ * The row is the one the ticket opened, named by the key this upload was
+ * granted.
+ */
+describe("the upload's task row", () => {
+  it("settles the row this key was granted, pointing at the history row", async () => {
+    await runVideoCover(job());
+
+    expect(mockFindTask).toHaveBeenCalledWith(DATA.storageKey);
+    expect(mockSettleTask).toHaveBeenCalledWith({
+      taskId: "row-1",
+      outcome: "done",
+      nodeHistoryId: "hist-1",
+    });
+  });
+
+  it("publishes the node's counts with the video and its cover", async () => {
+    await runVideoCover(job());
+
+    expect(mockEmitCounts).toHaveBeenCalledTimes(1);
+    const [, docName, nodeId, counts, result] = mockEmitCounts.mock
+      .calls[0] as [unknown, string, string, unknown, { coverUrl: string | null }];
+    expect(docName).toBe(`project-${DATA.projectId}/canvas-${DATA.spaceId}`);
+    expect(nodeId).toBe(DATA.nodeId);
+    expect(counts).toEqual({ running: 0, done: 1, failed: 0, expired: 0 });
+    expect(result.coverUrl).not.toBeNull();
+  });
+
+  it("leaves the content alone when the row had already settled", async () => {
+    // The deadline passed first. The numbers still go out; what is on the
+    // node stays where it is.
+    mockSettleTask.mockResolvedValue({
+      applied: false,
+      counts: { running: 0, done: 0, failed: 0, expired: 1 },
+    });
+
+    await runVideoCover(job());
+
+    expect(mockEmitCounts.mock.calls[0]![4]).toBeUndefined();
+  });
+
+  it("settles nothing for an upload this table never held", async () => {
+    mockFindTask.mockResolvedValue(null);
+
+    await runVideoCover(job());
+
+    expect(mockSettleTask).not.toHaveBeenCalled();
+    expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 });

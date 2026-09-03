@@ -21,3 +21,11 @@ upload:
   # the bytes land, and the task is not done until that has had its chance.
   # 10 minutes.
   cover_reserve_ms: 600000
+
+generation:
+  # An AIGC run and a mini-tool both go through a queue and a provider, and
+  # neither reports progress. The server sets this alone: a deadline is the
+  # sole basis on which a task is judged dead, so taking it from whoever
+  # started the task would let them decide when their own work stops
+  # counting as alive. 4 hours.
+  budget_ms: 14400000
