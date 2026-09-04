@@ -70,7 +70,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
      } else {
        const anchor = relativePositionToAbsolutePosition(
          binding.doc,
-@@ -730,6 +753,150 @@ export const createNodeFromYElement = (
+@@ -730,6 +753,159 @@ export const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -135,7 +135,16 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
 +        const container = schema.nodes.blockContainer
 +        const grouping = schema.nodes.blockGroup
 +        if (node.type === blockFallback && container !== undefined) {
-+          node = container.create(null, node)
++          // WITH AN ID, because a container without one does not survive to be
++          // written back. The editor assigns ids to blocks that lack them, and
++          // assigning one REPLACES the node — which drops the entry
++          // `meta.mapping` holds for it below, and the write-back then finds no
++          // record that this position came from an element it could not read.
++          // It writes the stand-in over that element instead, and the
++          // attributes and children a peer put there are gone. Measured: an
++          // element carrying an attribute and a paragraph came back as a bare
++          // `unsupportedBlock` after one keystroke elsewhere in the document.
++          node = container.create({ id: random.uuidv4() }, node)
 +          continue
 +        }
 +        if (node.type === container && grouping !== undefined) {
@@ -221,7 +230,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
    const children = []
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -1109,7 +1276,25 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1109,7 +1285,25 @@ export const attributesToMarks = (attrs, schema) => {
    const marks = []
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -248,7 +257,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
    }
    return marks
  }
-@@ -1121,6 +1306,11 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1121,6 +1315,11 @@ export const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {}
    marks.forEach((mark) => {
