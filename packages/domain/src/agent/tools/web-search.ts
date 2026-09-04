@@ -427,11 +427,13 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // so a figure that reaches here is one it will take.
       url.searchParams.set("maximum_number_of_tokens", String(maxTokens));
       // The same amount again, per source. Left unstated this sits at the
-      // service's own 4096, which caps any one page at half the budget the
-      // whole search was given -- so a single page that answers the question
-      // cannot fill it. Stating it lets the service spend the budget where the
-      // text is: measured across two queries and seven source counts, that
-      // moved two cells by 32% and 11% and left the rest where they were.
+      // service's own 4096 tokens, while the whole-search figure goes as high
+      // as 32768 -- so a single page that answers the question cannot fill
+      // what the search was given. Stating it lets the service spend the
+      // budget where the text is: measured across two queries and seven of
+      // the counts the schema allows, four of fourteen cells moved, by 32%,
+      // 11%, 4% and -2%. The budget is shared, which is where that last one
+      // comes from.
       //
       // The key's own ceiling is 8192, measured: 8193 comes back 422, while
       // the whole-search key runs to 32768. So the configured figure is held

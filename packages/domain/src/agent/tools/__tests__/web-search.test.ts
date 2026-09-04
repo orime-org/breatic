@@ -5,11 +5,11 @@
  * What `web_search` tells the shared transport, and what it does before it
  * gets there.
  *
- * Same two invisible facts as the other call site: `replaySafe: true` is what
- * buys the retry (with `false` the transport replays 429 and 408 only, and the
- * network blip this batch is named after still fails the tool), and the 10s
- * budget must arrive as `timeoutMs` rather than as a signal on the init, which
- * the transport replaces.
+ * Two facts neither the tool nor the transport shows on its surface:
+ * `replaySafe: true` is what buys the retry (with `false` the transport
+ * replays 429 and 408 only, and a dropped connection still fails the tool),
+ * and the 10s budget must arrive as `timeoutMs` rather than as a signal on
+ * the init, which the transport replaces.
  *
  * The API key check is pinned because it runs BEFORE any request: a missing
  * key is a configuration fact, not a network outcome, and it must not cost a
@@ -377,9 +377,9 @@ describe("web_search says a failure is a failure", () => {
 
   it("does not call a service that answered unreachable", async () => {
     // A 200 whose body is not JSON — a CDN or WAF interstitial, or a
-    // content-type that drifted. `res.json()` rejects inside the same try as
-    // the request, and saying the service could not be reached sends the
-    // model looking for a network problem that is not there.
+    // content-type that drifted. The body arrived whole and `JSON.parse`
+    // rejects in its own guard, so saying the service could not be reached
+    // sends the model looking for a network problem that is not there.
     httpRequestMock.mockImplementation(
       async () => new Response("<html>are you a robot</html>", { status: 200 }),
     );
@@ -922,7 +922,7 @@ describe("web_search reads the snippet shapes the vendor documents", () => {
   });
 
   it("calls a 200 carrying no body an answer that did not arrive", async () => {
-    // Nothing came. Of the five next moves, the one for an answer this side
+    // Nothing came. Of the four next moves, the one for an answer this side
     // never saw is the one that fits: a second delivery may well carry it.
     httpRequestMock.mockImplementation(async () => new Response(null, { status: 200 }));
 
@@ -1307,8 +1307,8 @@ describe("web_search states every size the endpoint takes", () => {
   it("asks each source for as much text as the whole search may bring back", async () => {
     // Three figures settle how much a search returns, and the per-source one
     // sits at the service's own 4096 until it is stated -- half of what the
-    // whole search was given. Measured across two queries and every count the
-    // schema allows, stating it moved two of fourteen cells by 32% and 11%.
+    // whole search was given. Measured across two queries and seven of the
+    // counts the schema allows, stating it moved four of fourteen cells.
     await run({ query: "cyberpunk palette", count: 1 });
 
     const [url] = httpRequestMock.mock.calls[0] as [string];
