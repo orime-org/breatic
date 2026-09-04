@@ -33,6 +33,7 @@ import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 export type HarnessEditor = ReturnType<typeof buildDocumentEditor>;
 
 const live: HarnessEditor[] = [];
+const surfaces = new Map<HarnessEditor, HTMLElement>();
 let doc: Y.Doc | null = null;
 
 /**
@@ -42,14 +43,12 @@ let doc: Y.Doc | null = null;
  * a command's effect off the shared document. `closeShared` takes the doc down
  * with the editors, so each case gets its own.
  *
- * The body arrives after the first mount. Measured, the collaboration layer's
- * initial sync runs at mount and replaces whatever the document held, so a
- * body written before it lands is gone by the time the bar looks — the case
- * then runs against an empty document. Mounting here and again in
- * {@link mountDocumentEditor} is what the eviction path does anyway, and the
- * text survives it.
+ * The editor is mounted here, on the surface it keeps for the rest of its life
+ * — the collaboration binding is built by the sync plugin's VIEW, so writing a
+ * body into an unmounted editor would reach a private document. The surface is
+ * what {@link mountDocumentEditor} then moves into the page.
  * @param bodyHtml - The body's HTML, or an empty string for an empty document.
- * @returns The editor, mounted off-screen and holding the body.
+ * @returns The editor, holding the body.
  */
 export function openSharedBody(bodyHtml: string): HarnessEditor {
   if (!doc) {
@@ -60,9 +59,10 @@ export function openSharedBody(bodyHtml: string): HarnessEditor {
     fragment: documentBodyFragment(doc),
   });
   live.push(editor);
-  const seeding = document.createElement('div');
-  document.body.appendChild(seeding);
-  editor.mount(seeding);
+  const surface = document.createElement('div');
+  document.body.appendChild(surface);
+  surfaces.set(editor, surface);
+  editor.mount(surface);
   if (bodyHtml) {
     const holder = document.createElement('div');
     holder.innerHTML = bodyHtml;
@@ -72,11 +72,6 @@ export function openSharedBody(bodyHtml: string): HarnessEditor {
       view.state.tr.replaceWith(0, view.state.doc.content.size, parsed.content),
     );
   }
-  // The body reached the shared document through that dispatch, so the mount
-  // in `mountDocumentEditor` syncs it back rather than replacing it, and the
-  // page is left holding one editable.
-  editor.unmount();
-  seeding.remove();
   return editor;
 }
 
@@ -111,6 +106,8 @@ export function sharedDoc(): Y.Doc {
 export function closeShared(): void {
   live.splice(0).forEach((editor) => {
     editor.unmount();
+    surfaces.get(editor)?.remove();
+    surfaces.delete(editor);
   });
   doc?.destroy();
   doc = null;
@@ -129,9 +126,14 @@ export function mountDocumentEditor(
   editor: HarnessEditor,
   readOnly = false,
 ): void {
+  const surface = surfaces.get(editor);
+  if (!surface) throw new Error('open the editor with openSharedBody first');
   render(
     <TooltipProvider>
-      <DocumentEditor editor={editor} readOnly={readOnly} />
+      <DocumentEditor
+        handle={{ editor, surface }}
+        readOnly={readOnly}
+      />
     </TooltipProvider>,
   );
 }
