@@ -19,6 +19,11 @@
 import { verifyUploadTicket } from "@breatic/shared";
 import { partLayoutRefusal } from "@ingest/part-layout.js";
 import {
+  assembleObject,
+  hashStoredObject,
+  type RecordedPart,
+} from "@ingest/stored-object.js";
+import {
   verifySessionToken,
   type SessionTokenPayload,
 } from "@ingest/session-token.js";
@@ -216,15 +221,22 @@ async function uploadPart(
 }
 
 /**
- * Ask the instance to finish the upload.
+ * Finish the upload: assemble the object, hash it, and have the outcome told.
  *
- * The instance answers with the outcome, with 409 while parts are still owed,
- * or with 502 when it decided an outcome the server has not taken yet — that
- * last one it retries on its own, so asking again is optional.
+ * The instance is asked twice. The first call answers 202 with the parts to
+ * assemble, or with this upload's outcome when there is already one — 409
+ * while parts are still owed, 410 for an upload it no longer holds, or what
+ * the server registered. The second carries what assembling and hashing
+ * produced, and its answer is the browser's.
+ *
+ * The two steps between them run here rather than in the instance. A Durable
+ * Object is billed for wall-clock time against a fixed 128 MB, so reading a
+ * multi-gigabyte object back inside one is paid for at that rate for as long
+ * as the read takes (design §6.2).
  * @param request - The browser's request, carrying the session token.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
- * @returns The instance's answer, or 401 when the token does not verify.
+ * @returns The outcome, or 401 when the token does not verify.
  */
 async function completeUpload(
   request: Request,
@@ -234,8 +246,29 @@ async function completeUpload(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  return sessionFor(env, session.storageKey).fetch(
-    new Request("https://session/complete", { method: "POST" }),
+  const instance = sessionFor(env, session.storageKey);
+  const plan = await instance.fetch(
+    new Request("https://session/finish", { method: "POST" }),
+  );
+  if (plan.status !== 202) return plan;
+
+  const { storageKey, parts } = await plan.json<{
+    storageKey: string;
+    parts: RecordedPart[];
+  }>();
+  const sizeBytes = await assembleObject(
+    env.BUCKET,
+    storageKey,
+    uploadId,
+    parts,
+  );
+  const sha256 = await hashStoredObject(env.BUCKET, storageKey);
+
+  return instance.fetch(
+    new Request("https://session/finish", {
+      method: "POST",
+      body: JSON.stringify({ sizeBytes, sha256 }),
+    }),
   );
 }
 

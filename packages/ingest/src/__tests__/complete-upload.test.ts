@@ -4,14 +4,14 @@
 /**
  * Finishing an upload (#173, design §4.4).
  *
- * The browser asking and the alarm going off do the same thing: count the
- * parts. All of them means the file is whole — complete it, hash what is
- * stored, report it. Fewer means it never finished, and R2 is told to drop
- * what was written.
+ * The instance counts the parts. All of them means the file is whole, and it
+ * hands the Worker the list to assemble; fewer means it never finished, and
+ * the browser is told what is still owed. The Worker assembles the object and
+ * hashes it, and comes back with the two facts the report carries.
  *
  * The report is the only thing that ends this. Until the server answers 2xx
- * the alarm stays set, because the node the upload belongs to sits in handling
- * until something tells it otherwise, and nothing else will.
+ * the alarm stays set, because the node the upload belongs to counts this task
+ * as running until something tells it otherwise, and nothing else will.
  *
  * The hash is computed over the stored object rather than over what the
  * browser said. The ledger keys on it, and only bytes that actually landed

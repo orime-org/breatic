@@ -10,10 +10,9 @@
  * failure and reschedules nothing when it returns, so an outcome the server
  * has not taken has to leave the handler failing.
  *
- * The finishing sequence is re-entered by every one of those retries, which is
- * why each of its steps is remembered separately. Assembling the object and
- * hashing it are two facts, and a retry that lost only the second must not
- * redo the first.
+ * Every one of those retries re-enters the telling and nothing else. The two
+ * steps that produced what is told — assembling the object and hashing it —
+ * belong to the Worker, and the instance holds only what they came back with.
  */
 
 import {
@@ -198,24 +197,20 @@ describe("a server that does not take the outcome", () => {
   });
 });
 
-describe("a retry that lost the hash but not the object", () => {
-  // Reading a completed object back can fail on its own, and the attempt that
-  // follows must not ask R2 to assemble an upload it has already assembled.
-  // Assembling and hashing are remembered apart for that reason.
-  it("hashes what is stored rather than reporting no hash at all", async () => {
-    expectReport();
+describe("a finish that resumes after R2 already assembled the object", () => {
+  // Assembling and hashing happen in the Worker, and only the two facts they
+  // produce reach the instance. An attempt that assembled and then died
+  // leaves R2 holding the object while the instance knows nothing of it, and
+  // R2 answers a second assembly with "the specified multipart upload does
+  // not exist" — so what follows has to read what is stored.
+  it("hashes what is stored rather than failing on the second assembly", async () => {
     const { storageKey, uploadId, token } = await uploadedThrough(2);
-    await complete(uploadId, token);
-
-    await runInDurableObject(sessionOf(storageKey), async (_instance, state) => {
-      // What a failed read leaves behind: R2 has the object and its size is
-      // known, nothing has been computed over it, nothing has been reported.
-      await state.storage.put("finish", {
-        settled: true,
-        sizeBytes: PART_SIZE + FINAL_PART_SIZE,
-        reported: false,
-      });
-    });
+    const parts = await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+      state.storage.get<{ partNumber: number; etag: string }[]>("parts"),
+    );
+    await env.BUCKET.resumeMultipartUpload(storageKey, uploadId).complete(
+      [...(parts ?? [])].sort((a, b) => a.partNumber - b.partNumber),
+    );
 
     expectReport();
     expect((await complete(uploadId, token)).status).toBe(200);
@@ -228,7 +223,7 @@ describe("a retry that lost the hash but not the object", () => {
     const hex = [...new Uint8Array(digest)]
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
-    expect(reports[1]).toMatchObject({
+    expect(reports[0]).toMatchObject({
       sha256: hex,
       size_bytes: PART_SIZE + FINAL_PART_SIZE,
     });
