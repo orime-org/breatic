@@ -17,6 +17,7 @@
  */
 
 import { verifyUploadTicket } from "@breatic/shared";
+import { partLayoutRefusal } from "@ingest/part-layout.js";
 import {
   verifySessionToken,
   type SessionTokenPayload,
@@ -161,11 +162,12 @@ async function authorizedSession(
 }
 
 /**
- * Hand one part's bytes to the instance that owns this upload.
+ * Write one part to R2 and tell the instance that owns this upload.
  *
- * The instance records a part and writes it to R2 in the same step, which is
- * what makes "have they all arrived?" a matter of counting rows it wrote
- * itself.
+ * The layout is judged here, before the write: this is the last point at
+ * which a part outside what the ticket signed can still be stopped from
+ * costing anything. The instance is told about a part only once R2 has been
+ * asked to take it.
  * @param request - The browser's request, carrying the token and the bytes.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
@@ -181,21 +183,21 @@ async function uploadPart(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  // Refused before R2 sees it, because R2 answers a part number below one by
-  // throwing — which would leave a caller reading a 500 for something it can
-  // fix. Where the number sits in THIS upload's layout is a different question
-  // and belongs to the instance holding the ticket; this is the multipart
-  // protocol's own floor, which holds whatever any ticket said.
-  if (partNumber < 1) {
-    return new Response("Part number below one", { status: 400 });
-  }
-
-  // Written from here rather than forwarded. A Durable Object is billed for
+  // Read from here rather than forwarded. A Durable Object is billed for
   // wall-clock time against a fixed 128 MB, so a slow network waited on inside
   // one is paid for at that rate; a Worker waiting on I/O is not billed for
   // the wait at all (design §6.1). What goes to the instance is the one line
   // that says this part landed.
   const body = await request.arrayBuffer();
+
+  // Judged before the write, because this is the last moment it can stop one.
+  // R2 takes part numbers far past the layout and any length its own floor
+  // allows, so a part refused after the write is a part already written and
+  // already paid for — and the layout is what bounds an upload to the bytes
+  // its ticket authorised. The token carries it, signed, so holding that
+  // bound here costs no lookup and the browser cannot widen it.
+  const refusal = partLayoutRefusal(partNumber, body.byteLength, session);
+  if (refusal !== null) return new Response(refusal, { status: 400 });
   // R2 throws for a part it will not take, and the reason is a fact about this
   // upload rather than about the request: it was already assembled, or it was
   // never opened. The instance is what holds that, so a failed write is

@@ -12,10 +12,15 @@
  * It is re-issued with every part, so its lifetime only has to cover the gap
  * between two parts rather than a whole upload — which is why a slow 2 GiB
  * upload never needs a long-lived credential.
+ *
+ * It carries the signed part layout for the same reason it carries the upload
+ * id: the Worker is in front of the bytes and has to judge a part before it
+ * writes one, and everything it judges by has to be something the browser
+ * cannot alter.
  */
 
 /** What a session token says. */
-export interface SessionTokenPayload {
+export interface SessionTokenPayload extends PartLayout {
   /** The upload it may write into. */
   storageKey: string;
   /** R2's own id for the multipart upload. */
@@ -25,6 +30,7 @@ export interface SessionTokenPayload {
 }
 
 import { signPayload, readSignedPayload } from "@breatic/shared";
+import type { PartLayout } from "@ingest/part-layout.js";
 
 /**
  * Issue a token for the next part of an upload.

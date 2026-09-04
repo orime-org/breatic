@@ -103,7 +103,13 @@ describe("a part the Worker will not take", () => {
   it("refuses one whose token has expired", async () => {
     const { storageKey, uploadId } = await openUpload();
     const stale = await signSessionToken(
-      { storageKey, uploadId, expiresAt: Date.now() - 1 },
+      {
+        storageKey,
+        uploadId,
+        expiresAt: Date.now() - 1,
+        partSize: PART_SIZE,
+        totalParts: 2,
+      },
       env.INGEST_SHARED_SECRET,
     );
 

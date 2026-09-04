@@ -141,6 +141,26 @@ describe("a ticket the Worker takes", () => {
     expect(payload?.expiresAt).toBeLessThanOrEqual(before + 42_000 + 5_000);
   });
 
+  // The layout bounds what this upload may put into R2, and only the Worker
+  // is in front of the bytes. Signed in so the Worker can hold that bound
+  // without asking anything, and without the browser being able to widen it.
+  it("carries the layout the ticket signed", async () => {
+    const { ticket } = await mintTicket({
+      totalParts: 7,
+      partSize: 6 * 1024 * 1024,
+    });
+
+    const { token } = await (await open(ticket)).json<{ token: string }>();
+
+    const payload = await verifySessionToken(
+      token,
+      env.INGEST_SHARED_SECRET,
+      Date.now(),
+    );
+    expect(payload?.totalParts).toBe(7);
+    expect(payload?.partSize).toBe(6 * 1024 * 1024);
+  });
+
   it("keeps two different uploads apart", async () => {
     const a = await mintTicket();
     const b = await mintTicket();

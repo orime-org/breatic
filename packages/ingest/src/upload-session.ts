@@ -29,6 +29,7 @@
 
 import { completeRetryBudgetMs } from "@breatic/shared";
 import type { UploadTicketPayload } from "@breatic/shared";
+import { partLayoutRefusal } from "@ingest/part-layout.js";
 import { signSessionToken } from "@ingest/session-token.js";
 
 /**
@@ -438,13 +439,11 @@ export class UploadSession implements DurableObject {
    * Record one part the Worker wrote, once it fits the signed layout.
    *
    * The bytes went to R2 from the Worker, and what arrives here is the line
-   * that says so. The layout is this instance's to hold and therefore this
-   * instance's to judge: a part it refuses to record is a part `complete`
-   * never names, and R2 expires it with the rest of the upload.
-   *
-   * Only the last part may be short. Every earlier one must be exactly
-   * `partSize`, which is what makes "have they all arrived?" a matter of
-   * counting — and R2 refuses a non-final part under 5 MiB in any case.
+   * that says so. The Worker judged the layout before it wrote, which is the
+   * only moment the bound can still stop the bytes; this judges it again
+   * before recording, because "have they all arrived?" is answered by counting
+   * these rows and that only holds while every non-final row is exactly one
+   * part long.
    * @param partNumber - Which part this is, one-based.
    * @param written - What R2 gave the Worker back for it.
    * @param written.etag - R2's tag for the stored part, or null when R2 would
@@ -467,19 +466,12 @@ export class UploadSession implements DurableObject {
       return new Response("This upload has already finished", { status: 409 });
     }
 
-    const { partSize, totalParts } = upload.ticket;
-    if (partNumber < 1 || partNumber > totalParts) {
-      return new Response("Part number outside the signed layout", { status: 400 });
-    }
-    const isFinal = partNumber === totalParts;
-    const fits = isFinal
-      ? written.sizeBytes <= partSize
-      : written.sizeBytes === partSize;
-    if (!fits) {
-      return new Response("Part length does not match the signed layout", {
-        status: 400,
-      });
-    }
+    const refusal = partLayoutRefusal(
+      partNumber,
+      written.sizeBytes,
+      upload.ticket,
+    );
+    if (refusal !== null) return new Response(refusal, { status: 400 });
 
     if (written.etag === null) {
       // Neither gone nor settled, so the layout holds and R2 still refused it.
@@ -516,6 +508,8 @@ export class UploadSession implements DurableObject {
         storageKey: upload.ticket.storageKey,
         uploadId: upload.uploadId,
         expiresAt: Date.now() + upload.ticket.sessionTokenTtlSeconds * 1000,
+        partSize: upload.ticket.partSize,
+        totalParts: upload.ticket.totalParts,
       },
       this.#env.INGEST_SHARED_SECRET,
     );
