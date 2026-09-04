@@ -202,6 +202,89 @@ describe('an element name this build does not know', () => {
   });
 });
 
+describe('where in the parent the unknown element sits', () => {
+  // The stand-in is asked to join a slot the parent's content rule describes,
+  // and that rule is answered POSITION BY POSITION. Asking only about the
+  // start of the expression is what once deleted a whole list item — the
+  // user's text with it — because a block-level stand-in cannot open one.
+
+  /**
+   * Builds a block, with a stand-in for the name the schema does not know.
+   * @param type - The block node's name.
+   * @param text - Its text, if any.
+   * @returns The container element.
+   */
+  const block = (type: string, text = ''): Y.XmlElement => {
+    const container = new Y.XmlElement('blockContainer');
+    container.setAttribute('id', `id-${type}-${text || 'empty'}`);
+    const content = new Y.XmlElement(type);
+    if (text) content.insert(0, [new Y.XmlText(text)]);
+    container.insert(0, [content]);
+    return container;
+  };
+
+  it('stands in for a block that follows the content of a list item', () => {
+    // `blockContainer` is `blockContent blockGroup?`, so the second position
+    // takes a group. The stand-in joins it wrapped, and the item's own text
+    // is untouched.
+    const { before, after, standIns } = visit((f) => {
+      const group = new Y.XmlElement('blockGroup');
+      const item = new Y.XmlElement('blockContainer');
+      item.setAttribute('id', 'the-item');
+      const content = new Y.XmlElement('bulletListItem');
+      content.insert(0, [new Y.XmlText('written by a person')]);
+      item.insert(0, [content, new Y.XmlElement('somethingNewer')]);
+      group.insert(0, [item]);
+      f.insert(0, [group]);
+    });
+
+    expect(after).toBe(before);
+    expect(after).toContain('written by a person');
+    expect(standIns).toEqual(['somethingNewer']);
+  });
+
+  it('loses only the unknown element when the first slot refuses one', () => {
+    // A code block holds `text*`, so nothing can stand in for a node inside
+    // it. The block and its characters stay; the one element goes.
+    const { after, standIns } = visit((f) => {
+      const group = new Y.XmlElement('blockGroup');
+      const item = new Y.XmlElement('blockContainer');
+      item.setAttribute('id', 'the-code');
+      const content = new Y.XmlElement('codeBlock');
+      content.insert(0, [new Y.XmlText('const a = 1')]);
+      content.insert(1, [new Y.XmlElement('somethingNewer')]);
+      item.insert(0, [content]);
+      group.insert(0, [item]);
+      f.insert(0, [group]);
+    });
+
+    expect(after).toContain('const a = 1');
+    expect(standIns).toEqual([]);
+  });
+
+  it('takes the type it was replaced by into account for the next sibling', () => {
+    // Two unknown blocks in a row. The second is asked whether it fits AFTER
+    // the first — and what sits there by then is the stand-in, not the name
+    // the document carried.
+    const { before, after, standIns } = visit((f) => {
+      const group = new Y.XmlElement('blockGroup');
+      group.insert(0, [block('paragraph', 'kept')]);
+      const first = new Y.XmlElement('blockContainer');
+      first.setAttribute('id', 'first-unknown');
+      first.insert(0, [new Y.XmlElement('somethingNewer')]);
+      const second = new Y.XmlElement('blockContainer');
+      second.setAttribute('id', 'second-unknown');
+      second.insert(0, [new Y.XmlElement('somethingElse')]);
+      group.insert(1, [first, second]);
+      f.insert(0, [group]);
+    });
+
+    expect(after).toBe(before);
+    expect(after).toContain('kept');
+    expect(standIns).toEqual(['somethingNewer', 'somethingElse']);
+  });
+});
+
 describe('a mark this build does not know', () => {
   /**
    * Builds a paragraph whose text carries the given attributes.
