@@ -277,7 +277,13 @@
     "task": {
       "stillRunning": "这个任务还在跑。",
       "expired": "这个任务超时了。",
-      "notStarted": "这次上传没能开始，再试一次。"
+      "notStarted": "这次上传没能开始，再试一次。",
+      "status": {
+        "running": "运行中",
+        "done": "完成",
+        "failed": "失败",
+        "expired": "超时"
+      }
     },
     "generatePanel": {
       "style": "风格",

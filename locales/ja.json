@@ -277,7 +277,13 @@
     "task": {
       "stillRunning": "このタスクはまだ実行中です。",
       "expired": "このタスクは時間切れになりました。",
-      "notStarted": "このアップロードを開始できませんでした。もう一度お試しください。"
+      "notStarted": "このアップロードを開始できませんでした。もう一度お試しください。",
+      "status": {
+        "running": "実行中",
+        "done": "完了",
+        "failed": "失敗",
+        "expired": "時間切れ"
+      }
     },
     "generatePanel": {
       "style": "スタイル",

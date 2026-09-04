@@ -277,7 +277,13 @@
     "task": {
       "stillRunning": "This task is still running.",
       "expired": "This task ran out of time.",
-      "notStarted": "This upload could not be started. Try again."
+      "notStarted": "This upload could not be started. Try again.",
+      "status": {
+        "running": "Running",
+        "done": "Done",
+        "failed": "Failed",
+        "expired": "Expired"
+      }
     },
     "nodeMenu": {
       "generate": "Generate",
