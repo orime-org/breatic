@@ -44,7 +44,6 @@ export type {
 } from "@shared/types/credit.js";
 
 export {
-  HANDLING_TIMEOUT_MS,
   canGenerate,
 } from "@shared/types/canvas-node.js";
 export type {

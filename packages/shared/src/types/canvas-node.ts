@@ -94,10 +94,9 @@ export function canGenerate(type: NodeType): boolean {
  * snapshot OUT OF BAND — bypassing the live collab doc, e.g. a future
  * thumbnail / export / search-index feature — MUST treat a `handling`
  * node's content as unusable (skip / placeholder) and MUST NOT write back
- * to the original (that would be a second writer). The original is cleaned
- * lazily by the collab sweeper on next load. No such out-of-band reader
- * exists today (verified 2026-07-02) — this is the convention for the
- * first one added.
+ * to the original (that would be a second writer). No such out-of-band
+ * reader exists today (verified 2026-07-02) — this is the convention for
+ * the first one added.
  *
  * No display-name snapshot here (email-registration rewrite, 2026-06-06):
  * "who is handling" is rendered by resolving `userId` against the project
@@ -106,21 +105,15 @@ export function canGenerate(type: NodeType): boolean {
  * (The roster replaced a `meta.users` map in the Yjs meta doc, #1882 — the
  * rule is unchanged, only where the name is looked up.)
  *
- * `startedAt` was added 2026-07-02 (#1569 handling lease): the epoch-ms
- * start of the fixed-budget lease. The lease is the SINGLE correctness
- * guarantee: any handling node older than {@link HANDLING_TIMEOUT_MS} is
- * swept back to idle by the collab sweeper regardless of what happened to
- * its driver. (Disconnect is no longer a handling fast path — #1580 slice
- * 4.) No heartbeat renewal by design: renewals written into Yjs would
- * pollute the CRDT history forever, so the budget is generous instead.
+ * `startedAt` is the epoch-ms instant handling opened. Nothing measures it:
+ * a task's deadline lives on its own row and the timer that holds it knocks
+ * when it passes (#186, design §4.6).
  */
 /**
  * Handling lifecycle phase (#1580 #2). A backend (Worker) op is `queued`
  * from enqueue until the Worker picks it up, then `running` during
- * execution. Each phase transition re-stamps the lease (`startedAt`) so a
- * long queue backlog does not eat into the execution window; the collab
- * sweeper picks the timeout window by phase. Frontend-driven ops are
- * effectively single-phase and may omit it (treated as `running`).
+ * execution. Frontend-driven ops are effectively single-phase and may omit
+ * it (treated as `running`).
  */
 export type HandlingPhase = 'queued' | 'running';
 
@@ -171,16 +164,6 @@ export interface HandlingActor {
   serverStamped?: boolean;
 }
 
-/**
- * Unified fixed-budget handling lease (#1569, user decision 2026-07-02):
- * ONE hour for every handling operation (upload / AIGC / future frontend
- * media ops). The budget's job is to bound rare zombies (a driver that died
- * without ever writing back), not to fit per-operation durations — common
- * cases are cleaned by the owner writing back on success / failure. Web (display-level
- * timeout fallback) and collab (sweeper) both import THIS constant so the two
- * sides can never drift.
- */
-export const HANDLING_TIMEOUT_MS = 3_600_000;
 
 /**
  * Attachment reference stored in a node's `attachments` array — a plain

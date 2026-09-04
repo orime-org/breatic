@@ -18,7 +18,6 @@
  */
 
 import { describe, it, expect, expectTypeOf } from "vitest";
-import { HANDLING_TIMEOUT_MS } from "../types/canvas-node.js";
 import type {
   NodeState,
   HandlingActor,
@@ -177,19 +176,6 @@ describe("HandlingActor", () => {
     expectTypeOf<HandlingPhase>().toEqualTypeOf<"queued" | "running">();
   });
 
-  it("HANDLING_TIMEOUT_MS is the single unified 1-hour lease budget (#1569)", () => {
-    // User decision 2026-07-02: ONE timeout for every handling operation
-    // (upload / AIGC / future frontend media ops). The budget's job is to
-    // bound rare zombies (a driver that died without writing back), not per-op
-    // durations. Web (display fallback) and collab (sweeper) both import
-    // THIS constant so the two sides can never drift.
-    expect(HANDLING_TIMEOUT_MS).toBe(3_600_000);
-  });
-});
-
-// ── CanvasNodeFields ───────────────────────────────────────────────
-
-describe("CanvasNodeFields", () => {
   it("accepts a minimal valid shape with only required fields", () => {
     const node: CanvasNodeFields = {
       id: "node-1",

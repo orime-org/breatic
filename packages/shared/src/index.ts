@@ -120,7 +120,6 @@ export {
   holdsActionableSubscription,
   subscriptionActions,
   isComparableMembershipTier,
-  HANDLING_TIMEOUT_MS,
   canGenerate,
   membersChangedChannel,
   activityNewChannel,
