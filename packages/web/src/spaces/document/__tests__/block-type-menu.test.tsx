@@ -151,35 +151,39 @@ function bodyText(editor: HarnessEditor): string {
 }
 
 describe('the menu', () => {
-  it('draws the nine in order, the rule after Code block', async () => {
+  it('draws the nine in three groups: the seven, then Ordered, then Quote', async () => {
     const editor = openSharedBody('<p>the quick brown fox</p>');
     mountDocumentEditor(editor);
     await selectAll(editor);
     const menu = await hoverOpenSlot(SLOT);
 
-    expect(rowIds(menu)).toEqual([
+    // Rows and rules read together, in the one order the DOM has them, so the
+    // rules are pinned where they fall rather than by a pair of comparisons
+    // that hold for more than one arrangement.
+    const drawn = Array.from(
+      menu.querySelectorAll(`[data-testid^="${SLOT}-item-"], [data-testid="doc-bubble-rule"]`),
+    ).map((node) => {
+      const id = node.getAttribute('data-testid') ?? '';
+      return id === 'doc-bubble-rule' ? '—' : id.replace(`${SLOT}-item-`, '');
+    });
+
+    // The three groups are the three things a row can set, and they are
+    // separate because a row in one can hold at the same time as a row in
+    // another (user 2026-09-02): the seven set the block's type and are
+    // mutually exclusive, Ordered sets its numbering, Quote sets its quoting.
+    expect(drawn).toEqual([
       'paragraph',
       'heading-1',
       'heading-2',
       'heading-3',
-      'bullet-list',
-      'ordered-list',
-      'task-list',
       'code-block',
+      'bullet-list',
+      'task-list',
+      '—',
+      'ordered-list',
+      '—',
       'quote',
     ]);
-
-    const rows = Array.from(menu.querySelectorAll(`[data-testid^="${SLOT}-item-"]`));
-    const rule = menu.querySelector('[data-testid="doc-bubble-rule"]');
-    const codeBlock = rows.find(
-      (n) => n.getAttribute('data-testid') === `${SLOT}-item-code-block`,
-    );
-    const quote = rows.find((n) => n.getAttribute('data-testid') === `${SLOT}-item-quote`);
-    expect(rule).not.toBeNull();
-    expect(codeBlock?.compareDocumentPosition(rule as Node))
-      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(rule?.compareDocumentPosition(quote as Node))
-      .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it.each([

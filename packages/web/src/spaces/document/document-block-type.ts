@@ -56,8 +56,10 @@ export interface BlockTypeItem {
 export const BODY_HEADING_LEVELS = [1, 2, 3] as const;
 
 /**
- * The nine, in the order user 2026-08-29 settled: the eight exclusive items,
- * a separator, then Quote.
+ * The nine, in the order user 2026-09-02 settled: three groups, one per thing
+ * a row can set — the seven that set the block's type, then Ordered, then
+ * Quote. `DIMENSION_OF_ROW` names those three, and the menu rules the groups
+ * off wherever this order crosses from one to the next.
  */
 export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
   {
@@ -81,14 +83,14 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     Icon: Heading3,
   },
   {
+    id: 'code-block',
+    labelKey: 'spaces.document.commands.codeBlock',
+    Icon: SquareCode,
+  },
+  {
     id: 'bullet-list',
     labelKey: 'spaces.document.commands.bulletList',
     Icon: List,
-  },
-  {
-    id: 'ordered-list',
-    labelKey: 'spaces.document.commands.orderedList',
-    Icon: ListOrdered,
   },
   {
     id: 'task-list',
@@ -96,9 +98,9 @@ export const BLOCK_TYPE_ITEMS: BlockTypeItem[] = [
     Icon: ListTodo,
   },
   {
-    id: 'code-block',
-    labelKey: 'spaces.document.commands.codeBlock',
-    Icon: SquareCode,
+    id: 'ordered-list',
+    labelKey: 'spaces.document.commands.orderedList',
+    Icon: ListOrdered,
   },
   {
     id: 'quote',

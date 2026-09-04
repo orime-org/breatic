@@ -55,11 +55,15 @@ includes them is licensed on its own terms. These files reach the bundle as
 published, so the obligation this leaves is the one this entry discharges —
 saying what is in there, under which licence, and where the source is.
 
-Upstream also publishes a second half under the `@blocknote/xl-` prefix, offered
-as `GPL-3.0 OR PROPRIETARY`. Its GPL-3.0 half would place every bundle it
-reaches under GPL-3.0. The `no-gpl-blocknote-addons` check in `repo-lint` reads
-both our manifests and the lockfile for that prefix, so one arriving through a
-dependency of something else is reported as well.
+Upstream also publishes a second half under the `@blocknote/xl-` prefix, each
+package offered as a copyleft licence or a proprietary one at the recipient's
+choice: `GPL-3.0 OR PROPRIETARY` for six of them, and `AGPL-3.0 OR PROPRIETARY`
+for `xl-ai-server`. Taking any of them under the copyleft option would place
+every bundle it reaches under that licence, and the AGPL one reaches further
+still — it carries the same terms over a network. The
+`no-gpl-blocknote-addons` check in `repo-lint` reads both our manifests and the
+lockfile for that prefix, so one arriving through a dependency of something
+else is reported as well.
 
 ### DOMPurify
 

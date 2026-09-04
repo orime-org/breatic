@@ -66,6 +66,33 @@ export const CONTENT_ROWS: readonly BlockTypeId[] = ROWS.filter(
   (id) => id !== 'quote',
 );
 
+/** Which of a block's three independent properties a row sets. */
+export type BlockTypeDimension = 'type' | 'numbered' | 'quoted';
+
+/**
+ * What each row sets, which is what groups the menu (user 2026-09-02).
+ *
+ * Rows sharing a dimension are alternatives to each other; rows in different
+ * dimensions hold at the same time, which is why a heading can carry a number
+ * and why either can sit inside a quote. `isRow` below reads exactly these
+ * three properties, one branch per dimension.
+ *
+ * A total record rather than a partial one: adding a tenth row leaves this
+ * failing to compile until the row says which of the three it sets, and the
+ * menu's rules are drawn from it, so the grouping cannot fall behind the rows.
+ */
+export const DIMENSION_OF_ROW: Readonly<Record<BlockTypeId, BlockTypeDimension>> = {
+  paragraph: 'type',
+  'heading-1': 'type',
+  'heading-2': 'type',
+  'heading-3': 'type',
+  'code-block': 'type',
+  'bullet-list': 'type',
+  'task-list': 'type',
+  'ordered-list': 'numbered',
+  quote: 'quoted',
+};
+
 /** The row each plain block type stands for. */
 const ROW_OF_TYPE: Readonly<Record<string, BlockTypeId>> = {
   paragraph: 'paragraph',

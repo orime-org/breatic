@@ -667,10 +667,10 @@ describe('the bubble bar shell', () => {
         'doc-bubble-block-type-item-heading-1',
         'doc-bubble-block-type-item-heading-2',
         'doc-bubble-block-type-item-heading-3',
-        'doc-bubble-block-type-item-bullet-list',
-        'doc-bubble-block-type-item-ordered-list',
-        'doc-bubble-block-type-item-task-list',
         'doc-bubble-block-type-item-code-block',
+        'doc-bubble-block-type-item-bullet-list',
+        'doc-bubble-block-type-item-task-list',
+        'doc-bubble-block-type-item-ordered-list',
         'doc-bubble-block-type-item-quote',
       ]);
 
@@ -687,10 +687,10 @@ describe('the bubble bar shell', () => {
         'Ctrl+Alt+1',
         'Ctrl+Alt+2',
         'Ctrl+Alt+3',
-        'Ctrl+Shift+8',
-        'Ctrl+Shift+7',
-        'Ctrl+Shift+9',
         'Ctrl+Alt+C',
+        'Ctrl+Shift+8',
+        'Ctrl+Shift+9',
+        'Ctrl+Shift+7',
         'Ctrl+Shift+B',
       ]);
     });

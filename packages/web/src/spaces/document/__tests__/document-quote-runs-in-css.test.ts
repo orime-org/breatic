@@ -4,11 +4,11 @@
 /**
  * #904 验收 A8 · A8b: a run of quoted blocks reads as one quote.
  *
- * A quote used to be a `<blockquote>` wrapped around its blocks, and its seven
- * declarations all hung off that one element. Here it is a prop on each block,
- * so those seven land in three places: four on every quoted block, and three
- * that belong to the run as a whole and are reachable only through the marks
- * `document-decorations.ts` puts on the blocks at its ends.
+ * A quote used to be a `<blockquote>` wrapped around its blocks, and all of its
+ * declarations hung off that one element. Here it is a prop on each block, so
+ * they land in three places: on every quoted block, on every block after the
+ * first of a run, and on the two at a run's ends — the last two reachable only
+ * through the marks `document-decorations.ts` puts there.
  *
  * What this file holds is the pair those rules are written against — the
  * ATTRIBUTES the editor puts in the DOM, and the SELECTORS the stylesheet
@@ -53,14 +53,23 @@ function stylesheet(): string {
 }
 
 /**
- * The declarations one selector carries, as written.
- * @param selector - The selector to look up, verbatim.
+ * The declarations the first rule whose selector ends this way carries.
+ *
+ * Matched on the tail rather than the whole selector: these selectors are long
+ * enough that prettier breaks them over several lines, and the part that says
+ * which element is reached is the last one either way.
+ * @param tail - The final part of the selector, verbatim.
  * @returns The body of that rule.
  */
-function ruleFor(selector: string): string {
-  const at = stylesheet().indexOf(`${selector} {`);
-  expect(at, `\`${selector}\` is not in index.css`).toBeGreaterThan(-1);
-  const body = stylesheet().slice(at + selector.length);
+function ruleFor(tail: string): string {
+  const sheet = stylesheet();
+  const opens = sheet.split(`${tail} {`).length - 1;
+  // Two rules ending the same way would leave this reading whichever came
+  // first and saying nothing about it, which is how a rule can be edited with
+  // its test still green. Both `[data-quoted='true']` rules end that way, so
+  // callers reach the second one through the `>` in front of it.
+  expect(opens, `\`${tail}\` should open exactly one rule in index.css`).toBe(1);
+  const body = sheet.slice(sheet.indexOf(`${tail} {`) + tail.length);
   return body.slice(body.indexOf('{') + 1, body.indexOf('}'));
 }
 
@@ -90,7 +99,7 @@ function open(
 const QUOTED = { type: 'paragraph', props: { quoted: true } } as const;
 
 describe('what the stylesheet reaches a quote by', () => {
-  it('puts the four per-block declarations on the block content element', () => {
+  it('puts the per-block declarations on the block content element', () => {
     const editor = open([{ ...QUOTED, content: 'inside' }]);
 
     const marked = editor.prosemirrorView!.dom.querySelectorAll(
@@ -99,8 +108,7 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(marked).toHaveLength(1);
     expect(marked[0]!.classList.contains('bn-block-content')).toBe(true);
 
-    const rule = ruleFor('.doc-body-editor .ProseMirror [data-quoted=\'true\']');
-    expect(rule).toContain('display: flow-root');
+    const rule = ruleFor('.ProseMirror [data-quoted=\'true\']');
     expect(rule).toContain('padding-inline-start');
     expect(rule).toContain('border-inline-start');
     expect(rule).toContain('color: var(--color-muted-foreground)');
@@ -121,25 +129,24 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(dom.querySelector('[data-quoted-first]')!.textContent).toBe('one');
     expect(dom.querySelector('[data-quoted-last]')!.textContent).toBe('three');
 
-    expect(ruleFor('.doc-body-editor .ProseMirror [data-quoted-first]')).toContain(
-      'margin-top',
-    );
-    expect(ruleFor('.doc-body-editor .ProseMirror [data-quoted-last]')).toContain(
-      'margin-bottom',
-    );
+    expect(ruleFor('> [data-quoted-first]')).toContain('margin-top');
+    expect(ruleFor('[data-quoted-last]')).toContain('margin-bottom');
   });
 
-  it('zeroes the inner margins at those two ends', () => {
-    // The text meets the run's edges, the way it met the container's. These
-    // are reachable only because `flow-root` above contains the child's
-    // margin: without it the margin would have collapsed out and become the
-    // run's own, and zeroing it would move the whole quote.
-    expect(
-      ruleFor('.doc-body-editor .ProseMirror [data-quoted-first] > :first-child'),
-    ).toContain('margin-top: 0');
-    expect(
-      ruleFor('.doc-body-editor .ProseMirror [data-quoted-last] > :last-child'),
-    ).toContain('margin-bottom: 0');
+  it('puts the space inside a run on the padding, and the run’s own on the margin', () => {
+    // Which side of the border the space falls on is what decides whether a
+    // run reads as one quote or as several: the rule is drawn on the box, so a
+    // margin between two blocks breaks it and padding does not. Measured
+    // before the padding form: a 13.6px break in the rule between every pair.
+    const between = ruleFor('> [data-quoted=\'true\']');
+    expect(between).toContain('margin-top: 0');
+    expect(between).toContain('padding-top: var(--doc-paragraph-margin)');
+
+    // And the first block of a run hands that space back to the margin, where
+    // it holds the whole run apart from the paragraph above it.
+    const first = ruleFor('> [data-quoted-first]');
+    expect(first).toContain('margin-top');
+    expect(first).toContain('padding-top: 0');
   });
 
   it('marks a lone quoted block as both ends of its own run', () => {

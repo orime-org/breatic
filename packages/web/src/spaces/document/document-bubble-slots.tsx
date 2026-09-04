@@ -8,16 +8,14 @@
  * focus, the wheel, scroll-closes-it all live there. This file is only about
  * what each slot looks like and what its menu holds.
  *
- * Eight of the nine rows in the block type menu reach a command; the task
- * list waits on a schema node. Everything else here is drawn the way the demo
- * draws them and writes a line to the console when pressed, the menu closing
- * after them either way (user 2026-08-27).
+ * All nine rows of the block type menu reach a command. Everything else here
+ * is drawn the way the demo draws them and writes a line to the console when
+ * pressed, the menu closing after them either way (user 2026-08-27).
  *
  * Two things carry the greyed treatment `document-coming-tool.tsx` defines:
- * any block type row this selection cannot reach (§6.7), judged only while the
- * menu is down, and the alignment slot over a selection alignment does not
- * reach (A7). The task list is the first of those — the schema has no node for
- * it (#13), so no selection reaches it and it is greyed on every one.
+ * the block type menu over a selection no row can act on (§6.7), judged only
+ * while the menu is down, and the alignment slot over a selection alignment
+ * does not reach (A7).
  */
 
 import * as React from 'react';
@@ -49,7 +47,7 @@ import {
 } from '@web/spaces/document/document-block-type';
 import { printedShortcut } from '@web/spaces/document/document-block-type-shortcuts';
 import {
-  CONTENT_ROWS,
+  DIMENSION_OF_ROW,
   faceOf,
   tickedOver,
   type BlockTypeId,
@@ -270,6 +268,7 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       {BLOCK_TYPE_ITEMS.map((item, index) => {
         const Icon = item.Icon;
         const shortcut = printedShortcut(item.id);
+        const nextRow = BLOCK_TYPE_ITEMS[index + 1]?.id;
         return (
           <React.Fragment key={item.id}>
             <BubbleMenuRow
@@ -312,11 +311,13 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
                 ) : null}
               </span>
             </BubbleMenuRow>
-            {/* The demo's `.menu-sep`, ruling the content rows off Quote,
-                which is orthogonal to them — `CONTENT_ROWS` is where that is
-                said, by leaving Quote out. */}
-            {CONTENT_ROWS.includes(item.id) &&
-            !CONTENT_ROWS.includes(BLOCK_TYPE_ITEMS[index + 1]?.id ?? 'quote')
+            {/* The demo's `.menu-sep`, drawn wherever the order crosses from
+                one of the three dimensions to the next. Read off
+                `DIMENSION_OF_ROW` rather than written out here, so a row added
+                to a group lands inside its rules by saying which group it is
+                in — the one place that already has to say so. */}
+            {nextRow !== undefined &&
+            DIMENSION_OF_ROW[item.id] !== DIMENSION_OF_ROW[nextRow]
               ? <BubbleMenuRule />
               : null}
           </React.Fragment>

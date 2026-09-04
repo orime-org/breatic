@@ -937,20 +937,19 @@ body {
    with `data-quoted-first` / `data-quoted-last` — which is the part no
    per-block attribute can say, since a run's outer edges belong to the run.
 
-   The seven declarations the container below carries land in three places:
+   The declarations the container below carries land in three places:
 
    | What | Where it goes now |
    |---|---|
-   | `flow-root`, inline padding, the rule, muted text | every quoted block |
+   | inline padding, the rule, muted text | every quoted block |
+   | the space between two blocks of a run | every block after the first |
    | the run's outer margins | its first and last block |
-   | the two zeroed inner margins | the same two blocks |
 
    THE RULE IS DRAWN PER BLOCK, so what sits between two of them decides
-   whether a run reads as one quote or as several. `flow-root` is what makes
-   it one: it closes the block direction, so a block's inner margins are
-   contained by its own box rather than collapsing out of it, and the border
-   is drawn down the whole of that box. The space between two quoted blocks is
-   then inside the rule rather than a gap across it.
+   whether a run reads as one quote or as several. Which side of the border
+   that space falls on is what makes it one: a margin sits outside the box the
+   border is drawn on and breaks the rule, padding sits inside it and the rule
+   arrives unbroken.
 
    The 2px is the value this quote already shipped with; it is not a new
    heavier rule. (`one-px-border` reads Tailwind classes, so this file is
