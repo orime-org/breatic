@@ -35,12 +35,16 @@
  */
 
 import { Mark, Node } from '@tiptap/core';
+import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   createExtension,
   createBlockSpecFromTiptapNode,
   createInlineContentSpecFromTipTapNode,
   NON_FORMATTING_MARK_GROUP,
 } from '@blocknote/core';
+
+import { t } from '@breatic/shared';
 
 /** The attribute every stand-in carries: the name this build could not use. */
 const ORIGINAL_NAME = 'originalName';
@@ -206,14 +210,53 @@ export const unsupportedInlineSpec = createInlineContentSpecFromTipTapNode(
   { render: () => ({ dom: document.createElement('span') }) },
 );
 
+/** The two node names the label decoration dresses. */
+const LABELLED = new Set(['unsupportedBlock', 'unsupportedInline']);
+
 /**
- * The extension that registers the mark, for the assembly to pass through.
+ * The label decorations for every stand-in in the document.
  *
- * The other two are registered by the schema, which is where BlockNote reads
- * both of their declarations from. A mark has neither: `blocknoteIgnore` above
- * is what keeps this one out of the same conversion.
+ * A stand-in holds nothing this build can draw, so without a label it renders
+ * as an empty box and the reader has no way to know something is there.
+ *
+ * The text travels as a `data-label` DECORATION painted by index.css through
+ * `content: attr(data-label)`, rather than as text baked into `renderHTML`.
+ * `renderHTML` runs once per node and its output is what a copy carries, so a
+ * label written there would be frozen in whatever language was active — and it
+ * would follow the content out through the clipboard. A decoration is redrawn
+ * from the live locale on every dispatch, and `documentLocaleRedrawExtension`
+ * asks for that dispatch when the language changes.
+ * @param state - The editor state to read.
+ * @returns The decoration set, or null when the document holds no stand-in.
+ */
+function labelDecorations(state: EditorState): DecorationSet | null {
+  const found: Decoration[] = [];
+  const label = t('spaces.document.unsupported.label');
+  state.doc.descendants((node, pos) => {
+    if (LABELLED.has(node.type.name)) {
+      found.push(
+        Decoration.node(pos, pos + node.nodeSize, { 'data-label': label }),
+      );
+    }
+    return true;
+  });
+  return found.length > 0 ? DecorationSet.create(state.doc, found) : null;
+}
+
+/**
+ * The extension that registers the mark and dresses the stand-ins.
+ *
+ * The other two nodes are registered by the schema, which is where BlockNote
+ * reads both of their declarations from. A mark has neither: `blocknoteIgnore`
+ * above is what keeps this one out of the same conversion.
  */
 export const documentFallbackExtension = createExtension(() => ({
   key: 'documentFallbacks',
   tiptapExtensions: [UnsupportedMark],
+  prosemirrorPlugins: [
+    new Plugin({
+      key: new PluginKey('documentFallbackLabels'),
+      props: { decorations: labelDecorations },
+    }),
+  ],
 }) as never);

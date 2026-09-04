@@ -23,12 +23,14 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment, setLocale, t } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentLocaleRedrawExtension } from '@web/spaces/document/document-locale-redraw';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 
 /**
@@ -111,9 +113,13 @@ describe('the fallbacks in BlockNote’s own registry', () => {
    * @returns The editor, mounted.
    */
   function openAroundFallback(): ReturnType<typeof buildDocumentEditor> {
+    // The redraw extension comes along because the label is a decoration and
+    // a decoration is recomputed on dispatch — switching language dispatches
+    // nothing on its own. The cache registers both, so this pair is what a
+    // reader actually has.
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(new Y.Doc()),
-      extensions: [documentFallbackExtension()],
+      extensions: [documentFallbackExtension(), documentLocaleRedrawExtension()],
     });
     const root = document.createElement('div');
     document.body.appendChild(root);
@@ -233,5 +239,71 @@ describe('the fallbacks in BlockNote’s own registry', () => {
       'paragraph',
     ]);
     expect(blocks[1]?.props['originalName']).toBe('somethingNewer');
+  });
+
+  it('shows a localised label on the block, so the gap is visible', () => {
+    // The stand-in holds nothing this build can draw, so without a label it
+    // renders as a blank box and the reader has no way to know something is
+    // there. index.css paints it through `content: attr(data-label)`.
+    const editor = openAroundFallback();
+    held.push(editor);
+    const root = editor.prosemirrorView!.dom;
+
+    expect(
+      root
+        .querySelector('[data-unsupported-block]')
+        ?.getAttribute('data-label'),
+    ).toBe(t('spaces.document.unsupported.label'));
+  });
+
+  it('shows the same label on an inline stand-in', () => {
+    const editor = openAroundFallback();
+    held.push(editor);
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at === -1 && node.isTextblock && node.textContent === 'before') {
+        at = pos + 1;
+      }
+      return at === -1;
+    });
+    view.dispatch(
+      view.state.tr.insert(
+        at,
+        view.state.schema.nodes['unsupportedInline']!.create({
+          originalName: 'newerInline',
+        }),
+      ),
+    );
+
+    expect(
+      view.dom
+        .querySelector('[data-unsupported-inline]')
+        ?.getAttribute('data-label'),
+    ).toBe(t('spaces.document.unsupported.label'));
+  });
+
+  it('follows a language switch, which dispatches nothing of its own', async () => {
+    const editor = openAroundFallback();
+    held.push(editor);
+    const root = editor.prosemirrorView!.dom;
+    /** What the label currently reads. */
+    const label = (): string =>
+      root
+        .querySelector('[data-unsupported-block]')
+        ?.getAttribute('data-label') ?? '';
+
+    const before = label();
+    expect(before).not.toBe('');
+
+    setLocale('ja');
+    try {
+      await waitFor(() => {
+        expect(label()).toBe(t('spaces.document.unsupported.label'));
+      });
+      expect(label()).not.toBe(before);
+    } finally {
+      setLocale('en');
+    }
   });
 });
