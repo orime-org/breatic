@@ -119,6 +119,7 @@ describe('buildAudioTaskPayload — the picked reference audio', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
       model: model('qwen3-tts-voice-clone', 'tts'),
+      slots: ['refAudio'],
       slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
     });
     expect(payload.params.audio).toBe('https://cdn.test/sample.m4a');
@@ -131,9 +132,23 @@ describe('buildAudioTaskPayload — the picked reference audio', () => {
       ...BASE,
       model: model('qwen3-tts-voice-clone', 'tts'),
       params: { audio: 'from the catalog' },
+      slots: ['refAudio'],
       slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
     });
     expect(payload.params.audio).toBe('https://cdn.test/sample.m4a');
+  });
+
+  it('leaves a pick behind when the active mode does not collect it', () => {
+    // A pick survives a mode switch by design — it lives on the node, not in
+    // the panel — so voiceover reads a reference audio chosen for cloning and
+    // would send it as `params.audio` under a mode that never asked for one.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      slots: [],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params).not.toHaveProperty('audio');
   });
 
   it('sends no audio key at all when nothing is picked', () => {

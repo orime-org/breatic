@@ -71,6 +71,19 @@ import {
 } from '@web/spaces/canvas/canvas-context';
 import { useCanvasStore } from '@web/stores';
 
+/**
+ * Stands in for the canvas's "who made the newest write" getter.
+ *
+ * Module-level so its identity is stable across renders: the container lists
+ * it in an effect's dependencies, and a fresh function each render would run
+ * that effect every time.
+ * @returns Always true — these cases never assert on the message it picks.
+ */
+function returnsTrue(): boolean {
+  return true;
+}
+
+
 const ELEVEN: ModelEntry = {
   name: 'elevenlabs-v3',
   display_name: 'ElevenLabs V3',
@@ -207,6 +220,7 @@ function panelTree(
           <AudioGeneratePanelContainer
             projectId='p'
             spaceId='s'
+            getLastWriteWasLocal={returnsTrue}
             edges={[]}
             nodes={[
               {

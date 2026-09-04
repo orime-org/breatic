@@ -382,9 +382,13 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   await page.keyboard.type('Say this in my voice.');
   await expect(page.getByTestId('generate-audio-execute')).toBeEnabled();
   await page.getByTestId('generate-audio-execute').click();
-  await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({
-    timeout: 10_000,
-  });
+  // Named, not merely present: every other refusal on this panel also raises a
+  // toast, so asserting that one appeared says nothing about which condition
+  // the gate judged.
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText(
+    'Pick a reference audio first',
+    { timeout: 10_000 },
+  );
 
   // Picking fills it. The clear badge, not a thumbnail: an audio node carries
   // no poster, so the button shows the slot's icon (#1946) — the badge is what

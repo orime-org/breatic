@@ -32,7 +32,7 @@ function setup(
   );
 }
 
-describe('AudioGenerateToolbar — Reference is the row', () => {
+describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
   it('renders the Reference tool', () => {
     setup();
     expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
@@ -45,6 +45,42 @@ describe('AudioGenerateToolbar — Reference is the row', () => {
     setup();
     expect(screen.queryByTestId('generate-audio-tool-focus')).toBeNull();
     expect(screen.queryByTestId('generate-audio-tool-style')).toBeNull();
+  });
+
+  it('renders one control per slot the mode collects, and none otherwise', () => {
+    // The row IS its slots: whether the reference-audio control exists at all
+    // is the whole of what voice cloning changes about this row, and nothing
+    // else in the suite would notice it disappearing.
+    setup();
+    expect(screen.queryByTestId('generate-audio-tool-ref-audio')).toBeNull();
+
+    setup({ slots: ['refAudio'] });
+    expect(screen.getByTestId('generate-audio-tool-ref-audio')).toBeInTheDocument();
+  });
+
+  it('shows a filled slot with its clear badge, and an empty one without', () => {
+    // An audio pick paints no thumbnail — an audio node carries no poster — so
+    // the badge is the only thing that says the slot is holding something.
+    setup({ slots: ['refAudio'] });
+    expect(screen.queryByTestId('generate-audio-ref-audio-clear')).toBeNull();
+
+    setup({ slots: ['refAudio'], slotUrls: { refAudio: 'https://cdn/ref.m4a' } });
+    expect(screen.getByTestId('generate-audio-ref-audio-clear')).toBeInTheDocument();
+  });
+
+  it('fires onPickSlot for the slot clicked, and onClearSlot for its badge', () => {
+    const onPickSlot = vi.fn();
+    const onClearSlot = vi.fn();
+    setup({
+      slots: ['refAudio'],
+      slotUrls: { refAudio: 'https://cdn/ref.m4a' },
+      onPickSlot,
+      onClearSlot,
+    });
+    fireEvent.click(screen.getByTestId('generate-audio-tool-ref-audio'));
+    expect(onPickSlot).toHaveBeenCalledWith('refAudio');
+    fireEvent.click(screen.getByTestId('generate-audio-ref-audio-clear'));
+    expect(onClearSlot).toHaveBeenCalledWith('refAudio');
   });
 
   it('fires onReference when Reference is clicked', () => {

@@ -37,14 +37,6 @@ export type VideoSlot =
   | 'drivingVideo'
   | 'drivingAudio';
 
-/** Node data fields a slot's pick is copied into. */
-export type VideoSlotField =
-  | 'firstFrameUrl'
-  | 'endFrameUrl'
-  | 'characterImageUrl'
-  | 'drivingVideo'
-  | 'drivingAudio';
-
 /** Every slot, by name. */
 export const VIDEO_SLOTS = {
   firstFrame: {

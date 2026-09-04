@@ -726,7 +726,7 @@ export interface AssetNodeLike {
 }
 
 /**
- * Every asset URL a node holds in its video slots.
+ * Every asset URL a node holds in a source slot, on either generative panel.
  *
  * Both halves of the delete accounting read this: the set of URLs a surviving
  * node keeps alive, and the question "does any node still hold this URL".

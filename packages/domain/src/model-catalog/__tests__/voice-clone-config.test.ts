@@ -62,12 +62,17 @@ describe("qwen3 voice cloning is in the catalog", () => {
     expect((ttsEntry(CLONE_MODEL)!.icon as string).length).toBeGreaterThan(0);
   });
 
-  it("leaves the reference audio out of its param table", () => {
-    // The slot is the only source of that value. Declaring it here would put a
-    // `null` in the params record, and the source gate reads a non-string as
-    // "no source" — refusing every submit that had one picked.
-    const params = ttsEntry(CLONE_MODEL)!.params as Record<string, unknown> | undefined;
-    expect(params?.audio).toBeUndefined();
+  it("declares the reference audio, which is what lets it reach the vendor", () => {
+    // The worker keeps only the params a model declares (`validateParams`
+    // drops the rest), so an undeclared `audio` is deleted between the
+    // server's gate and the HTTP submit and the clone runs with no reference.
+    // `default: null` is what every source-carrying model states; the panel
+    // spreads the picked URL over it at execute time.
+    const params = ttsEntry(CLONE_MODEL)!.params as
+      | Record<string, { default?: unknown }>
+      | undefined;
+    expect(params?.audio).toBeDefined();
+    expect(params?.audio?.default).toBeNull();
   });
 
   it("states no input cap, because the vendor publishes none", () => {

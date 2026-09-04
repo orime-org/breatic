@@ -56,6 +56,7 @@ import {
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/generate/model-params';
 import {
   filterAvailableModes,
@@ -94,6 +95,8 @@ interface AudioGeneratePanelContainerProps {
   projectId: string;
   /** Canvas space id. */
   spaceId: string;
+  /** Reads who made the newest document write, for the message a mode switch shows. */
+  getLastWriteWasLocal: () => boolean;
 }
 
 /**
@@ -104,6 +107,7 @@ interface AudioGeneratePanelContainerProps {
  * @param root0.edges - Live canvas edges.
  * @param root0.projectId - Project the canvas space belongs to.
  * @param root0.spaceId - Canvas space id.
+ * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
  * @returns The wired audio panel.
  */
 function AudioGeneratePanelBody({
@@ -112,6 +116,7 @@ function AudioGeneratePanelBody({
   edges,
   projectId,
   spaceId,
+  getLastWriteWasLocal,
 }: AudioGeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
@@ -245,8 +250,11 @@ function AudioGeneratePanelBody({
       session.purpose === AUDIO_SLOTS.refAudio.purpose
     ) {
       endPick();
+      // The slot list comes from the mode, so this is a mode change reaching
+      // the pick — and the write may well have been a collaborator's.
+      toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
     }
-  }, [collectsRefAudio, nodeId, endPick]);
+  }, [collectsRefAudio, nodeId, endPick, t, getLastWriteWasLocal]);
 
   // Both rebuild with the view model, which rebuilds on every canvas mutation
   // — every frame of any node drag — and both flow into React.memo components
@@ -433,6 +441,9 @@ function AudioGeneratePanelBody({
         // Read off the same fresh view model the gate judged, so the payload
         // can only ever carry the pick that passed it.
         slotUrls: fresh.slotUrls,
+        // The mode's own slots, so a pick made for the other mode cannot ride
+        // this submit: a pick survives a mode switch by design.
+        slots: fresh.refAudioRequired ? REF_AUDIO_ONLY : NO_SLOTS,
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);

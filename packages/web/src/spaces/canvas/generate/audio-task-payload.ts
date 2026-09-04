@@ -25,18 +25,28 @@ import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite
 /**
  * The picked source assets, under the param names their vendors read.
  *
+ * Built from the MODE's slots, not from everything the node holds: a pick
+ * survives a mode switch (that is the point of storing it on the node), so a
+ * reference audio chosen for cloning is still there while voiceover is
+ * selected, and walking the whole registry would send it under a mode that
+ * never asked for one.
+ *
  * A slot with nothing picked contributes no key at all. An `audio: undefined`
  * riding along would read as a present-but-empty source to the server gate,
  * which tests `typeof value === 'string'` — so absent and blank have to stay
  * different things.
+ * @param slots - The slots the active mode collects.
  * @param slotUrls - What each slot currently holds.
  * @returns The source params, empty when nothing is picked.
  */
-function sourceParams(slotUrls: AudioSlotUrls): Record<string, string> {
+function sourceParams(
+  slots: readonly AudioSlot[],
+  slotUrls: AudioSlotUrls,
+): Record<string, string> {
   const params: Record<string, string> = {};
-  for (const [slot, spec] of Object.entries(AUDIO_SLOTS)) {
-    const url = slotUrls[slot as AudioSlot];
-    if (url) params[spec.param] = url;
+  for (const slot of slots) {
+    const url = slotUrls[slot];
+    if (url) params[AUDIO_SLOTS[slot].param] = url;
   }
   return params;
 }
@@ -60,6 +70,8 @@ export interface AudioTaskInput {
   leaseGen?: number;
   /** What each audio slot holds, for the modes that collect one. */
   slotUrls?: AudioSlotUrls;
+  /** The slots the active mode collects; absent means it collects none. */
+  slots?: readonly AudioSlot[];
 }
 
 /**
@@ -81,7 +93,7 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
       prompt: input.promptText,
       // After the params spread on purpose: what the user picked in the slot
       // wins over a same-named key the catalog carries.
-      ...sourceParams(input.slotUrls ?? {}),
+      ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),
     },
     leaseGen: input.leaseGen,
   });

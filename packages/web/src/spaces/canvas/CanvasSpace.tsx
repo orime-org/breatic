@@ -1821,11 +1821,12 @@ function CanvasSpaceInner({
 
       const pickedSlot = slotSpec(slotForPurpose(session.purpose) ?? '');
       if (pickedSlot) {
-        // A video slot (first frame, end frame, character image, driving
-        // video, driving audio): COPY the clicked node's asset onto the video
-        // node, same terms as Style — a pick-time snapshot with no
-        // relationship to the source, so deleting or regenerating that node
-        // never changes what this video generates from.
+        // A source slot on either generative panel (the video panel's first
+        // frame, end frame, character image, driving video and driving audio;
+        // the audio panel's reference audio): COPY the clicked node's asset
+        // onto the generating node, same terms as Style — a pick-time snapshot
+        // with no relationship to the source, so deleting or regenerating that
+        // node never changes what this one generates from.
         //
         // `fillSlot` decides what a slot copies:
         // the asset alone, or the asset plus the node's poster for a slot
@@ -3691,11 +3692,11 @@ function CanvasSpaceInner({
 
     const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
     if (pickSession.purpose === 'style' || paintingSlot) {
-      // Style and every video slot share the candidate rule: any non-empty
+      // Style and every source slot share the candidate rule: any non-empty
       // node of the type the slot accepts, except the pick target itself
-      // (#1664 / #1896 / #1904). A video slot states the type it takes, so a
-      // slot for another kind of asset dims the right nodes without another
-      // branch here.
+      // (#1664 / #1896 / #1904). A slot states the type it takes, so a slot
+      // for another kind of asset — an audio one for voice cloning (#1960
+      // PR2) — dims the right nodes without another branch here.
       const accepts = paintingSlot ? paintingSlot.accepts : 'image';
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
@@ -3966,15 +3967,17 @@ function CanvasSpaceInner({
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
           />
-          {/* Audio Generate panel: its own panel kind, opened by an audio node.
-              It takes no `getLastWriteWasLocal` — that getter exists for the
-              picks that write a copy onto the node, and this panel collects
-              references, which are edges. */}
+          {/* Audio Generate panel: its own panel kind, opened by an audio
+              node. It takes `getLastWriteWasLocal` for the same reason the
+              video panel does — voice cloning collects a slot pick (#1960
+              PR2), and a mode switch that ends a running pick has to say
+              whether it was this reader's switch or a collaborator's. */}
           <AudioGeneratePanelContainer
             nodes={nodes}
             edges={edges}
             projectId={projectId}
             spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
           />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its

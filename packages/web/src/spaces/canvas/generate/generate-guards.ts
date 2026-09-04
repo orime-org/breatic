@@ -153,8 +153,11 @@ export function evaluateExecute(
   ) {
     return 'prompt-too-long';
   }
-  // Both remaining refusals are the user's to fix, so they follow the panel's
-  // own order: the prompt editor sits above the voice picker.
+  // Both remaining refusals name a control the user has to go and fill. Only
+  // one of them can be live at a time: `voiceRequired` says the model picks
+  // from a preset catalog, `refAudioRequired` says the mode needs a recording,
+  // and a model answering yes to both would be one whose panel shows a picker
+  // and a slot for the same voice.
   if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
   if (input.refAudioRequired && !input.refAudioChosen) return 'ref-audio-missing';
   return null;
