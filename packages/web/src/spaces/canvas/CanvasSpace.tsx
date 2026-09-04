@@ -3197,7 +3197,7 @@ function CanvasSpaceInner({
   // stash. The stash survives repeated failures (cleared only on success)
   // and a refresh drops it — the button then no longer renders.
   const retryNodeUpload = React.useCallback(
-    (nodeId: string): void => {
+    (nodeId: string, taskId: string): void => {
       if (readOnly) return;
       // Retry is an upload entry point too, and a locked node refuses it.
       const gateBlock = evaluateNodeGate(
@@ -3211,7 +3211,11 @@ function CanvasSpaceInner({
         warnNodeGate(t(gateBlock.toastKey));
         return;
       }
-      const file = getRetryFile(projectId, spaceId, nodeId);
+      // The File this task was carrying, held under its own id — a second
+      // upload onto the same node has its own (#186 §3.7.2). The failed row
+      // stays where it is: re-sending is a new task, and removing the record
+      // of the old one is the user's call.
+      const file = getRetryFile(projectId, spaceId, taskId);
       if (!file) return;
       fillUpload(nodeId, file, fileToNodeSpec(file).nodeType);
     },
@@ -3357,8 +3361,8 @@ function CanvasSpaceInner({
       },
       activateNodeUpload,
       retryNodeUpload,
-      hasUploadRetryFile: (nodeId: string): boolean =>
-        hasRetryFile(projectId, spaceId, nodeId),
+      hasUploadRetryFile: (taskId: string): boolean =>
+        hasRetryFile(projectId, spaceId, taskId),
     }),
     [
       projectId,

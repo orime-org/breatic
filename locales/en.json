@@ -283,7 +283,9 @@
         "done": "Done",
         "failed": "Failed",
         "expired": "Expired"
-      }
+      },
+      "someFailed": "A task on this node failed.",
+      "view": "View"
     },
     "nodeMenu": {
       "generate": "Generate",

@@ -283,7 +283,9 @@
         "done": "완료",
         "failed": "실패",
         "expired": "시간 초과"
-      }
+      },
+      "someFailed": "이 노드의 작업이 실패했습니다.",
+      "view": "보기"
     },
     "generatePanel": {
       "style": "스타일",

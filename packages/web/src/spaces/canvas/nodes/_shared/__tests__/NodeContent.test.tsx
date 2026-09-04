@@ -75,7 +75,9 @@ describe('NodeContent', () => {
     expect(box.className).not.toMatch(/\bh-full\b/);
   });
 
-  it('error block falls back to a generic message when no errorMessage', () => {
+  it('says a task failed when the node carries no message of its own', () => {
+    // A task's own reason is a row in the task list, in the reader's own
+    // language. What the node says is this one sentence (#186 §3.7.2).
     render(
       <NodeContent
         status='error'
@@ -85,29 +87,31 @@ describe('NodeContent', () => {
       />,
     );
     expect(screen.getByTestId('node-content-error')).toHaveTextContent(
-      /something went wrong/i,
+      /a task on this node failed/i,
     );
   });
 
-  it('renders a Retry button in the error branch when onRetry is provided (#1609 P4)', () => {
-    const onRetry = vi.fn();
+  it('opens the task list from the error box', () => {
+    // The detail is one click away, where it belongs: which task, who started
+    // it, and why it failed.
+    const onViewTasks = vi.fn();
     render(
       <NodeContent
         status='error'
-        errorMessage='Upload failed: a.png'
         hasContent={false}
         placeholder={<div>P</div>}
         content={<div>C</div>}
-        onRetry={onRetry}
+        onViewTasks={onViewTasks}
       />,
     );
 
-    const button = screen.getByTestId('node-content-retry');
-    fireEvent.click(button);
-    expect(onRetry).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTestId('node-content-view-tasks'));
+    expect(onViewTasks).toHaveBeenCalledOnce();
   });
 
-  it('renders NO Retry button without onRetry (no stashed file / not an upload error)', () => {
+  it('offers nothing to open when the failure never reached the task table', () => {
+    // Text extracted in the browser is the one failure that stays local
+    // (§3.7.4): it has no row, so there is no list to open.
     render(
       <NodeContent
         status='error'
@@ -118,7 +122,12 @@ describe('NodeContent', () => {
       />,
     );
 
-    expect(screen.queryByTestId('node-content-retry')).not.toBeInTheDocument();
+    expect(screen.getByTestId('node-content-error')).toHaveTextContent(
+      'Extraction failed: a.bin',
+    );
+    expect(
+      screen.queryByTestId('node-content-view-tasks'),
+    ).not.toBeInTheDocument();
   });
 
   it('the empty state fills a fixed h-48 box so every empty node is the same size', () => {

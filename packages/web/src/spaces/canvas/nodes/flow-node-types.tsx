@@ -33,12 +33,6 @@ interface InnerNodeProps {
    * file picker and fills this node (media nodes). Text handles its own edit.
    */
   onActivate?: () => void;
-  /**
-   * Retry a failed upload from its session-stashed File, pre-bound to this
-   * node's id (#1609 P4). Present only while a stash exists — its absence
-   * hides the error-state Retry button.
-   */
-  onRetryUpload?: () => void;
 }
 
 /**
@@ -82,8 +76,6 @@ function makeFlowNode(
       beginGroupResize,
       commitGroupResize,
       reportGroupResize,
-      retryNodeUpload,
-      hasUploadRetryFile,
     } = useCanvasActions();
     // The canvas zoom (transform[2]) lets the name header counter-scale so it
     // keeps a constant screen size — down to a floor zoom, below which it
@@ -105,16 +97,6 @@ function makeFlowNode(
         activateNodeUpload(props.id, kind);
       }
     }, [activateNodeUpload, props.id, data.kind]);
-    // Error-state Retry (#1609 P4): bound only while the session still
-    // stashes this node's failed File — no stash (refresh / success /
-    // non-upload error) leaves the prop undefined and no button renders.
-    // The stash is written BEFORE the error lands in Yjs, so by the time
-    // the error re-render evaluates this the stash is already visible.
-    const onRetryUpload = React.useCallback(
-      (): void => retryNodeUpload(props.id),
-      [retryNodeUpload, props.id],
-    );
-    const canRetryUpload = hasUploadRetryFile(props.id);
     // A Group fills the ReactFlow wrapper sized to its stored width/height, so
     // the GroupNode's own `size-full` resolves to the full rect. Content nodes
     // size to their body, so they keep the auto-height wrapper. A selected,
@@ -175,7 +157,6 @@ function makeFlowNode(
                 locked={data.locked}
                 onRename={onRename}
                 onActivate={onActivate}
-                {...(canRetryUpload && { onRetryUpload })}
               />
               {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings

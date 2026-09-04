@@ -283,7 +283,9 @@
         "done": "完了",
         "failed": "失敗",
         "expired": "時間切れ"
-      }
+      },
+      "someFailed": "このノードのタスクが失敗しました。",
+      "view": "表示"
     },
     "generatePanel": {
       "style": "スタイル",

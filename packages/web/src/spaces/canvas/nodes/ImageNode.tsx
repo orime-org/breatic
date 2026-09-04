@@ -16,7 +16,6 @@ interface ImageNodeProps {
   locked?: boolean;
   onActivate?: () => void;
   /** Retry a failed upload (error state), pre-bound to this node (#1609 P4). */
-  onRetryUpload?: () => void;
   onRename?: (name: string) => void;
 }
 
@@ -29,7 +28,6 @@ interface ImageNodeProps {
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
- * @param root0.onRetryUpload - Retry a failed upload from the session stash (#1609 P4); absent hides the Retry button.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
  * @returns The image node element (placeholder or rendered image).
  */
@@ -38,7 +36,6 @@ export const ImageNode = React.memo(function ImageNode({
   selected,
   locked,
   onActivate,
-  onRetryUpload,
   onRename,
 }: ImageNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -57,7 +54,6 @@ export const ImageNode = React.memo(function ImageNode({
       <NodeContent
         status={data.status}
         errorMessage={data.errorMessage}
-        onRetry={onRetryUpload}
         hasContent={hasContent}
         placeholder={
           <NodePlaceholder modality='image' onActivate={onActivate} />

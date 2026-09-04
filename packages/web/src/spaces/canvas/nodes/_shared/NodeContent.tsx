@@ -19,7 +19,12 @@ interface NodeContentProps {
    * still stashes the failed File; the error branch then renders a
    * Retry button. Pre-bound to the node id by the canvas.
    */
-  onRetry?: () => void;
+  /**
+   * Open this node's task list. Present when the failure is a task's, which
+   * is where the reason for it lives; absent for text extracted in the
+   * browser, which never reaches the task table (#186 §3.7.4).
+   */
+  onViewTasks?: () => void;
 }
 
 /**
@@ -33,7 +38,7 @@ interface NodeContentProps {
  * @param root0.hasContent - Whether a content payload exists, choosing content vs placeholder when idle.
  * @param root0.placeholder - Empty-state node rendered when idle with no content.
  * @param root0.content - Modality-specific body rendered when idle with content.
- * @param root0.onRetry - Retry a failed upload; when present the error branch renders a Retry button (#1609 P4).
+ * @param root0.onViewTasks - Open this node's task list; when present the error branch offers it.
  * @returns The branch element for the current node state.
  */
 export function NodeContent({
@@ -42,7 +47,7 @@ export function NodeContent({
   hasContent,
   placeholder,
   content,
-  onRetry,
+  onViewTasks,
 }: NodeContentProps): React.JSX.Element {
   const t = useTranslation();
   if (status === 'handling') {
@@ -69,20 +74,24 @@ export function NodeContent({
         data-testid='node-content-error'
         className='flex h-48 w-full flex-col items-center justify-center gap-2 p-3 text-xs text-status-error-foreground'
       >
-        <span>{errorMessage ?? 'Something went wrong.'}</span>
-        {onRetry ? (
+        {/* A task's own reason — which task, who started it, why it failed —
+            is a row in the task list, said in the reader's own language. The
+            node carries one sentence. The other branch is the text this
+            browser could not extract, which has no row anywhere. */}
+        <span>{errorMessage ?? t('canvas.task.someFailed')}</span>
+        {onViewTasks ? (
           <Button
             type='button'
             variant={null}
             size={null}
-            data-testid='node-content-retry'
+            data-testid='node-content-view-tasks'
             className='nodrag rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:bg-muted focus-visible:outline-2'
             onClick={(event) => {
               event.stopPropagation();
-              onRetry();
+              onViewTasks();
             }}
           >
-            {t('canvas.upload.retry')}
+            {t('canvas.task.view')}
           </Button>
         ) : null}
       </div>

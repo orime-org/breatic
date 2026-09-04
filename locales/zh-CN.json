@@ -283,7 +283,9 @@
         "done": "完成",
         "failed": "失败",
         "expired": "超时"
-      }
+      },
+      "someFailed": "这个节点上有任务失败了。",
+      "view": "查看"
     },
     "generatePanel": {
       "style": "风格",

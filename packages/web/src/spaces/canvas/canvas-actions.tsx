@@ -56,15 +56,19 @@ export interface CanvasActions {
    */
   beginGroupResize: (groupId: string) => void;
   /**
-   * Re-run a failed upload from its session-stashed File (#1609 P4). A
-   * no-op when nothing is stashed (refresh dropped the reference).
+   * Re-run one failed upload from the File stashed under its task (#186
+   * §3.7.2). A no-op when nothing is stashed — a refresh drops every
+   * reference, since the browser cannot re-read a picked file.
+   *
+   * It opens a new task; the failed row stays where it is, because removing
+   * that record is the user's call.
    */
-  retryNodeUpload: (nodeId: string) => void;
+  retryNodeUpload: (nodeId: string, taskId: string) => void;
   /**
-   * Whether a failed node still has a retryable File stashed this
-   * session — gates the error-state Retry button.
+   * Whether one failed task still has its File stashed this session — what
+   * decides if its row offers Retry.
    */
-  hasUploadRetryFile: (nodeId: string) => boolean;
+  hasUploadRetryFile: (taskId: string) => boolean;
 }
 
 /**
