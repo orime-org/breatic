@@ -21,14 +21,6 @@ import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 
-/**
- * What one slot is made of, under the name this registry's callers know.
- *
- * The structure moved to {@link ./slots} when the audio panel grew a slot of
- * its own (#1960): one definition, two registries.
- */
-export type VideoSlotSpec = SlotSpec;
-
 /** The source slots the video panel knows how to offer. */
 export type VideoSlot =
   | 'firstFrame'
@@ -115,7 +107,7 @@ export const VIDEO_SLOTS = {
     clearLabelKey: 'canvas.generatePanel.removeDrivingAudio',
     errorKey: 'canvas.generatePanel.errorNoDrivingAudio',
   },
-} as const satisfies Record<VideoSlot, VideoSlotSpec>;
+} as const satisfies Record<VideoSlot, SlotSpec>;
 
 /**
  * One URL per slot. Absent means this map has nothing for that slot — which
