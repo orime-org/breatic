@@ -200,11 +200,14 @@ export class UploadSession implements DurableObject {
       return;
     }
 
+    // The alarm re-delivers what is recorded and does nothing else. Both of
+    // these are what a deleted instance looks like, and neither is something
+    // to report: without the facts there is no outcome to tell, and without
+    // the upload there is nothing to tell it about.
     const upload = await this.#state.storage.get<OpenUpload>("upload");
-    const progress = stored ?? { reported: false };
-    if (upload === undefined) return;
+    if (stored === undefined || upload === undefined) return;
 
-    if ((await this.#deliver(upload, progress)) === "not_accepted") {
+    if ((await this.#deliver(upload, stored)) === "not_accepted") {
       // Cloudflare retries a failing alarm, so failing here is what buys the
       // next attempt beyond the one `#deliver` scheduled. The node this upload
       // belongs to counts it as running until the server hears the outcome,
