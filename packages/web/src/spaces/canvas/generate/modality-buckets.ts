@@ -4,7 +4,7 @@
 /**
  * Which catalog buckets each generate panel reads.
  *
- * A panel used to map one-to-one onto a bucket. Audio does not: voiceover and
+ * A panel used to map one-to-one onto a bucket. Audio does not: text to speech and
  * voice cloning live in `tts`, sound effects and music in `audio`, and one
  * panel offers all four. Two places need that answer — the frame's gate,
  * which decides whether a panel may open at all, and each container's own
@@ -21,7 +21,7 @@ export type GenerateModality = 'image' | 'video' | 'audio';
  *
  * The names collide with the modality on two of the three, which is why this
  * is written out: `data[modality]` compiles for audio and silently reads the
- * sound-effect and music models while the panel is offering voiceover.
+ * sound-effect and music models while the panel is offering text to speech.
  */
 export const MODALITY_BUCKETS: Record<
   GenerateModality,

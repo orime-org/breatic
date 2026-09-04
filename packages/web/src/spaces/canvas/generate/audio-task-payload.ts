@@ -7,7 +7,7 @@
  * The task type is read off the MODEL rather than fixed for the panel, and
  * that is what this builder exists to get right: the worker loads a different
  * provider module per task type (`dispatch.ts` has one case for `tts` and
- * another for `audio`), while this one panel serves both buckets — voiceover
+ * another for `audio`), while this one panel serves both buckets — text to speech
  * and voice cloning come out of `config/models/tts/`, sound effects and music
  * out of `config/models/audio/`. A panel-wide constant would send one of those
  * to the other's module.
@@ -27,7 +27,7 @@ import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite
  *
  * Built from the MODE's slots, not from everything the node holds: a pick
  * survives a mode switch (that is the point of storing it on the node), so a
- * reference audio chosen for cloning is still there while voiceover is
+ * reference audio chosen for cloning is still there while text to speech is
  * selected, and walking the whole registry would send it under a mode that
  * never asked for one.
  *

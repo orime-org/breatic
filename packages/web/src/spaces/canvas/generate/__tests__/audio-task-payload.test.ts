@@ -140,7 +140,7 @@ describe('buildAudioTaskPayload — the picked reference audio', () => {
 
   it('leaves a pick behind when the active mode does not collect it', () => {
     // A pick survives a mode switch by design — it lives on the node, not in
-    // the panel — so voiceover reads a reference audio chosen for cloning and
+    // the panel — so text to speech reads a reference audio chosen for cloning and
     // would send it as `params.audio` under a mode that never asked for one.
     const payload = buildAudioTaskPayload({
       ...BASE,
@@ -163,7 +163,7 @@ describe('buildAudioTaskPayload — the picked reference audio', () => {
     expect(payload.params).not.toHaveProperty('audio');
   });
 
-  it('leaves the voiceover models untouched', () => {
+  it('leaves the text-to-speech models untouched', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
       model: model('elevenlabs-v3', 'tts'),

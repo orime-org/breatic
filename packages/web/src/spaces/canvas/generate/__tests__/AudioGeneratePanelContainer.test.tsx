@@ -137,7 +137,7 @@ function catalog(): ModelCatalog {
   return {
     image: [],
     video: [],
-    // The audio bucket really does hold non-voiceover models today
+    // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
     audio: [SFX],
     tts: [ELEVEN, FISH, CLONE],
@@ -282,7 +282,7 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
   it('offers only the models this mode can run', async () => {
     // The panel reads two catalog buckets, and the audio one holds sound
     // effect, music and vocal-remover models. Listing one of those under
-    // voiceover offers a pick the panel then silently reverts.
+    // text to speech offers a pick the panel then silently reverts.
     await openPanel({ model: 'elevenlabs-v3' });
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     expect(screen.getByTestId('generate-model-option-elevenlabs-v3')).toBeInTheDocument();

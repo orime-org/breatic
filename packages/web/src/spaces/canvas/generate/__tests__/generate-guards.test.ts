@@ -347,7 +347,7 @@ describe('evaluateExecute — the reference-audio slot', () => {
   });
 
   it('says nothing about it on a mode that needs no audio source', () => {
-    // Voiceover declares no audio source, so an unfilled slot it never shows
+    // Text to speech declares no audio source, so an unfilled slot it never shows
     // must not refuse anything.
     expect(
       evaluateExecute({ ...ok, refAudioRequired: false, refAudioChosen: false }),

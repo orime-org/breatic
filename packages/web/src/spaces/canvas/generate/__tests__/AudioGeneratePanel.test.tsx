@@ -139,7 +139,7 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
     renderPanel(<AudioGeneratePanel {...BASE} voiceRequired={false} />);
     expect(screen.queryByTestId('generate-voice-trigger')).toBeNull();
     // The rest of the footer stays: the mode and model pickers are how the
-    // reader gets back to a voiceover model.
+    // reader gets back to a text-to-speech model.
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
   });

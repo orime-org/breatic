@@ -5,7 +5,7 @@
  * #1960 §6.9 — which catalog buckets a panel's modality reads.
  *
  * A panel used to map one-to-one onto a bucket. Audio does not: the modes it
- * offers live in two of them, tts (voiceover, voice cloning) and audio (sound
+ * offers live in two of them, tts (text to speech, voice cloning) and audio (sound
  * effects, music). Two places read those buckets — the frame's gate, which
  * decides whether a panel may open at all, and each container's own model
  * list — and the gate's comment says it "reads the same lists the picker

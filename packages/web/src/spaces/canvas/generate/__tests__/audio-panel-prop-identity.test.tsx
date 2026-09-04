@@ -123,7 +123,7 @@ const ELEVEN: ModelEntry = {
 };
 
 /**
- * A catalog holding the one voiceover model this case needs.
+ * A catalog holding the one text-to-speech model this case needs.
  * @returns The catalog.
  */
 function catalog(): ModelCatalog {
