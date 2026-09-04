@@ -230,8 +230,8 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   await page.keyboard.type('Good evening.');
   await page.getByTestId('generate-audio-execute').click();
 
-  // The refusal speaks: the catalog's default voice is not a value every
-  // deployment accepts, so an untouched picker means no voice.
+  // The refusal speaks: a yaml default is not a choice, so an untouched picker
+  // means no voice rather than whichever one the catalog happens to list first.
   await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({
     timeout: 10_000,
   });

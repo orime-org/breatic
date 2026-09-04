@@ -5,11 +5,9 @@
  * The voices a tts model offers, in one shape whichever vendor answers.
  *
  * Which vendor that is depends on the deployment (`resolveActiveProvider`),
- * and it decides more than where the request goes: the two upstreams behind
- * `elevenlabs-v3` take different value domains for the same param — a 20-char
- * id when connected directly, a voice name through WaveSpeed. The id handed
- * back here is the one that provider accepts, because it is what the panel
- * writes into the node and what the next generation sends back out.
+ * and it decides where the request goes. The id handed back here is the one
+ * that provider accepts, because it is what the panel writes into the node
+ * and what the next generation sends back out.
  */
 
 import { AppError } from "@breatic/core";
@@ -42,6 +40,7 @@ const PAGE_SIZE = 50;
 /** A voice as written inline in a model's yaml entry. */
 interface InlineVoice {
   id?: unknown;
+  name?: unknown;
   description?: unknown;
   sample_url?: unknown;
 }
@@ -194,7 +193,10 @@ function fromFish(raw: unknown): Voice | null {
  * Read the voices a model writes inline in its yaml entry.
  *
  * This is the list for a deployment behind an aggregating gateway, which has
- * no voice endpoint of its own and takes these very names as the param value.
+ * no voice endpoint of its own to ask. The file carries the vendor's id and
+ * the readable name in separate fields, and an entry missing either is
+ * dropped: the id is the only thing the vendor accepts, and the name is the
+ * only thing a person can choose by (#2086).
  * @param entry - The model's yaml entry.
  * @returns Every inline voice, in the order the file lists them.
  */
@@ -204,9 +206,10 @@ function inlineVoices(entry: FullModelEntry): Voice[] {
   for (const raw of declared) {
     const voice = raw as InlineVoice;
     if (typeof voice.id !== "string" || !voice.id) continue;
+    if (typeof voice.name !== "string" || !voice.name) continue;
     voices.push({
       id: voice.id,
-      name: voice.id,
+      name: voice.name,
       ...(typeof voice.description === "string" && voice.description
         ? { description: voice.description }
         : {}),
@@ -290,9 +293,12 @@ export async function listVoices(
     };
   }
 
+  // By name alone: the ids here are the vendor's opaque strings, and matching
+  // them would answer a one-letter search with every voice whose id happens to
+  // contain that letter.
   const term = options.query?.toLowerCase();
   const voices = inlineVoices(entry).filter(
-    (v) => !term || v.id.toLowerCase().includes(term) || v.name.toLowerCase().includes(term),
+    (v) => !term || v.name.toLowerCase().includes(term),
   );
   return { voices, hasMore: false };
 }
