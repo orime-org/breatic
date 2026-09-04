@@ -1,8 +1,49 @@
 diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
-index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..6bbe0ab6998e628876cbc58ef765cdd5facd25c8 100644
+index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659ca0ea0b4 100644
 --- a/src/plugins/sync-plugin.js
 +++ b/src/plugins/sync-plugin.js
-@@ -730,6 +730,150 @@ export const createNodeFromYElement = (
+@@ -4,7 +4,7 @@
+ 
+ import { createMutex } from 'lib0/mutex'
+ import * as PModel from 'prosemirror-model'
+-import { AllSelection, Plugin, TextSelection, NodeSelection } from "prosemirror-state"; // eslint-disable-line
++import { AllSelection, Plugin, Selection, TextSelection, NodeSelection } from "prosemirror-state"; // eslint-disable-line
+ import * as math from 'lib0/math'
+ import * as object from 'lib0/object'
+ import * as set from 'lib0/set'
+@@ -257,7 +257,30 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
+         relSel.anchor,
+         binding.mapping
+       )
+-      tr.setSelection(NodeSelection.create(tr.doc, anchor))
++      // PATCH: a node selection names a node, and the peer whose update this
++      // is may have deleted that node. `NodeSelection.create` reads `nodeSize`
++      // off whatever sits at the position and raises on null, and this runs
++      // inside the binding's observer — so the throw leaves `Y.applyUpdate`
++      // and tears down the editor of the person who merely had that block
++      // selected. `near` is ProseMirror's own answer to "put the selection
++      // somewhere valid around here", which is what a selection on a node
++      // someone else removed should become.
++      //
++      // The position itself needs no clamping: it comes back from a RELATIVE
++      // position, which is anchored to a Yjs item rather than to a number, so
++      // a shorter document moves it rather than leaving it past the end. The
++      // clamp `_forceRerender` does further down is for the other kind of
++      // input — an absolute position carried over to a document rebuilt from
++      // scratch.
++      if (anchor !== null) {
++        const $at = tr.doc.resolve(anchor)
++        const after = $at.nodeAfter
++        tr.setSelection(
++          after !== null && after.type.spec.selectable !== false
++            ? NodeSelection.create(tr.doc, anchor)
++            : Selection.near($at)
++        )
++      }
+     } else {
+       const anchor = relativePositionToAbsolutePosition(
+         binding.doc,
+@@ -730,6 +753,150 @@ export const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -153,7 +194,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..6bbe0ab6998e628876cbc58ef765cdd5
    const children = []
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -1109,7 +1253,25 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1109,7 +1276,25 @@ export const attributesToMarks = (attrs, schema) => {
    const marks = []
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -180,7 +221,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..6bbe0ab6998e628876cbc58ef765cdd5
    }
    return marks
  }
-@@ -1121,6 +1283,11 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1121,6 +1306,11 @@ export const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {}
    marks.forEach((mark) => {
