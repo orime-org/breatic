@@ -29,10 +29,24 @@
  * a detach: it runs the plugin views' destroy, and two of those take the
  * collaboration apart — the sync plugin's calls `binding.destroy()`
  * (`y-prosemirror.cjs:309-310`), the undo plugin's the line above. So the body
- * must never unmount on its way out; it mounts the same editor into the new
- * container instead, and the old DOM comes with it. Measured across such a
- * hand-off in `document-editor-outlives-its-mount`: text present in the new
- * container, undo stack intact, later edits still reaching Yjs.
+ * must never unmount on its way out.
+ *
+ * Mounting a second time is not the other half of that, though it reads like
+ * it: `mount()` builds a NEW view without taking the old one down
+ * (`@tiptap/core`'s `Editor.mount` calls `createView` and nothing else), and
+ * inside `createView` the assignment `this.editorView = new EditorView(...)`
+ * runs the constructor BEFORE the field is updated — so any plugin view that
+ * dispatches while the view is being built reaches an editor still pointing at
+ * the old one. The sync plugin dispatches exactly there: its view calls
+ * `_forceRerender()`, which replaces the whole document from Yjs
+ * (`sync-plugin.js:190-194`). Measured on a document with content in it:
+ * `RangeError: Applying a mismatched transaction`, and the old view's plugin
+ * views never destroyed — the language listener among them, left dispatching
+ * into a view nobody reads.
+ *
+ * So the editor is mounted ONCE, into a surface this cache owns, and the
+ * hand-off moves that surface between containers. Nothing about the editor is
+ * rebuilt, which is what the previous shape was reaching for.
  *
  * Evicting a closed tab's editor IS that teardown, which is why this file
  * unmounts there and nowhere else.
@@ -46,6 +60,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { viewOf } from '@web/spaces/document/document-editor-view';
 import { documentChordsExtension } from '@web/spaces/document/document-block-chords';
 import { documentCaretExtension } from '@web/spaces/document/document-caret';
 import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
@@ -62,6 +77,15 @@ import { documentFallbackExtension } from '@web/spaces/document/document-unsuppo
 export interface DocumentEditorHandle {
   /** The live editor, owned by this cache rather than by any component. */
   editor: BlockNoteEditor<never, never, never>;
+  /**
+   * The element the editor's DOM lives in, for a body to adopt.
+   *
+   * Owned here rather than by the body, because it is what carries the editor
+   * across a Space-tab switch — see the module comment for what mounting a
+   * second time does instead. Bodies reach it through
+   * {@link adoptDocumentEditor}.
+   */
+  surface: HTMLElement;
   /**
    * The editor's undo manager, held rather than looked up. Its readers are the
    * tests, which assert on the undo stack directly; the extensions get it from
@@ -142,9 +166,15 @@ function createDocumentEditor(
     ],
   });
 
+  // Not mounted yet: BlockNote reads the surface's parent to decide where its
+  // floating UI portals to, and a surface with no parent would send it to the
+  // page body. `adoptDocumentEditor` mounts once the surface is in place.
+  const surface = document.createElement('div');
+
   return {
     editor,
     undoManager,
+    surface,
     onClearDocumentRequest: (listener) => {
       clearListeners.add(listener);
       return () => {
@@ -158,8 +188,38 @@ const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
     handle.editor.unmount();
+    handle.surface.remove();
   },
 );
+
+/** An editor and the surface it lives on — all a body needs to show one. */
+export type ShowableEditor = Pick<DocumentEditorHandle, 'editor' | 'surface'>;
+
+/**
+ * Put a document's editor inside a container, mounting it the first time.
+ *
+ * The surface moves; the editor is never mounted twice. What that costs to get
+ * wrong is in the module comment — a rebuilt view, a mismatched transaction,
+ * and the old view's plugin views left running.
+ *
+ * Adopting into a container that already holds the surface is what StrictMode's
+ * double-invoked effect does, and `appendChild` of a node already in place is a
+ * no-op move.
+ * @param handle - The handle {@link getDocumentEditor} returned.
+ * @param container - The element that should hold the editor's DOM.
+ */
+export function adoptDocumentEditor(
+  handle: ShowableEditor,
+  container: HTMLElement,
+): void {
+  container.appendChild(handle.surface);
+  // `mount()` is what builds the view, so its absence is what "not yet
+  // mounted" means. Asking the editor is more direct than a flag here that
+  // would have to be kept in step with it.
+  if (viewOf(handle.editor) === null) {
+    handle.editor.mount(handle.surface);
+  }
+}
 
 /**
  * Get-or-create the editor for a document.

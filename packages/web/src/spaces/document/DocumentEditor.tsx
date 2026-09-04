@@ -1,17 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { BlockNoteEditor } from '@blocknote/core';
 import * as React from 'react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
+import {
+  adoptDocumentEditor,
+  type ShowableEditor,
+} from '@web/spaces/document/document-editor-cache';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 
 interface DocumentEditorProps {
-  /** The live editor, created and owned by the cache. */
-  editor: BlockNoteEditor<never, never, never>;
+  /** The live editor and its surface, created and owned by the cache. */
+  handle: ShowableEditor;
   /** True for a viewer. */
   readOnly?: boolean;
 }
@@ -27,12 +30,12 @@ interface DocumentEditorProps {
  * Two of them are here: the bubble bar for the selection, the entry for the
  * whole document. The block handle menu and the insert menu are task #113.
  * @param root0 - Editor chrome props.
- * @param root0.editor - The editor to render.
+ * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
  * @returns The editor body, the entry and the bubble bar.
  */
 export const DocumentEditor = React.memo(function DocumentEditor({
-  editor,
+  handle,
   readOnly = false,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
@@ -41,22 +44,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // itself would look before this effect has run.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
 
-  // Mounting is a hand-off, not a construction: the editor belongs to
-  // `document-editor-cache` and outlives every one of these mounts. Its DOM
-  // moves into whichever container is current, and the cleanup deliberately
-  // does NOT unmount — `unmount()` runs the plugin views' destroy, which takes
-  // the collaboration binding and the undo manager apart, so a Space-tab
-  // switch would hand back an editor bound to nothing. Evicting a closed tab
-  // is where that teardown belongs. Mounting into the same element twice is
-  // what StrictMode does and leaves one copy of the DOM.
+  // A hand-off, not a construction: the editor belongs to
+  // `document-editor-cache` and outlives every one of these renders. What
+  // moves is the surface it is mounted on; the cleanup deliberately tears
+  // nothing down, because `unmount()` takes the collaboration binding and the
+  // undo manager apart and a Space-tab switch would hand back an editor bound
+  // to nothing. Evicting a closed tab is where that teardown belongs.
   React.useEffect(() => {
     const container = body.current;
     if (container === null) return;
-    editor.mount(container);
+    adoptDocumentEditor(handle, container);
     setViewport(
       container.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
     );
-  }, [editor]);
+  }, [handle]);
 
   return (
     // `isolate` keeps the z-values below local: the entry has to paint over
@@ -96,7 +97,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           pinned to the pointer and stays put instead (E2). */}
       {viewport !== null && (
         <SelectionBubbleBar
-          editor={editor}
+          editor={handle.editor}
           viewport={viewport}
           readOnly={readOnly}
         />

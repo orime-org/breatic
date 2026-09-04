@@ -137,7 +137,7 @@ export function DocumentSpace({
   // honest reading of the situation — nothing typed then would have been
   // saved — and `ConnectionBanner` at the project level says why (user
   // 2026-07-29 weighed this against the alternative and chose it).
-  const editor = hasEverSynced ? (handle?.editor ?? null) : null;
+  const shown = hasEverSynced ? handle : null;
 
   // The guarded whole-document delete: the extension asks instead of deleting
   // (see document-select-all.ts), and this mount answers with the dialog.
@@ -202,8 +202,8 @@ export function DocumentSpace({
             {t('spaces.document.unavailable.action')}
           </Button>
         </div>
-      ) : editor ? (
-        <DocumentEditor editor={editor} readOnly={readOnly} />
+      ) : shown ? (
+        <DocumentEditor handle={shown} readOnly={readOnly} />
       ) : (
         <div
           data-testid='document-space-loading'
