@@ -72,6 +72,15 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({ kind: 'image', name: 'My Pic' });
   });
 
+  it('projects the four task counts onto a content view (#186 §7.1)', () => {
+    // The counts column outside the node reads them straight off the view;
+    // they are the whole of what the document says about its tasks.
+    const counts = { running: 2, done: 1, failed: 0, expired: 3 };
+    const v = toNodeView(fields('image', { content: 'x', taskCounts: counts }));
+
+    expect(v).toMatchObject({ kind: 'image', taskCounts: counts });
+  });
+
   it('leaves no body field behind on a text node', () => {
     const v = toNodeView(fields('text', {}));
     expect(v).not.toHaveProperty('content');

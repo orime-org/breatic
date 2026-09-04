@@ -299,7 +299,8 @@
       "panelClose": "タスク一覧を閉じる",
       "panelEmpty": "今はここに何もありません。",
       "panelError": "タスク一覧を読み込めませんでした。",
-      "panelReload": "再試行"
+      "panelReload": "再試行",
+      "dismissFailed": "このタスクを削除できませんでした。"
     },
     "generatePanel": {
       "style": "スタイル",

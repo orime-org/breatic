@@ -299,7 +299,8 @@
       "panelClose": "关闭任务列表",
       "panelEmpty": "这里暂时没有内容。",
       "panelError": "任务列表加载失败。",
-      "panelReload": "重试"
+      "panelReload": "重试",
+      "dismissFailed": "这条任务没能清除。"
     },
     "generatePanel": {
       "style": "风格",

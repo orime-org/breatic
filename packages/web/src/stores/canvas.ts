@@ -150,7 +150,22 @@ interface CanvasState {
    * host + kind is the correct abstraction for N mutually-exclusive node-
    * anchored panels — cheaper and inherently exclusive versus parallel states.
    */
-  panelKind: 'generate' | 'generateVideo' | 'resetEmpty' | 'history' | null;
+  panelKind:
+    | 'generate'
+    | 'generateVideo'
+    | 'resetEmpty'
+    | 'history'
+    | 'tasks'
+    | null;
+  /**
+   * Which of a node's four task states the open list is showing (#186 §7.1),
+   * null whenever the task list is not the open panel.
+   *
+   * The list answers one state at a time, so which one was asked for belongs
+   * beside the host rather than inside the panel: the counts column outside
+   * the node reads it to show which of its four buttons is pressed.
+   */
+  taskPanelStatus: 'running' | 'done' | 'failed' | 'expired' | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -209,6 +224,14 @@ interface CanvasState {
   openEmptyImagePanel: (nodeId: string) => void;
   /** Open the node-history panel for a node (#1619, replaces any open panel). */
   openHistoryPanel: (nodeId: string) => void;
+  /**
+   * Open one state's task list for a node (#186 §7.1, replaces any open
+   * panel). Calling it again with another state re-asks the same panel.
+   */
+  openTaskPanel: (
+    nodeId: string,
+    status: 'running' | 'done' | 'failed' | 'expired',
+  ) => void;
   /** Close whichever bottom panel is open (exit button, or execute hands off). */
   closeActivePanel: () => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
@@ -277,6 +300,7 @@ export const useCanvasStore = create<CanvasState>()(
     canRedo: false,
     panelHostId: null,
     panelKind: null,
+    taskPanelStatus: null,
     pickSession: null,
     pendingFocusUploads: [],
     setSelectedNodeIds: (ids) =>
@@ -403,10 +427,21 @@ export const useCanvasStore = create<CanvasState>()(
         s.panelKind = 'history';
         s.pickSession = null;
       }),
+    openTaskPanel: (nodeId, status) =>
+      set((s) => {
+        // The fourth node-anchored panel in the same exclusive slot; clearing
+        // pickSession matches the other three openers so a stale Generate pick
+        // cannot wire the next click to a previous node.
+        s.panelHostId = nodeId;
+        s.panelKind = 'tasks';
+        s.taskPanelStatus = status;
+        s.pickSession = null;
+      }),
     closeActivePanel: () =>
       set((s) => {
         s.panelHostId = null;
         s.panelKind = null;
+        s.taskPanelStatus = null;
         s.pickSession = null;
       }),
     startReferencePick: (nodeId) =>
@@ -469,6 +504,7 @@ export const useCanvasStore = create<CanvasState>()(
         s.canRedo = false;
         s.panelHostId = null;
         s.panelKind = null;
+        s.taskPanelStatus = null;
         s.pickSession = null;
         s.pendingFocusUploads = [];
         // `minimapVisible` / `snapToGrid` / `zoom` are viewport preferences, not

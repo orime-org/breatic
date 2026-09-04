@@ -19,7 +19,12 @@ import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context'
 import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
+import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
+
+/** A node with no task rows yet reads as four zeros rather than nothing. */
+const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
 
 /** Prop surface every node body accepts from the ReactFlow wrapper. */
 interface InnerNodeProps {
@@ -143,6 +148,29 @@ function makeFlowNode(
       },
       [],
     );
+    // The four task counts sit outside the node's top-right corner and are
+    // always there, so a node does not change size the moment its first task
+    // opens (#186 §7.1). Which one is pressed is the panel's own state, so a
+    // second node's column never lights up from the first node's list.
+    const taskCounts =
+      data.kind === 'group' || data.kind === 'annotation'
+        ? null
+        : (data.taskCounts ?? NO_TASKS);
+    const taskPanelOpenHere = useCanvasStore(
+      (s) =>
+        s.panelKind === 'tasks' && s.panelHostId === props.id
+          ? s.taskPanelStatus
+          : null,
+    );
+    const openTaskPanel = useCanvasStore((s) => s.openTaskPanel);
+    const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
+    const onOpenTasks = React.useCallback(
+      (next: TaskStatus | null): void => {
+        if (next === null) closeActivePanel();
+        else openTaskPanel(props.id, next);
+      },
+      [closeActivePanel, openTaskPanel, props.id],
+    );
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
@@ -205,6 +233,25 @@ function makeFlowNode(
                     isConnectable={props.isConnectable}
                   />
                 </>
+              ) : null}
+              {/* Outside the node's own box, so it never covers content and
+                never changes what the body is sized to. It counter-scales on
+                the same factor as the name header, so the four numbers stay
+                readable at any zoom. */}
+              {taskCounts !== null ? (
+                <div
+                  className='absolute left-full top-0 ml-2'
+                  style={{
+                    transform: `scale(${headerScale})`,
+                    transformOrigin: 'top left',
+                  }}
+                >
+                  <TaskCountColumn
+                    counts={taskCounts}
+                    openFor={taskPanelOpenHere}
+                    onOpen={onOpenTasks}
+                  />
+                </div>
               ) : null}
             </div>
           </NodeOccupantsContext.Provider>

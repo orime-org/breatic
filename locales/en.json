@@ -299,7 +299,8 @@
       "panelClose": "Close task list",
       "panelEmpty": "Nothing here right now.",
       "panelError": "The task list could not be loaded.",
-      "panelReload": "Try again"
+      "panelReload": "Try again",
+      "dismissFailed": "That task could not be cleared."
     },
     "nodeMenu": {
       "generate": "Generate",

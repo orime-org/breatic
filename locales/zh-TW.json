@@ -299,7 +299,8 @@
       "panelClose": "關閉任務清單",
       "panelEmpty": "這裡暫時沒有內容。",
       "panelError": "任務清單載入失敗。",
-      "panelReload": "重試"
+      "panelReload": "重試",
+      "dismissFailed": "這條任務沒能清除。"
     },
     "generatePanel": {
       "style": "風格",

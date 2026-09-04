@@ -41,6 +41,7 @@ import {
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
+  type NodeTaskEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
@@ -194,6 +195,7 @@ import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePane
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
+import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
 import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
 import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
@@ -3193,6 +3195,28 @@ function CanvasSpaceInner({
     },
     [fillUpload],
   );
+  // Task list "Replace" (#186 §7.4): put one task's result on the node. A
+  // direct write with no lock — the conflict rule is that the later write
+  // wins, and every task's own result stays on its row for the user to pick
+  // again. Only the node's own lock refuses it.
+  const replaceNodeFromTask = React.useCallback(
+    (nodeId: string, task: NodeTaskEntry): void => {
+      if (readOnly || task.content === null) return;
+      const gateBlock = evaluateNodeGate(
+        { locked: isNodeLocked(projectId, spaceId, nodeId), handling: false },
+        'editContent',
+      );
+      if (gateBlock) {
+        warnNodeGate(t(gateBlock.toastKey));
+        return;
+      }
+      restoreNodeMedia(projectId, spaceId, nodeId, {
+        content: task.content,
+        coverUrl: task.coverUrl ?? undefined,
+      });
+    },
+    [readOnly, projectId, spaceId, t],
+  );
   // Error-state Retry (#1609 P4): re-run the upload from the session
   // stash. The stash survives repeated failures (cleared only on success)
   // and a refresh drops it — the button then no longer renders.
@@ -3795,6 +3819,14 @@ function CanvasSpaceInner({
             nodes={nodes}
             projectId={projectId}
             onRestore={restoreNodeContent}
+          />
+          {/* Node task list: the fourth panel in that same host + lifecycle,
+              anchored to the node's right beside its counts column. */}
+          <NodeTaskPanelContainer
+            projectId={projectId}
+            spaceId={spaceId}
+            onReplace={replaceNodeFromTask}
+            onRetry={retryNodeUpload}
           />
         </ReactFlow>
         {pickForNodeId ? (

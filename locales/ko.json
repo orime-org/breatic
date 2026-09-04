@@ -299,7 +299,8 @@
       "panelClose": "작업 목록 닫기",
       "panelEmpty": "지금은 여기에 아무것도 없습니다.",
       "panelError": "작업 목록을 불러오지 못했습니다.",
-      "panelReload": "다시 시도"
+      "panelReload": "다시 시도",
+      "dismissFailed": "이 작업을 지우지 못했습니다."
     },
     "generatePanel": {
       "style": "스타일",

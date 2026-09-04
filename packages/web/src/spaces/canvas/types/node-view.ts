@@ -31,7 +31,11 @@
  * writes back to the wire through the canvas-space setters.
  */
 
-import type { CanvasNodeFields, FocusImage } from '@breatic/shared';
+import type {
+  CanvasNodeFields,
+  FocusImage,
+  NodeTaskCounts,
+} from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -66,6 +70,13 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   name?: string;
   status: DisplayStatus;
+  /**
+   * How many tasks this node carries in each state (#186 §7.1). The counts
+   * column outside the node renders them; `status` above is derived from the
+   * same four numbers, so the two never disagree. Absent on a node the
+   * document has never opened a task for.
+   */
+  taskCounts?: NodeTaskCounts;
   errorMessage?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
@@ -288,6 +299,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const contentCommon = {
     name: data.name,
     status,
+    taskCounts: data.taskCounts,
     errorMessage,
     locked,
     prompt: data.prompt,
