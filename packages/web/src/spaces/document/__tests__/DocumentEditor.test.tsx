@@ -18,21 +18,23 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
-import type { Editor } from '@tiptap/react';
 import * as Y from 'yjs';
 
 import { Awareness } from 'y-protocols/awareness';
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+import {
+  _resetDocumentEditorCacheForTests,
+  type DocumentEditorHandle,
+} from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 describe('DocumentEditor', () => {
   const NAME = 'project-p/document-chrome';
   let doc: Y.Doc;
   let awareness: Awareness;
-  let editor: Editor;
+  let handle: DocumentEditorHandle;
 
   beforeEach(async () => {
     doc = new Y.Doc();
@@ -41,7 +43,7 @@ describe('DocumentEditor', () => {
       useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
-    editor = result.current!.editor;
+    handle = result.current!;
   });
 
   afterEach(() => {
@@ -56,7 +58,7 @@ describe('DocumentEditor', () => {
     // went vacuous the moment it was deleted. Anything new added as a direct
     // child of the shell turns this red. Two things do NOT: the bubble bar,
     // which only renders while a selection exists, and anything portalled out.
-    const { container } = render(<DocumentEditor editor={editor} />);
+    const { container } = render(<DocumentEditor handle={handle} />);
     const children = [...container.firstElementChild!.children];
 
     expect(children).toHaveLength(1);
@@ -67,7 +69,7 @@ describe('DocumentEditor', () => {
     // Inside, so a wheel over it finds the body the way the browser normally
     // does. Ahead of the page, so it sticks to the top edge while the text
     // scrolls under it.
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     const viewport = document.querySelector(
       `.${BODY_SCROLLER_CLASS} [data-radix-scroll-area-viewport]`,
     )!;
@@ -83,7 +85,7 @@ describe('DocumentEditor', () => {
   });
 
   it('renders the body and the whole-document entry', () => {
-    render(<DocumentEditor editor={editor} />);
+    render(<DocumentEditor handle={handle} />);
     expect(screen.getByTestId('document-editor-content')).toBeInTheDocument();
     expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
   });

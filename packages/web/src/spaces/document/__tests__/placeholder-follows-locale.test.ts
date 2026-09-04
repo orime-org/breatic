@@ -4,8 +4,9 @@
 /**
  * The document's placeholder must follow a language switch.
  *
- * It is an attribute on the editor element carrying `data-body-placeholder`,
- * recomputed only when something dispatches to the editor — and switching the
+ * It is a decoration on the document's first block carrying
+ * `data-block-placeholder`, recomputed only when something dispatches to the
+ * editor — and switching the
  * app language dispatches nothing, it is not an edit. Without a redraw it
  * would keep whatever language was active when it was last drawn, until the
  * user clicks into the document or types.
@@ -25,7 +26,10 @@ import * as Y from 'yjs';
 
 import { getLocale, setLocale } from '@breatic/shared';
 
-import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+import {
+  _resetDocumentEditorCacheForTests,
+  adoptDocumentEditor,
+} from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 
@@ -51,11 +55,18 @@ describe('the document placeholder', () => {
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
-    const editor = rendered.result.current!.editor;
+    const handle = rendered.result.current!;
+    // On the page, because the placeholder is drawn by a plugin view and a
+    // plugin view is what mounting builds.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    adoptDocumentEditor(handle, container);
 
-    /** What the placeholder attribute currently reads. */
+    /** What the placeholder the first block carries currently reads. */
     const bodyPlaceholder = (): string =>
-      editor.view.dom.getAttribute('data-body-placeholder') ?? '';
+      container
+        .querySelector('[data-block-placeholder]')
+        ?.getAttribute('data-block-placeholder') ?? '';
 
     const englishBody = bodyPlaceholder();
     expect(englishBody).not.toBe('');

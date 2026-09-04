@@ -39,9 +39,17 @@ import * as Y from 'yjs';
 
 import {
   _resetDocumentEditorCacheForTests,
+  adoptDocumentEditor,
   getDocumentEditor,
 } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@breatic/shared';
+import {
+  documentBodyFragment,
+  encodeInitialSpaceContent,
+} from '@breatic/shared';
+import {
+  blockTexts,
+  seedParagraphs,
+} from '@web/spaces/document/__tests__/document-body-fixtures';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const NAME = 'project-p/document-s';
@@ -199,18 +207,21 @@ describe('editability is settled before the first paint', () => {
 
 describe('the setEditable paths write nothing (#108)', () => {
   // The measured chain (#108): the y-sync plugin's view-update hook runs on
-  // every `setEditable`, and flushes any difference between the local
+  // every editability change, and flushes any difference between the local
   // ProseMirror document and the shared one into Yjs. The difference it
-  // flushed was the phantom child ProseMirror fills in when the doc's content
-  // rule demands one and the fragment is empty. `content: 'block*'` demands
-  // nothing, so an empty fragment binds to an empty document — these tests
-  // hold that resting state through a read-only build (the viewer path:
-  // built, then corrected to non-editable on the way out of the cache) and
-  // through both directions of the flip (the history-preview path), and
-  // assert this client originates no update at all.
+  // flushed was the child ProseMirror fills in when the doc's content rule
+  // demands one and the fragment has none. The backend seeds that block
+  // instead, so the two agree from the start — these tests hold that resting
+  // state through a read-only build (the viewer path: built, then corrected on
+  // the way out of the cache) and through both directions of the flip (the
+  // history-preview path), and assert this client originates no update at all.
+  //
+  // The editor is on the page for both, because the binding this is about is
+  // built by the sync plugin's view.
   let doc: Y.Doc;
   let awareness: Awareness;
   let local: Uint8Array[];
+  const containers: HTMLElement[] = [];
 
   /**
    * Records updates this client originates.
@@ -229,47 +240,59 @@ describe('the setEditable paths write nothing (#108)', () => {
   afterEach(() => {
     doc.off('update', record);
     _resetDocumentEditorCacheForTests();
+    containers.splice(0).forEach((element) => {
+      element.remove();
+    });
     awareness.destroy();
     doc.destroy();
   });
 
-  it('an empty document survives a read-only build and both flips byte-empty', () => {
-    const body = documentBodyFragment(doc);
-    expect(body.length).toBe(0);
-    doc.on('update', record);
-
+  /** Opens the document's editor on the page, the way the body does. */
+  function open(editable: boolean): ReturnType<typeof getDocumentEditor> {
     const handle = getDocumentEditor(doc, NAME, {
       caretProvider: { awareness },
-      editable: false,
+      editable,
     });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    containers.push(container);
+    adoptDocumentEditor(handle, container);
+    return handle;
+  }
+
+  it('an untouched document survives a read-only build and both flips byte-empty', () => {
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'), 'remote-provider');
+    const before = Y.encodeStateAsUpdate(doc).byteLength;
+    doc.on('update', record);
+
+    const handle = open(false);
     // The history-preview flip, both directions.
-    handle.editor.setEditable(true);
-    handle.editor.setEditable(false);
+    handle.editor.isEditable = true;
+    handle.editor.isEditable = false;
 
     expect(local).toHaveLength(0);
-    expect(body.length).toBe(0);
+    expect(Y.encodeStateAsUpdate(doc).byteLength).toBe(before);
   });
 
   it('a document with content survives the flips unchanged, and the probe sees a real edit', () => {
     const source = new Y.Doc();
-    const para = new Y.XmlElement('paragraph');
-    para.insert(0, [new Y.XmlText('shared text')]);
-    documentBodyFragment(source).insert(0, [para]);
+    Y.applyUpdate(source, encodeInitialSpaceContent('document'));
+    seedParagraphs(source, ['shared text']);
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
     source.destroy();
     doc.on('update', record);
 
-    const handle = getDocumentEditor(doc, NAME, {
-      caretProvider: { awareness },
-      editable: true,
-    });
-    handle.editor.setEditable(false);
-    handle.editor.setEditable(true);
+    const handle = open(true);
+    handle.editor.isEditable = false;
+    handle.editor.isEditable = true;
     expect(local).toHaveLength(0);
+    expect(blockTexts(doc)).toEqual(['shared text']);
 
     // Probe validity: the recorder must be able to see a write, or the
     // assertions above prove nothing. A real edit fires it.
-    handle.editor.commands.insertContentAt(1, 'X');
+    handle.editor.replaceBlocks(handle.editor.document, [
+      { type: 'paragraph', content: 'typed' },
+    ] as never);
     expect(local.length).toBeGreaterThan(0);
   });
 });
