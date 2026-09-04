@@ -73,10 +73,12 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
  * know — and the failure is silent: the first client to connect deletes what
  * it cannot recognise and broadcasts that deletion as its own edit.
  *
- * The paragraph carries the three attributes the editor's paragraph declares
- * defaults for. Writing them here keeps the first client from filling them in
- * itself, which would be a write to the shared document performed by merely
- * opening it.
+ * The paragraph carries every attribute the editor's paragraph declares a
+ * default for. Writing them here keeps the first client from filling them in
+ * itself, and an attribute left out is supplied from the schema's default the
+ * first time anyone edits — a write carried to every peer that says nothing
+ * about what the reader did. `backend-seed-contract.test.ts` compares this
+ * list against the schema, so a new attribute turns red here.
  * @returns The `blockGroup` element, ready to insert into a fragment.
  */
 function buildInitialDocumentBlock(): Y.XmlElement {
@@ -88,6 +90,7 @@ function buildInitialDocumentBlock(): Y.XmlElement {
   paragraph.setAttribute("backgroundColor", "default");
   paragraph.setAttribute("textColor", "default");
   paragraph.setAttribute("textAlignment", "left");
+  paragraph.setAttribute("quoted", false as never);
 
   container.insert(0, [paragraph]);
   group.insert(0, [container]);

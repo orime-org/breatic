@@ -107,6 +107,39 @@ describe('a document opened straight from the backend seed', () => {
     expect(editor.prosemirrorState.doc.textContent).toBe('');
   });
 
+  it('names every attribute the schema declares a default for', async () => {
+    // The seed exists so that the first client to bind invents nothing. An
+    // attribute it leaves out is one the schema will supply from its default
+    // the first time anyone edits — a write carried to every peer that says
+    // nothing about what the reader did.
+    //
+    // Compared against the schema rather than against a list written here, so
+    // that a tenth attribute added to the paragraph turns this red instead of
+    // going unnoticed.
+    const { editor } = await open();
+    const declared = Object.keys(
+      editor.prosemirrorState.schema.nodes['paragraph']?.spec.attrs ?? {},
+    );
+
+    const seeded = documentBodyFragment(doc).toString();
+    const named = [...seeded.matchAll(/<paragraph ([^>]*)>/g)]
+      .flatMap((match) => [...(match[1] ?? '').matchAll(/(\w+)=/g)])
+      .map((attr) => attr[1]);
+    expect(named.sort()).toEqual(declared.sort());
+
+    // And that the values match what the schema would have supplied: a seeded
+    // attribute the schema reads differently is one it overwrites on the first
+    // edit, which the name comparison above cannot see. Read off the block
+    // that was seeded, since typing into an empty document also leaves a fresh
+    // block behind it.
+    const attributesOfFirst = (): string =>
+      /<paragraph ([^>]*)>/.exec(documentBodyFragment(doc).toString())?.[1] ?? '';
+    const before = attributesOfFirst();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('typing', 2));
+    expect(attributesOfFirst()).toBe(before);
+  });
+
   it('gives the user nothing to undo — the seed is not their edit', async () => {
     const { undoManager } = await open();
     // This also guards the other failure mode: if the seeded bytes held

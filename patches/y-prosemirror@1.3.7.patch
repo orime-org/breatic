@@ -38,7 +38,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
  import * as math from 'lib0/math'
  import * as object from 'lib0/object'
  import * as set from 'lib0/set'
-@@ -257,7 +257,30 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
+@@ -257,7 +257,37 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
          relSel.anchor,
          binding.mapping
        )
@@ -61,8 +61,15 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
 +      if (anchor !== null) {
 +        const $at = tr.doc.resolve(anchor)
 +        const after = $at.nodeAfter
++        // The predicate is ProseMirror's own, and the pair below is the answer
++        // it gives to this same question at `NodeBookmark.resolve`. Written by
++        // hand it came out as the `selectable` half alone, which says YES on a
++        // text node — text carries no `selectable` in its spec — and
++        // `NodeSelection.create` then builds one rather than raising. No path
++        // through the product is known to put text at this position; asking
++        // the same way upstream does is what keeps the two from diverging.
 +        tr.setSelection(
-+          after !== null && after.type.spec.selectable !== false
++          after !== null && NodeSelection.isSelectable(after)
 +            ? NodeSelection.create(tr.doc, anchor)
 +            : Selection.near($at)
 +        )
@@ -70,7 +77,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
      } else {
        const anchor = relativePositionToAbsolutePosition(
          binding.doc,
-@@ -730,6 +753,159 @@ export const createNodeFromYElement = (
+@@ -730,6 +760,159 @@ export const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -230,7 +237,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
    const children = []
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -1109,7 +1285,25 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1109,7 +1292,25 @@ export const attributesToMarks = (attrs, schema) => {
    const marks = []
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -257,7 +264,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659
    }
    return marks
  }
-@@ -1121,6 +1315,11 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1121,6 +1322,11 @@ export const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {}
    marks.forEach((mark) => {
