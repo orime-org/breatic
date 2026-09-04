@@ -491,8 +491,9 @@ function AudioGeneratePanelBody({
   // on it alone would freeze this copy in the old language.
   // What the box asks for rides on the mode (`audio-mode-options`): the two
   // speech modes ask for lines to speak, sound effects for a description of a
-  // sound. An empty mode is the catalog not having arrived, and then the panel
-  // is offering nothing to write for yet.
+  // sound. The fallback is where the types land rather than a state to expect:
+  // `mode` is only empty when no mode is available, and `CatalogGatedFrame`
+  // holds the panel shut in that case (`generate-panel-frame.tsx`).
   const promptPlaceholder = t(
     AUDIO_MODE_OPTIONS.find((o) => o.value === mode)?.placeholderKey ??
       'canvas.generatePanel.audioPromptPlaceholder',

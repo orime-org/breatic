@@ -36,7 +36,7 @@ export async function buildRequest(
   _modelName: string,
   params: Record<string, unknown>,
 ): Promise<[string, Record<string, unknown>]> {
-  return [prompt, params];
+  return [prompt, { ...params }];
 }
 
 export default { MODELS, buildRequest } satisfies ModelFamily;

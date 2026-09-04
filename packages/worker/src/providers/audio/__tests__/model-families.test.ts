@@ -8,24 +8,21 @@
  * `generateAsync` looks the family up by model name and throws when there is
  * none, so a model added to yaml without one is a task that fails at dispatch
  * — after the credits pre-check has passed and the user has watched it spin.
- * The registry itself is private to `index.ts`, so this rebuilds it from the
- * same modules that file imports.
+ * This reads the list the dispatcher's own map is built from: rebuilding it
+ * here from the same imports would pass even with a family left unregistered,
+ * which is the one case it exists to catch.
  */
 
 import { describe, it, expect } from "vitest";
 
 import { getFullModelConfig } from "@breatic/domain";
 
-import elevenlabs from "@worker/providers/audio/models/elevenlabs.js";
-import minimax from "@worker/providers/audio/models/minimax.js";
+import { ALL_FAMILIES } from "@worker/providers/audio/index.js";
 import sonilo from "@worker/providers/audio/models/sonilo.js";
-import vocalRemover from "@worker/providers/audio/models/vocal-remover.js";
-
-const FAMILIES = [minimax, elevenlabs, vocalRemover, sonilo];
 
 describe("audio model families cover the catalog", () => {
   it("has a family for every model declared in config/models/audio", () => {
-    const covered = new Set(FAMILIES.flatMap((f) => [...f.MODELS]));
+    const covered = new Set(ALL_FAMILIES.flatMap((f) => [...f.MODELS]));
     const declared = getFullModelConfig("audio").models.map((m) => m.name);
     expect(declared.length).toBeGreaterThan(0);
     for (const name of declared) {
@@ -35,7 +32,7 @@ describe("audio model families cover the catalog", () => {
 
   it("claims each model exactly once, so the registry has no ambiguity", () => {
     const seen = new Set<string>();
-    for (const family of FAMILIES) {
+    for (const family of ALL_FAMILIES) {
       for (const name of family.MODELS) {
         expect(seen.has(name), `${name} is claimed by two families`).toBe(false);
         seen.add(name);
