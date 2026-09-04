@@ -222,3 +222,32 @@ describe('Enter inside an ordered list', () => {
     expect(blocks[1]?.props['quoted']).toBe(true);
   });
 });
+
+describe('typing a quote into being', () => {
+  // `> ` opened a quote before this editor changed underneath it: the body ran
+  // on StarterKit, whose Blockquote ships that shorthand, and the extensions
+  // file said every list, quote and code block it ships behaves as it does.
+  //
+  // Here a quote is a prop rather than a node, so the shorthand sets the prop
+  // and leaves the block the type it already was.
+  it('turns "> " into a quote, leaving the block its own type', () => {
+    const { editor } = open([{ type: 'paragraph', content: '>' }]);
+    caretToEndOf(editor, 0);
+    expect(typeCharacter(editor, ' ')).toBe(true);
+    const [block] = blocksOf(editor);
+    expect(block?.type).toBe('paragraph');
+    expect(block?.props['quoted']).toBe(true);
+  });
+
+  it('quotes a heading without taking the heading away', () => {
+    const { editor } = open([
+      { type: 'heading', props: { level: 2 }, content: '>' },
+    ]);
+    caretToEndOf(editor, 0);
+    expect(typeCharacter(editor, ' ')).toBe(true);
+    const [block] = blocksOf(editor);
+    expect(block?.type).toBe('heading');
+    expect(block?.props['level']).toBe(2);
+    expect(block?.props['quoted']).toBe(true);
+  });
+});
