@@ -60,6 +60,14 @@ export interface ExecuteGateInput {
    */
   voiceRequired?: boolean;
   /**
+   * Whether the active mode needs a reference audio, from the model's own
+   * `sourcesByMode`. Optional for the same reason as `voiceRequired`: a panel
+   * with no such mode leaves it out rather than passing false everywhere.
+   */
+  refAudioRequired?: boolean;
+  /** Whether the reference-audio slot holds a pick. Read only when required. */
+  refAudioChosen?: boolean;
+  /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
    * Not "is the value non-null": one model defaults to null while the other
@@ -90,7 +98,8 @@ export type ExecuteRefusal =
   | 'submitting'
   | 'prompt-missing'
   | 'prompt-too-long'
-  | 'voice-missing';
+  | 'voice-missing'
+  | 'ref-audio-missing';
 
 /**
  * Which execute precondition fails, or null when Generate may proceed.
@@ -147,6 +156,7 @@ export function evaluateExecute(
   // Both remaining refusals are the user's to fix, so they follow the panel's
   // own order: the prompt editor sits above the voice picker.
   if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
+  if (input.refAudioRequired && !input.refAudioChosen) return 'ref-audio-missing';
   return null;
 }
 
@@ -157,7 +167,8 @@ export function evaluateExecute(
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * `prompt-missing`, `prompt-too-long` and `voice-missing` leave the button
+ * `prompt-missing`, `prompt-too-long`, `voice-missing` and `ref-audio-missing`
+ * leave the button
  * live, because they are the ones the user can act on — the click then says
  * what is wrong, which a greyed-out button cannot (GOV.UK and Adam Silver both
  * name the disabled-until-valid button an anti-pattern for exactly this: it
@@ -174,7 +185,8 @@ export function isExecuteButtonDisabled(
     refusal != null &&
     refusal !== 'prompt-missing' &&
     refusal !== 'prompt-too-long' &&
-    refusal !== 'voice-missing'
+    refusal !== 'voice-missing' &&
+    refusal !== 'ref-audio-missing'
   );
 }
 
@@ -214,6 +226,9 @@ export function refusalToastKey(refusal: ExecuteRefusal): string | null {
   }
   if (refusal === 'voice-missing') {
     return 'canvas.generatePanel.refuseExecuteNoVoice';
+  }
+  if (refusal === 'ref-audio-missing') {
+    return 'canvas.generatePanel.errorNoRefAudio';
   }
   return null;
 }
