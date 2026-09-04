@@ -82,10 +82,10 @@ export interface DocumentSchema {
 /**
  * This build's document Space vocabulary — the one both ends import.
  *
- * Keep it in step with `buildDocumentExtensions` in `packages/web`. That is not
- * left to memory: `document-schema-matches-extensions.test.ts` builds the real
- * ProseMirror schema from the registered extensions and fails when it disagrees
- * with these two lists, down to attribute names.
+ * Keep it in step with what `buildDocumentEditor` in `packages/web` assembles.
+ * That is not left to memory: `document-schema-matches-extensions.test.ts`
+ * builds the real ProseMirror schema from that editor and fails when it
+ * disagrees with these two lists, down to attribute names.
  *
  * Set {@link DocumentSchema.publishedAt} whenever either list changes. Nothing
  * checks it — nothing can, since no code knows when a release happened — but
@@ -93,22 +93,54 @@ export interface DocumentSchema {
  * beside it, which decides who stops editing, is computed from the lists.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-08-18T00:00:00Z",
+  publishedAt: "2026-09-04T00:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
   // content at all — ProseMirror drops an unknown attribute silently rather
   // than raising, so the fallback never fires for it.
+  //
+  // The document is three levels deep: one `blockGroup` at the top, a
+  // `blockContainer` per block carrying its id, and the block's own node
+  // inside that. `@breatic/shared`'s `document-body` draws the shape.
   nodes: {
-    blockquote: [],
-    bulletList: [],
-    codeBlock: ["language"],
+    blockContainer: ["id"],
+    blockGroup: [],
+    bulletListItem: [
+      "backgroundColor",
+      "quoted",
+      "textAlignment",
+      "textColor",
+    ],
+    checkListItem: [
+      "backgroundColor",
+      "checked",
+      "quoted",
+      "textAlignment",
+      "textColor",
+    ],
+    codeBlock: ["language", "quoted"],
     doc: [],
     hardBreak: [],
-    heading: ["level"],
-    listItem: [],
-    orderedList: ["start", "type"],
-    paragraph: [],
+    heading: [
+      "backgroundColor",
+      "isToggleable",
+      "level",
+      "number",
+      "numbered",
+      "quoted",
+      "textAlignment",
+      "textColor",
+    ],
+    numberedListItem: [
+      "backgroundColor",
+      "number",
+      "quoted",
+      "start",
+      "textAlignment",
+      "textColor",
+    ],
+    paragraph: ["backgroundColor", "quoted", "textAlignment", "textColor"],
     text: [],
     // The three stand-in types. They must exist in every version: content one
     // build cannot represent is wrapped in these rather than deleted, and a
@@ -119,11 +151,13 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
   },
 
   marks: {
+    backgroundColor: ["stringValue"],
     bold: [],
     code: [],
     italic: [],
-    link: ["class", "href", "rel", "target", "title"],
+    link: ["href"],
     strike: [],
+    textColor: ["stringValue"],
     underline: [],
     unsupportedMark: ["originalName", "originalValue"],
   },

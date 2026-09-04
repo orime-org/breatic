@@ -11,15 +11,16 @@
  * 出哪儿不对（Gate 1 第四轮 direction-1）。
  *
  * 版本号不用管：它是从清单算出来的（`documentSchemaVersion`），改了清单它
- * 自己就变了。
+ * 自己就变了。而版本号正是决定「谁被拦下不许编辑」的东西 —— 换编辑器是这
+ * 套机制要挡的最大一次词表变更，清单跟着换，两个版本的指纹才分得开。
  */
 
 import { describe, it, expect } from 'vitest';
-import { getSchema } from '@tiptap/core';
-import { DOCUMENT_SCHEMA } from '@breatic/shared';
+import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 import * as Y from 'yjs';
 
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 
 /**
  * 把真实 schema 摊成跟 `DOCUMENT_SCHEMA` 同一个形状。
@@ -31,14 +32,11 @@ function realSchemaShape(): {
   } {
   const doc = new Y.Doc();
   try {
-    const schema = getSchema(
-      buildDocumentExtensions({
-        fragment: doc.getXmlFragment('body'),
-        caretProvider: null,
-        undoManager: undefined,
-        resolveCollaboratorName: () => null,
-      }),
-    );
+    // 带上兜底扩展：`unsupportedMark` 是它注册的，而生产的编辑器一定装它。
+    const { pmSchema } = buildDocumentEditor({
+      fragment: documentBodyFragment(doc),
+      extensions: [documentFallbackExtension()],
+    });
     /**
      * 摊平一侧（节点或标记）。
      * @param types - schema 的 nodes 或 marks。
@@ -53,7 +51,7 @@ function realSchemaShape(): {
           Object.keys(type.spec.attrs ?? {}).sort(),
         ]),
       );
-    return { nodes: flatten(schema.nodes), marks: flatten(schema.marks) };
+    return { nodes: flatten(pmSchema.nodes), marks: flatten(pmSchema.marks) };
   } finally {
     doc.destroy();
   }
