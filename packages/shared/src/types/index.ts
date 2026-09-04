@@ -63,6 +63,8 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  RemoteParamSource,
+  ModelRate,
   ModelProvider,
   ModelEntry,
   ModelCatalog,
@@ -74,6 +76,9 @@ export {
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
 } from "@shared/types/model-catalog.js";
+
+export type { Voice, VoicePage } from "@shared/types/voice.js";
+export { sanitizeVoicePage } from "@shared/types/voice.js";
 
 export { ROLE_RANK } from "@shared/types/role.js";
 export type { ProjectRole, ProjectMember } from "@shared/types/role.js";

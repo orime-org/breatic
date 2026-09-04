@@ -36,6 +36,12 @@ presign:        { max: 30,  window_seconds: 60 }
 # drag while capping a flood loop against the append-only feed table.
 asset-report:   { max: 120, window_seconds: 60 }
 
+# Voice catalog (post-auth, user-keyed)
+# Every miss reaches a vendor on our key and against our quota. A person
+# opening the picker, typing a search and scrolling a few pages fits inside
+# 60/60s; a loop hammering a vendor on our account does not.
+voices:         { max: 60,  window_seconds: 60 }
+
 # Reading the membership panel. It reconciles with Stripe on every read
 # (#106 §10.2), so an unthrottled reader is an unthrottled caller of somebody
 # else's API. Sixty a minute leaves the panel feeling instant while capping

@@ -27,8 +27,12 @@ export function extractPromptText(prompt: unknown): string {
   // Strip HTML comments
   text = text.replace(/<!--[\s\S]*?-->/g, " ");
 
-  // Strip HTML tags
-  text = text.replace(/<[^>]*>/g, " ");
+  // Strip HTML tags. A tag opens with a letter, optionally behind a slash —
+  // requiring that is what separates markup from a pair of angle brackets a
+  // person typed. `<[^>]*>` matched both, and a voiceover script is read out
+  // word for word: `under <100, over >50` lost the clause between the two,
+  // and `5 < 6` lost every line down to the next `>`.
+  text = text.replace(/<\/?[a-zA-Z][^<>]*>/g, " ");
 
   // Decode common HTML entities
   text = text
@@ -42,8 +46,17 @@ export function extractPromptText(prompt: unknown): string {
   // Remove zero-width and invisible characters
   text = text.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "");
 
-  // Normalize whitespace
-  text = text.replace(/\s+/g, " ").trim();
+  // Normalize horizontal whitespace, keep the line structure. A line break a
+  // user typed is their own content — in a voiceover script it is where the
+  // pacing lives — so flattening it here changes the text a provider is sent.
+  // Tag removal above substitutes a space, never a break, so nothing that was
+  // one line becomes two.
+  text = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
   return text;
 }

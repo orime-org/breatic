@@ -68,7 +68,7 @@ export function pickedSlotUrl(
  * A slot shows its pick with an `<img>`, which paints nothing for a video URL
  * — and with `alt=''` not even a broken-image marker, just a blank square. A
  * slot taking something other than an image therefore copies the node's poster
- * too, inside the slot's one field (`VideoSlotSpec.storesCover`).
+ * too, inside the slot's one field (`SlotSpec.storesCover`).
  *
  * Read as defensively as the asset itself: node data is a CRDT map any client
  * may write. A node with no poster yet gives null, and the slot falls back to

@@ -40,15 +40,59 @@ export type ModelModality =
 /** Model tier for frontend display filtering. */
 export type ModelTier = 'recommended' | 'optional' | 'internal';
 
+/**
+ * A catalog this param's value comes from, fetched at runtime rather than
+ * declared in yaml. `voices` is served by `GET /models/:name/voices`, which
+ * answers in the value domain of whichever provider this deployment resolved
+ * to — so the value the picker writes is the one the vendor accepts.
+ */
+export type RemoteParamSource = "voices";
+
 /** Single parameter descriptor — drives dynamic frontend form rendering. */
 export interface ParamDescriptor {
   description: string;
   values?: readonly (string | number | boolean)[];
   min?: number;
   max?: number;
+  /**
+   * The increment a continuous control moves this value by (#1960).
+   *
+   * Bounds alone do not say how finely a value may be set — ElevenLabs states
+   * 0 to 1 in steps of 0.05, Fish states -20 to 20 dB in steps of 1 — and that
+   * is the model's statement about its own parameter, not a decision for
+   * whichever control happens to render it. Only params meant to be set
+   * continuously carry one; a param stating `values` is a list of choices and
+   * has nothing to step through.
+   */
+  step?: number;
   type?: string;
   max_items?: number;
+  /**
+   * Names the picker that fills this param, for params whose value domain
+   * lives upstream instead of in `values` (#1960). Two models spell the same
+   * choice differently — ElevenLabs takes `voice_id`, Fish takes
+   * `reference_id` — so the panel finds its voice param by this rather than
+   * by name.
+   */
+  remote_source?: RemoteParamSource;
   default: unknown;
+}
+
+/**
+ * What a model charges, in the unit its vendor bills by (#1960).
+ *
+ * The unit travels with the number because vendors do not share one: Fish
+ * bills per UTF-8 byte, ElevenLabs per character, and a Chinese character is
+ * three bytes — one shared "per 1000 characters" wording would understate
+ * Fish threefold. This states a rate, not a total: charging happens after
+ * generation, on actual usage.
+ */
+export interface ModelRate {
+  /** Credits charged per `per` units. 1 credit = 1 US cent. */
+  credits: number;
+  /** How many units that many credits buy. */
+  per: number;
+  unit: "characters" | "utf8_bytes";
 }
 
 /** One provider backing a model (with resolved availability). */
@@ -93,6 +137,22 @@ export interface ModelEntry {
    * would let a forgotten line silently unmount the editor.
    */
   takes_prompt: boolean;
+  /**
+   * What this model charges per unit of input (#1960), for the panel to state
+   * before the user generates. Absent on models that bill per call — those
+   * state `cost_per_call` instead.
+   */
+  rate?: ModelRate;
+  /**
+   * How much input text this model accepts in one request (#1960), so the
+   * panel can refuse before sending text the upstream would reject.
+   *
+   * The vendor of the model states it, and a gateway reselling that model
+   * cannot raise it — it forwards the same request to the same API. Absent
+   * when the vendor publishes no cap, and absent means uncapped: a number
+   * invented here would refuse text the vendor accepts.
+   */
+  max_input_chars?: number;
   /**
    * Per-mode source requirements (#1675 cross-modality execute gate),
    * computed backend-side (the rule lives in domain). Maps each of the
@@ -215,8 +275,12 @@ const paramDescriptorSchema = z
       .catch(undefined),
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
+    step: z.number().optional().catch(undefined),
     type: z.string().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
+    // An unrecognised name would send the panel looking for a picker that does
+    // not exist, so it degrades to an ordinary param rather than to a guess.
+    remote_source: z.enum(["voices"]).optional().catch(undefined),
     default: z.unknown(),
   })
   .transform((d) => ({ ...d, default: d.default }));
@@ -284,6 +348,21 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
+  // What the model charges per unit of input (#1960). Absent on models that
+  // bill per call, and a malformed one degrades to absent — a panel with no
+  // rate says nothing, where a half-parsed one would state a wrong price.
+  rate: z
+    .object({
+      credits: z.number(),
+      per: z.number(),
+      unit: z.enum(["characters", "utf8_bytes"]),
+    })
+    .optional()
+    .catch(undefined),
+  // How much text the model takes (#1960). Absent reads as uncapped, and a
+  // malformed one degrades to absent for the same reason a bad rate does: a
+  // number this side invented would refuse text the vendor accepts.
+  max_input_chars: z.number().optional().catch(undefined),
 });
 
 /** One modality bucket: a non-array coerces to [], garbage entries drop out. */

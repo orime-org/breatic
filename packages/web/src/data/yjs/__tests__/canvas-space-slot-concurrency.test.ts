@@ -141,8 +141,8 @@ describe('a slot pick converges as one value (#1918)', () => {
 
   it('never lands one client video wearing the other client poster', () => {
     const converged = concurrently(
-      () => fillSlot(PID, SID, 'gen', 'drivingVideo', WITH_COVER),
-      () => fillSlot(PID, SID, 'gen', 'drivingVideo', NO_COVER),
+      () => fillSlot(PID, SID, 'gen', VIDEO_SLOTS.drivingVideo, WITH_COVER),
+      () => fillSlot(PID, SID, 'gen', VIDEO_SLOTS.drivingVideo, NO_COVER),
     );
     // Whichever client wins, what survives has to be a pick SOMEONE made:
     // either the cover-less video on its own, or the other video with its
@@ -158,14 +158,14 @@ describe('a slot pick converges as one value (#1918)', () => {
     // Same question one step later: the slot already holds a pick, and both
     // clients replace it. A poster left over from the previous pick is the
     // same defect — it just has a longer path to it.
-    fillSlot(PID, SID, 'gen', 'drivingVideo', WITH_COVER);
+    fillSlot(PID, SID, 'gen', VIDEO_SLOTS.drivingVideo, WITH_COVER);
     const converged = concurrently(
       () =>
-        fillSlot(PID, SID, 'gen', 'drivingVideo', {
+        fillSlot(PID, SID, 'gen', VIDEO_SLOTS.drivingVideo, {
           type: 'video',
           data: { content: 'https://cdn/a2.mp4', coverUrl: 'https://cdn/a2.png' },
         }),
-      () => fillSlot(PID, SID, 'gen', 'drivingVideo', NO_COVER),
+      () => fillSlot(PID, SID, 'gen', VIDEO_SLOTS.drivingVideo, NO_COVER),
     );
     expect([
       { url: NO_COVER.data.content },

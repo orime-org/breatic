@@ -200,11 +200,35 @@ export async function pollUntilDone(
   throw new Error(`${provider} task did not complete within ${maxWait / 1000}s`);
 }
 
+/** One line of a WaveSpeed billing answer. */
+interface BillingLine {
+  billing_type?: string;
+  order?: { price?: number };
+}
+
 /**
- * Query WaveSpeed billing API for actual cost.
- * @param resolved - Resolved provider endpoint
- * @param taskId - Prediction UUID
- * @returns Cost in USD, or 0 if billing query fails
+ * Ask WaveSpeed what a finished prediction cost.
+ *
+ * The endpoint has no public documentation; the shape read here was captured
+ * from a live TTS generation on 2026-09-03:
+ *
+ *     {"code":200,"data":{"page":1,"has_more":false,"items":[
+ *       {"billing_type":"deduct",
+ *        "order":{"origin_price":0.0026,"price":0.0026,"state":"done"},
+ *        "prediction":{"model_uuid":"elevenlabs/eleven-v3","status":"completed"}}]}}
+ *
+ * Lines are summed because one prediction may carry more than one, and only
+ * the deducting ones count — adding a refund would state the opposite of what
+ * happened.
+ *
+ * Every zero that comes from a lookup going wrong is logged — a refused
+ * request, no deducting line, a line carrying no price. What is left, a zero
+ * summed from lines the vendor priced at zero, is the vendor saying the
+ * generation was free, and it answers quietly. A charge is taken on this
+ * number, so the two have to stay tellable apart.
+ * @param resolved - Resolved provider endpoint.
+ * @param taskId - The vendor's prediction uuid.
+ * @returns What the prediction cost in USD, or 0 when the vendor did not say.
  */
 export async function queryBilling(resolved: ResolvedModel, taskId: string): Promise<number> {
   try {
@@ -218,11 +242,30 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
       { replaySafe: false, timeoutMs: httpConfig().billingTimeout },
     );
 
-    if (!resp.ok) return 0;
-    const data = (await resp.json()) as { data?: Array<{ price?: number }> };
-    return data.data?.[0]?.price ?? 0;
-  } catch {
-    logger.warn({ taskId }, "billing_query_failed");
+    if (!resp.ok) {
+      logger.warn({ taskId, status: resp.status }, "billing_query_rejected");
+      return 0;
+    }
+    const body = (await resp.json()) as { data?: { items?: BillingLine[] } };
+    const deducted = (body.data?.items ?? []).filter(
+      (line) => line.billing_type === "deduct",
+    );
+    if (deducted.length === 0) {
+      logger.warn({ taskId }, "billing_query_empty");
+      return 0;
+    }
+    let total = 0;
+    for (const line of deducted) {
+      const price = line.order?.price;
+      if (typeof price !== "number") {
+        logger.warn({ taskId }, "billing_line_without_price");
+        continue;
+      }
+      total += price;
+    }
+    return total;
+  } catch (err) {
+    logger.warn({ err, taskId }, "billing_query_failed");
     return 0;
   }
 }

@@ -34,17 +34,22 @@ export type NodeType =
   | 'group';
 
 /**
- * The modalities that offer Generate — image and video (#1896). Text is
- * planned (#1778) but not built, so it stays out: a node created while this
- * said yes would carry a prompt container forever after, and the menu item
- * would open nothing.
+ * The modalities that offer Generate — image and video (#1896), audio
+ * (#1960). Text is planned (#1778) but not built, so it stays out: a node
+ * created while this said yes would carry a prompt container forever after,
+ * and the menu item would open nothing.
+ *
+ * That container is also why an audio node created before #1960 has none:
+ * seeding happens at creation and nothing backfills, so those nodes have no
+ * prompt to type into and the panel says so rather than showing an editor
+ * whose text goes nowhere.
  *
  * This list IS the product decision. `canGenerate` reads it rather than
  * comparing against literals, so its body answers the question its name asks
- * and a third modality is one more entry here rather than another clause
+ * and another modality is one more entry here rather than another clause
  * somewhere.
  */
-const GENERATIVE_MODALITIES: readonly NodeType[] = ['image', 'video'];
+const GENERATIVE_MODALITIES: readonly NodeType[] = ['image', 'video', 'audio'];
 
 /**
  * Whether a node of this modality offers Generate.
@@ -479,6 +484,20 @@ export interface CanvasNodeFields {
      * product shows audio.
      */
     drivingAudio?: { url: string; cover?: string };
+    /**
+     * The voice to clone for the audio panel's voice-cloning mode (#1960 PR2,
+     * wire `data.refAudio`) — the recording whose timbre the new lines are
+     * spoken in. `url` is sent as `params.audio` at execute time.
+     *
+     * Its own field although it travels under the same param as
+     * `drivingAudio`: a pick survives a mode switch, and these two are picked
+     * on different panels for different jobs — one shared field would turn the
+     * track a portrait's lips follow into the voice a line is spoken in.
+     *
+     * Shaped like `drivingAudio` for the same convergence reason, and `cover`
+     * is likewise always absent, leaving the toolbar showing the slot's icon.
+     */
+    refAudio?: { url: string; cover?: string };
     /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the

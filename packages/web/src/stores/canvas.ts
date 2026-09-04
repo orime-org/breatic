@@ -65,6 +65,11 @@ export type HistoryCommand = 'undo' | 'redo';
  *     same one-field shape as `drivingVideo` for the same reason, though an
  *     audio node has no poster to copy, so the toolbar keeps showing the
  *     slot's icon.
+ *   - `refAudio` — the same, into `refAudio` (#1960 PR2), also from an AUDIO
+ *     node: the voice a cloning model speaks the new lines in. Its own slot
+ *     rather than `drivingAudio`'s, though both travel as `audio`, because
+ *     the two are picked on different panels for different jobs and a pick
+ *     survives a mode switch.
  */
 export type PickPurpose =
   | 'reference'
@@ -74,7 +79,8 @@ export type PickPurpose =
   | 'endFrame'
   | 'characterImage'
   | 'drivingVideo'
-  | 'drivingAudio';
+  | 'drivingAudio'
+  | 'refAudio';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -150,7 +156,13 @@ interface CanvasState {
    * host + kind is the correct abstraction for N mutually-exclusive node-
    * anchored panels — cheaper and inherently exclusive versus parallel states.
    */
-  panelKind: 'generate' | 'generateVideo' | 'resetEmpty' | 'history' | null;
+  panelKind:
+    | 'generate'
+    | 'generateVideo'
+    | 'generateAudio'
+    | 'resetEmpty'
+    | 'history'
+    | null;
   /**
    * The in-progress canvas node-pick session (reference or style), or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
@@ -199,10 +211,10 @@ interface CanvasState {
   /**
    * Open the Generate panel for a node (replaces any currently open panel).
    *
-   * Image and video have separate panels (#1896), and this decides which one
-   * from the node's modality so callers never have to know how many exist:
-   * adding text generation (#1778) is one more case here, not a branch at
-   * every call site.
+   * Image, video and audio have separate panels (#1896, #1960), and this
+   * decides which one from the node's modality so callers never have to know
+   * how many exist: adding text generation (#1778) is one more case here, not
+   * a branch at every call site.
    */
   openGeneratePanel: (nodeId: string, type: NodeType) => void;
   /** Open the reset-empty-image panel for a node (replaces any open panel). */
@@ -225,6 +237,8 @@ interface CanvasState {
   startDrivingVideoPick: (nodeId: string) => void;
   /** Enter the driving-audio pick for a video node (#1935). */
   startDrivingAudioPick: (nodeId: string) => void;
+  /** Enter the reference-audio pick for an audio node (#1960 PR2). */
+  startRefAudioPick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -244,18 +258,20 @@ interface CanvasState {
 }
 
 /**
- * Which Generate panel a modality opens (#1896). Image and video have separate
- * panels, so this map — not the call site — decides which body renders.
+ * Which Generate panel a modality opens (#1896, #1960). Image, video and audio
+ * each have their own panel, so this map — not the call site — decides which
+ * body renders.
  *
  * It is deliberately partial: a modality absent here has no Generate panel,
  * and `openGeneratePanel` opens nothing for it. Adding text generation (#1778)
  * means one entry here and no change anywhere else.
  */
 const GENERATE_PANEL_BY_TYPE: Partial<
-  Record<NodeType, 'generate' | 'generateVideo'>
+  Record<NodeType, 'generate' | 'generateVideo' | 'generateAudio'>
 > = {
   image: 'generate',
   video: 'generateVideo',
+  audio: 'generateAudio',
 };
 
 export const useCanvasStore = create<CanvasState>()(
@@ -366,14 +382,15 @@ export const useCanvasStore = create<CanvasState>()(
       }),
     openGeneratePanel: (nodeId, type) =>
       set((s) => {
-        // Image and video have separate panels (#1896). Deciding here rather
-        // than at the call site keeps the number of panels a detail of this
-        // store: a third generative modality is one more entry in the map,
-        // not a new branch wherever Generate is opened from.
+        // Image, video and audio have separate panels (#1896, #1960).
+        // Deciding here rather than at the call site keeps the number of
+        // panels a detail of this store: a fourth generative modality is one
+        // more entry in the map, not a new branch wherever Generate is
+        // opened from.
         const kind = GENERATE_PANEL_BY_TYPE[type];
         // A modality with no panel opens nothing. The unmapped modalities are
-        // the ones with no Generate panel yet (text / audio / 3d / web /
-        // annotation / group), and the menu never offers Generate on them
+        // the ones with no Generate panel yet (text / 3d / web / annotation /
+        // group), and the menu never offers Generate on them
         // (canGenerate gates it) — so arriving here means a caller is wrong.
         // Falling back to the image panel would put such a node's host id
         // under an image body, which reads as a working panel operating on
@@ -436,6 +453,10 @@ export const useCanvasStore = create<CanvasState>()(
     startDrivingAudioPick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'drivingAudio' };
+      }),
+    startRefAudioPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'refAudio' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

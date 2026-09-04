@@ -6,12 +6,17 @@ import * as React from 'react';
 /**
  * Self-drawn, monochrome (black/white/grey via `currentColor`) marks for the
  * model picker — one per generatable-model vendor, each EVOKING the vendor's
- * real logo (researched 2026-07-09) rather than reproducing the trademarked
- * artwork:
+ * real logo (researched 2026-07-09, audio added 2026-09-03) rather than
+ * reproducing the trademarked artwork:
  *   - `midjourney`  → a sailboat (Midjourney's stylised two-sail mark).
  *   - `nano-banana` → a banana (Google Gemini's "🍌" image branding).
  *   - `seedream`    → uneven vertical bars (ByteDance Seed's bar logomark).
- * The picker only shows generation models (t2i / i2i); every one of their
+ *   - `elevenlabs`  → two upright bars (ElevenLabs' own "11" mark).
+ *   - `fish-audio`  → a fish (Fish Audio's name and mark).
+ *   - `qwen`        → a microphone: reproducing Alibaba Qwen's wordmark would
+ *     be reproducing the trademark itself, so its mark names what the model
+ *     does instead.
+ * The picker shows generation models (t2i / i2i / tts); every one of their
  * config `icon` names is covered here — there is deliberately NO generic
  * "unknown model" fallback (user 2026-07-09).
  */
@@ -35,6 +40,27 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
       <rect x='8.5' y='4' width='3' height='16' rx='1' />
       <rect x='13.6' y='11' width='3' height='9' rx='1' />
       <rect x='18' y='6.5' width='2.6' height='13.5' rx='1' />
+    </>
+  ),
+  // Two upright bars, reading as the "11" the vendor is named for.
+  elevenlabs: (
+    <>
+      <rect x='6.2' y='3.6' width='4' height='16.8' rx='0.6' />
+      <rect x='13.8' y='3.6' width='4' height='16.8' rx='0.6' />
+    </>
+  ),
+  // A fish swimming right, its eye cut out of the body.
+  'fish-audio': (
+    <path
+      fillRule='evenodd'
+      d='M2.4 12C4.8 8.4 8.8 6.4 12.8 7 15.7 7.4 18.1 9.2 19.5 12 18.1 14.8 15.7 16.6 12.8 17 8.8 17.6 4.8 15.6 2.4 12ZM19.2 8.3 22.4 12 19.2 15.7 20.1 12ZM8.4 10.7A1.15 1.15 0 1 0 8.4 13 1.15 1.15 0 1 0 8.4 10.7Z'
+    />
+  ),
+  // A microphone on its stand.
+  qwen: (
+    <>
+      <rect x='9' y='2.6' width='6' height='10.8' rx='3' />
+      <path d='M5.6 11.2A1.1 1.1 0 0 0 3.4 11.2 8.7 8.7 0 0 0 10.9 19.8V21.2A1.1 1.1 0 0 0 13.1 21.2V19.8A8.7 8.7 0 0 0 20.6 11.2 1.1 1.1 0 0 0 18.4 11.2 6.5 6.5 0 0 1 5.6 11.2Z' />
     </>
   ),
 };

@@ -72,6 +72,27 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
     );
   });
 
+  // A check mark says "more than one of these can be on at once" (user
+  // 2026-09-01, #1960 D5). Picking a model is single-choice, so the fill above
+  // is the whole mark. The model icon beside the name stays — it names the
+  // vendor, it does not report a choice.
+  it('marks the current model with fill alone, with no check mark on any row', () => {
+    render(
+      <ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-model-trigger'));
+    expect(
+      screen
+        .getByTestId('generate-model-option-nano_banana_pro')
+        .querySelector('.lucide-check'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByTestId('generate-model-option-midjourney_v7')
+        .querySelector('.lucide-check'),
+    ).toBeNull();
+  });
+
   it('falls back to the raw model id on the trigger when it is not in the catalog', () => {
     render(
       <ModelPicker models={MODELS} value='unknown_model' onChange={() => {}} />,

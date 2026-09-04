@@ -162,10 +162,7 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import {
-  VIDEO_SLOTS,
-  slotForPurpose,
-} from '@web/spaces/canvas/generate/video-slots';
+import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -198,6 +195,7 @@ import {
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -1821,13 +1819,14 @@ function CanvasSpaceInner({
         return;
       }
 
-      const videoSlot = slotForPurpose(session.purpose);
-      if (videoSlot) {
-        // A video slot (first frame, end frame, character image, driving
-        // video, driving audio): COPY the clicked node's asset onto the video
-        // node, same terms as Style — a pick-time snapshot with no
-        // relationship to the source, so deleting or regenerating that node
-        // never changes what this video generates from.
+      const pickedSlot = slotSpec(slotForPurpose(session.purpose) ?? '');
+      if (pickedSlot) {
+        // A source slot on either generative panel (the video panel's first
+        // frame, end frame, character image, driving video and driving audio;
+        // the audio panel's reference audio): COPY the clicked node's asset
+        // onto the generating node, same terms as Style — a pick-time snapshot
+        // with no relationship to the source, so deleting or regenerating that
+        // node never changes what this one generates from.
         //
         // `fillSlot` decides what a slot copies:
         // the asset alone, or the asset plus the node's poster for a slot
@@ -1841,7 +1840,7 @@ function CanvasSpaceInner({
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        if (!fillSlot(projectId, spaceId, target, videoSlot, node)) return;
+        if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
         return;
@@ -3691,14 +3690,14 @@ function CanvasSpaceInner({
       return paint((node) => !isFocusCandidate(node, target));
     }
 
-    const paintingSlot = slotForPurpose(pickSession.purpose);
+    const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
     if (pickSession.purpose === 'style' || paintingSlot) {
-      // Style and every video slot share the candidate rule: any non-empty
+      // Style and every source slot share the candidate rule: any non-empty
       // node of the type the slot accepts, except the pick target itself
-      // (#1664 / #1896 / #1904). A video slot states the type it takes, so a
-      // slot for another kind of asset dims the right nodes without another
-      // branch here.
-      const accepts = paintingSlot ? VIDEO_SLOTS[paintingSlot].accepts : 'image';
+      // (#1664 / #1896 / #1904). A slot states the type it takes, so a slot
+      // for another kind of asset — an audio one for voice cloning (#1960
+      // PR2) — dims the right nodes without another branch here.
+      const accepts = paintingSlot ? paintingSlot.accepts : 'image';
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (
@@ -3968,6 +3967,18 @@ function CanvasSpaceInner({
             spaceId={spaceId}
             getLastWriteWasLocal={getLastWriteWasLocal}
           />
+          {/* Audio Generate panel: its own panel kind, opened by an audio
+              node. It takes `getLastWriteWasLocal` for the same reason the
+              video panel does — voice cloning collects a slot pick (#1960
+              PR2), and a mode switch that ends a running pick has to say
+              whether it was this reader's switch or a collaborator's. */}
+          <AudioGeneratePanelContainer
+            nodes={nodes}
+            edges={edges}
+            projectId={projectId}
+            spaceId={spaceId}
+            getLastWriteWasLocal={getLastWriteWasLocal}
+          />
           {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}
@@ -4096,7 +4107,7 @@ function CanvasSpaceInner({
           // activateNodeUpload no-ops for read-only / pickerless modalities.
           onUpload={nodeMenu.isGroup ? undefined : uploadNodeFromMenu}
           // Generate opens on any editable node of a modality that generates
-          // (`canGenerate` — image and video today), the AIGC "generate into
+          // (`canGenerate`), the AIGC "generate into
           // self" flow. Which PANEL opens is the opener's decision, not this
           // one's: the store maps the node's modality to a panel kind.
           // INCLUDING a locked or handling node, so the user can open the panel

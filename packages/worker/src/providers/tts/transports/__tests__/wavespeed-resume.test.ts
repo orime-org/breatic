@@ -17,6 +17,10 @@ import type { ResolvedModel } from "@worker/providers/shared.js";
  */
 const requestWithRetryMock = vi.fn();
 const pollUntilDoneMock = vi.fn();
+// Stubbed so these cases stay about resume: the transport asks the vendor what
+// the run cost once it has an id, and the real call would reach the network.
+// What it answers is `wavespeed-billing.test.ts`'s subject.
+const queryBillingMock = vi.fn(async (..._args: unknown[]) => 0);
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
   const actual = await importOriginal<typeof httpModule>();
@@ -24,6 +28,7 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
     ...actual,
     requestWithRetry: (...args: unknown[]) => requestWithRetryMock(...args),
     pollUntilDone: (...args: unknown[]) => pollUntilDoneMock(...args),
+    queryBilling: (...args: unknown[]) => queryBillingMock(...args),
   };
 });
 

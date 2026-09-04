@@ -8,12 +8,25 @@
 models:
   - name: "fish-s2-pro"
     display_name: "Fish S2 Pro"
+    icon: "fish-audio"
     mode: "tts"
     takes_prompt: true
     tier: recommended
     description: "TTS-Arena #1, 80+ languages, emotion"
     guide: "Fish Audio's flagship TTS ranked #1 on TTS-Arena. Dual-AR architecture (4B + 400M params), 80+ languages with auto-detection, free-form emotion control via natural language tags like [whisper], [excited], [professional broadcast tone], [pitch up]. Sub-word-level prosody control, 15,000+ expression tags. 70-80% cheaper than ElevenLabs. Choose for any TTS task where cost-effectiveness matters without sacrificing quality."
     cost_per_call: 3
+    # No `max_input_chars` on purpose: Fish states no per-request cap. Its
+    # OpenAPI schema declares no maxLength on `text`
+    # (docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech), and
+    # the vendor describes usage as a fair-use policy instead. A number written
+    # here would refuse text this upstream accepts.
+    # $15.00 / M UTF-8 bytes on the vendor's pricing page, at 1 credit =
+    # 1 US cent. Billed by byte, not character: a Chinese character is three
+    # of them, which is why the unit travels with the number.
+    rate:
+      credits: 1.5
+      per: 1000
+      unit: utf8_bytes
     generation_time: 10
     languages:
       - English
@@ -46,23 +59,32 @@ models:
       - Ukrainian
       - Filipino
       - Malay
-    # Uses reference_id (UUID) from fish.audio for voice selection.
-    # Users browse and select voices at https://fish.audio
+    # The voice list is served live from the vendor (GET /models/:name/voices);
+    # there are ~2M of them, far past what an inline table could hold.
     voices: []
     params:
       reference_id:
         description: "Preset voice ID (UUID from fish.audio)"
+        remote_source: voices
         default: null
       speed:
         description: "Playback speed (0.5-2.0)"
+        # 0.5-2.0, default 1, stated in the vendor's own ProsodyControl schema.
+        min: 0.5
+        max: 2.0
+        step: 0.05
         default: 1.0
       volume:
         description: "Volume adjustment (-20 to 20 dB)"
+        # The vendor's OpenAPI schema declares no bounds for this one — only
+        # the unit and a default of 0. -20 to 20 is what its HTTP API guide
+        # states, and it is what this file has always said; a control needs
+        # SOME end, and inventing a wider one would offer values the guide
+        # does not cover.
+        min: -20
+        max: 20
+        step: 1
         default: 0
-      format:
-        description: "Output audio format"
-        values: ["wav", "mp3", "pcm"]
-        default: "wav"
     providers:
       - name: fish
         model_id: "s2-pro"

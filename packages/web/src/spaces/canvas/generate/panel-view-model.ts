@@ -30,10 +30,7 @@ import {
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
-import type {
-  ContentNodeView,
-  NodeView,
-} from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/spaces/canvas/types/node-view';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
@@ -117,17 +114,6 @@ export interface GeneratePanelViewModel {
    * skip a requirement every other one has. Same fallback as the video panel.
    */
   promptRequired: boolean;
-}
-
-/**
- * Narrows a node view to a content view (the only kind carrying generate
- * inputs). `status` is a required field on every content view and absent on
- * annotation / group, so it is a reliable runtime discriminant.
- * @param data - The node view to narrow.
- * @returns The content view, or undefined for annotation / group / missing.
- */
-function asContentView(data: NodeView | undefined): ContentNodeView | undefined {
-  return data && 'status' in data ? data : undefined;
 }
 
 /**

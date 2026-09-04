@@ -14,11 +14,9 @@ import {
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
+import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type {
-  VideoSlot,
-  VideoSlotSpec,
-} from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 
 describe('checkFileAdmission — which files the canvas refuses on selection', () => {
   const CAP = 1024;
@@ -960,7 +958,7 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     // reports an asset the video node is still generating from, and nothing
     // fails until a user deletes the node they picked it from.
     for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-      const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
+      const spec: SlotSpec = VIDEO_SLOTS[slot];
       const held = url(`held-by-${slot}`);
       const stored = spec.storesCover ? { url: held } : held;
       const nodes = [{ data: { [spec.field]: stored } }];

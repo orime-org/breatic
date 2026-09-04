@@ -956,6 +956,35 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     tool.remove();
   });
 
+  it('hands focus back to the audio panel’s tool when its reference pick exits', () => {
+    // The third panel to offer Reference (#1960). The lookup reads the pick
+    // table by panel, so a panel absent from it finds nothing and focus lands
+    // on the body — a keyboard user Tabs from the top of the document to get
+    // back to the panel they were working in.
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'target',
+            type: 'audio',
+            position: { x: 0, y: 0 },
+            data: { kind: 'audio', status: 'idle' },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    const tool = document.createElement('button');
+    tool.setAttribute('data-testid', 'generate-audio-tool-reference');
+    document.body.appendChild(tool);
+    act(() => {
+      useCanvasStore.getState().startReferencePick('target');
+    });
+    fireEvent.click(screen.getByTestId('reference-pick-exit'));
+    expect(document.activeElement).toBe(tool);
+    tool.remove();
+  });
+
   it('hands focus back to the end-frame tool the toolbar actually renders', () => {
     // The same handoff for the second slot (#1904), and the reason it is a
     // case of its own: the id the toolbar renders and the id this lookup

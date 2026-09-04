@@ -7,6 +7,7 @@ import {
   evaluateExecute,
   isExecuteButtonDisabled,
   refusalToastKey,
+  type ExecuteRefusal,
 } from '@web/spaces/canvas/generate/generate-guards';
 
 /** A gate input where every condition is satisfied. */
@@ -16,6 +17,8 @@ const ok = {
   nodeStatus: 'idle' as string | undefined,
   isSubmitting: false,
   promptRequired: true,
+  voiceRequired: false,
+  voiceChosen: false,
 };
 
 describe('evaluateExecute — which precondition is the one that fails', () => {
@@ -58,6 +61,41 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     expect(evaluateExecute({ ...noPrompt, isSubmitting: true })).toBe(
       'submitting',
     );
+  });
+
+  it('names the voice when the model needs one and none is chosen (#1960)', () => {
+    // fish-s2-pro's reference_id defaults to null and its inline voice table
+    // is empty, so a user who types and hits generate without ever opening
+    // the picker sends no voice at all. Upstream succeeds — in its own
+    // default voice — and nothing on screen said the choice went unmade.
+    expect(evaluateExecute({ ...ok, voiceRequired: true, voiceChosen: false })).toBe(
+      'voice-missing',
+    );
+  });
+
+  it('lets a chosen voice through', () => {
+    expect(
+      evaluateExecute({ ...ok, voiceRequired: true, voiceChosen: true }),
+    ).toBeNull();
+  });
+
+  it('ignores the voice for a model that takes none', () => {
+    expect(
+      evaluateExecute({ ...ok, voiceRequired: false, voiceChosen: false }),
+    ).toBeNull();
+  });
+
+  it('names the prompt before the voice — the panel reads top to bottom', () => {
+    // Both are the user's to fix, so the order follows the panel: the prompt
+    // editor sits above the voice picker.
+    expect(
+      evaluateExecute({
+        ...ok,
+        promptText: '   ',
+        voiceRequired: true,
+        voiceChosen: false,
+      }),
+    ).toBe('prompt-missing');
   });
 
   it('names the model when none is selected (a mode that offers nothing)', () => {
@@ -147,6 +185,10 @@ describe('isExecuteButtonDisabled — only what the user cannot act on greys the
     expect(isExecuteButtonDisabled('prompt-missing')).toBe(false);
   });
 
+  it('leaves the button clickable for a missing voice, for the same reason', () => {
+    expect(isExecuteButtonDisabled('voice-missing')).toBe(false);
+  });
+
   it('greys the button for the three the user cannot act on', () => {
     expect(isExecuteButtonDisabled('node-gone')).toBe(true);
     expect(isExecuteButtonDisabled('no-model')).toBe(true);
@@ -166,6 +208,12 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     );
   });
 
+  it('names the voice key when the model needs a voice and has none', () => {
+    expect(refusalToastKey('voice-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoVoice',
+    );
+  });
+
   it('says nothing for the three that keep the button disabled', () => {
     expect(refusalToastKey('node-gone')).toBeNull();
     expect(refusalToastKey('no-model')).toBeNull();
@@ -177,16 +225,160 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    const all = [
+    // Every member of the union, kept by hand — a plain array literal accepts
+    // a short list, so a new refusal reaches this case only if whoever adds it
+    // writes it in. The compiler will not say so.
+    const all: ExecuteRefusal[] = [
       'node-gone',
       'no-model',
       'submitting',
       'prompt-missing',
-    ] as const;
+      'prompt-too-long',
+      'voice-missing',
+      'ref-audio-missing',
+    ];
     for (const refusal of all) {
       expect(refusalToastKey(refusal) != null).toBe(
         !isExecuteButtonDisabled(refusal),
       );
+    }
+  });
+});
+
+describe('evaluateExecute — text the model will not take (#1960 A17)', () => {
+  // A cap the catalog states, from the model vendor's own documentation.
+  const capped = { ...ok, maxInputChars: 10 };
+
+  it('names the length once the text is past the cap', () => {
+    expect(evaluateExecute({ ...capped, promptText: 'x'.repeat(11) })).toBe(
+      'prompt-too-long',
+    );
+  });
+
+  it('lets text exactly at the cap through', () => {
+    expect(evaluateExecute({ ...capped, promptText: 'x'.repeat(10) })).toBeNull();
+  });
+
+  // Absent means uncapped: fish states no per-request limit, and inventing one
+  // would refuse text its upstream accepts.
+  it('never refuses on length when the model states no cap', () => {
+    expect(
+      evaluateExecute({ ...ok, promptText: 'x'.repeat(100_000) }),
+    ).toBeNull();
+  });
+
+  // The worker cleans the prompt before the vendor sees it — `extractPromptText`
+  // trims the ends, folds runs of spaces into one and collapses blank lines —
+  // so counting the raw editor text refuses messages the upstream would take.
+  it('does not count whitespace the worker strips before sending', () => {
+    expect(evaluateExecute({ ...capped, promptText: `  ${'x'.repeat(9)}  ` })).toBeNull();
+  });
+
+  it('does not count the runs of spaces the worker folds into one', () => {
+    // 11 raw characters, 9 once the run between the words is one space.
+    expect(evaluateExecute({ ...capped, promptText: 'xxxx   xxxx' })).toBeNull();
+  });
+
+  it('still refuses when the cleaned text is what goes over', () => {
+    // Nothing here folds: 11 characters reach the vendor as 11.
+    expect(evaluateExecute({ ...capped, promptText: 'x'.repeat(11) })).toBe(
+      'prompt-too-long',
+    );
+  });
+
+  // Vendors count characters; JS string length counts UTF-16 units, which is
+  // two for every emoji and every rarer CJK glyph. Counting units would refuse
+  // a message half the length of the one the vendor would accept.
+  it('counts characters, not UTF-16 units', () => {
+    const tenEmoji = '🎙'.repeat(10);
+    expect(tenEmoji.length).toBe(20);
+    expect(evaluateExecute({ ...capped, promptText: tenEmoji })).toBeNull();
+  });
+
+  // Order: an empty prompt is empty whatever the cap says, and a cap of zero
+  // must not turn "write something" into "that is too long".
+  it('still names an empty prompt first', () => {
+    expect(evaluateExecute({ ...capped, promptText: '' })).toBe(
+      'prompt-missing',
+    );
+  });
+
+  // A model that consumes no prompt has nothing to measure, and its panel
+  // offers no editor to shorten.
+  it('leaves a model that takes no prompt alone', () => {
+    expect(
+      evaluateExecute({
+        ...capped,
+        promptRequired: false,
+        promptText: 'x'.repeat(50),
+      }),
+    ).toBeNull();
+  });
+
+  it('leaves the button live, because the user can shorten the text', () => {
+    expect(isExecuteButtonDisabled('prompt-too-long')).toBe(false);
+    expect(refusalToastKey('prompt-too-long')).toBe(
+      'canvas.generatePanel.refuseExecuteTooLong',
+    );
+  });
+});
+
+/**
+ * The reference audio a cloning model needs (#1960 PR2).
+ *
+ * Same shape as `voice-missing`, and for the same reason: it is a condition the
+ * user can act on, so the button stays live and the click says what is missing.
+ * A greyed-out button would never tell them a slot is empty.
+ */
+describe('evaluateExecute — the reference-audio slot', () => {
+  /** A cloning model with nothing picked yet. */
+  const cloning = {
+    ...ok,
+    refAudioRequired: true,
+    refAudioChosen: false,
+  };
+
+  it('names the empty slot when the mode needs an audio source', () => {
+    expect(evaluateExecute(cloning)).toBe('ref-audio-missing');
+  });
+
+  it('passes once something is picked', () => {
+    expect(evaluateExecute({ ...cloning, refAudioChosen: true })).toBeNull();
+  });
+
+  it('says nothing about it on a mode that needs no audio source', () => {
+    // Text to speech declares no audio source, so an unfilled slot it never shows
+    // must not refuse anything.
+    expect(
+      evaluateExecute({ ...ok, refAudioRequired: false, refAudioChosen: false }),
+    ).toBeNull();
+  });
+
+  it('reports the prompt first, the panel order', () => {
+    // The editor sits above the toolbar's slot, so an empty prompt is what the
+    // user is told about first — the same ordering `voice-missing` follows.
+    expect(evaluateExecute({ ...cloning, promptText: '' })).toBe('prompt-missing');
+  });
+
+  it('leaves the button live and speaks on click', () => {
+    expect(isExecuteButtonDisabled('ref-audio-missing')).toBe(false);
+    expect(refusalToastKey('ref-audio-missing')).toBe(
+      'canvas.generatePanel.errorNoRefAudio',
+    );
+  });
+
+  it('keeps every refusal the user can act on clickable', () => {
+    // The set, stated once. A new refusal added to the union without a place
+    // in this list is one nobody decided the button behaviour for.
+    const actionable: ExecuteRefusal[] = [
+      'prompt-missing',
+      'prompt-too-long',
+      'voice-missing',
+      'ref-audio-missing',
+    ];
+    for (const refusal of actionable) {
+      expect(isExecuteButtonDisabled(refusal), refusal).toBe(false);
+      expect(refusalToastKey(refusal), refusal).not.toBeNull();
     }
   });
 });

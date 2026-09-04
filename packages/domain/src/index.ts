@@ -56,13 +56,21 @@ export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
 export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";
 export { getSkillRegistry, SkillRegistry } from "@domain/agent/skills-loader.js";
-export { extractPromptText } from "@domain/agent/extract-prompt.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
 export { listAvailableModels, estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
 export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+// Which upstream a model runs on in this deployment. One rule, two callers:
+// the worker sends the generation, the voice endpoint lists voices in that
+// same upstream's value domain.
+export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
+export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
+
+// The voices a tts model offers, in one shape whichever vendor answers.
+export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
+export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
 export {
