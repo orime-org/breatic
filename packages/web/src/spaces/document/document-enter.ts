@@ -23,7 +23,7 @@
  */
 
 import { createExtension, getBlockInfoFromSelection } from '@blocknote/core';
-import { AllSelection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 import {
@@ -123,6 +123,27 @@ function handleQuotedEnter(editor: ListEditor): boolean {
 }
 
 /**
+ * Opens an empty paragraph block at a position, with the caret inside it.
+ *
+ * The two selections below both want this and neither can ask BlockNote for
+ * it: what goes in is a `blockContainer`, which is the only thing a
+ * `blockGroup` accepts, and the caret lands two positions in — past the
+ * container and past the paragraph.
+ * @param tr - The transaction to write into.
+ * @param at - Where the new block goes.
+ */
+function openBlockAt(tr: Transaction, at: number): void {
+  const paragraph = tr.doc.type.schema.nodes['paragraph'];
+  const container = tr.doc.type.schema.nodes['blockContainer'];
+  if (!paragraph || !container) {
+    return;
+  }
+  tr.insert(at, container.create(null, paragraph.create()));
+  tr.setSelection(TextSelection.create(tr.doc, at + 2));
+  tr.scrollIntoView();
+}
+
+/**
  * Enter with the whole document selected.
  *
  * What it gets is somewhere to write at the end, with the caret in it, and the
@@ -138,15 +159,29 @@ function handleQuotedEnter(editor: ListEditor): boolean {
  */
 function handleWholeDocumentEnter(editor: ListEditor): boolean {
   editor.transact((tr) => {
-    const paragraph = tr.doc.type.schema.nodes['paragraph'];
-    const container = tr.doc.type.schema.nodes['blockContainer'];
-    if (!paragraph || !container) {
-      return;
-    }
-    const at = tr.doc.content.size - 1;
-    tr.insert(at, container.create(null, paragraph.create()));
-    tr.setSelection(TextSelection.create(tr.doc, at + 2));
-    tr.scrollIntoView();
+    openBlockAt(tr, tr.doc.content.size - 1);
+  });
+  return true;
+}
+
+/**
+ * Enter with one whole block selected.
+ *
+ * A reader reaches this by holding the platform's select-node modifier over a
+ * block, and what Enter gets them is a new block after that one — the block
+ * they selected untouched, which is what every editor with a block handle
+ * does.
+ *
+ * Answered here because BlockNote's own answer raises:
+ * `NodeSelectionKeyboard.ts:48` inserts a bare `paragraph`, which a
+ * `blockGroup` does not accept, at `$to.after() + 1`, which for a document
+ * whose only block is selected is one position past its end.
+ * @param editor - The editor Enter was pressed in.
+ * @returns True, having handled the key.
+ */
+function handleWholeBlockEnter(editor: ListEditor): boolean {
+  editor.transact((tr) => {
+    openBlockAt(tr, tr.selection.to);
   });
   return true;
 }
@@ -162,8 +197,12 @@ export const documentEnterExtension = createExtension(() => ({
   key: 'document-enter',
   keyboardShortcuts: {
     Enter: ({ editor }: { editor: ListEditor }) => {
-      if (editor.prosemirrorState.selection instanceof AllSelection) {
+      const { selection } = editor.prosemirrorState;
+      if (selection instanceof AllSelection) {
         return handleWholeDocumentEnter(editor);
+      }
+      if (selection instanceof NodeSelection) {
+        return handleWholeBlockEnter(editor);
       }
       const type = editor.transact(
         (tr) => getBlockInfoFromSelection(tr).blockNoteType,
