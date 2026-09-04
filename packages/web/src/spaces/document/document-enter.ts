@@ -2,26 +2,24 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What Enter does, for every shape of selection it can be pressed on.
+ * What Enter does inside a quote.
  *
- * Splitting a block is decided in this Space rather than by BlockNote, because
- * two things a writer expects to survive a split do not survive BlockNote's:
+ * A quote is a prop on the block in this Space, not a container around it, so
+ * every block BlockNote's Enter creates has to be told it is inside one.
+ * BlockNote's handler tries four things in order, and two of them make a new
+ * block:
  *
- * - **The quote.** It is a prop on the block here, not a container around it,
- *   so a block split off from a quoted one carries the quote only if someone
- *   puts it there. `splitBlockTr` passes `attrs: {}` unless the caret sits at
- *   the block's start, which drops the writer out of the quote they were in.
- * - **The formatting.** `tr.split` clears the stored marks, and BlockNote's
- *   split does not put them back. Neither can we, afterwards: `splitBlockTr`
- *   lives inside the published bundle, and marks restored around it are
- *   cleared again by the id-writing pass that always follows a split.
+ * - An empty block with the caret at its start gets a fresh `paragraph`
+ *   container built from `createAndFill()`, with no attributes at all.
+ * - A non-empty block is split, with `keepProps` set to whether the caret sits
+ *   at the block's start — so ending a line and pressing Enter passes
+ *   `attrs: {}`.
  *
- * Three handlers cover the shapes between them — the list handlers in
- * `document-list-block.ts` for the three list types, `handleProseEnter` for
- * everything else, and one each for the two selections BlockNote raises on.
- * What still falls through to BlockNote is Enter on an EMPTY block, where its
- * own rules (lift out a level, leave the list) create nothing and so lose
- * nothing.
+ * Either way the writer lands outside the quote they were writing in. This
+ * handler takes over only for blocks that are inside a quote, and mirrors what
+ * BlockNote would have done for each case, quote included. Everything else —
+ * an unquoted block, a hard break, lifting an empty indented block out a level
+ * — falls straight through.
  */
 
 import { createExtension, getBlockInfoFromSelection } from '@blocknote/core';
@@ -81,22 +79,11 @@ function openQuotedBlockAfter(
 }
 
 /**
- * Enter, for prose — every block that is not a list item.
- *
- * Splitting a block is decided here for all three kinds this Space has: the
- * list handlers below for the three list types, and this one for everything
- * else. What BlockNote's own split leaves behind is a block that has lost the
- * quote it was in and the formatting the writer had chosen, and neither can be
- * put back afterwards: its `splitBlockTr` is inside the published bundle, and
- * the marks it drops are cleared again by the id-writing pass that follows.
- *
- * An EMPTY block still falls through to BlockNote, which answers Enter there
- * by lifting the block out a level or leaving the list — its own rules, and
- * nothing is split, so nothing is lost.
+ * Enter, for a block that sits inside a quote.
  * @param editor - The editor Enter was pressed in.
  * @returns Whether this handler claimed the key.
  */
-function handleProseEnter(editor: ListEditor): boolean {
+function handleQuotedEnter(editor: ListEditor): boolean {
   return editor.transact((tr) => {
     const info = getBlockInfoFromSelection(tr);
     if (!info.isBlockContainer) {
@@ -110,14 +97,16 @@ function handleProseEnter(editor: ListEditor): boolean {
       // Enter on an empty item by leaving the list, which is their own rule.
       return false;
     }
+    if (blockContent.node.attrs[QUOTED] !== true) {
+      return false;
+    }
 
     const atBlockStart = tr.selection.$anchor.parentOffset === 0;
     const blockEmpty = blockContent.node.childCount === 0;
     const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
-    const quoted = blockContent.node.attrs[QUOTED] === true;
 
     if (blockEmpty) {
-      if (!quoted || (atBlockStart && indented)) {
+      if (atBlockStart && indented) {
         // BlockNote lifts this one out a level, which creates no block and so
         // loses no props.
         return false;
@@ -222,7 +211,7 @@ export const documentEnterExtension = createExtension(() => ({
       if (listType !== undefined) {
         return handleListEnter(editor, listType);
       }
-      return handleProseEnter(editor);
+      return handleQuotedEnter(editor);
     },
   },
 }) as never);

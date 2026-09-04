@@ -36,7 +36,6 @@ import {
   updateBlockTr,
 } from '@blocknote/core';
 import type { Transaction } from '@tiptap/pm/state';
-import type { Mark } from '@tiptap/pm/model';
 
 /** The block type this file rebuilds. */
 export const ORDERED_LIST = 'numberedListItem';
@@ -51,31 +50,12 @@ export interface ListEditor {
 }
 
 /**
- * The formatting that continues into a block split off at a position.
- *
- * `tr.split` clears the stored marks, so what the writer had chosen has to be
- * read before the split and put back after it. Which marks those are is
- * ProseMirror's own answer: `marks()` at a position holds the ones whose
- * `inclusive` says typing there continues them, which is why a link — declared
- * `inclusive: false` — is absent and a new block does not extend someone's URL.
- * @param tr - The transaction about to split.
- * @param posInBlock - Where the split will happen.
- * @returns The marks to restore afterwards.
- */
-export function marksToCarry(
-  tr: Transaction,
-  posInBlock: number,
-): readonly Mark[] {
-  return tr.storedMarks ?? tr.doc.resolve(posInBlock).marks();
-}
-
-/**
  * Splits the block at a position, carrying the quote into the new one.
  *
  * A rebuild of `splitBlockTr`, which `@blocknote/core` keeps to itself while
  * exporting everything it depends on. The new block starts clean apart from
- * the quote and the writer's formatting: a pinned number belongs to the item
- * the user pinned it on, and the one after it counts along.
+ * the quote: a pinned number belongs to the item the user pinned it on, and
+ * the one after it counts along.
  * @param tr - The transaction to split in.
  * @param posInBlock - Where to split.
  * @param keepType - Whether the new block keeps this one's type.
@@ -92,7 +72,6 @@ export function splitCarryingQuote(
   }
   const schema = getPmSchema(tr);
   const quoted = info.blockContent.node.attrs[QUOTED];
-  const marks = marksToCarry(tr, posInBlock);
   tr.split(posInBlock, 2, [
     { type: info.bnBlock.node.type, attrs: {} },
     {
@@ -100,9 +79,6 @@ export function splitCarryingQuote(
       attrs: { [QUOTED]: quoted },
     },
   ]);
-  if (marks.length > 0) {
-    tr.ensureMarks(marks);
-  }
   return true;
 }
 
