@@ -406,11 +406,11 @@
       "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去",
       "errorStorageFull": "Studio 存储已满，当前无法生成。",
-      "refAudio": "参考音频",
+      "refAudio": "声音样本",
       "refAudioTip": "挑一个音频节点，3–15 秒清晰人声",
-      "removeRefAudio": "移除参考音频",
-      "errorNoRefAudio": "先挑一段参考音频",
-      "selectRefAudioFromCanvas": "选择一个音频节点"
+      "removeRefAudio": "移除声音样本",
+      "errorNoRefAudio": "先挑一段声音样本",
+      "selectRefAudioFromCanvas": "挑一段音频，用它的音色来说话"
     },
     "nodeMenu": {
       "generate": "生成",

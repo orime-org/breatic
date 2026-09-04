@@ -386,7 +386,7 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   // toast, so asserting that one appeared says nothing about which condition
   // the gate judged.
   await expect(page.locator('[data-sonner-toast]').first()).toContainText(
-    'Pick a reference audio first',
+    'Pick a voice sample first',
     { timeout: 10_000 },
   );
 

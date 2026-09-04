@@ -406,11 +406,11 @@
       "promptNotUsed": "このモードにプロンプトは必要ありません。",
       "refuseInsertNoPrompt": "このモードにはプロンプト欄がないため、挿入できません",
       "errorStorageFull": "Studio のストレージがいっぱいです。生成できません。",
-      "refAudio": "参照音声",
+      "refAudio": "音声サンプル",
       "refAudioTip": "音声ノードを選択（3〜15秒の明瞭な音声）",
-      "removeRefAudio": "参照音声を削除",
-      "errorNoRefAudio": "先に参照音声を選択してください",
-      "selectRefAudioFromCanvas": "音声ノードを選択"
+      "removeRefAudio": "音声サンプルを削除",
+      "errorNoRefAudio": "先に音声サンプルを選択してください",
+      "selectRefAudioFromCanvas": "声を複製する音声を選択"
     },
     "nodeMenu": {
       "generate": "生成",
