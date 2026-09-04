@@ -39,6 +39,28 @@ published version, including superseded ones, at `sources.debian.org`.
 
 ## Packages reachable from the front-end bundle
 
+### BlockNote
+
+| | |
+|---|---|
+| Version | `0.54.0` |
+| Packages | `@blocknote/core`, `@blocknote/react` |
+| Reached through | Declared by `packages/web`; the editor a Document Space runs in |
+| Licence | **MPL-2.0** |
+| Source | https://github.com/TypeCellOS/BlockNote |
+
+MPL-2.0's copyleft is per file: the condition attaches to the files the licence
+covers and to modifications of those files, and a larger work that merely
+includes them is licensed on its own terms. These files reach the bundle as
+published, so the obligation this leaves is the one this entry discharges —
+saying what is in there, under which licence, and where the source is.
+
+Upstream also publishes a second half under the `@blocknote/xl-` prefix, offered
+as `GPL-3.0 OR PROPRIETARY`. Its GPL-3.0 half would place every bundle it
+reaches under GPL-3.0. The `no-gpl-blocknote-addons` check in `repo-lint` reads
+both our manifests and the lockfile for that prefix, so one arriving through a
+dependency of something else is reported as well.
+
 ### DOMPurify
 
 | | |
