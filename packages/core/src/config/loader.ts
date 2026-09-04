@@ -172,6 +172,10 @@ const agentConfigSchema = z.object({
    * anything under 1024, and names 32768 as its own ceiling in the error it
    * answers above that. Stating them here is what makes a bad figure fail when
    * the config loads rather than on every search.
+   *
+   * The request carries this figure twice, once for the whole search and once
+   * for any single source, and the per-source key stops at 8192 -- so a figure
+   * above that reaches the service only as the whole-search one.
    */
   web_search_max_tokens: z.number().int().min(1024).max(32768).default(8192),
   /**

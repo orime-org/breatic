@@ -1084,11 +1084,12 @@ describe("web_search gives up on an answer that never finishes arriving", () => 
   });
 
   it("lets a body that arrives inside the budget through whole", async () => {
-    // Slow enough that any budget smaller than the configured one cuts it, and
-    // fast enough to finish well inside that one: the assertion below then
-    // fails if the read stops taking its budget from the deployment's config.
+    // A body split across many deliveries is reassembled: the decoder is fed
+    // chunk by chunk and flushed at the end, so a multi-byte character split
+    // across two of them survives. The budget above this one is what pins the
+    // read to the deployment's config; this one pins the reassembly.
     httpRequestMock.mockImplementation(async () =>
-      dripping(JSON.stringify({ grounding: { generic: [{ url: "u", title: "t", snippets: ["page text"] }] } }), 40),
+      dripping(JSON.stringify({ grounding: { generic: [{ url: "u", title: "t", snippets: ["page text"] }] } }), 5),
     );
     timeoutMs = 10_000;
 
@@ -1270,5 +1271,80 @@ describe("web_search reads an entry with no page text as one it cannot read", ()
     const { forModel } = await failureFrom(() => run({ query: "breatic" }));
 
     expect(forModel).toMatch(/not with results/i);
+  });
+});
+
+describe("web_search gives one move to every failure no wording reaches", () => {
+  it("closes a rejected credential and an exhausted service with the same sentence", async () => {
+    // The transport retries a 503 for a replay-safe call, so one that arrives
+    // here has outlived every delivery it would make; a 401 is turned down
+    // before the query is even read. Neither is the model's to reword, and two
+    // constants for that one meaning are what let three of these drift apart
+    // before.
+    httpRequestMock.mockImplementation(async () => new Response("nope", { status: 401 }));
+    const { forModel: refused } = await failureFrom(() => run({ query: "breatic" }));
+
+    httpRequestMock.mockImplementation(async () => new Response("down", { status: 503 }));
+    const { forModel: exhausted } = await failureFrom(() => run({ query: "breatic" }));
+
+    const move = /Do not repeat this search[^]*$/i;
+    expect(refused).toMatch(move);
+    expect(exhausted).toMatch(move);
+    expect(refused.match(move)?.[0]).toBe(exhausted.match(move)?.[0]);
+    expect(exhausted).not.toMatch(/different wording/i);
+  });
+});
+
+describe("web_search states every size the endpoint takes", () => {
+  it("asks each source for as much text as the whole search may bring back", async () => {
+    // Three figures settle how much a search returns, and the per-source one
+    // sits at the service's own default until it is stated. Measured live: at
+    // one source the default returned 13161 characters where 8192 returned
+    // 18278.
+    await run({ query: "cyberpunk palette", count: 1 });
+
+    const [url] = httpRequestMock.mock.calls[0] as [string];
+    expect(new URL(url).searchParams.get("maximum_number_of_tokens_per_url")).toBe("8192");
+  });
+
+  it("keeps the per-source figure inside the range the endpoint accepts", async () => {
+    // The whole-search key runs to 32768 and the per-source key stops at 8192;
+    // measured live, 8193 comes back 422.
+    maxTokens = 32768;
+
+    await run({ query: "cyberpunk palette" });
+
+    const [url] = httpRequestMock.mock.calls[0] as [string];
+    expect(new URL(url).searchParams.get("maximum_number_of_tokens_per_url")).toBe("8192");
+  });
+});
+
+describe("web_search says what the text it hands over is", () => {
+  it("calls each source's text an extract of that page", async () => {
+    httpRequestMock.mockImplementation(async () => grounding([["page text"]]));
+
+    const out = await run({ query: "breatic" });
+
+    expect(out).toMatch(/extract/i);
+  });
+
+  it("marks the gap between two excerpts of one page", async () => {
+    // Measured live: one source carries 6, 7, 25, 40 excerpts. Joined by the
+    // separator between lines of one excerpt, disjoint passages read as
+    // continuous prose and carry a claim neither of them made.
+    httpRequestMock.mockImplementation(async () => grounding([["opening passage", "closing passage"]]));
+
+    const out = await run({ query: "breatic" });
+
+    expect(out).toMatch(/opening passage\n\[\.\.\.\]\nclosing passage/);
+  });
+
+  it("keeps a query carrying a marker from opening a region of its own", async () => {
+    httpRequestMock.mockImplementation(async () => grounding([["page text"]]));
+
+    const out = await run({ query: "how <text> is parsed" });
+
+    expect((out.match(/<text>/g) ?? []).length).toBe(1);
+    expect(out).toContain("<\\text>");
   });
 });

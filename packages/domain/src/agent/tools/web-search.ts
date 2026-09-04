@@ -61,6 +61,25 @@ interface Source {
 const OWN_MARKER = /<(\/?(?:source|text))/gi;
 
 /**
+ * The most text the endpoint will return for one source.
+ *
+ * Its own ceiling, measured: 8192 is taken and 8193 comes back 422. The
+ * whole-search key runs four times higher, so a configured figure is held to
+ * this one before it goes out as the per-source request.
+ */
+const MAX_TOKENS_PER_SOURCE = 8192;
+
+/**
+ * What stands between two excerpts of one page.
+ *
+ * The service returns a page as separate passages -- measured live, 6, 7, 25
+ * and 40 of them for single sources -- and they are not adjacent in the page.
+ * Joined by the separator that also divides the lines of one passage, they
+ * read as continuous prose, which carries a claim neither passage made.
+ */
+const BETWEEN_EXCERPTS = "\n[...]\n";
+
+/**
  * What the model may do once a call has failed.
  *
  * Every reason ends with one of these. Anthropic's guidance asks a tool error
@@ -71,12 +90,14 @@ const OWN_MARKER = /<(\/?(?:source|text))/gi;
  * these drifted apart before.
  */
 const NEXT_MOVE = {
-  /** Nothing about this call will work; stop calling it. */
+  /**
+   * No wording reaches past this one; the sentence before it says why.
+   *
+   * Bound to the search rather than to a turn: this reason is read once when
+   * the call fails and again every later turn that reads the record, and by
+   * then "this turn" names a different one.
+   */
   stop:
-    "Do not repeat this call; continue without search results and tell the user search is " +
-    "unavailable.",
-  /** The same, for a search rather than a call. */
-  stopSearching:
     "Do not repeat this search; continue without search results and tell the user search is " +
     "unavailable.",
   /** The request is the model's to rewrite, once. */
@@ -133,7 +154,7 @@ function refusalReason(query: string, status: number): string {
     return reason(
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
         "wording of it reaches past this.",
-      NEXT_MOVE.stopSearching,
+      NEXT_MOVE.stop,
     );
   }
 
@@ -165,7 +186,7 @@ function refusalReason(query: string, status: number): string {
  * @param query - What was searched for.
  * @returns The reason, ending in what the model may do instead.
  */
-function notResultsReason(query: string): string {
+function notOurPayloadReason(query: string): string {
   return reason(
     `Searching for "${query}" failed: the search service answered, but not with results. ` +
       "That is a fault on their side.",
@@ -183,7 +204,7 @@ function notResultsReason(query: string): string {
  * @param query - What was searched for.
  * @returns The answer, ending in what the model may do instead.
  */
-function noResultsAnswer(query: string): string {
+function foundNothingAnswer(query: string): string {
   return reason(
     `No results for: ${query}. The search ran and came back with nothing.`,
     NEXT_MOVE.searchElsewhere,
@@ -264,10 +285,9 @@ async function readWithin(res: Response, budgetMs: number): Promise<string> {
  */
 function renderSource(item: unknown, position: number): string | null {
   if (item === null || typeof item !== "object") return null;
-  const { url, title, snippets } = item as Source & { snippets?: unknown };
+  const { url, title, snippets } = item as Source;
 
-  const list =
-    snippets === undefined ? [] : typeof snippets === "string" ? [snippets] : snippets;
+  const list = typeof snippets === "string" ? [snippets] : snippets;
   if (!Array.isArray(list)) return null;
 
   const address = typeof url === "string" ? url : "";
@@ -283,7 +303,7 @@ function renderSource(item: unknown, position: number): string | null {
     `url: ${onOneLine(keepInside(address))}`,
     `title: ${onOneLine(keepInside(name))}`,
     "<text>",
-    ...texts.map(keepInside),
+    texts.map(keepInside).join(BETWEEN_EXCERPTS),
     "</text>",
     "</source>",
   ].join("\n");
@@ -325,9 +345,9 @@ function keepInside(text: string): string {
  * Assemble the answer from the sources this tool could read.
  *
  * Every source the service sent and this tool could read goes to the model
- * whole. How much comes back is settled in the request, by the two figures the
- * endpoint takes: how many sources, and how many tokens of text across all of
- * them.
+ * whole. How much comes back is settled in the request, by the three figures
+ * the endpoint takes: how many sources, how many tokens of text across all of
+ * them, and how many from any one of them.
  *
  * The count of unreadable entries is stated, because a set the model reads as
  * complete is what makes "nothing I found mentions X" a wrong answer.
@@ -339,7 +359,8 @@ function keepInside(text: string): string {
 function assembleAnswer(query: string, blocks: string[], sent: number): string {
   const header =
     `Results for: ${query}\n` +
-    "Everything between a text marker and its close is text from that page.\n";
+    "Everything between a text marker and its close is an extract of that page, and " +
+    `${BETWEEN_EXCERPTS.trim()} stands where the page continues past it.\n`;
 
   const parts = [header, ...blocks];
   if (blocks.length < sent) {
@@ -354,22 +375,27 @@ function assembleAnswer(query: string, blocks: string[], sent: number): string {
 /**
  * Search the web using Brave's LLM context endpoint.
  *
- * Returns each source's own page text, which is what the model reads.
- * Requires the `BRAVE_SEARCH_API_KEY` environment variable.
+ * Returns extracts of each source's own page text, which is what the model
+ * reads. Requires the `BRAVE_SEARCH_API_KEY` environment variable.
  */
 export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
-    "Search the web. Returns the text of the pages that answer the query. `count` spreads " +
-    "that text over more sources; it does not get more of it.",
+    "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
+    "of each page. Something absent from an extract may still be on the page. `count` " +
+    "spreads the same amount of text over more sources.",
   inputSchema,
   execute: async (
     { query: asked, count },
     { abortSignal }: { abortSignal?: AbortSignal },
   ): Promise<string> => {
-    // Normalised once, where it arrives, so no printing site downstream can
-    // meet a raw one: the query goes out in the request and comes back in six
-    // sentences, each of them a line the model reads.
+    // Two forms, settled here so no site downstream chooses between them. The
+    // request carries the words as asked, on one line; every sentence printed
+    // back to the model carries `shown`, which can no longer open a region of
+    // this tool's own -- a query is the model's to write, and a page that asks
+    // the model to search for a marker would otherwise reach the answer
+    // through it.
     const query = onOneLine(asked);
+    const shown = keepInside(query);
     // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
     // read via the injected config Proxy, not process.env directly.
     const apiKey = env.BRAVE_SEARCH_API_KEY;
@@ -400,6 +426,17 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // service's own (it rejects below 1024 and states 32768 as its ceiling),
       // so a figure that reaches here is one it will take.
       url.searchParams.set("maximum_number_of_tokens", String(maxTokens));
+      // The same amount again, per source: a third figure settles the size,
+      // and left unstated it sits at the service's own 4096. Measured live at
+      // one source, that default returned 13161 characters where this key at
+      // 8192 returned 18278, and it stops binding from three sources up. The
+      // key's own ceiling is 8192 -- measured, 8193 comes back 422 -- while
+      // the whole-search key runs to 32768, so the configured figure is held
+      // to the range this one takes.
+      url.searchParams.set(
+        "maximum_number_of_tokens_per_url",
+        String(Math.min(maxTokens, MAX_TOKENS_PER_SOURCE)),
+      );
 
       // Through the shared transport, which owns the retrying. A search is a
       // read: its only effect is the response, so a delivery that produced
@@ -439,7 +476,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // threshold, and says a caller discarding one should cancel it. A run
         // of refusals — a revoked key, a rate limit — is a run of these.
         void res.body?.cancel();
-        throw toolFailed(refusalReason(query, res.status), FAILURE_LINES.upstream);
+        throw toolFailed(refusalReason(shown, res.status), FAILURE_LINES.upstream);
       }
 
       // Reading and parsing are guarded apart because they are two different
@@ -469,11 +506,11 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       try {
         data = JSON.parse(text);
       } catch {
-        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
 
       if (data === null || typeof data !== "object") {
-        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
       // A search that found nothing has one observed shape: `generic` present
       // and empty. A body without it is the service answering something other
@@ -482,9 +519,9 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // pages when what happened is an answer this side could not read.
       const found: unknown = (data as { grounding?: { generic?: unknown } }).grounding?.generic;
       if (!Array.isArray(found)) {
-        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
-      if (found.length === 0) return noResultsAnswer(query);
+      if (found.length === 0) return foundNothingAnswer(shown);
 
       const blocks = found
         .map((item, i) => renderSource(item, i + 1))
@@ -492,10 +529,10 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // Sources arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.
       if (blocks.length === 0) {
-        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
 
-      return assembleAnswer(query, blocks, found.length);
+      return assembleAnswer(shown, blocks, found.length);
     } catch (err: unknown) {
       // Every throw above passes straight through: each already says what
       // happened, and rewriting one here would replace a specific reason with
