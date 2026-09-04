@@ -21,10 +21,26 @@ import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { NodeTaskCounts } from '@breatic/shared';
+import { cn } from '@web/lib/utils';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 
 /** A node with no task rows yet reads as four zeros rather than nothing. */
 const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
+
+/**
+ * Whether a node's counts are all zero, so its column has nothing to open.
+ * @param counts - The node's four counts.
+ * @returns True when every one of them is zero.
+ */
+function noTasksYet(counts: NodeTaskCounts): boolean {
+  return (
+    counts.running === 0 &&
+    counts.done === 0 &&
+    counts.failed === 0 &&
+    counts.expired === 0
+  );
+}
 
 /** Prop surface every node body accepts from the ReactFlow wrapper. */
 interface InnerNodeProps {
@@ -38,6 +54,12 @@ interface InnerNodeProps {
    * file picker and fills this node (media nodes). Text handles its own edit.
    */
   onActivate?: () => void;
+  /**
+   * Open this node's task list on its failures, pre-bound to this node
+   * (#186 §3.7.2). The node's error box carries one sentence; this is the way
+   * from it to the row that says which task failed and why.
+   */
+  onViewTasks?: () => void;
 }
 
 /**
@@ -171,6 +193,9 @@ function makeFlowNode(
       },
       [closeActivePanel, openTaskPanel, props.id],
     );
+    const onViewTasks = React.useCallback((): void => {
+      openTaskPanel(props.id, 'failed');
+    }, [openTaskPanel, props.id]);
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
@@ -185,6 +210,7 @@ function makeFlowNode(
                 locked={data.locked}
                 onRename={onRename}
                 onActivate={onActivate}
+                onViewTasks={onViewTasks}
               />
               {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings
@@ -240,7 +266,16 @@ function makeFlowNode(
                 readable at any zoom. */}
               {taskCounts !== null ? (
                 <div
-                  className='absolute left-full top-0 ml-2'
+                  // `nodrag` keeps a press on a count from starting a node
+                  // drag: xyflow's threshold is one pixel, so opening the list
+                  // would otherwise slide the node under the cursor and write
+                  // a new position into the shared document. With every count
+                  // at zero the column has nothing to open, and it stops
+                  // taking presses at all so the pane keeps its marquee.
+                  className={cn(
+                    'nodrag absolute left-full top-0 ml-2',
+                    noTasksYet(taskCounts) && 'pointer-events-none',
+                  )}
                   style={{
                     transform: `scale(${headerScale})`,
                     transformOrigin: 'top left',

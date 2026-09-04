@@ -58,6 +58,70 @@ describe('FLOW_NODE_TYPES', () => {
     expect(renameNode).toHaveBeenCalledWith('n1', 'Renamed');
   });
 
+  /**
+   * Render one image node through the wrapper.
+   * @param data - The view the wrapper hands the body.
+   * @returns Nothing; assert against the screen.
+   */
+  function renderImage(data: Record<string, unknown>): void {
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      <ReactFlowProvider>
+        <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+          reportGroupResize: () => undefined, beginGroupResize: () => undefined, retryNodeUpload: vi.fn(), hasUploadRetryFile: () => false, }}>
+          <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+        </CanvasActionsContext.Provider>
+      </ReactFlowProvider>,
+    );
+  }
+
+  // §3.7.2 traded the node's concrete failure reason and its Retry button away
+  // on the condition that the box carry a way to the list where both now live.
+  // The wrapper is the only layer that knows this node's id, so it is the one
+  // that can bind it.
+  it('gives the error box a way into this node’s task list', () => {
+    renderImage({
+      kind: 'image',
+      status: 'error',
+      name: 'N',
+      taskCounts: { running: 0, done: 0, failed: 1, expired: 0 },
+    });
+
+    expect(
+      screen.getByTestId('node-content-view-tasks'),
+    ).toBeInTheDocument();
+  });
+
+  // xyflow starts a node drag one pixel into a press, so a count without
+  // `nodrag` slides the node under the cursor and writes a new position into
+  // the shared document while the user is opening a list.
+  it('keeps a press on the counts from dragging the node', () => {
+    renderImage({
+      kind: 'image',
+      status: 'idle',
+      name: 'N',
+      content: 'https://cdn.invalid/a.png',
+      taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+    });
+
+    const column = screen.getByTestId('task-count-running').closest('div');
+    expect(column?.parentElement).toHaveClass('nodrag');
+  });
+
+  it('lets the pane have the strip back when a node carries no task', () => {
+    // Four zeros open nothing, so the column stops taking presses and a
+    // marquee or a pane drag can begin inside it.
+    renderImage({
+      kind: 'image',
+      status: 'idle',
+      name: 'N',
+      content: 'https://cdn.invalid/a.png',
+    });
+
+    const column = screen.getByTestId('task-count-running').closest('div');
+    expect(column?.parentElement).toHaveClass('pointer-events-none');
+  });
+
   // Critical path (collaborative text edit): the flow wrapper is the only layer
   // that knows ReactFlow's node id, and a text node needs it to find its own
   // body among all the bodies on the board. This used to be proved through the

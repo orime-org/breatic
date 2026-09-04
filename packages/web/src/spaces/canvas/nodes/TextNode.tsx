@@ -47,6 +47,8 @@ interface TextNodeProps {
   selected?: boolean;
   locked?: boolean;
   onRename?: (name: string) => void;
+  /** Open this node's task list on its failures (#186 §3.7.2). */
+  onViewTasks?: () => void;
 }
 
 /**
@@ -67,6 +69,7 @@ interface TextNodeProps {
  * @param root0.selected - Whether the node is selected, driving the selection ring.
  * @param root0.locked - Whether the node is locked, which blocks writing.
  * @param root0.onRename - Commit a rename, pre-bound to this node's id.
+ * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The text node element.
  */
 export const TextNode = React.memo(function TextNode({
@@ -74,6 +77,7 @@ export const TextNode = React.memo(function TextNode({
   selected,
   locked,
   onRename,
+  onViewTasks,
 }: TextNodeProps): React.JSX.Element {
   const t = useTranslation();
   const nodeId = React.useContext(NodeIdContext);
@@ -277,6 +281,7 @@ export const TextNode = React.memo(function TextNode({
       testId='text-node'
     >
       <NodeContent
+        onViewTasks={onViewTasks}
         status={data.status}
         errorMessage={data.errorMessage}
         // While editing, show the editor even for an empty body — a fresh node

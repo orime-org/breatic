@@ -14,6 +14,8 @@ interface AudioNodeProps {
   selected?: boolean;
   locked?: boolean;
   onActivate?: () => void;
+  /** Open this node's task list on its failures (#186 §3.7.2). */
+  onViewTasks?: () => void;
   /** Retry a failed upload (error state), pre-bound to this node (#1609 P4). */
   onRename?: (name: string) => void;
 }
@@ -28,6 +30,7 @@ interface AudioNodeProps {
  * @param root0.locked - Whether the node is locked, showing the lock indicator.
  * @param root0.onActivate - Called from the empty-state placeholder to open the generate/load popover.
  * @param root0.onRename - Commit a rename of this node's name (pre-bound to the node id by the canvas).
+ * @param root0.onViewTasks - Open this node's task list on its failures.
  * @returns The audio node element (placeholder or native audio player).
  */
 export const AudioNode = React.memo(function AudioNode({
@@ -35,6 +38,7 @@ export const AudioNode = React.memo(function AudioNode({
   selected,
   locked,
   onActivate,
+  onViewTasks,
   onRename,
 }: AudioNodeProps): React.JSX.Element {
   const hasContent = Boolean(data.content);
@@ -49,6 +53,7 @@ export const AudioNode = React.memo(function AudioNode({
       testId='audio-node'
     >
       <NodeContent
+        onViewTasks={onViewTasks}
         status={data.status}
         errorMessage={data.errorMessage}
         hasContent={hasContent}
