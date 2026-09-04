@@ -37,11 +37,17 @@ const inputSchema = z.object({
     .describe("How many sources to spread the same amount of text over (1-10)"),
 });
 
-/** One source as the endpoint hands it over. */
+/**
+ * One source as the endpoint hands it over.
+ *
+ * Every field is the service's word, so every field is `unknown`: the checks
+ * below decide what each one turns out to be, and a shape declared here would
+ * make the type checker agree with the service instead of with them.
+ */
 interface Source {
-  url?: string;
-  title?: string;
-  snippets?: unknown[];
+  url?: unknown;
+  title?: unknown;
+  snippets?: unknown;
 }
 
 /**
@@ -150,10 +156,10 @@ function refusalReason(query: string, status: number): string {
 /**
  * What to tell the model when the whole answer arrived and is not results.
  *
- * For an answer that came back complete and parsed, and is still not the shape
- * this tool reads. An answer that stopped arriving partway is a different fact
- * and says so where it is caught: this side never saw what the service meant to
- * send, and asking again may well get it.
+ * For an answer that came back complete and is not the payload this tool reads.
+ * An answer that stopped arriving partway is a different fact and says so where
+ * it is caught: this side never saw what the service meant to send, and asking
+ * again may well get it.
  * @param query - What was searched for.
  * @returns The reason, ending in what the model may do instead.
  */
@@ -180,6 +186,50 @@ function noResultsAnswer(query: string): string {
     `No results for: ${query}. The search ran and came back with nothing.`,
     NEXT_MOVE.searchElsewhere,
   );
+}
+
+/**
+ * Read a whole response body, giving up if it takes longer than the budget.
+ *
+ * The transport's deadline is spent once it hands the response back, and the
+ * platform's own body timeout measures inactivity -- a sender that keeps
+ * writing never trips it. Measured against a real server: a body dripped one
+ * character per 300ms ran 20776ms against a 500ms budget, and it scales with
+ * however long the far side keeps writing.
+ *
+ * `pipeTo` is the read that takes a signal. Cancelling underneath `text()` is
+ * not open to us: the reader it holds locks the stream, and `body.cancel()`
+ * then answers "Invalid state: ReadableStream is locked" while the read runs on.
+ * On expiry the source is cancelled and the socket is released -- measured, the
+ * server sees the connection close.
+ * @param res - The response whose body is being read.
+ * @param budgetMs - How long the whole body may take to arrive.
+ * @returns The body as text.
+ * @throws {Error} When the body did not finish inside the budget, when the
+ * caller's signal ended it, or when nothing came at all.
+ */
+async function readWithin(res: Response, budgetMs: number): Promise<string> {
+  const body = res.body;
+  // A 200 with no body, and one whose body is empty, are the same fact: the
+  // service answered and the answer was not there. Both belong with the reads
+  // that never finished, where the next move is to ask again.
+  if (body === null) throw new TypeError("the response carried no body");
+
+  const decoder = new TextDecoder();
+  let text = "";
+  await body.pipeTo(
+    new WritableStream<Uint8Array>({
+      write(chunk) {
+        // Streaming: a character can be split across two chunks.
+        text += decoder.decode(chunk, { stream: true });
+      },
+    }),
+    { signal: AbortSignal.timeout(budgetMs) },
+  );
+  text += decoder.decode();
+
+  if (text === "") throw new TypeError("the response body was empty");
+  return text;
 }
 
 /**
@@ -224,13 +274,28 @@ function renderSource(item: unknown, position: number): string | null {
 
   return [
     `<source index="${String(position)}">`,
-    `url: ${keepInside(address)}`,
-    `title: ${keepInside(name)}`,
+    `url: ${onOneLine(address)}`,
+    `title: ${onOneLine(name)}`,
     "<text>",
     ...texts.map(keepInside),
     "</text>",
     "</source>",
   ].join("\n");
+}
+
+/**
+ * Keep a page-written value to the single line it is printed on.
+ *
+ * The url and title are the only page-written strings outside the text region,
+ * and each is printed as a line. A newline in one puts whatever follows it
+ * where this tool's own attribution lives, in the same shape -- a page whose
+ * title carries `\nurl: https://…` is then cited to the reader under the
+ * address it chose.
+ * @param text - Text that came from the page.
+ * @returns The same text, on one line and unable to open or close a region.
+ */
+function onOneLine(text: string): string {
+  return keepInside(text).replace(/[\r\n]+/g, " ");
 }
 
 /**
@@ -355,6 +420,11 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       );
 
       if (!res.ok) {
+        // A body nobody reads keeps its connection out of the pool: the
+        // transport measured reuse collapsing past undici's buffering
+        // threshold, and says a caller discarding one should cancel it. A run
+        // of refusals — a revoked key, a rate limit — is a run of these.
+        void res.body?.cancel();
         throw toolFailed(refusalReason(query, res.status), FAILURE_LINES.upstream);
       }
 
@@ -365,7 +435,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // something else, and a second delivery returns the same bytes.
       let text: string;
       try {
-        text = await res.text();
+        text = await readWithin(res, budgetMs);
       } catch (err: unknown) {
         // Asked here rather than left to the guard below, which never sees
         // this: the outer guard passes anything carrying failure detail
