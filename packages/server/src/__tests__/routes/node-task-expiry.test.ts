@@ -97,6 +97,7 @@ beforeEach(() => {
   mocks.nodeTaskService.findById.mockResolvedValue(runningRow());
   mocks.nodeTaskService.settle.mockResolvedValue({
     applied: true,
+    landed: true,
     counts: COUNTS,
   });
 });
@@ -140,6 +141,7 @@ describe("POST /canvas/node-tasks/expired", () => {
     // still gets knocked on. Nothing to do, and nothing to retry.
     mocks.nodeTaskService.settle.mockResolvedValue({
       applied: false,
+      landed: false,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
     });
 
@@ -152,6 +154,7 @@ describe("POST /canvas/node-tasks/expired", () => {
     // bring a client closer to the table.
     mocks.nodeTaskService.settle.mockResolvedValue({
       applied: false,
+      landed: false,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
     });
 

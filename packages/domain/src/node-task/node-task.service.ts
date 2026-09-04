@@ -45,6 +45,16 @@ export type {
 export interface SettleResult {
   /** True when this call is the one that moved the row. */
   applied: boolean;
+  /**
+   * True when the row now holds the outcome this call asked for — either
+   * because this call moved it, or because it was already there.
+   *
+   * A result belongs on the node whenever the row says that outcome is what
+   * happened, and the ingest Worker repeats a report it did not hear a 2xx
+   * for. Keying the write on `applied` instead loses the content on exactly
+   * the retry that exists to recover it.
+   */
+  landed: boolean;
   counts: NodeTaskCounts;
 }
 
@@ -128,7 +138,7 @@ export async function settle(opts: {
   }
 
   const counts = await repo.countsFor(row.projectId, row.nodeId);
-  return { applied, counts };
+  return { applied, landed: applied || row.status === opts.outcome, counts };
 }
 
 /**

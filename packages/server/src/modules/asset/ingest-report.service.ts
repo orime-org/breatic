@@ -209,10 +209,12 @@ async function settleUploadTask(
     canvasSpaceDocName(grant.projectId, grant.spaceId),
     grant.nodeId,
     settled.counts,
-    // The content rides only on the transition that reached `done`. A late
-    // report finding the row already settled leaves the node's content alone:
-    // the user may have retried, and choosing for them is not ours to do.
-    settled.applied ? outcome.result : undefined,
+    // The content rides along whenever the row holds this outcome, a repeated
+    // report included — the Worker repeats one it heard no 2xx for, and that
+    // retry is the whole recovery for an event that never reached the node. A
+    // row that settled some OTHER way leaves the node's content alone: the
+    // user may have retried, and choosing for them is not ours to do.
+    settled.landed ? outcome.result : undefined,
   );
 }
 

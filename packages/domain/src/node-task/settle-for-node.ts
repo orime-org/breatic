@@ -63,9 +63,10 @@ export async function settleTaskForNode(
     docName,
     opts.nodeId,
     settled.counts,
-    // The content rides only on the transition that reached its outcome. A
-    // row that had already settled keeps whatever is on the node: something
-    // else finished it, and choosing between the two is not ours to do.
-    settled.applied ? opts.result : undefined,
+    // The content rides along whenever the row holds this outcome, including
+    // a report repeated because the first one was not heard. A row that
+    // settled some OTHER way keeps whatever is on the node: something else
+    // finished it, and choosing between the two is not ours to do.
+    settled.landed ? opts.result : undefined,
   );
 }

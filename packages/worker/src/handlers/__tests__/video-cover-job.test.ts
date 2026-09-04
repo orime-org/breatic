@@ -115,6 +115,7 @@ beforeEach(() => {
   mockFindTask.mockResolvedValue({ id: "row-1" });
   mockSettleTask.mockResolvedValue({
     applied: true,
+    landed: true,
     counts: { running: 0, done: 1, failed: 0, expired: 0 },
   });
 });
@@ -349,6 +350,7 @@ describe("the upload's task row", () => {
     // node stays where it is.
     mockSettleTask.mockResolvedValue({
       applied: false,
+      landed: false,
       counts: { running: 0, done: 0, failed: 0, expired: 1 },
     });
 

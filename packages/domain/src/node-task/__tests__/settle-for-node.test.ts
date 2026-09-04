@@ -45,7 +45,7 @@ const REDIS = {} as never;
 beforeEach(() => {
   vi.clearAllMocks();
   findByTaskAndNode.mockResolvedValue({ id: "row-1", projectId: PROJECT, nodeId: NODE });
-  settle.mockResolvedValue({ applied: true, counts: COUNTS });
+  settle.mockResolvedValue({ applied: true, landed: true, counts: COUNTS });
 });
 
 describe("settling one node's row of a generation", () => {
@@ -94,10 +94,10 @@ describe("settling one node's row of a generation", () => {
     expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, result);
   });
 
-  it("leaves the content alone when the row had already settled", async () => {
+  it("leaves the content alone when the row settled some other way", async () => {
     // The deadline passed and something else finished this node first. The
     // numbers still go out; what is on the node stays where it is.
-    settle.mockResolvedValue({ applied: false, counts: COUNTS });
+    settle.mockResolvedValue({ applied: false, landed: false, counts: COUNTS });
 
     await settleTaskForNode(REDIS, DOC, {
       taskId: "job-1",
@@ -113,6 +113,30 @@ describe("settling one node's row of a generation", () => {
     });
 
     expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, undefined);
+  });
+
+  it("sends the content again when the row already holds this outcome", async () => {
+    // The ingest Worker repeats a report it heard no 2xx for, and the likeliest
+    // reason it heard none is that the first event never reached the node. A
+    // repeat that carried only the numbers would leave that node showing a
+    // finished upload with nothing on it, for good.
+    settle.mockResolvedValue({ applied: false, landed: true, counts: COUNTS });
+    const result = {
+      content: "https://cdn.invalid/out.png",
+      coverUrl: null,
+      width: null,
+      height: null,
+      duration: null,
+    };
+
+    await settleTaskForNode(REDIS, DOC, {
+      taskId: "job-1",
+      nodeId: NODE,
+      outcome: "done",
+      result,
+    });
+
+    expect(emit).toHaveBeenCalledWith(REDIS, DOC, NODE, COUNTS, result);
   });
 
   it("does nothing for a node this job opened no row on", async () => {

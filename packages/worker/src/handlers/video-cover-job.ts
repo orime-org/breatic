@@ -107,7 +107,7 @@ export async function announceUpload(
       docName,
       data.nodeId,
       settled.counts,
-      settled.applied
+      settled.landed
         ? {
             content: data.videoUrl,
             coverUrl: coverUrl ?? null,

@@ -44,6 +44,7 @@ vi.mock("@breatic/domain", () => ({
     findByStorageKey: mockFindTask,
     settle: vi.fn(async () => ({
       applied: true,
+      landed: true,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
     })),
   },
