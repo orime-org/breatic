@@ -9,11 +9,8 @@ import {
   STORAGE_FULL_STATUS,
   type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
-import {
-  VIDEO_SLOTS,
-  readSlotPick,
-} from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlotSpec } from '@web/spaces/canvas/generate/video-slots';
+import { allSlotSpecs, readSlotPick } from '@web/spaces/canvas/generate/slots';
+import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { videoCoverFile } from '@web/spaces/canvas/video-cover-extract';
 
 /**
@@ -741,10 +738,10 @@ export interface AssetNodeLike {
  * @param data - A node's data map, whatever shape it is in.
  * @returns Every URL this node's slots hold.
  */
-function videoSlotUrls(data: unknown): string[] {
+function slotUrls(data: unknown): string[] {
   const bag = data as Record<string, unknown> | undefined;
   const urls: string[] = [];
-  for (const spec of Object.values(VIDEO_SLOTS) as VideoSlotSpec[]) {
+  for (const spec of allSlotSpecs() as SlotSpec[]) {
     const pick = readSlotPick(spec, bag?.[spec.field]);
     if (!pick) continue;
     urls.push(pick.url);
@@ -821,7 +818,7 @@ export function computeDeletedAssetEntries(
     // the first two were added one PR at a time, and a slot left out of a
     // hand-kept list reports an asset the video node is still generating from
     // — silently, until someone deletes the node it was picked from (#1918).
-    for (const url of videoSlotUrls(n.data)) survivingUrls.add(url);
+    for (const url of slotUrls(n.data)) survivingUrls.add(url);
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -884,7 +881,7 @@ export function assetUrlSurvives(
     // Same registry, same reason as the surviving-set above: the two lists
     // are each other's other half, and a slot missing from either one lets
     // its asset be reported as unused.
-    if (videoSlotUrls(data).includes(url)) {
+    if (slotUrls(data).includes(url)) {
       return true;
     }
     if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {
