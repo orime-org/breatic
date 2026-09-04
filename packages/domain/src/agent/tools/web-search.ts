@@ -45,31 +45,14 @@ interface Source {
 }
 
 /**
- * How many raw bytes of answer this tool will read.
+ * The four sequences page text must not be able to write.
  *
- * Per configured token, against a body measured at 3.7 to 7.5 bytes per token
- * across the whole legal range (the ratio is worst at the 1024 floor, where the
- * envelope dominates). Sixteen leaves better than twice the headroom over that
- * worst case at every setting, so only a body the service was never asked for
- * arrives here.
- *
- * Separate from the ceiling on the assembled answer, which bounds what the
- * model reads; this bounds what the process holds while parsing.
- */
-const BYTES_READ_PER_TOKEN = 16;
-
-/** How many characters of page text one configured token may pay for. */
-const CHARS_PER_TOKEN = 5;
-
-/**
- * The two sequences page text must not be able to write.
- *
- * The tag is a literal here and a literal at the two places that emit it. A
+ * Each tag is a literal here and a literal at the place that emits it. A
  * constant shared between them would promise a knob this pattern cannot turn:
  * renaming it would leave the neutraliser matching a tag nothing writes, and
- * page text could then open a block of its own.
+ * page text could then open a region of its own.
  */
-const SOURCE_MARKER = /<(\/?source)/gi;
+const OWN_MARKER = /<(\/?(?:source|text))/gi;
 
 /**
  * What the model may do once a call has failed.
@@ -121,8 +104,8 @@ function reason(what: string, next: NextMove): string {
  * What to tell the model about a status the search service refused with.
  *
  * Five different next moves hide behind "not 2xx", and the model takes the one
- * this sentence points at. A 5xx or a 429 is the service having a bad time and
- * says nothing about the query. A 401 or 403 is our credentials being turned
+ * this sentence points at. A 5xx, a 429 or a 408 is the service having a bad
+ * time and says nothing about the query. A 401 or 403 is our credentials turned
  * down; a 422 is what this side sent being refused, for a token it will not
  * accept or a parameter out of range, and its `detail` text is the same either
  * way. A 3xx reaches this function at all because the redirect is not followed
@@ -135,7 +118,10 @@ function reason(what: string, next: NextMove): string {
  */
 function refusalReason(query: string, status: number): string {
   const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
-  if (status >= 500 || status === 429) {
+  // 408 travels with 429 because the transport already treats the two the same
+  // (`decide-retry.ts`): one that reaches here has survived every delivery the
+  // transport was willing to make.
+  if (status >= 500 || status === 429 || status === 408) {
     return reason(
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
         "wording of it reaches past this.",
@@ -197,94 +183,6 @@ function noResultsAnswer(query: string): string {
 }
 
 /**
- * Read a response body under both a byte cap and a deadline.
- *
- * The transport's deadline is spent once it hands the response back, and its
- * retry budget covers deliveries rather than bytes -- so without this a body
- * fed one byte at a time holds the turn open for as long as the far side keeps
- * sending, and a body of any size is materialised whole.
- * @param res - The response whose body is being read.
- * @param query - What was searched for, for the reasons thrown from here.
- * @param maxBytes - How many bytes to accept before giving up.
- * @param budgetMs - How long the whole body may take to arrive.
- * @param abortSignal - The turn's signal, if the caller passed one.
- * @returns The body as text.
- * @throws {Error} Carrying tool-failure detail when the body is too large, or
- * did not finish inside the budget.
- */
-async function readBoundedBody(
-  res: Response,
-  query: string,
-  maxBytes: number,
-  budgetMs: number,
-  abortSignal: AbortSignal | undefined,
-): Promise<string> {
-  const body = res.body;
-  // A 200 carrying no stream is an answer that never arrived, which is the
-  // class the caller already reads a failed read as. Throwing here keeps it
-  // out of a path of its own that neither the cap nor the deadline covers.
-  if (body === null) throw new TypeError("the response carried no body");
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  const chunks: string[] = [];
-  let bytes = 0;
-
-  // Composed once for the whole read. How many chunks a body arrives in is the
-  // sender's choice, so a listener registered per chunk would grow with what
-  // this function exists to bound -- and it would grow on the turn's signal,
-  // which outlives this call and carries every other tool use in the turn.
-  // `AbortSignal.any` is what the shared transport composes with too.
-  const deadline = AbortSignal.timeout(budgetMs);
-  const givenUp = abortSignal ? AbortSignal.any([deadline, abortSignal]) : deadline;
-  const stopped = new Promise<never>((_resolve, reject) => {
-    /** Reject with whatever the composed signal carries. */
-    const quit = (): void => {
-      reject(
-        givenUp.reason instanceof Error
-          ? givenUp.reason
-          : new Error(`the body did not finish inside ${String(budgetMs)}ms`),
-      );
-    };
-    if (givenUp.aborted) quit();
-    else givenUp.addEventListener("abort", quit, { once: true });
-  });
-
-  try {
-    for (;;) {
-      const chunk = await Promise.race([reader.read(), stopped]);
-      if (chunk.done) break;
-      bytes += chunk.value.byteLength;
-      if (bytes > maxBytes) {
-        throw toolFailed(
-          reason(
-            `Searching for "${query}" failed: the search service sent more than it was asked ` +
-              `for (over ${String(maxBytes)} bytes). That is a fault on their side, and asking ` +
-              "again gets the same answer.",
-            NEXT_MOVE.stop,
-          ),
-          FAILURE_LINES.upstream,
-        );
-      }
-      chunks.push(decoder.decode(chunk.value, { stream: true }));
-    }
-    chunks.push(decoder.decode());
-    return chunks.join("");
-  } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      // The stream is already gone, which is the state cancelling asks for.
-    }
-  }
-}
-
-/** One source as the model reads it, and how much of it the page wrote. */
-interface RenderedSource {
-  block: string;
-  fromPage: number;
-}
-
-/**
  * Render one source as the block the model reads, or nothing.
  *
  * What arrives inside `grounding.generic` is the service's word, and reading a
@@ -299,14 +197,16 @@ interface RenderedSource {
  * `snippets` sent as one string is taken for the text it is: iterating a string
  * yields characters, so the page would arrive one letter per line.
  *
- * `fromPage` counts the characters the page wrote -- the two label values and
- * the text. It is what the ceiling bounds; the tags and the label names are
- * this tool's own words and are not charged to a third party's budget.
+ * The page's text sits in a region of its own, inside the block rather than
+ * beside the two label lines. Those labels are what the answer attributes a
+ * page by, and a page whose own text carries a `url:` line would otherwise
+ * write a second one indistinguishable from the tool's -- cited back to the
+ * reader under the address that page chose.
  * @param item - The entry as the endpoint sent it.
  * @param position - Its one-based place in the answer.
- * @returns The block and its weight, or null for an entry this cannot read.
+ * @returns The block, or null for an entry this cannot read.
  */
-function renderSource(item: unknown, position: number): RenderedSource | null {
+function renderSource(item: unknown, position: number): string | null {
   if (item === null || typeof item !== "object") return null;
   const { url, title, snippets } = item as Source & { snippets?: unknown };
 
@@ -319,97 +219,58 @@ function renderSource(item: unknown, position: number): RenderedSource | null {
   // Brave documents a snippet as page text or as serialised structured data,
   // so a non-string is within contract rather than a surprise.
   const texts = list.map((s) => (typeof s === "string" ? s : JSON.stringify(s)));
-  // The line each snippet occupies counts too: how many snippets a source
-  // carries is the service's choice, so a body of many tiny ones would
-  // otherwise grow the answer without spending any of the budget.
-  const fromPage =
-    address.length + name.length + texts.reduce((n, t) => n + t.length + 1, 0);
-  if (fromPage === 0) return null;
+  const written = address.length + name.length + texts.reduce((n, t) => n + t.length, 0);
+  if (written === 0) return null;
 
-  const lines = [
+  return [
     `<source index="${String(position)}">`,
     `url: ${keepInside(address)}`,
     `title: ${keepInside(name)}`,
+    "<text>",
     ...texts.map(keepInside),
+    "</text>",
     "</source>",
-  ];
-  return { block: lines.join("\n"), fromPage };
+  ].join("\n");
 }
 
 /**
- * Keep text that came from a page from posing as a block of its own.
+ * Keep text that came from a page from posing as a marker of its own.
  *
- * Both directions matter. Closing early puts page text where the tool's own
- * sentences live; opening a second block needs no escape at all, because
- * `url:` and `title:` are the tool's own lines -- a page that writes them is
- * read as a source of its own choosing and cited back to the reader under that
- * name.
+ * Both directions of both tags matter. Closing early puts page text where the
+ * tool's own lines live; opening a second region lets a page write labels of
+ * its own inside what the answer presents as one source.
  * @param text - Text that came from the page.
- * @returns The same text, unable to open or close a block.
+ * @returns The same text, unable to open or close a region.
  */
 function keepInside(text: string): string {
-  return text.replace(SOURCE_MARKER, "<\\$1");
+  return text.replace(OWN_MARKER, "<\\$1");
 }
 
 /**
- * Assemble the answer, keeping whole sources until the page text fits.
+ * Assemble the answer from the sources this tool could read.
  *
- * The ceiling follows the configured token budget rather than sitting at a
- * fixed figure: a legal answer scales with that budget (measured at 3.2 to 3.7
- * characters per token), so a fixed number would cut into what operations
- * themselves asked for. It is charged against the characters the pages wrote,
- * which is what a third party controls; the tags, the label names and this
- * line are the tool's own and would otherwise eat the budget operations set --
- * measured at the 1024 floor, framing alone took two of ten sources out of an
- * answer the service had delivered exactly as asked.
+ * Every source the service sent and this tool could read goes to the model
+ * whole. How much comes back is settled in the request, by the two figures the
+ * endpoint takes: how many sources, and how many tokens of text across all of
+ * them.
  *
- * Sources go whole or not at all, and the count of the missing ones is stated.
- * A cut in the middle of a source hands the model half a sentence as if it were
- * what that page said; a silent drop makes "nothing I found mentions X" a wrong
- * answer when X was in the part that never arrived. Both a source left out for
- * size and one the service sent in an unreadable shape are missing in the only
- * sense the model can act on, so one line covers them.
+ * The count of unreadable entries is stated, because a set the model reads as
+ * complete is what makes "nothing I found mentions X" a wrong answer.
  * @param query - What was searched for.
- * @param sources - The sources this tool could read, in the service's order.
+ * @param blocks - The sources this tool could read, in the service's order.
  * @param sent - How many sources the service sent, readable or not.
- * @param maxTokens - The configured budget the ceiling is derived from.
  * @returns The text handed to the model.
  */
-function assembleAnswer(
-  query: string,
-  sources: RenderedSource[],
-  sent: number,
-  maxTokens: number,
-): string {
-  // Measured against the live service: everything the pages write -- snippet
-  // text, its line, and the url and title printed beside it -- runs 3.65 to
-  // 4.10 characters per configured token across the legal range, worst at the
-  // 1024 floor over five sources where the per-source identification
-  // dominates. Five leaves a fifth more than that worst case, so an answer
-  // that respects the budget never reaches the ceiling and only one that
-  // ignores it does.
-  const ceiling = maxTokens * CHARS_PER_TOKEN;
+function assembleAnswer(query: string, blocks: string[], sent: number): string {
   const header =
     `Results for: ${query}\n` +
-    "Everything between a source marker and its close is text from that page.\n";
+    "Everything between a text marker and its close is text from that page.\n";
 
-  let used = 0;
-  let kept = 0;
-  for (const source of sources) {
-    used += source.fromPage;
-    // One source always survives: an answer carrying nothing is worse than one
-    // over the ceiling, and reaching that point already means the service
-    // ignored the size it was asked for.
-    if (kept > 0 && used > ceiling) break;
-    kept += 1;
-  }
-
-  const parts = [header, ...sources.slice(0, kept).map((s) => s.block)];
-  if (kept < sent) {
+  const parts = [header, ...blocks];
+  if (blocks.length < sent) {
     parts.push(
-      `\n(Showing ${String(kept)} of ${String(sent)} sources. The rest were left out because ` +
-        "the answer was larger than this tool passes on, or arrived in a shape it could not " +
-        "read. Search again with a narrower query if what you need is missing.)",
+      `\n(Showing ${String(blocks.length)} of ${String(sent)} sources. The rest arrived in a ` +
+        "shape this tool could not read.)",
     );
   }
   return parts.join("\n");
@@ -497,29 +358,19 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         throw toolFailed(refusalReason(query, res.status), FAILURE_LINES.upstream);
       }
 
-      // Read inside its own guard. It answered, so whatever goes wrong from
-      // here is about what it said, and the catch below describes a service
-      // that could not be reached at all.
-      let data: unknown;
+      // Reading and parsing are guarded apart because they are two different
+      // facts about the same answer. A read that threw means this side never
+      // saw what the service meant to send, so asking again may well get it; a
+      // body that arrived whole and is not the payload is the service answering
+      // something else, and a second delivery returns the same bytes.
+      let text: string;
       try {
-        const text = await readBoundedBody(
-          res,
-          query,
-          maxTokens * BYTES_READ_PER_TOKEN,
-          budgetMs,
-          abortSignal,
-        );
-        data = JSON.parse(text);
+        text = await res.text();
       } catch (err: unknown) {
         // Asked here rather than left to the guard below, which never sees
-        // this: what is thrown from inside this block already carries failure
-        // detail, and the outer guard passes anything carrying detail straight
-        // through -- past the question of whether the user stopped.
-        if (toolFailureOf(err) !== undefined) throw err;
+        // this: the outer guard passes anything carrying failure detail
+        // straight through, past the question of whether the user stopped.
         if (isStop(err, abortSignal)) throw stoppedByUser();
-        // The body stopped arriving partway. What it would have said is not
-        // something this side ever saw, so it is put as what is known: the
-        // service answered and the answer did not finish.
         throw toolFailed(
           reason(
             `Searching for "${query}" failed while reading the answer: ${reasonOf(err)}. The ` +
@@ -528,6 +379,13 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
           ),
           FAILURE_LINES.upstream,
         );
+      }
+
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
       }
 
       if (data === null || typeof data !== "object") {
@@ -546,14 +404,14 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
 
       const blocks = found
         .map((item, i) => renderSource(item, i + 1))
-        .filter((source): source is RenderedSource => source !== null);
+        .filter((block): block is string => block !== null);
       // Sources arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.
       if (blocks.length === 0) {
         throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
       }
 
-      return assembleAnswer(query, blocks, found.length, maxTokens);
+      return assembleAnswer(query, blocks, found.length);
     } catch (err: unknown) {
       // Every throw above passes straight through: each already says what
       // happened, and rewriting one here would replace a specific reason with
