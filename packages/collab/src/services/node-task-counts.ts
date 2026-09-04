@@ -17,6 +17,7 @@
 
 import * as Y from "yjs";
 import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
+import { CANVAS_NODES_KEY } from "@breatic/shared";
 
 /**
  * Write the counts, and the content fields when the event carries them.
@@ -37,7 +38,7 @@ export function applyNodeTaskCounts(
   doc: Y.Doc,
   event: { nodeId: string; counts: NodeTaskCounts; result?: NodeTaskResult },
 ): void {
-  const nodes = doc.getMap("nodes");
+  const nodes = doc.getMap(CANVAS_NODES_KEY);
   const node = nodes.get(event.nodeId);
   if (!(node instanceof Y.Map)) return;
   const data = node.get("data");

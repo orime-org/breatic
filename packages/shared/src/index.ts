@@ -121,6 +121,7 @@ export {
   subscriptionActions,
   isComparableMembershipTier,
   canGenerate,
+  CANVAS_NODES_KEY,
   membersChangedChannel,
   activityNewChannel,
   allProjectChannelsPattern,

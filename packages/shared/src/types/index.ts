@@ -45,6 +45,7 @@ export type {
 
 export {
   canGenerate,
+  CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
 export type {
   NodeState,

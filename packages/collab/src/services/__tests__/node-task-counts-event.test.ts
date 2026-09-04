@@ -20,10 +20,13 @@ import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 
-/** A doc holding one node, shaped the way the canvas stores them. */
+/**
+ * A doc holding one node, shaped the way the canvas stores them: the nodes
+ * live in a top-level map named `nodesMap`, each one holding a `data` map.
+ */
 function docWithNode(nodeId: string): { doc: Y.Doc; data: Y.Map<unknown> } {
   const doc = new Y.Doc();
-  const nodes = doc.getMap("nodes");
+  const nodes = doc.getMap("nodesMap");
   const node = new Y.Map<unknown>();
   const data = new Y.Map<unknown>();
   node.set("data", data);

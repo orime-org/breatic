@@ -11,6 +11,17 @@
  * See the yjs-editor-redesign design spec (2026-04-26, 04-29 banner).
  */
 
+/**
+ * Top-level key of the canvas document's node map.
+ *
+ * Every process that reaches into a canvas document reads it through this
+ * name, so a reader and a writer cannot end up on two different maps: the
+ * browser writes the nodes, collab writes what the server recounted, and a
+ * mismatch between them is invisible — the reader finds no node and silently
+ * leaves it alone.
+ */
+export const CANVAS_NODES_KEY = 'nodesMap';
+
 /** Yjs-shared lifecycle. localPending is local-only and not represented here. */
 export type NodeState = 'idle' | 'handling';
 

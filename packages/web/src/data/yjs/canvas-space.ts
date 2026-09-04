@@ -5,7 +5,7 @@ import * as React from 'react';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, FocusImage, NodeType } from '@breatic/shared';
-import { canGenerate } from '@breatic/shared';
+import { canGenerate, CANVAS_NODES_KEY } from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -112,7 +112,7 @@ interface CanvasSpaceState {
   getLastWriteWasLocal: () => boolean;
 }
 
-const NODES_KEY = 'nodesMap';
+const NODES_KEY = CANVAS_NODES_KEY;
 const EDGES_KEY = 'edgesMap';
 
 /**
