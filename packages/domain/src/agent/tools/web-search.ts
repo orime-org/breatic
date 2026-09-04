@@ -58,11 +58,17 @@ interface Source {
  */
 const BYTES_READ_PER_TOKEN = 16;
 
-/** Room kept for the line that says how many sources are missing. */
-const MISSING_NOTE_RESERVE = 220;
-
 /** The tag each source's own text is placed inside. */
 const SOURCE_TAG = "source";
+
+/**
+ * The two sequences page text must not be able to write.
+ *
+ * Written as a pattern rather than built from `SOURCE_TAG`, so a tag that one
+ * day carries a character the regex engine reads cannot leave the neutraliser
+ * silently matching nothing.
+ */
+const SOURCE_MARKER = /<(\/?source)/gi;
 
 /**
  * What to tell the model about a status the search service refused with.
@@ -82,16 +88,6 @@ const SOURCE_TAG = "source";
  */
 function refusalReason(query: string, status: number): string {
   const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
-  const ours =
-    status === 401 || status === 403
-      ? "It turned down the credentials this side sent, which is a fault in our configuration."
-      : status === 422
-        ? "It refused what this side sent it, which is a fault in our configuration."
-        : status >= 300 && status < 400
-          ? "It answered with a redirect this side does not follow, so the address configured " +
-            "here has moved. That is a fault in our configuration."
-          : null;
-
   if (status >= 500 || status === 429) {
     return (
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
@@ -99,6 +95,16 @@ function refusalReason(query: string, status: number): string {
       "search results and tell the user search is unavailable."
     );
   }
+
+  const ours =
+    status === 401 || status === 403
+      ? "It turned down the credentials this side sent, which is a fault in our configuration."
+      : status === 422
+        ? "It refused what this side sent it, which is a fault in our configuration."
+        : status < 400
+          ? "It answered with a redirect this side does not follow, so the address configured " +
+            "here has moved. That is a fault in our configuration."
+          : null;
   if (ours !== null) {
     return (
       `${opening} ${ours} No wording of the query reaches it. Do not repeat this call; ` +
@@ -181,34 +187,29 @@ async function readBoundedBody(
   const chunks: string[] = [];
   let bytes = 0;
 
-  const ranOut = new AbortController();
-  const timer = setTimeout(() => {
-    ranOut.abort(new Error(`the body did not finish inside ${String(budgetMs)}ms`));
-  }, budgetMs);
-
-  /**
-   * Settle when the read should stop, whoever asked.
-   * @returns A promise that only ever rejects.
-   */
-  const stopped = (): Promise<never> =>
-    new Promise((_resolve, reject) => {
-      /**
-       * Reject with what the signal that fired carries.
-       * @param signal - The one that aborted.
-       */
-      const quit = (signal: AbortSignal): void => {
-        reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
-      };
-      for (const signal of [ranOut.signal, abortSignal]) {
-        if (signal === undefined) continue;
-        if (signal.aborted) quit(signal);
-        else signal.addEventListener("abort", () => { quit(signal); }, { once: true });
-      }
-    });
+  // Composed once for the whole read. How many chunks a body arrives in is the
+  // sender's choice, so a listener registered per chunk would grow with what
+  // this function exists to bound -- and it would grow on the turn's signal,
+  // which outlives this call and carries every other tool use in the turn.
+  // `AbortSignal.any` is what the shared transport composes with too.
+  const deadline = AbortSignal.timeout(budgetMs);
+  const givenUp = abortSignal ? AbortSignal.any([deadline, abortSignal]) : deadline;
+  const stopped = new Promise<never>((_resolve, reject) => {
+    /** Reject with whatever the composed signal carries. */
+    const quit = (): void => {
+      reject(
+        givenUp.reason instanceof Error
+          ? givenUp.reason
+          : new Error(`the body did not finish inside ${String(budgetMs)}ms`),
+      );
+    };
+    if (givenUp.aborted) quit();
+    else givenUp.addEventListener("abort", quit, { once: true });
+  });
 
   try {
     for (;;) {
-      const chunk = await Promise.race([reader.read(), stopped()]);
+      const chunk = await Promise.race([reader.read(), stopped]);
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
       if (bytes > maxBytes) {
@@ -225,13 +226,18 @@ async function readBoundedBody(
     chunks.push(decoder.decode());
     return chunks.join("");
   } finally {
-    clearTimeout(timer);
     try {
       await reader.cancel();
     } catch {
       // The stream is already gone, which is the state cancelling asks for.
     }
   }
+}
+
+/** One source as the model reads it, and how much of it the page wrote. */
+interface RenderedSource {
+  block: string;
+  fromPage: number;
 }
 
 /**
@@ -241,15 +247,22 @@ async function readBoundedBody(
  * field off an entry that is not an object throws -- which would land in the
  * branch for a service nothing reached and tell the model the network failed.
  * An entry this cannot read produces no block, and the caller says how many
- * went missing.
+ * went missing. An entry carrying no url, no title and no text is unreadable in
+ * the only sense that matters: a block built from it says the service returned
+ * a source with nothing in it, which is a claim about the corpus rather than
+ * about an answer this side could not read.
  *
  * `snippets` sent as one string is taken for the text it is: iterating a string
  * yields characters, so the page would arrive one letter per line.
+ *
+ * `fromPage` counts the characters the page wrote -- the two label values and
+ * the text. It is what the ceiling bounds; the tags and the label names are
+ * this tool's own words and are not charged to a third party's budget.
  * @param item - The entry as the endpoint sent it.
  * @param position - Its one-based place in the answer.
- * @returns The block, or null when the entry is not one this can read.
+ * @returns The block and its weight, or null for an entry this cannot read.
  */
-function renderSource(item: unknown, position: number): string | null {
+function renderSource(item: unknown, position: number): RenderedSource | null {
   if (item === null || typeof item !== "object") return null;
   const { url, title, snippets } = item as Source & { snippets?: unknown };
 
@@ -257,43 +270,50 @@ function renderSource(item: unknown, position: number): string | null {
     snippets === undefined ? [] : typeof snippets === "string" ? [snippets] : snippets;
   if (!Array.isArray(list)) return null;
 
+  const address = typeof url === "string" ? url : "";
+  const name = typeof title === "string" ? title : "";
+  // Brave documents a snippet as page text or as serialised structured data,
+  // so a non-string is within contract rather than a surprise.
+  const texts = list.map((s) => (typeof s === "string" ? s : JSON.stringify(s)));
+  const fromPage = address.length + name.length + texts.reduce((n, t) => n + t.length, 0);
+  if (fromPage === 0) return null;
+
   const lines = [
     `<${SOURCE_TAG} index="${String(position)}">`,
-    `url: ${keepInside(typeof url === "string" ? url : "")}`,
-    `title: ${keepInside(typeof title === "string" ? title : "")}`,
+    `url: ${keepInside(address)}`,
+    `title: ${keepInside(name)}`,
+    ...texts.map(keepInside),
+    `</${SOURCE_TAG}>`,
   ];
-  for (const snippet of list) {
-    // Brave documents a snippet as page text or as serialised structured data,
-    // so a non-string is within contract rather than a surprise.
-    lines.push(keepInside(typeof snippet === "string" ? snippet : JSON.stringify(snippet)));
-  }
-  lines.push(`</${SOURCE_TAG}>`);
-  return lines.join("\n");
+  return { block: lines.join("\n"), fromPage };
 }
 
 /**
- * Keep text that came from a page from closing the block it sits in.
+ * Keep text that came from a page from posing as a block of its own.
  *
- * The tool's own sentences are the ones outside these blocks, so a page that
- * writes them verbatim is read as a page saying them. That holds only while the
- * page cannot end its own block early, which is the one sequence neutralised
- * here -- the standard practice for delimiting retrieved content, and the whole
- * of it: nothing else a page can write reaches past the closing tag.
+ * Both directions matter. Closing early puts page text where the tool's own
+ * sentences live; opening a second block needs no escape at all, because
+ * `url:` and `title:` are the tool's own lines -- a page that writes them is
+ * read as a source of its own choosing and cited back to the reader under that
+ * name.
  * @param text - Text that came from the page.
- * @returns The same text, unable to close the block.
+ * @returns The same text, unable to open or close a block.
  */
 function keepInside(text: string): string {
-  return text.replace(new RegExp(`</${SOURCE_TAG}`, "gi"), `<\\/${SOURCE_TAG}`);
+  return text.replace(SOURCE_MARKER, "<\\$1");
 }
 
 /**
- * Assemble the answer, keeping whole sources until it fits.
+ * Assemble the answer, keeping whole sources until the page text fits.
  *
  * The ceiling follows the configured token budget rather than sitting at a
  * fixed figure: a legal answer scales with that budget (measured at 3.2 to 3.7
  * characters per token), so a fixed number would cut into what operations
- * themselves asked for. At four characters per token every answer that respects
- * the parameter stays under it, and only one that ignores it arrives here.
+ * themselves asked for. It is charged against the characters the pages wrote,
+ * which is what a third party controls; the tags, the label names and this
+ * line are the tool's own and would otherwise eat the budget operations set --
+ * measured at the 1024 floor, framing alone took two of ten sources out of an
+ * answer the service had delivered exactly as asked.
  *
  * Sources go whole or not at all, and the count of the missing ones is stated.
  * A cut in the middle of a source hands the model half a sentence as if it were
@@ -302,14 +322,14 @@ function keepInside(text: string): string {
  * size and one the service sent in an unreadable shape are missing in the only
  * sense the model can act on, so one line covers them.
  * @param query - What was searched for.
- * @param blocks - The sources this tool could read, in the service's order.
+ * @param sources - The sources this tool could read, in the service's order.
  * @param sent - How many sources the service sent, readable or not.
- * @param ceiling - How many characters the assembled answer may take.
+ * @param ceiling - How many characters of page text the answer may carry.
  * @returns The text handed to the model.
  */
 function assembleAnswer(
   query: string,
-  blocks: string[],
+  sources: RenderedSource[],
   sent: number,
   ceiling: number,
 ): string {
@@ -317,21 +337,18 @@ function assembleAnswer(
     `Results for: ${query}\n` +
     "Everything between a source marker and its close is text from that page.\n";
 
-  // One pass, and the room the missing-sources line needs is counted before
-  // the line exists, so the assembled answer stays under the ceiling in the
-  // one case the ceiling is there for.
-  let used = header.length;
+  let used = 0;
   let kept = 0;
-  for (const block of blocks) {
-    used += block.length + 1;
+  for (const source of sources) {
+    used += source.fromPage;
     // One source always survives: an answer carrying nothing is worse than one
     // over the ceiling, and reaching that point already means the service
     // ignored the size it was asked for.
-    if (kept > 0 && used > ceiling - MISSING_NOTE_RESERVE) break;
+    if (kept > 0 && used > ceiling) break;
     kept += 1;
   }
 
-  const parts = [header, ...blocks.slice(0, kept)];
+  const parts = [header, ...sources.slice(0, kept).map((s) => s.block)];
   if (kept < sent) {
     parts.push(
       `\n(Showing ${String(kept)} of ${String(sent)} sources. The rest were left out because ` +
@@ -471,7 +488,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
 
       const blocks = found
         .map((item, i) => renderSource(item, i + 1))
-        .filter((block): block is string => block !== null);
+        .filter((source): source is RenderedSource => source !== null);
       // Sources arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.
       if (blocks.length === 0) {
