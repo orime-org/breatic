@@ -130,6 +130,36 @@ async function bodyShape(p: Page): Promise<string> {
 }
 
 /**
+ * Click a block and wait until the caret is really inside it.
+ *
+ * A click hands the editor a selection asynchronously, and `Mod-a`'s first
+ * tier takes whichever textblock the caret is in AT THAT MOMENT
+ * (`document-select-all-guard.ts:117`). Pressing the chord in the same turn as
+ * the click therefore selects the block the caret was in beforehand — measured
+ * on a list item holding a sub-list, where the run ended in the child and the
+ * press then landed there rather than on the clicked parent.
+ * @param p - The page.
+ * @param selector - Which block content to click.
+ */
+async function clickIntoBlock(p: Page, selector: string): Promise<void> {
+  const target = p.locator(selector).first();
+  const text = ((await target.textContent()) ?? '').trim();
+  await target.click();
+  await expect
+    .poll(
+      async () =>
+        p.evaluate(() => {
+          const node = document.getSelection()?.anchorNode ?? null;
+          const element =
+            node?.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null);
+          return element?.closest('.bn-block-content')?.textContent?.trim() ?? '';
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(text);
+}
+
+/**
  * Move the pointer onto the block type slot and wait for its menu.
  * @param p - The page.
  */
@@ -163,7 +193,7 @@ test('presses each of the nine rows and the document follows every time', async 
     // The first block's own content rather than the editor around it: a click
     // in the space below the last block has `DocumentClickToWrite` add a block
     // at the end, and the next select-all would take that one in too.
-    await page.locator(`${EDITOR} .bn-block-content`).first().click();
+    await clickIntoBlock(page, `${EDITOR} .bn-block-content`);
     await page.keyboard.press(`${MOD}+a`);
   }
 
@@ -342,7 +372,7 @@ test('an item opening a sub-list is reachable from its first line alone', async 
   // Only the line reading "one". It is that item's first block, and the item
   // holds a sub-list, so it cannot give that block up on its own — the whole
   // item's content comes out together.
-  await page.locator(`${EDITOR} p`).first().click();
+  await clickIntoBlock(page, `${EDITOR} .bn-block-content`);
   await page.keyboard.press(`${MOD}+a`);
   await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
   await openBlockTypeMenu(page);
@@ -354,15 +384,13 @@ test('an item opening a sub-list is reachable from its first line alone', async 
     .toBe(['heading1 one', '  bulletListItem deep'].join('\n'));
 });
 
-/** One selection: how to type it, how to (re)select it, which rows it greys. */
+/** One selection: how to type it and how to put it back. */
 interface SelectionShape {
   name: string;
   /** Type the body. Done once. */
   type: (p: Page) => Promise<void>;
   /** Put the selection back, which every undo needs again. */
   select: (p: Page) => Promise<void>;
-  /** The rows expected greyed, in the order the menu draws them. */
-  grey: string[];
 }
 
 /** The eight chords, one per row of `document-block-type-shortcuts.ts`. */
@@ -384,12 +412,20 @@ const NINE_ROWS = [
 ];
 
 /**
- * Take one block: click it, then one Cmd+A, whose first tier is that block.
+ * Take one block: click into it, collapse, then the Cmd+A whose first tier it
+ * is.
+ *
+ * The collapse is what makes the cells repeatable. `Mod-a` reads the selection
+ * it is pressed on: over a caret it takes the block, and over a block already
+ * taken whole it goes up to the document (`document-select-all-guard.ts:117`).
+ * A cell that reselects while the previous cell's range is still in place gets
+ * the second tier, and the bar the cells drive is not drawn over that.
  * @param p - The page.
  * @param selector - That block's selector.
  */
 async function selectBlockAt(p: Page, selector: string): Promise<void> {
-  await p.locator(selector).first().click();
+  await clickIntoBlock(p, selector);
+  await p.keyboard.press('ArrowRight');
   await p.keyboard.press(`${MOD}+a`);
   await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
 }
@@ -398,8 +434,7 @@ const SHAPES: SelectionShape[] = [
   {
     name: 'a plain paragraph',
     type: async (p) => { await p.keyboard.type('plain line'); },
-    select: async (p) => { await selectBlockAt(p, `${EDITOR} > p`); },
-    grey: ['task-list'],
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} [data-content-type="paragraph"]`); },
   },
   {
     name: 'a line inside a quote',
@@ -408,14 +443,12 @@ const SHAPES: SelectionShape[] = [
       await p.keyboard.press(`${MOD}+a`);
       await p.keyboard.press(`${MOD}+Shift+b`);
     },
-    select: async (p) => { await selectBlockAt(p, `${EDITOR} blockquote p`); },
-    grey: ['task-list'],
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} [data-content-type="paragraph"][data-quoted]`); },
   },
   {
     name: 'a list item',
     type: async (p) => { await p.keyboard.type('- an item'); },
-    select: async (p) => { await selectBlockAt(p, `${EDITOR} li p`); },
-    grey: ['task-list'],
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} [data-content-type="bulletListItem"]`); },
   },
   {
     name: 'a list inside a quote',
@@ -424,8 +457,7 @@ const SHAPES: SelectionShape[] = [
       await p.keyboard.press(`${MOD}+a`);
       await p.keyboard.press(`${MOD}+Shift+b`);
     },
-    select: async (p) => { await selectBlockAt(p, `${EDITOR} blockquote li p`); },
-    grey: ['task-list'],
+    select: async (p) => { await selectBlockAt(p, `${EDITOR} [data-content-type="bulletListItem"][data-quoted]`); },
   },
   {
     name: 'a selection across two blocks',
@@ -439,8 +471,8 @@ const SHAPES: SelectionShape[] = [
       // selection and it is not a select-all. Shift+ArrowDown does not hold
       // here: inside a code block that keystroke moves within the block, which
       // leaves the selection in one block.
-      const first = await p.locator(`${EDITOR} > *`).first().boundingBox();
-      const last = await p.locator(`${EDITOR} > *`).last().boundingBox();
+      const first = await p.locator(`${EDITOR} .bn-block-content`).first().boundingBox();
+      const last = await p.locator(`${EDITOR} .bn-block-content`).last().boundingBox();
       if (!first || !last) throw new Error('both blocks have to be measurable');
       await p.mouse.move(first.x + 2, first.y + first.height / 2);
       await p.mouse.down();
@@ -448,7 +480,6 @@ const SHAPES: SelectionShape[] = [
       await p.mouse.up();
       await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
     },
-    grey: ['task-list'],
   },
   {
     name: 'two presses of Cmd+A',
@@ -461,14 +492,13 @@ const SHAPES: SelectionShape[] = [
       await p.keyboard.type('deep');
     },
     select: async (p) => {
-      await p.locator(`${EDITOR} > *`).first().click();
+      await clickIntoBlock(p, `${EDITOR} .bn-block-content`);
       // The first tier takes the block, the second the body
       // (`select-all-tiers-and-keys`).
       await p.keyboard.press(`${MOD}+a`);
       await p.keyboard.press(`${MOD}+a`);
       await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
     },
-    grey: ['task-list'],
   },
 ];
 
@@ -490,28 +520,34 @@ async function tickedRows(p: Page): Promise<string[]> {
 // is asked here is whether the real path runs: a real pointer opening the menu,
 // a real row taking the click, a real keystroke reaching the same command. One
 // undo returns to the start, so every cell begins on the same document — which
-// walks A31, one press one transaction, over all six as well.
+// walks "one press, one transaction" over all six as well.
 //
-// Two kinds of "nothing moved" are right and everything else is a problem: a
-// greyed row, and a ticked Text row, whose target is the state the blocks are
-// already in (the exception in §6.7).
+// One kind of "nothing moved" is right and everything else is a problem: a
+// ticked Text row, whose target is the state the blocks are already in (the
+// exception in §6.7).
 for (const shape of SHAPES) {
   test(`${shape.name}: nine rows pressed and eight chords held`, async () => {
     // Seventeen cells, each of them reselecting, opening, pressing, undoing.
     test.setTimeout(180_000);
     await openFreshDocument(page);
     await shape.type(page);
+    // Y.UndoManager merges a change into the item before it when the two are
+    // under `captureTimeout` apart (`yjs.cjs:3690`, 500 ms by default). The
+    // typing above and the press below are one undo step without this pause,
+    // and the undo each cell ends with then takes the text away with the type.
+    await page.waitForTimeout(700);
     await shape.select(page);
     const start = await bodyShape(page);
 
     await openBlockTypeMenu(page);
-    expect(await greyedRows(page), `${shape.name}: greyed rows`).toEqual(shape.grey);
+    // Every row acts on a text block, the task list with them (A3, A19).
+    expect(await greyedRows(page), `${shape.name}: greyed rows`).toEqual([]);
     const alreadyText = (await tickedRows(page)).includes('paragraph');
     await page.keyboard.press('Escape');
 
     /** Whether pressing this row should move the document. */
     const moves = (id: string): boolean =>
-      !shape.grey.includes(id) && !(id === 'paragraph' && alreadyText);
+      !(id === 'paragraph' && alreadyText);
 
     for (const id of NINE_ROWS) {
       await shape.select(page);
@@ -529,7 +565,10 @@ for (const shape of SHAPES) {
         .not.toBe(start);
       await page.keyboard.press(`${MOD}+z`);
       await expect
-        .poll(async () => bodyShape(page), { timeout: 10_000 })
+        .poll(async () => bodyShape(page), {
+          timeout: 10_000,
+          message: `${shape.name}: undo after ${id}`,
+        })
         .toBe(start);
     }
 
