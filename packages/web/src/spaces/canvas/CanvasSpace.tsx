@@ -3056,7 +3056,7 @@ function CanvasSpaceInner({
       })();
       trackOperation(nodeId, work);
     },
-    [projectId, spaceId, userId, t, failUploadNode, trackOperation],
+    [projectId, spaceId, t, failUploadNode, trackOperation],
   );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
