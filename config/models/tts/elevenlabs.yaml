@@ -332,8 +332,17 @@ models:
         # publishes, 8 come back "not found", every one of them a voice
         # ElevenLabs lists as Legacy; sending ids instead reaches those too,
         # since the vendor reroutes a Legacy id to its replacement.
+        #
+        # The table above is written out rather than fetched because neither
+        # upstream will answer for it on this deployment: ElevenLabs' own
+        # /v2/voices needs an ElevenLabs key, and WaveSpeed has no voices
+        # endpoint at all — its GET /api/v3/models carries a request schema per
+        # model, and eleven-v3's voice_id declares only a default, no enum
+        # (checked 2026-09-04; of its eleven ElevenLabs models only
+        # voice-changer enumerates, and every one of the eight refused names is
+        # absent from that list too).
         remote_source: voices
-        # Alice.
+        # Alice. All 52 ids in the table generated when sent (2026-09-04).
         default: "Xb7hH8MSUJpSbSDYk0k2"
       stability:
         description: "Voice consistency (0-1)"
