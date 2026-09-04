@@ -53,6 +53,7 @@ const TASK_COLUMNS = [
   "status",
   "started_by_user_id",
   "started_at",
+  "settled_at",
   "budget_ms",
   "label",
   "error_message",

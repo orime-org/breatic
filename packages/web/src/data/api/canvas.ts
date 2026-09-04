@@ -82,6 +82,8 @@ export interface NodeTaskEntry {
   startedByUserId: string;
   /** Server time the task opened, ISO 8601. */
   startedAt: string;
+  /** Server time it reached its end state, ISO 8601; `null` while it runs. */
+  settledAt: string | null;
   /** The conservative allowance this task was given, in ms. */
   budgetMs: number;
   /** What the user reads: the filename or the model name. */

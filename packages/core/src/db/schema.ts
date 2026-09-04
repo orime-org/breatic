@@ -665,6 +665,18 @@ export const nodeTasks = pgTable(
       .notNull(),
     // The conservative allowance: within it the task certainly finishes, and
     // past it something outside what we promise has gone wrong.
+    /**
+     * When this task reached one of its three end states (#186).
+     *
+     * Written once, by the transition that settled it, and left alone by the
+     * report that lands afterwards on a task already judged dead — that one
+     * fills in `node_history_id` and nothing else. `updated_at` cannot answer
+     * this question for the same reason: it moves again on that write.
+     *
+     * Null while a task runs.
+     */
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+
     budgetMs: integer("budget_ms").notNull(),
 
     // Filename or model name — what the user reads in the list.

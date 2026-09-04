@@ -36,6 +36,8 @@ export interface NodeTaskRow {
   status: NodeTaskStatus;
   startedByUserId: string;
   startedAt: Date;
+  /** When it reached its end state; null while it runs. */
+  settledAt: Date | null;
   budgetMs: number;
   label: string;
   errorMessage: string | null;
@@ -111,7 +113,9 @@ export async function settleRunning(
 ): Promise<boolean> {
   const rows = await db
     .update(nodeTasks)
-    .set({ status, ...fields })
+    // The database clock, the same one `started_at` defaults to, so that the
+    // two can be subtracted without an application host's drift in between.
+    .set({ status, settledAt: sql`now()`, ...fields })
     .where(and(eq(nodeTasks.id, taskId), eq(nodeTasks.status, "running")))
     .returning({ id: nodeTasks.id });
   return rows.length === 1;
@@ -186,6 +190,7 @@ export async function findById(taskId: string): Promise<
     status: row.status as NodeTaskStatus,
     startedByUserId: row.startedByUserId,
     startedAt: row.startedAt,
+    settledAt: row.settledAt,
     budgetMs: row.budgetMs,
     label: row.label,
     errorMessage: row.errorMessage,
@@ -221,6 +226,7 @@ export async function findByStorageKey(
     status: row.status as NodeTaskStatus,
     startedByUserId: row.startedByUserId,
     startedAt: row.startedAt,
+    settledAt: row.settledAt,
     budgetMs: row.budgetMs,
     label: row.label,
     errorMessage: row.errorMessage,
@@ -257,6 +263,7 @@ export async function findByTaskAndNode(
     status: row.status as NodeTaskStatus,
     startedByUserId: row.startedByUserId,
     startedAt: row.startedAt,
+    settledAt: row.settledAt,
     budgetMs: row.budgetMs,
     label: row.label,
     errorMessage: row.errorMessage,
@@ -338,6 +345,7 @@ export async function listLive(
     status: task.status as NodeTaskStatus,
     startedByUserId: task.startedByUserId,
     startedAt: task.startedAt,
+    settledAt: task.settledAt,
     budgetMs: task.budgetMs,
     label: task.label,
     errorMessage: task.errorMessage,

@@ -238,6 +238,55 @@ describe("a user asking for an action", () => {
   });
 });
 
+describe("when a task reached its end state", () => {
+  it("stamps the moment it settled", async () => {
+    // The list shows a finished task's own time, and a countdown is only what
+    // a running one shows. `updated_at` cannot answer this: it moves again
+    // whenever anything else touches the row.
+    const before = Date.now();
+    const { taskId, nodeId } = await openTask();
+    await nodeTaskService.settle({ taskId, outcome: "done" });
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+    expect(row?.settledAt).toBeInstanceOf(Date);
+    expect(row!.settledAt!.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  it("leaves it empty while the task is still running", async () => {
+    const { nodeId } = await openTask();
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+    expect(row?.settledAt).toBeNull();
+  });
+
+  it("keeps the moment it expired when its result lands afterwards", async () => {
+    // §4.5: the deadline passed, then the report arrived. The row takes the
+    // history id and keeps everything else — including when it was judged
+    // dead, which is what the user reads on that line.
+    const { taskId, nodeId } = await openTask();
+    await nodeTaskService.settle({ taskId, outcome: "expired" });
+    const [expired] = await nodeTaskService.listLive({ projectId, nodeId });
+    const judgedAt = expired!.settledAt!.getTime();
+
+    const history = await sql<{ id: string }[]>`
+      INSERT INTO node_history
+        (project_id, node_id, user_id, entry_type, status, content)
+      VALUES (${projectId}, ${nodeId}, ${userId}, 'upload', 'success',
+              'https://cdn.invalid/late.png')
+      RETURNING id
+    `;
+    await nodeTaskService.settle({
+      taskId,
+      outcome: "done",
+      nodeHistoryId: history[0]!.id,
+    });
+
+    const [after] = await nodeTaskService.listLive({ projectId, nodeId });
+    expect(after?.status).toBe("expired");
+    expect(after!.settledAt!.getTime()).toBe(judgedAt);
+  });
+});
+
 describe("the list a user opens", () => {
   it("carries what a finished task put on the node, so replacing needs no second request", async () => {
     // Design §3.5: "replace" writes the node's content from the detail this
