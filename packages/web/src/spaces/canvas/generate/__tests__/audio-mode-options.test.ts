@@ -54,10 +54,17 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
   // to "write the lines to speak" (#2088 A3). The key travels with the mode
   // rather than being chosen in the container, so a mode added later cannot
   // reach the picker without one.
-  it('gives each mode its own prompt placeholder', () => {
+  it('gives every mode a prompt placeholder, and sound effects its own', () => {
     const keys = AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey);
     expect(keys.every((k) => k.length > 0)).toBe(true);
-    expect(new Set(keys).size).toBe(AUDIO_MODE_OPTIONS.length);
+
+    // The two speech modes ask for the same thing — lines to be spoken — so
+    // they share one. Sound effects asks for a description of a sound.
+    const sfx = AUDIO_MODE_OPTIONS.find((o) => o.value === 'sfx')?.placeholderKey;
+    const others = AUDIO_MODE_OPTIONS.filter((o) => o.value !== 'sfx').map(
+      (o) => o.placeholderKey,
+    );
+    expect(others).not.toContain(sfx);
   });
 
   it('spells each mode the way the models in the catalog do', () => {

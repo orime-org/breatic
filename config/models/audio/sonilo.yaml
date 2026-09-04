@@ -1,0 +1,50 @@
+# Sonilo Audio Model Family — Sound Effects
+# Guidelines:
+#   model.description    — max 40 chars (shown in UI model selector, keep short)
+#   model.guide          — 2-3 sentences (injected into Skill prompt, helps LLM choose model)
+#   model.mode           — sfx (sound effects)
+#   param.description    — max 50 chars (shown as tooltip / help text)
+#   param.default        — every param MUST have a default (used as fallback for invalid values)
+#   param names          — user-facing; model family code converts to API format
+
+models:
+  - name: "sonilo-sfx-v1"
+    display_name: "Sonilo SFX"
+    icon: "sonilo"
+    mode: "sfx"
+    takes_prompt: true
+    tier: recommended
+    description: "Text to sound effects, 1-180s"
+    guide: "Generate a sound effect from a text description. Stereo, any length from one second to three minutes. Choose for Foley, ambience, UI sounds, impacts and transitions."
+    # The pre-enqueue balance gate reads this field, and the panel reads `rate`
+    # below. A gate wants a floor, so this is the repo's shared minimum rather
+    # than the cheapest preset — at the rate below, the longest preset is 36.
+    cost_per_call: 5
+    # $0.002 per second, measured against `POST /billings/search` on
+    # 2026-09-04 (five seconds billed $0.010, three seconds $0.006), at
+    # 1 credit = 1 US cent on the zero-margin deduction rule.
+    rate:
+      credits: 1
+      per: 5
+      unit: seconds
+    generation_time: 10
+    params:
+      duration:
+        description: "Clip length in seconds"
+        # Probed 2026-09-04: the gateway refuses a missing duration, 0 ("must
+        # be at least 1"), 181 ("must be at most 180") and 2.5 ("must be an
+        # integer"). The presets follow ElevenLabs' own playground, which
+        # offers named stops rather than a slider, minus the ones this
+        # upstream will not take.
+        values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180]
+        default: 5
+      audio_format:
+        # Omitting this returns aac, while `dispatch.ts` stores every audio
+        # artefact under a `.mp3` extension. Declared rather than left to the
+        # upstream so the bytes match the name they are stored under.
+        description: "Output container"
+        default: "mp3"
+    providers:
+      - name: wavespeed
+        model_id: "sonilo/v1/text-to-sfx"
+        priority: 1

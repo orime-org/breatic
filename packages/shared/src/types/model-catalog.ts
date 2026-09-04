@@ -92,7 +92,16 @@ export interface ModelRate {
   credits: number;
   /** How many units that many credits buy. */
   per: number;
-  unit: "characters" | "utf8_bytes";
+  /**
+   * What the vendor counts. The first two measure the input the model is
+   * handed; `seconds` measures the output it is asked for, which is how a
+   * sound effect is priced.
+   *
+   * This list is stated twice — here and in `modelEntrySchema` below — and a
+   * unit missing from THAT one silently drops the whole rate, since the rate
+   * object degrades to absent rather than throwing.
+   */
+  unit: "characters" | "utf8_bytes" | "seconds";
 }
 
 /** One provider backing a model (with resolved availability). */
@@ -355,7 +364,7 @@ const modelEntrySchema = z.object({
     .object({
       credits: z.number(),
       per: z.number(),
-      unit: z.enum(["characters", "utf8_bytes"]),
+      unit: z.enum(["characters", "utf8_bytes", "seconds"]),
     })
     .optional()
     .catch(undefined),

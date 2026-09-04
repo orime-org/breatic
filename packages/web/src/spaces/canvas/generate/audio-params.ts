@@ -8,7 +8,8 @@
  * A model states its own: ElevenLabs takes stability and similarity, Fish
  * takes speed and volume, and both reach the vendor already
  * (`transports/elevenlabs.ts` sends `voice_settings`, `transports/fish.ts`
- * sends `prosody`). What was missing is only the control.
+ * sends `prosody`). What was missing is only the control. Sonilo takes a clip
+ * length, and its upstream refuses a request without one.
  *
  * The table below is the list of params this panel knows how to SHOW: a
  * parameter needs a human label, and a label has to be written by a human —
@@ -82,6 +83,11 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
     labelKey: 'canvas.generatePanel.voiceVolume',
     // Decibels — a unit symbol, not a word to translate.
     format: (v) => `${v > 0 ? '+' : ''}${v} dB`,
+  },
+  duration: {
+    labelKey: 'canvas.generatePanel.sfxDuration',
+    // Seconds — a unit symbol, like the `x` above and the `dB` beside it.
+    format: (v) => `${v}s`,
   },
 };
 
