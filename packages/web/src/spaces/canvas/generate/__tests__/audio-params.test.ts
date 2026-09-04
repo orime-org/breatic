@@ -206,4 +206,40 @@ describe('formatAudioParam — a value reads in its own unit', () => {
   it('falls back to the bare number for a param it does not know', () => {
     expect(formatAudioParam('latency_mode', 2)).toBe('2');
   });
+
+  // The suffix is a unit symbol, like the `x` on speed and the `dB` on volume:
+  // it reads the same in every locale we ship, so it is not localized.
+  it('marks a clip length in seconds', () => {
+    expect(formatAudioParam('duration', 5)).toBe('5s');
+    expect(formatAudioParam('duration', 180)).toBe('180s');
+  });
+});
+
+// The sound-effect model states its length as a list of presets, which is the
+// shape ElevenLabs' own playground offers and the shape ParamOptionGroup
+// renders (#2088 A4).
+const SONILO = model({
+  duration: {
+    description: '',
+    values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+    default: 5,
+  },
+  audio_format: { description: '', default: 'mp3' },
+});
+
+describe('the sound-effect model gets a length picker (#2088 A4)', () => {
+  it('offers its ten presets as a choice, in the order the model states', () => {
+    expect(audioParamControls(SONILO)).toEqual([
+      {
+        name: 'duration',
+        labelKey: expect.stringContaining('canvas.generatePanel.'),
+        kind: 'choice',
+        options: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+      },
+    ]);
+  });
+
+  it('leaves out the output format, which the user does not choose', () => {
+    expect(audioParamControls(SONILO).map((c) => c.name)).not.toContain('audio_format');
+  });
 });
