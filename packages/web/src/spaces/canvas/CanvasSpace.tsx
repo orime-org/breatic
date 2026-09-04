@@ -1975,10 +1975,11 @@ function CanvasSpaceInner({
   // Media (image/video/audio) → ticket → the ingest Worker, and the server
   // writes the node's content through Yjs. Everything else →
   // a text node whose content is read or extracted locally (text/* read
-  // directly; pdf/docx/xlsx parsed in-browser). Both paths write every step
-  // to Yjs so collaborators see the whole lifecycle, and both write a
-  // fixed-English error onto the node on failure (never a toast). No file is
-  // rejected. Created nodes are batch-selected once mirrored back.
+  // directly; pdf/docx/xlsx parsed in-browser). A failure is told to the person
+  // who tried, in their language, and never written into the shared document —
+  // the media path's ending comes from the task row (#186 §3.7.3) and the local
+  // extraction, which has no row, keeps its own `data.errorMessage` (§3.7.4).
+  // No file is rejected. Created nodes are batch-selected once mirrored back.
   // Track an in-flight front-end operation (upload / extraction) in the
   // per-space operation registry (#1617): register on start, unregister once the
   // work settles — which for these flows is AFTER the result is written back to

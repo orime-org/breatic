@@ -8,10 +8,11 @@
  * Two things live here because nothing below a real browser can answer them.
  * The first is A1: a picked file's bytes travel to the Worker, the server
  * registers them, and the URL that lands on the node survives a reload. The
- * second is what happens when the transfer dies partway — the node's failure
- * is the browser's to write once its own retries are spent (design §5.6,
- * §6.6), and `failUploadNode` lives inside a `useCallback` no unit test can
- * call.
+ * second is what happens when the transfer dies partway. Where it dies decides
+ * everything (#186 §3.7.3): after the ticket a row, a grant and a timer all
+ * exist and will end the task without the browser; before it nothing exists,
+ * so the empty node the drop made has to go. `failUploadNode` holds both
+ * halves and lives inside a `useCallback` no unit test can call.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
@@ -142,6 +143,22 @@ function buildMultipartVideo(dir: string): string {
   return out;
 }
 
+/**
+ * Wait until no toast is on screen.
+ *
+ * These cases run in one page, in order, and a toast lives a few seconds. A
+ * case that asserts on toast text without this passes on the one the case
+ * before it raised — the failure it is here to catch never has to happen.
+ * @param target - The page to settle.
+ */
+async function noToastLeft(target: Page): Promise<void> {
+  await expect
+    .poll(async () => target.locator('[data-sonner-toast]').count(), {
+      timeout: 15_000,
+    })
+    .toBe(0);
+}
+
 /** Every video node's `src` currently on the canvas. */
 async function videoSources(target: Page): Promise<string[]> {
   return target.evaluate(() =>
@@ -230,7 +247,14 @@ test('a dropped image lands on a node with a URL that survives a reload', async 
 // Object's part accounting needs more than one part, and the cover needs
 // ffmpeg against bytes that really landed in R2.
 test('a multi-part video lands with the cover our worker pulled out of it', async () => {
-  test.setTimeout(180_000);
+  // Every byte here crosses the public internet twice — up to the bucket, and
+  // back down for the hash and for ffmpeg — so this case is paced by a real
+  // remote round trip, not by our code. Measured on a developer machine the
+  // 25 MiB clip takes about three minutes end to end, of which `complete`
+  // alone is over a minute (assemble, then read the object back to hash it).
+  // This is a ceiling rather than an estimate of that: past it, something is
+  // wrong rather than merely far away.
+  test.setTimeout(420_000);
 
   workDir = mkdtempSync(join(tmpdir(), 'breatic-smoke-'));
   const videoPath = buildMultipartVideo(workDir);
@@ -250,7 +274,7 @@ test('a multi-part video lands with the cover our worker pulled out of it', asyn
   // whole chain: every part written, the report accepted, the asset
   // registered, ffmpeg run, and one event carrying both URLs.
   await expect
-    .poll(async () => (await videoSources(page)).length, { timeout: 150_000 })
+    .poll(async () => (await videoSources(page)).length, { timeout: 360_000 })
     .toBeGreaterThan(0);
   const [videoUrl] = await videoSources(page);
   expect(videoUrl).toMatch(/^https?:\/\//);
@@ -336,17 +360,23 @@ test('a video whose frame cannot be cut still lands, without a cover', async () 
   expect(poster).toBe('');
 });
 
-// Design §5.6 and the §6.6 table put this write on the browser: once its own
-// retries are spent the node fails there and then, keeps its Retry stash, and
-// says so in the language of the person who tried.
-test('a transfer that dies leaves the node failed and says so', async () => {
-  // Counted, because a ticket failure reaches the same sink with the same
-  // wording: without this the case passes on a glob that matches nothing.
+// A5: a transfer that dies AFTER the ticket. The row, its grant and its timer
+// all exist, so the row walks to an end on its own (#186 §3.7.3, fourth line)
+// — the browser writes nothing to the shared document. What it does do is tell
+// the person who tried, in their language, and keep the file their Retry
+// re-sends. The node stays: it has a task, and that task has an owner.
+test('a transfer that dies after the ticket tells the uploader and leaves the node alone', async () => {
+  // Counted, because a route that matches nothing aborts nothing and this case
+  // would then pass on an upload that simply succeeded.
   let aborted = 0;
   await page.route('**/uploads**', (route) => {
     aborted += 1;
     return route.abort('connectionfailed');
   });
+
+  await noToastLeft(page);
+  const before = (await imageSources(page)).length;
+  const nodesBefore = await page.locator('.react-flow__node').count();
 
   // Bytes no earlier run has stored: an identical file hits dedup at the
   // ticket, which answers with the existing URL and sends nothing to abort.
@@ -357,17 +387,61 @@ test('a transfer that dies leaves the node failed and says so', async () => {
     Buffer.concat([TINY_PNG, randomBytes(16)]),
   );
 
-  await expect(page.getByText(/Upload failed: doomed\.png/)).toBeVisible({
-    timeout: 60_000,
-  });
+  // The abort first: a route that matched nothing would leave the assertions
+  // below describing an upload that simply worked.
+  await expect.poll(() => aborted, { timeout: 60_000 }).toBeGreaterThan(0);
   // The wording, not just the presence: `storage` and `hash` each raise their
   // own toast from the same function, and picking the wrong one tells the user
   // to retry something a retry cannot fix.
   await expect(page.locator('[data-sonner-toast]')).toContainText(
-    'Upload failed',
-    { timeout: 5_000 },
+    'Upload failed.',
+    { timeout: 30_000 },
   );
-  expect(aborted).toBeGreaterThan(0);
+
+  // The node the drop created is still there, and still has no content: its
+  // task is running and only the timer decides when that stops being true.
+  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
+  expect((await imageSources(page)).length).toBe(before);
+  // The fixed English sentence this used to write into the shared document is
+  // gone (§3.7.2) — every collaborator read it, in the uploader's words.
+  await expect(page.getByText(/Upload failed: doomed\.png/)).toHaveCount(0);
 
   await page.unroute('**/uploads**');
+});
+
+// A6: a transfer that dies BEFORE the ticket is answered. Nothing exists on the
+// server — no row, no grant, no timer — so nobody is coming to end this. The
+// node this drop created has never held anything and never will, so it goes
+// (#186 §3.7.3, first three lines).
+test('a drop that never gets a ticket takes its own empty node away', async () => {
+  let aborted = 0;
+  await page.route('**/assets/upload-ticket*', (route) => {
+    aborted += 1;
+    return route.abort('connectionfailed');
+  });
+
+  await noToastLeft(page);
+  const nodesBefore = await page.locator('.react-flow__node').count();
+
+  await dropFile(
+    page,
+    'ticketless.png',
+    'image/png',
+    Buffer.concat([TINY_PNG, randomBytes(16)]),
+  );
+
+  await expect.poll(() => aborted, { timeout: 60_000 }).toBeGreaterThan(0);
+  await expect(page.locator('[data-sonner-toast]')).toContainText(
+    'Upload failed.',
+    { timeout: 30_000 },
+  );
+
+  // Back to where we started: the empty node did not survive the drop.
+  await expect
+    .poll(async () => page.locator('.react-flow__node').count(), {
+      timeout: 15_000,
+    })
+    .toBe(nodesBefore);
+
+  await page.unroute('**/assets/upload-ticket*');
 });
