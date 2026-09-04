@@ -182,10 +182,10 @@ const agentConfigSchema = z.object({
   /**
    * How long ONE LEG of a `web_search` may take, in milliseconds.
    *
-   * Spent twice per delivery: once by the transport reaching the response, and
-   * once by the tool reading its body, which the transport's deadline no longer
-   * covers by then. Three deliveries plus the final body read puts the ceiling
-   * at four times this figure, plus backoff.
+   * Each delivery gets it, and so does the body read that follows the last one:
+   * the transport's deadline is spent by the time it hands the response back, so
+   * the read runs under a fresh one. Three deliveries plus that read puts the
+   * ceiling at four times this figure, plus backoff.
    *
    * The range is the transport's own, not a second opinion: it refuses
    * anything below 1 or above `MAX_TIMER_MS`, because a timer quietly rewrites

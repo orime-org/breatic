@@ -34,7 +34,7 @@ const inputSchema = z.object({
     .min(1)
     .max(10)
     .default(5)
-    .describe("How many sources to draw the answer from (1-10)"),
+    .describe("How many sources to ask for (1-10)"),
 });
 
 /**
@@ -266,10 +266,10 @@ async function readWithin(res: Response, budgetMs: number): Promise<string> {
  * field off an entry that is not an object throws -- which would land in the
  * branch for a service nothing reached and tell the model the network failed.
  * An entry this cannot read produces no block, and the caller says how many
- * went missing. An entry carrying no url, no title and no text is unreadable in
- * the only sense that matters: a block built from it says the service returned
- * a source with nothing in it, which is a claim about the corpus rather than
- * about an answer this side could not read.
+ * went missing. An entry carrying no page text is unreadable in the only sense
+ * that matters: a block built from it says the service returned a source with
+ * nothing in it, which is a claim about the corpus rather than about an answer
+ * this side could not read.
  *
  * `snippets` sent as one string is taken for the text it is: iterating a string
  * yields characters, so the page would arrive one letter per line.
@@ -280,7 +280,7 @@ async function readWithin(res: Response, budgetMs: number): Promise<string> {
  * write a second one indistinguishable from the tool's -- cited back to the
  * reader under the address that page chose.
  * @param item - The entry as the endpoint sent it.
- * @param position - Its one-based place in the answer.
+ * @param position - Its one-based place among the entries the service sent.
  * @returns The block, or null for an entry this cannot read.
  */
 function renderSource(item: unknown, position: number): string | null {
@@ -381,8 +381,8 @@ function assembleAnswer(query: string, blocks: string[], sent: number): string {
 export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
-    "of each page. Something absent from an extract may still be on the page. `count` is " +
-    "how many sources the answer is drawn from.",
+    "of each page. Something absent from an extract may still be on the page. `count` asks " +
+    "for that many sources; the search returns what it finds.",
   inputSchema,
   execute: async (
     { query: asked, count },
@@ -420,7 +420,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
     try {
       const url = new URL("https://api.search.brave.com/res/v1/llm/context");
       url.searchParams.set("q", query);
-      // How many sources the same volume of text is spread over.
+      // How many sources to ask for. What comes back is what the search found.
       url.searchParams.set("maximum_number_of_urls", String(count));
       // How much text comes back. Both ends of this key's range are the
       // service's own (it rejects below 1024 and states 32768 as its ceiling),
@@ -481,8 +481,8 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         //
         // Discarding the promise is safe only while nothing awaits between the
         // transport handing this response back and this line: cancelling a body
-        // that has already errored rejects, and no entry installs an
-        // `unhandledRejection` handler. Measured against a real server, a socket
+        // that has already errored rejects, and neither server nor worker
+        // installs an `unhandledRejection` handler. Measured against a real server, a socket
         // broken 0 to 50ms after the headers is always still healthy here, and
         // an await of 30ms is what makes it reject.
         void res.body?.cancel();
