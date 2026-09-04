@@ -295,7 +295,10 @@ assets.post(
         const settled = await nodeTaskService.settle({
           taskId: opened.id,
           outcome: "failed",
-          errorMessage: t("canvas.task.notStarted"),
+          // A code, resolved into a sentence where the reader is: this row is
+          // read by anyone who opens the node's list, and a sentence resolved
+          // here freezes into whichever language THIS requester was in.
+          errorMessage: "not_started",
         });
         logger.error(
           { taskId: opened.id, key, userId: user.id },

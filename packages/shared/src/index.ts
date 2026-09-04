@@ -415,6 +415,13 @@ export {
   readTaskExpiryKnock,
   type TaskExpiryKnock,
 } from "@shared/upload/task-expiry.js";
+// Why a task failed, as a code rather than a sentence: the writer is a server
+// and the reader is whoever opens the list, in their own language.
+export {
+  TASK_FAILURE_REASONS,
+  asTaskFailureReason,
+  type TaskFailureReason,
+} from "@shared/types/task-failure.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.

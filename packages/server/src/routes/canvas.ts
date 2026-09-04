@@ -115,7 +115,7 @@ canvas.post(
     const result = await nodeTaskService.settle({
       taskId: task_id,
       outcome: "expired",
-      errorMessage: t("canvas.task.expired"),
+      errorMessage: "expired",
     });
 
     // Sent whether or not this call moved the row: the counts were recomputed

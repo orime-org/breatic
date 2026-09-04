@@ -298,7 +298,13 @@
       "panelEmpty": "Nothing here right now.",
       "panelError": "The task list could not be loaded.",
       "panelReload": "Try again",
-      "dismissFailed": "That task could not be cleared."
+      "dismissFailed": "That task could not be cleared.",
+      "failure": {
+        "aborted": "The upload stopped before it finished.",
+        "over_cap": "This file is larger than uploads are allowed to be.",
+        "not_started": "This never started.",
+        "expired": "This ran out of time."
+      }
     },
     "nodeMenu": {
       "generate": "Generate",

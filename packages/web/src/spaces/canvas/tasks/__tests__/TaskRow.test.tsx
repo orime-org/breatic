@@ -148,6 +148,20 @@ describe('TaskRow', () => {
     );
   });
 
+  it('says a cause we recognise in the reader’s own language', () => {
+    // The row is read by whoever opens the list, so a cause this product
+    // knows travels as a code and becomes a sentence here. A sentence written
+    // where the failure happened is frozen into whatever language that server
+    // or that requester was in.
+    renderRow({ status: 'failed', errorMessage: 'over_cap' });
+
+    const row = screen.getByTestId('node-task-row');
+    expect(row).toHaveTextContent(
+      'This file is larger than uploads are allowed to be.',
+    );
+    expect(row).not.toHaveTextContent('over_cap');
+  });
+
   it('offers a retry only while this session still holds the File', async () => {
     const onRetry = vi.fn();
     renderRow({ status: 'failed' }, { hasRetryFile: true, onRetry });
@@ -181,6 +195,21 @@ describe('TaskRow', () => {
     expect(screen.getByTestId('task-action-replace')).toBeInTheDocument();
   });
 
+  it('shows a running task’s start instant', () => {
+    // §7.1 asks a running row for five things, and this is the one that says
+    // WHEN. Three uploads on one node otherwise read as three identical rows.
+    renderRow({
+      status: 'running',
+      startedAt: '2026-09-04T18:30:00.000Z',
+      settledAt: null,
+    });
+
+    const local = new Date('2026-09-04T18:30:00.000Z');
+    expect(screen.getByTestId('task-instant')).toHaveTextContent(
+      String(local.getDate()),
+    );
+  });
+
   it('shows a settled task’s end instant in the reader’s own day', () => {
     // 2026-09-04T18:30Z is still the 4th in UTC+8 and the 4th in UTC-4, so
     // this asserts the date the reader is in rather than a fixed slice of the
@@ -188,7 +217,7 @@ describe('TaskRow', () => {
     renderRow({ status: 'done', settledAt: '2026-09-04T18:30:00.000Z' });
 
     const local = new Date('2026-09-04T18:30:00.000Z');
-    expect(screen.getByTestId('task-settled-at')).toHaveTextContent(
+    expect(screen.getByTestId('task-instant')).toHaveTextContent(
       String(local.getDate()),
     );
   });

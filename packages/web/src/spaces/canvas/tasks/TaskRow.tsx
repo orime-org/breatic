@@ -15,6 +15,7 @@ import * as React from 'react';
 import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { asTaskFailureReason } from '@breatic/shared';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -67,7 +68,15 @@ function settledNote(
   entry: NodeTaskEntry,
   t: ReturnType<typeof useTranslation>,
 ): string | null {
-  if (entry.status === 'failed') return entry.errorMessage;
+  if (entry.status === 'failed') {
+    // A cause this product knows travels as a code and becomes a sentence
+    // here, where the reader's language is. Anything else is what some
+    // provider said about its own failure, and it travels as itself.
+    const reason = asTaskFailureReason(entry.errorMessage);
+    return reason !== null
+      ? t(`canvas.task.failure.${reason}`)
+      : entry.errorMessage;
+  }
   if (entry.status !== 'expired') return null;
   // §4.5: a report can land after the verdict, and the row has to say so —
   // otherwise the Replace button beside "ran out of time" reads as a mistake.
@@ -119,6 +128,10 @@ export const TaskRow = React.memo(function TaskRow({
   );
 
   const note = settledNote(entry, t);
+  // Whichever instant this row has: a running task says when it began, a
+  // settled one when it ended. §7.1 asks a running row for both its elapsed
+  // time and the moment it started.
+  const instant = entry.settledAt ?? entry.startedAt;
 
   return (
     <div
@@ -168,12 +181,12 @@ export const TaskRow = React.memo(function TaskRow({
       ) : null}
 
       <div className='flex items-center gap-2'>
-        {entry.settledAt !== null ? (
+        {instant !== null ? (
           <span
-            data-testid='task-settled-at'
+            data-testid='task-instant'
             className='flex-1 text-2xs tabular-nums text-muted-foreground'
           >
-            {new Date(entry.settledAt).toLocaleString(getLocale(), {
+            {new Date(instant).toLocaleString(getLocale(), {
               month: 'short',
               day: 'numeric',
               hour: '2-digit',

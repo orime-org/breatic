@@ -298,7 +298,13 @@
       "panelEmpty": "這裡暫時沒有內容。",
       "panelError": "任務清單載入失敗。",
       "panelReload": "重試",
-      "dismissFailed": "這條任務沒能清除。"
+      "dismissFailed": "這條任務沒能清除。",
+      "failure": {
+        "aborted": "上傳還沒完成就中斷了。",
+        "over_cap": "這個檔案超過了上傳大小上限。",
+        "not_started": "它沒有開始。",
+        "expired": "它逾時了。"
+      }
     },
     "generatePanel": {
       "style": "風格",

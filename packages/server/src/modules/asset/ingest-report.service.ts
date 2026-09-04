@@ -313,7 +313,7 @@ export async function applyIngestReport(
 
   if (report.outcome === "aborted") {
     await voidGrant(grant.storageKey);
-    await announceFailure(grant, "Upload failed");
+    await announceFailure(grant, "aborted");
     return { status: "voided" };
   }
 
@@ -324,7 +324,7 @@ export async function applyIngestReport(
   const sizeBytes = report.sizeBytes;
   if (sizeBytes > upload.max_upload_bytes) {
     await voidGrant(grant.storageKey);
-    await announceFailure(grant, "Upload failed");
+    await announceFailure(grant, "over_cap");
     return { status: "rejected", reason: "over_cap" };
   }
 

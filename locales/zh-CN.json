@@ -298,7 +298,13 @@
       "panelEmpty": "这里暂时没有内容。",
       "panelError": "任务列表加载失败。",
       "panelReload": "重试",
-      "dismissFailed": "这条任务没能清除。"
+      "dismissFailed": "这条任务没能清除。",
+      "failure": {
+        "aborted": "上传没传完就中断了。",
+        "over_cap": "这个文件超过了上传大小上限。",
+        "not_started": "它没有开始。",
+        "expired": "它超时了。"
+      }
     },
     "generatePanel": {
       "style": "风格",

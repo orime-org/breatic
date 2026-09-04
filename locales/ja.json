@@ -298,7 +298,13 @@
       "panelEmpty": "今はここに何もありません。",
       "panelError": "タスク一覧を読み込めませんでした。",
       "panelReload": "再試行",
-      "dismissFailed": "このタスクを削除できませんでした。"
+      "dismissFailed": "このタスクを削除できませんでした。",
+      "failure": {
+        "aborted": "アップロードは完了する前に中断しました。",
+        "over_cap": "このファイルはアップロードの上限を超えています。",
+        "not_started": "開始されませんでした。",
+        "expired": "時間切れになりました。"
+      }
     },
     "generatePanel": {
       "style": "スタイル",

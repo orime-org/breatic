@@ -298,7 +298,13 @@
       "panelEmpty": "지금은 여기에 아무것도 없습니다.",
       "panelError": "작업 목록을 불러오지 못했습니다.",
       "panelReload": "다시 시도",
-      "dismissFailed": "이 작업을 지우지 못했습니다."
+      "dismissFailed": "이 작업을 지우지 못했습니다.",
+      "failure": {
+        "aborted": "업로드가 끝나기 전에 중단되었습니다.",
+        "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
+        "not_started": "시작되지 않았습니다.",
+        "expired": "시간이 초과되었습니다."
+      }
     },
     "generatePanel": {
       "style": "스타일",
