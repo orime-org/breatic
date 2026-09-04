@@ -336,6 +336,80 @@ test('an audio node with a produced asset can be picked into the talking-head dr
   ).toBeVisible({ timeout: 10_000 });
 });
 
+// One node, one panel, one session again: switching to voice cloning, picking
+// the recording to clone, and submitting are the steps of a single use, and the
+// state each leaves is what the next one reads.
+test('voice cloning swaps the voice picker for a slot, and refuses a submit with nothing picked', async () => {
+  test.setTimeout(90_000);
+  // The candidate rule is the node's TYPE and whether it holds an asset
+  // (`CanvasSpace.tsx:3702`), so a seeded audio node exercises the same path a
+  // generated one takes without a vendor round trip. Seeded left of the origin
+  // for the same reason the talking-head case is: the minimap in the
+  // bottom-right corner sits above the panel and takes clicks meant for it.
+  const sourceId = crypto.randomUUID();
+  const nodeId = crypto.randomUUID();
+  await seedNode(
+    page,
+    sourceId,
+    'audio',
+    'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0U=',
+    -350,
+  );
+  await seedNode(page, nodeId, 'audio', undefined, -50);
+  await openGenerate(page, nodeId);
+
+  // Voiceover first: the picker is there and the slot is not.
+  await expect(page.getByTestId('generate-voice-trigger')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
+
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-voice-clone').click();
+
+  // They swap. qwen3 declares no voice param, so a picker would offer a choice
+  // that reaches nothing; what it needs instead is a recording to clone.
+  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  // Reference stays in both modes: an audio node's edges take text, and a line
+  // already written on the canvas is prompt material whichever model runs.
+  await expect(page.getByTestId('generate-audio-tool-reference')).toBeVisible();
+
+  // The button stays clickable with the slot empty, and says what is missing —
+  // the repo's stated policy for a condition the user can act on
+  // (`generate-guards.ts:160-166`).
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('Say this in my voice.');
+  await expect(page.getByTestId('generate-audio-execute')).toBeEnabled();
+  await page.getByTestId('generate-audio-execute').click();
+  await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Picking fills it. The clear badge, not a thumbnail: an audio node carries
+  // no poster, so the button shows the slot's icon (#1946) — the badge is what
+  // says it holds something whatever the kind.
+  await page.getByTestId('generate-audio-tool-ref-audio').click();
+  await page.locator(`.react-flow__node[data-id="${sourceId}"]`).click();
+  await expect(page.getByTestId('generate-audio-ref-audio-clear')).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The pick is a value ON THE NODE, so switching back to voiceover and
+  // returning finds it still there — and the voiceover pass in between shows
+  // the picker again rather than a slot holding it.
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-tts').click();
+  await expect(page.getByTestId('generate-voice-trigger')).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-voice-clone').click();
+  await expect(page.getByTestId('generate-audio-ref-audio-clear')).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
 test('the stability tick labels are a pointer target the standard accepts', async () => {
   // WCAG 2.2 SC 2.5.8 (AA) takes 24x24 CSS px, or 24px-diameter circles on
   // each undersized target that do not intersect. The three ticks sit 6px
