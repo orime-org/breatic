@@ -29,11 +29,17 @@ import { t } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import type {
   NodeTaskCounts,
+  NodeTaskListRow,
   NodeTaskRow,
   NodeTaskStatus,
 } from "@domain/node-task/node-task.repo.js";
 
-export type { NodeTaskCounts, NodeTaskRow, NodeTaskStatus };
+export type {
+  NodeTaskCounts,
+  NodeTaskListRow,
+  NodeTaskRow,
+  NodeTaskStatus,
+};
 
 /** What a state change hands back: what happened, and the new counts. */
 export interface SettleResult {
@@ -213,6 +219,6 @@ export async function countsFor(opts: {
 export async function listLive(opts: {
   projectId: string;
   nodeId: string;
-}): Promise<NodeTaskRow[]> {
+}): Promise<NodeTaskListRow[]> {
   return repo.listLive(opts.projectId, opts.nodeId);
 }

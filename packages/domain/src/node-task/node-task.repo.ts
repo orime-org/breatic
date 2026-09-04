@@ -13,7 +13,7 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
-import { nodeTasks } from "@breatic/core";
+import { nodeHistory, nodeTasks } from "@breatic/core";
 
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
@@ -40,6 +40,27 @@ export interface NodeTaskRow {
   label: string;
   errorMessage: string | null;
   nodeHistoryId: string | null;
+}
+
+/**
+ * A row as the list a user opens hands it out: the row plus what that task
+ * put on the node.
+ *
+ * The result is read across from the history row the task names, and is
+ * present on a task that landed something — which includes one judged expired
+ * before its report arrived, since the bytes are real and the user must still
+ * be able to pull them back (design §4.5). It rides on the list so replacing
+ * the node's content costs no second request (design §3.5). The two fields
+ * are what a restore writes; the dimensions are not among them because
+ * `node_history` does not carry them.
+ *
+ * Every other read hands back the bare {@link NodeTaskRow}: settling a task
+ * and clearing one have no use for what it landed, and a join they do not
+ * read is a join nobody maintains.
+ */
+export interface NodeTaskListRow extends NodeTaskRow {
+  content: string | null;
+  coverUrl: string | null;
 }
 
 /**
@@ -283,7 +304,10 @@ export async function countsFor(
 }
 
 /**
- * List the live rows on a node, newest first.
+ * List the live rows on a node, newest first, each carrying what it landed.
+ *
+ * The result is read across from the history row a task names, so the browser
+ * can replace the node's content from this one answer (design §3.5).
  * @param projectId - Owning project.
  * @param nodeId - The node.
  * @returns Every row the user may still act on.
@@ -291,10 +315,11 @@ export async function countsFor(
 export async function listLive(
   projectId: string,
   nodeId: string,
-): Promise<NodeTaskRow[]> {
+): Promise<NodeTaskListRow[]> {
   const rows = await db
-    .select()
+    .select({ task: nodeTasks, history: nodeHistory })
     .from(nodeTasks)
+    .leftJoin(nodeHistory, eq(nodeHistory.id, nodeTasks.nodeHistoryId))
     .where(
       and(
         eq(nodeTasks.projectId, projectId),
@@ -304,18 +329,20 @@ export async function listLive(
     )
     .orderBy(sql`${nodeTasks.startedAt} DESC`);
 
-  return rows.map((row) => ({
-    id: row.id,
-    projectId: row.projectId,
-    spaceId: row.spaceId,
-    nodeId: row.nodeId,
-    kind: row.kind,
-    status: row.status as NodeTaskStatus,
-    startedByUserId: row.startedByUserId,
-    startedAt: row.startedAt,
-    budgetMs: row.budgetMs,
-    label: row.label,
-    errorMessage: row.errorMessage,
-    nodeHistoryId: row.nodeHistoryId,
+  return rows.map(({ task, history }) => ({
+    id: task.id,
+    projectId: task.projectId,
+    spaceId: task.spaceId,
+    nodeId: task.nodeId,
+    kind: task.kind,
+    status: task.status as NodeTaskStatus,
+    startedByUserId: task.startedByUserId,
+    startedAt: task.startedAt,
+    budgetMs: task.budgetMs,
+    label: task.label,
+    errorMessage: task.errorMessage,
+    nodeHistoryId: task.nodeHistoryId,
+    content: history?.content ?? null,
+    coverUrl: history?.thumbnailUrl ?? null,
   }));
 }

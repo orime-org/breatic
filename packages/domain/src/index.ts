@@ -86,6 +86,7 @@ export { uploadBudgetMs } from "@domain/node-task/budget.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
 export type {
   NodeTaskCounts,
+  NodeTaskListRow,
   NodeTaskRow,
   NodeTaskStatus,
   SettleResult,

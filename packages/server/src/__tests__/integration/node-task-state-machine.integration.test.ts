@@ -237,3 +237,44 @@ describe("a user asking for an action", () => {
     expect(gone.removed).toBe(false);
   });
 });
+
+describe("the list a user opens", () => {
+  it("carries what a finished task put on the node, so replacing needs no second request", async () => {
+    // Design §3.5: "replace" writes the node's content from the detail this
+    // very call returned. The row itself only names a history id, so the list
+    // reads that row's result across for the browser.
+    const { taskId, nodeId } = await openTask();
+    const history = await sql<{ id: string }[]>`
+      INSERT INTO node_history
+        (project_id, node_id, user_id, entry_type, status, content, thumbnail_url)
+      VALUES (${projectId}, ${nodeId}, ${userId}, 'upload', 'success',
+              'https://cdn.invalid/clip.mp4', 'https://cdn.invalid/clip.jpg')
+      RETURNING id
+    `;
+    await nodeTaskService.settle({
+      taskId,
+      outcome: "done",
+      nodeHistoryId: history[0]!.id,
+    });
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+    expect(row).toMatchObject({
+      id: taskId,
+      status: "done",
+      content: "https://cdn.invalid/clip.mp4",
+      coverUrl: "https://cdn.invalid/clip.jpg",
+    });
+  });
+
+  it("leaves the result empty on a task that has not landed anything", async () => {
+    const { taskId, nodeId } = await openTask();
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+    expect(row).toMatchObject({
+      id: taskId,
+      status: "running",
+      content: null,
+      coverUrl: null,
+    });
+  });
+});

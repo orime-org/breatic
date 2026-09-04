@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { TaskCreateInput } from '@breatic/shared';
+import type { NodeTaskCounts, TaskCreateInput } from '@breatic/shared';
 
-import { apiGet, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
 
 export interface CanvasTask {
   id: string;
@@ -59,6 +59,37 @@ export interface NodeHistoryEntry {
     [k: string]: unknown;
   };
   createdAt: string;
+}
+
+/**
+ * One row of a node's task list (#186) — what `GET /canvas/nodes/:id/tasks`
+ * hands back.
+ *
+ * `content` / `coverUrl` are what this task put on the node, read across
+ * server-side from the history row it names. They are present on a task that
+ * landed something, which includes one judged expired before its report
+ * arrived; the user replaces the node's content from them without a second
+ * request.
+ */
+export interface NodeTaskEntry {
+  id: string;
+  projectId: string;
+  spaceId: string;
+  nodeId: string;
+  /** `upload` or `generation`. */
+  kind: string;
+  status: 'running' | 'done' | 'failed' | 'expired';
+  startedByUserId: string;
+  /** Server time the task opened, ISO 8601. */
+  startedAt: string;
+  /** The conservative allowance this task was given, in ms. */
+  budgetMs: number;
+  /** What the user reads: the filename or the model name. */
+  label: string;
+  errorMessage: string | null;
+  nodeHistoryId: string | null;
+  content: string | null;
+  coverUrl: string | null;
 }
 
 let limitsCache: CanvasLimits | null = null;
@@ -147,6 +178,60 @@ export const canvasApi = {
           project_id: projectId,
           limit: opts.limit,
           offset: opts.offset,
+        },
+      },
+    );
+  },
+
+  /**
+   * List the tasks behind a node's four counts (#186).
+   *
+   * The document carries the numbers; this carries the rows they were counted
+   * from, and only when the user opens the list. Each row already holds what
+   * that task landed on the node, so "replace" needs no second request.
+   * @param nodeId - Canvas node id (uuid).
+   * @param projectId - Project the node belongs to (tenancy check, viewer+).
+   * @returns The node's live task rows, newest first.
+   * @throws {import('@web/data/api/types').ApiException} On a failed request.
+   */
+  async listNodeTasks(
+    nodeId: string,
+    projectId: string,
+  ): Promise<NodeTaskEntry[]> {
+    const { tasks } = await apiGet<{ tasks: NodeTaskEntry[] }>(
+      `/canvas/nodes/${nodeId}/tasks`,
+      { params: { project_id: projectId } },
+    );
+    return tasks;
+  },
+
+  /**
+   * Drop one task record — the same request behind both "finish" and "clear"
+   * (#186 §7.4). Which one it was is decided by the state the row is in.
+   *
+   * The caller's own node rides along so the server can recount even when it
+   * cannot find the row: the user is acting on what their screen shows, and
+   * "clear this" means clear it.
+   * @param taskId - The row the user acted on.
+   * @param at - Where the caller is: the project, space and node.
+   * @param at.projectId - Owning project.
+   * @param at.spaceId - The space the node lives in.
+   * @param at.nodeId - The node whose counts get recomputed.
+   * @returns Whether a row was removed, plus the node's counts afterwards.
+   * @throws {import('@web/data/api/types').ApiException} On 403, or 409 when
+   *   the task has not settled yet.
+   */
+  dismissNodeTask(
+    taskId: string,
+    at: { projectId: string; spaceId: string; nodeId: string },
+  ): Promise<{ removed: boolean; counts: NodeTaskCounts }> {
+    return apiDelete<{ removed: boolean; counts: NodeTaskCounts }>(
+      `/canvas/node-tasks/${taskId}`,
+      {
+        params: {
+          project_id: at.projectId,
+          space_id: at.spaceId,
+          node_id: at.nodeId,
         },
       },
     );
