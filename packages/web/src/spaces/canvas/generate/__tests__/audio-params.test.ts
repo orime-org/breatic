@@ -232,7 +232,7 @@ describe('the sound-effect model gets a length picker (#2088 A4)', () => {
     expect(audioParamControls(SONILO)).toEqual([
       {
         name: 'duration',
-        labelKey: expect.stringContaining('canvas.generatePanel.'),
+        labelKey: 'canvas.generatePanel.sfxDuration',
         kind: 'choice',
         options: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
       },

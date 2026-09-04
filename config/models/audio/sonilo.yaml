@@ -41,8 +41,12 @@ models:
       audio_format:
         # Omitting this returns aac, while `dispatch.ts` stores every audio
         # artefact under a `.mp3` extension. Declared rather than left to the
-        # upstream so the bytes match the name they are stored under.
+        # upstream so the bytes match the name they are stored under. A lone
+        # default is not a constraint: `validateParams` substitutes it only for
+        # a value outside a declared `values` list, so without one any format
+        # sent would ride through while the artefact is stored under `.mp3`.
         description: "Output container"
+        values: ["mp3"]
         default: "mp3"
     providers:
       - name: wavespeed

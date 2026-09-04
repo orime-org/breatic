@@ -16,7 +16,11 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import { getFullModelConfig, getModelCatalog } from "../model-catalog.js";
+import {
+  getFullModelConfig,
+  getModelCatalog,
+  MIN_TASK_CREDIT_COST,
+} from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 beforeAll(() => {
@@ -50,8 +54,11 @@ describe("the sound-effect model reaches the wire (#2088 A2)", () => {
     ]);
   });
 
-  it("names an icon, since the picker has no fallback mark", () => {
-    expect(audioEntry("sonilo-sfx-v1").icon).toBeTruthy();
+  // The exact string, not merely a truthy one: `ModelIcon` renders nothing
+  // for a name its mark table does not hold, so a typo here shows the model
+  // with no mark at all and nothing else reports it.
+  it("names the icon the mark registry keys on", () => {
+    expect(audioEntry("sonilo-sfx-v1").icon).toBe("sonilo");
   });
 });
 
@@ -106,7 +113,7 @@ describe("its price is stated per second (#2088 A6)", () => {
   // only then falls back to MIN_TASK_CREDIT_COST, so this field is the
   // pre-enqueue balance gate for this model — the audio panel reads `rate`.
   it("gates enqueue at the shared floor rather than at its cheapest preset", () => {
-    expect(audioEntry("sonilo-sfx-v1").cost_per_call).toBe(5);
+    expect(audioEntry("sonilo-sfx-v1").cost_per_call).toBe(MIN_TASK_CREDIT_COST);
   });
 });
 

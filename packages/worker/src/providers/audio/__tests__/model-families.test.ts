@@ -13,12 +13,22 @@
  * which is the one case it exists to catch.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
+import { initCore } from "@breatic/core";
 
 import { getFullModelConfig } from "@breatic/domain";
 
-import { ALL_FAMILIES } from "@worker/providers/audio/index.js";
+import { ALL_FAMILIES, validateAudioParams } from "@worker/providers/audio/index.js";
 import sonilo from "@worker/providers/audio/models/sonilo.js";
+
+// Stand in for the worker entry: `validateParams` logs when it substitutes a
+// value, and the logger reads injected config.
+beforeAll(() => {
+  initCore({
+    DATABASE_URL: "postgres://localhost:5432/breatic_test",
+    WAVESPEED_API_KEY: "test-wavespeed-key",
+  });
+});
 
 describe("audio model families cover the catalog", () => {
   it("has a family for every model declared in config/models/audio", () => {
@@ -58,5 +68,27 @@ describe("the sonilo family hands its params through untouched (#2088)", () => {
     );
     expect(prompt).toBe("glass shattering");
     expect(apiParams).toEqual({ duration: 5, audio_format: "mp3" });
+  });
+});
+
+describe("the sound-effect format reaches the vendor as mp3 (#2088 A8)", () => {
+  // The artefact is stored under a `.mp3` extension whatever the vendor sends,
+  // so a format that is not mp3 would leave the bytes disagreeing with the
+  // name. `validateParams` substitutes the default only for a value outside a
+  // declared `values` list, which is why the yaml declares one.
+  it("replaces a format the model does not offer", () => {
+    const [, params] = validateAudioParams("sonilo-sfx-v1", {
+      audio_format: "wav",
+      duration: 5,
+    });
+    expect(params.audio_format).toBe("mp3");
+  });
+
+  it("keeps mp3 when mp3 is what was asked for", () => {
+    const [, params] = validateAudioParams("sonilo-sfx-v1", {
+      audio_format: "mp3",
+      duration: 5,
+    });
+    expect(params.audio_format).toBe("mp3");
   });
 });
