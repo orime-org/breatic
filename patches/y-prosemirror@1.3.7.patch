@@ -1,3 +1,30 @@
+diff --git a/src/lib.js b/src/lib.js
+index 3f484971b5daae6d81b17afb01e238b170d0b03b..334e9e7435a6f26cb85a412782970207be04cb44 100644
+--- a/src/lib.js
++++ b/src/lib.js
+@@ -26,7 +26,21 @@ const updateMetas = () => {
+   ups.forEach((metas, view) => {
+     const tr = view.state.tr
+     const syncState = ySyncPluginKey.getState(view.state)
+-    if (syncState && syncState.binding && !syncState.binding.isDestroyed) {
++    // PATCH: ask the binding the way it asks itself.
++    //
++    // `isDestroyed` is a property nothing in `sync-plugin.js` ever assigns, so
++    // this guard read `undefined` every time and let every batch through — a
++    // reader who closes a Space between a `setMeta` and this tick gets an
++    // uncaught `RangeError: Applying a mismatched transaction` as the batch
++    // dispatches into an editor that is gone.
++    //
++    // A finished binding is one whose `prosemirrorView` is null: `destroy()`
++    // nulls it, and reads it on its own first line to stay idempotent.
++    if (
++      syncState &&
++      syncState.binding &&
++      syncState.binding.prosemirrorView !== null
++    ) {
+       metas.forEach((val, key) => {
+         tr.setMeta(key, val)
+       })
 diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
 index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..c87935f51b83e3fc953bb4790b0db659ca0ea0b4 100644
 --- a/src/plugins/sync-plugin.js

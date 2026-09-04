@@ -79,8 +79,16 @@ export function buildDocumentEditor(
       documentLinkClickExtension(),
       ...(options.extensions ?? []),
     ],
-    // Ours draws the placeholder, from `document-placeholders.ts`.
-    disableExtensions: ['placeholder'],
+    disableExtensions: [
+      // Ours draws the placeholder, from `document-placeholders-blocknote.ts`.
+      'placeholder',
+      // The block handle it drags is #113; until then it draws nothing while
+      // still tracking every pointer move, and `elementsFromPoint` — which it
+      // calls on each one — is a DOM method jsdom does not implement, so the
+      // exception it raises reaches the test runner from anywhere in the suite
+      // that renders a document.
+      'sideMenu',
+    ],
   });
 
   return BlockNoteEditor.create({
