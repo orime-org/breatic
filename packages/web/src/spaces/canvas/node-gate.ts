@@ -66,21 +66,24 @@ export const NODE_GATE_TOAST_KEY: Readonly<Record<NodeGateReason, string>> = {
 };
 
 /**
- * The operations `handling` freezes — the content-affecting ones. Position
- * (`move`) and `rename` are orthogonal to the in-flight content write, so they
- * stay allowed while handling; only `locked` freezes them.
+ * The one operation a running task freezes (#186 §7.6): deleting the node it
+ * is going to write to would leave the result nowhere to land.
+ *
+ * Everything else stays open. A node carries several tasks at once now, so a
+ * second upload or a second generation is the point rather than a conflict;
+ * editing the content by hand belongs with them, since the last write wins
+ * either way and the task list is where a user picks between the results.
+ * Freezing it while leaving the two above open would say a user may overwrite
+ * this content by starting a task but not by typing.
  */
 const HANDLING_FROZEN: ReadonlySet<NodeMutation> = new Set<NodeMutation>([
   'delete',
-  'editContent',
-  'upload',
-  'generate',
 ]);
 
 /**
  * Evaluate whether an operation is allowed on a node in the given state.
- * `locked` blocks every operation; `handling` blocks only the content-affecting
- * ones. `locked` takes precedence when both hold (the harder freeze).
+ * `locked` blocks every operation; a running task blocks deleting the node and
+ * nothing else. `locked` takes precedence when both hold (the harder freeze).
  * @param state - The node's locked / handling state.
  * @param op - The operation being attempted.
  * @returns A block verdict (reason + toast key), or null when the op is allowed.

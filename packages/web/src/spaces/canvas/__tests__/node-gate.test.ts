@@ -18,16 +18,25 @@ const ALL_OPS: readonly NodeMutation[] = [
   'generate',
 ];
 
-/** The operations `handling` freezes (content-affecting). */
-const HANDLING_FROZEN: readonly NodeMutation[] = [
-  'delete',
+/**
+ * The one operation a running task freezes: deleting the node it is going to
+ * write to would leave the result nowhere to land (#186 §7.7).
+ */
+const HANDLING_FROZEN: readonly NodeMutation[] = ['delete'];
+
+/**
+ * Everything a running task leaves free. Starting a second upload or a second
+ * generation is what this whole change is for; editing the content by hand
+ * belongs with them, since the last write wins either way and the task list is
+ * where a user picks between the results.
+ */
+const HANDLING_FREE: readonly NodeMutation[] = [
+  'move',
+  'rename',
   'editContent',
   'upload',
   'generate',
 ];
-
-/** The operations `handling` leaves free (orthogonal to content). */
-const HANDLING_FREE: readonly NodeMutation[] = ['move', 'rename'];
 
 describe('evaluateNodeGate', () => {
   it('allows every operation on an idle, unlocked node', () => {
@@ -45,7 +54,7 @@ describe('evaluateNodeGate', () => {
     }
   });
 
-  it('handling blocks only content-affecting operations', () => {
+  it('a running task blocks only deleting the node', () => {
     for (const op of HANDLING_FROZEN) {
       expect(evaluateNodeGate({ locked: false, handling: true }, op)).toEqual({
         reason: 'handling',
@@ -54,7 +63,7 @@ describe('evaluateNodeGate', () => {
     }
   });
 
-  it('handling leaves position and name free', () => {
+  it('a running task leaves every other operation free', () => {
     for (const op of HANDLING_FREE) {
       expect(evaluateNodeGate({ locked: false, handling: true }, op)).toBeNull();
     }

@@ -127,8 +127,8 @@ export const TextNode = React.memo(function TextNode({
 
   // Whether this node can be written in, worked out ONCE and read by both the
   // way in and the way back out. Two hand-written conditions drift, and these
-  // had: entry asked the shared gate — which knows only `locked` and
-  // `handling` — while the exit closed on any status other than `idle`. On a
+  // had: entry asked the shared gate — which knows only `locked` and whether a
+  // task is running — while the exit closed on any status other than `idle`. On a
   // failed node they disagreed, so opening one repaired a missing body (a real
   // write into the shared document) and set edit state, both of which the exit
   // undid on the same tick. None of it was visible: the renderer gives a failed
@@ -165,11 +165,12 @@ export const TextNode = React.memo(function TextNode({
   /**
    * Open the editor on this node's body, unless something says no.
    *
-   * A viewer may not write at all. A locked node is frozen by its owner, and a
-   * node a task is writing would have that task's result overwritten — both of
-   * those say why, because a double-click that silently does nothing reads as
-   * a bug. A failed node is the one refusal with nothing to say: it is already
-   * showing the user its error where the body would be.
+   * A viewer may not write at all, and a locked node is frozen by its owner —
+   * both say why, because a double-click that silently does nothing reads as a
+   * bug. A node with a task running refuses for a different reason: its body
+   * slot is showing a skeleton, so an editor opened there would be state with
+   * nothing on screen. A failed node is the one refusal with nothing to say:
+   * it is already showing the user its error where the body would be.
    *
    * A node with no body is repaired here rather than at render: repair is a
    * write, so it happens when somebody actually intends to write, and never

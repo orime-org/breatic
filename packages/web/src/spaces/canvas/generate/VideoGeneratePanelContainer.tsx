@@ -579,9 +579,9 @@ function VideoGeneratePanelBody({
     // already covers it, and a line that can never change the outcome reads
     // to the next person as if it can.
     //
-    // A locked node — or one a task started writing since the panel opened —
-    // cannot submit. Toast the reason so a clickable Execute is an actionable
-    // message rather than a dead control; editing the prompt stays allowed.
+    // A locked node cannot submit. Toast the reason so a clickable Execute is
+    // an actionable message rather than a dead control; editing the prompt
+    // stays allowed.
     const gateBlock = evaluateNodeGate(
       {
         locked: isNodeLocked(projectId, spaceId, nodeId),

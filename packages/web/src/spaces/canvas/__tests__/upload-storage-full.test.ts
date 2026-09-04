@@ -112,7 +112,6 @@ describe('填充已有节点这条把失败原样交给唯一的出口', () => {
       },
       sendToIngest: async () => ({}),
       extractText: async () => '',
-      isHandling: () => false,
       onTypeMismatch: () => {},
       // 形状照 UploadLease 的定义写：替身返回的东西跟被替代那个函数的返回
       // 类型不是同一个的话，测的就只是替身自己。

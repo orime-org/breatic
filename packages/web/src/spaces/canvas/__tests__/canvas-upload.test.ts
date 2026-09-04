@@ -322,8 +322,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
         kind: 'image',
       }),
       extractText: vi.fn().mockResolvedValue('extracted body'),
-      isHandling: vi.fn().mockReturnValue(false),
-      onBusy: vi.fn(),
       onTypeMismatch: vi.fn(),
       setHandling: vi.fn().mockReturnValue(LEASE),
       setContent: vi.fn().mockReturnValue(true),
@@ -436,22 +434,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     );
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin', LEASE);
-  });
-
-  it('busy gate (#1580 #7): a node already handling refuses the fill — onBusy fires, nothing else runs', async () => {
-    const deps = makeDeps({ isHandling: vi.fn().mockReturnValue(true) });
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
-    expect(deps.onBusy).toHaveBeenCalledExactlyOnceWith('n1');
-    expect(deps.setHandling).not.toHaveBeenCalled();
-    expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).not.toHaveBeenCalled();
   });
 
   it('missing node (#1580 #7): setHandling returns undefined — the fill aborts silently', async () => {

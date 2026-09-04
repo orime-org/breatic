@@ -50,15 +50,18 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
     expect(d).toEqual({ kind: 'blocked', toastKey: 'canvas.gate.locked' });
   });
 
-  it('INV-2: a handling / live-lease node → blocked with the handling toast', () => {
+  it('INV-2: a node with a task running restores anyway (#186 §3.5.1)', () => {
+    // Restoring is the user putting back something this node held before, and
+    // the task writing to it right now will land whatever it lands. Last write
+    // wins either way, and both results stay reachable — the history entry
+    // here, the task's own result in the task list.
     const d = resolveRestore({
       readOnly: false,
-      entry: entry(),
+      entry: entry({ content: 'result.png' }),
       modality: 'image',
-      // The caller ORs isNodeHandling with the live-lease read into `handling`.
       gateState: { locked: false, handling: true },
     });
-    expect(d).toEqual({ kind: 'blocked', toastKey: 'canvas.gate.handling' });
+    expect(d).toMatchObject({ kind: 'write', content: 'result.png' });
   });
 
   it('INV-3 + INV-8: image restore writes content, no coverUrl', () => {

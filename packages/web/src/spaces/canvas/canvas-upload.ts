@@ -325,18 +325,10 @@ export interface FillNodeDeps {
   /** Read / extract a non-media file's text locally (the text path). */
   extractText: (file: File) => Promise<string>;
   /**
-   * Busy gate (#1580 #7, user decision 2026-07-03): true when the node is
-   * already handling — a second fill is refused up front instead of
-   * silently racing the live lease holder.
-   */
-  isHandling: (nodeId: string) => boolean;
-  /**
    * Called (instead of any work) when the picked file's classification does
    * not match the target node's modality — the type gate below.
    */
   onTypeMismatch: (nodeId: string) => void;
-  /** Called (instead of any work) when the busy gate refuses the fill. */
-  onBusy: (nodeId: string) => void;
   /**
    * Hand the whole outcome of a failed upload to the caller, reason and all.
    *
@@ -416,10 +408,6 @@ export async function fillNodeFromFile(
   const spec = fileToNodeSpec(file);
   if (spec.nodeType !== targetModality) {
     deps.onTypeMismatch(nodeId);
-    return;
-  }
-  if (deps.isHandling(nodeId)) {
-    deps.onBusy(nodeId);
     return;
   }
   const lease = deps.setHandling(nodeId);

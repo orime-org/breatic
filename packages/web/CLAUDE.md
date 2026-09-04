@@ -180,12 +180,16 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 ## 节点状态门控:locked / handling(MANDATORY,单一策略源)
 画布节点有两种「冻结变更」的状态,门控规则是**单一真相源** `spaces/canvas/node-gate.ts` 的纯函数 `evaluateNodeGate(state, op)`:**每个变更入口**(删除 / 上传 / 生成执行 / 内容编辑 / 移动 / 改名)都经它判定,**keyed on 状态 + 操作、绝不 keyed on 节点类型** —— 未来 text / 音频 / 视频节点天然复用同一门,新增可生成模态时把它的变更入口接进同一策略即可,**不逐模态补 `if (locked)`**。
 
-| 操作 | locked(节点**自身** `data.locked` = 冻该节点一切) | handling(任务在写 = 冻内容相关) |
+| 操作 | locked(节点**自身** `data.locked` = 冻该节点一切) | 有任务在跑 |
 |---|---|---|
-| 移动 / 改名 | 拦 | **放行**(位置 / 名字与 in-flight 内容写入正交) |
-| 删除 / 编辑内容 / 上传 / 生成执行 | 拦 | 拦 |
+| 移动 / 改名 / 编辑内容 / 上传 / 生成执行 | 拦 | **放行** |
+| 删除 | 拦 | 拦 |
 
-**两条铁律**:① 被拦的**命令式**入口(键盘/菜单删除 · 上传 picker · 面板执行 · 双击进编辑)一律 `toast.warning`(走 `NODE_GATE_TOAST_KEY` → `canvas.gate.locked` / `canvas.gate.handling`),**禁静默 no-op**(用户点了没反应还不知道为啥);**拖动锁定节点/组**虽 `draggable:false`(ReactFlow 不发拖拽事件),也经画布层**拖动手势探测**(pointerdown 命中 frozen 节点 + 移动超阈值)弹 `canvas.gate.locked`(A.1,user 2026-07-18;单击无位移不弹、区分选中 vs 拖动);只有**纯被动、无手势可探**的 render 门(菜单项隐藏)才静默。② 生成面板对 locked / handling 节点**照常打开、prompt 照常可编辑**,只有**执行提交**被拦 —— 锁冻的是节点内容与结果,不是生成配方 prompt。判定题:**这是不是一个会改节点内容 / 位置 / 存在性的操作?是 → 经 `evaluateNodeGate` 判定,别自己手写状态检查**。策略函数 + 矩阵是本条的实现真相源(`node-gate.ts` 顶部 TSDoc)。
+**一个节点同时挂着多条任务**(#186),所以「有任务在跑」只冻**删除**一件事:结果回来要有地方落。第二次上传、第二次生成、以及用户自己动手改内容,三者都放行——冲突规则是后来的覆盖先来的,每条任务的产物都留在任务列表里由用户挑。**判死也不在前端**:超时由计时器 DO 判(设计 §4.6),`deriveStatus` 不再需要时钟。
+
+**两条铁律**:① 被拦的**命令式**入口(键盘/菜单删除 · 上传 picker · 面板执行 · 双击进编辑)一律 `toast.warning`(走 `NODE_GATE_TOAST_KEY` → `canvas.gate.locked` / `canvas.gate.handling`),**禁静默 no-op**(用户点了没反应还不知道为啥);**拖动锁定节点/组**虽 `draggable:false`(ReactFlow 不发拖拽事件),也经画布层**拖动手势探测**(pointerdown 命中 frozen 节点 + 移动超阈值)弹 `canvas.gate.locked`(A.1,user 2026-07-18;单击无位移不弹、区分选中 vs 拖动);只有**纯被动、无手势可探**的 render 门(菜单项隐藏)才静默。② 生成面板对 locked 节点**照常打开、prompt 照常可编辑**,只有**执行提交**被拦 —— 锁冻的是节点内容与结果,不是生成配方 prompt。判定题:**这是不是一个会改节点内容 / 位置 / 存在性的操作?是 → 经 `evaluateNodeGate` 判定,别自己手写状态检查**。策略函数 + 矩阵是本条的实现真相源(`node-gate.ts` 顶部 TSDoc)。
+
+**文本节点的内联编辑另有一道自己的闸**(`TextNode.tsx` 的 `canEdit`):它额外要求 `status === 'idle'`,理由不是怕覆盖,是有任务在跑时那个位置显示的是骨架屏,编辑器开在那儿屏幕上什么都没有。
 
 **锁有两种作用域,别混为一谈(MANDATORY,user 2026-07-20)**:
 

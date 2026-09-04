@@ -679,10 +679,10 @@ describe('VideoGeneratePanelContainer', () => {
       expect(create.mock.calls[0]![0].params.prompt).toContain('second line');
     });
 
-    it('refuses to submit against a node a task is already writing', async () => {
-      // The arrow stays clickable while a generation runs (a greyed control
-      // explains nothing), so the gate is the only thing between a busy node
-      // and a second overwrite task landing on it.
+    it('submits against a node a task is already writing (#186)', async () => {
+      // A node carries several tasks at once now, so starting a second one on
+      // a busy node is the point rather than a conflict. Both are rows in its
+      // task list, and whichever finishes last is what the node holds.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       const create = vi.spyOn(canvasApi, 'createTask');
       seedVideoNode({ state: 'handling' });
@@ -694,8 +694,8 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
-      await waitFor(() => expect(toast.warning).toHaveBeenCalled());
-      expect(create).not.toHaveBeenCalled();
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(toast.warning).not.toHaveBeenCalled();
     });
 
     it('refuses to submit against a node a collaborator just deleted', async () => {

@@ -2988,11 +2988,10 @@ function CanvasSpaceInner({
   const activateNodeUpload = React.useCallback(
     (nodeId: string, modality: Modality): void => {
       if (readOnly) return;
-      // Node-state gate (bug 4): a locked or handling node refuses an upload —
-      // both the right-click Upload and the empty-node double-click funnel here,
-      // so gating this one entry closes both. Fresh Yjs reads so a node a
-      // collaborator just locked (or a task just started) is caught. Toast the
-      // reason instead of silently popping the picker.
+      // Node-state gate (bug 4): both the right-click Upload and the
+      // empty-node double-click funnel here, so gating this one entry closes
+      // both. Fresh Yjs reads so a node a collaborator just locked is caught.
+      // Toast the reason instead of silently popping the picker.
       const gateBlock = evaluateNodeGate(
         {
           locked: isNodeLocked(projectId, spaceId, nodeId),
@@ -3045,10 +3044,10 @@ function CanvasSpaceInner({
     ): void => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
-      // collaborator can lock the node (or a task can start on it) inside that
-      // window. Re-read fresh Yjs here — the single fill choke point for both
-      // the picker-fill and the retry paths — so a node frozen since the picker
-      // opened is never written. Mirrors the generate submit gate.
+      // collaborator can lock the node inside that window. Re-read fresh Yjs
+      // here — the single fill choke point for both the picker-fill and the
+      // retry paths — so a node frozen since the picker opened is never
+      // written. Mirrors the generate submit gate.
       const gateBlock = evaluateNodeGate(
         {
           locked: isNodeLocked(projectId, spaceId, nodeId),
@@ -3090,11 +3089,6 @@ function CanvasSpaceInner({
           // select .mp4) — a file that doesn't classify to the node's modality
           // is refused with a local toast (user bug 2026-07-03).
           onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
-          // #1580 #7 busy gate: a node already handling refuses a second fill.
-          // Backstop for the fill path (retry + any direct fill); the picker
-          // entry (activateNodeUpload) already gates handling before opening.
-          isHandling: (id) => isNodeHandling(projectId, spaceId, id),
-          onBusy: () => warnNodeGate(t(NODE_GATE_TOAST_KEY.handling)),
           setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
           // Only the text path reaches this: it reads the content here, so
           // there is nobody else to write it. A media node's content arrives
@@ -3134,9 +3128,8 @@ function CanvasSpaceInner({
   // not freeze member content (#350) — only the node's OWN lock does.
   const resetNodeToEmptyImage = React.useCallback(
     (nodeId: string, opts: EmptyImageExecuteOpts): void => {
-      // Gate 2 (execute, D8-②): re-read fresh Yjs so a node a collaborator just
-      // locked (or a task just started on) blocks the write. Either verdict
-      // closes the panel.
+      // Gate 2 (execute, D8-②): re-read fresh Yjs so a node a collaborator
+      // just locked blocks the write. Either verdict closes the panel.
       const gateBlock = evaluateNodeGate(
         {
           locked: isNodeLocked(projectId, spaceId, nodeId),
@@ -3240,9 +3233,7 @@ function CanvasSpaceInner({
   const retryNodeUpload = React.useCallback(
     (nodeId: string): void => {
       if (readOnly) return;
-      // Retry is an upload entry point too: a locked node refuses it (a retry
-      // target is in error state, so handling never applies here, but the gate
-      // covers both uniformly).
+      // Retry is an upload entry point too, and a locked node refuses it.
       const gateBlock = evaluateNodeGate(
         {
           locked: isNodeLocked(projectId, spaceId, nodeId),

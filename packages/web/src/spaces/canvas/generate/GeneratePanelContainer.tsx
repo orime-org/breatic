@@ -572,9 +572,9 @@ function GeneratePanelBody({
     // outcome reads to the next person as if it can (#1949, the video
     // container has said so at its own gate since #1899).
     //
-    // Node-state gate (bug 2): a locked node — or one a task started writing
-    // since the panel opened — can't submit. Fresh Yjs reads (never a captured
-    // menu / render value). Toast the reason so a locked node's clickable
+    // Node-state gate (bug 2): a locked node cannot submit. Fresh Yjs reads
+    // (never a captured menu / render value). Toast the reason so a locked
+    // node's clickable
     // Execute is an actionable message, not a dead control (the button is
     // not greyed out for either — see `isExecuteButtonDisabled`). Editing the
     // prompt stays allowed; the gate
