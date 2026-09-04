@@ -144,19 +144,25 @@ async function bodyShape(p: Page): Promise<string> {
 async function clickIntoBlock(p: Page, selector: string): Promise<void> {
   const target = p.locator(selector).first();
   const text = ((await target.textContent()) ?? '').trim();
-  await target.click();
+  // Landed at the block's leading edge rather than its middle. A click inside
+  // text that is already taken leaves the range as it is — measured, ten
+  // seconds of it, and a key pressed first goes to the menu that owns the
+  // focus. The edge is outside the range, so the click places a caret.
+  await target.click({ position: { x: 1, y: 4 } });
   await expect
     .poll(
       async () =>
         p.evaluate(() => {
-          const node = document.getSelection()?.anchorNode ?? null;
+          const selection = document.getSelection();
+          const node = selection?.anchorNode ?? null;
           const element =
             node?.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null);
-          return element?.closest('.bn-block-content')?.textContent?.trim() ?? '';
+          const block = element?.closest('.bn-block-content')?.textContent?.trim() ?? '';
+          return `${selection?.isCollapsed === true ? 'caret' : 'range'} in ${block}`;
         }),
       { timeout: 10_000 },
     )
-    .toBe(text);
+    .toBe(`caret in ${text}`);
 }
 
 /**
@@ -190,11 +196,6 @@ test('presses each of the nine rows and the document follows every time', async 
     await expect
       .poll(async () => bodyShape(page), { timeout: 10_000 })
       .toBe(shape);
-    // The first block's own content rather than the editor around it: a click
-    // in the space below the last block has `DocumentClickToWrite` add a block
-    // at the end, and the next select-all would take that one in too.
-    await clickIntoBlock(page, `${EDITOR} .bn-block-content`);
-    await page.keyboard.press(`${MOD}+a`);
   }
 
   // The ninth row is the task list, which this editor brings with it (A3).
@@ -425,9 +426,37 @@ const NINE_ROWS = [
  */
 async function selectBlockAt(p: Page, selector: string): Promise<void> {
   await clickIntoBlock(p, selector);
-  await p.keyboard.press('ArrowRight');
+  await barGone(p);
   await p.keyboard.press(`${MOD}+a`);
   await expect(p.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * Wait until the editor has read the caret back from the browser.
+ *
+ * A selection reaches the browser before the editor reads it, and everything
+ * a cell does next asks the EDITOR what is selected. Acting too early gets the
+ * range the previous cell left: `Mod-a` calls it the first tier already taken
+ * and goes up to the document, and a menu row runs against blocks the reader
+ * is no longer on. The bar is drawn from the editor's own selection, so its
+ * leaving is the editor saying the range is gone.
+ * @param p - The page.
+ */
+async function barGone(p: Page): Promise<void> {
+  await expect(p.getByTestId(SLOT)).toBeHidden({ timeout: 10_000 });
+}
+
+/**
+ * Put the caret where the selection starts, and wait for the editor to have it.
+ *
+ * By key rather than by click: the bar sits over the selection it belongs to,
+ * and a click aimed at the block under it is refused as intercepted — measured,
+ * three minutes of retries.
+ * @param p - The page.
+ */
+async function collapseSelection(p: Page): Promise<void> {
+  await p.keyboard.press('ArrowLeft');
+  await barGone(p);
 }
 
 const SHAPES: SelectionShape[] = [
@@ -471,6 +500,7 @@ const SHAPES: SelectionShape[] = [
       // selection and it is not a select-all. Shift+ArrowDown does not hold
       // here: inside a code block that keystroke moves within the block, which
       // leaves the selection in one block.
+      await collapseSelection(p);
       const first = await p.locator(`${EDITOR} .bn-block-content`).first().boundingBox();
       const last = await p.locator(`${EDITOR} .bn-block-content`).last().boundingBox();
       if (!first || !last) throw new Error('both blocks have to be measurable');
@@ -492,7 +522,8 @@ const SHAPES: SelectionShape[] = [
       await p.keyboard.type('deep');
     },
     select: async (p) => {
-      await clickIntoBlock(p, `${EDITOR} .bn-block-content`);
+      await collapseSelection(p);
+      await p.locator(`${EDITOR} .bn-block-content`).first().click();
       // The first tier takes the block, the second the body
       // (`select-all-tiers-and-keys`).
       await p.keyboard.press(`${MOD}+a`);
