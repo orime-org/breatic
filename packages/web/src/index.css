@@ -502,25 +502,6 @@ body {
   outline-offset: 2px;
 }
 
-/* ---- The document Space's empty-state placeholder ----
-   Drawn here rather than by the placeholder extension: that one decorates
-   textblocks that EXIST, and a document with no blocks has nothing to
-   decorate. `document-placeholders` marks the empty state; this paints it.
-   The extension's own rule further up is untouched, because the generate
-   prompt still relies on it. */
-.doc-body-editor .ProseMirror.doc-body-empty::after {
-  content: attr(data-body-placeholder);
-  display: block;
-  pointer-events: none;
-  color: var(--color-muted-foreground);
-  /* The paragraph's own top margin, so the zero-block hint sits exactly
-     where the first block's hint — and the first typed line — lands. The two
-     looks-empty states must be visually identical (user 2026-08-18); one
-     custom property feeds both this and the paragraph rule below, so they
-     cannot drift apart. */
-  margin-top: var(--doc-paragraph-margin);
-}
-
 /* The looks-empty hint ON the first invisible block (a document holding
    nothing but empty paragraphs and headings — `document-placeholders` marks
    the block). Painted the way tiptap's official Placeholder paints: a
