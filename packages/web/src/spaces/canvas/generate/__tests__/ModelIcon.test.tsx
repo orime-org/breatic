@@ -24,7 +24,7 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
     // would say so.
     expect([...MODEL_ICON_NAMES].sort()).toEqual([
       'elevenlabs',
-      'f5-tts',
+      'qwen',
       'fish-audio',
       'midjourney',
       'nano-banana',

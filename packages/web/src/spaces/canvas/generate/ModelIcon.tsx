@@ -13,8 +13,9 @@ import * as React from 'react';
  *   - `seedream`    → uneven vertical bars (ByteDance Seed's bar logomark).
  *   - `elevenlabs`  → two upright bars (ElevenLabs' own "11" mark).
  *   - `fish-audio`  → a fish (Fish Audio's name and mark).
- *   - `f5-tts`      → a microphone: an open research model with no brand of
- *     its own, so its mark names what the model does.
+ *   - `qwen`        → a microphone: reproducing Alibaba Qwen's wordmark would
+ *     be reproducing the trademark itself, so its mark names what the model
+ *     does instead.
  * The picker shows generation models (t2i / i2i / tts); every one of their
  * config `icon` names is covered here — there is deliberately NO generic
  * "unknown model" fallback (user 2026-07-09).
@@ -56,7 +57,7 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
     />
   ),
   // A microphone on its stand.
-  'f5-tts': (
+  qwen: (
     <>
       <rect x='9' y='2.6' width='6' height='10.8' rx='3' />
       <path d='M5.6 11.2A1.1 1.1 0 0 0 3.4 11.2 8.7 8.7 0 0 0 10.9 19.8V21.2A1.1 1.1 0 0 0 13.1 21.2V19.8A8.7 8.7 0 0 0 20.6 11.2 1.1 1.1 0 0 0 18.4 11.2 6.5 6.5 0 0 1 5.6 11.2Z' />

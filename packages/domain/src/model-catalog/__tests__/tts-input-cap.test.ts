@@ -43,12 +43,6 @@ describe("a tts model states how much text it takes (#1960 A17)", () => {
     expect(ttsEntry("elevenlabs-v3").max_input_chars).toBe(5000);
   });
 
-  it("gives f5-tts the 5000 fal states for it", () => {
-    // fal.ai/models/fal-ai/f5-tts/api: "Maximum 5000 characters".
-    useFullCatalog();
-    expect(ttsEntry("f5-tts").max_input_chars).toBe(5000);
-  });
-
   // Fish publishes no hard cap — its OpenAPI schema states no maxLength and it
   // describes usage as a fair-use policy. Absent is the honest answer, and the
   // panel reads absent as uncapped; a number invented here would refuse text

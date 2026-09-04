@@ -76,7 +76,6 @@ const DEADLINES_BEFORE: ReadonlyArray<readonly [string, readonly string[]]> = [
   ["image/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
   ["three-d/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
   ["tts/transports/elevenlabs.ts", ["resolved.timeout * 1000"]],
-  ["tts/transports/fal.ts", ["resolved.timeout * 1000"]],
   ["tts/transports/fish.ts", ["resolved.timeout * 1000"]],
   ["tts/transports/minimax.ts", ["resolved.timeout * 1000"]],
   ["tts/transports/wavespeed.ts", ["resolved.timeout * 1000"]],

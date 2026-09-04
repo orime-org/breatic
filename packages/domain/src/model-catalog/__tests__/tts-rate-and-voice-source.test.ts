@@ -79,8 +79,9 @@ describe("the voice param names itself to the panel (#1960 A2)", () => {
     expect(ttsEntry(model).params[param]?.remote_source).toBe("voices");
   });
 
-  // At most one, never exactly one: f5-tts takes an uploaded reference clip
-  // (`ref_audio_url`) rather than a choice from a catalog, so it marks none.
+  // At most one, never exactly one: a voice-cloning model takes a reference
+  // recording the user picked on the canvas rather than a choice from a
+  // catalog, so it marks none.
   // Two marks on one model is what has no answer — the panel would have no way
   // to say which param the picker writes.
   it("marks at most one param per tts model, so the panel has one answer", () => {
