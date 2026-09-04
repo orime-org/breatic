@@ -35,6 +35,12 @@ export interface UploadTicket {
   partSize: number;
   /** How many parts the file was cut into. */
   totalParts: number;
+  /**
+   * The task row this upload opened on its node (#186). A failed upload's
+   * File is stashed under it, so two uploads onto one node each keep their
+   * own for a retry. Absent on an upload with no node behind it.
+   */
+  taskId?: string;
 }
 
 /**

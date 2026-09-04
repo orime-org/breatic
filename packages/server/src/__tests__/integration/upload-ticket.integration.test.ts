@@ -347,6 +347,30 @@ describe("POST /assets/upload-ticket", () => {
     expect(rows[0]!.voided_at).toBeNull();
   });
 
+  it("names the task row it opened, so a failure can be retried by task", async () => {
+    // The browser holds a failed upload's File for a retry, and the stash is
+    // keyed by task (#186 §3.7.2) — two uploads onto one node each keep their
+    // own. It can only do that if it is told which task this upload is.
+    const { projectId, cookie } = await seedEditor();
+    const nodeId = crypto.randomUUID();
+
+    const res = await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        node_id: nodeId,
+        space_id: crypto.randomUUID(),
+      }),
+    );
+    const payload = (await res.json()) as { data: { taskId: string } };
+
+    const rows = await sql<{ id: string }[]>`
+      SELECT id FROM node_tasks WHERE node_id = ${nodeId}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(payload.data.taskId).toBe(rows[0]!.id);
+  });
+
   it("refuses a project this user is not in, and leaves no grant", async () => {
     const mine = await seedEditor();
     const theirs = await seedEditor();

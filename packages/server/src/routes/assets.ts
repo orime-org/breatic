@@ -275,6 +275,7 @@ assets.post(
     //
     // An upload with no node behind it — a focus crop — opens nothing: the
     // counts live in a node's corner, and there is no corner.
+    let taskId: string | undefined;
     if (body.node_id !== undefined && body.space_id !== undefined) {
       const budgetMs = uploadBudgetMs(body.size);
       const opened = await nodeTaskService.open({
@@ -321,6 +322,7 @@ assets.post(
         body.node_id,
         opened.counts,
       );
+      taskId = opened.id;
     }
 
     // A single-part upload is exempt from R2's 5 MiB floor, so a small file
@@ -358,6 +360,10 @@ assets.post(
           kind,
           partSize: ingest.part_size_bytes,
           totalParts,
+          // Which task row this upload is. The browser keys a failed
+          // upload's File by it, so two uploads onto one node each keep
+          // their own (#186 §3.7.2). Absent on an upload with no node.
+          taskId,
         },
       },
       201,
