@@ -21,7 +21,7 @@
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { AllSelection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -410,5 +410,84 @@ describe('what a selection inside the document still answers', () => {
 
     expect(beforeInput(editor, 'deleteByDrag')).toBe(false);
     expect(asked).toBe(0);
+  });
+});
+
+describe('what one whole block selected answers', () => {
+  // A reader reaches this shape by holding the platform's select-node
+  // modifier over a block: `prosemirror-view` answers with a `NodeSelection`,
+  // which sits outside the block's content and so is neither of the two the
+  // tiers are written around.
+
+  /**
+   * Selects one whole block.
+   * @param editor - The editor to select in.
+   * @param index - Which block container, in document order.
+   */
+  function selectWholeBlock(
+    editor: ReturnType<typeof buildDocumentEditor>,
+    index: number,
+  ): void {
+    const view = editor.prosemirrorView!;
+    const spots: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'blockContainer') spots.push(pos);
+      return true;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        NodeSelection.create(view.state.doc, spots[index]!),
+      ),
+    );
+  }
+
+  it('goes straight to the whole document on Mod-a', () => {
+    const editor = open();
+    selectWholeBlock(editor, 1);
+
+    expect(press(editor, 'Mod-a')).toBe(true);
+    expect(editor.prosemirrorState.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('deletes that block alone on a bare deletion, asking nothing', () => {
+    let asked = 0;
+    const editor = open(() => {
+      asked += 1;
+    });
+    selectWholeBlock(editor, 1);
+
+    press(editor, 'Backspace');
+
+    expect(asked).toBe(0);
+    expect(blockCount(editor)).toBe(2);
+  });
+
+  it('does the same on a forward deletion', () => {
+    let asked = 0;
+    const editor = open(() => {
+      asked += 1;
+    });
+    selectWholeBlock(editor, 1);
+
+    press(editor, 'Delete');
+
+    expect(asked).toBe(0);
+    expect(blockCount(editor)).toBe(2);
+  });
+
+  it('leaves the document alone when a character is typed', () => {
+    // BlockNote's `NodeSelectionKeyboard.ts:35` calls `preventDefault` on any
+    // single-character key while a node is selected, so typing over a whole
+    // block writes nothing rather than replacing it.
+    let asked = 0;
+    const editor = open(() => {
+      asked += 1;
+    });
+    selectWholeBlock(editor, 1);
+
+    press(editor, 'z');
+
+    expect(asked).toBe(0);
+    expect(blockCount(editor)).toBe(3);
   });
 });
