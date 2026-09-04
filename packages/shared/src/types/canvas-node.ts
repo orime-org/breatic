@@ -485,6 +485,20 @@ export interface CanvasNodeFields {
      */
     drivingAudio?: { url: string; cover?: string };
     /**
+     * The voice to clone for the audio panel's voice-cloning mode (#1960 PR2,
+     * wire `data.refAudio`) — the recording whose timbre the new lines are
+     * spoken in. `url` is sent as `params.audio` at execute time.
+     *
+     * Its own field although it travels under the same param as
+     * `drivingAudio`: a pick survives a mode switch, and these two are picked
+     * on different panels for different jobs — one shared field would turn the
+     * track a portrait's lips follow into the voice a line is spoken in.
+     *
+     * Shaped like `drivingAudio` for the same convergence reason, and `cover`
+     * is likewise always absent, leaving the toolbar showing the slot's icon.
+     */
+    refAudio?: { url: string; cover?: string };
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends

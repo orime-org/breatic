@@ -225,8 +225,9 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    // Every member of the union, so adding a sixth without deciding which
-    // half it belongs to turns this red rather than passing on a stale list.
+    // Every member of the union, kept by hand — a plain array literal accepts
+    // a short list, so a new refusal reaches this case only if whoever adds it
+    // writes it in. The compiler will not say so.
     const all: ExecuteRefusal[] = [
       'node-gone',
       'no-model',
@@ -234,6 +235,7 @@ describe('refusalToastKey — which refusal says something out loud', () => {
       'prompt-missing',
       'prompt-too-long',
       'voice-missing',
+      'ref-audio-missing',
     ];
     for (const refusal of all) {
       expect(refusalToastKey(refusal) != null).toBe(
@@ -318,5 +320,65 @@ describe('evaluateExecute — text the model will not take (#1960 A17)', () => {
     expect(refusalToastKey('prompt-too-long')).toBe(
       'canvas.generatePanel.refuseExecuteTooLong',
     );
+  });
+});
+
+/**
+ * The reference audio a cloning model needs (#1960 PR2).
+ *
+ * Same shape as `voice-missing`, and for the same reason: it is a condition the
+ * user can act on, so the button stays live and the click says what is missing.
+ * A greyed-out button would never tell them a slot is empty.
+ */
+describe('evaluateExecute — the reference-audio slot', () => {
+  /** A cloning model with nothing picked yet. */
+  const cloning = {
+    ...ok,
+    refAudioRequired: true,
+    refAudioChosen: false,
+  };
+
+  it('names the empty slot when the mode needs an audio source', () => {
+    expect(evaluateExecute(cloning)).toBe('ref-audio-missing');
+  });
+
+  it('passes once something is picked', () => {
+    expect(evaluateExecute({ ...cloning, refAudioChosen: true })).toBeNull();
+  });
+
+  it('says nothing about it on a mode that needs no audio source', () => {
+    // Voiceover declares no audio source, so an unfilled slot it never shows
+    // must not refuse anything.
+    expect(
+      evaluateExecute({ ...ok, refAudioRequired: false, refAudioChosen: false }),
+    ).toBeNull();
+  });
+
+  it('reports the prompt first, the panel order', () => {
+    // The editor sits above the toolbar's slot, so an empty prompt is what the
+    // user is told about first — the same ordering `voice-missing` follows.
+    expect(evaluateExecute({ ...cloning, promptText: '' })).toBe('prompt-missing');
+  });
+
+  it('leaves the button live and speaks on click', () => {
+    expect(isExecuteButtonDisabled('ref-audio-missing')).toBe(false);
+    expect(refusalToastKey('ref-audio-missing')).toBe(
+      'canvas.generatePanel.errorNoRefAudio',
+    );
+  });
+
+  it('keeps every refusal the user can act on clickable', () => {
+    // The set, stated once. A new refusal added to the union without a place
+    // in this list is one nobody decided the button behaviour for.
+    const actionable: ExecuteRefusal[] = [
+      'prompt-missing',
+      'prompt-too-long',
+      'voice-missing',
+      'ref-audio-missing',
+    ];
+    for (const refusal of actionable) {
+      expect(isExecuteButtonDisabled(refusal), refusal).toBe(false);
+      expect(refusalToastKey(refusal), refusal).not.toBeNull();
+    }
   });
 });

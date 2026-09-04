@@ -42,14 +42,28 @@ function ttsModel(name: string, mode: string): ModelEntry {
 }
 
 describe('AUDIO_MODE_OPTIONS (#1960)', () => {
-  it('offers voiceover, the one mode this slice serves', () => {
-    expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual(['tts']);
+  it('offers voiceover and voice cloning, the two modes served so far', () => {
+    expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual(['tts', 'voice_clone']);
   });
 
-  it('spells the mode the way the tts models in the catalog do', () => {
-    // Both PR1 models declare `mode: "tts"` in config/models/tts/.
-    const models = [ttsModel('elevenlabs-v3', 'tts'), ttsModel('fish-s2-pro', 'tts')];
-    expect(filterAvailableModes(AUDIO_MODE_OPTIONS, models)).toHaveLength(1);
+  it('spells each mode the way the models in the catalog do', () => {
+    // The three tts models declare these strings in config/models/tts/:
+    // elevenlabs-v3 and fish-s2-pro say `tts`, qwen3 says `voice_clone`.
+    const models = [
+      ttsModel('elevenlabs-v3', 'tts'),
+      ttsModel('fish-s2-pro', 'tts'),
+      ttsModel('qwen3-tts-voice-clone', 'voice_clone'),
+    ];
+    expect(filterAvailableModes(AUDIO_MODE_OPTIONS, models)).toHaveLength(2);
+  });
+
+  it('drops cloning when no model in the catalog serves it', () => {
+    // A deployment whose qwen3 provider has no key serves voiceover alone,
+    // and the picker must not offer a mode that cannot run.
+    const voiceoverOnly = [ttsModel('elevenlabs-v3', 'tts')];
+    expect(filterAvailableModes(AUDIO_MODE_OPTIONS, voiceoverOnly).map((o) => o.value)).toEqual([
+      'tts',
+    ]);
   });
 
   it('gives every option a label and a test id, like the other two panels', () => {

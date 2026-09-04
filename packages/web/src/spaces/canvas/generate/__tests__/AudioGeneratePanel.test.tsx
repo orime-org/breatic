@@ -90,7 +90,13 @@ const BASE = {
   modelTakesPrompt: true,
   mode: 'tts',
   modeOptions: AUDIO_MODE_OPTIONS,
+  voiceRequired: true,
   voiceList: initialVoiceListState,
+  slots: [],
+  slotUrls: {},
+  slotThumbnails: {},
+  onPickSlot: (): void => {},
+  onClearSlot: (): void => {},
   voiceSelectedId: null,
   voiceSelectedName: null,
   creditEstimate: 10,
@@ -124,6 +130,18 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
+  });
+
+  it('drops the voice picker for a model that picks no voice from a catalog', () => {
+    // A cloning model speaks in the recording picked into the slot, so a
+    // picker here would offer a choice that reaches nothing. Nothing else in
+    // the suite notices this branch going away.
+    renderPanel(<AudioGeneratePanel {...BASE} voiceRequired={false} />);
+    expect(screen.queryByTestId('generate-voice-trigger')).toBeNull();
+    // The rest of the footer stays: the mode and model pickers are how the
+    // reader gets back to a voiceover model.
+    expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
   });
 
   it('closes without generating', () => {

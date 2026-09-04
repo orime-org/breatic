@@ -414,7 +414,12 @@
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into",
-      "errorStorageFull": "Studio storage is full. Generating is unavailable."
+      "errorStorageFull": "Studio storage is full. Generating is unavailable.",
+      "refAudio": "Voice sample",
+      "refAudioTip": "Pick an audio node, 3–15 seconds of clear speech",
+      "removeRefAudio": "Remove voice sample",
+      "errorNoRefAudio": "Pick a voice sample first",
+      "selectRefAudioFromCanvas": "Pick an audio track to clone the voice from"
     },
     "edge": {
       "delete": "Delete connection"

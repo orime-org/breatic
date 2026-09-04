@@ -405,7 +405,12 @@
       "errorNoDrivingAudio": "先挑一段驅動音訊",
       "promptNotUsed": "這一檔不需要提示詞。",
       "refuseInsertNoPrompt": "這一檔沒有提示詞框，插不進去",
-      "errorStorageFull": "Studio 儲存空間已滿，目前無法生成。"
+      "errorStorageFull": "Studio 儲存空間已滿，目前無法生成。",
+      "refAudio": "聲音樣本",
+      "refAudioTip": "挑一個音訊節點，3–15 秒清晰人聲",
+      "removeRefAudio": "移除聲音樣本",
+      "errorNoRefAudio": "先挑一段聲音樣本",
+      "selectRefAudioFromCanvas": "挑一段音訊，用它的音色來說話"
     },
     "nodeMenu": {
       "generate": "生成",

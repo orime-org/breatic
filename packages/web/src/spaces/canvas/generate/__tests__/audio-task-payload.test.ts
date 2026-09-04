@@ -104,3 +104,71 @@ describe('buildAudioTaskPayload — what reaches the vendor', () => {
     expect(payload.node_gens).toEqual({ n1: 5 });
   });
 });
+
+/**
+ * The picked reference audio, on its way to the vendor (#1960 PR2).
+ *
+ * Nothing carried it before: the video builder has `sourceParams`, this one had
+ * only the model's params and the prompt. A cloning submit therefore reached
+ * the server with no `audio`, and the server-side source gate refuses that
+ * before the task row is even written — every single time, for a user who had
+ * picked one.
+ */
+describe('buildAudioTaskPayload — the picked reference audio', () => {
+  it('sends the slot URL under the name the vendor reads', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('qwen3-tts-voice-clone', 'tts'),
+      slots: ['refAudio'],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params.audio).toBe('https://cdn.test/sample.m4a');
+  });
+
+  it('lets the picked audio win over a same-named catalog param', () => {
+    // Same rule the prompt follows, and the reason the slot merge lands AFTER
+    // the params spread: what the user picked is what gets sent.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('qwen3-tts-voice-clone', 'tts'),
+      params: { audio: 'from the catalog' },
+      slots: ['refAudio'],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params.audio).toBe('https://cdn.test/sample.m4a');
+  });
+
+  it('leaves a pick behind when the active mode does not collect it', () => {
+    // A pick survives a mode switch by design — it lives on the node, not in
+    // the panel — so voiceover reads a reference audio chosen for cloning and
+    // would send it as `params.audio` under a mode that never asked for one.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      slots: [],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params).not.toHaveProperty('audio');
+  });
+
+  it('sends no audio key at all when nothing is picked', () => {
+    // An `audio: undefined` riding along would read as a present-but-empty
+    // source; the gate tests `typeof value === "string"`, so the key has to be
+    // absent rather than blank.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('qwen3-tts-voice-clone', 'tts'),
+      slotUrls: {},
+    });
+    expect(payload.params).not.toHaveProperty('audio');
+  });
+
+  it('leaves the voiceover models untouched', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      params: { voice_id: 'Alice' },
+    });
+    expect(payload.params).toEqual({ voice_id: 'Alice', prompt: 'Good evening.' });
+  });
+});

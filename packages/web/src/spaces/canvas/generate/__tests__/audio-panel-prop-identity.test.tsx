@@ -83,6 +83,19 @@ import {
 import { modelsApi } from '@web/data/api';
 import { useCanvasStore } from '@web/stores';
 
+/**
+ * Stands in for the canvas's "who made the newest write" getter.
+ *
+ * Module-level so its identity is stable across renders: the container lists
+ * it in an effect's dependencies, and a fresh function each render would run
+ * that effect every time.
+ * @returns Always true — these cases never assert on the message it picks.
+ */
+function returnsTrue(): boolean {
+  return true;
+}
+
+
 const CANVAS: CanvasContextValue = {
   projectId: 'p',
   spaceId: 's',
@@ -171,6 +184,7 @@ function tree(stability = 1): React.ReactElement {
             spaceId='s'
             edges={[{ id: 'e1', source: 'src', target: 'target' }]}
             nodes={nodes(stability)}
+            getLastWriteWasLocal={returnsTrue}
           />
         </CanvasContext.Provider>
       </ReactFlow>

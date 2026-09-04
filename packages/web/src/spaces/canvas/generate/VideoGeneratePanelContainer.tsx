@@ -63,9 +63,9 @@ import {
   modeTakesReferences,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import {
   VIDEO_SLOTS,
-  slotForPurpose,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
@@ -474,11 +474,15 @@ function VideoGeneratePanelBody({
     ],
   );
   /** The slot whose pick is running on this node, if any. */
-  const activeSlot = useCanvasStore((s) =>
-    s.pickSession?.nodeId === nodeId
-      ? slotForPurpose(s.pickSession.purpose)
-      : undefined,
-  );
+  const activeSlot = useCanvasStore((s) => {
+    if (s.pickSession?.nodeId === nodeId) {
+      const name = slotForPurpose(s.pickSession.purpose);
+      // The lookup spans every registry, and this panel draws only its own
+      // slots — a pick that fills an audio slot leaves nothing highlighted here.
+      if (name !== undefined && name in VIDEO_SLOTS) return name as VideoSlot;
+    }
+    return undefined;
+  });
   const onAddReference = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
     if (session?.nodeId === nodeId && session.purpose === 'reference') {
@@ -539,7 +543,7 @@ function VideoGeneratePanelBody({
   // user may be coming back to.
   const onClearSlot = React.useCallback(
     (slot: VideoSlot) =>
-      clearSlot(projectId, spaceId, nodeId, slot),
+      clearSlot(projectId, spaceId, nodeId, VIDEO_SLOTS[slot]),
     [projectId, spaceId, nodeId],
   );
 

@@ -22,4 +22,9 @@ import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 /** The audio modes offered so far. */
 export const AUDIO_MODE_OPTIONS: ReadonlyArray<ModeOption> = [
   { value: 'tts', label: 'Voiceover', testId: 'generate-audio-mode-tts' },
+  {
+    value: 'voice_clone',
+    label: 'Voice Cloning',
+    testId: 'generate-audio-mode-voice-clone',
+  },
 ];

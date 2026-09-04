@@ -21,6 +21,7 @@
  * the miss above happening a second time.
  */
 
+import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
@@ -33,10 +34,11 @@ interface PickPurposeUi {
   /**
    * Test id of the tool that starts this pick, per panel. Focus returns there
    * when the banner unmounts. Partial on purpose: most purposes belong to one
-   * panel — style is the image panel's, and the five source slots (both
+   * panel — style is the image panel's; five of the six source slots (both
    * frames, the character image, the driving video and the driving audio) are
-   * the video panel's. Focus is the image and video panels'; reference is
-   * every panel's, the audio one included.
+   * the video panel's, and the sixth (the voice sample) is the audio panel's.
+   * Focus is the image and video panels'; reference is every panel's, the
+   * audio one included.
    */
   trigger: Partial<Record<PickingPanelKind, string>>;
 }
@@ -81,5 +83,9 @@ export const PICK_PURPOSE_UI = {
   drivingAudio: {
     banner: 'canvas.generatePanel.selectDrivingAudioFromCanvas',
     trigger: { generateVideo: VIDEO_SLOTS.drivingAudio.testId },
+  },
+  refAudio: {
+    banner: 'canvas.generatePanel.selectRefAudioFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.refAudio.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

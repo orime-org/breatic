@@ -18,7 +18,38 @@
 
 import type { ModelEntry, TaskCreateInput } from '@breatic/shared';
 
+import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+
+/**
+ * The picked source assets, under the param names their vendors read.
+ *
+ * Built from the MODE's slots, not from everything the node holds: a pick
+ * survives a mode switch (that is the point of storing it on the node), so a
+ * reference audio chosen for cloning is still there while voiceover is
+ * selected, and walking the whole registry would send it under a mode that
+ * never asked for one.
+ *
+ * A slot with nothing picked contributes no key at all, so the model's own
+ * declared `default: null` stays the value the payload carries — which is
+ * what the panel gate, the server's source gate and the mini-tool schema
+ * each refuse first.
+ * @param slots - The slots the active mode collects.
+ * @param slotUrls - What each slot currently holds.
+ * @returns The source params, empty when nothing is picked.
+ */
+function sourceParams(
+  slots: readonly AudioSlot[],
+  slotUrls: AudioSlotUrls,
+): Record<string, string> {
+  const params: Record<string, string> = {};
+  for (const slot of slots) {
+    const url = slotUrls[slot];
+    if (url) params[AUDIO_SLOTS[slot].param] = url;
+  }
+  return params;
+}
 
 /** Inputs for {@link buildAudioTaskPayload}. */
 export interface AudioTaskInput {
@@ -37,6 +68,10 @@ export interface AudioTaskInput {
   promptText: string;
   /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
   leaseGen?: number;
+  /** What each audio slot holds, for the modes that collect one. */
+  slotUrls?: AudioSlotUrls;
+  /** The slots the active mode collects; absent means it collects none. */
+  slots?: readonly AudioSlot[];
 }
 
 /**
@@ -56,6 +91,9 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
     params: {
       ...input.params,
       prompt: input.promptText,
+      // After the params spread on purpose: what the user picked in the slot
+      // wins over a same-named key the catalog carries.
+      ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),
     },
     leaseGen: input.leaseGen,
   });

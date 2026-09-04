@@ -2,28 +2,27 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * F5 TTS model family -- zero-shot voice cloning.
+ * Qwen3 TTS model family -- zero-shot voice cloning.
  *
  * Parameter mapping (YAML user-facing vs API):
  *
- * f5-tts (voice_clone):
- * - text          -> text (pass-through)
- * - ref_audio_url -> ref_audio_url (pass-through)
- * - ref_text      -> ref_text (pass-through)
+ * qwen3-tts-voice-clone (voice_clone):
+ * - text  -> text (pass-through; the tts entry point fills it from the prompt)
+ * - audio -> audio (pass-through; the reference recording to clone)
  */
 
 import type { ModelFamily } from "@worker/providers/shared.js";
 
 /** Set of model names belonging to this family. */
 export const MODELS: ReadonlySet<string> = new Set([
-  "f5-tts",
+  "qwen3-tts-voice-clone",
 ]);
 
 /**
- * Convert user-facing params to API params for F5 TTS voice cloning.
- * @param prompt - Text to speak in cloned voice
+ * Convert user-facing params to API params for Qwen3 voice cloning.
+ * @param prompt - Lines to speak in the cloned voice
  * @param _modelName - Resolved model name (unused)
- * @param params - Validated params from YAML config
+ * @param params - Validated params from YAML config plus the picked source
  * @returns Tuple of [prompt, apiParams]
  */
 export async function buildRequest(

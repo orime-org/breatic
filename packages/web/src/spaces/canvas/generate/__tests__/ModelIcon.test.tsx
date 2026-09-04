@@ -24,10 +24,10 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
     // would say so.
     expect([...MODEL_ICON_NAMES].sort()).toEqual([
       'elevenlabs',
-      'f5-tts',
       'fish-audio',
       'midjourney',
       'nano-banana',
+      'qwen',
       'seedream',
     ]);
   });

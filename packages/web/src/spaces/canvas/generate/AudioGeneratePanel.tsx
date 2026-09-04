@@ -8,6 +8,10 @@ import type { ModelEntry, Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import type {
+  AudioSlot,
+  AudioSlotUrls,
+} from '@web/spaces/canvas/generate/audio-slots';
 import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
 import {
   AudioParamsPicker,
@@ -60,12 +64,33 @@ interface AudioGeneratePanelProps {
   mode: string;
   /** The modes this panel offers, filtered by what the catalog serves. */
   modeOptions: ReadonlyArray<ModeOption>;
+  /**
+   * Whether the active model picks its voice from a preset catalog — the
+   * voice picker renders only then.
+   *
+   * A voice-cloning model answers no: the voice it speaks in is the recording
+   * picked into the reference slot, not a row in a vendor list, so a picker
+   * here would offer a choice that reaches nothing.
+   */
+  voiceRequired: boolean;
   /** Where the voice list is. */
   voiceList: VoiceListState;
   /** The voice held in this model's param record, or null when none is. */
   voiceSelectedId: string | null;
   /** That voice's name once fetched. */
   voiceSelectedName: string | null;
+  /** The source slots the active mode collects, in display order. */
+  slots: readonly AudioSlot[];
+  /** What is picked, by slot. */
+  slotUrls: AudioSlotUrls;
+  /** What to show for each pick, by slot. */
+  slotThumbnails: AudioSlotUrls;
+  /** The slot whose pick is running, if any. */
+  activeSlot?: AudioSlot;
+  /** Enter / exit a slot's pick. */
+  onPickSlot: (slot: AudioSlot) => void;
+  /** Clear a slot. */
+  onClearSlot: (slot: AudioSlot) => void;
   /**
    * Which execute precondition fails, or null when Generate may proceed. The
    * panel reads it for two questions at once — whether the button is
@@ -129,6 +154,7 @@ interface AudioGeneratePanelProps {
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
+ * @param root0.voiceRequired - Whether the model picks a voice from a catalog.
  * @param root0.voiceList - Where the voice list is.
  * @param root0.voiceSelectedId - The stored voice id.
  * @param root0.voiceSelectedName - That voice's name, once known.
@@ -136,6 +162,12 @@ interface AudioGeneratePanelProps {
  * @param root0.promptSlot - The injected prompt editor, or null.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
+ * @param root0.slots - The slots the active mode collects.
+ * @param root0.slotUrls - What is picked, by slot.
+ * @param root0.slotThumbnails - What to show for each pick, by slot.
+ * @param root0.activeSlot - The slot whose pick is running.
+ * @param root0.onPickSlot - Called to enter / exit a slot's pick.
+ * @param root0.onClearSlot - Called to clear a slot.
  * @param root0.params - Everything the node holds for the active model.
  * @param root0.onAddReference - Called to enter / exit the reference pick.
  * @param root0.onRemoveReference - Called to remove a row.
@@ -159,6 +191,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   modelTakesPrompt,
   mode,
   modeOptions,
+  voiceRequired,
   voiceList,
   voiceSelectedId,
   voiceSelectedName,
@@ -166,6 +199,12 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   promptSlot,
   references,
   referencePicking = false,
+  slots,
+  slotUrls,
+  slotThumbnails,
+  activeSlot,
+  onPickSlot,
+  onClearSlot,
   params,
   onAddReference,
   onRemoveReference,
@@ -224,6 +263,12 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         <AudioGenerateToolbar
           onReference={onAddReference}
           referenceActive={referencePicking}
+          slots={slots}
+          slotUrls={slotUrls}
+          slotThumbnails={slotThumbnails}
+          activeSlot={activeSlot}
+          onPickSlot={onPickSlot}
+          onClearSlot={onClearSlot}
         />
         {exitButton}
       </div>
@@ -249,15 +294,20 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           triggerTestId='generate-audio-mode-trigger'
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        <VoicePicker
-          list={voiceList}
-          selectedId={voiceSelectedId}
-          selectedName={voiceSelectedName}
-          onOpenChange={onVoiceOpenChange}
-          onQueryChange={onVoiceQueryChange}
-          onPick={onVoicePick}
-          onLoadMore={onVoiceLoadMore}
-        />
+        {voiceRequired ? (
+          // Only for a model that picks its voice from a preset catalog. A
+          // cloning model speaks in the recording picked into the reference
+          // slot, so a picker here would write an id nothing sends.
+          <VoicePicker
+            list={voiceList}
+            selectedId={voiceSelectedId}
+            selectedName={voiceSelectedName}
+            onOpenChange={onVoiceOpenChange}
+            onQueryChange={onVoiceQueryChange}
+            onPick={onVoicePick}
+            onLoadMore={onVoiceLoadMore}
+          />
+        ) : null}
         {currentModel ? (
           // Renders nothing when this model declares no param it can show, so
           // there is no second copy here of what it already decides.
