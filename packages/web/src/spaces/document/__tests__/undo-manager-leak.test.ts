@@ -24,7 +24,7 @@ import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 
 import { createCanvasUndoManager } from '@web/data/yjs/canvas-space';
-import { createDocumentUndoManager } from '@web/spaces/document/document-undo';
+import { createDocumentUndoManager } from '@web/spaces/document/document-undo-blocknote';
 
 /** Reach the doc's observer registry the way y-tiptap's own workaround does. */
 function destroyListenerCount(doc: Y.Doc): number {

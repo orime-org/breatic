@@ -33,7 +33,6 @@ import { describe, it, expect } from 'vitest';
 import { Editor, type Extensions } from '@tiptap/core';
 import * as Y from 'yjs';
 
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
 import { buildTextNodeExtensions } from '@web/spaces/canvas/nodes/TextNodeEditor';
 
 /** The plugin key a local (non-collaborative) history registers under. */
@@ -45,13 +44,10 @@ const COLLABORATIVE_EDITORS: ReadonlyArray<{
   build: () => Extensions;
 }> = [
   {
-    name: 'document body',
-    build: () =>
-      buildDocumentExtensions({
-        fragment: new Y.Doc().getXmlFragment('content'),
-      }),
-  },
-  {
+    // The document body is not here: it is on BlockNote, which assembles its
+    // own extension list rather than a tiptap one. The same invariant holds
+    // for it and is pinned where its list is built —
+    // `blocknote-assembly.test.ts` asserts the history plugin is left out.
     name: 'canvas text node',
     build: () =>
       buildTextNodeExtensions({
