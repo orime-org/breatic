@@ -12,6 +12,12 @@
  *
  * The pressed state is worth its own cases: it drives `aria-pressed` and the
  * button's variant, and nothing pinned it before this file.
+ *
+ * The last group is R7 — no control that looks usable and does nothing when
+ * pressed. It records what the tools say for each shape of cursor or
+ * selection; the rows are not a judgement on how the body ought to behave,
+ * which belongs to the slice that owns editing. The reverse — that a dark
+ * button would also do nothing — is NOT asserted: R7 does not forbid one.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -125,5 +131,113 @@ describe('every inline tool', () => {
     for (const tool of ALL_TOOLS) {
       expect(tool.canRun(editor)).toBe(false);
     }
+  });
+});
+
+/** Where the caret or selection sits, and what the tools must say there. */
+interface Placement {
+  readonly name: string;
+  readonly block: Record<string, unknown>;
+  readonly place: (editor: ReturnType<typeof buildDocumentEditor>) => void;
+  readonly marks: boolean;
+}
+
+/** Puts the caret inside the open editor's first block. */
+function caretInFirstBlock(
+  editor: ReturnType<typeof buildDocumentEditor>,
+): void {
+  const view = editor.prosemirrorView!;
+  let at = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (at >= 0) return false;
+    if (!node.isText) return true;
+    at = pos + 1;
+    return false;
+  });
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)),
+  );
+}
+
+const PLACEMENTS: readonly Placement[] = [
+  {
+    name: 'the caret in a paragraph',
+    block: { type: 'paragraph', content: 'body' },
+    place: caretInFirstBlock,
+    marks: true,
+  },
+  {
+    name: 'the caret in a heading',
+    block: { type: 'heading', content: 'sec' },
+    place: caretInFirstBlock,
+    marks: true,
+  },
+  {
+    name: 'the caret in a code block',
+    block: { type: 'codeBlock', content: 'x' },
+    place: caretInFirstBlock,
+    // A code block refuses marks — the editor's own rule.
+    marks: false,
+  },
+  {
+    name: 'the caret in a plain list item',
+    block: { type: 'bulletListItem', content: 'a' },
+    place: caretInFirstBlock,
+    marks: true,
+  },
+  {
+    name: 'the caret in a quoted heading',
+    block: { type: 'heading', content: 'h', props: { quoted: true } },
+    place: caretInFirstBlock,
+    marks: true,
+  },
+  {
+    name: 'a range across a paragraph',
+    block: { type: 'paragraph', content: 'body' },
+    place: (editor) => {
+      const view = editor.prosemirrorView!;
+      select(editor, 3, view.state.doc.content.size - 2);
+    },
+    marks: true,
+  },
+];
+
+describe('what the tools claim, by where the selection sits', () => {
+  PLACEMENTS.forEach((placement) => {
+    it(`with ${placement.name}`, () => {
+      const editor = open(placement.block);
+      placement.place(editor);
+
+      ALL_TOOLS.forEach((tool) => {
+        expect(`${tool.id}=${String(tool.canRun(editor))}`).toBe(
+          `${tool.id}=${String(placement.marks)}`,
+        );
+      });
+    });
+  });
+});
+
+describe('and what actually happens when they are pressed', () => {
+  PLACEMENTS.forEach((placement) => {
+    it(`with ${placement.name}, every live tool does something`, () => {
+      ALL_TOOLS.forEach((tool) => {
+        const editor = open(placement.block);
+        placement.place(editor);
+        if (!tool.canRun(editor)) return;
+
+        // A collapsed caret counts marks armed for the next keystroke as
+        // "something", because arming IS the effect there.
+        const before = editor.prosemirrorState.doc.toString();
+        const armedBefore = JSON.stringify(
+          editor.prosemirrorState.storedMarks ?? null,
+        );
+        tool.run(editor);
+        const changed =
+          before !== editor.prosemirrorState.doc.toString() ||
+          armedBefore !==
+            JSON.stringify(editor.prosemirrorState.storedMarks ?? null);
+        expect(`${tool.id}=${String(changed)}`).toBe(`${tool.id}=true`);
+      });
+    });
   });
 });

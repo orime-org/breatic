@@ -136,6 +136,26 @@ describe('the hint on a document that looks empty', () => {
     expect(marked).toHaveLength(1);
   });
 
+  it('stays away from an empty CODE block, which paints its own surface', () => {
+    expect(hint(render([{ type: 'codeBlock' }]))).toBeNull();
+  });
+
+  it('stays away from a fallback block, which paints what it stands in for', () => {
+    // Content this build has no vocabulary for is shown rather than hidden, so
+    // the page is not empty even when the fallback holds no text of its own.
+    expect(hint(render([{ type: 'unsupportedBlock' }]))).toBeNull();
+  });
+
+  it('is the only hint on the page — BlockNote draws none of its own', () => {
+    // The built-in placeholder decorates blocks that exist and keys off
+    // whether the block is focused, so leaving it on would put a second hint
+    // beside this one. `build-document-editor` turns it off.
+    const root = render([{ type: 'paragraph' }]);
+    expect(root.querySelectorAll(`[${HINT_ATTRIBUTE}]`)).toHaveLength(1);
+    expect(root.querySelectorAll('[data-is-only-empty-block]')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-is-empty-and-focused]')).toHaveLength(0);
+  });
+
   it('marks the block’s content element, the innermost node there is', () => {
     // The flat model puts one more element between the block and its text than
     // the old one did: `blockContent` renders as `div.bn-block-content` and the
