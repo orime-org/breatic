@@ -202,10 +202,21 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
  * The extension that registers the undo plugin over a manager we hold.
  * @param manager - The manager built by {@link createDocumentUndoManager}.
  * @returns The extension, for the assembly to register.
+ * @throws {Error} When the manager was not built by
+ *   {@link createDocumentUndoManager}, and so has no marker of its own.
  */
 export function documentUndoExtension(
   manager: Y.UndoManager,
 ): ExtensionFactoryInstance {
+  const marker = markers.get(manager);
+  // A manager from anywhere else has no marker, and standing in a fresh one
+  // would pair a plugin that writes to it with a manager that reads somewhere
+  // else — undo would go on working and start keeping the wrong things.
+  if (marker === undefined) {
+    throw new Error(
+      'documentUndoExtension needs a manager from createDocumentUndoManager',
+    );
+  }
   return createExtension(() => ({
     key: 'yUndo',
     // The selection plugin sits SECOND on purpose. Both it and `yUndoPlugin`
@@ -216,9 +227,7 @@ export function documentUndoExtension(
     prosemirrorPlugins: [
       yUndoPlugin({ undoManager: manager }),
       documentUndoSelectionPlugin(),
-      userDrivenPlugin(
-        markers.get(manager) ?? { userDriven: true },
-      ),
+      userDrivenPlugin(marker),
     ],
     dependsOn: ['yCursor', 'ySync'],
     undoCommand,

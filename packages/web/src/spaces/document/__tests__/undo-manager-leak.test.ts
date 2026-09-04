@@ -24,7 +24,11 @@ import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 
 import { createCanvasUndoManager } from '@web/data/yjs/canvas-space';
-import { createDocumentUndoManager } from '@web/spaces/document/document-undo-blocknote';
+import {
+  createDocumentUndoManager,
+  documentUndoExtension,
+} from '@web/spaces/document/document-undo-blocknote';
+import { documentBodyFragment } from '@breatic/shared';
 
 /** Reach the doc's observer registry the way y-tiptap's own workaround does. */
 function destroyListenerCount(doc: Y.Doc): number {
@@ -64,4 +68,21 @@ describe('an undo manager', () => {
       doc.destroy();
     });
   }
+});
+
+describe('an undo manager this file did not build', () => {
+  it('is refused rather than quietly given a marker of its own', () => {
+    // The marker is how the plugin tells a user's dispatch from a machine's,
+    // and the manager reads the one built beside it. Handing a stranger a
+    // fresh marker pairs a plugin that writes with a manager that reads
+    // somewhere else: undo would keep working and start keeping the wrong
+    // things.
+    const doc = new Y.Doc();
+    const stranger = new Y.UndoManager(documentBodyFragment(doc));
+    expect(() => documentUndoExtension(stranger)).toThrow(
+      /createDocumentUndoManager/,
+    );
+    stranger.destroy();
+    doc.destroy();
+  });
 });
