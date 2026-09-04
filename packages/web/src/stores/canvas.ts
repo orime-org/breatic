@@ -74,7 +74,8 @@ export type PickPurpose =
   | 'endFrame'
   | 'characterImage'
   | 'drivingVideo'
-  | 'drivingAudio';
+  | 'drivingAudio'
+  | 'refAudio';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a

@@ -162,10 +162,7 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import {
-  VIDEO_SLOTS,
-  slotForPurpose,
-} from '@web/spaces/canvas/generate/video-slots';
+import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -1822,8 +1819,8 @@ function CanvasSpaceInner({
         return;
       }
 
-      const videoSlot = slotForPurpose(session.purpose);
-      if (videoSlot) {
+      const pickedSlot = slotSpec(slotForPurpose(session.purpose) ?? '');
+      if (pickedSlot) {
         // A video slot (first frame, end frame, character image, driving
         // video, driving audio): COPY the clicked node's asset onto the video
         // node, same terms as Style — a pick-time snapshot with no
@@ -1842,7 +1839,7 @@ function CanvasSpaceInner({
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
-        if (!fillSlot(projectId, spaceId, target, videoSlot, node)) return;
+        if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
         return;
@@ -3692,14 +3689,14 @@ function CanvasSpaceInner({
       return paint((node) => !isFocusCandidate(node, target));
     }
 
-    const paintingSlot = slotForPurpose(pickSession.purpose);
+    const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
     if (pickSession.purpose === 'style' || paintingSlot) {
       // Style and every video slot share the candidate rule: any non-empty
       // node of the type the slot accepts, except the pick target itself
       // (#1664 / #1896 / #1904). A video slot states the type it takes, so a
       // slot for another kind of asset dims the right nodes without another
       // branch here.
-      const accepts = paintingSlot ? VIDEO_SLOTS[paintingSlot].accepts : 'image';
+      const accepts = paintingSlot ? paintingSlot.accepts : 'image';
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (

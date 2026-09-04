@@ -43,7 +43,7 @@ describe('the reference-audio slot', () => {
   it('names messages all five catalogs answer', () => {
     const spec = AUDIO_SLOTS.refAudio;
     const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey, spec.errorKey];
-    for (const [locale, catalog] of Object.entries(LOCALE_CATALOGS)) {
+    for (const [locale, catalog] of LOCALE_CATALOGS) {
       for (const key of keys) {
         expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf('string');
       }

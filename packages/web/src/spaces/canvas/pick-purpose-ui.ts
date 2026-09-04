@@ -21,6 +21,7 @@
  * the miss above happening a second time.
  */
 
+import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
@@ -81,5 +82,9 @@ export const PICK_PURPOSE_UI = {
   drivingAudio: {
     banner: 'canvas.generatePanel.selectDrivingAudioFromCanvas',
     trigger: { generateVideo: VIDEO_SLOTS.drivingAudio.testId },
+  },
+  refAudio: {
+    banner: 'canvas.generatePanel.selectRefAudioFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.refAudio.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

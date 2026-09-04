@@ -24,11 +24,7 @@ import {
   pickedSlotUrl,
 } from '@web/spaces/canvas/generate/slot-pick';
 import type { ClickedNode } from '@web/spaces/canvas/generate/slot-pick';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type {
-  VideoSlot,
-  VideoSlotSpec,
-} from '@web/spaces/canvas/generate/video-slots';
+import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 
 /**
  * Copies a clicked node into a slot.
@@ -40,7 +36,7 @@ import type {
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing both nodes.
  * @param nodeId - The generative node whose slot is being filled.
- * @param slot - Which slot the running pick fills.
+ * @param spec - The slot the running pick fills, from whichever registry names it.
  * @param clicked - The node the user clicked.
  * @returns True when the slot was filled, false when the click was refused.
  */
@@ -48,10 +44,9 @@ export function fillSlot(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  slot: VideoSlot,
+  spec: SlotSpec,
   clicked: ClickedNode,
 ): boolean {
-  const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
   const url = pickedSlotUrl(clicked, spec.accepts);
   if (url === null) return false;
   const cover = spec.storesCover ? pickedSlotCover(clicked) : null;
@@ -73,13 +68,13 @@ export function fillSlot(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The generative node whose slot is being cleared.
- * @param slot - Which slot to empty.
+ * @param spec - The slot to empty.
  */
 export function clearSlot(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  slot: VideoSlot,
+  spec: SlotSpec,
 ): void {
-  setNodeSlotValue(projectId, spaceId, nodeId, VIDEO_SLOTS[slot].field, null);
+  setNodeSlotValue(projectId, spaceId, nodeId, spec.field, null);
 }

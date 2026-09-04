@@ -34,9 +34,9 @@ import {
   modeTakesReferences,
   slotsForMode,
 } from '@web/spaces/canvas/generate/video-mode-options';
+import { readSlotPick } from '@web/spaces/canvas/generate/slots';
 import {
   VIDEO_SLOTS,
-  readSlotPick,
 } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
@@ -204,7 +204,10 @@ function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
   const urls: VideoSlotUrls = {};
   for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
     const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    const pick = readSlotPick(spec, content?.[spec.field]);
+    // A slot's field is a key on a CRDT map, so it is read as one. That is
+    // the premise `readSlotPick` is built on: whatever the projected type
+    // says, the value came from collaborative data and is checked there.
+    const pick = readSlotPick(spec, (content as Record<string, unknown> | undefined)?.[spec.field]);
     if (pick) urls[slot] = pick.url;
   }
   return urls;
@@ -228,7 +231,10 @@ function readSlotThumbnails(
   const thumbnails: VideoSlotUrls = {};
   for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
     const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    const pick = readSlotPick(spec, content?.[spec.field]);
+    // A slot's field is a key on a CRDT map, so it is read as one. That is
+    // the premise `readSlotPick` is built on: whatever the projected type
+    // says, the value came from collaborative data and is checked there.
+    const pick = readSlotPick(spec, (content as Record<string, unknown> | undefined)?.[spec.field]);
     if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
   }
   return thumbnails;
