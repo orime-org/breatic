@@ -333,6 +333,22 @@ describe('a mark this build does not know', () => {
     expect(after).toBe(before);
   });
 
+  it('stands in for the title element older Spaces were seeded with', () => {
+    // The one unknown name that really is out there. Document Spaces created
+    // before this build carry a `title` element at the fragment root, and it
+    // is the whole reason the stand-ins have to reach the local document
+    // rather than only survive in the shared one: a reader of one of those
+    // Spaces sees the block, named, instead of a document that opens one
+    // element short.
+    const { before, after, standIns } = visit((f) => {
+      const title = new Y.XmlElement('title');
+      title.insert(0, [new Y.XmlText('Old document name')]);
+      f.push([title]);
+    });
+    expect(standIns).toEqual(['title']);
+    expect(after).toBe(before);
+  });
+
   it('keeps an unknown mark inside a code block', () => {
     const { before, after } = visit((f) => {
       const code = new Y.XmlElement('codeBlock');

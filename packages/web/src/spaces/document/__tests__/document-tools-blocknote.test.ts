@@ -22,7 +22,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -197,6 +197,29 @@ const PLACEMENTS: readonly Placement[] = [
     place: (editor) => {
       const view = editor.prosemirrorView!;
       select(editor, 3, view.state.doc.content.size - 2);
+    },
+    marks: true,
+  },
+  {
+    // A whole block selected rather than a range inside one. `Mod`-clicking a
+    // paragraph is how a reader gets here: `prosemirror-view` builds a
+    // `NodeSelection` when the platform's select-node modifier is held. The
+    // selection then sits OUTSIDE the block's content, which is a shape none
+    // of the caret-in-a-textblock placements above reaches.
+    name: 'a whole paragraph selected as a node',
+    block: { type: 'paragraph', content: 'body' },
+    place: (editor) => {
+      const view = editor.prosemirrorView!;
+      let at = -1;
+      view.state.doc.descendants((node, pos) => {
+        if (at >= 0) return false;
+        if (node.type.name !== 'blockContainer') return true;
+        at = pos;
+        return false;
+      });
+      view.dispatch(
+        view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)),
+      );
     },
     marks: true,
   },
