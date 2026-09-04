@@ -110,7 +110,6 @@ export interface UploadContext {
    * attempt's outcome cannot overwrite a newer one's. An upload with no node
    * carries zero.
    */
-  leaseGen: number;
   /** The node the bytes land on, when this upload has one. */
   nodeId?: string;
   /** The space that node lives in. */
@@ -195,7 +194,6 @@ export interface MediaUploadDeps {
     size: number;
     /** Mandatory — a hashless upload is refused before it reaches here. */
     hash: string;
-    leaseGen: number;
     nodeId?: string;
     spaceId?: string;
     source?: 'mini_tool';
@@ -274,7 +272,6 @@ export async function runMediaUpload(
           projectId: context.projectId,
           size: file.size,
           hash,
-          leaseGen: context.leaseGen,
           ...(context.nodeId !== undefined && { nodeId: context.nodeId }),
           ...(context.spaceId !== undefined && { spaceId: context.spaceId }),
           ...(context.source !== undefined && { source: context.source }),
@@ -310,19 +307,6 @@ export async function runMediaUpload(
   }
 }
 
-/**
- * The owner triple a handling opener holds (#1580 #7). Mirrors the data
- * layer's `LeaseToken` — declared structurally here so this pure module
- * keeps zero imports beyond the assets API type.
- */
-export interface UploadLease {
-  /** Fencing generation from the node's `leaseGen` counter. */
-  gen: number;
-  /** Yjs clientID of the opening connection. */
-  clientId: number;
-  /** User who opened the handling. */
-  userId: string;
-}
 
 /** Injected dependencies for {@link fillNodeFromFile} (upload network + Yjs sinks). */
 export interface FillNodeDeps {
@@ -367,22 +351,15 @@ export interface FillNodeDeps {
     outcome: UploadFailure,
     nodeId: string,
     file: File,
-    lease: UploadLease,
   ) => void;
   /**
-   * Open the lease (`handling` + owner triple); `undefined` = node gone.
-   * The returned token threads through to the write-backs below.
+   * Content write-back for the text path, which has no upload: the text is
+   * read here and there is nobody else to write it. A media node's content
+   * is written by the server through Yjs (design §6.6).
    */
-  setHandling: (nodeId: string) => UploadLease | undefined;
-  /**
-   * Leased content write-back for the text path, which has no upload: the
-   * text is read here and there is nobody else to write it. A media node's
-   * content is written by the server through Yjs (design §6.6). Returns false
-   * when the lease was superseded.
-   */
-  setContent: (nodeId: string, content: string, lease: UploadLease) => boolean;
-  /** Leased error write-back (fixed-English wire string — never a toast). */
-  setError: (nodeId: string, message: string, lease: UploadLease) => boolean;
+  setContent: (nodeId: string, content: string) => void;
+  /** Error write-back (fixed-English wire string — never a toast). */
+  setError: (nodeId: string, message: string) => void;
   /** The space the node lives in, which rides the ticket. */
   spaceId?: string;
 }
@@ -391,20 +368,18 @@ export interface FillNodeDeps {
  * Fill an **existing** (empty) node from a picked file — the double-click /
  * Upload-menu path. Unlike {@link runMediaUpload}'s caller in `processFiles`
  * (which CREATES a node), this writes into a node that already exists:
- * refuse if the node is busy (#1580 #7 gate), open the lease, then media
- * files (image / video / audio) go to the ingest Worker and leave with the
- * node still in handling — what it ends up holding arrives from the server
- * through Yjs — while every other file is read or extracted locally and fills
- * the text here. Failures write a fixed-English error onto the node (shared
- * doc, so never a locale-frozen toast), matching the create-on-drop path's
- * wire strings. Write-backs carry the lease token so a superseded fill cannot
+ * media files (image / video / audio) go to the ingest Worker and what the
+ * node ends up holding arrives from the server through Yjs, while every other
+ * file is read or extracted locally and fills the text here. Failures write a
+ * fixed-English error onto the node (shared doc, so never a locale-frozen
+ * toast), matching the create-on-drop path's wire strings. A second fill
  * clobber a newer owner's work.
  *
  * Type gate (user bug 2026-07-03): the picker's `accept` filter is advisory —
  * macOS lets an `audio/*` picker select `.mp4` (the MP4 container family
  * includes audio-only `audio/mp4`), and nothing downstream checked the file
  * against the node. The file's classification must match the target node's
- * modality or the fill is refused before any lease is taken; an audio-only
+ * modality; an audio-only
  * container (`audio/mp4`) still classifies as audio and passes.
  * @param nodeId - The existing node to fill.
  * @param file - The picked file.
@@ -424,8 +399,6 @@ export async function fillNodeFromFile(
     deps.onTypeMismatch(nodeId);
     return;
   }
-  const lease = deps.setHandling(nodeId);
-  if (!lease) return;
   if (spec.needsUpload) {
     // The node stays in handling when this returns. What it ends up holding —
     // and whether it succeeded at all — arrives from the server through Yjs
@@ -434,7 +407,6 @@ export async function fillNodeFromFile(
       file,
       {
         projectId,
-        leaseGen: lease.gen,
         nodeId,
         ...(deps.spaceId !== undefined && { spaceId: deps.spaceId }),
       },
@@ -446,16 +418,16 @@ export async function fillNodeFromFile(
         // The node's content arrives from the server through Yjs.
         onSuccess: () => undefined,
         onFailure: (outcome) =>
-          deps.onUploadFailure(outcome, nodeId, file, lease),
+          deps.onUploadFailure(outcome, nodeId, file),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );
     return;
   }
   try {
-    deps.setContent(nodeId, await deps.extractText(file), lease);
+    deps.setContent(nodeId, await deps.extractText(file));
   } catch {
-    deps.setError(nodeId, `Extraction failed: ${file.name}`, lease);
+    deps.setError(nodeId, `Extraction failed: ${file.name}`);
   }
 }
 

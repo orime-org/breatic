@@ -76,12 +76,9 @@ describe('useNodeCreation', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
-    const clientId = vi
-      .spyOn(canvasSpace, 'getCanvasClientId')
-      .mockReturnValue(42);
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    const { nodeId, lease } = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
+    const nodeId = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
 
     expect(addNode).toHaveBeenCalledTimes(1);
     const [, , node] = addNode.mock.calls[0];
@@ -89,16 +86,11 @@ describe('useNodeCreation', () => {
     expect(node.type).toBe('image');
     // Centred on the point (top-left = point − empty-node half-size).
     expect(node.position).toEqual({ x: 7 - 144, y: 8 - 96 });
-    expect(node.data.state).toBe('handling');
+    // A node is created carrying no tasks: how it looks while one runs comes
+    // from the counts the server writes (#186 §3.3).
     expect(node.data.createdBy).toBe('u-9');
-    // #1580 #7: the created node opened its FIRST lease; the returned token
-    // matches what the factory stamped onto handlingBy.
-    expect(lease).toEqual({ gen: 1, clientId: 42, userId: 'u-9' });
-    expect(node.data.handlingBy?.gen).toBe(1);
-    expect(node.data.handlingBy?.clientId).toBe(42);
-    expect(node.data.leaseGen).toBe(1);
+    expect(node.data.taskCounts).toBeUndefined();
     addNode.mockRestore();
-    clientId.mockRestore();
   });
 
   it('pasteNodesAt clones clipboard nodes (offset + fresh ids + carried content) and returns their ids', () => {

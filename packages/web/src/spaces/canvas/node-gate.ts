@@ -3,19 +3,18 @@
 
 /**
  * The single source of truth for canvas node-state gating: given a node's
- * mutation-relevant state (locked / handling) and the operation the user is
- * attempting, decide whether it is allowed and — when blocked — which warning
- * toast explains why.
+ * lock and the operation the user is attempting, decide whether it is allowed
+ * and — when blocked — which warning toast explains why.
  *
- * Two states gate mutations, with different scope:
- *   - `locked` — the node's OWN lock (`data.locked`), freezes EVERY mutation of
- *     THIS node. A GROUP lock does NOT flow in here: it freezes only member
- *     geometry (move) + structure (delete) via the group-aware set in
- *     group-membership.ts, and never a member's content / name — this function
- *     is only ever fed a node's own lock flag, never a group-expanded one.
- *   - `handling` (system-set while a task writes the node) freezes only the
- *     CONTENT-affecting mutations (delete / edit / upload / generate), leaving
- *     position and name free — they don't race the in-flight content write.
+ * `locked` is the node's OWN lock (`data.locked`) and freezes EVERY mutation
+ * of THIS node. A GROUP lock does NOT flow in here: it freezes only member
+ * geometry (move) + structure (delete) via the group-aware set in
+ * group-membership.ts, and never a member's content / name — this function is
+ * only ever fed a node's own lock flag, never a group-expanded one.
+ *
+ * A node carries several tasks at once (#186), so a task in flight gates
+ * nothing here: the only thing it still freezes is deleting the node, which
+ * `group-membership.ts` decides from the node's own counts.
  *
  * The policy is pure and modality-agnostic: it keys on state + operation, never
  * on node type, so image / text / audio / video nodes all gate identically —
@@ -49,7 +48,6 @@ export interface NodeGateState {
   /** The user froze this node (or its group) — blocks every mutation. */
   locked: boolean;
   /** A task is writing this node — blocks content-affecting mutations. */
-  handling: boolean;
 }
 
 /** A blocked verdict: the reason plus the i18n key for the warning toast. */
@@ -62,41 +60,19 @@ export interface NodeGateBlock {
 /** i18n keys for the warning toast, one per block reason. */
 export const NODE_GATE_TOAST_KEY: Readonly<Record<NodeGateReason, string>> = {
   locked: 'canvas.gate.locked',
+  // Deleting a node that still carries a running task, decided from the
+  // node's own counts in `group-membership.ts` (#186 §7.7).
   handling: 'canvas.gate.handling',
 };
 
 /**
- * The one operation a running task freezes (#186 §7.6): deleting the node it
- * is going to write to would leave the result nowhere to land.
- *
- * Everything else stays open. A node carries several tasks at once now, so a
- * second upload or a second generation is the point rather than a conflict;
- * editing the content by hand belongs with them, since the last write wins
- * either way and the task list is where a user picks between the results.
- * Freezing it while leaving the two above open would say a user may overwrite
- * this content by starting a task but not by typing.
- */
-const HANDLING_FROZEN: ReadonlySet<NodeMutation> = new Set<NodeMutation>([
-  'delete',
-]);
-
-/**
  * Evaluate whether an operation is allowed on a node in the given state.
- * `locked` blocks every operation; a running task blocks deleting the node and
- * nothing else. `locked` takes precedence when both hold (the harder freeze).
- * @param state - The node's locked / handling state.
- * @param op - The operation being attempted.
- * @returns A block verdict (reason + toast key), or null when the op is allowed.
+ * @param state - The node's lock state.
+ * @returns A block verdict (reason + toast key), or null when it is allowed.
  */
-export function evaluateNodeGate(
-  state: NodeGateState,
-  op: NodeMutation,
-): NodeGateBlock | null {
+export function evaluateNodeGate(state: NodeGateState): NodeGateBlock | null {
   if (state.locked) {
     return { reason: 'locked', toastKey: NODE_GATE_TOAST_KEY.locked };
-  }
-  if (state.handling && HANDLING_FROZEN.has(op)) {
-    return { reason: 'handling', toastKey: NODE_GATE_TOAST_KEY.handling };
   }
   return null;
 }

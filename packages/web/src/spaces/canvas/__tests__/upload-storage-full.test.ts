@@ -75,7 +75,7 @@ describe('a 507 reads as storage rather than an ordinary upload failure', () => 
     const onFailure = vi.fn();
     await runMediaUpload(
       pngFile(),
-      { projectId: 'p1', leaseGen: 0 },
+      { projectId: 'p1' },
       refusingDeps(onFailure),
     );
     expect(onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
@@ -83,7 +83,7 @@ describe('a 507 reads as storage rather than an ordinary upload failure', () => 
 
   it('leaves an ordinary ticket failure outside the 507 branch', async () => {
     const onFailure = vi.fn();
-    await runMediaUpload(pngFile(), { projectId: 'p1', leaseGen: 0 }, {
+    await runMediaUpload(pngFile(), { projectId: 'p1' }, {
       ...refusingDeps(onFailure),
       requestTicket: async () => {
         throw new ApiException({

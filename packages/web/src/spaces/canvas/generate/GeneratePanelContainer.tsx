@@ -11,7 +11,6 @@ import { ApiException } from '@web/data/api/types';
 import {
   clearNodeStyleImage,
   getPromptFragment,
-  isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
   setNodeMode,
@@ -578,13 +577,9 @@ function GeneratePanelBody({
     // not greyed out for either — see `isExecuteButtonDisabled`). Editing the
     // prompt stays allowed; the gate
     // blocks the submit alone.
-    const gateBlock = evaluateNodeGate(
-      {
-        locked: isNodeLocked(projectId, spaceId, nodeId),
-        handling: isNodeHandling(projectId, spaceId, nodeId),
-      },
-      'generate',
-    );
+    const gateBlock = evaluateNodeGate({
+      locked: isNodeLocked(projectId, spaceId, nodeId),
+    });
     if (gateBlock) {
       warnNodeGate(t(gateBlock.toastKey));
       return;

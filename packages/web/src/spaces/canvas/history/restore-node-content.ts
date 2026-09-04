@@ -52,7 +52,7 @@ export function resolveRestore(opts: {
   if (opts.entry.status !== 'success' || opts.entry.content == null) {
     return { kind: 'noop' };
   }
-  const block = evaluateNodeGate(opts.gateState, 'editContent');
+  const block = evaluateNodeGate(opts.gateState);
   if (block) return { kind: 'blocked', toastKey: block.toastKey };
   return {
     kind: 'write',

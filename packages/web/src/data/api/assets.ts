@@ -28,8 +28,6 @@ export const assetsApi = {
    * @param params.hash - Content sha256. Mandatory: an upload that cannot be
    *   fingerprinted is refused before it gets here, and the server rejects a
    *   request without one.
-   * @param params.leaseGen - The node's fencing gen at the moment handling
-   *   opened, which the event announcing the outcome carries back.
    * @param params.nodeId - The node the bytes land on, when there is one.
    * @param params.spaceId - The space that node lives in.
    * @param params.source - `mini_tool` for a mini-tool product.
@@ -44,7 +42,6 @@ export const assetsApi = {
     projectId: string;
     size: number;
     hash: string;
-    leaseGen: number;
     nodeId?: string;
     spaceId?: string;
     source?: 'mini_tool';
@@ -57,7 +54,6 @@ export const assetsApi = {
       project_id: params.projectId,
       size: params.size,
       client_hash: params.hash,
-      lease_gen: params.leaseGen,
       ...(params.nodeId !== undefined && { node_id: params.nodeId }),
       ...(params.spaceId !== undefined && { space_id: params.spaceId }),
       ...(params.source !== undefined && { source: params.source }),

@@ -8,7 +8,10 @@ import { ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import {
+  evaluateNodeGate,
+  NODE_GATE_TOAST_KEY,
+} from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -148,10 +151,12 @@ export const TextNode = React.memo(function TextNode({
   // so the memo is about prop stability, not about re-running anything.
   const editBlock = React.useMemo(
     () =>
-      evaluateNodeGate(
-        { locked: Boolean(locked), handling: data.status === 'handling' },
-        'editContent',
-      ),
+      data.status === 'handling'
+        ? {
+          reason: 'handling' as const,
+          toastKey: NODE_GATE_TOAST_KEY.handling,
+        }
+        : evaluateNodeGate({ locked: Boolean(locked) }),
     [locked, data.status],
   );
   // `readOnly` is a third writability premise, IN the condition for the same

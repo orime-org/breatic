@@ -68,13 +68,10 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
-  setNodeHandling,
-  completeNodeHandling,
-  failNodeHandling,
-  isNodeHandling,
   isNodeLocked,
-  nodeHasLiveLease,
   restoreNodeMedia,
+  setNodeExtractedText,
+  setNodeExtractionError,
   setNodeLocked,
   setNodeName,
   setNodeParent,
@@ -936,7 +933,6 @@ function CanvasSpaceInner({
                   // fence and nothing for the server to announce to. That is
                   // also why this path reads its URL from the answer below
                   // rather than from Yjs (design §9).
-                  leaseGen: 0,
                   // A byproduct: registered in the ledger for attribution and
                   // dedup, without an activity-feed row of its own.
                   derived: true,
@@ -2088,10 +2084,7 @@ function CanvasSpaceInner({
             x: origin.x + i * STAGGER_STEP_PX,
             y: origin.y + i * STAGGER_STEP_PX,
           };
-          // #1580 #7: the created-handling node carries its first lease; the
-          // write-backs verify it, so a superseded upload (someone re-opened
-          // the node after a sweeper reclaim) cannot clobber the new owner.
-          const { nodeId, lease } = createUploadNodeAt(spec.nodeType, position);
+          const nodeId = createUploadNodeAt(spec.nodeType, position);
           created.push(nodeId);
           if (spec.needsUpload) {
             trackOperation(
@@ -2100,7 +2093,6 @@ function CanvasSpaceInner({
                 file,
                 {
                   projectId,
-                  leaseGen: lease.gen,
                   nodeId,
                   spaceId,
                 },
@@ -2124,20 +2116,15 @@ function CanvasSpaceInner({
             trackOperation(
               nodeId,
               extractText(file)
-                .then((text) => {
-                  if (
-                    !completeNodeHandling(projectId, spaceId, nodeId, text, lease)
-                  ) {
-                    toast.warning(t('canvas.upload.ownershipLost'));
-                  }
-                })
+                .then((text) =>
+                  setNodeExtractedText(projectId, spaceId, nodeId, text),
+                )
                 .catch(() =>
-                  failNodeHandling(
+                  setNodeExtractionError(
                     projectId,
                     spaceId,
                     nodeId,
                     `Extraction failed: ${file.name}`,
-                    lease,
                   ),
                 ),
             );
@@ -2962,13 +2949,9 @@ function CanvasSpaceInner({
       // empty-node double-click funnel here, so gating this one entry closes
       // both. Fresh Yjs reads so a node a collaborator just locked is caught.
       // Toast the reason instead of silently popping the picker.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'upload',
-      );
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
@@ -3018,13 +3001,9 @@ function CanvasSpaceInner({
       // here — the single fill choke point for both the picker-fill and the
       // retry paths — so a node frozen since the picker opened is never
       // written. Mirrors the generate submit gate.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'upload',
-      );
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
@@ -3059,26 +3038,16 @@ function CanvasSpaceInner({
           // select .mp4) — a file that doesn't classify to the node's modality
           // is refused with a local toast (user bug 2026-07-03).
           onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
-          setHandling: (id) => setNodeHandling(projectId, spaceId, id, userId),
           // Only the text path reaches this: it reads the content here, so
           // there is nobody else to write it. A media node's content arrives
           // from the server through Yjs.
-          setContent: (id, content, lease) => {
-            const landed = completeNodeHandling(
-              projectId,
-              spaceId,
-              id,
-              content,
-              lease,
-            );
-            if (!landed) toast.warning(t('canvas.upload.ownershipLost'));
-            return landed;
-          },
+          setContent: (id, content) =>
+            setNodeExtractedText(projectId, spaceId, id, content),
           // Also the text path only, and a text-extraction failure has nothing
           // to re-upload — every upload failure goes through `onUploadFailure`
           // below, where the Retry stash is decided per reason.
-          setError: (id, message, lease) =>
-            failNodeHandling(projectId, spaceId, id, message, lease),
+          setError: (id, message) =>
+            setNodeExtractionError(projectId, spaceId, id, message),
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
           onUploadFailure: (outcome, id, f) =>
@@ -3098,13 +3067,9 @@ function CanvasSpaceInner({
     (nodeId: string, opts: EmptyImageExecuteOpts): void => {
       // Gate 2 (execute, D8-②): re-read fresh Yjs so a node a collaborator
       // just locked blocks the write. Either verdict closes the panel.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'editContent',
-      );
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       closeActivePanel();
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
@@ -3156,9 +3121,6 @@ function CanvasSpaceInner({
         modality,
         gateState: {
           locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling:
-            isNodeHandling(projectId, spaceId, nodeId) ||
-            nodeHasLiveLease(projectId, spaceId, nodeId),
         },
       });
       if (decision.kind === 'blocked') {
@@ -3202,10 +3164,7 @@ function CanvasSpaceInner({
   const replaceNodeFromTask = React.useCallback(
     (nodeId: string, task: NodeTaskEntry): void => {
       if (readOnly || task.content === null) return;
-      const gateBlock = evaluateNodeGate(
-        { locked: isNodeLocked(projectId, spaceId, nodeId), handling: false },
-        'editContent',
-      );
+      const gateBlock = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;
@@ -3224,13 +3183,9 @@ function CanvasSpaceInner({
     (nodeId: string, taskId: string): void => {
       if (readOnly) return;
       // Retry is an upload entry point too, and a locked node refuses it.
-      const gateBlock = evaluateNodeGate(
-        {
-          locked: isNodeLocked(projectId, spaceId, nodeId),
-          handling: isNodeHandling(projectId, spaceId, nodeId),
-        },
-        'upload',
-      );
+      const gateBlock = evaluateNodeGate({
+        locked: isNodeLocked(projectId, spaceId, nodeId),
+      });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
         return;

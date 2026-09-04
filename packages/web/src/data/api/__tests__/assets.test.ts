@@ -38,7 +38,6 @@ describe('assetsApi.requestUploadTicket', () => {
       projectId: 'p1',
       size: 1234,
       hash: 'a'.repeat(64),
-      leaseGen: 6,
       nodeId: 'n1',
       spaceId: 's1',
     });
@@ -49,7 +48,6 @@ describe('assetsApi.requestUploadTicket', () => {
       project_id: 'p1',
       size: 1234,
       client_hash: 'a'.repeat(64),
-      lease_gen: 6,
       node_id: 'n1',
       space_id: 's1',
     });
@@ -66,7 +64,6 @@ describe('assetsApi.requestUploadTicket', () => {
       projectId: 'p1',
       size: 10,
       hash: 'b'.repeat(64),
-      leaseGen: 0,
       derived: true,
     });
 
@@ -89,7 +86,6 @@ describe('assetsApi.requestUploadTicket', () => {
       projectId: 'p1',
       size: 1234,
       hash: 'a'.repeat(64),
-      leaseGen: 6,
     });
 
     expect(res).toEqual({

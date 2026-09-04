@@ -163,7 +163,7 @@ function makeUploadDeps(
 
 describe('runMediaUpload — ask for a ticket, send the bytes, hand back the outcome', () => {
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
-  const context = { projectId: 'p1', leaseGen: 6, nodeId: 'n1', spaceId: 's1' };
+  const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
 
   it('asks with what the server signs a ticket from, then sends the file', async () => {
     const deps = makeUploadDeps();
@@ -176,7 +176,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       projectId: 'p1',
       size: file.size,
       hash: HASH,
-      leaseGen: 6,
       nodeId: 'n1',
       spaceId: 's1',
     });
@@ -297,7 +296,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(
       file,
-      { projectId: 'p1', leaseGen: 0, derived: true },
+      { projectId: 'p1', derived: true },
       deps,
     );
 
@@ -307,16 +306,12 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       projectId: 'p1',
       size: file.size,
       hash: HASH,
-      leaseGen: 0,
       derived: true,
     });
   });
 });
 
 describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-click / Upload menu)', () => {
-  /** The owner triple the stubbed setHandling hands back (#1580 #7). */
-  const LEASE = { gen: 1, clientId: 7, userId: 'u1' };
-
   /** Build the injected sinks + spies for a fill run. */
   function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[4]> = {}) {
     return {
@@ -329,9 +324,8 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       }),
       extractText: vi.fn().mockResolvedValue('extracted body'),
       onTypeMismatch: vi.fn(),
-      setHandling: vi.fn().mockReturnValue(LEASE),
-      setContent: vi.fn().mockReturnValue(true),
-      setError: vi.fn().mockReturnValue(true),
+      setContent: vi.fn(),
+      setError: vi.fn(),
       // The only exit for a failed upload. It is required: this module keeps
       // no copy of the sentences a user reads, so every failure hands its
       // reason out and CanvasSpace decides how to present it.
@@ -371,7 +365,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       'p1',
       deps,
     );
-    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.sendToIngest).toHaveBeenCalledOnce();
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
@@ -391,7 +384,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       { reason: 'upload' },
       'n1',
       file,
-      LEASE,
     );
     expect(deps.setError).not.toHaveBeenCalled();
   });
@@ -405,9 +397,8 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       'p1',
       deps,
     );
-    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
     expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body', LEASE);
+    expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body');
   });
 
   it('extraction failure: writes a fixed-English error', async () => {
@@ -422,21 +413,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin', LEASE);
-  });
-
-  it('missing node (#1580 #7): setHandling returns undefined — the fill aborts silently', async () => {
-    const deps = makeDeps({ setHandling: vi.fn().mockReturnValue(undefined) });
-    await fillNodeFromFile(
-      'ghost',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
-    expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.setError).not.toHaveBeenCalled();
+    expect(deps.setError).toHaveBeenCalledExactlyOnceWith('n1', 'Extraction failed: weird.bin');
   });
 
   it('type gate: an mp4 VIDEO picked into an AUDIO node is refused - nothing runs (user bug 2026-07-03: macOS lets audio/* pickers select .mp4)', async () => {
@@ -449,7 +426,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
-    expect(deps.setHandling).not.toHaveBeenCalled();
     expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
@@ -465,7 +441,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.onTypeMismatch).not.toHaveBeenCalled();
-    expect(deps.setHandling).toHaveBeenCalledExactlyOnceWith('n1');
   });
 
   it('type gate: an image into a TEXT node is refused (the gate is generic, not audio-specific)', async () => {
@@ -478,7 +453,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
     expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
-    expect(deps.setHandling).not.toHaveBeenCalled();
   });
 });
 

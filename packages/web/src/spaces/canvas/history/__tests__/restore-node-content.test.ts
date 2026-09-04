@@ -24,7 +24,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: true,
         entry: entry(),
         modality: 'image',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'noop' });
   });
@@ -35,7 +35,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ status: 'failed', content: null }),
         modality: 'image',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'noop' });
   });
@@ -45,7 +45,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
       readOnly: false,
       entry: entry(),
       modality: 'image',
-      gateState: { locked: true, handling: false },
+      gateState: { locked: true },
     });
     expect(d).toEqual({ kind: 'blocked', toastKey: 'canvas.gate.locked' });
   });
@@ -59,7 +59,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
       readOnly: false,
       entry: entry({ content: 'result.png' }),
       modality: 'image',
-      gateState: { locked: false, handling: true },
+      gateState: { locked: false },
     });
     expect(d).toMatchObject({ kind: 'write', content: 'result.png' });
   });
@@ -70,7 +70,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'img.png', thumbnailUrl: 'thumb.png' }),
         modality: 'image',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'img.png', coverUrl: undefined });
   });
@@ -81,7 +81,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'clip.mp4', thumbnailUrl: 'cover.jpg' }),
         modality: 'video',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'clip.mp4', coverUrl: 'cover.jpg' });
   });
@@ -92,7 +92,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'clip.mp4', thumbnailUrl: null }),
         modality: 'video',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'clip.mp4', coverUrl: null });
   });
@@ -103,7 +103,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         readOnly: false,
         entry: entry({ content: 'song.mp3', thumbnailUrl: null }),
         modality: 'audio',
-        gateState: { locked: false, handling: false },
+        gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'song.mp3', coverUrl: undefined });
   });

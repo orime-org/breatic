@@ -9,7 +9,6 @@ import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
-  isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
   setNodeMode,
@@ -581,13 +580,9 @@ function VideoGeneratePanelBody({
     // A locked node cannot submit. Toast the reason so a clickable Execute is
     // an actionable message rather than a dead control; editing the prompt
     // stays allowed.
-    const gateBlock = evaluateNodeGate(
-      {
-        locked: isNodeLocked(projectId, spaceId, nodeId),
-        handling: isNodeHandling(projectId, spaceId, nodeId),
-      },
-      'generate',
-    );
+    const gateBlock = evaluateNodeGate({
+      locked: isNodeLocked(projectId, spaceId, nodeId),
+    });
     if (gateBlock) {
       warnNodeGate(t(gateBlock.toastKey));
       return;
