@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import en from '@locales/en.json';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import type { ModelCatalog, ModelEntry, VoicePage } from '@breatic/shared';
@@ -29,17 +30,6 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     status: 'connecting' as const,
     authFailedReason: null,
   })),
-}));
-
-// Two modes, so the mode wiring has something to switch BETWEEN: the shipped
-// list holds voiceover alone (later slices add the rest), and with one entry
-// reading the node's stored mode and hardcoding the first are the same thing.
-// The catalog fixture below already carries a sound-effect model for it.
-vi.mock('@web/spaces/canvas/generate/audio-mode-options', () => ({
-  AUDIO_MODE_OPTIONS: [
-    { value: 'tts', label: 'Voiceover', testId: 'generate-audio-mode-tts' },
-    { value: 'sfx', label: 'Sound effects', testId: 'generate-audio-mode-sfx' },
-  ],
 }));
 
 const listVoices = vi.fn();
@@ -117,6 +107,17 @@ const FISH: ModelEntry = {
   rate: { credits: 1.5, per: 1000, unit: 'utf8_bytes' },
 };
 
+/** The voice-cloning model: no voice catalog, one audio source (#1960 PR2). */
+const CLONE: ModelEntry = {
+  ...ELEVEN,
+  name: 'qwen3-tts-voice-clone',
+  display_name: 'Qwen3 Voice Clone',
+  mode: 'voice_clone',
+  params: { audio: { description: '', default: null } },
+  sourcesByMode: { voice_clone: ['audio'] },
+  rate: { credits: 5, per: 1000, unit: 'characters' },
+};
+
 /** A sound-effect model, as `config/models/audio/` holds one today. */
 const SFX: ModelEntry = {
   ...ELEVEN,
@@ -139,7 +140,7 @@ function catalog(): ModelCatalog {
     // The audio bucket really does hold non-voiceover models today
     // (`config/models/audio/`), and this panel reads both buckets.
     audio: [SFX],
-    tts: [ELEVEN, FISH],
+    tts: [ELEVEN, FISH, CLONE],
     three_d: [],
     understand: [],
     total: 2,
@@ -200,6 +201,7 @@ function typePrompt(text: string): void {
 function panelTree(
   nodeData: Record<string, unknown> = {},
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  lastWriteWasLocal: () => boolean = returnsTrue,
 ): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -220,7 +222,7 @@ function panelTree(
           <AudioGeneratePanelContainer
             projectId='p'
             spaceId='s'
-            getLastWriteWasLocal={returnsTrue}
+            getLastWriteWasLocal={lastWriteWasLocal}
             edges={[]}
             nodes={[
               {
@@ -240,14 +242,16 @@ function panelTree(
 /**
  * Opens the panel on a seeded node, once the catalog has landed.
  * @param nodeData - Extra node data (model, paramsByModel, locked, …).
+ * @param lastWriteWasLocal - Who made the newest document write.
  * @returns The render result.
  */
 async function openPanel(
   nodeData: Record<string, unknown> = {},
+  lastWriteWasLocal: () => boolean = returnsTrue,
 ): Promise<ReturnType<typeof render>> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   seedAudioNode(nodeData);
-  const view = render(panelTree(nodeData));
+  const view = render(panelTree(nodeData, undefined, lastWriteWasLocal));
   act(() => {
     useCanvasStore.getState().openGeneratePanel('target', 'audio');
   });
@@ -336,10 +340,10 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
 
 describe('AudioGeneratePanelContainer — the mode comes off the node', () => {
   it('opens on the mode the node stores, not on the first one offered', async () => {
-    await openPanel({ model: 'elevenlabs-sfx-v2', mode: 'sfx' });
+    await openPanel({ model: 'qwen3-tts-voice-clone', mode: 'voice_clone' });
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     expect(
-      screen.getByTestId('generate-model-option-elevenlabs-sfx-v2'),
+      screen.getByTestId('generate-model-option-qwen3-tts-voice-clone'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('generate-model-option-elevenlabs-v3')).toBeNull();
   });
@@ -347,13 +351,13 @@ describe('AudioGeneratePanelContainer — the mode comes off the node', () => {
   it('writes a switched mode onto the node, with a model that mode can run', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
     fireEvent.click(screen.getByTestId('generate-audio-mode-trigger'));
-    fireEvent.click(await screen.findByTestId('generate-audio-mode-sfx'));
+    fireEvent.click(await screen.findByTestId('generate-audio-mode-voice-clone'));
 
     await waitFor(() => {
       const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
       const data = node?.data as { mode?: string; model?: string };
-      expect(data.mode).toBe('sfx');
-      expect(data.model).toBe('elevenlabs-sfx-v2');
+      expect(data.mode).toBe('voice_clone');
+      expect(data.model).toBe('qwen3-tts-voice-clone');
     });
   });
 });
@@ -532,5 +536,49 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
     await waitFor(() => expect(toast.warning).toHaveBeenCalled());
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('AudioGeneratePanelContainer — a mode switch that takes the slot away', () => {
+  it('ends the running pick and says so', async () => {
+    // The slot list comes from the mode, and a collaborator can write the
+    // mode. Without the message the canvas simply stops dimming candidates
+    // mid-pick and nothing says why.
+    const view = await openPanel({ mode: 'voice_clone', model: 'qwen3-tts-voice-clone' });
+    fireEvent.click(await screen.findByTestId('generate-audio-tool-ref-audio'));
+    expect(useCanvasStore.getState().pickSession?.purpose).toBe('refAudio');
+    vi.mocked(toast.warning).mockClear();
+
+    const moved = { mode: 'tts', model: 'elevenlabs-v3' };
+    seedAudioNode(moved);
+    view.rerender(panelTree(moved));
+
+    await waitFor(() => expect(useCanvasStore.getState().pickSession).toBeNull());
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEnded,
+    );
+  });
+
+  it('names the collaborator when the mode change was theirs', async () => {
+    // Same ending, other author. Only the first wording was pinned before
+    // this case, so the call site could have passed a constant and stayed
+    // green.
+    const byPeer = (): boolean => false;
+    const view = await openPanel(
+      { mode: 'voice_clone', model: 'qwen3-tts-voice-clone' },
+      byPeer,
+    );
+    fireEvent.click(await screen.findByTestId('generate-audio-tool-ref-audio'));
+    expect(useCanvasStore.getState().pickSession?.purpose).toBe('refAudio');
+    vi.mocked(toast.warning).mockClear();
+
+    const moved = { mode: 'tts', model: 'elevenlabs-v3' };
+    seedAudioNode(moved);
+    view.rerender(panelTree(moved, undefined, byPeer));
+
+    await waitFor(() => expect(useCanvasStore.getState().pickSession).toBeNull());
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      en.canvas.generatePanel.pickEndedByPeer,
+    );
   });
 });

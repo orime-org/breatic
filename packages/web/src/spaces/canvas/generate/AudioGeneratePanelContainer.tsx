@@ -261,6 +261,11 @@ function AudioGeneratePanelBody({
   // (the panel, and the rail and params picker under it).
   const references = useContentStable(derivedReferences);
   const params = useContentStable(vm.params);
+  // The picked slot URLs and what to paint for them are two more fresh objects
+  // per view-model build. One unstable prop is enough to make the panel's memo
+  // — and every memoised child under it — re-render on every frame of a drag.
+  const stableSlotUrls = useContentStable(vm.slotUrls);
+  const stableSlotThumbnails = useContentStable(vm.slotThumbnails);
 
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
@@ -536,8 +541,8 @@ function AudioGeneratePanelBody({
       references={references}
       referencePicking={referencePicking}
       slots={slots}
-      slotUrls={vm.slotUrls}
-      slotThumbnails={vm.slotThumbnails}
+      slotUrls={stableSlotUrls}
+      slotThumbnails={stableSlotThumbnails}
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}

@@ -59,11 +59,14 @@ describe("the reference recording reaches the vendor (#1960 PR2, C5)", () => {
     expect(apiParams.audio).toBe(REFERENCE);
   });
 
-  it("is absent, not null, when nothing was picked", () => {
-    // The yaml declares `default: null`, which is how every source-carrying
-    // model states a source the caller fills. A null on the wire would be a
-    // field the vendor has to interpret; the panel refuses a submit with an
-    // empty slot, so the only nulls that reach here are impossible ones.
+  it("comes through as the declared null when nothing was picked", () => {
+    // `validateParams` fills a declared default whenever it is not undefined,
+    // and `null` is not undefined — so an unpicked slot leaves `audio: null`
+    // rather than no key at all. Pinned because it reads like the opposite:
+    // a submit carrying that null is what the three entry points each refuse
+    // first — the panel gate (`ref-audio-missing`), the server's source gate
+    // (which tests `typeof value === "string"`), and the mini-tool schema
+    // (`audio: z.string()`).
     const [, cleaned] = validateParams("tts", CLONE_MODEL, {});
     expect(cleaned.audio).toBeNull();
   });
