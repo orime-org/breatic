@@ -283,6 +283,23 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     }
   }
 
+  // One task row per node this run will write to (#186, design §4.2), opened
+  // before anything is queued. The row is the only path this run's result
+  // takes back to its node, so a run that cannot get one is a run that would
+  // bill the user for a result nothing can deliver. An append-mode run names
+  // no node: its result lands on one the browser creates, so there is no
+  // corner to count in yet.
+  await openGenerationTasks({
+    projectId,
+    spaceId,
+    nodeIds: targetNodeId ? [targetNodeId] : [],
+    startedByUserId: user.id,
+    taskId: task.id,
+    // What the list shows for this row. The model names it when there is
+    // one; a skill run names the skill, and the rest name what they are.
+    label: body.model ?? body.skill_name ?? body.task_type,
+  });
+
   // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
   // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
   // (v10 multi-doc). The job payload carries spaceId so the worker can
@@ -306,20 +323,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   );
 
   await taskService.setJobId(task.id, job.id ?? "");
-
-  // One task row per node this run will write to (#186, design §4.2). An
-  // append-mode run names none: its result node is one the browser creates,
-  // so there is no corner to count in yet.
-  await openGenerationTasks({
-    projectId,
-    spaceId,
-    nodeIds: targetNodeId ? [targetNodeId] : [],
-    startedByUserId: user.id,
-    taskId: task.id,
-    // What the list shows for this row. The model names it when there is
-    // one; a skill run names the skill, and the rest name what they are.
-    label: body.model ?? body.skill_name ?? body.task_type,
-  });
 
   return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
 });

@@ -74,6 +74,19 @@ async function enqueueMiniTool(
     "mini_tool",
   );
 
+  // One task row per node this run will write to (#186, design §4.2), opened
+  // before anything is queued: the row is the only path this run's result
+  // takes back to its node. All three mini-tool endpoints come through here,
+  // so one call covers them.
+  await openGenerationTasks({
+    projectId,
+    spaceId,
+    nodeIds: targetNodeIds,
+    startedByUserId: userId,
+    taskId: task.id,
+    label: toolName,
+  });
+
   // Worker dispatcher reads `source: "mini_tool"` to route to runMiniTool.
   // Without it, the job falls through to the AIGC direct path which expects
   // a `model` field that mini-tool requests don't provide. `spaceId` lets
@@ -97,17 +110,6 @@ async function enqueueMiniTool(
   );
 
   await taskService.setJobId(task.id, job.id ?? "");
-
-  // One task row per node this run will write to (#186, design §4.2). All
-  // three mini-tool endpoints come through here, so one call covers them.
-  await openGenerationTasks({
-    projectId,
-    spaceId,
-    nodeIds: targetNodeIds,
-    startedByUserId: userId,
-    taskId: task.id,
-    label: toolName,
-  });
 
   return { task_id: task.id, status: "pending" };
 }

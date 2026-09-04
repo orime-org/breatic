@@ -14,6 +14,7 @@
  * corner to count in yet.
  */
 
+import type * as coreModule from "@breatic/core";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /** What `nodeTaskService.open` is called with. */
@@ -39,11 +40,17 @@ vi.mock("@breatic/domain", () => ({
   emitNodeTaskCounts: emit,
 }));
 
-vi.mock("@breatic/core", () => ({
-  getStreamRedis: () => ({}),
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-  getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
-}));
+vi.mock("@breatic/core", async () => {
+  // The real AppError, because what this suite asserts about a refused run is
+  // the status it carries.
+  const actual = await vi.importActual<typeof coreModule>("@breatic/core");
+  return {
+    AppError: actual.AppError,
+    getStreamRedis: () => ({}),
+    logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
+  };
+});
 
 const { openGenerationTasks } = await import(
   "@server/modules/task/generation-task.js"
@@ -128,10 +135,11 @@ describe("opening a generation's task rows", () => {
     expect(emit).not.toHaveBeenCalled();
   });
 
-  it("carries on when one node's row cannot be opened", async () => {
-    // The other nodes in this run are still going to be written to, and the
-    // job is already on its way. A node without a row shows no count for it;
-    // it does not stop the run.
+  it("stops the run when a node's row cannot be opened", async () => {
+    // The row is the only path a result takes back to the node, so opening
+    // one is a precondition for starting the work rather than a nicety
+    // alongside it (design §4.6.5). Carrying on would bill the user for a
+    // result that can never be delivered.
     open.mockRejectedValueOnce(new Error("no database"));
 
     await expect(
@@ -143,9 +151,13 @@ describe("opening a generation's task rows", () => {
         taskId: "job-1",
         label: "seedream-4",
       }),
-    ).resolves.toBeUndefined();
+      // Answered the way the upload leg answers an unarmed timer: to the
+      // user these are the same thing, so they read the same sentence.
+    ).rejects.toMatchObject({ statusCode: 503 });
 
-    expect(open).toHaveBeenCalledTimes(2);
-    expect(emit).toHaveBeenCalledTimes(1);
+    // The second node is never reached: nothing about this run is going to
+    // happen, so opening more rows for it would only leave them to expire.
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(emit).not.toHaveBeenCalled();
   });
 });

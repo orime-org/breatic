@@ -15,17 +15,20 @@
  * as alive.
  */
 
-import { getStreamRedis, getNodeTaskConfig } from "@breatic/core";
+import { getStreamRedis, getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
-import { logger } from "@breatic/core";
+import { t } from "@breatic/shared";
 
 /**
  * Open one running row per target node and publish each node's counts.
  *
- * A node whose row cannot be opened is logged and skipped: the job is already
- * on its way and the other nodes in this run are still going to be written
- * to, so a node without a row shows no count rather than stopping the run.
+ * Called before the job is enqueued, and refuses the request when a row
+ * cannot be opened (design §4.6.5). The row is the only path a result takes
+ * back to its node: the worker settles it and that settle is what carries the
+ * content, so a run whose row is missing bills the user for a result nothing
+ * can deliver. Answered as the upload leg answers an unarmed timer — 503 and
+ * the same sentence, because to the user it is the same thing.
  * @param opts - Where the run writes, who started it, and what it is.
  * @param opts.projectId - Owning project.
  * @param opts.spaceId - The space, so an event can name the document.
@@ -33,6 +36,7 @@ import { logger } from "@breatic/core";
  * @param opts.startedByUserId - Who started it.
  * @param opts.taskId - The job every row points at.
  * @param opts.label - What the user reads in the list — the model or tool.
+ * @throws {AppError} 503 when a row cannot be opened.
  */
 export async function openGenerationTasks(opts: {
   projectId: string;
@@ -46,8 +50,9 @@ export async function openGenerationTasks(opts: {
   const docName = canvasSpaceDocName(opts.projectId, opts.spaceId);
 
   for (const nodeId of opts.nodeIds) {
+    let opened;
     try {
-      const opened = await nodeTaskService.open({
+      opened = await nodeTaskService.open({
         projectId: opts.projectId,
         spaceId: opts.spaceId,
         nodeId,
@@ -57,17 +62,13 @@ export async function openGenerationTasks(opts: {
         label: opts.label,
         taskId: opts.taskId,
       });
-      await emitNodeTaskCounts(
-        getStreamRedis(),
-        docName,
-        nodeId,
-        opened.counts,
-      );
     } catch (err) {
       logger.error(
         { err, nodeId, taskId: opts.taskId, projectId: opts.projectId },
         "node_task_open_failed",
       );
+      throw new AppError(503, t("canvas.task.notStarted"));
     }
+    await emitNodeTaskCounts(getStreamRedis(), docName, nodeId, opened.counts);
   }
 }

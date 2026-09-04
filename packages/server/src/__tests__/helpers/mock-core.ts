@@ -151,7 +151,13 @@ export const mocks = {
   // #186 — the task table behind a node's four counts.
   emitNodeTaskCounts: vi.fn(),
   nodeTaskService: {
-    open: vi.fn(),
+    // Shaped like the real one returns. A bare `vi.fn()` hands back
+    // `undefined`, and a route that reads the counts off it then throws a
+    // TypeError — a failure about the double rather than about the route.
+    open: vi.fn().mockResolvedValue({
+      id: "node-task-1",
+      counts: { running: 1, done: 0, failed: 0, expired: 0 },
+    }),
     settle: vi.fn(),
     dismiss: vi.fn(),
     findById: vi.fn().mockResolvedValue(null),
