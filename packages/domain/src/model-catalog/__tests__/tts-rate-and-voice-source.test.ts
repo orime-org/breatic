@@ -144,3 +144,58 @@ describe("the inline voice list carries a sample (#1960 A2)", () => {
     }
   });
 });
+
+describe("the inline voice list sends what the vendor accepts (#2086)", () => {
+  /**
+   * Reads the elevenlabs-v3 voices straight out of the yaml.
+   * @returns Every inline voice entry the model declares.
+   * @throws {Error} When the catalog carries no such tts model.
+   */
+  function inlineVoices(): NonNullable<
+    ReturnType<typeof getFullModelConfig>["models"][number]["voices"]
+  > {
+    const entry = getFullModelConfig("tts").models.find(
+      (m) => m.name === "elevenlabs-v3",
+    );
+    if (!entry?.voices) throw new Error("elevenlabs-v3 declares no voices");
+    return entry.voices;
+  }
+
+  // `id` travels to the vendor as `voice_id`, and what the vendor reads there
+  // is an ElevenLabs voice id. Probed 2026-09-04 against wavespeed's
+  // elevenlabs/eleven-v3 with all 52 display names: 44 generated and 8 came
+  // back "A voice with voice_id 'X' was not found" — Domi, Elli, Rachel, Adam,
+  // Antoni, Arnold, Josh, Sam, every one of them a voice ElevenLabs lists as
+  // Legacy. The vendor reroutes a Legacy ID to its replacement and says so
+  // (help.elevenlabs.io, "What are Legacy voices?"); a display name gets no
+  // such reroute. Sending the ids instead made all three retried voices
+  // generate, including two of the eight.
+  //
+  // Each entry's own sample_url carries that id in its path, so the two fields
+  // check each other and this holds without anyone remembering 52 ids.
+  it("gives every voice the id its own sample url carries", () => {
+    for (const voice of inlineVoices()) {
+      const inUrl = /\/voices\/([^/]+)\//.exec(voice.sample_url ?? "")?.[1];
+      expect(inUrl, `${voice.name} has no id in its sample url`).toBeTruthy();
+      expect(voice.id, `${voice.name}`).toBe(inUrl);
+    }
+  });
+
+  // The id is unreadable now, so the name is the only thing the picker can
+  // show. An entry without one leaves a row the user cannot choose by.
+  it("names every voice", () => {
+    for (const voice of inlineVoices()) {
+      expect(voice.name, voice.id).toMatch(/\S/);
+    }
+  });
+
+  // The default reaches the vendor whenever a request carries no explicit
+  // choice, so it is a value in the same domain as every other id here.
+  it("defaults the voice param to an id, not a display name", () => {
+    const entry = getFullModelConfig("tts").models.find(
+      (m) => m.name === "elevenlabs-v3",
+    );
+    const fallback = entry?.params?.voice_id?.default;
+    expect(inlineVoices().map((v) => v.id)).toContain(fallback);
+  });
+});

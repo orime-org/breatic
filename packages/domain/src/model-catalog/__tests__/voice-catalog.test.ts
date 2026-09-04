@@ -244,9 +244,9 @@ describe("listVoices against a WaveSpeed deployment (#1960 §6.1.1)", () => {
     deployWith({ WAVESPEED_API_KEY: "ws-key" });
   });
 
-  // WaveSpeed is an aggregating gateway with no voice endpoint of its own, and
-  // it takes voice NAMES where a direct connection takes 20-char ids. The yaml
-  // table holds exactly those names, so it is the list for this deployment.
+  // WaveSpeed is an aggregating gateway with no voice endpoint of its own, so
+  // the yaml table is the list for this deployment. It forwards to ElevenLabs
+  // and reads the same ids that vendor does (#2086).
   it("serves the catalog's own table without calling any upstream", async () => {
     const page = await listVoices("elevenlabs-v3", {});
 
@@ -266,20 +266,24 @@ describe("listVoices against a WaveSpeed deployment (#1960 §6.1.1)", () => {
     }
   });
 
+  // By name, which is the only part of a row a person reads. Searching the
+  // ids too would answer "a" with every voice whose opaque id contains one.
   it("filters that table by the search term", async () => {
     const page = await listVoices("elevenlabs-v3", { query: "ali" });
-    expect(page.voices.map((v) => v.id)).toContain("Alice");
-    expect(page.voices.every((v) => v.id.toLowerCase().includes("ali"))).toBe(true);
+    expect(page.voices.map((v) => v.name)).toContain("Alice");
+    expect(page.voices.every((v) => v.name.toLowerCase().includes("ali"))).toBe(true);
   });
 
   it("reads a single voice out of the same table", async () => {
-    const voice = await getVoice("elevenlabs-v3", "Alice");
+    const alice = (await listVoices("elevenlabs-v3", { query: "Alice" })).voices[0];
+    expect(alice).toBeDefined();
+    const voice = await getVoice("elevenlabs-v3", alice!.id);
     expect(httpRequestMock).not.toHaveBeenCalled();
-    expect(voice?.id).toBe("Alice");
+    expect(voice?.name).toBe("Alice");
   });
 
-  it("answers null for a name that table does not carry", async () => {
-    expect(await getVoice("elevenlabs-v3", "NoSuchVoice")).toBeNull();
+  it("answers null for an id that table does not carry", async () => {
+    expect(await getVoice("elevenlabs-v3", "NoSuchVoiceIdAtAll")).toBeNull();
   });
 });
 
