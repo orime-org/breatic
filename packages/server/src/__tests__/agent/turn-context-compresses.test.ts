@@ -25,7 +25,7 @@ function toolPart(n: number): MessagePart {
   return {
     type: "tool",
     toolCallId: `call-${n}`,
-    toolName: "web_fetch",
+    toolName: "web_search",
     input: { url: `https://example.test/${n}` },
     status: "success",
     output: `${BODY} ${n}`,

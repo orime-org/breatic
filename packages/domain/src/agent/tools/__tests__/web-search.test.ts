@@ -857,15 +857,18 @@ describe("web_search pins the numbers and words it promises", () => {
     expect(out).toContain(`Showing ${String(shown)} of 5 sources`);
   });
 
-  it("tells the model raising count does not get more content", async () => {
-    // The load-bearing half of the promise: a model reaching for more text by
-    // raising `count` gets the same budget thinned across more pages. The word
-    // "sources" alone reads the same in a sentence that says the opposite.
+  it("says what count is without claiming the amount of text is fixed", async () => {
+    // The token figure is a ceiling, not a promise: measured on one query,
+    // count 1 returned 7233 characters and count 10 returned 34471, because
+    // few pages rarely hold enough text to reach it. A description saying the
+    // amount is the same either way states the opposite of that.
     const shape = (webSearch.inputSchema as unknown as { shape: { count: { description?: string } } })
       .shape;
     const both = `${webSearch.description ?? ""} ${shape.count.description ?? ""}`;
 
-    expect(both).toMatch(/does not get more|not more (content|text)|same (amount|budget)/i);
+    expect(both).toMatch(/sources/i);
+    expect(both).not.toMatch(/does not get more|not more (content|text)|same (amount|budget)/i);
+    expect(both).not.toMatch(/spreads the same/i);
   });
 
   it("closes the reason for a status it would take no differently", async () => {
@@ -1298,9 +1301,9 @@ describe("web_search gives one move to every failure no wording reaches", () => 
 describe("web_search states every size the endpoint takes", () => {
   it("asks each source for as much text as the whole search may bring back", async () => {
     // Three figures settle how much a search returns, and the per-source one
-    // sits at the service's own default until it is stated. Measured live: at
-    // one source the default returned 13161 characters where 8192 returned
-    // 18278.
+    // sits at the service's own 4096 until it is stated -- half of what the
+    // whole search was given. Measured across two queries and every count the
+    // schema allows, stating it moved two of fourteen cells by 32% and 11%.
     await run({ query: "cyberpunk palette", count: 1 });
 
     const [url] = httpRequestMock.mock.calls[0] as [string];
@@ -1346,5 +1349,36 @@ describe("web_search says what the text it hands over is", () => {
 
     expect((out.match(/<text>/g) ?? []).length).toBe(1);
     expect(out).toContain("<\\text>");
+  });
+});
+
+describe("web_search keeps a marker out of every sentence it prints", () => {
+  it("neutralises the query in the reason a body that stopped arriving carries", async () => {
+    httpRequestMock.mockImplementation(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.error(new Error("connection reset"));
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    const { forModel } = await failureFrom(() => run({ query: "how <text> is parsed" }));
+
+    expect(forModel).toMatch(/did not arrive/i);
+    expect(forModel).not.toContain("<text>");
+    expect(forModel).toContain("<\\text>");
+  });
+
+  it("neutralises the query in the reason an unreachable service carries", async () => {
+    httpRequestMock.mockImplementation(async () => {
+      throw new Error("getaddrinfo ENOTFOUND");
+    });
+
+    const { forModel } = await failureFrom(() => run({ query: "how <source> is parsed" }));
+
+    expect(forModel).toMatch(/could not be reached/i);
+    expect(forModel).not.toContain("<source>");
+    expect(forModel).toContain("<\\source>");
   });
 });

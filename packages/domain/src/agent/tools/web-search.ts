@@ -34,7 +34,7 @@ const inputSchema = z.object({
     .min(1)
     .max(10)
     .default(5)
-    .describe("How many sources to spread the same amount of text over (1-10)"),
+    .describe("How many sources to draw the answer from (1-10)"),
 });
 
 /**
@@ -130,12 +130,12 @@ function reason(what: string, next: NextMove): string {
 /**
  * What to tell the model about a status the search service refused with.
  *
- * Five different next moves hide behind "not 2xx", and the model takes the one
- * this sentence points at. A 5xx, a 429 or a 408 is the service having a bad
- * time and says nothing about the query. A 401 or 403 is our credentials turned
- * down; a 422 is what this side sent being refused, for a token it will not
- * accept or a parameter out of range, and its `detail` text is the same either
- * way. A 3xx reaches this function at all because the redirect is not followed
+ * Two next moves hide behind "not 2xx" -- rewrite the query, or stop -- and the
+ * model takes the one this sentence points at. A 5xx, a 429 or a 408 is the
+ * service having a bad time and says nothing about the query. A 401 or 403 is
+ * our credentials turned down; a 422 is what this side sent being refused, for
+ * a token it will not accept or a parameter out of range, and its `detail` text
+ * is the same either way. A 3xx reaches this function at all because the redirect is not followed
  * (see the call below), and means the address held here has moved. What is left
  * is this request being one the service would not take, which the model wrote
  * and can rewrite.
@@ -346,7 +346,7 @@ function keepInside(text: string): string {
  *
  * Every source the service sent and this tool could read goes to the model
  * whole. How much comes back is settled in the request, by the three figures
- * the endpoint takes: how many sources, how many tokens of text across all of
+ * this request states: how many sources, how many tokens of text across all of
  * them, and how many from any one of them.
  *
  * The count of unreadable entries is stated, because a set the model reads as
@@ -360,7 +360,7 @@ function assembleAnswer(query: string, blocks: string[], sent: number): string {
   const header =
     `Results for: ${query}\n` +
     "Everything between a text marker and its close is an extract of that page, and " +
-    `${BETWEEN_EXCERPTS.trim()} stands where the page continues past it.\n`;
+    `${BETWEEN_EXCERPTS.trim()} separates passages taken from different parts of it.\n`;
 
   const parts = [header, ...blocks];
   if (blocks.length < sent) {
@@ -381,8 +381,8 @@ function assembleAnswer(query: string, blocks: string[], sent: number): string {
 export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
-    "of each page. Something absent from an extract may still be on the page. `count` " +
-    "spreads the same amount of text over more sources.",
+    "of each page. Something absent from an extract may still be on the page. `count` is " +
+    "how many sources the answer is drawn from.",
   inputSchema,
   execute: async (
     { query: asked, count },
@@ -478,6 +478,13 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // transport measured reuse collapsing past undici's buffering
         // threshold, and says a caller discarding one should cancel it. A run
         // of refusals — a revoked key, a rate limit — is a run of these.
+        //
+        // Discarding the promise is safe only while nothing awaits between the
+        // transport handing this response back and this line: cancelling a body
+        // that has already errored rejects, and no entry installs an
+        // `unhandledRejection` handler. Measured against a real server, a socket
+        // broken 0 to 50ms after the headers is always still healthy here, and
+        // an await of 30ms is what makes it reject.
         void res.body?.cancel();
         throw toolFailed(refusalReason(shown, res.status), FAILURE_LINES.upstream);
       }
@@ -497,7 +504,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         if (isStop(err, abortSignal)) throw stoppedByUser();
         throw toolFailed(
           reason(
-            `Searching for "${query}" failed while reading the answer: ${reasonOf(err)}. The ` +
+            `Searching for "${shown}" failed while reading the answer: ${reasonOf(err)}. The ` +
               "service answered, so it is the body that did not arrive.",
             NEXT_MOVE.retryOnce,
           ),
@@ -512,15 +519,12 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
 
-      if (data === null || typeof data !== "object") {
-        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
-      }
       // A search that found nothing has one observed shape: `generic` present
       // and empty. A body without it is the service answering something other
       // than this endpoint's payload -- a moved schema, or something else in
       // its place. Calling that "found nothing" would report an absence of
       // pages when what happened is an answer this side could not read.
-      const found: unknown = (data as { grounding?: { generic?: unknown } }).grounding?.generic;
+      const found: unknown = (data as { grounding?: { generic?: unknown } } | null)?.grounding?.generic;
       if (!Array.isArray(found)) {
         throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
@@ -545,7 +549,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
 
       throw toolFailed(
         reason(
-          `Searching for "${query}" failed: the search service could not be reached ` +
+          `Searching for "${shown}" failed: the search service could not be reached ` +
             `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
             "a different query would fix.",
           NEXT_MOVE.stop,

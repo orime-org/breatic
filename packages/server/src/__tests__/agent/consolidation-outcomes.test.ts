@@ -117,7 +117,7 @@ async function compressedWindow(): Promise<ModelMessage[]> {
         {
           type: "tool" as const,
           toolCallId: `c${n}`,
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: `https://example.test/${n}` },
           status: "success" as const,
           output: `the whole of page ${n}`,

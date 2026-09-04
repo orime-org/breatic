@@ -31,7 +31,7 @@ const foldIfOverBudget = vi.fn(async () => false);
 const modelSays = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
 
 /** 被调用过的工具参数，用来确认工具是真跑了而不是被跳过。 */
-const webFetchCalledWith = vi.fn();
+const webSearchCalledWith = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
@@ -61,11 +61,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        web_fetch: tool({
+        web_search: tool({
           description: "取一个网页",
           inputSchema: z.object({ url: z.string() }),
           execute: async (input: { url: string }) => {
-            webFetchCalledWith(input);
+            webSearchCalledWith(input);
             return "拿到了";
           },
         }),
@@ -140,14 +140,14 @@ describe("线上流说的是 SDK 的话", () => {
       {
         type: "tool-call",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: JSON.stringify({ url: "https://example.com" }),
       },
       FINISHED,
     ]);
 
     // 工具真跑过：结果是它返回的，不是这个文件编的。
-    expect(webFetchCalledWith).toHaveBeenCalledWith({ url: "https://example.com" });
+    expect(webSearchCalledWith).toHaveBeenCalledWith({ url: "https://example.com" });
 
     const asked = frames.find((f) => f.type === "tool-input-available");
     const answered = frames.find((f) => f.type === "tool-output-available");

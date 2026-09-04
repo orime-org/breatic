@@ -32,7 +32,7 @@ function toolPart(n: number): MessagePart {
   return {
     type: "tool",
     toolCallId: `call-${n}`,
-    toolName: "web_fetch",
+    toolName: "web_search",
     input: { url: `https://example.test/${n}` },
     status: "success",
     output: `${BODY} ${n}`.repeat(500),
@@ -88,7 +88,7 @@ describe("compression keeps the last N tool results, whatever turn they are in",
 
     expect(tools).toHaveLength(5);
     for (const [i, part] of tools.entries()) {
-      expect(part.type === "tool" && part.toolName).toBe("web_fetch");
+      expect(part.type === "tool" && part.toolName).toBe("web_search");
       expect(part.type === "tool" && part.input).toEqual({
         url: `https://example.test/${i + 1}`,
       });
@@ -192,7 +192,7 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     const failing = (n: number): MessagePart => ({
       type: "tool",
       toolCallId: `call-${n}`,
-      toolName: "web_fetch",
+      toolName: "web_search",
       input: { url: `https://example.test/${n}` },
       status: "error",
       failure: { kind: "tool_failed", forModel: `${BODY} ${n}`.repeat(500), readerKey: "chat.tool.failure.upstream" },
@@ -220,7 +220,7 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     const halfSent: MessagePart = {
       type: "tool",
       toolCallId: "call-half",
-      toolName: "web_fetch",
+      toolName: "web_search",
       input: { url: "https://example.test/half" },
       status: "error",
       argumentsIncomplete: true,

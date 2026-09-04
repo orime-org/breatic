@@ -25,7 +25,7 @@ function replyWithTool(state: string): UIMessage {
     role: 'assistant',
     parts: [
       {
-        type: 'tool-web_fetch',
+        type: 'tool-web_search',
         toolCallId: 'call-1',
         state,
         input: { url: 'https://example.com' },
@@ -57,7 +57,7 @@ describe('一个工具调用走到哪了', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-1',
           state: 'output-error',
           input: {},
@@ -87,7 +87,7 @@ describe('一个工具调用走到哪了', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-1',
           state: 'output-error',
           input: {},
@@ -128,7 +128,7 @@ describe('一个工具调用走到哪了', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-1',
           state: 'input-available',
           input: {},
@@ -148,7 +148,7 @@ describe('一个工具调用走到哪了', () => {
       id: 'm1',
       role: 'assistant',
       parts: [
-        { type: 'tool-web_fetch', toolCallId: 'call-1', state: 'output-denied', input: {} },
+        { type: 'tool-web_search', toolCallId: 'call-1', state: 'output-denied', input: {} },
       ],
     } as unknown as UIMessage;
 
@@ -160,7 +160,7 @@ describe('一个工具调用走到哪了', () => {
       ...replyWithTool('output-available'),
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-1',
           state: 'output-available',
           input: {},
@@ -182,7 +182,7 @@ describe('直播中的失败文案', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-live',
           state: 'output-error',
           input: { url: 'https://example.com' },
@@ -203,7 +203,7 @@ describe('直播中的失败文案', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-sdk',
           state: 'output-error',
           input: {},
@@ -228,7 +228,7 @@ describe('工具真失败之后这一轮才被停掉', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-failed',
           state: 'output-error',
           input: { url: 'https://example.com' },
@@ -250,7 +250,7 @@ describe('工具真失败之后这一轮才被停掉', () => {
       role: 'assistant',
       parts: [
         {
-          type: 'tool-web_fetch',
+          type: 'tool-web_search',
           toolCallId: 'call-running',
           state: 'input-available',
           input: { url: 'https://example.com' },
