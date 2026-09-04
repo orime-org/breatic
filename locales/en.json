@@ -285,7 +285,21 @@
         "expired": "Expired"
       },
       "someFailed": "A task on this node failed.",
-      "view": "View"
+      "view": "View",
+      "action": {
+        "replace": "Replace",
+        "retry": "Retry",
+        "finish": "Finish",
+        "clear": "Clear"
+      },
+      "elapsed": "Running {duration}",
+      "remaining": "{duration} left",
+      "lateResult": "Finished after it ran out of time.",
+      "panelTitle": "Tasks",
+      "panelClose": "Close task list",
+      "panelEmpty": "Nothing here right now.",
+      "panelError": "The task list could not be loaded.",
+      "panelReload": "Try again"
     },
     "nodeMenu": {
       "generate": "Generate",

@@ -42,6 +42,22 @@ export function splitDuration(ms: number): DurationParts {
 }
 
 /**
+ * A duration as a running counter reads it.
+ *
+ * The seconds are always two digits and the minutes become two once there is
+ * an hours field, so a counter ticking once a second keeps its width and the
+ * text beside it stays put.
+ * @param ms - The duration in milliseconds.
+ * @returns `M:SS`, or `H:MM:SS` once there is at least one hour.
+ */
+export function formatDuration(ms: number): string {
+  const { hours, minutes, seconds } = splitDuration(ms);
+  const ss = String(seconds).padStart(2, '0');
+  if (hours === 0) return `${minutes}:${ss}`;
+  return `${hours}:${String(minutes).padStart(2, '0')}:${ss}`;
+}
+
+/**
  * How much of a task's allowance is left.
  * @param startedAt - When the server opened it, ISO 8601.
  * @param budgetMs - The allowance the server gave it.

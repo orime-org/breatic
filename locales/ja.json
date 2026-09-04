@@ -285,7 +285,21 @@
         "expired": "時間切れ"
       },
       "someFailed": "このノードのタスクが失敗しました。",
-      "view": "表示"
+      "view": "表示",
+      "action": {
+        "replace": "置き換える",
+        "retry": "再試行",
+        "finish": "完了",
+        "clear": "削除"
+      },
+      "elapsed": "実行時間 {duration}",
+      "remaining": "残り {duration}",
+      "lateResult": "時間切れのあとに完了しました。",
+      "panelTitle": "タスク",
+      "panelClose": "タスク一覧を閉じる",
+      "panelEmpty": "今はここに何もありません。",
+      "panelError": "タスク一覧を読み込めませんでした。",
+      "panelReload": "再試行"
     },
     "generatePanel": {
       "style": "スタイル",

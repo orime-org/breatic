@@ -16,6 +16,7 @@ import {
   splitDuration,
   remainingMs,
   elapsedMs,
+  formatDuration,
 } from '@web/spaces/canvas/tasks/task-timing';
 
 const SECOND = 1000;
@@ -97,5 +98,30 @@ describe('elapsedMs', () => {
 
   it('reads zero when the instant cannot be parsed', () => {
     expect(elapsedMs('not a time', startedMs)).toBe(0);
+  });
+});
+
+describe('formatDuration', () => {
+  it('reads a sub-hour duration as minutes and seconds', () => {
+    expect(formatDuration(10 * 60 * SECOND)).toBe('10:00');
+  });
+
+  it('pads the seconds so the counter does not change width every tick', () => {
+    expect(formatDuration(65 * SECOND)).toBe('1:05');
+  });
+
+  it('adds an hours field once there is one, padding the minutes with it', () => {
+    expect(formatDuration(2 * 60 * 60 * SECOND + 5 * 60 * SECOND)).toBe(
+      '2:05:00',
+    );
+  });
+
+  it('keeps hours as the top unit however long the allowance is', () => {
+    // A 30-hour allowance reads as 30 hours; nothing here counts in days.
+    expect(formatDuration(30 * 60 * 60 * SECOND)).toBe('30:00:00');
+  });
+
+  it('reads all zeros once a task is past its allowance', () => {
+    expect(formatDuration(-1)).toBe('0:00');
   });
 });

@@ -285,7 +285,21 @@
         "expired": "逾時"
       },
       "someFailed": "這個節點上有任務失敗了。",
-      "view": "檢視"
+      "view": "檢視",
+      "action": {
+        "replace": "取代",
+        "retry": "重試",
+        "finish": "完成",
+        "clear": "清除"
+      },
+      "elapsed": "已執行 {duration}",
+      "remaining": "剩餘 {duration}",
+      "lateResult": "逾時之後才完成。",
+      "panelTitle": "任務",
+      "panelClose": "關閉任務清單",
+      "panelEmpty": "這裡暫時沒有內容。",
+      "panelError": "任務清單載入失敗。",
+      "panelReload": "重試"
     },
     "generatePanel": {
       "style": "風格",

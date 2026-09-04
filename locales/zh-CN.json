@@ -285,7 +285,21 @@
         "expired": "超时"
       },
       "someFailed": "这个节点上有任务失败了。",
-      "view": "查看"
+      "view": "查看",
+      "action": {
+        "replace": "替换",
+        "retry": "重试",
+        "finish": "完成",
+        "clear": "清除"
+      },
+      "elapsed": "已运行 {duration}",
+      "remaining": "剩余 {duration}",
+      "lateResult": "超时之后才完成。",
+      "panelTitle": "任务",
+      "panelClose": "关闭任务列表",
+      "panelEmpty": "这里暂时没有内容。",
+      "panelError": "任务列表加载失败。",
+      "panelReload": "重试"
     },
     "generatePanel": {
       "style": "风格",
