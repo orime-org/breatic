@@ -9,11 +9,11 @@
  * comes down to whether those segments meet — which is a question about laid
  * out boxes, and jsdom reports every rectangle as zero.
  *
- * `display: flow-root` is what should make them meet: it closes the block
- * direction so a block's inner margins stay inside its own box, and the border
- * is drawn down the whole of that box. A8 measures the seams. A8b measures the
- * run's outer edges, where the last plain block and the first quoted one are
- * one margin apart rather than two.
+ * What makes them meet is where the space between two quoted blocks goes: the
+ * rule is drawn on the box's border, so a gap held as margin breaks it and the
+ * same gap held as padding does not. A8 measures the seams. A8b measures the
+ * run's outer edges, which are margins — there the run has to stand apart from
+ * what surrounds it.
  *
  * Wants dev running and a smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
@@ -93,7 +93,6 @@ interface QuoteBox {
   readonly borderColor: string;
   readonly paddingLeft: number;
   readonly color: string;
-  readonly display: string;
   readonly first: boolean;
   readonly last: boolean;
 }
@@ -115,7 +114,6 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         borderColor: style.borderInlineStartColor,
         paddingLeft: parseFloat(style.paddingInlineStart),
         color: style.color,
-        display: style.display,
         first: element.hasAttribute('data-quoted-first'),
         last: element.hasAttribute('data-quoted-last'),
       };
@@ -132,6 +130,11 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
  * @param p - The page.
  */
 async function writeQuotedRun(p: Page): Promise<void> {
+  // A plain block above the run, so the run's first block is not also the
+  // document's — the first block of a document carries no space above it,
+  // and the run's own top margin is what this measures.
+  await p.keyboard.type('a plain line');
+  await p.keyboard.press('Enter');
   await p.keyboard.type('quoted one');
   await p.keyboard.press('Enter');
   await p.keyboard.type('quoted two');
@@ -141,6 +144,12 @@ async function writeQuotedRun(p: Page): Promise<void> {
   // Two presses of `Mod-a`: the first takes the block, the second the document.
   await p.keyboard.press(`${MOD}+a`);
   await p.keyboard.press(`${MOD}+a`);
+  await p.keyboard.press(`${MOD}+Shift+B`);
+  await expect(p.locator(QUOTED)).toHaveCount(4, { timeout: 10_000 });
+
+  // And the top one back out, leaving three. Taking it by triple click keeps
+  // the take over the moment the click is.
+  await p.locator(`${EDITOR} .bn-block-content`).first().click({ clickCount: 3 });
   await p.keyboard.press(`${MOD}+Shift+B`);
   await expect(p.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
 }
@@ -155,7 +164,6 @@ test.describe('a run of quoted blocks', () => {
 
     for (const box of boxes) {
       expect(box.borderWidth, 'each block draws the rule').toBe(2);
-      expect(box.display).toBe('flow-root');
       expect(box.paddingLeft).toBeGreaterThan(0);
     }
 

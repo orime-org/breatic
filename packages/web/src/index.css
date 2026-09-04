@@ -731,17 +731,54 @@ body {
 }
 
 .doc-body-editor .ProseMirror p {
-  margin: var(--doc-paragraph-margin) 0;
+  margin: 0;
 }
 
-/* A heading's size is set on the BLOCK, and the heading element inherits it.
+/* ---- Block spacing, declared by the block below the gap ----
+   Every block states how much room goes ABOVE it, and nothing states what
+   goes below. The editor lays a block out as a flex row inside a flex column
+   (`.bn-block-content` and `.bn-block`), and margins do not collapse through
+   either — a value on both sides of every block would put two of them in
+   every gap. One side, and the gap is whatever the block under it asks for.
+
+   The editor's own spacing is cleared here so there is one source: the 3px it
+   pads every block with, the 18px it puts above a heading, and the 54px it
+   insets the whole editor by, which the Space's own column already provides.
+
+   A heading's size sits on the BLOCK, and the heading element inherits it.
    The number a numbered heading draws is a `::before` on that block, and a
    pseudo-element takes its size from the element it hangs off — set on the
-   inner heading instead, the number comes out at body size and all three
-   levels flatten onto one (user 2026-09-02). The level lives in a data
-   attribute the editor writes, and level one omits it. */
+   inner heading, the number comes out at body size and all three levels
+   flatten onto one (user 2026-09-02). Both the size and the space above are
+   read per level from the data attribute the editor writes, which level one
+   omits. */
+.doc-body-editor .bn-editor {
+  padding-inline: 0;
+}
+
+.doc-body-editor .ProseMirror .bn-block-content {
+  margin-block: 0;
+  padding-block: 0;
+}
+
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:not(:first-child)
+  > .bn-block
+  > .bn-block-content {
+  margin-top: var(--doc-paragraph-margin);
+}
+
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
+}
+
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:not(:first-child)
+  > .bn-block
+  > .bn-block-content[data-content-type='heading'] {
+  margin-top: 1.9em;
 }
 
 .doc-body-editor
@@ -752,8 +789,24 @@ body {
 
 .doc-body-editor
   .ProseMirror
+  .bn-block-outer:not(:first-child)
+  > .bn-block
+  > .bn-block-content[data-content-type='heading'][data-level='2'] {
+  margin-top: 1.7em;
+}
+
+.doc-body-editor
+  .ProseMirror
   .bn-block-content[data-content-type='heading'][data-level='3'] {
   font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
+}
+
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:not(:first-child)
+  > .bn-block
+  > .bn-block-content[data-content-type='heading'][data-level='3'] {
+  margin-top: 1.5em;
 }
 
 .doc-body-editor .ProseMirror h1 {
@@ -761,21 +814,21 @@ body {
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.01em;
-  margin: 1.9em 0 0.55em;
+  margin: 0;
 }
 
 .doc-body-editor .ProseMirror h2 {
   font-size: inherit;
   font-weight: 600;
   line-height: 1.35;
-  margin: 1.7em 0 0.5em;
+  margin: 0;
 }
 
 .doc-body-editor .ProseMirror h3 {
   font-size: inherit;
   font-weight: 600;
   line-height: 1.45;
-  margin: 1.5em 0 0.45em;
+  margin: 0;
 }
 
 /* Only 400/500/600/700/800 of Inter are loaded (`index.tsx`), and the CSS
@@ -907,31 +960,38 @@ body {
    Everything below this block is the container version, still reached by the
    chat markdown renderer and the two editors that have not migrated. */
 .doc-body-editor .ProseMirror [data-quoted='true'] {
-  display: flow-root;
   padding-inline-start: 1em;
   border-inline-start: 2px solid var(--color-border);
   color: var(--color-muted-foreground);
 }
 
-/* The run's own outer margins, carried by the blocks at its ends. */
-.doc-body-editor .ProseMirror [data-quoted-first] {
+/* Inside a run the space between two blocks goes INSIDE the box. The rule is
+   drawn on the box's border, and a margin sits outside it — measured, a 13.6px
+   break in the rule between every pair. Padding puts the same gap where the
+   border can reach it, so the rule arrives unbroken. */
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:not(:first-child)
+  > .bn-block
+  > [data-quoted='true'] {
+  margin-top: 0;
+  padding-top: var(--doc-paragraph-margin);
+}
+
+/* The run's own outer margins, carried by the blocks at its ends — outside
+   the box, where they hold the run apart from what surrounds it. The end
+   blocks give up their inner space so the text meets the run's edges. */
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:not(:first-child)
+  > .bn-block
+  > [data-quoted-first] {
   margin-top: 1.1em;
+  padding-top: 0;
 }
 
 .doc-body-editor .ProseMirror [data-quoted-last] {
   margin-bottom: 1.1em;
-}
-
-/* And the inner margins those two give way to, so the text meets the run's
-   top and bottom edges. `flow-root` above is what makes these reachable at
-   all: without it the child's margin would have collapsed out and become the
-   run's own, and zeroing it here would move the whole quote instead. */
-.doc-body-editor .ProseMirror [data-quoted-first] > :first-child {
-  margin-top: 0;
-}
-
-.doc-body-editor .ProseMirror [data-quoted-last] > :last-child {
-  margin-bottom: 0;
 }
 
 /* A quote is the one block here that holds other blocks, so it is the one that
