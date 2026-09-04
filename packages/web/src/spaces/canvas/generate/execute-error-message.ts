@@ -24,8 +24,6 @@ export function executeErrorMessage(
   switch (status) {
     case 402:
       return translate('canvas.generatePanel.errorCredits');
-    case 409:
-      return translate('canvas.generatePanel.errorBusy');
     case 507:
       return translate('canvas.generatePanel.errorStorageFull');
     case 503:

@@ -284,15 +284,6 @@ export const mocks = {
     error: vi.fn(),
     debug: vi.fn(),
   },
-  // Canvas node lock (moved to @breatic/domain in PR4). Defaults: lock
-  // acquires cleanly + no prior holder so happy-path routes succeed.
-  canvasLock: {
-    CANVAS_LOCK_TTL_SECONDS: 7200,
-    canvasNodeLockKey: vi.fn(),
-    acquireCanvasNodeLock: vi.fn().mockResolvedValue(true),
-    readCanvasNodeLockHolder: vi.fn().mockResolvedValue(null),
-    releaseCanvasNodeLock: vi.fn().mockResolvedValue(undefined),
-  },
   // v10: project-scoped permission lookup. Default = caller is owner
   // on every project. Tests that exercise non-owner / non-member
   // paths override per-test.
@@ -439,7 +430,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     // Shared authentication kernel (project_members repo + loadProjectRole
     // primitive — collab + server share these). AIGC business (credit /
-    // task / node-history / agent / model-catalog / canvas-lock) moved to
+    // task / node-history / agent / model-catalog) moved to
     // @breatic/domain (PR4) — see domainMock below.
     projectMembersRepo: mocks.projectMembersRepo,
     projectAuthService: mocks.projectAuthService,
@@ -456,7 +447,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
 
 /**
  * Mock for `@breatic/domain` — the AIGC business kernel (credit / task /
- * node-history / agent / model-catalog / canvas-lock) extracted from
+ * node-history / agent / model-catalog) extracted from
  * @breatic/core in PR4. Route tests that reach these pair it with
  * coreMock + serverModulesMock:
  *
@@ -466,7 +457,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  *
  * Explicit (no importOriginal) so loading it never pulls the real agent
  * llm and the `ai` SDK behind it. Per-test overrides go through the
- * shared `mocks` refs (creditLotService / taskService / canvasLock / ...).
+ * shared `mocks` refs (creditLotService / taskService / ...).
  */
 export const domainMock = () => ({
   assetService: mocks.assetService,
@@ -548,7 +539,6 @@ export const domainMock = () => ({
   },
   SkillRegistry: class {},
   extractPromptText: vi.fn((s: string) => s),
-  ...mocks.canvasLock,
 });
 
 /**

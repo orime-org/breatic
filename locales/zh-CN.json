@@ -96,8 +96,7 @@
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual} 个",
       "stream_unavailable": "任务事件流暂时不可用，请重试。",
-      "history_entry_not_found": "找不到这条历史记录",
-      "node_locked": "这个节点正在被其他人生成"
+      "history_entry_not_found": "找不到这条历史记录"
     },
     "memory": {
       "version_conflict": "有人同时修改了它，请重试。"
@@ -342,7 +341,6 @@
       "resolution": "分辨率",
       "ratio": "比例",
       "errorCredits": "积分不足，无法生成。",
-      "errorBusy": "该节点正被另一个生成占用。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",

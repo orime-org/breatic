@@ -62,8 +62,6 @@ vi.mock("@breatic/domain", async () => ({
   getModel: vi.fn(),
   buildToolSet: vi.fn(),
   runAgentLoop: vi.fn(),
-  verifyCanvasNodeLock: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
   getModelCatalog: vi.fn(),
   resolveModelPricing: vi.fn(),
 }));

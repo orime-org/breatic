@@ -55,8 +55,6 @@ vi.mock("@breatic/domain", () => ({
   // The real one; the prompt must reach the provider stripped, and that is
   // part of what this file asserts.
   extractPromptText: (x: unknown) => String(x ?? "").replace(/<[^>]*>/g, ""),
-  releaseCanvasNodeLock: vi.fn(),
-  reacquireCanvasNodeLock: vi.fn(),
   settleTaskForNode: vi.fn(),
 }));
 

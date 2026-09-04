@@ -30,8 +30,6 @@ import { assetService } from "@breatic/domain";
 import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
-  releaseCanvasNodeLock,
-  reacquireCanvasNodeLock,
   emitNodeStateDone,
   emitNodeStateFailed,
   settleTaskForNode,
@@ -270,19 +268,11 @@ function resolveCanvasDocName(
  * @returns Result dict on success, or a failure status marker
  */
 /**
- * Public entry called by the BullMQ worker. Wraps {@link runTaskBody} with
- * a lock-management envelope:
+ * Public entry called by the BullMQ worker.
  *
- *   - Computes `lockTargetNodeId` (only set when `mode='overwrite'` AND the
- *     job binds to exactly one canvas node — the lock granularity is per-node).
- *   - Always releases the lock in `finally`, regardless of how the body
- *     exits. The release is compare-and-delete (see `releaseCanvasNodeLock`),
- *     so it's a no-op if the TTL already expired or another task reclaimed
- *     the node.
- *
- * Spec: §10.15.5 (lock value verify before publish) + §10.15.6 (error path)
- * (Worker crash → finally block del lock; if that also fails, the TTL is
- * the safety net).
+ * A node carries several tasks at once (#186), so a job claims nothing on
+ * the node it writes to: every task reaches an end of its own and the user
+ * decides on the node's task list which result to keep.
  * @param job - BullMQ job carrying the TaskJobData payload to execute
  * @param token - This attempt's lock token (2nd Processor argument);
  *   threaded to the zombie fence before the billing critical section
@@ -292,31 +282,7 @@ export async function runTask(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, projectId, targetNodeIds, mode } = job.data;
-  const lockTargetNodeId =
-    mode === "overwrite" &&
-    projectId &&
-    targetNodeIds &&
-    targetNodeIds.length === 1
-      ? targetNodeIds[0]!
-      : null;
-
-  try {
-    return await runTaskBody(job, lockTargetNodeId, token);
-  } finally {
-    if (lockTargetNodeId && projectId) {
-      try {
-        await releaseCanvasNodeLock(projectId, lockTargetNodeId, taskId);
-      } catch (err) {
-        // Don't propagate — release is best-effort. The TTL on the lock
-        // (CANVAS_LOCK_TTL_SECONDS = 7200s) bounds the worst case.
-        logger.warn(
-          { err, taskId, projectId, nodeId: lockTargetNodeId },
-          "release_canvas_lock_failed_will_ttl",
-        );
-      }
-    }
-  }
+  return await runTaskBody(job, token);
 }
 
 /**
@@ -424,14 +390,12 @@ export async function resolveVideoCovers(
  * extracted so the public {@link runTask} wrapper can manage the canvas-node
  * lock lifecycle without indenting this body inside a `try`.
  * @param job - BullMQ job carrying the TaskJobData payload to execute
- * @param lockTargetNodeId - Non-null when this task holds an overwrite lock
  *   and should verify ownership before publishing the success event.
  * @param token - This attempt's BullMQ lock token, for the zombie fence.
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 async function runTaskBody(
   job: Job<TaskJobData>,
-  lockTargetNodeId: string | null,
   token?: string,
 ): Promise<Record<string, unknown>> {
   const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds, nodeGens } = job.data;
@@ -552,24 +516,6 @@ async function runTaskBody(
       await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, "Retry not allowed after provider returned a result", taskId);
     }
     return { failed: true, reason: "no_retry_after_provider" };
-  }
-
-  // #1580 adversarial fix (retry lock continuity): `runTask`'s finally
-  // releases the overwrite lock on EVERY attempt end — including a rethrow
-  // that schedules a BullMQ retry — so a retry attempt must take the lock
-  // back before doing any work. Fails ⇒ another task legitimately took the
-  // node between attempts; abort WITHOUT billing (our write-backs would be
-  // gen-fenced anyway). No node event: the new holder owns the node's state.
-  if (lockTargetNodeId && projectId) {
-    const relocked = await reacquireCanvasNodeLock(projectId, lockTargetNodeId, taskId);
-    if (!relocked) {
-      logger.warn(
-        { taskId, nodeId: lockTargetNodeId, projectId },
-        "canvas_lock_lost_between_retries_aborting",
-      );
-      await taskService.markFailed(taskId, "Canvas-node lock lost between retries; aborted");
-      return { failed: true, reason: "lock_lost_between_retries" };
-    }
   }
 
   await taskService.markRunning(taskId, job.id ?? "");

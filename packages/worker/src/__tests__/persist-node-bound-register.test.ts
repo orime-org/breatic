@@ -57,8 +57,6 @@ vi.mock("@breatic/domain", () => ({
   buildToolSet: vi.fn(),
   getSkillRegistry: vi.fn(),
   extractPromptText: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
-  reacquireCanvasNodeLock: vi.fn(),
 }));
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,

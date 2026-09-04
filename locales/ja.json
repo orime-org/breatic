@@ -96,8 +96,7 @@
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
       "stream_unavailable": "タスクイベントストリームを利用できません。もう一度お試しください。",
-      "history_entry_not_found": "履歴が見つかりません",
-      "node_locked": "このノードは他の人が生成中です"
+      "history_entry_not_found": "履歴が見つかりません"
     },
     "memory": {
       "version_conflict": "同時に他の人が更新しました。もう一度お試しください。"
@@ -342,7 +341,6 @@
       "resolution": "解像度",
       "ratio": "比率",
       "errorCredits": "クレジットが不足しているため生成できません。",
-      "errorBusy": "このノードは別の生成処理中です。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",

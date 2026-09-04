@@ -97,7 +97,7 @@ export {
   pingRedis,
 } from "@core/infra/redis.js";
 // Re-export the ioredis client type so consumers (collab subscriber
-// clients, domain canvas-lock) type their client refs without taking a
+// clients) type their client refs without taking a
 // direct `ioredis` dependency — the driver lives only in core.
 export type { Redis } from "ioredis";
 export { checkRateLimit } from "@core/infra/rate-limiter.js";
@@ -141,7 +141,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // tier its own way. Server-private domain (auth /
 // project / payment / user.repo / stripe / mailer / pricing / ...)
 // lives in @server/src; AIGC business shared by server+worker (credit /
-// task / node-history / agent / model-catalog / canvas-lock) lives in
+// task / node-history / agent / model-catalog) lives in
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
@@ -203,8 +203,6 @@ export {
   NotFoundError,
   ForbiddenError,
   ConflictError,
-  ConflictLockedError,
   ValidationError,
   UnauthorizedError,
 } from "@core/app-errors.js";
-export type { ConflictLockedDetail } from "@core/app-errors.js";

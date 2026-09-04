@@ -67,8 +67,6 @@ vi.mock("@breatic/domain", () => ({
   nodeHistoryService: {},
   estimateTaskCredits: vi.fn(),
   getSkillRegistry: vi.fn(),
-  acquireCanvasNodeLock: vi.fn(),
-  releaseCanvasNodeLock: vi.fn(),
   resolveProvider: vi.fn(),
 }));
 

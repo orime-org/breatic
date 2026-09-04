@@ -209,7 +209,7 @@ describe("gen=0 missing-gen done is fenced (#1618 sole-guard)", () => {
 
     // A worker whose job payload lost the gen emits a done with gen=0
     // (genOf falls back to 0). After #1618 removed the worker-side
-    // verifyCanvasNodeLock discard, the collab gen fence is the SOLE guard
+    // The collab gen fence is the SOLE guard
     // against a stale result landing — it MUST drop this event.
     await handleNodeStateUpdateEvent(
       hocuspocus,

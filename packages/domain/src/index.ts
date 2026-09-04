@@ -7,7 +7,7 @@
  * Holds the business logic both server and worker need but collab never
  * touches: the credit "spend" side (credit + `markCompletedAndBill`
  * atomic deduction) / tasks / node history / agent (model · tools ·
- * skill loading) / model-catalog / canvas-lock.
+ * skill loading) / model-catalog.
  *
  * Dependency direction `shared ← core ← domain ← {server, worker}`:
  * domain may only import `@breatic/core` + `@breatic/shared`, never any
@@ -71,14 +71,6 @@ export type { ReferenceCountViolation } from "@domain/model-catalog/reference-co
 export type { SkillModelInfo, FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
 
 // ── Canvas node lock (overwrite lock; prevents concurrent-overwrite credit loss; spec §10.15.2) ──
-export {
-  CANVAS_LOCK_TTL_SECONDS,
-  canvasNodeLockKey,
-  acquireCanvasNodeLock,
-  readCanvasNodeLockHolder,
-  releaseCanvasNodeLock,
-  reacquireCanvasNodeLock,
-} from "@domain/canvas-lock/canvas-lock.js";
 
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";

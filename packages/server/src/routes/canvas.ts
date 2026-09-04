@@ -37,7 +37,6 @@ import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { assertSkillUsable } from "@breatic/domain";
 import {
   assertStorageAllowance,
-  authService,
   precheckCredits,
   projectService,
 } from "@server/modules";
@@ -45,13 +44,11 @@ import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   AppError,
   ValidationError,
-  ConflictLockedError,
   publishNodeEvent,
   getStreamRedis,
   logger,
   env,
 } from "@breatic/core";
-import { acquireCanvasNodeLock, readCanvasNodeLockHolder, releaseCanvasNodeLock } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
@@ -261,9 +258,9 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     body.source,
   );
 
-  // Spec §10.13 + §10.15: `mode='overwrite'` claims an exclusive Redis
-  // lock on the target node so concurrent overwrites can't both win. The
-  // schema's `superRefine` already guarantees `target_node_id` is present
+  // A node carries several tasks at once (#186), so an overwrite claims
+  // nothing: whichever result the user keeps is decided on the node's task
+  // list. The schema's `superRefine` guarantees `target_node_id` is present
   // when mode is 'overwrite'; the assertion below is defense in depth.
   if (mode === "overwrite") {
     if (!targetNodeId) {
@@ -272,44 +269,7 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
         t("server.error.validation"),
       );
     }
-    const acquired = await acquireCanvasNodeLock(
-      projectId,
-      targetNodeId,
-      task.id,
-    );
-    if (!acquired) {
-      // Lock held by another in-flight task. Look up the holder so the
-      // client can render a meaningful toast (spec §10.15.3).
-      const holderTaskId = await readCanvasNodeLockHolder(
-        projectId,
-        targetNodeId,
-      );
-      const holderTask = holderTaskId
-        ? await taskService.getByIdInternal(holderTaskId)
-        : null;
-      const holder = holderTask
-        ? await authService.getUserById(holderTask.userId)
-        : null;
-      // Roll back our just-created task so it doesn't sit in pending forever.
-      await taskService.markFailed(
-        task.id,
-        "Lock held by another task; aborted",
-      );
-      throw new ConflictLockedError({
-        holdingBy: holderTask?.userId ?? null,
-        // Display names live on the personal studio / live awareness roster
-        // now, not on `users` — fall back to the holder's email (or a
-        // generic label) so the toast always has *something* to show; the
-        // client refines via the in-canvas roster (email-registration
-        // rewrite, 2026-06-06).
-        holdingByName: holder?.email ?? "someone",
-        taskId: holderTaskId,
-        startedAt: holderTask?.startedAt?.getTime() ?? Date.now(),
-        // Conservative default; refined per-model in a follow-up PR.
-        estimatedSeconds: 30,
-      });
-    }
-    // Lock acquired. Publish a `state='handling'` event right away so
+    // Publish a `state='handling'` event right away so
     // collaborators see the node enter handling without waiting for the
     // worker to start (spec §10.15.4 — collaboration visibility).
     // #1580 adversarial fix: under gen fencing this OPEN is a HARD
@@ -364,8 +324,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
         task.id,
         "Failed to publish handling-open event; task aborted before enqueue",
       );
-      // Free the node for a retry — this task will never run.
-      await releaseCanvasNodeLock(projectId, targetNodeId, task.id);
       throw new AppError(503, t("server.canvas.stream_unavailable"));
     }
   }
