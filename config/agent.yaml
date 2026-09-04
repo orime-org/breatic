@@ -93,9 +93,9 @@ memory_keep_chars: 500000
 # How much page text one web_search asks for, in tokens. The service refuses
 # anything under 1024 and states 32768 as its own ceiling. Measured: 8192
 # returns about three times the text of 2048 and costs 19ms more.
-# The per-source figure follows this one, held to the 8192 that key takes:
-# left unstated it sits at the service's 4096, which measured 13161 characters
-# against 18278 at one source.
+# The per-source figure follows this one, held to the 8192 that key takes.
+# Left unstated it sits at the service's 4096, capping any one page at half of
+# what the whole search was given.
 web_search_max_tokens: 8192
 
 # How long ONE LEG of a web_search may take, in milliseconds.

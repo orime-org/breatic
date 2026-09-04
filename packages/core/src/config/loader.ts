@@ -174,8 +174,9 @@ const agentConfigSchema = z.object({
    * the config loads rather than on every search.
    *
    * The request carries this figure twice, once for the whole search and once
-   * for any single source, and the per-source key stops at 8192 -- so a figure
-   * above that reaches the service only as the whole-search one.
+   * for any single source, so no page is capped below what the whole search
+   * was given. The per-source key stops at 8192 -- a figure above that reaches
+   * the service only as the whole-search one.
    */
   web_search_max_tokens: z.number().int().min(1024).max(32768).default(8192),
   /**

@@ -426,12 +426,15 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // service's own (it rejects below 1024 and states 32768 as its ceiling),
       // so a figure that reaches here is one it will take.
       url.searchParams.set("maximum_number_of_tokens", String(maxTokens));
-      // The same amount again, per source: a third figure settles the size,
-      // and left unstated it sits at the service's own 4096. Measured live at
-      // one source, that default returned 13161 characters where this key at
-      // 8192 returned 18278, and it stops binding from three sources up. The
-      // key's own ceiling is 8192 -- measured, 8193 comes back 422 -- while
-      // the whole-search key runs to 32768, so the configured figure is held
+      // The same amount again, per source. Left unstated this sits at the
+      // service's own 4096, which caps any one page at half the budget the
+      // whole search was given -- so a single page that answers the question
+      // cannot fill it. Stating it lets the service spend the budget where the
+      // text is: measured across two queries and seven source counts, that
+      // moved two cells by 32% and 11% and left the rest where they were.
+      //
+      // The key's own ceiling is 8192, measured: 8193 comes back 422, while
+      // the whole-search key runs to 32768. So the configured figure is held
       // to the range this one takes.
       url.searchParams.set(
         "maximum_number_of_tokens_per_url",
