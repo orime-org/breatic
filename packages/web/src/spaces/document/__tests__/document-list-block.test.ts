@@ -22,6 +22,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -220,6 +221,33 @@ describe('Enter inside an ordered list', () => {
     expect(blocks).toHaveLength(2);
     expect(blocks[0]?.props['quoted']).toBe(true);
     expect(blocks[1]?.props['quoted']).toBe(true);
+  });
+
+  it('does the same with a run of the item selected', () => {
+    // Pressing Enter over a selection replaces it, and the two halves are
+    // still the item they were split out of. Reaching that needs this handler
+    // to take the key: whatever runs in its place splits by the schema alone,
+    // and the schema knows nothing of the prop a quote is made of.
+    const { editor } = open([
+      { type: 'bulletListItem', props: { quoted: true }, content: 'alpha' },
+    ]);
+    const view = editor.prosemirrorView!;
+    // Over `lph`, which leaves a character either side of the split.
+    const start = view.state.doc.resolve(3 + 1);
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.between(start, view.state.doc.resolve(3 + 4)),
+      ),
+    );
+    expect(pressEnter(editor)).toBe(true);
+
+    const blocks = blocksOf(editor);
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((block) => block.type)).toEqual([
+      'bulletListItem',
+      'bulletListItem',
+    ]);
+    expect(blocks.map((block) => block.props['quoted'])).toEqual([true, true]);
   });
 });
 

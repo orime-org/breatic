@@ -200,7 +200,11 @@ describe('Enter on a selection that spans blocks', () => {
     expect(() => {
       pressEnter(editor);
     }).not.toThrow();
-    expect(typesOf(editor)).toEqual(['bulletListItem', 'paragraph']);
+    // Both halves are items, the way they are when the caret does the same
+    // split with nothing selected. This used to leave a paragraph below the
+    // split: the list's own Enter declined the key over a selection, and what
+    // ran in its place opens the block type a schema opens by default.
+    expect(typesOf(editor)).toEqual(['bulletListItem', 'bulletListItem']);
     expect(textsOf(editor)).toEqual(['ab', 'efgh']);
   });
 

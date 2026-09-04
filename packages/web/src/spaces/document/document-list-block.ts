@@ -85,8 +85,14 @@ export function splitCarryingQuote(
 /**
  * What Enter does inside a list item.
  *
- * An empty item leaves the list; a non-empty one splits into another item of
- * the same kind. A rebuild of `handleEnter`, which is internal.
+ * An empty item leaves the list; anything else splits into another item of the
+ * same kind, replacing whatever was selected. A rebuild of `handleEnter`,
+ * which is internal.
+ *
+ * A selected run reaches the same split, which it did not when this handler
+ * declined the key over one: what ran in its place splits by the schema alone,
+ * and the schema carries no `quoted` — so the half below the split came back a
+ * plain paragraph, out of both the list and the quote it was written in.
  * @param editor - The editor Enter was pressed in.
  * @param listItemType - The list block type this handler belongs to.
  * @returns Whether this handler claimed the key.
@@ -95,16 +101,13 @@ export function handleListEnter(
   editor: ListEditor,
   listItemType: string,
 ): boolean {
-  const { blockInfo, selectionEmpty } = editor.transact((tr) => ({
-    blockInfo: getBlockInfoFromSelection(tr),
-    selectionEmpty: tr.selection.anchor === tr.selection.head,
-  }));
+  const blockInfo = editor.transact((tr) => getBlockInfoFromSelection(tr));
 
   if (!blockInfo.isBlockContainer) {
     return false;
   }
   const { bnBlock, blockContent } = blockInfo;
-  if (blockContent.node.type.name !== listItemType || !selectionEmpty) {
+  if (blockContent.node.type.name !== listItemType) {
     return false;
   }
 
