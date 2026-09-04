@@ -15,7 +15,6 @@ import {
   partDeadlineMs,
   partRetryBudgetMs,
   completeRetryBudgetMs,
-  answerRetentionMs,
   assertUploadWindows,
 } from "@shared/upload/windows.js";
 import {
@@ -78,21 +77,6 @@ describe("completeRetryBudgetMs", () => {
   });
 });
 
-// Both halves decide the window on their own turn, and the shipped figures
-// only ever exercise one of them: 600s of idle is well under the delivery
-// budget, so nothing else here would notice the idle half going missing.
-describe("answerRetentionMs", () => {
-  it("holds the answer for the delivery budget when the idle gap is shorter", () => {
-    expect(answerRetentionMs(60)).toBe(completeRetryBudgetMs());
-  });
-
-  it("holds it for the idle gap when that is the longer of the two", () => {
-    const beyondBudget = Math.ceil(completeRetryBudgetMs() / 1000) + 60;
-
-    expect(answerRetentionMs(beyondBudget)).toBe(beyondBudget * 1000);
-  });
-});
-
 /**
  * Windows wide enough that only the rule under test can trip.
  *
@@ -111,11 +95,15 @@ function roomToWait(over: {
     requestTimeoutMs: over.requestTimeoutMs ?? 30_000,
     minBytesPerSec: over.minBytesPerSec ?? 65_536,
   };
-  const idle = Math.ceil(partRetryBudgetMs(partSizeBytes, cfg) / 1000);
-  const token = Math.max(idle, Math.ceil(completeRetryBudgetMs() / 1000)) + 1;
+  const token =
+    Math.ceil(
+      Math.max(
+        partRetryBudgetMs(partSizeBytes, cfg),
+        completeRetryBudgetMs(),
+      ) / 1000,
+    ) + 1;
   return {
     partSizeBytes,
-    alarmIdleSeconds: idle,
     sessionTokenTtlSeconds: token,
     ticketExpiresSeconds: 300,
     ...cfg,
@@ -158,7 +146,6 @@ describe("assertUploadWindows", () => {
     typeof assertUploadWindows
   >[0] => ({
     partSizeBytes: 8 * 1024 * 1024,
-    alarmIdleSeconds: 600,
     sessionTokenTtlSeconds: 1200,
     ticketExpiresSeconds: 300,
     requestTimeoutMs: 30_000,
@@ -170,33 +157,29 @@ describe("assertUploadWindows", () => {
     expect(() => assertUploadWindows(windows())).not.toThrow();
   });
 
-  // One part's retries run to about 387 seconds, while an alarm at 300 judges
-  // the upload dead: every part already written is dropped, and the browser is
-  // still delivering.
-  it("refuses an idle window a single part's retries can outlast", () => {
-    expect(() => assertUploadWindows(windows({ alarmIdleSeconds: 300 }))).toThrow(
-      /alarm_idle_seconds/,
-    );
-  });
+  // One part's retries run to about 387 seconds on the shipped figures, and
+  // every one of them presents the token the previous part issued.
+  it("refuses a session token one part's retries can outlast", () => {
+    const short =
+      Math.ceil(
+        partRetryBudgetMs(8 * 1024 * 1024, {
+          requestTimeoutMs: 30_000,
+          minBytesPerSec: 65_536,
+        }) / 1000,
+      ) - 1;
 
-  // The token is re-issued with every part, so it only has to cover the gap
-  // between two of them — and the longest gap the alarm allows is its own
-  // window.
-  it("refuses a session token that expires inside the idle window", () => {
     expect(() =>
-      assertUploadWindows(windows({ sessionTokenTtlSeconds: 600 })),
+      assertUploadWindows(windows({ sessionTokenTtlSeconds: short })),
     ).toThrow(/session_token_ttl_seconds/);
   });
 
   // The last part issues the token that completing carries, so the token has
-  // to outlast completing's own chain as well as the gap between parts.
+  // to outlast completing's own chain as well as one part's.
   it("refuses a session token that expires inside the completion chain", () => {
     const short = Math.ceil(completeRetryBudgetMs() / 1000) - 1;
 
     expect(() =>
-      assertUploadWindows(
-        windows({ alarmIdleSeconds: 600, sessionTokenTtlSeconds: short }),
-      ),
+      assertUploadWindows(windows({ sessionTokenTtlSeconds: short })),
     ).toThrow(/session_token_ttl_seconds/);
   });
 
@@ -205,7 +188,7 @@ describe("assertUploadWindows", () => {
   // multipart upload over an object the ledger already describes, leaving the
   // sha256 on that row describing bytes that are gone.
   it("refuses a ticket that outlives the memory of a finished upload", () => {
-    const past = Math.ceil(answerRetentionMs(600) / 1000) + 1;
+    const past = Math.ceil(completeRetryBudgetMs() / 1000) + 1;
 
     expect(() =>
       assertUploadWindows(windows({ ticketExpiresSeconds: past })),

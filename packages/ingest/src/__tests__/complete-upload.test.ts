@@ -91,7 +91,6 @@ async function uploadedThrough(
       partSize: PART_SIZE,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      alarmIdleSeconds: 300,
       sessionTokenTtlSeconds: 900,
       ...over,
     },
@@ -231,31 +230,26 @@ describe("what completing tells the browser", () => {
 });
 
 describe("an upload missing parts", () => {
-  it("leaves no object behind and reports that it never finished", async () => {
-    expectReport(200, { data: { ok: true } });
+  it("leaves no object behind, and says nothing to the server", async () => {
     const { storageKey, uploadId, token } = await uploadedThrough(1);
 
-    // 409, not 200: this upload will never become the object it was opened
-    // for, and asking again cannot change that — the parts are gone.
+    // 409, not an outcome: this upload has not ended. The parts that have not
+    // arrived still can, and nothing here judges how long that takes.
     expect((await complete(uploadId, token)).status).toBe(409);
 
     expect(await env.BUCKET.get(storageKey)).toBeNull();
-    expect(reports[0]).toMatchObject({
-      storage_key: storageKey,
-      outcome: "aborted",
-    });
+    // `fetchMock` has no interceptor for the report, so any report here throws.
+    expect(reports).toHaveLength(0);
   });
 
-  it("says why it never finished", async () => {
-    expectReport(200, { data: { ok: true } });
+  it("says which parts are still owed", async () => {
     const { uploadId, token } = await uploadedThrough(1);
 
     const response = await complete(uploadId, token);
 
-    await expect(response.json()).resolves.toMatchObject({
-      outcome: "aborted",
-      reason: "only 1 of 2 parts arrived",
-    });
+    await expect(response.text()).resolves.toBe(
+      "only 1 of 2 parts have arrived",
+    );
   });
 });
 
@@ -300,7 +294,6 @@ describe("an upload already reported", () => {
   it("keeps the answer for as long as a browser can still be asking", async () => {
     expectReport();
     const { storageKey, uploadId, token } = await uploadedThrough(2, {
-      alarmIdleSeconds: 300,
     });
     await complete(uploadId, token);
 

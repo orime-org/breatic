@@ -91,17 +91,10 @@ export const storageConfigSchema = z
        */
       ticket_expires_seconds: z.number().int().positive().default(300),
       /**
-       * How long an upload may go without a new part arriving, in seconds. The
-       * Durable Object pushes its alarm out by this much on every part, so an
-       * upload that keeps moving is never cut off however large the file is,
-       * and one that stops is judged dead this long after its last part.
-       */
-      alarm_idle_seconds: z.number().int().positive().default(600),
-      /**
-       * How long a session token stays usable, in seconds. One token covers
-       * two waits — the longest gap the alarm tolerates between parts, and the
-       * chain completing an upload runs — which is why it is checked against
-       * both below rather than picked on its own.
+       * How long a session token stays usable, in seconds. One token is
+       * carried through two chains — the whole of the part it was issued for,
+       * and the chain completing an upload runs — which is why it is checked
+       * against both below rather than picked on its own.
        */
       session_token_ttl_seconds: z.number().int().positive().default(1200),
     })
@@ -130,7 +123,6 @@ export const storageConfigSchema = z
     try {
       assertUploadWindows({
         partSizeBytes: cfg.ingest.part_size_bytes,
-        alarmIdleSeconds: cfg.ingest.alarm_idle_seconds,
         sessionTokenTtlSeconds: cfg.ingest.session_token_ttl_seconds,
         ticketExpiresSeconds: cfg.ingest.ticket_expires_seconds,
         requestTimeoutMs: cfg.upload.client_request_timeout_ms,

@@ -29,7 +29,6 @@ function payload(overrides: Partial<UploadTicketPayload> = {}): UploadTicketPayl
     totalParts: 3,
     partSize: 8 * 1024 * 1024,
     contentType: "video/mp4",
-    alarmIdleSeconds: 300,
     sessionTokenTtlSeconds: 900,
     expiresAt: NOW + 5 * 60_000,
     ...overrides,

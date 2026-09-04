@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The alarm, which is what makes an upload's outcome guaranteed (#173, §4.4).
+ * The alarm, which is how an outcome the server has not taken reaches it
+ * (#173 §4.4, #186 §6.3).
  *
- * A browser that stopped sending never asks the Worker to finish, so the alarm
- * is the only thing that notices. It is also the only retry this Worker has:
- * Cloudflare re-runs `alarm()` on failure and does nothing at all when it
- * returns, so an outcome the server refused has to leave the handler failing.
+ * It is a retry rhythm and nothing else: the upload is decided and its bytes
+ * are stored, and what is left is the telling. Cloudflare re-runs `alarm()` on
+ * failure and reschedules nothing when it returns, so an outcome the server
+ * has not taken has to leave the handler failing.
  *
  * The finishing sequence is re-entered by every one of those retries, which is
  * why each of its steps is remembered separately. Assembling the object and
@@ -87,7 +88,6 @@ async function uploadedThrough(
       partSize: PART_SIZE,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      alarmIdleSeconds: 300,
       sessionTokenTtlSeconds: 900,
     },
     env.INGEST_SHARED_SECRET,
@@ -155,56 +155,46 @@ function sessionOf(storageKey: string): DurableObjectStub {
   return env.UPLOAD_SESSION.get(env.UPLOAD_SESSION.idFromName(storageKey));
 }
 
-describe("a browser that stops without asking to finish", () => {
-  it("has its outcome reported by the alarm instead", async () => {
-    expectReport();
-    const { storageKey } = await uploadedThrough(2);
-
-    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(true);
-
-    expect(reports).toHaveLength(1);
-    expect(reports[0]).toMatchObject({
-      storage_key: storageKey,
-      outcome: "completed",
-    });
-  });
-
-  it("has an incomplete upload dropped and reported as never finished", async () => {
-    expectReport();
-    const { storageKey } = await uploadedThrough(1);
-
-    await runDurableObjectAlarm(sessionOf(storageKey));
-
-    expect(await env.BUCKET.get(storageKey)).toBeNull();
-    expect(reports[0]).toMatchObject({
-      storage_key: storageKey,
-      outcome: "aborted",
-    });
-  });
-});
-
-describe("a server that refuses the alarm's own report", () => {
+describe("a server that does not take the outcome", () => {
   // Cloudflare retries `alarm()` only when it fails, and reschedules nothing
   // when it returns. An outcome the server has not taken therefore has to come
   // back out of the handler, or this upload is never spoken of again and the
-  // node it belongs to spins until collab's sweeper reclaims it.
+  // node it belongs to counts the task as running for good.
   it("fails the handler so the runtime retries it", async () => {
     expectReport(503);
-    const { storageKey } = await uploadedThrough(2);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    expect((await complete(uploadId, token)).status).toBe(502);
 
+    expectReport(503);
     await expect(runDurableObjectAlarm(sessionOf(storageKey))).rejects.toThrow();
   });
 
   it("reports again on the next attempt", async () => {
     expectReport(503);
-    const { storageKey, uploadId, token } = await uploadedThrough(2);
-    await runDurableObjectAlarm(sessionOf(storageKey)).catch(() => undefined);
+    const { uploadId, token } = await uploadedThrough(2);
+    await complete(uploadId, token);
 
     expectReport();
     expect((await complete(uploadId, token)).status).toBe(200);
 
     expect(reports).toHaveLength(2);
     expect(reports[1]).toMatchObject({ outcome: "completed" });
+  });
+
+  // The refusal is what arms the next attempt: without it the outcome would
+  // wait on a browser that may never ask again.
+  it("arms the next attempt itself", async () => {
+    expectReport(503);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+
+    await complete(uploadId, token);
+
+    const armed = await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+      state.storage.getAlarm(),
+    );
+    expect(armed).not.toBeNull();
+    expectReport(503);
+    await runDurableObjectAlarm(sessionOf(storageKey)).catch(() => undefined);
   });
 });
 
@@ -245,40 +235,6 @@ describe("a retry that lost the hash but not the object", () => {
   });
 });
 
-// An upload that keeps moving is never cut off, however large the file: every
-// part pushes the deadline out. Without that push a large upload is judged
-// dead partway through and every part already written is dropped.
-describe("the deadline a part arriving pushes out", () => {
-  it("moves to the window the ticket signed", async () => {
-    expectReport();
-    const { storageKey, uploadId, token } = await uploadedThrough(1);
-    const stub = sessionOf(storageKey);
-    // A deadline nothing would otherwise choose, so what is read back can only
-    // be the one this part set.
-    await runInDurableObject(stub, async (_instance, state) => {
-      await state.storage.setAlarm(Date.now() + 1_000);
-    });
-
-    const ctx = createExecutionContext();
-    await worker.fetch(
-      new Request(`https://ingest.example.com/uploads/${uploadId}/parts/2`, {
-        method: "PUT",
-        headers: { "x-upload-token": token },
-        body: new Uint8Array(FINAL_PART_SIZE),
-      }),
-      env,
-      ctx,
-    );
-    await waitOnExecutionContext(ctx);
-
-    const alarm = await runInDurableObject(stub, (_instance, state) =>
-      state.storage.getAlarm(),
-    );
-    expect(alarm).toBeGreaterThan(Date.now() + 200_000);
-    await runDurableObjectAlarm(stub);
-  });
-});
-
 // A 4xx is the server having decided, not the server being unwell: it read the
 // report, acted on it, and refused. Retrying asks the same question six more
 // times and gets the same answer, while the node has already been told.
@@ -290,8 +246,10 @@ describe("the deadline a part arriving pushes out", () => {
 describe("a server that will not accept our credentials", () => {
   it("keeps retrying rather than taking it as this upload's outcome", async () => {
     expectReport(401);
-    const { storageKey } = await uploadedThrough(2);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    expect((await complete(uploadId, token)).status).toBe(502);
 
+    expectReport(401);
     await expect(runDurableObjectAlarm(sessionOf(storageKey))).rejects.toThrow();
   });
 });
@@ -303,8 +261,10 @@ describe("a server that will not accept our credentials", () => {
 describe("a server that is turning us away for now", () => {
   it("keeps retrying rather than taking it as this upload's outcome", async () => {
     expectReport(429);
-    const { storageKey } = await uploadedThrough(2);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    expect((await complete(uploadId, token)).status).toBe(502);
 
+    expectReport(429);
     await expect(runDurableObjectAlarm(sessionOf(storageKey))).rejects.toThrow();
   });
 });
@@ -312,21 +272,25 @@ describe("a server that is turning us away for now", () => {
 describe("a server that refuses the report outright", () => {
   it("takes the refusal as the outcome rather than retrying it", async () => {
     expectReport(413);
-    const { storageKey } = await uploadedThrough(2);
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
 
-    await expect(runDurableObjectAlarm(sessionOf(storageKey))).resolves.toBe(true);
+    await complete(uploadId, token);
 
     expect(reports).toHaveLength(1);
+    // Armed for the retention window rather than another attempt: this upload
+    // is over, and what is left is holding the answer.
+    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(true);
   });
 
   it("asks nothing more of the server when the browser asks again", async () => {
     expectReport(413);
     const { storageKey, uploadId, token } = await uploadedThrough(2);
-    await runDurableObjectAlarm(sessionOf(storageKey));
+    await complete(uploadId, token);
 
     await complete(uploadId, token);
 
     expect(reports).toHaveLength(1);
+    await runDurableObjectAlarm(sessionOf(storageKey));
   });
 
   // A refusal ends this upload as surely as an abort does: the server will
@@ -336,11 +300,11 @@ describe("a server that refuses the report outright", () => {
   it("tells the browser the upload is over rather than answering it as a success", async () => {
     expectReport(413);
     const { storageKey, uploadId, token } = await uploadedThrough(2);
-    await runDurableObjectAlarm(sessionOf(storageKey));
 
     const answer = await complete(uploadId, token);
 
     expect(answer.status).toBe(409);
+    await runDurableObjectAlarm(sessionOf(storageKey));
   });
 });
 

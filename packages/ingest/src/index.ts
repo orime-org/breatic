@@ -181,14 +181,34 @@ async function uploadPart(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  // Forwarded as the stream it arrived as. The instance has to hold the whole
-  // part to check its length against the signed layout and to hand it to R2;
-  // reading it here as well would mean a second copy of every part in memory,
-  // on the one hop that adds nothing to it.
+  // Refused before R2 sees it, because R2 answers a part number below one by
+  // throwing — which would leave a caller reading a 500 for something it can
+  // fix. Where the number sits in THIS upload's layout is a different question
+  // and belongs to the instance holding the ticket; this is the multipart
+  // protocol's own floor, which holds whatever any ticket said.
+  if (partNumber < 1) {
+    return new Response("Part number below one", { status: 400 });
+  }
+
+  // Written from here rather than forwarded. A Durable Object is billed for
+  // wall-clock time against a fixed 128 MB, so a slow network waited on inside
+  // one is paid for at that rate; a Worker waiting on I/O is not billed for
+  // the wait at all (design §6.1). What goes to the instance is the one line
+  // that says this part landed.
+  const body = await request.arrayBuffer();
+  // R2 throws for a part it will not take, and the reason is a fact about this
+  // upload rather than about the request: it was already assembled, or it was
+  // never opened. The instance is what holds that, so a failed write is
+  // reported like any other and answered from there.
+  const etag = await env.BUCKET.resumeMultipartUpload(session.storageKey, uploadId)
+    .uploadPart(partNumber, body)
+    .then((written) => written.etag)
+    .catch(() => null);
+
   return sessionFor(env, session.storageKey).fetch(
     new Request(`https://session/part/${partNumber}`, {
       method: "PUT",
-      body: request.body,
+      body: JSON.stringify({ etag, sizeBytes: body.byteLength }),
     }),
   );
 }
@@ -196,10 +216,9 @@ async function uploadPart(
 /**
  * Ask the instance to finish the upload.
  *
- * Only ever early: the alarm reaches the same place on its own, so a browser
- * that never asks still gets an outcome. That is also why a failure here
- * changes nothing — the alarm is what guarantees the attempt, this is what
- * makes it prompt.
+ * The instance answers with the outcome, with 409 while parts are still owed,
+ * or with 502 when it decided an outcome the server has not taken yet — that
+ * last one it retries on its own, so asking again is optional.
  * @param request - The browser's request, carrying the session token.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.

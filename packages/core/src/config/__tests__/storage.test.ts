@@ -117,10 +117,7 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
     const token = Math.max(seconds, Math.ceil(completeRetryBudgetMs() / 1000));
     return {
       upload,
-      ingest: {
-        alarm_idle_seconds: seconds,
-        session_token_ttl_seconds: token + 1,
-      },
+      ingest: { session_token_ttl_seconds: token + 1 },
     };
   }
 
@@ -193,20 +190,16 @@ describe("storageConfigSchema — the stall guard has to stay expressible", () =
  * non-final part under 5 MiB, so a config below it would fail mid-upload
  * rather than at load, where the operator who typed the number is reading.
  *
- * `alarm_idle_seconds` is how long an upload may go without a new part before
- * the Durable Object judges it dead. There is no total upload time to keep it
- * under — the object pushes its alarm out on every part — but there is a floor
- * it has to clear: a part being retried delivers nothing while it goes on, so
- * a window narrower than one part's whole delivery drops an upload that is
- * still running. `session_token_ttl_seconds` nests outside that window for the
- * same kind of reason.
+ * `session_token_ttl_seconds` is how long a token stays usable after the part
+ * that issued it. One token is carried through a whole part's delivery chain
+ * and through the chain completing runs, so it has a floor to clear: a token
+ * that expires first turns the delivery that would have succeeded into a 401.
  */
 describe("storageConfigSchema — the ingest knobs", () => {
   it("loads the ingest config from config/storage.yaml", () => {
     const cfg = getStorageConfig();
     expect(cfg.ingest.part_size_bytes).toBe(8388608);
     expect(cfg.ingest.ticket_expires_seconds).toBe(300);
-    expect(cfg.ingest.alarm_idle_seconds).toBe(600);
     expect(cfg.ingest.session_token_ttl_seconds).toBe(1200);
   });
 
@@ -228,40 +221,29 @@ describe("storageConfigSchema — the ingest knobs", () => {
   });
 });
 
-// The Durable Object judges an upload dead when no part has arrived for
-// `alarm_idle_seconds`, and a part being retried delivers nothing for as long
-// as the browser keeps trying it. A window narrower than that drops every part
-// already written, from an upload that is doing nothing wrong.
+// One session token is carried through a whole part's delivery chain, retries
+// included, and through the chain completing runs. A token narrower than
+// either turns a delivery on an upload that is doing nothing wrong into a 401.
 describe("storageConfigSchema — the windows an upload lives inside", () => {
   it("leaves the shipped figures alone", () => {
     expect(() => storageConfigSchema.parse({})).not.toThrow();
   });
 
-  it("refuses an idle window a single part's retries can outlast", () => {
-    expect(() =>
-      storageConfigSchema.parse({ ingest: { alarm_idle_seconds: 300 } }),
-    ).toThrow(/alarm_idle_seconds/);
-  });
-
-  // The token is re-issued with every part, so it only has to cover the gap
-  // between two of them — and the longest gap the alarm allows is its own
-  // window. A token that expires first turns the part after a long wait into
-  // a 401 on an upload the alarm was still willing to wait for.
-  it("refuses a session token that expires inside the idle window", () => {
+  it("refuses a session token one part's retries can outlast", () => {
     expect(() =>
       storageConfigSchema.parse({
-        ingest: { session_token_ttl_seconds: 600 },
+        ingest: { session_token_ttl_seconds: 300 },
       }),
     ).toThrow(/session_token_ttl_seconds/);
   });
 
-  // A bigger part takes longer to deliver, so the window it needs grows with
+  // A bigger part takes longer to deliver, so the token it needs grows with
   // it — the relation is between the two, not a pair of fixed numbers.
-  it("moves the window a part needs when the part size moves", () => {
+  it("moves the token a part needs when the part size moves", () => {
     expect(() =>
       storageConfigSchema.parse({
         ingest: { part_size_bytes: 64 * 1024 * 1024 },
       }),
-    ).toThrow(/alarm_idle_seconds/);
+    ).toThrow(/session_token_ttl_seconds/);
   });
 });

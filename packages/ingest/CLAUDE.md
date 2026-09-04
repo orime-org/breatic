@@ -7,7 +7,7 @@
 
 ## 分层(包内)
 - `src/index.ts` = fetch handler，三个端点的路由 + CORS
-- `src/upload-session.ts` = Durable Object，一次上传一个实例，记账 + 闹钟
+- `src/upload-session.ts` = Durable Object，一次上传一个实例。它持有这次上传的全部状态（uploadId、分片布局、收到了哪些片、拼没拼过、报告投没投出去），所有关于这次上传的判定都在它这儿。**字节不经过它**——DO 按墙钟时长 × 固定 128 MB 计费，等慢网络的那段时间按这个价收；`index.ts` 收字节、调 R2，只把 `(partNumber, etag, sizeBytes)` 报给它。**它也不看时间**：只有成功和出错两个出口，寿命归 `TaskTimer`；唯一的闹钟是投递给 server 失败后的重投
 - 本包内部用 `@ingest/*` 前缀
 
 ## 可 import 谁

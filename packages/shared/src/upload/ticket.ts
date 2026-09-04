@@ -38,19 +38,10 @@ export interface UploadTicketPayload {
   /** Epoch ms. Checked once, when the upload starts. */
   expiresAt: number;
   /**
-   * How long the upload may go without a new part before the Durable Object
-   * judges it dead. Signed in rather than configured on the Worker for the
-   * same reason `partSize` is: the value lives in `config/storage.yaml`, which
-   * the Worker cannot read, and a second copy in the Worker's own deployment
-   * config is a second place for it to drift.
-   */
-  alarmIdleSeconds: number;
-  /**
    * How long a token issued for the next part stays usable, in seconds. Signed
-   * in for the same reason `alarmIdleSeconds` is: it lives in
-   * `config/storage.yaml`, the Worker cannot read that file, and a second copy
-   * inside the Worker is a second place for the value to drift — one whose
-   * relation to the idle window nothing would then be checking.
+   * in for the same reason `partSize` is: it lives in `config/storage.yaml`,
+   * the Worker cannot read that file, and a second copy inside the Worker is a
+   * second place for the value to drift out of the relations checked at load.
    */
   sessionTokenTtlSeconds: number;
 }

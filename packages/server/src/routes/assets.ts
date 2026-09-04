@@ -337,7 +337,6 @@ assets.post(
         partSize: ingest.part_size_bytes,
         contentType: body.content_type,
         expiresAt,
-        alarmIdleSeconds: ingest.alarm_idle_seconds,
         sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
       },
       env.INGEST_SHARED_SECRET,

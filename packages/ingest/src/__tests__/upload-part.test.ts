@@ -39,7 +39,6 @@ async function openUpload(
       partSize: PART_SIZE,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      alarmIdleSeconds: 300,
       sessionTokenTtlSeconds: 900,
       ...over,
     },

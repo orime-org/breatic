@@ -37,7 +37,6 @@ async function mintTicket(
       partSize: 5 * 1024 * 1024,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      alarmIdleSeconds: 300,
       sessionTokenTtlSeconds: 900,
       ...over,
     },

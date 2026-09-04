@@ -44,23 +44,12 @@ ingest:
   # How long the browser has to START the upload. Checked once, when it asks
   # the Worker to begin; an upload already running is never cut off by it.
   ticket_expires_seconds: 300
-  # How long the upload may go without a new part arriving. The Durable Object
-  # pushes its alarm out by this much on every part it receives, so an upload
-  # that keeps moving is never cut off no matter how large the file is, and one
-  # that stops is judged dead this long after its last part. There is no total
-  # time limit: a total would have to be guessed from the file size and the
-  # user's bandwidth, and guessing it low kills uploads that are still running.
-  #
-  # It has to be wider than the whole worst case for one part — three
-  # deliveries at that part's deadline plus the waits between them — because a
-  # part being retried delivers nothing while it goes on. Loading this file
-  # checks that, so the two cannot drift apart silently.
-  alarm_idle_seconds: 600
-  # How long a session token stays usable. One token covers two waits: the
-  # longest gap the alarm tolerates between parts, and the whole chain
-  # completing an upload runs on — completing names no deadline of its own, so
-  # each of its deliveries takes the transport's default. Loading this file
-  # checks it clears both.
+  # How long a session token stays usable. One token is carried through two
+  # chains: the whole of the part it was issued for, retries included, and the
+  # chain completing an upload runs on — completing names no deadline of its
+  # own, so each of its deliveries takes the transport's default. Loading this
+  # file checks it outlasts the longer of them; one expiring partway turns the
+  # delivery that would have succeeded into a 401.
   session_token_ttl_seconds: 1200
 
 # Studio avatars.

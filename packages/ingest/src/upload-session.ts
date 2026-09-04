@@ -9,9 +9,17 @@
  * that remembers. This is that something: one instance per upload, holding
  * which parts landed and what the ticket said to expect.
  *
- * It also holds the alarm. Every part that arrives pushes it out, so an upload
- * that keeps moving is never cut off however large the file is, and one that
- * stops is judged dead that long after its last part.
+ * It does not watch the clock. An upload has two exits — the object was
+ * assembled and the outcome reported, or a step failed and that was reported —
+ * and how long it took is neither of them (design §6.3). A task's lifetime
+ * belongs to the timer Durable Object, which knows nothing about this chain.
+ * The parts an abandoned upload leaves behind are expired by the bucket's own
+ * lifecycle rule seven days after the upload started.
+ *
+ * The bytes do not pass through here either. A Durable Object bills wall-clock
+ * time against a fixed 128 MB, so waiting on a slow network inside one is paid
+ * for at that rate; the Worker holds the part and calls R2, and what arrives
+ * here is the one line that says a part landed (design §6.1).
  *
  * Cloudflare runs each instance single-threaded, so the state read at the top
  * of a handler is still true when it writes at the bottom. That is what makes
@@ -19,9 +27,19 @@
  * rather than a race.
  */
 
-import { answerRetentionMs } from "@breatic/shared";
+import { completeRetryBudgetMs } from "@breatic/shared";
 import type { UploadTicketPayload } from "@breatic/shared";
 import { signSessionToken } from "@ingest/session-token.js";
+
+/**
+ * How long to wait before delivering an outcome the server did not take.
+ *
+ * A retry rhythm rather than a verdict: the bytes are stored and the outcome
+ * is decided, and the node counts this task as running until the server hears
+ * it. Held here rather than in `config/storage.yaml` because it names nothing
+ * an operator tunes about uploads — it is how often this instance knocks.
+ */
+const REPORT_RETRY_MS = 30_000;
 
 /** What the instance remembers about an upload while it is open. */
 interface OpenUpload {
@@ -47,7 +65,7 @@ interface RecordedPart {
  * without reading a 2 GiB object back a second time.
  */
 interface FinishProgress {
-  /** R2 has assembled the object, or the upload was aborted. */
+  /** R2 has assembled the object. */
   settled: boolean;
   /** What was computed over the stored bytes, once it has been.  */
   sha256?: string;
@@ -78,6 +96,12 @@ interface RegisteredAsset {
 
 /** What the server did with a report. */
 type ReportAnswer = RegisteredAsset | "refused" | "unavailable";
+
+/** Why finishing did not produce an outcome. */
+interface StillIncomplete {
+  /** Which parts are still owed, in the words the caller is given. */
+  missing: string;
+}
 
 /**
  * Say how a finished upload ended.
@@ -139,7 +163,10 @@ export class UploadSession implements DurableObject {
     }
     const part = /^\/part\/(\d+)$/.exec(pathname);
     if (part) {
-      return this.#part(Number(part[1]), await request.arrayBuffer());
+      return this.#part(
+        Number(part[1]),
+        await request.json<{ etag: string | null; sizeBytes: number }>(),
+      );
     }
     if (pathname === "/complete") {
       return this.#finish();
@@ -150,11 +177,11 @@ export class UploadSession implements DurableObject {
   /**
    * The alarm going off.
    *
-   * Two jobs, told apart by whether the server has answered yet. Before that
-   * it is the same work as the browser asking, because the question is the
-   * same one: did every part arrive? A browser that stopped sending never asks
-   * at all, and this is what notices. After it, the instance has been holding
-   * its answer for anyone who asks again, and this is the end of that window.
+   * The only clock this instance keeps, and it is a retry rhythm rather than a
+   * verdict on the upload (design §6.3). Two jobs, told apart by whether the
+   * server has answered: before it, deliver the outcome again; after it, the
+   * instance has been holding that answer for anyone who asks, and this is the
+   * end of that window.
    * @throws {Error} When the server did not answer.
    */
   async alarm(): Promise<void> {
@@ -169,10 +196,10 @@ export class UploadSession implements DurableObject {
 
     const outcome = await this.#settleAndReport();
     if (outcome === "not_accepted") {
-      // Cloudflare retries a failing alarm and reschedules nothing when one
-      // returns, so failing here is the only way another attempt happens. The
-      // node this upload belongs to sits in handling until the server hears
-      // the outcome, and nothing but this will tell it.
+      // Cloudflare retries a failing alarm, so failing here is what buys the
+      // next attempt beyond the one `#settleAndReport` scheduled. The node
+      // this upload belongs to counts it as running until the server hears the
+      // outcome, and nothing but this will tell it.
       //
       // Named, because the retries are finite: after the last one this upload
       // has nobody left, and the message is what says which one it was.
@@ -196,9 +223,14 @@ export class UploadSession implements DurableObject {
     const outcome = await this.#settleAndReport();
     if (outcome === "gone") return new Response("Gone", { status: 410 });
     if (outcome === "not_accepted") {
-      // The alarm is still set, so this upload gets another attempt whether or
-      // not the browser makes one.
+      // `#settleAndReport` armed the next attempt, so this upload reaches the
+      // server whether or not the browser asks again.
       return new Response("Report not accepted", { status: 502 });
+    }
+    if ("missing" in outcome) {
+      // Not an outcome. The upload is still open and the parts that have not
+      // arrived still can, so nothing is dropped and the server hears nothing.
+      return new Response(outcome.missing, { status: 409 });
     }
     return outcomeResponse(outcome);
   }
@@ -212,7 +244,9 @@ export class UploadSession implements DurableObject {
    * again, and bytes already hashed are not read back a second time.
    * @returns The accepted outcome, or why there is not one.
    */
-  async #settleAndReport(): Promise<FinishProgress | "gone" | "not_accepted"> {
+  async #settleAndReport(): Promise<
+    FinishProgress | StillIncomplete | "gone" | "not_accepted"
+  > {
     const upload = await this.#state.storage.get<OpenUpload>("upload");
     if (upload === undefined) return "gone";
 
@@ -224,13 +258,20 @@ export class UploadSession implements DurableObject {
     const assembled = stored.settled
       ? stored
       : await this.#assemble(upload, stored);
+    if ("missing" in assembled) return assembled;
     const settled =
       assembled.abortedReason === undefined && assembled.sha256 === undefined
         ? await this.#hash(upload, assembled)
         : assembled;
 
     const answer = await this.#report(upload, settled);
-    if (answer === "unavailable") return "not_accepted";
+    if (answer === "unavailable") {
+      // The one clock this instance keeps. The outcome is decided and the
+      // bytes are stored; what is left is saying so, and the node counts this
+      // task as running until the server hears it.
+      await this.#state.storage.setAlarm(Date.now() + REPORT_RETRY_MS);
+      return "not_accepted";
+    }
 
     const done: FinishProgress = {
       ...settled,
@@ -242,43 +283,40 @@ export class UploadSession implements DurableObject {
     // still be asking for it, which is its transport's whole redelivery
     // budget. The crop path reads its entire result off that response. The
     // alarm that ends the window is also what lets this instance go.
-    await this.#state.storage.setAlarm(
-      Date.now() + answerRetentionMs(upload.ticket.alarmIdleSeconds),
-    );
+    await this.#state.storage.setAlarm(Date.now() + completeRetryBudgetMs());
     return done;
   }
 
   /**
-   * Assemble the object if every part arrived, otherwise drop what was written.
+   * Assemble the object, once every part has arrived.
    *
-   * Counting is enough because a non-final part is only accepted at exactly
+   * Counting is enough because a non-final part is only recorded at exactly
    * `partSize` and each part is recorded once under its own number, so the
    * count answers "is the file whole?" on its own.
+   *
+   * An upload still short of parts is said to be short, and left alone: the
+   * ones that have not arrived still can, and this instance judges nothing by
+   * how long that takes (design §6.3).
    * @param upload - What is open.
    * @param progress - How far finishing has got.
-   * @returns The progress after assembling, already persisted.
+   * @returns The progress after assembling, already persisted, or what is owed.
    */
   async #assemble(
     upload: OpenUpload,
     progress: FinishProgress,
-  ): Promise<FinishProgress> {
+  ): Promise<FinishProgress | StillIncomplete> {
     const parts = (await this.#state.storage.get<RecordedPart[]>("parts")) ?? [];
+
+    if (parts.length < upload.ticket.totalParts) {
+      return {
+        missing: `only ${parts.length} of ${upload.ticket.totalParts} parts have arrived`,
+      };
+    }
+
     const resumed = this.#env.BUCKET.resumeMultipartUpload(
       upload.ticket.storageKey,
       upload.uploadId,
     );
-
-    if (parts.length < upload.ticket.totalParts) {
-      await resumed.abort();
-      const aborted: FinishProgress = {
-        ...progress,
-        settled: true,
-        abortedReason: `only ${parts.length} of ${upload.ticket.totalParts} parts arrived`,
-      };
-      await this.#state.storage.put("finish", aborted);
-      return aborted;
-    }
-
     const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
     const object = await resumed.complete(ordered);
     // Recorded before the hash is taken. Reading the object back can fail on
@@ -397,23 +435,33 @@ export class UploadSession implements DurableObject {
   }
 
   /**
-   * Take one part: check it against the layout, write it, record its etag.
+   * Record one part the Worker wrote, once it fits the signed layout.
+   *
+   * The bytes went to R2 from the Worker, and what arrives here is the line
+   * that says so. The layout is this instance's to hold and therefore this
+   * instance's to judge: a part it refuses to record is a part `complete`
+   * never names, and R2 expires it with the rest of the upload.
    *
    * Only the last part may be short. Every earlier one must be exactly
    * `partSize`, which is what makes "have they all arrived?" a matter of
    * counting — and R2 refuses a non-final part under 5 MiB in any case.
    * @param partNumber - Which part this is, one-based.
-   * @param body - The bytes.
+   * @param written - What R2 gave the Worker back for it.
+   * @param written.etag - R2's tag for the stored part, or null when R2 would
+   *   not take it — which this instance is the one that can explain.
+   * @param written.sizeBytes - What the Worker sent, checked against the layout.
    * @returns A token for the next part, or why this one was refused.
    */
-  async #part(partNumber: number, body: ArrayBuffer): Promise<Response> {
+  async #part(
+    partNumber: number,
+    written: { etag: string | null; sizeBytes: number },
+  ): Promise<Response> {
     const upload = await this.#state.storage.get<OpenUpload>("upload");
     if (upload === undefined) return new Response("Gone", { status: 410 });
 
-    // Settled means R2 has assembled the object or dropped what was written.
-    // Either way there is no multipart upload left to write into, and saying
-    // so is the difference between a caller that can act on the answer and one
-    // that reads whatever R2 threw.
+    // Settled means R2 has assembled the object. There is no multipart upload
+    // left to write into, and saying so is the difference between a caller
+    // that can act on the answer and one that reads whatever R2 threw.
     const finish = await this.#state.storage.get<FinishProgress>("finish");
     if (finish?.settled === true) {
       return new Response("This upload has already finished", { status: 409 });
@@ -425,19 +473,20 @@ export class UploadSession implements DurableObject {
     }
     const isFinal = partNumber === totalParts;
     const fits = isFinal
-      ? body.byteLength <= partSize
-      : body.byteLength === partSize;
+      ? written.sizeBytes <= partSize
+      : written.sizeBytes === partSize;
     if (!fits) {
       return new Response("Part length does not match the signed layout", {
         status: 400,
       });
     }
 
-    const resumed = this.#env.BUCKET.resumeMultipartUpload(
-      upload.ticket.storageKey,
-      upload.uploadId,
-    );
-    const written = await resumed.uploadPart(partNumber, body);
+    if (written.etag === null) {
+      // Neither gone nor settled, so the layout holds and R2 still refused it.
+      // Nothing here explains that, and saying so is better than recording a
+      // part that never landed.
+      return new Response("R2 would not take this part", { status: 502 });
+    }
 
     const parts = (await this.#state.storage.get<RecordedPart[]>("parts")) ?? [];
     // Keyed on the part number rather than appended: a part the browser
@@ -447,12 +496,6 @@ export class UploadSession implements DurableObject {
       .filter((p) => p.partNumber !== partNumber)
       .concat({ partNumber, etag: written.etag });
     await this.#state.storage.put("parts", next);
-    // Push the deadline out. An upload that keeps moving is never cut off,
-    // however large the file; one that stops is judged dead this long after
-    // its last part.
-    await this.#state.storage.setAlarm(
-      Date.now() + upload.ticket.alarmIdleSeconds * 1000,
-    );
 
     return Response.json({ token: await this.#issueToken(upload) });
   }
@@ -515,10 +558,6 @@ export class UploadSession implements DurableObject {
     );
     const upload: OpenUpload = { ticket, uploadId: created.uploadId };
     await this.#state.storage.put("upload", upload);
-    // The clock starts now. A browser that never sends a part leaves an
-    // instance that would otherwise sit here holding a multipart upload
-    // forever, and R2 charges for the parts already written into one.
-    await this.#state.storage.setAlarm(Date.now() + ticket.alarmIdleSeconds * 1000);
     return upload;
   }
 }
