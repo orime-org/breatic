@@ -31,10 +31,10 @@ import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite
  * selected, and walking the whole registry would send it under a mode that
  * never asked for one.
  *
- * A slot with nothing picked contributes no key at all. An `audio: undefined`
- * riding along would read as a present-but-empty source to the server gate,
- * which tests `typeof value === 'string'` — so absent and blank have to stay
- * different things.
+ * A slot with nothing picked contributes no key at all, so the model's own
+ * declared `default: null` stays the value the payload carries — which is
+ * what the panel gate, the server's source gate and the mini-tool schema
+ * each refuse first.
  * @param slots - The slots the active mode collects.
  * @param slotUrls - What each slot currently holds.
  * @returns The source params, empty when nothing is picked.

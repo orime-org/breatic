@@ -329,8 +329,9 @@ test('an audio node with a produced asset can be picked into the talking-head dr
 
   // The clear button, not the thumbnail: a filled slot draws a thumbnail from
   // the pick's cover, and an audio node carries no poster — the toolbar covers
-  // the button with the audio icon instead (`video-slots.ts:148`). The clear
-  // button is what says the slot is holding something whatever the kind is.
+  // the button with the audio icon instead (the `storesCover` comment on
+  // `video-slots.ts`'s drivingAudio entry says why). The clear button is what
+  // says the slot is holding something whatever the kind is.
   await expect(
     page.getByTestId('generate-video-driving-audio-clear'),
   ).toBeVisible({ timeout: 10_000 });

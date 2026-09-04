@@ -12,12 +12,12 @@
  * no `audio` therefore submits `{text}` alone and clones nothing, with every
  * layer above reporting success.
  *
- * That is exactly what shipped in this branch's first commit, and nothing
- * turned red: the catalog tests read the catalog, the panel tests read the
- * panel, and the transport tests hand the transport its params directly —
- * none of them crosses the step that does the dropping. So this walks the
- * real chain, from the real config through validation into the request the
- * family builds.
+ * That is exactly what the model shipped with when it entered the catalog
+ * (`d35e8c56f`, `params: {}`), and nothing turned red: the catalog tests read
+ * the catalog, the panel tests read the panel, and the transport tests hand
+ * the transport its params directly — none of them crosses the step that does
+ * the dropping. So this walks the real chain, from the real config through
+ * validation into the request the family builds.
  */
 
 import { describe, it, expect, beforeAll } from "vitest";

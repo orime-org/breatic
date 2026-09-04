@@ -813,11 +813,12 @@ export function computeDeletedAssetEntries(
     if (typeof n.data?.styleImageUrl === 'string') {
       survivingUrls.add(n.data.styleImageUrl);
     }
-    // Every video-panel slot (#1896 onward) holds a copied URL on the same
-    // terms as the style slot. Read off the registry rather than listed here:
-    // the first two were added one PR at a time, and a slot left out of a
-    // hand-kept list reports an asset the video node is still generating from
-    // — silently, until someone deletes the node it was picked from (#1918).
+    // Every source slot on either generative panel (#1896 onward) holds a
+    // copied URL on the same terms as the style slot. Read off the registries
+    // rather than listed here: the first two were added one PR at a time, and
+    // a slot left out of a hand-kept list reports an asset the node is still
+    // generating from — silently, until someone deletes the node it was
+    // picked from (#1918).
     for (const url of slotUrls(n.data)) survivingUrls.add(url);
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
@@ -854,8 +855,8 @@ export function computeDeletedAssetEntries(
 /**
  * Whether an asset URL is still referenced by any node — content, cover,
  * style slot (#333, round-12), focus crop (#1782), or anything held in a
- * video-panel slot (#1896 onward, read off the registry rather than listed
- * here). The rail's crop ✕ reports the asset deleted only when this is
+ * source slot on either generative panel (#1896 onward, read off the
+ * registries rather than listed here). The rail's crop ✕ reports the asset deleted only when this is
  * false; call it AFTER the removal write so the removed instance is
  * naturally excluded (adversarial round-2).
  * @param url - The asset URL to check.

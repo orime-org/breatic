@@ -225,8 +225,9 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    // Every member of the union, so adding a sixth without deciding which
-    // half it belongs to turns this red rather than passing on a stale list.
+    // Every member of the union, kept by hand — a plain array literal accepts
+    // a short list, so a new refusal reaches this case only if whoever adds it
+    // writes it in. The compiler will not say so.
     const all: ExecuteRefusal[] = [
       'node-gone',
       'no-model',
@@ -234,6 +235,7 @@ describe('refusalToastKey — which refusal says something out loud', () => {
       'prompt-missing',
       'prompt-too-long',
       'voice-missing',
+      'ref-audio-missing',
     ];
     for (const refusal of all) {
       expect(refusalToastKey(refusal) != null).toBe(

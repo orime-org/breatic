@@ -5,12 +5,14 @@
  * The reference-audio slot, and the lookup that has to reach it (#1960 PR2).
  *
  * `slotForPurpose` used to close over `VIDEO_SLOTS` and return a `VideoSlot`,
- * so a `refAudio` pick got `undefined` back. Neither of its two callers checks
- * for that: `CanvasSpace` falls through to the reference branch, which wires an
- * EDGE instead of filling the slot, and the candidate dimming falls back to
- * `canConnect`, which for an audio node whitelists TEXT — the panel would light
- * up exactly the nodes the pick cannot take and dim the ones it wants. Both
- * failures compile.
+ * so a `refAudio` pick got `undefined` back. Its two callers in `CanvasSpace`
+ * read that as "this pick fills no slot" and carry on: the click handler falls
+ * through to the reference branch, which wires an EDGE instead of filling the
+ * slot, and the candidate dimming falls back to `canConnect`, which for an
+ * audio node whitelists TEXT — the panel would light up exactly the nodes the
+ * pick cannot take and dim the ones it wants. Both failures compile. (The
+ * video panel's two call sites test the result against `VIDEO_SLOTS` before
+ * using it, so they were never the exposed ones.)
  *
  * That is why the lookup is tested directly rather than only through the panel:
  * this is the one call whose wrong answer is silent everywhere downstream.
