@@ -125,8 +125,10 @@ function reason(what: string, next: NextMove): string {
 function refusalReason(query: string, status: number): string {
   const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
   // 408 travels with 429 because the transport already treats the two the same
-  // (`decide-retry.ts`): one that reaches here has survived every delivery the
-  // transport was willing to make.
+  // (`decide-retry.ts`), and a 5xx joins them because this call declares itself
+  // replay-safe. One that reaches here has survived every delivery the
+  // transport was willing to make, or named a wait past the transport's own
+  // ceiling and was handed back on the first.
   if (status >= 500 || status === 429 || status === 408) {
     return reason(
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
@@ -224,11 +226,15 @@ async function readWithin(res: Response, budgetMs: number): Promise<string> {
         text += decoder.decode(chunk, { stream: true });
       },
     }),
-    { signal: AbortSignal.timeout(budgetMs) },
+    // Truncated because the configured range is the transport's, which takes a
+    // fraction (`setTimeout` does), and `AbortSignal.timeout` answers
+    // ERR_OUT_OF_RANGE to one. Narrowing the config instead would make it
+    // stricter than the transport whose range it quotes.
+    { signal: AbortSignal.timeout(Math.trunc(budgetMs)) },
   );
   text += decoder.decode();
 
-  if (text === "") throw new TypeError("the response body was empty");
+  if (text.trim() === "") throw new TypeError("the response body was empty");
   return text;
 }
 
@@ -269,13 +275,13 @@ function renderSource(item: unknown, position: number): string | null {
   // Brave documents a snippet as page text or as serialised structured data,
   // so a non-string is within contract rather than a surprise.
   const texts = list.map((s) => (typeof s === "string" ? s : JSON.stringify(s)));
-  const written = address.length + name.length + texts.reduce((n, t) => n + t.length, 0);
+  const written = texts.reduce((n, t) => n + t.length, 0);
   if (written === 0) return null;
 
   return [
     `<source index="${String(position)}">`,
-    `url: ${onOneLine(address)}`,
-    `title: ${onOneLine(name)}`,
+    `url: ${onOneLine(keepInside(address))}`,
+    `title: ${onOneLine(keepInside(name))}`,
     "<text>",
     ...texts.map(keepInside),
     "</text>",
@@ -284,18 +290,22 @@ function renderSource(item: unknown, position: number): string | null {
 }
 
 /**
- * Keep a page-written value to the single line it is printed on.
+ * Keep a value to the single line it is printed on.
  *
- * The url and title are the only page-written strings outside the text region,
- * and each is printed as a line. A newline in one puts whatever follows it
- * where this tool's own attribution lives, in the same shape -- a page whose
- * title carries `\nurl: https://…` is then cited to the reader under the
- * address it chose.
- * @param text - Text that came from the page.
- * @returns The same text, on one line and unable to open or close a region.
+ * Everything printed outside the text region is a line: the query, and each
+ * source's url and title. A line terminator in one of them puts whatever
+ * follows where this tool's own attribution lives, in the same shape -- a page
+ * whose title carries `\nurl: https://…` would be cited to the reader under
+ * the address it chose.
+ *
+ * All four JavaScript calls line terminators, not the two ASCII ones: `^` and
+ * `$` under the `m` flag break after U+2028 and U+2029 as readily as after a
+ * newline, so a value carrying one is read as two lines.
+ * @param text - The value about to be printed.
+ * @returns The same text, on one line.
  */
 function onOneLine(text: string): string {
-  return keepInside(text).replace(/[\r\n]+/g, " ");
+  return text.replace(/[\r\n\u2028\u2029]+/g, " ");
 }
 
 /**
@@ -353,9 +363,13 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
     "that text over more sources; it does not get more of it.",
   inputSchema,
   execute: async (
-    { query, count },
+    { query: asked, count },
     { abortSignal }: { abortSignal?: AbortSignal },
   ): Promise<string> => {
+    // Normalised once, where it arrives, so no printing site downstream can
+    // meet a raw one: the query goes out in the request and comes back in six
+    // sentences, each of them a line the model reads.
+    const query = onOneLine(asked);
     // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
     // read via the injected config Proxy, not process.env directly.
     const apiKey = env.BRAVE_SEARCH_API_KEY;

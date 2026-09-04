@@ -95,9 +95,11 @@ memory_keep_chars: 500000
 # returns about three times the text of 2048 and costs 19ms more.
 web_search_max_tokens: 8192
 
-# How long ONE DELIVERY of a web_search request may take, in milliseconds.
+# How long ONE LEG of a web_search may take, in milliseconds.
 # Not the whole search: the shared HTTP transport may deliver a request up to
-# three times, and each delivery gets this figure.
+# three times and each delivery gets this figure, and the body read that
+# follows the last one gets it again. So the ceiling is four times this, plus
+# the transport's backoff between deliveries.
 web_search_timeout_ms: 10000
 
 # ── Thinking ──────────────────────────────────────────────
