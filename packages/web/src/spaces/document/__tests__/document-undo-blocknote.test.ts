@@ -26,14 +26,19 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { ySyncPluginKey } from 'y-prosemirror';
+import { AllSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   createDocumentUndoManager,
   documentUndoExtension,
 } from '@web/spaces/document/document-undo-blocknote';
+import {
+  clearDocument,
+  documentSelectAllExtension,
+} from '@web/spaces/document/document-select-all-guard';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -206,5 +211,95 @@ describe('A10 — the block that survives comes back unchanged', () => {
     expect(after).toContain('quoted="true"');
     expect(after).toContain('numbered="true"');
     expect(after).toContain('number="7"');
+  });
+});
+
+describe('undoing a clear', () => {
+  /**
+   * Opens an editor holding two paragraphs, with undo and the guard.
+   * @returns The editor and its undo manager.
+   */
+  function openWithTwoBlocks(): {
+    editor: ReturnType<typeof buildDocumentEditor>;
+    manager: Y.UndoManager;
+    } {
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
+    const manager = createDocumentUndoManager(doc);
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(doc),
+      extensions: [
+        documentUndoExtension(manager),
+        documentSelectAllExtension(null),
+      ],
+    } as never);
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'one' },
+      { type: 'paragraph', content: 'two' },
+    ] as never);
+    // Writing the two blocks and clearing them are one gesture apart in real
+    // time and would otherwise merge into a single undo step: Y.UndoManager
+    // groups by a capture timeout, which a test outruns.
+    manager.stopCapturing();
+    return { editor, manager };
+  }
+
+  /** The text of every block, in document order. */
+  function texts(editor: ReturnType<typeof buildDocumentEditor>): string[] {
+    const out: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'blockContainer') out.push(node.textContent);
+      return true;
+    });
+    return out;
+  }
+
+  it('brings the blocks back, and redo takes them away again', () => {
+    const { editor } = openWithTwoBlocks();
+
+    clearDocument(editor as never);
+    expect(texts(editor)).toEqual(['']);
+
+    editor.undo();
+    expect(texts(editor)).toEqual(['one', 'two']);
+
+    editor.redo();
+    expect(texts(editor)).toEqual(['']);
+  });
+
+  it('puts the whole-document selection back, which the guard leaves alone', () => {
+    // The guard normalises a selection the document cannot hold, and an
+    // `AllSelection` restored by undo looks like one until you notice where it
+    // came from: `document-select-all-guard.ts` skips undo transactions for
+    // exactly this. Reaching the clear the way a reader does — two presses of
+    // `Mod-a`, then the confirmed clear — is what puts an `AllSelection` on
+    // the stack to restore.
+    const { editor } = openWithTwoBlocks();
+    const view = editor.prosemirrorView!;
+    for (let press = 0; press < 2; press += 1) {
+      view.someProp('handleKeyDown', (handler) =>
+        handler(
+          view,
+          new KeyboardEvent('keydown', {
+            key: 'a',
+            ctrlKey: true,
+            bubbles: true,
+          }),
+        ),
+      );
+    }
+    expect(editor.prosemirrorState.selection).toBeInstanceOf(AllSelection);
+
+    clearDocument(editor as never);
+    editor.undo();
+
+    const { selection, doc } = editor.prosemirrorState;
+    expect(selection).toBeInstanceOf(AllSelection);
+    expect(selection.from).toBe(0);
+    expect(selection.to).toBe(doc.content.size);
   });
 });
