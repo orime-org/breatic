@@ -23,7 +23,7 @@
  */
 
 import { createExtension, getBlockInfoFromSelection } from '@blocknote/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 import {
@@ -123,6 +123,35 @@ function handleQuotedEnter(editor: ListEditor): boolean {
 }
 
 /**
+ * Enter with the whole document selected.
+ *
+ * What it gets is somewhere to write at the end, with the caret in it, and the
+ * text untouched — Enter is not a request to replace the document.
+ *
+ * Answered before anything else looks at the key because BlockNote's own
+ * `splitBlock` raises on this selection: `splitBlock.ts:55` hands the
+ * selection straight to `tr.split`, and a whole-document selection resolves
+ * outside every block, so `prosemirror-transform` reads `copy` off an
+ * undefined parent. That throw reaches the keydown handler.
+ * @param editor - The editor Enter was pressed in.
+ * @returns True, having handled the key.
+ */
+function handleWholeDocumentEnter(editor: ListEditor): boolean {
+  editor.transact((tr) => {
+    const paragraph = tr.doc.type.schema.nodes['paragraph'];
+    const container = tr.doc.type.schema.nodes['blockContainer'];
+    if (!paragraph || !container) {
+      return;
+    }
+    const at = tr.doc.content.size - 1;
+    tr.insert(at, container.create(null, paragraph.create()));
+    tr.setSelection(TextSelection.create(tr.doc, at + 2));
+    tr.scrollIntoView();
+  });
+  return true;
+}
+
+/**
  * The extension that binds Enter for the whole document.
  *
  * The three list types are handled here rather than in each block's own
@@ -133,6 +162,9 @@ export const documentEnterExtension = createExtension(() => ({
   key: 'document-enter',
   keyboardShortcuts: {
     Enter: ({ editor }: { editor: ListEditor }) => {
+      if (editor.prosemirrorState.selection instanceof AllSelection) {
+        return handleWholeDocumentEnter(editor);
+      }
       const type = editor.transact(
         (tr) => getBlockInfoFromSelection(tr).blockNoteType,
       );

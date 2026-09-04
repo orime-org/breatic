@@ -325,3 +325,90 @@ describe('a selection the document cannot hold is put right', () => {
     expect(selection.$from.parent.isTextblock).toBe(true);
   });
 });
+
+describe('the other keys that reach a whole-document selection', () => {
+  // These are the ones that rewrite the whole document without asking. The
+  // guard binds the delete chords at a priority above everything else, so a
+  // branch added there can reach these too — and nothing else would go red.
+
+  it('opens a block at the end when Enter lands on it', () => {
+    // Enter with everything selected is not a request to replace the
+    // document. What it gets is somewhere to write, at the end, with the
+    // caret in it — and the text untouched.
+    const editor = open(() => undefined);
+    selectAll(editor);
+
+    press(editor, 'Enter');
+
+    expect(editor.prosemirrorState.doc.textContent).toBe('alphabetagamma');
+    expect(blockCount(editor)).toBe(4);
+    const { selection } = editor.prosemirrorState;
+    expect(selection.empty).toBe(true);
+    expect(selection.$from.parent.textContent).toBe('');
+    expect(selection.$from.parent.isTextblock).toBe(true);
+  });
+
+  it('leaves it alone on the hard-break chords too', () => {
+    const editor = open(() => undefined);
+    ['Shift-Enter', 'Mod-Enter'].forEach((chord) => {
+      selectAll(editor);
+      press(editor, chord);
+    });
+
+    expect(blockCount(editor)).toBe(3);
+    expect(editor.prosemirrorState.doc.textContent).toBe('alphabetagamma');
+  });
+
+  it('still inserts a break inside one block', () => {
+    // The reverse of the case above, so it cannot pass by the chord being
+    // swallowed everywhere.
+    const editor = open(() => undefined);
+    caretInFirst(editor);
+
+    press(editor, 'Shift-Enter');
+
+    expect(
+      editor.prosemirrorState.doc.toString().includes('hardBreak'),
+    ).toBe(true);
+  });
+});
+
+describe('what a selection inside the document still answers', () => {
+  it('asks nothing when a bare deletion lands on one block', () => {
+    let asked = 0;
+    const editor = open(() => {
+      asked += 1;
+    });
+    caretInFirst(editor);
+
+    beforeInput(editor, 'deleteContentBackward');
+    beforeInput(editor, 'deleteContentForward');
+
+    expect(asked).toBe(0);
+  });
+
+  it('asks nothing on a forward delete chord inside one block', () => {
+    let asked = 0;
+    const editor = open(() => {
+      asked += 1;
+    });
+    caretInFirst(editor);
+
+    press(editor, 'Delete');
+
+    expect(asked).toBe(0);
+  });
+
+  it('lets a drag-and-drop deletion through', () => {
+    // Moving text by dragging it deletes it from where it was. That deletion
+    // states its own intent, the same way a cut does.
+    let asked = 0;
+    const editor = open(() => {
+      asked += 1;
+    });
+    selectAll(editor);
+
+    expect(beforeInput(editor, 'deleteByDrag')).toBe(false);
+    expect(asked).toBe(0);
+  });
+});
