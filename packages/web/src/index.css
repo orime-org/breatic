@@ -866,6 +866,62 @@ body {
   margin-top: 0.3em;
 }
 
+/* A QUOTE IS A PROP ON EACH BLOCK, not a container around them. BlockNote
+   renders that prop as `data-quoted` on the block's own content element, and
+   `document-decorations.ts` marks the first and the last block of each run
+   with `data-quoted-first` / `data-quoted-last` — which is the part no
+   per-block attribute can say, since a run's outer edges belong to the run.
+
+   The seven declarations the container below carries land in three places:
+
+   | What | Where it goes now |
+   |---|---|
+   | `flow-root`, inline padding, the rule, muted text | every quoted block |
+   | the run's outer margins | its first and last block |
+   | the two zeroed inner margins | the same two blocks |
+
+   THE RULE IS DRAWN PER BLOCK, so what sits between two of them decides
+   whether a run reads as one quote or as several. `flow-root` is what makes
+   it one: it closes the block direction, so a block's inner margins are
+   contained by its own box rather than collapsing out of it, and the border
+   is drawn down the whole of that box. The space between two quoted blocks is
+   then inside the rule rather than a gap across it.
+
+   The 2px is the value this quote already shipped with; it is not a new
+   heavier rule. (`one-px-border` reads Tailwind classes, so this file is
+   outside it either way — the mandate is what applies here, and keeping a
+   delivered value is not the case it speaks to.)
+
+   Everything below this block is the container version, still reached by the
+   chat markdown renderer and the two editors that have not migrated. */
+.doc-body-editor .ProseMirror [data-quoted='true'] {
+  display: flow-root;
+  padding-inline-start: 1em;
+  border-inline-start: 2px solid var(--color-border);
+  color: var(--color-muted-foreground);
+}
+
+/* The run's own outer margins, carried by the blocks at its ends. */
+.doc-body-editor .ProseMirror [data-quoted-first] {
+  margin-top: 1.1em;
+}
+
+.doc-body-editor .ProseMirror [data-quoted-last] {
+  margin-bottom: 1.1em;
+}
+
+/* And the inner margins those two give way to, so the text meets the run's
+   top and bottom edges. `flow-root` above is what makes these reachable at
+   all: without it the child's margin would have collapsed out and become the
+   run's own, and zeroing it here would move the whole quote instead. */
+.doc-body-editor .ProseMirror [data-quoted-first] > :first-child {
+  margin-top: 0;
+}
+
+.doc-body-editor .ProseMirror [data-quoted-last] > :last-child {
+  margin-bottom: 0;
+}
+
 /* A quote is the one block here that holds other blocks, so it is the one that
    has to CONTAIN their margins. Its own decoration is all inline-direction —
    a left border and left padding — which leaves the block direction open, and
