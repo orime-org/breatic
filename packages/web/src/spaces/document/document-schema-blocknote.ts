@@ -27,8 +27,12 @@ import {
   defaultInlineContentSpecs,
   defaultStyleSpecs,
 } from '@blocknote/core';
-import { createCodeBlockSpec } from '@blocknote/core/blocks';
+import {
+  createCodeBlockSpec,
+  createHeadingBlockSpec,
+} from '@blocknote/core/blocks';
 
+import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
 import {
   unsupportedBlockSpec,
@@ -103,7 +107,16 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
   const lists = buildListItemSpecs();
   const blockSpecs = {
     paragraph: withProps(enabled.paragraph, QUOTED_PROP),
-    heading: withProps(enabled.heading, { ...QUOTED_PROP, ...NUMBERED_PROPS }),
+    // Three levels, not the six BlockNote ships: `h3` is already 17px against
+    // a 15px paragraph and a fourth has nowhere to sit. `levels` is the one
+    // place that says so — it feeds the `level` prop's permitted values, the
+    // markdown input rules and the `Mod-Alt-N` shortcuts alike, so a level
+    // left out cannot be reached by typing `#### `, by a shortcut, or by a
+    // block written straight into the document.
+    heading: withProps(createHeadingBlockSpec({ levels: BODY_HEADING_LEVELS }), {
+      ...QUOTED_PROP,
+      ...NUMBERED_PROPS,
+    }),
     // Tab moves a block one level in, whatever kind of block it is (§3.3).
     // The code block's own Tab types two spaces instead, which is right for a
     // code editor and wrong for this Space's one rule.
