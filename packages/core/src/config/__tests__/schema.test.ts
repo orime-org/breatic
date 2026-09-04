@@ -293,3 +293,24 @@ describe("agent config — a title longer than the column can hold", () => {
     expect(atTheEdge.success).toBe(true);
   });
 });
+
+describe("agent config — how much page text one search asks for", () => {
+  // Both ends belong to the service: it refuses anything under 1024, and names
+  // 32768 as its ceiling in the error it answers above that. Stated here so a
+  // figure outside them fails when the config loads. Left to the wire, every
+  // search on that deployment comes back 422 instead, which the tool then has
+  // to explain to the model as a configuration fault it cannot see.
+  it.each([
+    [1023, false],
+    [1024, true],
+    [8192, true],
+    [32768, true],
+    [32769, false],
+    [8192.5, false],
+  ])("web_search_max_tokens = %d is accepted: %s", async (value, accepted) => {
+    const { agentConfigSchemaForTests } = await import("@core/config/loader.js");
+    expect(
+      agentConfigSchemaForTests.safeParse({ web_search_max_tokens: value }).success,
+    ).toBe(accepted);
+  });
+});

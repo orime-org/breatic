@@ -34,11 +34,17 @@ vi.mock("@breatic/shared", async (importOriginal) => {
 });
 
 let apiKey = "test-key";
+/** What the deployment has `web_search_max_tokens` set to, per test. */
+let maxTokens = 8192;
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
   return {
     ...actual,
+    getAgentConfig: () => ({
+      ...actual.getAgentConfig(),
+      web_search_max_tokens: maxTokens,
+    }),
     env: new Proxy(
       {},
       {
@@ -126,6 +132,7 @@ const braveOk = (): Response => grounding([["D"]]);
 describe("web_search hands the request to the shared transport", () => {
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
     httpRequestMock.mockImplementation(async () => braveOk());
   });
@@ -168,6 +175,7 @@ describe("what a thrown tool failure carries", () => {
   // the one branch it was written to pin went unrun while it passed.
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
     httpRequestMock.mockImplementation(async () => braveOk());
   });
@@ -193,6 +201,7 @@ describe("what a thrown tool failure carries", () => {
 describe("web_search says a failure is a failure", () => {
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
     httpRequestMock.mockImplementation(async () => braveOk());
   });
@@ -495,6 +504,7 @@ describe("web_search says a failure is a failure", () => {
 describe("web_search asks for page content, not for snippets of a listing", () => {
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
     httpRequestMock.mockImplementation(async () => grounding([["body text"]]));
   });
@@ -530,12 +540,13 @@ describe("web_search asks for page content, not for snippets of a listing", () =
     expect(new URL(url).searchParams.get("maximum_number_of_urls")).toBe("3");
   });
 
-  it("asks for the configured amount of content", async () => {
+  it("asks for the amount of content the deployment configured", async () => {
+    maxTokens = 2048;
+
     await run({ query: "cyberpunk palette" });
 
     const [url] = httpRequestMock.mock.calls[0] as [string];
-    // The figure is configuration; that one arrives at all is the contract.
-    expect(new URL(url).searchParams.get("maximum_number_of_tokens")).toMatch(/^\d+$/);
+    expect(new URL(url).searchParams.get("maximum_number_of_tokens")).toBe("2048");
   });
 
   it("refuses a query with nothing in it before spending a delivery", async () => {
@@ -563,6 +574,7 @@ describe("web_search asks for page content, not for snippets of a listing", () =
 describe("web_search says whose fault a refusal is", () => {
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
   });
 
@@ -594,6 +606,7 @@ describe("web_search says whose fault a refusal is", () => {
 describe("web_search reports a search that came back empty", () => {
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
   });
 
@@ -637,6 +650,7 @@ describe("web_search reports a search that came back empty", () => {
 describe("web_search bounds what one search can inject", () => {
   beforeEach(() => {
     apiKey = "test-key";
+    maxTokens = 8192;
     httpRequestMock.mockReset();
   });
 
@@ -656,6 +670,25 @@ describe("web_search bounds what one search can inject", () => {
     // Every source still present kept all of its text: as many whole copies of
     // the body as there are surviving sources, so none was cut mid-snippet.
     expect(out.split(fat).length - 1).toBe(kept);
+  });
+
+  it("raises its ceiling when the deployment raises the budget", async () => {
+    // The ceiling is four characters per configured token, so a deployment
+    // that asks for more text gets more of it through. A fixed ceiling would
+    // cut into what operations themselves asked for -- measured, a legal
+    // answer at 16384 tokens is 60048 characters, over the 50000 an earlier
+    // draft of this had proposed as a constant.
+    const fat = "z".repeat(20_000);
+    const sources: string[][] = Array.from({ length: 8 }, () => [fat]);
+    httpRequestMock.mockImplementation(async () => grounding(sources));
+
+    maxTokens = 8192;
+    const tight = await run({ query: "cyberpunk palette" });
+    maxTokens = 32768;
+    const roomy = await run({ query: "cyberpunk palette" });
+
+    const kept = (out: string): number => out.split("https://s").length - 1;
+    expect(kept(roomy)).toBeGreaterThan(kept(tight));
   });
 
   it("says so when it had to drop sources", async () => {
