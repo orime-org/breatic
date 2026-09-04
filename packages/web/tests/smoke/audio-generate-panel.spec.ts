@@ -359,7 +359,7 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   await seedNode(page, nodeId, 'audio', undefined, -50);
   await openGenerate(page, nodeId);
 
-  // Voiceover first: the picker is there and the slot is not.
+  // Text to speech first: the picker is there and the slot is not.
   await expect(page.getByTestId('generate-voice-trigger')).toBeVisible();
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
 
@@ -400,8 +400,8 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
     timeout: 10_000,
   });
 
-  // The pick is a value ON THE NODE, so switching back to voiceover and
-  // returning finds it still there — and the voiceover pass in between shows
+  // The pick is a value ON THE NODE, so switching back to text to speech and
+  // returning finds it still there — and the text-to-speech pass in between shows
   // the picker again rather than a slot holding it.
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-tts').click();

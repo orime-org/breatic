@@ -42,7 +42,7 @@ function ttsModel(name: string, mode: string): ModelEntry {
 }
 
 describe('AUDIO_MODE_OPTIONS (#1960)', () => {
-  it('offers voiceover and voice cloning, the two modes served so far', () => {
+  it('offers text to speech and voice cloning, the two modes served so far', () => {
     expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual(['tts', 'voice_clone']);
   });
 
@@ -58,10 +58,10 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
   });
 
   it('drops cloning when no model in the catalog serves it', () => {
-    // A deployment whose qwen3 provider has no key serves voiceover alone,
+    // A deployment whose qwen3 provider has no key serves text to speech alone,
     // and the picker must not offer a mode that cannot run.
-    const voiceoverOnly = [ttsModel('elevenlabs-v3', 'tts')];
-    expect(filterAvailableModes(AUDIO_MODE_OPTIONS, voiceoverOnly).map((o) => o.value)).toEqual([
+    const ttsOnly = [ttsModel('elevenlabs-v3', 'tts')];
+    expect(filterAvailableModes(AUDIO_MODE_OPTIONS, ttsOnly).map((o) => o.value)).toEqual([
       'tts',
     ]);
   });

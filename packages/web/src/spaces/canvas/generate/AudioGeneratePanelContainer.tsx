@@ -146,7 +146,7 @@ function AudioGeneratePanelBody({
   // What the picker offers has to be what this mode can run. The union of both
   // buckets is the right input for the availability gate above and for the view
   // model's own narrowing; handing it to the picker lists sound-effect, music
-  // and vocal-remover models under voiceover, where selecting one writes a
+  // and vocal-remover models under text to speech, where selecting one writes a
   // model the next render resolves straight back.
   const modeModels = React.useMemo(
     () => filterModelsByMode(models, mode),

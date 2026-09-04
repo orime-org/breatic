@@ -107,7 +107,7 @@ describe('buildAudioPanelViewModel — which model the panel is on', () => {
 
   it('offers nothing from a mode this panel is not on', () => {
     // This panel reads two catalog buckets, and the audio one holds sound
-    // effect and music models whose mode is not voiceover. Picking one here
+    // effect and music models whose mode is not text to speech. Picking one here
     // would generate something else entirely.
     const SFX = ttsModel('a-sfx-model', { modality: 'audio', mode: 'sfx' });
     const vm = buildAudioPanelViewModel({

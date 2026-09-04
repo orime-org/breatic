@@ -51,7 +51,7 @@ interface AudioGenerateToolbarProps {
  * selected. Focus crops a region of an IMAGE and Style holds a picked image;
  * both would collect something this panel can never send.
  *
- * The slots come from the mode, so voiceover shows none and voice cloning shows
+ * The slots come from the mode, so text to speech shows none and voice cloning shows
  * the recording to clone (#1960 PR2). Which modes collect what is not decided
  * here: the container reads it off the catalog's `sourcesByMode`, the same
  * field the server's own gate reads before enqueueing.
