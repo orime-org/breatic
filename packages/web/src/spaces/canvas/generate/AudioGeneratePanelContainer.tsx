@@ -36,6 +36,8 @@ import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
@@ -64,6 +66,7 @@ import {
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
+import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
@@ -75,6 +78,12 @@ import { useCanvasStore } from '@web/stores';
 
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */
 const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
+
+/** No slots — shared so every "this mode collects nothing" answer is one array. */
+const NO_SLOTS: readonly AudioSlot[] = [];
+
+/** The one slot voice cloning collects, likewise shared for a stable identity. */
+const REF_AUDIO_ONLY: readonly AudioSlot[] = ['refAudio'];
 
 interface AudioGeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -108,6 +117,7 @@ function AudioGeneratePanelBody({
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const endPick = useCanvasStore((s) => s.endPick);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
+  const startRefAudioPick = useCanvasStore((s) => s.startRefAudioPick);
   const referencePicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession.purpose === 'reference',
   );
@@ -182,6 +192,61 @@ function AudioGeneratePanelBody({
     () => buildAudioPanelViewModel({ nodeId, nodes, models, mode }),
     [nodeId, nodes, models, mode],
   );
+
+  // The slots this mode collects. One entry or none, from the same catalog
+  // field the server's own gate reads before enqueueing — so the control the
+  // user sees and the condition the backend enforces come from one rule.
+  const slots = React.useMemo(
+    () => (vm.refAudioRequired ? REF_AUDIO_ONLY : NO_SLOTS),
+    [vm.refAudioRequired],
+  );
+  /** The slot whose pick is running on this node, if any. */
+  const activeSlot = useCanvasStore((s) =>
+    s.pickSession?.nodeId === nodeId &&
+    s.pickSession.purpose === AUDIO_SLOTS.refAudio.purpose
+      ? ('refAudio' as AudioSlot)
+      : undefined,
+  );
+  const onPickSlot = React.useCallback(
+    (_slot: AudioSlot) => {
+      const session = useCanvasStore.getState().pickSession;
+      if (
+        session?.nodeId === nodeId &&
+        session.purpose === AUDIO_SLOTS.refAudio.purpose
+      ) {
+        endPick();
+      } else {
+        startRefAudioPick(nodeId);
+      }
+    },
+    [startRefAudioPick, endPick, nodeId],
+  );
+  // A slot's ✕: clears the node's pick-time copy, and deliberately leaves a
+  // running pick running — the ✕ renders whenever the slot holds something,
+  // pick or no pick, so that a stale copy is always removable
+  // (`generate-tools.tsx`). Clearing mid-pick lands on empty with the canvas
+  // still offering candidates, which is the state the user asked for.
+  const onClearSlot = React.useCallback(
+    (_slot: AudioSlot) =>
+      clearSlot(projectId, spaceId, nodeId, AUDIO_SLOTS.refAudio),
+    [projectId, spaceId, nodeId],
+  );
+  // A running slot pick outlives the control that started it when the mode
+  // changes (locally, or via a collaborator's setNodeMode): the slot stops
+  // rendering, so the pick loses its control — Exit on the banner would be the
+  // only way out, while the canvas kept dimming candidates for a slot that is
+  // gone.
+  const collectsRefAudio = vm.refAudioRequired;
+  React.useEffect(() => {
+    if (collectsRefAudio) return;
+    const session = useCanvasStore.getState().pickSession;
+    if (
+      session?.nodeId === nodeId &&
+      session.purpose === AUDIO_SLOTS.refAudio.purpose
+    ) {
+      endPick();
+    }
+  }, [collectsRefAudio, nodeId, endPick]);
 
   // Both rebuild with the view model, which rebuilds on every canvas mutation
   // — every frame of any node drag — and both flow into React.memo components
@@ -341,6 +406,8 @@ function AudioGeneratePanelBody({
       maxInputChars,
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
+      refAudioRequired: fresh.refAudioRequired,
+      refAudioChosen: fresh.slotUrls.refAudio !== undefined,
     });
     if (refusal != null) {
       const key = refusalToastKey(refusal);
@@ -363,6 +430,9 @@ function AudioGeneratePanelBody({
         model: fresh.modelEntry,
         params: fresh.params,
         promptText: freshPrompt,
+        // Read off the same fresh view model the gate judged, so the payload
+        // can only ever carry the pick that passed it.
+        slotUrls: fresh.slotUrls,
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
@@ -448,11 +518,18 @@ function AudioGeneratePanelBody({
       modelTakesPrompt={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}
+      voiceRequired={vm.voiceRequired}
       voiceList={voices.state}
       voiceSelectedId={vm.voiceSelectedId}
       voiceSelectedName={selectedVoice?.name ?? null}
       references={references}
       referencePicking={referencePicking}
+      slots={slots}
+      slotUrls={vm.slotUrls}
+      slotThumbnails={vm.slotThumbnails}
+      activeSlot={activeSlot}
+      onPickSlot={onPickSlot}
+      onClearSlot={onClearSlot}
       params={params}
       executeRefusal={evaluateExecute({
         promptText,
@@ -463,6 +540,8 @@ function AudioGeneratePanelBody({
         maxInputChars: vm.modelEntry?.max_input_chars,
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
+        refAudioRequired: vm.refAudioRequired,
+        refAudioChosen: vm.slotUrls.refAudio !== undefined,
       })}
       promptSlot={promptSlot}
       onToggleMode={onToggleMode}

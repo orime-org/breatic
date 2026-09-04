@@ -19,7 +19,15 @@ function setup(
 ): ReturnType<typeof render> {
   return render(
     <TooltipProvider delayDuration={100}>
-      <AudioGenerateToolbar onReference={() => {}} {...overrides} />
+      <AudioGenerateToolbar
+        onReference={() => {}}
+        slots={[]}
+        slotUrls={{}}
+        slotThumbnails={{}}
+        onPickSlot={() => {}}
+        onClearSlot={() => {}}
+        {...overrides}
+      />
     </TooltipProvider>,
   );
 }

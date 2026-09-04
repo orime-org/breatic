@@ -19,10 +19,8 @@
 import type { ModelEntry, TaskCreateInput } from '@breatic/shared';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
-
-/** One URL per audio slot the node holds a pick in. */
-export type AudioSlotUrls = Partial<Record<keyof typeof AUDIO_SLOTS, string>>;
 
 /**
  * The picked source assets, under the param names their vendors read.
@@ -37,7 +35,7 @@ export type AudioSlotUrls = Partial<Record<keyof typeof AUDIO_SLOTS, string>>;
 function sourceParams(slotUrls: AudioSlotUrls): Record<string, string> {
   const params: Record<string, string> = {};
   for (const [slot, spec] of Object.entries(AUDIO_SLOTS)) {
-    const url = slotUrls[slot as keyof typeof AUDIO_SLOTS];
+    const url = slotUrls[slot as AudioSlot];
     if (url) params[spec.param] = url;
   }
   return params;

@@ -43,3 +43,11 @@ export const AUDIO_SLOTS = {
     errorKey: 'canvas.generatePanel.errorNoRefAudio',
   },
 } as const satisfies Record<AudioSlot, SlotSpec>;
+
+/**
+ * One URL per slot. Absent means this map has nothing for that slot — which
+ * does NOT by itself mean the slot is empty: the panel builds two of these,
+ * one for the picked assets and one for the pictures to show, and a filled
+ * slot whose asset an `<img>` cannot paint is absent from the second.
+ */
+export type AudioSlotUrls = Partial<Record<AudioSlot, string>>;

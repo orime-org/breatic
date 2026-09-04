@@ -65,6 +65,11 @@ export type HistoryCommand = 'undo' | 'redo';
  *     same one-field shape as `drivingVideo` for the same reason, though an
  *     audio node has no poster to copy, so the toolbar keeps showing the
  *     slot's icon.
+ *   - `refAudio` — the same, into `refAudio` (#1960 PR2), also from an AUDIO
+ *     node: the voice a cloning model speaks the new lines in. Its own slot
+ *     rather than `drivingAudio`'s, though both travel as `audio`, because
+ *     the two are picked on different panels for different jobs and a pick
+ *     survives a mode switch.
  */
 export type PickPurpose =
   | 'reference'
@@ -232,6 +237,8 @@ interface CanvasState {
   startDrivingVideoPick: (nodeId: string) => void;
   /** Enter the driving-audio pick for a video node (#1935). */
   startDrivingAudioPick: (nodeId: string) => void;
+  /** Enter the reference-audio pick for an audio node (#1960 PR2). */
+  startRefAudioPick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -446,6 +453,10 @@ export const useCanvasStore = create<CanvasState>()(
     startDrivingAudioPick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'drivingAudio' };
+      }),
+    startRefAudioPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'refAudio' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

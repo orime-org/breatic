@@ -131,6 +131,62 @@ export function readSlotPick(
   return cover ? { url, thumbnail: cover } : { url };
 }
 
+/**
+ * Reads every slot's picked URL off a node.
+ *
+ * Takes the registry rather than closing over one, because both panels ask
+ * this same question of their own slots and two copies of the loop would be
+ * two places to remember what a stored pick looks like.
+ * @param registry - The panel's slot registry.
+ * @param content - The node's content view, if it has one.
+ * @returns The URLs that are really there, by slot.
+ */
+export function readSlotUrls<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  content: unknown,
+): Partial<Record<K, string>> {
+  const urls: Partial<Record<K, string>> = {};
+  for (const slot of Object.keys(registry) as K[]) {
+    // A slot's field is a key on a CRDT map, so it is read as one. That is
+    // the premise `readSlotPick` is built on: whatever the projected type
+    // says, the value came from collaborative data and is checked there.
+    const pick = readSlotPick(
+      registry[slot],
+      (content as Record<string, unknown> | undefined)?.[registry[slot].field],
+    );
+    if (pick) urls[slot] = pick.url;
+  }
+  return urls;
+}
+
+/**
+ * Reads what each slot should SHOW for its pick.
+ *
+ * The same URL as the pick for a slot holding an image, and the copied poster
+ * for one holding something an `<img>` cannot paint. A slot whose poster is
+ * missing is absent from this map rather than falling back to the asset:
+ * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
+ * even a broken-image marker. Absent here does not mean the slot looks empty —
+ * the toolbar covers it with the asset node's icon instead (#1946).
+ * @param registry - The panel's slot registry.
+ * @param content - The node's content view, if it has one.
+ * @returns The URLs to display, by slot.
+ */
+export function readSlotThumbnails<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  content: unknown,
+): Partial<Record<K, string>> {
+  const thumbnails: Partial<Record<K, string>> = {};
+  for (const slot of Object.keys(registry) as K[]) {
+    const pick = readSlotPick(
+      registry[slot],
+      (content as Record<string, unknown> | undefined)?.[registry[slot].field],
+    );
+    if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
+  }
+  return thumbnails;
+}
+
 /** Every registry a pick can fill a slot in. */
 const REGISTRIES: readonly SlotRegistry[] = [VIDEO_SLOTS, AUDIO_SLOTS];
 

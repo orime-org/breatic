@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Filling and clearing a video slot — the only place that knows which node
- * fields one slot owns.
+ * Filling and clearing a slot — the only place that knows which node fields
+ * one slot owns.
  *
  * A slot owns exactly one node field, and the whole pick lives inside it: a
  * slot taking something an `<img>` cannot paint stores `{url, cover}` rather
@@ -15,7 +15,7 @@
  * including the toolbar and the payload builder, while this reaches the
  * document. Kept apart from `slot-pick` too — that answers "can this node fill
  * the slot", which the image panel's style slot asks as well, and this writes
- * fields only the video registry names.
+ * the field a slot registry names.
  */
 
 import { setNodeSlotValue } from '@web/data/yjs/canvas-space';

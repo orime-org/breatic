@@ -34,19 +34,16 @@ import {
   modeTakesReferences,
   slotsForMode,
 } from '@web/spaces/canvas/generate/video-mode-options';
-import { readSlotPick } from '@web/spaces/canvas/generate/slots';
 import {
-  VIDEO_SLOTS,
-} from '@web/spaces/canvas/generate/video-slots';
+  readSlotThumbnails,
+  readSlotUrls,
+} from '@web/spaces/canvas/generate/slots';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
-  VideoSlotSpec,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-import {
-  asContentView,
-  type ContentNodeView,
-} from '@web/spaces/canvas/types/node-view';
+import { asContentView } from '@web/spaces/canvas/types/node-view';
 
 /**
  * The generation modes the video panel offers — the six the user decided
@@ -196,51 +193,6 @@ function resolveVideoMode(
 const NO_AVAILABLE_MODE_FALLBACK: VideoGenMode = 't2v';
 
 /**
- * Reads every slot's picked URL off the node.
- * @param content - The node's content view, if it has one.
- * @returns The URLs that are really there, by slot.
- */
-function readSlotUrls(content: ContentNodeView | undefined): VideoSlotUrls {
-  const urls: VideoSlotUrls = {};
-  for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-    const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    // A slot's field is a key on a CRDT map, so it is read as one. That is
-    // the premise `readSlotPick` is built on: whatever the projected type
-    // says, the value came from collaborative data and is checked there.
-    const pick = readSlotPick(spec, (content as Record<string, unknown> | undefined)?.[spec.field]);
-    if (pick) urls[slot] = pick.url;
-  }
-  return urls;
-}
-
-/**
- * Reads what each slot should SHOW for its pick.
- *
- * The same URL as the pick for a slot holding an image, and the copied poster
- * for one holding something an `<img>` cannot paint. A slot whose poster is
- * missing is absent from this map rather than falling back to the asset:
- * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
- * even a broken-image marker. Absent here does not mean the slot looks empty —
- * the toolbar covers it with the asset node's icon instead (#1946).
- * @param content - The node's content view, if it has one.
- * @returns The URLs to display, by slot.
- */
-function readSlotThumbnails(
-  content: ContentNodeView | undefined,
-): VideoSlotUrls {
-  const thumbnails: VideoSlotUrls = {};
-  for (const slot of Object.keys(VIDEO_SLOTS) as VideoSlot[]) {
-    const spec: VideoSlotSpec = VIDEO_SLOTS[slot];
-    // A slot's field is a key on a CRDT map, so it is read as one. That is
-    // the premise `readSlotPick` is built on: whatever the projected type
-    // says, the value came from collaborative data and is checked there.
-    const pick = readSlotPick(spec, (content as Record<string, unknown> | undefined)?.[spec.field]);
-    if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
-  }
-  return thumbnails;
-}
-
-/**
  * The mode the panel shows for one node, read off its live view.
  *
  * The panel reads this rather than storing a mode of its own: the switch is
@@ -363,8 +315,8 @@ export function buildVideoPanelViewModel(input: {
     nodeStatus: content?.status,
     mode,
     slots: slotsForMode(mode),
-    slotUrls: readSlotUrls(content),
-    slotThumbnails: readSlotThumbnails(content),
+    slotUrls: readSlotUrls(VIDEO_SLOTS, content),
+    slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,
     // Yjs data, untrusted — sanitized through the one shared reader so this
     // panel, the image panel and the pool-cap count all agree on what counts
