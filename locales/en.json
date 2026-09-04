@@ -198,7 +198,6 @@
       "failure": {
         "upstream": "Execution error",
         "unreachable": "Execution error",
-        "blocked": "Execution error",
         "generic": "Execution error"
       }
     },

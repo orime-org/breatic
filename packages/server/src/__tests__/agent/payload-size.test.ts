@@ -73,7 +73,7 @@ describe("the payload the budget is measured against", () => {
     });
     const withTools = measurePayload({
       instructions: "system",
-      tools: { web_fetch: sizedTool("fetches a page", 8) },
+      tools: { web_search: sizedTool("fetches a page", 8) },
       messages: [{ role: "user", content: "hello" }],
     });
 
@@ -83,12 +83,12 @@ describe("the payload the budget is measured against", () => {
   it("grows by exactly what a longer tool description adds", () => {
     const base = measurePayload({
       instructions: "",
-      tools: { web_fetch: sizedTool("fetches") },
+      tools: { web_search: sizedTool("fetches") },
       messages: EMPTY,
     });
     const longer = measurePayload({
       instructions: "",
-      tools: { web_fetch: sizedTool(`fetches${"z".repeat(300)}`) },
+      tools: { web_search: sizedTool(`fetches${"z".repeat(300)}`) },
       messages: EMPTY,
     });
 
@@ -100,12 +100,12 @@ describe("the payload the budget is measured against", () => {
     // that fails when the schema is left out of a tool's measurement.
     const narrow = measurePayload({
       instructions: "",
-      tools: { web_fetch: sizedTool("fetches a page", 1) },
+      tools: { web_search: sizedTool("fetches a page", 1) },
       messages: EMPTY,
     });
     const wide = measurePayload({
       instructions: "",
-      tools: { web_fetch: sizedTool("fetches a page", 12) },
+      tools: { web_search: sizedTool("fetches a page", 12) },
       messages: EMPTY,
     });
 
@@ -144,7 +144,7 @@ describe("the payload the budget is measured against", () => {
             {
               type: "tool-call",
               toolCallId: "c1",
-              toolName: "web_fetch",
+              toolName: "web_search",
               input: { url: "https://example.test/a-fairly-long-address" },
             },
           ],
@@ -166,7 +166,7 @@ describe("the payload the budget is measured against", () => {
             {
               type: "tool-result",
               toolCallId: "c1",
-              toolName: "web_fetch",
+              toolName: "web_search",
               output: { type: "text", value: "short" },
             },
           ],
@@ -183,7 +183,7 @@ describe("the payload the budget is measured against", () => {
             {
               type: "tool-result",
               toolCallId: "c1",
-              toolName: "web_fetch",
+              toolName: "web_search",
               output: { type: "text", value: "w".repeat(5000) },
             },
           ],

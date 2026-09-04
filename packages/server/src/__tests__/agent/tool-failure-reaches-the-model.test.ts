@@ -65,7 +65,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         // both halves of the reason. What it says is the real tools' business
         // and is checked where they live; what matters here is where each
         // half ends up.
-        web_fetch: tool({
+        web_search: tool({
           description: "fetch a page",
           inputSchema: z.object({ url: z.string() }),
           execute: async (): Promise<string> => {
@@ -121,7 +121,7 @@ const REFUSED = "https://public.example/page";
 const asksForTheTool: ModelStreamPart = {
   type: "tool-call",
   toolCallId: "tc-1",
-  toolName: "web_fetch",
+  toolName: "web_search",
   input: JSON.stringify({ url: REFUSED }),
 };
 

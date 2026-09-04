@@ -62,7 +62,7 @@ describe("what a finished turn writes down", () => {
     // written: a reader should never have to pair two rows by id.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-1",
         state: "output-available",
         input: { url: "https://example.com" },
@@ -74,7 +74,7 @@ describe("what a finished turn writes down", () => {
       {
         type: "tool",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "success",
         output: "拿到了",
@@ -110,7 +110,7 @@ describe("what a finished turn writes down", () => {
     // the tool with nothing, next to an error about arguments it cannot see.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-9",
         state: "output-error",
         rawInput: '{"url": broken',
@@ -124,7 +124,7 @@ describe("what a finished turn writes down", () => {
   it("records a failed call as failed, without inventing why", () => {
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-3",
         state: "output-error",
         input: { url: "https://example.com" },
@@ -140,7 +140,7 @@ describe("what a finished turn writes down", () => {
     expect(stored[0]).toEqual({
       type: "tool",
       toolCallId: "call-3",
-      toolName: "web_fetch",
+      toolName: "web_search",
       input: { url: "https://example.com" },
       status: "error",
       failure: NOTHING_SAID_WHY,
@@ -155,7 +155,7 @@ describe("what a finished turn writes down", () => {
     // whatever is in `input` came from a partial JSON parse.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-9",
         state: "input-streaming",
         input: { url: "https://en.wikipedia.org/wiki/Bau" },
@@ -168,7 +168,7 @@ describe("what a finished turn writes down", () => {
   it("does not mark one whose arguments arrived whole", () => {
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-10",
         state: "input-available",
         input: { url: "https://example.com" },
@@ -184,7 +184,7 @@ describe("what a finished turn writes down", () => {
     // an answer for a state the store could have told it.
     const stored = toStoredParts([
       {
-        type: "tool-web_fetch",
+        type: "tool-web_search",
         toolCallId: "call-4",
         state: "input-available",
         input: { url: "https://example.com" },
@@ -214,7 +214,7 @@ describe("what a conversation hands back when it is opened", () => {
       {
         type: "tool",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "success",
         output: "拿到了",
@@ -222,7 +222,7 @@ describe("what a conversation hands back when it is opened", () => {
     ]);
 
     expect(ui[0]).toMatchObject({
-      type: "tool-web_fetch",
+      type: "tool-web_search",
       toolCallId: "call-1",
       state: "output-available",
       output: "拿到了",
@@ -256,7 +256,7 @@ describe("a message that goes out and comes back", () => {
       {
         type: "tool",
         toolCallId: "call-1",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "success",
         output: "拿到了",
@@ -301,7 +301,7 @@ describe("a message that goes out and comes back", () => {
       {
         type: "tool",
         toolCallId: "call-5",
-        toolName: "web_fetch",
+        toolName: "web_search",
         input: { url: "https://example.com" },
         status: "error",
         failure: {
