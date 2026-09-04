@@ -10,7 +10,7 @@
  * 历史里。
  *
  * 这里钉的是「每条理由都要以下一步收尾」。工具那一侧早有一条测试要求它
- * (`web-fetch-failure.test.ts` 的 “closes every one of its reasons with what
+ * (`web-search.test.ts` 的 “closes every one of its reasons with what
  * the model may do next”),而这一侧的四条一直没人要求 —— 把它们清空,五百多
  * 条测试一条都不红,而空理由正是这次改动要消灭的东西。
  */

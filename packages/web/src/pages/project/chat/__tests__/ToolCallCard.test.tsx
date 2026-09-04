@@ -59,8 +59,8 @@ describe('ToolCallCard', () => {
   it('says the same thing for every way a tool can fail', () => {
     // The card answers one question -- did this step work -- and the reason it
     // did not is the model's to explain in its reply, where it can say which
-    // page and which status. Four lines here were four different half-answers
-    // to a question nobody asked the card.
+    // page and which status. A line of its own per failure would be that many
+    // half-answers to a question nobody asked the card.
     const lines = Object.values(FAILURE_LINES)
       .filter((line) => line !== FAILURE_LINES.stopped)
       .map((failureKey) => {
@@ -70,7 +70,8 @@ describe('ToolCallCard', () => {
         return shown;
       });
 
-    expect(lines.length).toBeGreaterThanOrEqual(4);
+    // At least two, or "they all say the same thing" claims nothing.
+    expect(lines.length).toBeGreaterThanOrEqual(2);
     expect(new Set(lines).size).toBe(1);
     expect(lines[0]).toBe(t(FAILURE_LINES.generic));
   });

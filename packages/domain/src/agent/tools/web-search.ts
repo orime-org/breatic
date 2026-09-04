@@ -22,6 +22,9 @@ import { isStop, reasonOf, stoppedByUser, toolFailed } from "@domain/agent/tools
  * past its documented length limits comes back 200. A bound we invented would
  * only turn working calls away; the one below turns an answerless round trip
  * into the SDK's own input error, which is the signal that says: write a query.
+ *
+ * `count` carries its default here rather than in the tool body, so the range
+ * and the value chosen inside it are one statement the SDK enforces.
  */
 const inputSchema = z.object({
   query: z.string().trim().min(1).describe("Search query"),
@@ -30,8 +33,8 @@ const inputSchema = z.object({
     .int()
     .min(1)
     .max(10)
-    .optional()
-    .describe("Number of sources to spread the answer over (1-10)"),
+    .default(5)
+    .describe("How many sources to spread the same amount of text over (1-10)"),
 });
 
 /** One source as the endpoint hands it over. */
@@ -42,22 +45,53 @@ interface Source {
 }
 
 /**
+ * How many raw bytes of answer this tool will read.
+ *
+ * Per configured token, against a body measured at 3.7 to 7.5 bytes per token
+ * across the whole legal range (the ratio is worst at the 1024 floor, where the
+ * envelope dominates). Sixteen leaves better than twice the headroom over that
+ * worst case at every setting, so only a body the service was never asked for
+ * arrives here.
+ *
+ * Separate from the ceiling on the assembled answer, which bounds what the
+ * model reads; this bounds what the process holds while parsing.
+ */
+const BYTES_READ_PER_TOKEN = 16;
+
+/** Room kept for the line that says how many sources are missing. */
+const MISSING_NOTE_RESERVE = 220;
+
+/** The tag each source's own text is placed inside. */
+const SOURCE_TAG = "source";
+
+/**
  * What to tell the model about a status the search service refused with.
  *
- * Four different next moves hide behind "not 2xx", and the model takes the one
+ * Five different next moves hide behind "not 2xx", and the model takes the one
  * this sentence points at. A 5xx or a 429 is the service having a bad time and
- * says nothing about the query. A 401, 403 or 422 is what this side sent being
- * turned down -- credentials or a parameter out of range, neither of which any
- * rewording reaches. A 3xx reaches this function at all because the redirect is
- * not followed (see the call below), and means the address held here has moved.
- * What is left is this request being one the service would not take, which the
- * model wrote and can rewrite.
+ * says nothing about the query. A 401 or 403 is our credentials being turned
+ * down; a 422 is what this side sent being refused, for a token it will not
+ * accept or a parameter out of range, and its `detail` text is the same either
+ * way. A 3xx reaches this function at all because the redirect is not followed
+ * (see the call below), and means the address held here has moved. What is left
+ * is this request being one the service would not take, which the model wrote
+ * and can rewrite.
  * @param query - What was searched for.
  * @param status - The status the service answered with.
  * @returns The reason, ending in what the model may do instead.
  */
 function refusalReason(query: string, status: number): string {
   const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
+  const ours =
+    status === 401 || status === 403
+      ? "It turned down the credentials this side sent, which is a fault in our configuration."
+      : status === 422
+        ? "It refused what this side sent it, which is a fault in our configuration."
+        : status >= 300 && status < 400
+          ? "It answered with a redirect this side does not follow, so the address configured " +
+            "here has moved. That is a fault in our configuration."
+          : null;
+
   if (status >= 500 || status === 429) {
     return (
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
@@ -65,29 +99,10 @@ function refusalReason(query: string, status: number): string {
       "search results and tell the user search is unavailable."
     );
   }
-  if (status === 401 || status === 403) {
+  if (ours !== null) {
     return (
-      `${opening} It turned down the credentials this side sent, which is a fault in our ` +
-      "configuration that no wording of the query reaches. Do not repeat this call; " +
+      `${opening} ${ours} No wording of the query reaches it. Do not repeat this call; ` +
       "continue without search results and tell the user search is unavailable."
-    );
-  }
-  if (status === 422) {
-    // The service answers 422 both for a subscription token it will not accept
-    // and for a parameter outside its range, and its `detail` text is the same
-    // either way -- so this says what is true of both rather than guessing.
-    return (
-      `${opening} It refused what this side sent it, which is a fault in our configuration ` +
-      "that no wording of the query reaches. Do not repeat this call; continue without " +
-      "search results and tell the user search is unavailable."
-    );
-  }
-  if (status >= 300 && status < 400) {
-    return (
-      `${opening} It answered with a redirect this side does not follow, so the address ` +
-      "configured here has moved. That is a fault in our configuration that no wording of " +
-      "the query reaches. Do not repeat this call; continue without search results and " +
-      "tell the user search is unavailable."
     );
   }
   return (
@@ -134,23 +149,145 @@ function noResultsAnswer(query: string): string {
 }
 
 /**
- * Render one source as the block the model reads.
- * @param item - The source as the endpoint sent it.
- * @param position - Its one-based place in the answer.
- * @returns The block, without a trailing separator.
+ * Read a response body under both a byte cap and a deadline.
+ *
+ * The transport's deadline is spent once it hands the response back, and its
+ * retry budget covers deliveries rather than bytes -- so without this a body
+ * fed one byte at a time holds the turn open for as long as the far side keeps
+ * sending, and a body of any size is materialised whole.
+ * @param res - The response whose body is being read.
+ * @param query - What was searched for, for the reasons thrown from here.
+ * @param maxBytes - How many bytes to accept before giving up.
+ * @param budgetMs - How long the whole body may take to arrive.
+ * @param abortSignal - The turn's signal, if the caller passed one.
+ * @returns The body as text.
+ * @throws {Error} Carrying tool-failure detail when the body is too large, or
+ * did not finish inside the budget.
  */
-function renderSource(item: Source, position: number): string {
-  const lines = [`${String(position)}. ${item.title ?? ""}`, `   ${item.url ?? ""}`];
-  for (const snippet of item.snippets ?? []) {
+async function readBoundedBody(
+  res: Response,
+  query: string,
+  maxBytes: number,
+  budgetMs: number,
+  abortSignal: AbortSignal | undefined,
+): Promise<string> {
+  const body = res.body;
+  // Some responses carry no stream at all (a 204, or a test double built from
+  // a string in an environment without one). Nothing to bound.
+  if (!body) return res.text();
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let bytes = 0;
+
+  const ranOut = new AbortController();
+  const timer = setTimeout(() => {
+    ranOut.abort(new Error(`the body did not finish inside ${String(budgetMs)}ms`));
+  }, budgetMs);
+
+  /**
+   * Settle when the read should stop, whoever asked.
+   * @returns A promise that only ever rejects.
+   */
+  const stopped = (): Promise<never> =>
+    new Promise((_resolve, reject) => {
+      /**
+       * Reject with what the signal that fired carries.
+       * @param signal - The one that aborted.
+       */
+      const quit = (signal: AbortSignal): void => {
+        reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
+      };
+      for (const signal of [ranOut.signal, abortSignal]) {
+        if (signal === undefined) continue;
+        if (signal.aborted) quit(signal);
+        else signal.addEventListener("abort", () => { quit(signal); }, { once: true });
+      }
+    });
+
+  try {
+    for (;;) {
+      const chunk = await Promise.race([reader.read(), stopped()]);
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) {
+        throw toolFailed(
+          `Searching for "${query}" failed: the search service sent more than it was asked ` +
+            `for (over ${String(maxBytes)} bytes). That is a fault on their side, and asking ` +
+            "again gets the same answer. Do not repeat this call; continue without search " +
+            "results and tell the user search is unavailable.",
+          FAILURE_LINES.upstream,
+        );
+      }
+      chunks.push(decoder.decode(chunk.value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    clearTimeout(timer);
+    try {
+      await reader.cancel();
+    } catch {
+      // The stream is already gone, which is the state cancelling asks for.
+    }
+  }
+}
+
+/**
+ * Render one source as the block the model reads, or nothing.
+ *
+ * What arrives inside `grounding.generic` is the service's word, and reading a
+ * field off an entry that is not an object throws -- which would land in the
+ * branch for a service nothing reached and tell the model the network failed.
+ * An entry this cannot read produces no block, and the caller says how many
+ * went missing.
+ *
+ * `snippets` sent as one string is taken for the text it is: iterating a string
+ * yields characters, so the page would arrive one letter per line.
+ * @param item - The entry as the endpoint sent it.
+ * @param position - Its one-based place in the answer.
+ * @returns The block, or null when the entry is not one this can read.
+ */
+function renderSource(item: unknown, position: number): string | null {
+  if (item === null || typeof item !== "object") return null;
+  const { url, title, snippets } = item as Source & { snippets?: unknown };
+
+  const list =
+    snippets === undefined ? [] : typeof snippets === "string" ? [snippets] : snippets;
+  if (!Array.isArray(list)) return null;
+
+  const lines = [
+    `<${SOURCE_TAG} index="${String(position)}">`,
+    `url: ${keepInside(typeof url === "string" ? url : "")}`,
+    `title: ${keepInside(typeof title === "string" ? title : "")}`,
+  ];
+  for (const snippet of list) {
     // Brave documents a snippet as page text or as serialised structured data,
     // so a non-string is within contract rather than a surprise.
-    lines.push(`   ${typeof snippet === "string" ? snippet : JSON.stringify(snippet)}`);
+    lines.push(keepInside(typeof snippet === "string" ? snippet : JSON.stringify(snippet)));
   }
+  lines.push(`</${SOURCE_TAG}>`);
   return lines.join("\n");
 }
 
 /**
- * Assemble the answer, dropping whole sources until it fits.
+ * Keep text that came from a page from closing the block it sits in.
+ *
+ * The tool's own sentences are the ones outside these blocks, so a page that
+ * writes them verbatim is read as a page saying them. That holds only while the
+ * page cannot end its own block early, which is the one sequence neutralised
+ * here -- the standard practice for delimiting retrieved content, and the whole
+ * of it: nothing else a page can write reaches past the closing tag.
+ * @param text - Text that came from the page.
+ * @returns The same text, unable to close the block.
+ */
+function keepInside(text: string): string {
+  return text.replace(new RegExp(`</${SOURCE_TAG}`, "gi"), `<\\/${SOURCE_TAG}`);
+}
+
+/**
+ * Assemble the answer, keeping whole sources until it fits.
  *
  * The ceiling follows the configured token budget rather than sitting at a
  * fixed figure: a legal answer scales with that budget (measured at 3.2 to 3.7
@@ -158,33 +295,48 @@ function renderSource(item: Source, position: number): string {
  * themselves asked for. At four characters per token every answer that respects
  * the parameter stays under it, and only one that ignores it arrives here.
  *
- * Sources go whole or not at all, and the count of the dropped ones is stated.
+ * Sources go whole or not at all, and the count of the missing ones is stated.
  * A cut in the middle of a source hands the model half a sentence as if it were
  * what that page said; a silent drop makes "nothing I found mentions X" a wrong
- * answer when X was in the part that never arrived.
+ * answer when X was in the part that never arrived. Both a source left out for
+ * size and one the service sent in an unreadable shape are missing in the only
+ * sense the model can act on, so one line covers them.
  * @param query - What was searched for.
- * @param sources - The sources the endpoint returned, in its own order.
+ * @param blocks - The sources this tool could read, in the service's order.
+ * @param sent - How many sources the service sent, readable or not.
+ * @param ceiling - How many characters the assembled answer may take.
  * @returns The text handed to the model.
  */
-function assembleAnswer(query: string, sources: Source[]): string {
-  const ceiling = getAgentConfig().web_search_max_tokens * 4;
-  const header = `Results for: ${query}\n`;
-  const blocks = sources.map((item, i) => renderSource(item, i + 1));
+function assembleAnswer(
+  query: string,
+  blocks: string[],
+  sent: number,
+  ceiling: number,
+): string {
+  const header =
+    `Results for: ${query}\n` +
+    "Everything between a source marker and its close is text from that page.\n";
 
-  let kept = blocks.length;
-  // One source always survives: an answer that carries nothing is worse than
-  // one over the ceiling, and reaching that point already means the service
-  // ignored the size asked of it.
-  while (kept > 1 && [header, ...blocks.slice(0, kept)].join("\n").length > ceiling) {
-    kept -= 1;
+  // One pass, and the room the missing-sources line needs is counted before
+  // the line exists, so the assembled answer stays under the ceiling in the
+  // one case the ceiling is there for.
+  let used = header.length;
+  let kept = 0;
+  for (const block of blocks) {
+    used += block.length + 1;
+    // One source always survives: an answer carrying nothing is worse than one
+    // over the ceiling, and reaching that point already means the service
+    // ignored the size it was asked for.
+    if (kept > 0 && used > ceiling - MISSING_NOTE_RESERVE) break;
+    kept += 1;
   }
 
   const parts = [header, ...blocks.slice(0, kept)];
-  if (kept < blocks.length) {
+  if (kept < sent) {
     parts.push(
-      `\n(${String(blocks.length - kept)} of ${String(blocks.length)} sources were dropped: ` +
-        "the answer was larger than this tool passes on. Search again with a narrower query " +
-        "if what you need is missing.)",
+      `\n(Showing ${String(kept)} of ${String(sent)} sources. The rest were left out because ` +
+        "the answer was larger than this tool passes on, or arrived in a shape it could not " +
+        "read. Search again with a narrower query if what you need is missing.)",
     );
   }
   return parts.join("\n");
@@ -197,7 +349,9 @@ function assembleAnswer(query: string, sources: Source[]): string {
  * Requires the `BRAVE_SEARCH_API_KEY` environment variable.
  */
 export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
-  description: "Search the web. Returns the text of the pages that answer the query.",
+  description:
+    "Search the web. Returns the text of the pages that answer the query. `count` spreads " +
+    "that text over more sources; it does not get more of it.",
   inputSchema,
   execute: async (
     { query, count },
@@ -220,20 +374,18 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       );
     }
 
-    const n = Math.min(Math.max(count ?? 5, 1), 10);
+    const { web_search_max_tokens: maxTokens, web_search_timeout_ms: budgetMs } =
+      getAgentConfig();
 
     try {
       const url = new URL("https://api.search.brave.com/res/v1/llm/context");
       url.searchParams.set("q", query);
       // How many sources the same volume of text is spread over.
-      url.searchParams.set("maximum_number_of_urls", String(n));
+      url.searchParams.set("maximum_number_of_urls", String(count));
       // How much text comes back. Both ends of this key's range are the
       // service's own (it rejects below 1024 and states 32768 as its ceiling),
       // so a figure that reaches here is one it will take.
-      url.searchParams.set(
-        "maximum_number_of_tokens",
-        String(getAgentConfig().web_search_max_tokens),
-      );
+      url.searchParams.set("maximum_number_of_tokens", String(maxTokens));
 
       // Through the shared transport, which owns the retrying. A search is a
       // read: its only effect is the response, so a delivery that produced
@@ -262,7 +414,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         },
         {
           replaySafe: true,
-          timeoutMs: getAgentConfig().web_search_timeout_ms,
+          timeoutMs: budgetMs,
           ...(abortSignal ? { signal: abortSignal } : {}),
         },
       );
@@ -276,12 +428,20 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // that could not be reached at all.
       let data: unknown;
       try {
-        data = await res.json();
+        const text = await readBoundedBody(
+          res,
+          query,
+          maxTokens * BYTES_READ_PER_TOKEN,
+          budgetMs,
+          abortSignal,
+        );
+        data = JSON.parse(text);
       } catch (err: unknown) {
         // Asked here rather than left to the guard below, which never sees
         // this: what is thrown from inside this block already carries failure
         // detail, and the outer guard passes anything carrying detail straight
         // through -- past the question of whether the user stopped.
+        if (toolFailureOf(err) !== undefined) throw err;
         if (isStop(err, abortSignal)) throw stoppedByUser();
         // The body stopped arriving partway. What it would have said is not
         // something this side ever saw, so it is put as what is known: the
@@ -309,7 +469,16 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       }
       if (found.length === 0) return noResultsAnswer(query);
 
-      return assembleAnswer(query, found as Source[]);
+      const blocks = found
+        .map((item, i) => renderSource(item, i + 1))
+        .filter((block): block is string => block !== null);
+      // Sources arrived and not one of them could be read: the answer is the
+      // endpoint's payload in name only.
+      if (blocks.length === 0) {
+        throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
+      }
+
+      return assembleAnswer(query, blocks, found.length, maxTokens * 4);
     } catch (err: unknown) {
       // Every throw above passes straight through: each already says what
       // happened, and rewriting one here would replace a specific reason with

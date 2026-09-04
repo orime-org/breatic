@@ -194,7 +194,6 @@
       "failure": {
         "upstream": "执行错误",
         "unreachable": "执行错误",
-        "blocked": "执行错误",
         "generic": "执行错误"
       }
     },
