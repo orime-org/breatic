@@ -4,7 +4,10 @@
 import { describe, it, expect } from 'vitest';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
-import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
+import {
+  resolveRestore,
+  resolveTaskReplace,
+} from '@web/spaces/canvas/history/restore-node-content';
 
 /**
  * Builds the restorable slice of a history entry.
@@ -106,5 +109,72 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         gateState: { locked: false },
       }),
     ).toEqual({ kind: 'write', content: 'song.mp3', coverUrl: undefined });
+  });
+});
+
+describe('resolveTaskReplace — the task list puts one result back', () => {
+  it('clears the poster when a video result carries no cover', () => {
+    // Two uploads onto one node: the first video's cover extraction worked,
+    // the second's did not. Replacing with the second has to take the first
+    // one's poster off, or the new clip renders under the old thumbnail.
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: 'https://cdn.invalid/b.mp4', coverUrl: null },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toEqual({
+      kind: 'write',
+      content: 'https://cdn.invalid/b.mp4',
+      coverUrl: null,
+    });
+  });
+
+  it('carries the cover a video result does have', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: {
+          content: 'https://cdn.invalid/b.mp4',
+          coverUrl: 'https://cdn.invalid/b.png',
+        },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toMatchObject({ coverUrl: 'https://cdn.invalid/b.png' });
+  });
+
+  it('leaves an image node its cover field, which nothing there writes', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: 'https://cdn.invalid/b.png', coverUrl: null },
+        modality: 'image',
+        gateState: { locked: false },
+      }),
+    ).toMatchObject({ coverUrl: undefined });
+  });
+
+  it('refuses a row with no result', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: null, coverUrl: null },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toEqual({ kind: 'noop' });
+  });
+
+  it('is blocked by the lock on the node itself', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { content: 'https://cdn.invalid/b.mp4', coverUrl: null },
+        modality: 'video',
+        gateState: { locked: true },
+      }),
+    ).toMatchObject({ kind: 'blocked' });
   });
 });

@@ -445,6 +445,37 @@ describe("POST /assets/upload-ticket", () => {
     expect(rows[0]!.content).toBe(`https://cdn.test.invalid/${hash}.mp4`);
   });
 
+  it("points the dedup hit's task row at the history row it landed", async () => {
+    // Design §4.3: a hit is a task that finished before it started, and the
+    // user "可以点替换、点完成，跟别的完成态一样". Replace renders only for a
+    // row the list can read a result off, and the list reads it across
+    // `node_history_id` — so a row without that pointer is a finished task
+    // whose result the user cannot put back.
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    const nodeId = crypto.randomUUID();
+    await registerAsset(studioId, userId, hash, size);
+
+    await requestTicket(
+      cookie,
+      body({
+        project_id: projectId,
+        space_id: crypto.randomUUID(),
+        client_hash: hash,
+        size,
+        node_id: nodeId,
+      }),
+    );
+
+    const { nodeTaskService } = await import("@breatic/domain");
+    const live = await nodeTaskService.listLive({ projectId, nodeId });
+
+    expect(live).toHaveLength(1);
+    expect(live[0]!.status).toBe("done");
+    expect(live[0]!.content).toBe(`https://cdn.test.invalid/${hash}.mp4`);
+  });
+
   it("distrusts a hash whose declared size disagrees with the stored row", async () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");

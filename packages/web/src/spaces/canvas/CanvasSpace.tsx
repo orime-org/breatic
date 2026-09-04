@@ -193,8 +193,14 @@ import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGe
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
-import type { HistoryModality } from '@web/spaces/canvas/history/NodeHistoryRow';
-import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
+import {
+  HISTORY_MODALITIES,
+  type HistoryModality,
+} from '@web/spaces/canvas/history/NodeHistoryRow';
+import {
+  resolveRestore,
+  resolveTaskReplace,
+} from '@web/spaces/canvas/history/restore-node-content';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
 import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
@@ -3162,18 +3168,31 @@ function CanvasSpaceInner({
   // again. Only the node's own lock refuses it.
   const replaceNodeFromTask = React.useCallback(
     (nodeId: string, task: NodeTaskEntry): void => {
-      if (readOnly || task.content === null) return;
-      const gateBlock = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
-      if (gateBlock) {
-        warnNodeGate(t(gateBlock.toastKey));
+      const host = buffer.settled().find((node) => node.id === nodeId);
+      if (host === undefined || !HISTORY_MODALITIES.has(host.type ?? '')) return;
+
+      // The same decision the history panel resolves, because a task's result
+      // and a history row's result are the same thing reached two ways — in
+      // particular a video result with no cover clears the node's poster
+      // rather than leaving the previous clip's on it.
+      const decision = resolveTaskReplace({
+        readOnly,
+        task,
+        modality: host.type as HistoryModality,
+        gateState: { locked: isNodeLocked(projectId, spaceId, nodeId) },
+      });
+      if (decision.kind === 'blocked') {
+        warnNodeGate(t(decision.toastKey));
         return;
       }
-      restoreNodeMedia(projectId, spaceId, nodeId, {
-        content: task.content,
-        coverUrl: task.coverUrl ?? undefined,
-      });
+      if (decision.kind === 'write') {
+        restoreNodeMedia(projectId, spaceId, nodeId, {
+          content: decision.content,
+          coverUrl: decision.coverUrl,
+        });
+      }
     },
-    [readOnly, projectId, spaceId, t],
+    [readOnly, projectId, spaceId, t, buffer],
   );
   // Error-state Retry (#1609 P4): re-run the upload from the session
   // stash. The stash survives repeated failures (cleared only on success)

@@ -124,9 +124,14 @@ export async function settleDedupHit(params: {
       ? await assetRepo.findCoverOf(params.hit.assetId)
       : null;
 
+  // The row the task points at, so the list can read this hit's result back
+  // and offer Replace on it the way it does for every other finished task
+  // (design §4.3). A history write that failed leaves the pointer unset; the
+  // node still has its content, which came in on the event below.
+  let historyEntryId: string | undefined;
   if (params.nodeId !== undefined) {
     try {
-      await nodeHistoryService.recordUpload({
+      const recorded = await nodeHistoryService.recordUpload({
         projectId: params.projectId,
         nodeId: params.nodeId,
         userId: params.userId,
@@ -134,6 +139,7 @@ export async function settleDedupHit(params: {
         ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
         metadata: params.metadata,
       });
+      historyEntryId = recorded.entry.id;
     } catch (err) {
       logger.warn(
         { err, projectId: params.projectId, nodeId: params.nodeId },
@@ -162,6 +168,7 @@ export async function settleDedupHit(params: {
   const settled = await nodeTaskService.settle({
     taskId: opened.id,
     outcome: "done",
+    ...(historyEntryId !== undefined && { nodeHistoryId: historyEntryId }),
   });
   await emitNodeTaskCounts(
     getStreamRedis(),
