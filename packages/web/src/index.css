@@ -17,6 +17,15 @@
    so imported as-is not one of our classes could override a KaTeX rule. */
 @import 'katex/dist/katex.min.css' layer(base);
 
+/* The document editor's own stylesheet, which its markup is unreadable
+   without: an indent, a bullet and a number are all drawn from here, and a
+   build that omits it lays every level flush left with no marker at all.
+
+   `layer(base)` for the same reason KaTeX gets it — the values below are ours
+   and have to win. What this sheet keeps is the geometry; every colour,
+   line width and font it names is written over further down. */
+@import '@blocknote/react/style.css' layer(base);
+
 html,
 body,
 #root {
@@ -725,8 +734,30 @@ body {
   margin: var(--doc-paragraph-margin) 0;
 }
 
-.doc-body-editor .ProseMirror h1 {
+/* A heading's size is set on the BLOCK, and the heading element inherits it.
+   The number a numbered heading draws is a `::before` on that block, and a
+   pseudo-element takes its size from the element it hangs off — set on the
+   inner heading instead, the number comes out at body size and all three
+   levels flatten onto one (user 2026-09-02). The level lives in a data
+   attribute the editor writes, and level one omits it. */
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
+}
+
+.doc-body-editor
+  .ProseMirror
+  .bn-block-content[data-content-type='heading'][data-level='2'] {
+  font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
+}
+
+.doc-body-editor
+  .ProseMirror
+  .bn-block-content[data-content-type='heading'][data-level='3'] {
+  font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
+}
+
+.doc-body-editor .ProseMirror h1 {
+  font-size: inherit;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.01em;
@@ -734,14 +765,14 @@ body {
 }
 
 .doc-body-editor .ProseMirror h2 {
-  font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
+  font-size: inherit;
   font-weight: 600;
   line-height: 1.35;
   margin: 1.7em 0 0.5em;
 }
 
 .doc-body-editor .ProseMirror h3 {
-  font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
+  font-size: inherit;
   font-weight: 600;
   line-height: 1.45;
   margin: 1.5em 0 0.45em;
