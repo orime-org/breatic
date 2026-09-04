@@ -97,16 +97,36 @@ async function typeAndSelectLine(p: Page, text: string): Promise<void> {
 }
 
 /**
- * The body's HTML as it stands, without the placeholder attribute.
+ * The body as one line per block: its type, its quote, its indent, its text.
+ *
+ * The editor's markup is not this shape. A block sits inside three wrappers,
+ * each carrying an id generated per block, so comparing the HTML would compare
+ * ids that differ on every run. What every case here is about is which type a
+ * block ended up as and whether it stayed inside the quote, and the editor
+ * states both on the content element — `data-content-type`, plus `data-level`
+ * for a heading past the first and `data-quoted` for a quoted one.
  * @param p - The page.
- * @returns That HTML.
+ * @returns One line per block, indented two spaces per level of nesting.
  */
-async function bodyHtml(p: Page): Promise<string> {
-  return p.evaluate(
-    (sel) =>
-      document.querySelector(sel)!.innerHTML.replace(/ data-block-placeholder="[^"]*"/g, ''),
-    EDITOR,
-  );
+async function bodyShape(p: Page): Promise<string> {
+  return p.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [...root.querySelectorAll('.bn-block-content')]
+      .map((element) => {
+        const type = element.getAttribute('data-content-type') ?? '?';
+        // The first level is the one every block sits in, so it is not indent.
+        let depth = -1;
+        for (let at = element.parentElement; at !== null; at = at.parentElement) {
+          if (at === root) break;
+          if (at.classList.contains('bn-block-group')) depth += 1;
+        }
+        const level = element.getAttribute('data-level');
+        const named = type === 'heading' ? `heading${level ?? '1'}` : type;
+        const quoted = element.hasAttribute('data-quoted') ? '[quoted]' : '';
+        return `${'  '.repeat(Math.max(depth, 0))}${named}${quoted} ${element.textContent ?? ''}`;
+      })
+      .join('\n');
+  }, EDITOR);
 }
 
 /**
@@ -122,56 +142,64 @@ test('presses each of the nine rows and the document follows every time', async 
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a line the menu will work on');
 
-  const expected: Array<[id: string, html: string]> = [
-    ['heading-1', '<h1>a line the menu will work on</h1>'],
-    ['heading-2', '<h2>a line the menu will work on</h2>'],
-    ['heading-3', '<h3>a line the menu will work on</h3>'],
-    ['bullet-list', '<ul><li><p>a line the menu will work on</p></li></ul>'],
-    ['ordered-list', '<ol><li><p>a line the menu will work on</p></li></ol>'],
-    ['code-block', '<pre><code>a line the menu will work on</code></pre>'],
-    ['paragraph', '<p>a line the menu will work on</p>'],
-    ['quote', '<blockquote><p>a line the menu will work on</p></blockquote>'],
+  const line = 'a line the menu will work on';
+  const expected: Array<[id: string, shape: string]> = [
+    ['heading-1', `heading1 ${line}`],
+    ['heading-2', `heading2 ${line}`],
+    ['heading-3', `heading3 ${line}`],
+    ['bullet-list', `bulletListItem ${line}`],
+    ['ordered-list', `numberedListItem ${line}`],
+    ['code-block', `codeBlock ${line}`],
+    ['paragraph', `paragraph ${line}`],
+    ['quote', `paragraph[quoted] ${line}`],
   ];
 
-  for (const [id, html] of expected) {
+  for (const [id, shape] of expected) {
     await openBlockTypeMenu(page);
     await page.getByTestId(`${SLOT}-item-${id}`).click();
     await expect
-      .poll(async () => bodyHtml(page), { timeout: 10_000 })
-      .toBe(html);
-    // The first block itself rather than the editor around it: a click in the
-    // space below the last block has `DocumentClickToWrite` add a block at the
-    // end, and the next select-all would take that one in too.
-    await page.locator(`${EDITOR} > *`).first().click();
+      .poll(async () => bodyShape(page), { timeout: 10_000 })
+      .toBe(shape);
+    // The first block's own content rather than the editor around it: a click
+    // in the space below the last block has `DocumentClickToWrite` add a block
+    // at the end, and the next select-all would take that one in too.
+    await page.locator(`${EDITOR} .bn-block-content`).first().click();
     await page.keyboard.press(`${MOD}+a`);
   }
 
-  // The task list is the ninth row: greyed, with no schema node (#13).
+  // The ninth row is the task list, which this editor brings with it (A3).
   await openBlockTypeMenu(page);
-  await expect(page.getByTestId(`${SLOT}-item-task-list`)).toHaveAttribute(
+  await expect(page.getByTestId(`${SLOT}-item-task-list`)).not.toHaveAttribute(
     'aria-disabled',
     'true',
   );
+  await page.getByTestId(`${SLOT}-item-task-list`).click();
+  // Quote was the last row pressed above, and a quote is a prop rather than a
+  // container here, so changing the type leaves the block inside it.
+  await expect
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe(`checkListItem[quoted] ${line}`);
 });
 
 test('holds each of the eight chords and lands where the row does', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a line the keys will work on');
 
-  const chords: Array<[chord: string, html: string]> = [
-    [`${MOD}+Alt+1`, '<h1>a line the keys will work on</h1>'],
-    [`${MOD}+Alt+2`, '<h2>a line the keys will work on</h2>'],
-    [`${MOD}+Alt+3`, '<h3>a line the keys will work on</h3>'],
-    [`${MOD}+Shift+8`, '<ul><li><p>a line the keys will work on</p></li></ul>'],
-    [`${MOD}+Shift+7`, '<ol><li><p>a line the keys will work on</p></li></ol>'],
-    [`${MOD}+Alt+c`, '<pre><code>a line the keys will work on</code></pre>'],
-    [`${MOD}+Alt+0`, '<p>a line the keys will work on</p>'],
-    [`${MOD}+Shift+b`, '<blockquote><p>a line the keys will work on</p></blockquote>'],
+  const line = 'a line the keys will work on';
+  const chords: Array<[chord: string, shape: string]> = [
+    [`${MOD}+Alt+1`, `heading1 ${line}`],
+    [`${MOD}+Alt+2`, `heading2 ${line}`],
+    [`${MOD}+Alt+3`, `heading3 ${line}`],
+    [`${MOD}+Shift+8`, `bulletListItem ${line}`],
+    [`${MOD}+Shift+7`, `numberedListItem ${line}`],
+    [`${MOD}+Alt+c`, `codeBlock ${line}`],
+    [`${MOD}+Alt+0`, `paragraph ${line}`],
+    [`${MOD}+Shift+b`, `paragraph[quoted] ${line}`],
   ];
 
-  for (const [chord, html] of chords) {
+  for (const [chord, shape] of chords) {
     await page.keyboard.press(chord);
-    await expect.poll(async () => bodyHtml(page), { timeout: 10_000 }).toBe(html);
+    await expect.poll(async () => bodyShape(page), { timeout: 10_000 }).toBe(shape);
     await page.keyboard.press(`${MOD}+a`);
   }
 });
@@ -184,20 +212,20 @@ test('a quoted list: a heading moves the block, Quote takes the quote off', asyn
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+Shift+b`);
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<blockquote><ul><li><p>quoted list item</p></li></ul></blockquote>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe('bulletListItem[quoted] quoted list item');
 
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+Alt+1`);
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<blockquote><h1>quoted list item</h1></blockquote>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe('heading1[quoted] quoted list item');
 
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+Shift+b`);
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<h1>quoted list item</h1>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe('heading1 quoted list item');
 });
 
 test('draws the tick right of the chord and the rule after Code block', async () => {
@@ -276,7 +304,7 @@ async function greyedRows(p: Page): Promise<string[]> {
   }, SLOT);
 }
 
-test('a body holding an indented list lights every row but the task list', async () => {
+test('a body holding an indented list lights every row, the task list with it', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('lead');
   await page.keyboard.press('Enter');
@@ -285,20 +313,20 @@ test('a body holding an indented list lights every row but the task list', async
   await page.keyboard.press('Tab');
   await page.keyboard.type('deep');
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<p>lead</p><ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe(['paragraph lead', 'bulletListItem one', '  bulletListItem deep'].join('\n'));
 
   // Select-all has two tiers: the block, then the body (`select-all-tiers-and-keys`).
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+a`);
   await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
   await openBlockTypeMenu(page);
-  expect(await greyedRows(page)).toEqual(['task-list']);
+  expect(await greyedRows(page)).toEqual([]);
 
   await page.getByTestId(`${SLOT}-item-heading-1`).click();
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<h1>lead</h1><h1>one</h1><h1>deep</h1>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe(['heading1 lead', 'heading1 one', '  heading1 deep'].join('\n'));
 });
 
 test('an item opening a sub-list is reachable from its first line alone', async () => {
@@ -308,8 +336,8 @@ test('an item opening a sub-list is reachable from its first line alone', async 
   await page.keyboard.press('Tab');
   await page.keyboard.type('deep');
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<ul><li><p>one</p><ul><li><p>deep</p></li></ul></li></ul>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe(['bulletListItem one', '  bulletListItem deep'].join('\n'));
 
   // Only the line reading "one". It is that item's first block, and the item
   // holds a sub-list, so it cannot give that block up on its own — the whole
@@ -318,12 +346,12 @@ test('an item opening a sub-list is reachable from its first line alone', async 
   await page.keyboard.press(`${MOD}+a`);
   await expect(page.getByTestId(SLOT)).toBeVisible({ timeout: 10_000 });
   await openBlockTypeMenu(page);
-  expect(await greyedRows(page)).toEqual(['task-list']);
+  expect(await greyedRows(page)).toEqual([]);
 
   await page.getByTestId(`${SLOT}-item-heading-1`).click();
   await expect
-    .poll(async () => bodyHtml(page), { timeout: 10_000 })
-    .toBe('<h1>one</h1><ul><li><p>deep</p></li></ul>');
+    .poll(async () => bodyShape(page), { timeout: 10_000 })
+    .toBe(['heading1 one', '  bulletListItem deep'].join('\n'));
 });
 
 /** One selection: how to type it, how to (re)select it, which rows it greys. */
@@ -474,7 +502,7 @@ for (const shape of SHAPES) {
     await openFreshDocument(page);
     await shape.type(page);
     await shape.select(page);
-    const start = await bodyHtml(page);
+    const start = await bodyShape(page);
 
     await openBlockTypeMenu(page);
     expect(await greyedRows(page), `${shape.name}: greyed rows`).toEqual(shape.grey);
@@ -493,15 +521,15 @@ for (const shape of SHAPES) {
       // real press does — so it presses anyway.
       await page.getByTestId(`${SLOT}-item-${id}`).click({ force: true });
       if (!moves(id)) {
-        expect(await bodyHtml(page), `${shape.name}: ${id} moved the document`).toBe(start);
+        expect(await bodyShape(page), `${shape.name}: ${id} moved the document`).toBe(start);
         continue;
       }
       await expect
-        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .poll(async () => bodyShape(page), { timeout: 10_000 })
         .not.toBe(start);
       await page.keyboard.press(`${MOD}+z`);
       await expect
-        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .poll(async () => bodyShape(page), { timeout: 10_000 })
         .toBe(start);
     }
 
@@ -509,15 +537,15 @@ for (const shape of SHAPES) {
       await shape.select(page);
       await page.keyboard.press(chord);
       if (!moves(id)) {
-        expect(await bodyHtml(page), `${shape.name}: ${chord} moved the document`).toBe(start);
+        expect(await bodyShape(page), `${shape.name}: ${chord} moved the document`).toBe(start);
         continue;
       }
       await expect
-        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .poll(async () => bodyShape(page), { timeout: 10_000 })
         .not.toBe(start);
       await page.keyboard.press(`${MOD}+z`);
       await expect
-        .poll(async () => bodyHtml(page), { timeout: 10_000 })
+        .poll(async () => bodyShape(page), { timeout: 10_000 })
         .toBe(start);
     }
   });
