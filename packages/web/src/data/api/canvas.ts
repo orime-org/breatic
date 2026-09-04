@@ -191,18 +191,26 @@ export const canvasApi = {
    * The document carries the numbers; this carries the rows they were counted
    * from, and only when the user opens the list. Each row already holds what
    * that task landed on the node, so "replace" needs no second request.
+   *
+   * Asking also republishes the node's four numbers from the rows the server
+   * just read (design §4.6.7). The two are not kept in lock step, and this is
+   * the way back for a node whose count says something the table no longer
+   * holds — which is why the space travels along: the counts are published to
+   * a document, and a node with nothing left still sits in one.
    * @param nodeId - Canvas node id (uuid).
    * @param projectId - Project the node belongs to (tenancy check, viewer+).
+   * @param spaceId - Space the node lives in.
    * @returns The node's live task rows, newest first.
    * @throws {import('@web/data/api/types').ApiException} On a failed request.
    */
   async listNodeTasks(
     nodeId: string,
     projectId: string,
+    spaceId: string,
   ): Promise<NodeTaskEntry[]> {
     const { tasks } = await apiGet<{ tasks: NodeTaskEntry[] }>(
       `/canvas/nodes/${nodeId}/tasks`,
-      { params: { project_id: projectId } },
+      { params: { project_id: projectId, space_id: spaceId } },
     );
     return tasks;
   },

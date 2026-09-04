@@ -6,7 +6,10 @@
  *
  * `GET /canvas/nodes/:nodeId/tasks` — the panel pulls its rows from here, not
  * from the canvas document. The document carries four numbers; the detail is
- * fetched when the user asks to see it.
+ * fetched when the user asks to see it. Asking also republishes those four
+ * numbers (design §4.6.7): the document and the table are not kept in lock
+ * step, and this is how a node showing a count the table no longer holds gets
+ * back to the truth.
  *
  * `DELETE /canvas/node-tasks/:taskId` — one endpoint for both "finish" and
  * "clear", because the server decides from the row's current state which one
@@ -79,6 +82,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.projectService.assertAccess.mockResolvedValue(undefined);
   mocks.nodeTaskService.listLive.mockResolvedValue([]);
+  // `clearAllMocks` forgets calls, not implementations, so counts set by one
+  // case would otherwise be what the next one reads.
+  mocks.nodeTaskService.countsFor.mockResolvedValue(ZERO);
   mocks.nodeTaskService.findById.mockResolvedValue(settledRow());
   mocks.nodeTaskService.dismiss.mockResolvedValue({
     removed: true,
@@ -87,8 +93,10 @@ beforeEach(() => {
 });
 
 describe("GET /canvas/nodes/:nodeId/tasks", () => {
+  const listUrl = `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${PROJECT}&space_id=${SPACE}`;
+
   it("requires auth", async () => {
-    const path = `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${PROJECT}`;
+    const path = listUrl;
     const res = await createApp().request(path);
     expect(res.status).toBe(401);
 
@@ -102,10 +110,7 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
   it("hands back every live row on the node", async () => {
     mocks.nodeTaskService.listLive.mockResolvedValue([settledRow()]);
 
-    const res = await createApp().request(
-      `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${PROJECT}`,
-      { headers: AUTH },
-    );
+    const res = await createApp().request(listUrl, { headers: AUTH });
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { tasks: unknown[] } };
@@ -117,10 +122,7 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
   });
 
   it("lets anyone who can see the project read it", async () => {
-    await createApp().request(
-      `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${PROJECT}`,
-      { headers: AUTH },
-    );
+    await createApp().request(listUrl, { headers: AUTH });
     expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(
       PROJECT,
       "user-1",
@@ -134,7 +136,7 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
     );
 
     const res = await createApp().request(
-      `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${OTHER_PROJECT}`,
+      `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${OTHER_PROJECT}&space_id=${SPACE}`,
       { headers: AUTH },
     );
 
@@ -144,7 +146,46 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
 
   it("rejects a malformed node id before it reaches a query", async () => {
     const res = await createApp().request(
-      `/api/v1/canvas/nodes/not-a-uuid/tasks?project_id=${PROJECT}`,
+      `/api/v1/canvas/nodes/not-a-uuid/tasks?project_id=${PROJECT}&space_id=${SPACE}`,
+      { headers: AUTH },
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("publishes the node's counts, so a stale projection is pulled back", async () => {
+    mocks.nodeTaskService.countsFor.mockResolvedValue({
+      running: 0,
+      done: 3,
+      failed: 1,
+      expired: 0,
+    });
+
+    await createApp().request(listUrl, { headers: AUTH });
+
+    expect(mocks.emitNodeTaskCounts).toHaveBeenCalledWith(
+      expect.anything(),
+      `project-${PROJECT}/canvas-${SPACE}`,
+      NODE,
+      { running: 0, done: 3, failed: 1, expired: 0 },
+    );
+  });
+
+  it("publishes all four zeros when the node has no tasks left", async () => {
+    mocks.nodeTaskService.listLive.mockResolvedValue([]);
+
+    await createApp().request(listUrl, { headers: AUTH });
+
+    expect(mocks.emitNodeTaskCounts).toHaveBeenCalledWith(
+      expect.anything(),
+      `project-${PROJECT}/canvas-${SPACE}`,
+      NODE,
+      ZERO,
+    );
+  });
+
+  it("refuses a request that does not say which space", async () => {
+    const res = await createApp().request(
+      `/api/v1/canvas/nodes/${NODE}/tasks?project_id=${PROJECT}`,
       { headers: AUTH },
     );
     expect(res.status).toBe(422);

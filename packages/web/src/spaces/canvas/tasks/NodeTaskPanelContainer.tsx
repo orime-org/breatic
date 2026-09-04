@@ -71,7 +71,7 @@ function OpenNodeTaskPanel({
   );
   const query = useQuery<NodeTaskEntry[]>({
     queryKey,
-    queryFn: () => canvasApi.listNodeTasks(nodeId, projectId),
+    queryFn: () => canvasApi.listNodeTasks(nodeId, projectId, spaceId),
   });
   const entries = React.useMemo(() => query.data ?? [], [query.data]);
   const anyRunning = React.useMemo(

@@ -103,16 +103,18 @@ describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)'
     vi.clearAllMocks();
   });
 
-  it('asks for one node\'s tasks with the project it belongs to', async () => {
-    // The tenancy check needs the project, and it is not in the path.
+  it('asks for one node\'s tasks with the project and space it sits in', async () => {
+    // The tenancy check needs the project; the space names the document the
+    // server republishes this node's counts to (§4.6.7). Neither is in the
+    // path.
     vi.mocked(apiGet).mockResolvedValue({ tasks: [] });
 
-    const tasks = await canvasApi.listNodeTasks('node-1', 'proj-1');
+    const tasks = await canvasApi.listNodeTasks('node-1', 'proj-1', 'space-1');
 
     expect(tasks).toEqual([]);
     expect(vi.mocked(apiGet)).toHaveBeenCalledWith(
       '/canvas/nodes/node-1/tasks',
-      { params: { project_id: 'proj-1' } },
+      { params: { project_id: 'proj-1', space_id: 'space-1' } },
     );
   });
 
@@ -135,7 +137,7 @@ describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)'
     };
     vi.mocked(apiGet).mockResolvedValue({ tasks: [row] });
 
-    const tasks = await canvasApi.listNodeTasks('node-1', 'proj-1');
+    const tasks = await canvasApi.listNodeTasks('node-1', 'proj-1', 'space-1');
 
     expect(tasks).toEqual([row]);
   });

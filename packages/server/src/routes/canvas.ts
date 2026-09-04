@@ -451,24 +451,49 @@ canvas.get(
  * comes from here, and only when the user opens the panel. Same cross-tenant
  * guard as the history endpoint above: the rows name who started each task
  * and why one failed.
- * @param c - Hono context; `project_id` in the query, node id in the path.
+ *
+ * Opening the list also republishes the node's counts (design §4.6.7). The
+ * four numbers on the node and the rows in this table are not kept in lock
+ * step — a dropped `node-task:counts` leaves the node showing a number the
+ * table no longer holds, and a node that still reads as running cannot be
+ * deleted. This is the way back: the reader who noticed asks for the truth,
+ * and everyone's node follows. The space rides in the query because a
+ * document is what the counts are published to, and a node with no rows left
+ * still has one.
+ * @param c - Hono context; `project_id` and `space_id` in the query, node id
+ *   in the path.
  * @returns `{ data: { tasks: NodeTaskRow[] } }`, newest first.
  */
 canvas.get(
   "/nodes/:nodeId/tasks",
   validate("param", z.object({ nodeId: z.string().uuid() })),
-  validate("query", z.object({ project_id: z.string().uuid() })),
+  validate(
+    "query",
+    z.object({
+      project_id: z.string().uuid(),
+      space_id: z.string().uuid(),
+    }),
+  ),
   async (c) => {
     const user = c.get("user");
     const { nodeId } = c.req.valid("param");
-    const { project_id } = c.req.valid("query");
+    const { project_id, space_id } = c.req.valid("query");
 
     await projectService.assertAccess(project_id, user.id, "viewer");
 
-    const tasks = await nodeTaskService.listLive({
-      projectId: project_id,
+    const at = { projectId: project_id, nodeId };
+    const [tasks, counts] = await Promise.all([
+      nodeTaskService.listLive(at),
+      nodeTaskService.countsFor(at),
+    ]);
+
+    await emitNodeTaskCounts(
+      getStreamRedis(),
+      canvasSpaceDocName(project_id, space_id),
       nodeId,
-    });
+      counts,
+    );
+
     return c.json({ data: { tasks } });
   },
 );

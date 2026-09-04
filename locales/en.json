@@ -269,7 +269,7 @@
     },
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",
-      "handling": "This item has tasks still running.",
+      "handling": "This item has tasks still running. Open its task list.",
       "remote": "Someone else is moving this."
     },
     "task": {
