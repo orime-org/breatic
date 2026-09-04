@@ -33,6 +33,7 @@ import {
   QUOTED,
 } from '@web/spaces/document/document-list-block';
 import {
+  LEVEL_OF_ROW,
   tickedOver,
   type BlockTypeId,
 } from '@web/spaces/document/document-block-ticks';
@@ -49,13 +50,6 @@ const TYPE_OF_ROW: Readonly<Partial<Record<BlockTypeId, string>>> = {
   'ordered-list': ORDERED_LIST,
   'task-list': 'checkListItem',
   'code-block': 'codeBlock',
-};
-
-/** The heading level each heading row stands for. */
-const LEVEL_OF_ROW: Readonly<Partial<Record<BlockTypeId, number>>> = {
-  'heading-1': 1,
-  'heading-2': 2,
-  'heading-3': 3,
 };
 
 /** The rows that are a list, and so have something to cancel. */

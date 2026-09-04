@@ -102,8 +102,14 @@ const ROW_OF_TYPE: Readonly<Record<string, BlockTypeId>> = {
   checkListItem: 'task-list',
 };
 
-/** The heading level each heading row stands for. */
-const LEVEL_OF_ROW: Readonly<Partial<Record<BlockTypeId, number>>> = {
+/**
+ * The heading level each heading row stands for.
+ *
+ * Exported because `document-block-run.ts` writes the level this table reads:
+ * one table, so a fourth heading cannot arrive on one side of that pair and
+ * not the other.
+ */
+export const LEVEL_OF_ROW: Readonly<Partial<Record<BlockTypeId, number>>> = {
   'heading-1': 1,
   'heading-2': 2,
   'heading-3': 3,

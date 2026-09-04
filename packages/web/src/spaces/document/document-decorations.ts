@@ -55,10 +55,13 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
  * @returns The decorations for this document.
  */
 function blockDecorations(doc: PMNode): DecorationSet {
-  const numbers = computeNumbering(doc);
+  // Read once and handed on: both what a run's ends are marked with and how a
+  // numbered heading restarts inside one are drawn from the same walk.
+  const runs = quoteRuns(doc);
+  const numbers = computeNumbering(doc, runs);
   const opens = new Set<string>();
   const closes = new Set<string>();
-  quoteRuns(doc).forEach((run) => {
+  runs.forEach((run) => {
     opens.add(run[0]!);
     closes.add(run[run.length - 1]!);
   });

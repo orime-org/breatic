@@ -174,11 +174,17 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
  * A heading at level four and beyond gets none: the menu offers three, and
  * what an existing document with a deeper one should show is `#920`.
  * @param doc - The document to read.
+ * @param runs - The document's quote runs. Taken as an argument because the
+ *   decoration plugin needs them too, and reading them is a walk of the whole
+ *   document that then happened twice per keystroke.
  * @returns Block id to the literal string the reader sees.
  */
-export function computeNumbering(doc: PMNode): Map<string, string> {
+export function computeNumbering(
+  doc: PMNode,
+  runs: readonly (readonly string[])[] = quoteRuns(doc),
+): Map<string, string> {
   const runOf = new Map<string, number>();
-  quoteRuns(doc).forEach((run, index) => {
+  runs.forEach((run, index) => {
     run.forEach((id) => runOf.set(id, index));
   });
   const walk: Walk = {
