@@ -896,6 +896,12 @@ describe("web_search leaves the turn's signal as it found it", () => {
     const turn = new AbortController();
     let added = 0;
     let removed = 0;
+    let composed = 0;
+    const realAny = AbortSignal.any.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "any").mockImplementation((signals) => {
+      composed += 1;
+      return realAny(signals);
+    });
     const realAdd = turn.signal.addEventListener.bind(turn.signal);
     const realRemove = turn.signal.removeEventListener.bind(turn.signal);
     turn.signal.addEventListener = ((...a: Parameters<typeof realAdd>) => {
@@ -914,8 +920,12 @@ describe("web_search leaves the turn's signal as it found it", () => {
 
     await run({ query: "breatic" }, turn.signal);
 
-    // One composition for the whole read, whatever the chunk count.
+    // `AbortSignal.any` links through an internal dependant set rather than an
+    // `abort` listener, so counting listeners says nothing. What the invariant
+    // is about is how many times the composition happens: once per read,
+    // whatever the chunk count.
     expect(added - removed).toBeLessThanOrEqual(2);
+    expect(composed).toBe(1);
   });
 });
 
@@ -974,6 +984,127 @@ describe("web_search bounds the page text, not its own framing", () => {
     const out = await run({ query: "breatic", count: 10 });
 
     expect((out.match(/<source\b/g) ?? []).length).toBe(10);
+    expect(out).not.toMatch(/were left out|Showing/);
+  });
+});
+
+describe("web_search pins the numbers and words it promises", () => {
+  it("says how many sources it is showing, not how many arrived", async () => {
+    const fat = "q".repeat(12_000);
+    httpRequestMock.mockImplementation(async () =>
+      grounding([[fat], [fat], [fat], [fat], [fat], [fat], [fat], [fat]]),
+    );
+
+    const out = await run({ query: "breatic" });
+
+    const shown = (out.match(/<source\b/g) ?? []).length;
+    expect(out).toContain(`Showing ${String(shown)} of 8 sources`);
+  });
+
+  it("tells the model raising count does not get more content", async () => {
+    // The load-bearing half of the promise: a model reaching for more text by
+    // raising `count` gets the same budget thinned across more pages. The word
+    // "sources" alone reads the same in a sentence that says the opposite.
+    const shape = (webSearch.inputSchema as unknown as { shape: { count: { description?: string } } })
+      .shape;
+    const both = `${webSearch.description ?? ""} ${shape.count.description ?? ""}`;
+
+    expect(both).toMatch(/does not get more|not more (content|text)|same (amount|budget)/i);
+  });
+
+  it("closes the reason for a status it would take no differently", async () => {
+    // The widest residual class: 400, 402, 404 aside, 409, 410, 413, 415, 451.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 409 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/continue without search results/i);
+  });
+
+  it("calls a 404 on a path we hardcoded an address that moved", async () => {
+    // The path is written into the tool, so a 404 says our address is stale --
+    // the same fact the redirect arm is singled out for. No wording of the
+    // query reaches either.
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 404 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/configuration|this side/i);
+    expect(forModel).not.toMatch(/different wording/i);
+  });
+});
+
+describe("web_search reads the snippet shapes the vendor documents", () => {
+  it("drops an entry whose snippets are neither a list nor text", async () => {
+    httpRequestMock.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            grounding: {
+              generic: [
+                { url: "u", title: "t", snippets: 5 },
+                { url: "v", title: "w", snippets: ["real text"] },
+              ],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const out = await run({ query: "breatic" });
+
+    expect(out).toContain("real text");
+    expect(out).toContain("of 2 sources");
+  });
+
+  it("calls a 200 carrying no body an answer that did not arrive", async () => {
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 200 }));
+
+    const { forModel } = await failureFrom(() => run({ query: "breatic" }));
+
+    expect(forModel).toMatch(/did not arrive|reading the answer/i);
+  });
+
+  it("passes on a snippet the vendor serialised as structured data", async () => {
+    httpRequestMock.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            grounding: { generic: [{ url: "u", title: "t", snippets: [{ heading: "a fact" }] }] },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+
+    const out = await run({ query: "breatic" });
+
+    expect(out).toContain("a fact");
+  });
+
+  it("keeps every source when the pages fill the budget at the tightest setting", async () => {
+    // Measured against the live service: everything the pages write -- snippet
+    // text plus the url and title printed beside it -- runs 3.65 to 4.10
+    // characters per configured token, worst at 1024 tokens over five sources.
+    maxTokens = 1024;
+    const perSource = Math.floor((1024 * 3.71) / 5);
+    httpRequestMock.mockImplementation(async () =>
+      new Response(
+        JSON.stringify({
+          grounding: {
+            generic: Array.from({ length: 5 }, (_, i) => ({
+              url: `https://www.example.com/a/realistic/article/path/${String(i)}`,
+              title: `A page title of about the length the service really sends ${String(i)}`,
+              snippets: ["r".repeat(perSource)],
+            })),
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const out = await run({ query: "breatic", count: 5 });
+
+    expect((out.match(/<source\b/g) ?? []).length).toBe(5);
     expect(out).not.toMatch(/were left out|Showing/);
   });
 });

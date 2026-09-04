@@ -58,17 +58,64 @@ interface Source {
  */
 const BYTES_READ_PER_TOKEN = 16;
 
-/** The tag each source's own text is placed inside. */
-const SOURCE_TAG = "source";
+/** How many characters of page text one configured token may pay for. */
+const CHARS_PER_TOKEN = 5;
 
 /**
  * The two sequences page text must not be able to write.
  *
- * Written as a pattern rather than built from `SOURCE_TAG`, so a tag that one
- * day carries a character the regex engine reads cannot leave the neutraliser
- * silently matching nothing.
+ * The tag is a literal here and a literal at the two places that emit it. A
+ * constant shared between them would promise a knob this pattern cannot turn:
+ * renaming it would leave the neutraliser matching a tag nothing writes, and
+ * page text could then open a block of its own.
  */
 const SOURCE_MARKER = /<(\/?source)/gi;
+
+/**
+ * What the model may do once a call has failed.
+ *
+ * Every reason ends with one of these. Anthropic's guidance asks a tool error
+ * to be actionable, and the half that keeps a failing tool from being called
+ * the same way again is this one -- a reason that names only what broke leaves
+ * the model with nowhere to go but the same call. Written as a table so a new
+ * failure picks a move rather than phrasing its own, which is how three of
+ * these drifted apart before.
+ */
+const NEXT_MOVE = {
+  /** Nothing about this call will work; stop calling it. */
+  stop:
+    "Do not repeat this call; continue without search results and tell the user search is " +
+    "unavailable.",
+  /** The same, for a search rather than a call. */
+  stopSearching:
+    "Do not repeat this search; continue without search results and tell the user search is " +
+    "unavailable.",
+  /** The request is the model's to rewrite, once. */
+  rewordOnce:
+    "Try a different wording at most once, then continue without search results and tell the " +
+    "user search is unavailable.",
+  /** This side never saw the answer; asking again may get it. */
+  retryOnce:
+    "Searching once more may work; if it fails again, continue without search results and tell " +
+    "the user search is unavailable.",
+  /** The search ran; there is nothing here to retry. */
+  searchElsewhere:
+    "Rewording is unlikely to help; search for something else if there is another angle, " +
+    "otherwise answer from what you already know and tell the user the search came back empty.",
+} as const;
+
+/** One of the moves above. */
+type NextMove = (typeof NEXT_MOVE)[keyof typeof NEXT_MOVE];
+
+/**
+ * Join what happened to what the model may do about it.
+ * @param what - What happened, ending in a full stop.
+ * @param next - What the model may do, from the table above.
+ * @returns The reason, as the model reads it.
+ */
+function reason(what: string, next: NextMove): string {
+  return `${what} ${next}`;
+}
 
 /**
  * What to tell the model about a status the search service refused with.
@@ -89,10 +136,10 @@ const SOURCE_MARKER = /<(\/?source)/gi;
 function refusalReason(query: string, status: number): string {
   const opening = `Searching for "${query}" failed: the search service answered HTTP ${status}.`;
   if (status >= 500 || status === 429) {
-    return (
+    return reason(
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
-      "wording of it reaches past this. Do not repeat this search; continue without " +
-      "search results and tell the user search is unavailable."
+        "wording of it reaches past this.",
+      NEXT_MOVE.stopSearching,
     );
   }
 
@@ -101,20 +148,16 @@ function refusalReason(query: string, status: number): string {
       ? "It turned down the credentials this side sent, which is a fault in our configuration."
       : status === 422
         ? "It refused what this side sent it, which is a fault in our configuration."
-        : status < 400
-          ? "It answered with a redirect this side does not follow, so the address configured " +
-            "here has moved. That is a fault in our configuration."
+        : status < 400 || status === 404
+          ? "It answered from an address this side no longer reaches, so the address " +
+            "configured here has moved. That is a fault in our configuration."
           : null;
   if (ours !== null) {
-    return (
-      `${opening} ${ours} No wording of the query reaches it. Do not repeat this call; ` +
-      "continue without search results and tell the user search is unavailable."
-    );
+    return reason(`${opening} ${ours} No wording of the query reaches it.`, NEXT_MOVE.stop);
   }
-  return (
-    `${opening} The service is reachable, so it is this request it would not take. Try a ` +
-    "different wording at most once, then continue without search results and tell the " +
-    "user search is unavailable."
+  return reason(
+    `${opening} The service is reachable, so it is this request it would not take.`,
+    NEXT_MOVE.rewordOnce,
   );
 }
 
@@ -129,10 +172,10 @@ function refusalReason(query: string, status: number): string {
  * @returns The reason, ending in what the model may do instead.
  */
 function notResultsReason(query: string): string {
-  return (
+  return reason(
     `Searching for "${query}" failed: the search service answered, but not with results. ` +
-    "That is a fault on their side. Continue without search results and tell the user search " +
-    "is unavailable."
+      "That is a fault on their side.",
+    NEXT_MOVE.stop,
   );
 }
 
@@ -147,10 +190,9 @@ function notResultsReason(query: string): string {
  * @returns The answer, ending in what the model may do instead.
  */
 function noResultsAnswer(query: string): string {
-  return (
-    `No results for: ${query}. The search ran and came back with nothing. Rewording is ` +
-    "unlikely to help; search for something else if there is another angle, otherwise " +
-    "answer from what you already know and tell the user the search came back empty."
+  return reason(
+    `No results for: ${query}. The search ran and came back with nothing.`,
+    NEXT_MOVE.searchElsewhere,
   );
 }
 
@@ -178,10 +220,10 @@ async function readBoundedBody(
   abortSignal: AbortSignal | undefined,
 ): Promise<string> {
   const body = res.body;
-  // Some responses carry no stream at all (a 204, or a test double built from
-  // a string in an environment without one). Nothing to bound.
-  if (!body) return res.text();
-
+  // A 200 carrying no stream is an answer that never arrived, which is the
+  // class the caller already reads a failed read as. Throwing here keeps it
+  // out of a path of its own that neither the cap nor the deadline covers.
+  if (body === null) throw new TypeError("the response carried no body");
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];
@@ -214,10 +256,12 @@ async function readBoundedBody(
       bytes += chunk.value.byteLength;
       if (bytes > maxBytes) {
         throw toolFailed(
-          `Searching for "${query}" failed: the search service sent more than it was asked ` +
-            `for (over ${String(maxBytes)} bytes). That is a fault on their side, and asking ` +
-            "again gets the same answer. Do not repeat this call; continue without search " +
-            "results and tell the user search is unavailable.",
+          reason(
+            `Searching for "${query}" failed: the search service sent more than it was asked ` +
+              `for (over ${String(maxBytes)} bytes). That is a fault on their side, and asking ` +
+              "again gets the same answer.",
+            NEXT_MOVE.stop,
+          ),
           FAILURE_LINES.upstream,
         );
       }
@@ -275,15 +319,19 @@ function renderSource(item: unknown, position: number): RenderedSource | null {
   // Brave documents a snippet as page text or as serialised structured data,
   // so a non-string is within contract rather than a surprise.
   const texts = list.map((s) => (typeof s === "string" ? s : JSON.stringify(s)));
-  const fromPage = address.length + name.length + texts.reduce((n, t) => n + t.length, 0);
+  // The line each snippet occupies counts too: how many snippets a source
+  // carries is the service's choice, so a body of many tiny ones would
+  // otherwise grow the answer without spending any of the budget.
+  const fromPage =
+    address.length + name.length + texts.reduce((n, t) => n + t.length + 1, 0);
   if (fromPage === 0) return null;
 
   const lines = [
-    `<${SOURCE_TAG} index="${String(position)}">`,
+    `<source index="${String(position)}">`,
     `url: ${keepInside(address)}`,
     `title: ${keepInside(name)}`,
     ...texts.map(keepInside),
-    `</${SOURCE_TAG}>`,
+    "</source>",
   ];
   return { block: lines.join("\n"), fromPage };
 }
@@ -324,15 +372,23 @@ function keepInside(text: string): string {
  * @param query - What was searched for.
  * @param sources - The sources this tool could read, in the service's order.
  * @param sent - How many sources the service sent, readable or not.
- * @param ceiling - How many characters of page text the answer may carry.
+ * @param maxTokens - The configured budget the ceiling is derived from.
  * @returns The text handed to the model.
  */
 function assembleAnswer(
   query: string,
   sources: RenderedSource[],
   sent: number,
-  ceiling: number,
+  maxTokens: number,
 ): string {
+  // Measured against the live service: everything the pages write -- snippet
+  // text, its line, and the url and title printed beside it -- runs 3.65 to
+  // 4.10 characters per configured token across the legal range, worst at the
+  // 1024 floor over five sources where the per-source identification
+  // dominates. Five leaves a fifth more than that worst case, so an answer
+  // that respects the budget never reaches the ceiling and only one that
+  // ignores it does.
+  const ceiling = maxTokens * CHARS_PER_TOKEN;
   const header =
     `Results for: ${query}\n` +
     "Everything between a source marker and its close is text from that page.\n";
@@ -384,9 +440,10 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       // line of its own would exist for this branch alone -- five translations
       // of a sentence no reader is on a path to meet.
       throw toolFailed(
-        "Web search is not available on this deployment: it has no search credentials. " +
-          "Do not repeat this call. Answer from what you already know, and tell the user " +
-          "you could not search.",
+        reason(
+          "Web search is not available on this deployment: it has no search credentials.",
+          NEXT_MOVE.stop,
+        ),
         FAILURE_LINES.generic,
       );
     }
@@ -464,10 +521,11 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         // something this side ever saw, so it is put as what is known: the
         // service answered and the answer did not finish.
         throw toolFailed(
-          `Searching for "${query}" failed while reading the answer: ${reasonOf(err)}. The ` +
-            "service answered, so it is the body that did not arrive. Searching once more may " +
-            "work; if it fails again, continue without search results and tell the user search " +
-            "is unavailable.",
+          reason(
+            `Searching for "${query}" failed while reading the answer: ${reasonOf(err)}. The ` +
+              "service answered, so it is the body that did not arrive.",
+            NEXT_MOVE.retryOnce,
+          ),
           FAILURE_LINES.upstream,
         );
       }
@@ -495,7 +553,7 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
         throw toolFailed(notResultsReason(query), FAILURE_LINES.upstream);
       }
 
-      return assembleAnswer(query, blocks, found.length, maxTokens * 4);
+      return assembleAnswer(query, blocks, found.length, maxTokens);
     } catch (err: unknown) {
       // Every throw above passes straight through: each already says what
       // happened, and rewriting one here would replace a specific reason with
@@ -504,11 +562,12 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       if (isStop(err, abortSignal)) throw stoppedByUser();
 
       throw toolFailed(
-        `Searching for "${query}" failed: the search service could not be reached ` +
-          `(${reasonOf(err)}). ` +
-          "The service is unreachable from here, which is not something a different query " +
-          "would fix. Do not repeat this call; continue without search results and tell the " +
-          "user search is unavailable.",
+        reason(
+          `Searching for "${query}" failed: the search service could not be reached ` +
+            `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
+            "a different query would fix.",
+          NEXT_MOVE.stop,
+        ),
         FAILURE_LINES.unreachable,
       );
     }
