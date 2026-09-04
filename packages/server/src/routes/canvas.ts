@@ -49,8 +49,22 @@ import {
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
+import type { TaskExpiryKnock } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
+
+/**
+ * What the timer's knock carries.
+ *
+ * Typed as the shared `TaskExpiryKnock` the timer builds against, so the two
+ * runtimes cannot drift: renaming the field on either side stops compiling
+ * here. Spelled apart, a mismatch has no symptom either side can see — this
+ * route answers 422, the timer reads that as the server being unwell, re-arms
+ * for thirty seconds later, and no task is ever judged dead.
+ */
+const taskExpiryKnockSchema: z.ZodType<TaskExpiryKnock> = z.object({
+  task_id: z.string().uuid(),
+});
 
 /**
  * `POST /canvas/node-tasks/expired` — a task timer saying one task is out of
@@ -86,7 +100,7 @@ canvas.post(
     }
     await next();
   },
-  validate("json", z.object({ task_id: z.string().uuid() })),
+  validate("json", taskExpiryKnockSchema),
   async (c) => {
     const { task_id } = c.req.valid("json");
 

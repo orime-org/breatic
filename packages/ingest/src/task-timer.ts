@@ -20,6 +20,8 @@
  * same, so a duplicate costs one request.
  */
 
+import { taskExpiryKnock } from "@breatic/shared";
+
 /** How long to wait before knocking again after a delivery that failed. */
 const RETRY_DELAY_MS = 30_000;
 
@@ -113,7 +115,7 @@ export class TaskTimer implements DurableObject {
           "content-type": "application/json",
           "x-ingest-secret": this.#env.INGEST_SHARED_SECRET,
         },
-        body: JSON.stringify({ taskId: armed.taskId }),
+        body: JSON.stringify(taskExpiryKnock(armed.taskId)),
       });
       delivered = response.ok;
     } catch {

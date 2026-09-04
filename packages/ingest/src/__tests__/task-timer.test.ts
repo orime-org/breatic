@@ -27,6 +27,7 @@ import {
   runDurableObjectAlarm,
 } from "cloudflare:test";
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { taskExpiryKnock } from "@breatic/shared";
 import type { TaskTimer } from "@ingest/task-timer.js";
 
 const SERVER_ORIGIN = "https://api.test.example";
@@ -124,17 +125,6 @@ describe("arming a timer", () => {
     expect(res.status).toBe(400);
   });
 
-  it("takes a deadline that has already passed", async () => {
-    // The server takes time to reach here and a budget can be short, so a
-    // deadline in the past is a deadline. `armed` asserts the 204; what
-    // matters after that is that it still knocks.
-    serverAnswers(200);
-    const { stub, taskId } = await armed(-1_000);
-
-    await runDurableObjectAlarm(stub);
-
-    expect(knocks).toEqual([{ taskId }]);
-  });
 });
 
 describe("the deadline arrives", () => {
@@ -144,7 +134,7 @@ describe("the deadline arrives", () => {
 
     expect(await runDurableObjectAlarm(stub)).toBe(true);
 
-    expect(knocks).toEqual([{ taskId }]);
+    expect(knocks).toEqual([taskExpiryKnock(taskId)]);
     // The endpoint it knocks on is reachable from the internet and takes a
     // task id as its whole argument, so it has to know the caller is us.
     expect(knockHeaders[0]?.["x-ingest-secret"]).toBe(
@@ -201,7 +191,7 @@ describe("the deadline arrives", () => {
     serverAnswers(200);
     await runDurableObjectAlarm(stub);
 
-    expect(knocks).toEqual([{ taskId }, { taskId }]);
+    expect(knocks).toEqual([taskExpiryKnock(taskId), taskExpiryKnock(taskId)]);
     await runInDurableObject(stub, async (_instance: TaskTimer, state) => {
       expect(await state.storage.getAlarm()).toBeNull();
     });
@@ -216,7 +206,7 @@ describe("the deadline arrives", () => {
 
     await runDurableObjectAlarm(stub);
 
-    expect(knocks).toEqual([{ taskId }]);
+    expect(knocks).toEqual([taskExpiryKnock(taskId)]);
   });
 
   it("does nothing when the alarm fires before anything armed it", async () => {

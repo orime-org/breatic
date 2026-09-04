@@ -408,6 +408,13 @@ export {
   type UploadTicketRejection,
   type UploadTicketVerification,
 } from "@shared/upload/ticket.js";
+// The one field the expiry knock carries, for the same reason: the timer that
+// sends it and the route that reads it share no test.
+export {
+  taskExpiryKnock,
+  readTaskExpiryKnock,
+  type TaskExpiryKnock,
+} from "@shared/upload/task-expiry.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
