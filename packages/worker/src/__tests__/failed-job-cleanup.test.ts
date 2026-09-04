@@ -12,7 +12,7 @@
  * write-back for every target node of a FINALLY-failed job.
  *
  * No real Redis — publishNodeEvent from @breatic/core is fully mocked
- * (same pattern as emit-node-state-update.test.ts).
+ * (same pattern as the sibling dispatch suites).
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
@@ -75,7 +75,7 @@ vi.mock("@breatic/shared", () => ({
 // mini-tool-registry + local handlers + ai are pulled in transitively by
 // handlers/dispatch.ts (which we import for emitNodeStateFailed) — mock
 // them so the provider chains never load (same as
-// emit-node-state-update.test.ts).
+// the sibling dispatch suites).
 vi.mock("@worker/mini-tool-registry.js", () => ({
   resolveMiniToolEntry: vi.fn(),
 }));

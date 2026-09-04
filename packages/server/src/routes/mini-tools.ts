@@ -48,8 +48,6 @@ const TTS_TOOLS = new Set(["tts", "voice-clone"]);
  * @param projectId - Optional project ID
  * @param spaceId - The space (canvas) the task belongs to
  * @param targetNodeIds - UUIDs of the canvas nodes to update on completion
- * @param nodeGens - Lease gen per target node (#1580 #7): echoed by every
- *   worker write-back so the collab CAS can fence superseded writes
  * @returns Object with `task_id` and `status: "pending"`
  */
 async function enqueueMiniTool(
@@ -60,7 +58,6 @@ async function enqueueMiniTool(
   projectId: string,
   spaceId: string,
   targetNodeIds: string[],
-  nodeGens: Record<string, number>,
 ): Promise<{ task_id: string; status: string }> {
   // Mini-tools always create a new sibling result node (the caller
   // pre-allocates `target_node_id` as a fresh UUID), so mode is
@@ -80,8 +77,8 @@ async function enqueueMiniTool(
   // Worker dispatcher reads `source: "mini_tool"` to route to runMiniTool.
   // Without it, the job falls through to the AIGC direct path which expects
   // a `model` field that mini-tool requests don't provide. `spaceId` lets
-  // the worker compute the canvas-{spaceId} doc name when emitting
-  // NodeStateUpdateEvent (v10 multi-doc routing).
+  // the worker compute the canvas-{spaceId} doc name for the counts it
+  // publishes when a task settles.
   const job = await tasksQueue.add(
     "execute-mini-tool",
     {
@@ -94,7 +91,6 @@ async function enqueueMiniTool(
       params,
       source: "mini_tool",
       targetNodeIds,
-      nodeGens,
       mode: "append" as const,
     },
     defaultJobOpts(),
@@ -131,7 +127,7 @@ miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
   // read before the check can name one.
   await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
 
-  const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, ...params } = body;
 
   const result = await enqueueMiniTool(
     tool,
@@ -141,7 +137,6 @@ miniTools.post("/image", validate("json", imageToolSchema), async (c) => {
     project_id,
     space_id,
     [target_node_id],
-    { [target_node_id]: gen },
   );
   return c.json({ data: result }, 201);
 });
@@ -161,7 +156,7 @@ miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
   // read before the check can name one.
   await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
 
-  const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, ...params } = body;
 
   const result = await enqueueMiniTool(
     tool,
@@ -171,7 +166,6 @@ miniTools.post("/video", validate("json", videoToolSchema), async (c) => {
     project_id,
     space_id,
     [target_node_id],
-    { [target_node_id]: gen },
   );
   return c.json({ data: result }, 201);
 });
@@ -192,7 +186,7 @@ miniTools.post("/audio", validate("json", audioToolSchema), async (c) => {
   // read before the check can name one.
   await precheckCredits(body.project_id, user.id, MIN_TASK_CREDIT_COST);
 
-  const { tool, project_id, space_id, target_node_id, gen, ...params } = body;
+  const { tool, project_id, space_id, target_node_id, ...params } = body;
 
   const taskType = TTS_TOOLS.has(tool) ? "tts" : "audio";
   const result = await enqueueMiniTool(
@@ -203,7 +197,6 @@ miniTools.post("/audio", validate("json", audioToolSchema), async (c) => {
     project_id,
     space_id,
     [target_node_id],
-    { [target_node_id]: gen },
   );
   return c.json({ data: result }, 201);
 });

@@ -123,7 +123,7 @@ const EDGES_KEY = 'edgesMap';
  * `trackedOrigins` is an ALLOW-LIST, and this Symbol is local to this module,
  * so everything else is excluded by construction — remote updates included,
  * since they arrive with the provider as their origin. Server-side writes name
- * their origin too (`'node-state-update'` and friends), but that is only for
+ * their origin too, but that is only for
  * traces: a transaction origin never crosses the wire, so those strings could
  * not enter this set even if they wanted to.
  */
@@ -419,7 +419,7 @@ export function useCanvasSpace(
  * Build the nested `data` Y.Map for a node from a plain wire data object.
  * Each defined field becomes a Y.Map entry (plain values — strings,
  * numbers, booleans, plain arrays / objects — matching how the backend
- * reads `handlingBy` as a plain object). Undefined fields are omitted.
+ * reads `taskCounts` as a plain object). Undefined fields are omitted.
  *
  * Three keys are exceptions to the plain-values convention, and all three are
  * seeded here rather than on demand. A container created on demand is a

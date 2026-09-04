@@ -83,7 +83,6 @@ export function createEmptyNode(
       createdAt: Date.now(),
       createdBy,
       locked: false,
-      state: 'idle',
       attachments: [],
     },
   };
@@ -123,7 +122,6 @@ export function createGroupNode(
       createdAt: Date.now(),
       createdBy,
       locked: false,
-      state: 'idle',
       attachments: [],
       width,
       height,

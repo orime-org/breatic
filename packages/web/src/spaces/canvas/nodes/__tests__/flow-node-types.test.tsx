@@ -79,7 +79,6 @@ describe('FLOW_NODE_TYPES', () => {
           createdAt: 1,
           createdBy: 'u',
           locked: false,
-          state: 'idle',
           attachments: [],
         },
       });

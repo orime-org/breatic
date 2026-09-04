@@ -66,7 +66,6 @@ function genNode(): CanvasNodeFields {
       createdAt: 1,
       createdBy: 'u1',
       locked: false,
-      state: 'idle',
       attachments: [],
     },
   } as CanvasNodeFields;

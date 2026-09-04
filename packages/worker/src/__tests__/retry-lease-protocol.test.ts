@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Retry × lease protocol (#1580 adversarial fixes).
+ * Retry × terminal-attempt protocol.
  *
- * The worker must emit a lease CLOSE (state:'idle' + handlingBy:null) ONLY
- * on a TERMINAL failure. A retryable failure that closes the lease
- * self-fences the successful retry: the retry reuses the same gen from the
- * job payload, the collab CAS finds no live lease, and the billed result
- * never lands on the node. `isTerminalAttempt` is the gate.
+ * The worker settles a node's task row as failed ONLY on a TERMINAL failure.
+ * Settling on a retryable one marks the row failed while the retry is still
+ * to come, and the retry then finds nothing running to settle: the billed
+ * result never lands on the node. `isTerminalAttempt` is the gate.
  *
  * BullMQ 5.30 semantics (source-verified): `attemptsStarted` increments
  * when processing starts (attempt N has attemptsStarted === N);

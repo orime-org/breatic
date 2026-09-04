@@ -3110,11 +3110,9 @@ function CanvasSpaceInner({
       modality: HistoryModality,
     ): void => {
       // Decision is a pure, unit-tested function (INV-1/2/4/8/9); this callback
-      // only reads the FRESH gate state + performs the effects. `handlingBy !=
-      // null` (nodeHasLiveLease) catches a live lease whose 'handling' state a
-      // concurrent write reverted — restore must never race an in-flight,
-      // billed generation. `isNodeLocked` reads the node's OWN lock (INV-6, not
-      // group-aware), matching resetNodeToEmptyImage.
+      // only reads the FRESH gate state + performs the effects. `isNodeLocked`
+      // reads the node's OWN lock (INV-6, not group-aware), matching
+      // resetNodeToEmptyImage.
       const decision = resolveRestore({
         readOnly,
         entry,

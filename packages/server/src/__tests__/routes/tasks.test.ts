@@ -301,7 +301,6 @@ describe("Tasks routes", () => {
         space_id: SID,
         mode: "overwrite",
         target_node_id: nodeId,
-        node_gens: { [nodeId]: 1 },
       });
 
       const first = await app.request("/api/v1/canvas/tasks", {

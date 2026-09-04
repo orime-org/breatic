@@ -212,11 +212,12 @@ describe('handlingNodeIds — nodes with a running task', () => {
     expect(handlingNodeIds(nodes)).toEqual(new Set(['h1', 'h2']));
   });
 
-  it('IGNORES the wire `state` field (only the derived view `status` counts)', () => {
-    // A node carrying only the wire shape (no `status`) must NOT match — the
-    // guard reads the field the render buffer actually carries. Pins the exact
-    // regression the adversarial pass caught.
-    expect(handlingNodeIds([{ id: 'w', data: { state: 'handling' } }])).toEqual(
+  it('IGNORES the raw counts (only the derived view `status` counts)', () => {
+    // A node carrying the document shape rather than the view shape must NOT
+    // match — the guard reads the field the render buffer actually carries.
+    // Pins the exact regression the adversarial pass caught.
+    const raw = { running: 1, done: 0, failed: 0, expired: 0 };
+    expect(handlingNodeIds([{ id: 'w', data: { taskCounts: raw } }])).toEqual(
       new Set(),
     );
   });

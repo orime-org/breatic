@@ -65,7 +65,6 @@ function sampleFields(
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      state: 'idle',
       attachments: [],
       ...data,
     },
@@ -147,26 +146,24 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   });
 
   it('surfaces a backend write-back into the data Y.Map (the contract-drift fix)', () => {
-    // A node enters handling (frontend created it, backend is producing it).
+    // A node with one task running on it, which the backend is producing.
     addNode(
       PID,
       SID,
       sampleFields('image', {
-        state: 'handling',
-        handlingBy: { userId: 'u1', type: 'backend', startedAt: 1_700_000_000_000, gen: 1 },
+        taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
       }),
     );
 
     // Simulate exactly what collab task-listener.ts does: reach into the
-    // node's data Y.Map and write the result fields.
+    // node's data Y.Map and write the counts and the result fields.
     const d = doc();
     const dataMap = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
     d.transact(() => {
       dataMap.set('content', 'result.png');
-      dataMap.set('state', 'idle');
-      dataMap.delete('handlingBy');
+      dataMap.set('taskCounts', { running: 0, done: 1, failed: 0, expired: 0 });
     });
 
     const view = readNodes(d)[0];
@@ -175,6 +172,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       name: 'N',
       content: 'result.png',
       status: 'idle',
+      taskCounts: { running: 0, done: 1, failed: 0, expired: 0 },
       errorMessage: undefined,
       locked: false,
       focusImages: [],
@@ -182,14 +180,20 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
   });
 
-  it('derives the error display status from idle + errorMessage written back', () => {
-    addNode(PID, SID, sampleFields('image', { state: 'handling' }));
+  it('derives the error display status from a settled node carrying an errorMessage', () => {
+    addNode(
+      PID,
+      SID,
+      sampleFields('image', {
+        taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+      }),
+    );
     const d = doc();
     const dataMap = (d.getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
     d.transact(() => {
-      dataMap.set('state', 'idle');
+      dataMap.set('taskCounts', { running: 0, done: 0, failed: 1, expired: 0 });
       dataMap.set('errorMessage', 'provider 500');
     });
     expect(readNodes(d)[0].data).toMatchObject({

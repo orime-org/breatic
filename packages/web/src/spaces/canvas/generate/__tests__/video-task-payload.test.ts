@@ -17,7 +17,7 @@ const BASE = {
 };
 
 describe('buildVideoTaskPayload', () => {
-  it('builds an overwrite payload targeting the node, with gen = leaseGen + 1', () => {
+  it('builds an overwrite payload targeting the node', () => {
     expect(buildVideoTaskPayload(BASE)).toEqual({
       task_type: 'video',
       model: 'veo-3.1',

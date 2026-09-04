@@ -608,7 +608,6 @@ function seedImageNode(over: Record<string, unknown> = {}): void {
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      state: 'idle',
       attachments: [],
       ...over,
     },

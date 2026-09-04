@@ -27,7 +27,7 @@
  * the collab handling-lease sweeper (1h budget) is the final backstop.)
  *
  * Idempotent by construction: the write-back is the standard failure
- * patch (idle + errorMessage + handlingBy:null) applied by the collab
+ * outcome (the row marked failed, its counts republished) applied by the collab
  * task-listener; re-applying it to an already-idle node is harmless.
  */
 import type { getStreamRedis } from "@breatic/core";

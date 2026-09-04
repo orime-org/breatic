@@ -62,7 +62,7 @@ export interface TaskJobData {
    * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
    * task is project + Space scoped). Optional only for legacy paths
    * that do not bind to a canvas node — those skip
-   * `NodeStateUpdateEvent` emission entirely.
+   * task-counts emission entirely.
    */
   projectId?: string;
   /**
@@ -79,7 +79,7 @@ export interface TaskJobData {
   source?: string;
   toolName?: string;
   /**
-   * Target canvas node IDs to receive the result via NodeStateUpdateEvent.
+   * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
    * (e.g., split image → 4 nodes). Absent for tasks not bound to any canvas
    * node (understand, skill agents without node bindings).
@@ -107,8 +107,9 @@ export interface TaskJobData {
  * 5.30 semantics (source-verified): `attemptsStarted` increments when
  * processing starts, so attempt N observes attemptsStarted === N;
  * `opts.attempts` is the total allowance (absent = 1). A failure lease
- * CLOSE (state:'idle' + handlingBy:null) may only be emitted on a terminal
- * attempt — a non-terminal close deletes the live handlingBy, and the
+ * A terminal outcome may only be settled on a terminal attempt — settling a
+ * retryable failure marks the row failed while the retry is still to come, and
+ * the
  * retry (same gen, from the fixed job payload) is then fenced by the
  * collab CAS forever: the user gets billed for the successful retry while
  * the node keeps the stale error. Defensive: a missing attemptsStarted
@@ -197,7 +198,7 @@ async function settleFailedBestEffort(
 /**
  * Resolve the Yjs canvas-doc name for a job, or return null when the
  * job is not bound to a canvas (no projectId / no spaceId — those
- * tasks never emit `NodeStateUpdateEvent`).
+ * tasks never settle a task row).
  *
  * Centralises the v10 multi-doc rule in one place: every site that
  * formerly called `projectDocName(projectId)` now goes through
@@ -565,11 +566,10 @@ async function runTaskBody(
     logger.error({ taskId, error: errorMsg }, "provider_call_failed");
     await taskService.markFailed(taskId, errorMsg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    // #1580 adversarial fix: the lease CLOSE may only ship on a TERMINAL
-    // failure. A retryable failure keeps the node handling (the retry's
-    // renew re-stamps it) — closing here deletes the live handlingBy, and
-    // the retry's same-gen write-backs are then CAS-fenced forever: billed
-    // result, node stuck on the stale error. Same contract the QueueEvents
+    // A terminal outcome may only ship on a TERMINAL failure. Settling here
+    // on a retryable one marks the row failed while the retry is still to
+    // come, and the retry then finds nothing running to settle: billed
+    // result, node stuck on the stale count. Same contract the QueueEvents
     // net enforces via job.finishedOn.
     if (canvasDocName && isTerminalAttempt(job)) {
       await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
@@ -759,12 +759,12 @@ async function runTaskBody(
     logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
   }
 
-  // ─── Stage 4: Record history + publish NodeStateUpdateEvent ──────
+  // ─── Stage 4: Record history + settle each node's task row ───────
   // No canvas-node lock check here (#1618): the billed result is recorded to
-  // node_history + emitted (idempotent, via recordGenerationForNodes). Whether
-  // the write-back lands on the node is arbitrated solely by collab's
-  // gen/leaseGen fence — if the node was reclaimed mid-execution, our event is
-  // fenced there while the result is still recorded to history.
+  // node_history + settled (idempotent, via recordGenerationForNodes). Whether
+  // the content lands on the node is decided by the task row's own state — a
+  // row already settled some other way keeps the node's content while the
+  // result is still recorded to history.
   if (canvasDocName && projectId && nodeIds.length > 0) {
     await recordGenerationForNodes(
       streamRedis,

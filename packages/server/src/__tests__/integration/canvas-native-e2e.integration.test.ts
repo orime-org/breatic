@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Integration test: BullMQ → worker.runTask → NodeStateUpdateEvent → Collab task-listener → Yjs
+ * Integration test: BullMQ → worker.runTask → task-counts event → Collab task-listener → Yjs
  *
  * End-to-end test of the Phase 2 canvas-native flow with real infrastructure:
  *   - Real PostgreSQL (testcontainers): task rows, FK fixtures (user/project)
@@ -295,7 +295,7 @@ async function readNodeData(
 
       const snap: Record<string, unknown> = {};
       for (const [k, v] of dataMap.entries()) {
-        // Flatten nested Y.Maps (handlingBy) to plain objects for assertions
+        // Flatten nested Y.Maps to plain objects for assertions
         snap[k] = v instanceof Y.Map ? Object.fromEntries(v.entries()) : v;
       }
       result = snap;
@@ -384,7 +384,7 @@ async function waitForNodeData(
  *   doc.getMap("nodesMap")[nodeId].data = Y.Map(dataFields)
  *
  * Every value is set EXACTLY as production does: the web data layer's
- * `buildDataMap` stores nested values (handlingBy, position, attachments)
+ * `buildDataMap` stores nested values (position, attachments)
  * as PLAIN objects/arrays inside the data Y.Map — never as nested Y.Maps.
  * The old harness converted nested objects to Y.Map, which diverged from
  * production and hid the gen-CAS's property reads from the real shape
@@ -551,7 +551,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - the node's counts show the task finished
    *   - errorMessage is absent
    */
-  it("Test 1: success path — state=idle, content+coverUrl written, handlingBy deleted", async () => {
+  it("Test 1: success path — content+coverUrl written, the node's task done", async () => {
     const nodeId = crypto.randomUUID();
     const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
 

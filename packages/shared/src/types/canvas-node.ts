@@ -22,9 +22,6 @@
  */
 export const CANVAS_NODES_KEY = 'nodesMap';
 
-/** Yjs-shared lifecycle. localPending is local-only and not represented here. */
-export type NodeState = 'idle' | 'handling';
-
 /**
  * Node modality — semantic names (replaced the legacy numeric codes
  * `'1001'..'1004'` on 2026-06-15). The 6 content modalities (text / image /
@@ -76,105 +73,6 @@ const GENERATIVE_MODALITIES: readonly NodeType[] = ['image', 'video'];
 export function canGenerate(type: NodeType): boolean {
   return GENERATIVE_MODALITIES.includes(type);
 }
-
-/**
- * Identifies the user who triggered the current handling AND the driver
- * responsible for advancing the node out of `handling`.
- *
- * `type` (added 2026-05-11, ADR `2026-05-11-mini-tool-state-machine.md`)
- * names the driver responsible for advancing the node out of `handling`:
- *
- *   - `frontend` — the user's own browser is running the op (e.g. an
- *     upload streaming its parts to the ingest Worker). The browser writes
- *     back `state: 'idle'` on success / failure itself (`setNodeError`);
- *     if it hard-crashes, the collab lease sweeper (below) reclaims the
- *     node after the budget.
- *   - `backend`  — a Worker is running the op (POST → BullMQ → provider).
- *     Worker self-manages via NodeStateUpdateEvent (retry / dead-letter);
- *     BullMQ tracks its liveness.
- *
- * Collab's `onDisconnect` no longer reclaims handling for EITHER driver
- * (#1580 slice 4, Option A). A disconnect is not reliable evidence the
- * work died — an upload to the ingest Worker is invisible to collab and
- * outlives the WebSocket, so reclaiming on disconnect false-reclaims live
- * uploads. The
- * lease sweeper is the single, guaranteed backstop.
- *
- * READ-TIME SKIP INVARIANT (#1580 #5, single-writer): collab is the ONLY
- * writer of this shared doc. Any consumer that reads a PERSISTED (Postgres)
- * snapshot OUT OF BAND — bypassing the live collab doc, e.g. a future
- * thumbnail / export / search-index feature — MUST treat a `handling`
- * node's content as unusable (skip / placeholder) and MUST NOT write back
- * to the original (that would be a second writer). No such out-of-band
- * reader exists today (verified 2026-07-02) — this is the convention for
- * the first one added.
- *
- * No display-name snapshot here (email-registration rewrite, 2026-06-06):
- * "who is handling" is rendered by resolving `userId` against the project
- * member roster, which the client fetches and refreshes. Freezing a name
- * onto the node would drift the moment that person renamed themselves.
- * (The roster replaced a `meta.users` map in the Yjs meta doc, #1882 — the
- * rule is unchanged, only where the name is looked up.)
- *
- * `startedAt` is the epoch-ms instant handling opened. Nothing measures it:
- * a task's deadline lives on its own row and the timer that holds it knocks
- * when it passes (#186, design §4.6).
- */
-/**
- * Handling lifecycle phase (#1580 #2). A backend (Worker) op is `queued`
- * from enqueue until the Worker picks it up, then `running` during
- * execution. Frontend-driven ops are effectively single-phase and may omit
- * it (treated as `running`).
- */
-export type HandlingPhase = 'queued' | 'running';
-
-export interface HandlingActor {
-  userId: string;
-  /** Who owns the handling → idle/error transition. See type-doc above. */
-  type: 'frontend' | 'backend';
-  /** Lease start (epoch ms); the fixed-budget timeout is measured from here. */
-  startedAt: number;
-  /**
-   * Yjs `clientID` of the connection that opened this handling. Written by
-   * FRONTEND drivers (upload / local fills) as part of the owner triple
-   * `gen + userId + clientId` (#1580 #7): when two clients race the same
-   * gen, Yjs converges `handlingBy` to one owner and only the owner's
-   * write-back lands — clientId is what tells two tabs of the same user
-   * apart. Absent for `backend` drivers (a Worker has no Yjs connection;
-   * overwrite-mode exclusivity comes from the server-side Redis node lock).
-   * Also reusable by a future #1551 single-master disconnect fast-path.
-   */
-  clientId?: number;
-  /**
-   * Monotonic fencing generation (#1580 #7, unified-gen design 2026-07-03).
-   * Every handling open — frontend upload AND backend AIGC — reads the
-   * node's persistent `data.leaseGen` counter and takes `gen = leaseGen + 1`,
-   * advancing the counter in the same write. Every write-back
-   * (worker-done / failed / renew / frontend upload completion)
-   * compare-and-sets on this: a superseded (stale-gen) op's late write is
-   * rejected, so a slow-but-alive op that completes after being reclaimed
-   * and retried cannot clobber the new op. REQUIRED (pre-launch, no
-   * back-compat branch).
-   */
-  gen: number;
-  /**
-   * Lifecycle phase (#1580 #2): `queued` (enqueued, awaiting Worker) vs
-   * `running` (Worker executing). The sweeper picks the timeout window by
-   * phase. Absent = treat as `running` (frontend single-phase / pre-#1580).
-   */
-  phase?: HandlingPhase;
-  /**
-   * Set true by the collab sweeper once it has re-stamped `startedAt` with
-   * the SERVER clock (#1580 #1). A `frontend` driver writes `startedAt` from
-   * the browser clock, which is user-controllable and must never be compared
-   * against the server clock — so the sweeper overwrites it with server time
-   * on first observation and flags it here; only then is `startedAt` trusted
-   * for expiry. `backend` startedAt is server-authored at enqueue (NTP-bounded
-   * skew), so it is never normalized. Absent = not yet server-normalized.
-   */
-  serverStamped?: boolean;
-}
-
 
 /**
  * Attachment reference stored in a node's `attachments` array — a plain
@@ -292,23 +190,8 @@ export interface CanvasNodeFields {
      */
     locked: boolean;
 
-    // ─── State machine (all node types) ─────────────────────
-    /** Yjs-shared lifecycle. */
-    state: NodeState;
-    /** Who triggered the current handling; undefined when state === 'idle'. */
-    handlingBy?: HandlingActor;
-    /**
-     * Persistent monotonic lease counter (#1580 #7, unified-gen design
-     * 2026-07-03). Every handling open (frontend upload AND backend AIGC)
-     * takes `gen = leaseGen + 1` and advances this in the same write; the
-     * collab single-writer additionally enforces `leaseGen = max(old, gen)`
-     * when applying a handling-open event. NEVER cleared when handling ends
-     * — surviving into the next generation is the whole point (a stale
-     * write-back must keep failing its CAS forever). Absent = 0 (a node
-     * that has never been handled), the counter's natural zero.
-     */
-    leaseGen?: number;
-    /** Last failure message; present when state === 'idle' AND last operation failed. */
+    // ─── Tasks (all node types) ─────────────────────────────
+    /** Last failure message from whatever wrote this node's content. */
     errorMessage?: string;
     /**
      * How many tasks this node carries in each state (#186) — the whole of

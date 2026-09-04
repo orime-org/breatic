@@ -17,7 +17,7 @@
  *
  * The doc name is the canonical identifier — appears on the Hocuspocus
  * WebSocket handshake, on the `yjs_documents.name` row in PostgreSQL,
- * and on the `docName` field of NodeStateUpdateEvent on the task-events
+ * and on the `docName` field of the task-counts event on the task-events
  * Redis stream. Keep encoding here so nobody drifts.
  */
 

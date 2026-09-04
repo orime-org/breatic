@@ -368,12 +368,7 @@ function seedVideoNode(over: Record<string, unknown> = {}): void {
       createdAt: 1000,
       createdBy: 'u1',
       locked: false,
-      state: 'idle',
       attachments: [],
-      // A non-zero lease so the gen fence assertion can tell a real read from
-      // a hardcoded 0 — with an absent lease both produce gen 1 and the
-      // assertion proves nothing.
-      leaseGen: 3,
       ...over,
     },
   } as Parameters<typeof addNode>[2]);
@@ -684,7 +679,9 @@ describe('VideoGeneratePanelContainer', () => {
       // task list, and whichever finishes last is what the node holds.
       vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
       const create = vi.spyOn(canvasApi, 'createTask');
-      seedVideoNode({ state: 'handling' });
+      seedVideoNode({
+        taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+      });
       typePrompt('a drone shot over a canyon at dawn');
       mountContainer('video');
       act(() => {
@@ -1254,7 +1251,6 @@ describe('VideoGeneratePanelContainer', () => {
             createdAt: 1000,
             createdBy: 'u1',
             locked: false,
-            state: 'idle',
             attachments: [],
             content: source.data.content,
           },

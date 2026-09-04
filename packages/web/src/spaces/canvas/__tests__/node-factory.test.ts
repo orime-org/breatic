@@ -33,7 +33,6 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.position).toEqual(pos);
     expect(node.data.createdBy).toBe('user-1');
     expect(node.data.locked).toBe(false);
-    expect(node.data.state).toBe('idle');
     expect(node.data.attachments).toEqual([]);
     expect(typeof node.data.createdAt).toBe('number');
     expect(node.data.createdAt).toBeGreaterThan(0);
@@ -61,9 +60,8 @@ describe('createEmptyNode — empty content node factory', () => {
     expect(node.data.model).toBeUndefined();
   });
 
-
-  it('an idle node carries NO handlingBy', () => {
-    expect(createEmptyNode('image', pos, 'u').data.handlingBy).toBeUndefined();
+  it('a fresh node carries no task counts, which reads as four zeros', () => {
+    expect(createEmptyNode('image', pos, 'u').data.taskCounts).toBeUndefined();
   });
 });
 
