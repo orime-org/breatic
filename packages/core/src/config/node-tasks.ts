@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Node task budgets loader (#186).
+ * Node task budget loader (#186).
  *
- * Reads `config/node-tasks.yaml`: the bounds a task's conservative time is
- * held between, and what a video's cover extraction is allowed on top of the
- * transfer estimate.
+ * Reads `config/node-tasks.yaml`: the one deadline every task on a canvas node
+ * is given, whatever kind of work it is and however large.
  */
 
 import { readFileSync } from "node:fs";
@@ -16,14 +15,7 @@ import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const nodeTaskConfigSchema = z.object({
-  upload: z.object({
-    min_budget_ms: z.number().int().positive().default(900_000),
-    max_budget_ms: z.number().int().positive().default(43_200_000),
-    cover_reserve_ms: z.number().int().nonnegative().default(600_000),
-  }),
-  generation: z.object({
-    budget_ms: z.number().int().positive().default(14_400_000),
-  }),
+  default_budget_ms: z.number().int().positive().default(7_200_000),
 });
 
 /** Validated node task configuration. */
@@ -32,7 +24,7 @@ export type NodeTaskConfig = z.infer<typeof nodeTaskConfigSchema>;
 let _cached: Readonly<NodeTaskConfig> | null = null;
 
 /**
- * Load the node task budgets from YAML.
+ * Load the node task budget from YAML.
  * @returns Frozen, validated config, memoized after the first read.
  * @throws {z.ZodError} When a value is malformed.
  */

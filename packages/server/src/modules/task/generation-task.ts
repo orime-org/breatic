@@ -42,7 +42,7 @@ export async function openGenerationTasks(opts: {
   taskId: string;
   label: string;
 }): Promise<void> {
-  const budgetMs = getNodeTaskConfig().generation.budget_ms;
+  const budgetMs = getNodeTaskConfig().default_budget_ms;
   const docName = canvasSpaceDocName(opts.projectId, opts.spaceId);
 
   for (const nodeId of opts.nodeIds) {

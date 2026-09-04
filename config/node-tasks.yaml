@@ -1,31 +1,17 @@
 # Node task budgets (#186).
 #
-# Every task on a canvas node carries a conservative time: within it the task
-# will certainly finish under normal conditions, and failing to finish means
-# something outside what we promise went wrong. A timer Durable Object holds
-# that deadline and knocks on the server when it passes.
+# Every task on a canvas node carries a deadline. A timer Durable Object holds
+# it and knocks on the server when it passes, and that knock is the sole basis
+# on which a task is judged dead.
 #
-# Bias long. Judging a live task dead costs the user their wait and their
-# credits; judging late costs them a longer wait.
-
-upload:
-  # Floor. A small file's transfer time is seconds, while the handshake, the
-  # row, the signed ticket and the browser's own queueing are not — this is
-  # where they live. 15 minutes.
-  min_budget_ms: 900000
-  # Ceiling. `max_upload_bytes` at `client_put_min_bytes_per_sec` is 9.1
-  # hours; this sits above it so the largest allowed file is bounded by its
-  # own transfer estimate rather than by this number. 12 hours.
-  max_budget_ms: 43200000
-  # Added on top of the transfer estimate. A video's cover is extracted after
-  # the bytes land, and the task is not done until that has had its chance.
-  # 10 minutes.
-  cover_reserve_ms: 600000
-
-generation:
-  # An AIGC run and a mini-tool both go through a queue and a provider, and
-  # neither reports progress. The server sets this alone: a deadline is the
-  # sole basis on which a task is judged dead, so taking it from whoever
-  # started the task would let them decide when their own work stops
-  # counting as alive. 4 hours.
-  budget_ms: 14400000
+# It is one flat ceiling for every kind of task, not an estimate of this
+# particular piece of work. What an upload takes depends on a link we cannot
+# see and what a generation takes depends on a provider's queue, so a computed
+# deadline is a guess wearing the clothes of a measurement — and it is longest
+# for exactly the users whose work is least likely to arrive. A ceiling says
+# the plain thing instead: past this, something outside what we promise went
+# wrong.
+#
+# Two hours. At a modest 8 MB per minute that is around 960 MB, and a task
+# that has not finished in two hours is not slow, it is broken.
+default_budget_ms: 7200000

@@ -42,14 +42,7 @@ vi.mock("@breatic/domain", () => ({
 vi.mock("@breatic/core", () => ({
   getStreamRedis: () => ({}),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-  getNodeTaskConfig: () => ({
-    upload: {
-      min_budget_ms: 900_000,
-      max_budget_ms: 43_200_000,
-      cover_reserve_ms: 600_000,
-    },
-    generation: { budget_ms: 14_400_000 },
-  }),
+  getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
 }));
 
 const { openGenerationTasks } = await import(
@@ -93,7 +86,7 @@ describe("opening a generation's task rows", () => {
     }
   });
 
-  it("gives each row the configured generation budget", async () => {
+  it("gives each row the configured task budget", async () => {
     await openGenerationTasks({
       projectId: PROJECT,
       spaceId: SPACE,
@@ -103,7 +96,7 @@ describe("opening a generation's task rows", () => {
       label: "seedream-4",
     });
 
-    expect(open.mock.calls[0]![0].budgetMs).toBe(14_400_000);
+    expect(open.mock.calls[0]![0].budgetMs).toBe(7_200_000);
   });
 
   it("publishes each node's counts", async () => {

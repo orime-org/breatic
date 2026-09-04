@@ -820,23 +820,35 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     expect(rows[0]!.storage_key).toBe(payload.data.storageKey);
   });
 
-  it("gives the row the budget the file size works out to", async () => {
+  it("gives the row one budget, whatever the file size (#186 §4.6.2)", async () => {
+    // The deadline is a flat ceiling, not an estimate of this transfer. What a
+    // file will take depends on a link we cannot see, so a computed deadline is
+    // a guess dressed as a measurement — and the number it produces is the sole
+    // basis on which a live task is judged dead.
     const { projectId, cookie } = await seedEditor();
-    const nodeId = crypto.randomUUID();
+    const small = crypto.randomUUID();
+    const large = crypto.randomUUID();
 
-    await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        node_id: nodeId,
-        space_id: crypto.randomUUID(),
-        size: 40 * 1024 * 1024,
-      }),
-    );
+    for (const [nodeId, size] of [
+      [small, 1024],
+      [large, 2 * 1024 * 1024 * 1024],
+    ] as const) {
+      await requestTicket(
+        cookie,
+        body({
+          project_id: projectId,
+          node_id: nodeId,
+          space_id: crypto.randomUUID(),
+          size,
+        }),
+      );
+    }
 
-    const { uploadBudgetMs } = await import("@breatic/domain");
-    const rows = await tasksOn(nodeId);
-    expect(rows[0]!.budget_ms).toBe(uploadBudgetMs(40 * 1024 * 1024));
+    const { getNodeTaskConfig } = await import("@breatic/core");
+    const budget = getNodeTaskConfig().default_budget_ms;
+    expect(budget).toBe(7_200_000);
+    expect((await tasksOn(small))[0]!.budget_ms).toBe(budget);
+    expect((await tasksOn(large))[0]!.budget_ms).toBe(budget);
   });
 
   it("arms the timer for that row, at that budget", async () => {

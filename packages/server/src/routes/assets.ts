@@ -20,11 +20,7 @@ import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
 import { signUploadTicket, t, canvasSpaceDocName } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
-import {
-  nodeTaskService,
-  emitNodeTaskCounts,
-  uploadBudgetMs,
-} from "@breatic/domain";
+import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
 import { armTaskTimer } from "@server/modules/asset/task-timer.client.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -43,6 +39,7 @@ import {
   ValidationError,
   AppError,
   getStreamRedis,
+  getNodeTaskConfig,
 } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
@@ -274,7 +271,7 @@ assets.post(
     // counts live in a node's corner, and there is no corner.
     let taskId: string | undefined;
     if (body.node_id !== undefined && body.space_id !== undefined) {
-      const budgetMs = uploadBudgetMs(body.size);
+      const budgetMs = getNodeTaskConfig().default_budget_ms;
       const opened = await nodeTaskService.open({
         projectId: body.project_id,
         spaceId: body.space_id,
