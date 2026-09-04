@@ -47,5 +47,3 @@ export async function emitNodeTaskCounts(
     ...(result !== undefined && { result }),
   });
 }
-
-/** Content fields that may appear in a success NodeStateUpdateEvent. */

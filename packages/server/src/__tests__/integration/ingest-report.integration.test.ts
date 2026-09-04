@@ -11,11 +11,10 @@
  * bytes are charged and which node they land on is read off the grant row we
  * wrote when the ticket was minted.
  *
- * The node is the part a user sees. Whatever this endpoint decides, it ends
- * with an event carrying the grant's `lease_gen`: success clears the node's
- * handling state and gives it the URL, failure clears it and leaves an error.
- * Without that event the node sits spinning until collab's hour-long sweeper
- * reclaims it.
+ * The node is the part a user sees. Whatever this endpoint decides, it settles
+ * the task row the ticket opened and publishes the node's four counts: success
+ * carries the content along, failure carries nothing and leaves the row failed.
+ * Without that event the node keeps counting an upload that has already ended.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -155,7 +154,6 @@ async function mintTicket(
       space_id: seed.spaceId,
       size: 4096,
       client_hash: crypto.randomBytes(32).toString("hex"),
-      lease_gen: 7,
       ...over,
     }),
   });
@@ -183,7 +181,6 @@ function completed(
   return {
     storage_key: storageKey,
     outcome: "completed",
-    lease_gen: 7,
     sha256: crypto.randomBytes(32).toString("hex"),
     size_bytes: 4096,
     content_type: "image/png",
@@ -191,9 +188,13 @@ function completed(
   };
 }
 
-/** Every node-state event on the stream for `docName`, oldest first. */
+/** Every task-counts event on the stream for `docName`, oldest first. */
 async function eventsFor(docName: string): Promise<
-  { nodeId: string; gen: number; update: Record<string, unknown> }[]
+  {
+    nodeId: string;
+    counts: Record<string, number>;
+    result: Record<string, unknown> | undefined;
+  }[]
 > {
   const raw = (await getStreamRedis().xrange(
     taskEventsStreamKey(),
@@ -207,12 +208,12 @@ async function eventsFor(docName: string): Promise<
     })
     .filter(
       (e): e is Record<string, unknown> =>
-        e !== null && e.type === "node-state-update" && e.docName === docName,
+        e !== null && e.type === "node-task-counts" && e.docName === docName,
     )
     .map((e) => ({
       nodeId: e.nodeId as string,
-      gen: e.gen as number,
-      update: e.update as Record<string, unknown>,
+      counts: e.counts as Record<string, number>,
+      result: e.result as Record<string, unknown> | undefined,
     }));
 }
 
@@ -328,23 +329,31 @@ describe("POST /assets/ingest-report — a completed upload", () => {
     expect(rows[0]!.content_hash).toBe(actual);
   });
 
-  it("gives the node its URL through an event carrying the grant's lease gen", async () => {
+  it("gives the node its URL through the counts event that settles the task", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
-    const key = await mintTicket(seed, { node_id: nodeId, lease_gen: 42 });
+    const key = await mintTicket(seed, { node_id: nodeId });
 
-    await report(completed(key, { lease_gen: 42 }));
+    await report(completed(key));
 
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.gen).toBe(42);
-    expect(events[0]!.update.state).toBe("idle");
-    // Collab deletes the key on null, which is what takes the node out of
-    // handling; a stale error has to go with it.
-    expect(events[0]!.update.handlingBy).toBeNull();
-    expect(events[0]!.update.errorMessage).toBeNull();
-    expect(typeof events[0]!.update.content).toBe("string");
+    // Two: the ticket opened the task, the report settled it.
+    expect(events).toHaveLength(2);
+    expect(events[0]!.counts).toEqual({
+      running: 1,
+      done: 0,
+      failed: 0,
+      expired: 0,
+    });
+    expect(events[1]!.counts).toEqual({
+      running: 0,
+      done: 1,
+      failed: 0,
+      expired: 0,
+    });
+    // The content rides on the transition that reached done, and on no other.
+    expect(typeof events[1]!.result?.content).toBe("string");
   });
 
   it("records the upload in the node's history and in the project's feed", async () => {
@@ -435,9 +444,10 @@ describe("POST /assets/ingest-report — a completed upload", () => {
 
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.update.handlingBy).toBeNull();
-    expect(typeof events[0]!.update.errorMessage).toBe("string");
+    expect(events).toHaveLength(2);
+    expect(events[1]!.counts).toMatchObject({ running: 0, failed: 1 });
+    // A failure carries no content: the node keeps whatever it already had.
+    expect(events[1]!.result).toBeUndefined();
   });
 });
 
@@ -474,7 +484,9 @@ describe("POST /assets/ingest-report — an event that could not be published", 
     const events = await eventsFor(
       canvasSpaceDocName(seed.projectId, seed.spaceId),
     );
-    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(1);
+    // The ticket's own event went out before the publisher was broken, so the
+    // one that got through afterwards is the settlement.
+    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(2);
   });
 });
 
@@ -487,7 +499,6 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
     const res = await report({
       storage_key: key,
       outcome: "aborted",
-      lease_gen: 7,
       reason: "parts_missing",
     });
 
@@ -502,14 +513,13 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
     `;
     expect(grants[0]!.voided_at).not.toBeNull();
 
-    // The node has been sitting in handling since before the first byte moved.
-    // This event is the only thing that takes it out.
+    // The node has been counting this upload since before the first byte
+    // moved. This event is the only thing that stops it.
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.gen).toBe(7);
-    expect(events[0]!.update.handlingBy).toBeNull();
-    expect(typeof events[0]!.update.errorMessage).toBe("string");
+    expect(events).toHaveLength(2);
+    expect(events[1]!.counts).toMatchObject({ running: 0, failed: 1 });
+    expect(events[1]!.result).toBeUndefined();
   });
 });
 
@@ -545,8 +555,9 @@ describe("POST /assets/ingest-report — the same report twice", () => {
     // event never reached the node. Collab applies it last-write-wins.
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events).toHaveLength(2);
-    expect(events[1]!.update.content).toBe(a.data.fileUrl);
+    // The ticket's own event, then one settlement per report.
+    expect(events).toHaveLength(3);
+    expect(events[2]!.result?.content).toBe(a.data.fileUrl);
   });
 
   // The grant is what tells a repeat report apart from a first one, so it is
@@ -634,7 +645,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
   // Everything the node sees is written once, after the cover is settled. A
   // history row now would have no thumbnail and never gain one; an event now
   // would put a cover-less video on screen and replace it a moment later.
-  it("writes no history row, no feed row and no event yet", async () => {
+  it("writes no history row, no feed row and settles nothing yet", async () => {
     const seed = await seedEditor();
     const { key, nodeId } = await uploadVideo(seed);
 
@@ -647,13 +658,16 @@ describe("a video, which needs a cover before the node hears anything", () => {
       WHERE project_id = ${seed.projectId} AND node_id = ${nodeId}
     `;
     expect(feed[0]!.n).toBe("0");
-    const events = await eventsFor(
+    // Only the event the ticket published when it opened the task. The row is
+    // still running: the cover job is what settles it.
+    const events = (await eventsFor(
       canvasSpaceDocName(seed.projectId, seed.spaceId),
-    );
-    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(0);
+    )).filter((e) => e.nodeId === nodeId);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.counts).toMatchObject({ running: 1, done: 0 });
   });
 
-  it("hands the worker the registered video, its studio and the node's lease", async () => {
+  it("hands the worker the registered video, its studio and its node", async () => {
     const seed = await seedEditor();
     const { key, nodeId } = await uploadVideo(seed);
 
@@ -671,7 +685,6 @@ describe("a video, which needs a cover before the node hears anything", () => {
       projectId: seed.projectId,
       spaceId: seed.spaceId,
       nodeId,
-      leaseGen: 7,
       mimeType: "video/mp4",
       filename: "clip.mp4",
     });
@@ -756,10 +769,12 @@ describe("a video, which needs a cover before the node hears anything", () => {
       completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
     );
 
-    const events = await eventsFor(
+    const events = (await eventsFor(
       canvasSpaceDocName(seed.projectId, seed.spaceId),
-    );
-    expect(events.filter((e) => e.nodeId === nodeId)).toHaveLength(0);
+    )).filter((e) => e.nodeId === nodeId);
+    // Still only the ticket's own event: this report settled nothing.
+    expect(events).toHaveLength(1);
+    expect(events[0]!.counts).toMatchObject({ running: 1, done: 0 });
   });
 
   // Within a studio the same bytes are one row, so a second upload of the same

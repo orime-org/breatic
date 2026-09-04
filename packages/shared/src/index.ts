@@ -58,7 +58,6 @@ export type {
   AttachRef,
   FocusImage,
   CanvasNodeFields,
-  NodeStateUpdateEvent,
   NodeTaskCounts,
   NodeTaskResult,
   NodeTaskCountsEvent,

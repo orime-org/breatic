@@ -25,7 +25,6 @@ import type {
   AttachRef,
   FocusImage,
   CanvasNodeFields,
-  NodeStateUpdateEvent,
   NodeTaskCountsEvent,
   NodeEvent,
 } from "../types/canvas-node.js";
@@ -467,80 +466,18 @@ describe("HandlingActor", () => {
   });
 });
 
-// ── NodeStateUpdateEvent ───────────────────────────────────────────
-
-describe("NodeStateUpdateEvent", () => {
-  it("accepts a valid node-state-update event shape", () => {
-    const event: NodeStateUpdateEvent = {
-      type: "node-state-update",
-      docName: "project-abc123",
-      nodeId: "node-1",
-      gen: 1,
-      update: {
-        state: "handling",
-        handlingBy: { userId: "u1", type: "backend", startedAt: 1_700_000_000_000, gen: 1 },
-      },
-    };
-    expect(event.type).toBe("node-state-update");
-    expect(event.docName).toBe("project-abc123");
-    expect(event.update.state).toBe("handling");
-  });
-
-  it("requires the fencing gen — an event without one is a type error (#1580 #7)", () => {
-    // Every node-state-update belongs to exactly one lease generation: the
-    // collab single-writer CAS-checks event.gen against the node's live
-    // handlingBy.gen (close / renew) or leaseGen (open) and drops
-    // superseded writes. Pre-launch → REQUIRED, no optional branch.
-    // @ts-expect-error TS2741: property 'gen' is missing
-    const missingGen: NodeStateUpdateEvent = {
-      type: "node-state-update",
-      docName: "project-abc123",
-      nodeId: "node-1",
-      update: { state: "idle" },
-    };
-    expect(missingGen.nodeId).toBe("node-1");
-  });
-
-  it("update is Partial<CanvasNodeFields['data']>", () => {
-    // A completion update with content result
-    const event: NodeStateUpdateEvent = {
-      type: "node-state-update",
-      docName: "project-xyz",
-      nodeId: "node-5",
-      gen: 2,
-      update: {
-        state: "idle",
-        content: "https://cdn.example.com/result.mp4",
-        coverUrl: "https://cdn.example.com/thumb.jpg",
-        width: 1920,
-        height: 1080,
-        duration: 15,
-      },
-    };
-    expect(event.update.content).toBe("https://cdn.example.com/result.mp4");
-    expect(event.update.duration).toBe(15);
-  });
-
-  it("type literal is exactly 'node-state-update'", () => {
-    expectTypeOf<NodeStateUpdateEvent["type"]>().toEqualTypeOf<"node-state-update">();
-  });
-});
-
 // ── NodeEvent alias ────────────────────────────────────────────────
 
 describe("NodeEvent", () => {
-  // Two members since #186: the counts event carries a node's four task
-  // numbers, and `type` is what tells a consumer which one it is holding.
+  // One member since #186: a node's four task counts are the whole of what
+  // the backend writes to the canvas. `type` stays on the wire so a consumer
+  // reading a stream it does not recognise says so instead of guessing.
   it("is the union of the events collab consumes", () => {
-    expectTypeOf<NodeEvent>().toEqualTypeOf<
-      NodeStateUpdateEvent | NodeTaskCountsEvent
-    >();
+    expectTypeOf<NodeEvent>().toEqualTypeOf<NodeTaskCountsEvent>();
   });
 
   it("discriminates on type", () => {
-    expectTypeOf<NodeEvent["type"]>().toEqualTypeOf<
-      "node-state-update" | "node-task-counts"
-    >();
+    expectTypeOf<NodeEvent["type"]>().toEqualTypeOf<"node-task-counts">();
   });
 
   it("accepts a NodeTaskCountsEvent as NodeEvent", () => {
@@ -551,17 +488,6 @@ describe("NodeEvent", () => {
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
     };
     expect(event.type).toBe("node-task-counts");
-  });
-
-  it("accepts a NodeStateUpdateEvent as NodeEvent", () => {
-    const event: NodeEvent = {
-      type: "node-state-update",
-      docName: "project-abc",
-      nodeId: "node-1",
-      gen: 1,
-      update: { state: "idle", errorMessage: "Worker crashed" },
-    };
-    expect(event.type).toBe("node-state-update");
   });
 });
 

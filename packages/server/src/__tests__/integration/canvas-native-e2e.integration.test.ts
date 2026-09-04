@@ -8,7 +8,7 @@
  *   - Real PostgreSQL (testcontainers): task rows, FK fixtures (user/project)
  *   - Real Redis (testcontainers): BullMQ queue + Redis Streams event bus
  *   - Real @breatic/core modules: taskService, DB schema
- *   - Real @breatic/collab: handleNodeStateUpdateEvent + startTaskListener
+ *   - Real @breatic/collab: handleNodeTaskCountsEvent + startTaskListener
  *   - In-process Hocuspocus: DirectConnection for Yjs doc pre-population + assertion
  *   - Mocked provider boundary: resolveMiniToolEntry → local kind + runLocalHandler (synthetic)
  *
@@ -198,6 +198,7 @@ import type { TaskJobData } from "@breatic/worker/src/handlers/dispatch.js";
 import { initCore, schema, createTestDb } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { startTaskListener } from "@breatic/collab/src/services/task-listener.js";
+import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
@@ -303,6 +304,47 @@ async function readNodeData(
     await conn.disconnect();
   }
   return result;
+}
+
+/**
+ * Open the row this run will settle on each of its nodes.
+ *
+ * Production opens these when the request that starts a generation is
+ * accepted; the worker settles the row for the node it just wrote and finds
+ * nothing to settle without them. Same call the server route makes, so the
+ * shape of the rows cannot drift from what the worker looks for.
+ * @param taskId - The job every row points at.
+ * @param nodeIds - The nodes this run writes to.
+ * @param userId - Who started it.
+ */
+async function openTaskRows(
+  taskId: string,
+  nodeIds: string[],
+  userId: string,
+): Promise<void> {
+  await openGenerationTasks({
+    projectId: FIXTURE_PROJECT_ID,
+    spaceId: FIXTURE_SPACE_ID,
+    nodeIds,
+    startedByUserId: userId,
+    taskId,
+    label: "remove-bg",
+  });
+}
+
+/**
+ * Whether a node's counts say nothing is running on it any more.
+ *
+ * The counts are the whole of what the document holds about tasks, so this is
+ * how a settlement is observed: the worker's event has to travel the Redis
+ * stream and the Collab consumer before it lands, and a task row reaching a
+ * terminal status does not mean the node has heard about it yet.
+ * @param data - A node's flattened `data` map.
+ * @returns true once the node shows no running task.
+ */
+function settled(data: Record<string, unknown>): boolean {
+  const counts = data["taskCounts"] as { running: number } | undefined;
+  return counts !== undefined && counts.running === 0;
 }
 
 /**
@@ -506,7 +548,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - state becomes 'idle'
    *   - content is set to the provider URL
    *   - coverUrl is set
-   *   - handlingBy is deleted (not merely null)
+   *   - the node's counts show the task finished
    *   - errorMessage is absent
    */
   it("Test 1: success path — state=idle, content+coverUrl written, handlingBy deleted", async () => {
@@ -521,15 +563,12 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Success Node",
-      state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
-      leaseGen: 1,
       attachments: [],
     });
 
     // Verify the seed took effect
     const seeded = await readNodeData(hocuspocus, docName, nodeId);
-    expect(seeded?.["state"]).toBe("handling");
+    expect(seeded?.["name"]).toBe("Success Node");
 
     // Insert task DB row
     const [taskRow] = await db.insert(schema.tasks).values({
@@ -542,6 +581,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       params: {},
     }).returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, [nodeId], FIXTURE_USER_ID);
 
     // Enqueue job with full Phase 2 payload shape
     await tasksQueue.add("run-task", {
@@ -571,7 +611,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await waitForCondition(
       async () => {
         const d = await readNodeData(hocuspocus, docName, nodeId);
-        return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+        return d != null && settled(d) && typeof d["content"] === "string";
       },
       5_000,
       `node ${nodeId} state=idle with content`,
@@ -579,15 +619,16 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
     const data = await readNodeData(hocuspocus, docName, nodeId);
     expect(data).not.toBeNull();
-    // State machine
-    expect(data!["state"]).toBe("idle");
+    // The counts are what the node holds about tasks, and this run finished.
+    expect(data!["taskCounts"]).toEqual({
+      running: 0,
+      done: 1,
+      failed: 0,
+      expired: 0,
+    });
     // Content fields
     expect(data!["content"]).toBe("https://oss/result-t1.png");
     expect(data!["coverUrl"]).toBe("https://oss/thumb-t1.png");
-    // handlingBy MUST be absent (deleted, not set to undefined/null)
-    expect("handlingBy" in (data ?? {})).toBe(false);
-    // No error on success
-    expect("errorMessage" in (data ?? {})).toBe(false);
   });
 
   /**
@@ -608,9 +649,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // The crashed run left the node handling with a live lease at gen 1.
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Redeliver Node",
-      state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "backend", startedAt: Date.now(), gen: 1 },
-      leaseGen: 1,
       attachments: [],
     });
 
@@ -631,6 +669,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       result: { model: "resolved-model-t1b", cost: 0.05, outputs: [{ url: "https://oss/billed-redeliver.png", cover_url: "https://oss/thumb-1b.png" }] },
     }).returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, [nodeId], FIXTURE_USER_ID);
 
     await tasksQueue.add("run-task", {
       taskId,
@@ -678,7 +717,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    *   - state becomes 'idle'
    *   - errorMessage is set and non-empty
    *   - content is NOT touched (retains its prior value if any, or absent if absent)
-   *   - handlingBy is deleted
+   *   - the node's counts show the task failed
    */
   it("Test 2: failure path — state=idle, errorMessage set, content unchanged", async () => {
     const nodeId = crypto.randomUUID();
@@ -690,9 +729,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // Seed with existing content — must remain untouched after failure
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Failure Node",
-      state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
-      leaseGen: 1,
       content: "https://oss/prior-content.png",
       attachments: [],
     });
@@ -707,6 +743,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       params: {},
     }).returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, [nodeId], FIXTURE_USER_ID);
 
     await tasksQueue.add("run-task", {
       taskId,
@@ -735,7 +772,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await waitForCondition(
       async () => {
         const d = await readNodeData(hocuspocus, docName, nodeId);
-        return d?.["state"] === "idle" && typeof d?.["errorMessage"] === "string";
+        return d != null && settled(d);
       },
       5_000,
       `node ${nodeId} state=idle with errorMessage`,
@@ -743,15 +780,22 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
     const data = await readNodeData(hocuspocus, docName, nodeId);
     expect(data).not.toBeNull();
-    // State machine
-    expect(data!["state"]).toBe("idle");
-    // Error message present and non-empty
-    expect(typeof data!["errorMessage"]).toBe("string");
-    expect((data!["errorMessage"] as string).length).toBeGreaterThan(0);
+    expect(data!["taskCounts"]).toEqual({
+      running: 0,
+      done: 0,
+      failed: 1,
+      expired: 0,
+    });
     // Prior content must NOT be overwritten by the failure path
     expect(data!["content"]).toBe("https://oss/prior-content.png");
-    // handlingBy cleared
-    expect("handlingBy" in (data ?? {})).toBe(false);
+
+    // What went wrong is on the task row, which is where the user reads it.
+    const [row] = await db
+      .select()
+      .from(schema.nodeTasks)
+      .where(eq(schema.nodeTasks.nodeId, nodeId));
+    expect(row!.status).toBe("failed");
+    expect((row!.errorMessage ?? "").length).toBeGreaterThan(0);
   });
 
   /**
@@ -766,7 +810,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    * Invariants:
    *   - node ends state=idle with the SUCCESS content (not stuck on error)
    *   - errorMessage is cleared (success write-back carries errorMessage:null)
-   *   - handlingBy cleared
+   *   - the node's counts show one finished task
    */
   it("Test 2b: retryable failure then success — retry's result lands (no self-fencing)", async () => {
     const nodeId = crypto.randomUUID();
@@ -782,9 +826,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Retry Node",
-      state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
-      leaseGen: 1,
       attachments: [],
     });
 
@@ -798,6 +839,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       params: {},
     }).returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, [nodeId], FIXTURE_USER_ID);
 
     await tasksQueue.add("run-task", {
       taskId,
@@ -825,19 +867,26 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await waitForCondition(
       async () => {
         const data = await readNodeData(hocuspocus, docName, nodeId);
-        return data?.["state"] === "idle" && data?.["content"] === "https://oss/result-t2b-retry.png";
+        return (
+          data != null &&
+          settled(data) &&
+          data["content"] === "https://oss/result-t2b-retry.png"
+        );
       },
       30_000,
       `node ${nodeId} received the retry's content`,
     );
 
     const data = await readNodeData(hocuspocus, docName, nodeId);
-    expect(data!["state"]).toBe("idle");
     expect(data!["content"]).toBe("https://oss/result-t2b-retry.png");
-    // The success write-back must have cleared attempt-1's error (and no
-    // close may have shipped on the non-terminal attempt at all).
-    expect(data!["errorMessage"]).toBeUndefined();
-    expect("handlingBy" in (data ?? {})).toBe(false);
+    // One row, settled once: the non-terminal attempt must not have settled
+    // anything, or the retry would have had nothing left to land on.
+    expect(data!["taskCounts"]).toEqual({
+      running: 0,
+      done: 1,
+      failed: 0,
+      expired: 0,
+    });
   });
 
   /**
@@ -846,7 +895,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
    * Invariants:
    *   - All N nodes transition to state=idle
    *   - Each node has the URL from its corresponding output slot (index-aligned)
-   *   - handlingBy cleared on all nodes
+   *   - each node's counts show its own task finished
    */
   it("Test 3: multi-output fanout — 3 nodes each receive their distinct content URL", async () => {
     const nodeIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
@@ -859,13 +908,10 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       { url: "https://oss/fanout-3.png", cover_url: "https://oss/fanout-thumb-3.png" },
     ];
 
-    // Seed all 3 nodes in handling state
+    // Seed all 3 nodes
     for (const nodeId of nodeIds) {
       await seedNode(hocuspocus, docName, nodeId, {
         name: `Fanout Node ${nodeId}`,
-        state: "handling",
-        handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
-        leaseGen: 1,
         attachments: [],
       });
     }
@@ -880,6 +926,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       params: {},
     }).returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, nodeIds, FIXTURE_USER_ID);
 
     await tasksQueue.add("run-task", {
       taskId,
@@ -910,7 +957,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
         const checks = await Promise.all(
           nodeIds.map(async (id) => {
             const d = await readNodeData(hocuspocus, docName, id);
-            return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+            return d != null && settled(d) && typeof d["content"] === "string";
           }),
         );
         return checks.every(Boolean);
@@ -923,10 +970,14 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     for (let i = 0; i < nodeIds.length; i++) {
       const data = await readNodeData(hocuspocus, docName, nodeIds[i]!);
       expect(data).not.toBeNull();
-      expect(data!["state"]).toBe("idle");
+      expect(data!["taskCounts"]).toEqual({
+        running: 0,
+        done: 1,
+        failed: 0,
+        expired: 0,
+      });
       expect(data!["content"]).toBe(providerCtrl.outputs[i]!.url);
       expect(data!["coverUrl"]).toBe(providerCtrl.outputs[i]!.cover_url);
-      expect("handlingBy" in (data ?? {})).toBe(false);
     }
   });
 
@@ -957,9 +1008,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     providerCtrl.outputs = [{ url: opts.url, cover_url: "" }];
     await seedNode(hocuspocus, docName, opts.nodeId, {
       name: "Gen Node",
-      state: "handling",
-      handlingBy: { userId, type: "frontend", startedAt: Date.now(), gen: 1 },
-      leaseGen: 1,
       attachments: [],
     });
     const [taskRow] = await db
@@ -975,6 +1023,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       })
       .returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, [opts.nodeId], userId);
     await tasksQueue.add(
       "run-task",
       {
@@ -1026,11 +1075,11 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       hocuspocus,
       docName,
       nodeId,
-      (d) => d["state"] === "idle",
+      settled,
       10_000,
       `node ${nodeId} idle after persist failure`,
     );
-    expect(typeof data["errorMessage"]).toBe("string");
+    expect(data["taskCounts"]).toMatchObject({ running: 0, failed: 1 });
     expect(data["content"]).not.toBe(tempUrl);
   });
 
@@ -1052,7 +1101,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       hocuspocus,
       docName,
       nodeA,
-      (d) => d["state"] === "idle",
+      settled,
       10_000,
       "first dedup node idle",
     );
@@ -1076,7 +1125,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     await waitForCondition(
       async () => {
         const d = await readNodeData(hocuspocus, docName, nodeB);
-        return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+        return d != null && settled(d) && typeof d["content"] === "string";
       },
       5_000,
       "second dedup node idle with content",
@@ -1109,9 +1158,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
 
     await seedNode(hocuspocus, docName, nodeId, {
       name: "Buffer Node",
-      state: "handling",
-      handlingBy: { userId: FIXTURE_USER_ID, type: "frontend", startedAt: Date.now(), gen: 1 },
-      leaseGen: 1,
       attachments: [],
     });
     const [taskRow] = await db
@@ -1127,6 +1173,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       })
       .returning();
     const taskId = taskRow!.id;
+    await openTaskRows(taskId, [nodeId], FIXTURE_USER_ID);
     await tasksQueue.add(
       "run-task",
       {
@@ -1148,12 +1195,11 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // `completed` in the worker; the node only settles once the done event has
     // travelled Redis stream → Collab → Yjs. Asserting on the node right after
     // the task row races that hop — the exact CI flake recorded on 2026-07-16
-    // for the sibling test, which was fixed the same way. (It surfaced here on
-    // a slower CI runner: `expected 'handling' to be 'idle'`.)
+    // for the sibling test, which was fixed the same way.
     await waitForCondition(
       async () => {
         const d = await readNodeData(hocuspocus, docName, nodeId);
-        return d?.["state"] === "idle" && typeof d?.["content"] === "string";
+        return d != null && settled(d) && typeof d["content"] === "string";
       },
       30_000,
       `node ${nodeId} settled idle (buffer output) despite Case-2 failDownload`,
@@ -1162,7 +1208,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // Case-2 blip does not fail a Case-1 buffer output.
     expect((await taskService.getByIdInternal(taskId))?.status).toBe("completed");
     const data = await readNodeData(hocuspocus, docName, nodeId);
-    expect(data!["state"]).toBe("idle");
+    expect(data!["taskCounts"]).toMatchObject({ running: 0, done: 1 });
     // Node points at the Case-1 permanent URL (our own upload, keyed), never
     // re-hosted by Case 2 — which would have thrown under failDownload.
     expect(data!["content"]).toMatch(/^https:\/\/oss\/uploaded\/test\/key-\d+\.png$/);
@@ -1211,11 +1257,11 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
         hocuspocus,
         docName,
         nodeId,
-        (d) => d["state"] === "idle",
+        settled,
         10_000,
         `node ${nodeId} idle (register-failure fail-closed)`,
       );
-      expect(typeof data["errorMessage"]).toBe("string");
+      expect(data["taskCounts"]).toMatchObject({ running: 0, failed: 1 });
       expect(data["content"]).not.toBe(url);
 
       // No studio_assets row links to this task (nothing was ever registered).
@@ -1255,7 +1301,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       hocuspocus,
       docName,
       nodeId,
-      (d) => d["state"] === "idle",
+      settled,
       10_000,
       `node ${nodeId} idle (own-url output)`,
     );

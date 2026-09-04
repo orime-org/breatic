@@ -197,7 +197,6 @@ function body(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     content_type: "video/mp4",
     size: 40 * 1024 * 1024,
     client_hash: crypto.randomBytes(32).toString("hex"),
-    lease_gen: 6,
     ...overrides,
   };
 }
@@ -215,8 +214,12 @@ async function requestTicket(
 }
 
 /** Every task-counts event on the stream for `docName`, oldest first. */
-async function countEventsFor(docName: string): Promise<
-  { nodeId: string; counts: Record<string, number> }[]
+async function eventsFor(docName: string): Promise<
+  {
+    nodeId: string;
+    counts: Record<string, number>;
+    result: Record<string, unknown> | undefined;
+  }[]
 > {
   const raw = (await getStreamRedis().xrange(
     taskEventsStreamKey(),
@@ -235,31 +238,7 @@ async function countEventsFor(docName: string): Promise<
     .map((e) => ({
       nodeId: e.nodeId as string,
       counts: e.counts as Record<string, number>,
-    }));
-}
-
-/** Every node-state event on the stream for `docName`, oldest first. */
-async function eventsFor(docName: string): Promise<
-  { nodeId: string; gen: number; update: Record<string, unknown> }[]
-> {
-  const raw = (await getStreamRedis().xrange(
-    taskEventsStreamKey(),
-    "-",
-    "+",
-  )) as [string, string[]][];
-  return raw
-    .map(([, fields]) => {
-      const idx = fields.indexOf("payload");
-      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
-    })
-    .filter(
-      (e): e is Record<string, unknown> =>
-        e !== null && e.type === "node-state-update" && e.docName === docName,
-    )
-    .map((e) => ({
-      nodeId: e.nodeId as string,
-      gen: e.gen as number,
-      update: e.update as Record<string, unknown>,
+      result: e.result as Record<string, unknown> | undefined,
     }));
 }
 
@@ -294,7 +273,7 @@ describe("POST /assets/upload-ticket", () => {
 
     const res = await requestTicket(
       cookie,
-      body({ project_id: projectId, lease_gen: 42 }),
+      body({ project_id: projectId }),
     );
     const payload = (await res.json()) as {
       data: { ticket: string; storageKey: string };
@@ -330,19 +309,17 @@ describe("POST /assets/upload-ticket", () => {
         user_id: string;
         project_id: string;
         node_id: string | null;
-        lease_gen: number;
         consumed_at: Date | null;
         voided_at: Date | null;
       }[]
     >`
-      SELECT user_id, project_id, node_id, lease_gen, consumed_at, voided_at
+      SELECT user_id, project_id, node_id, consumed_at, voided_at
       FROM upload_grants WHERE storage_key = ${payload.data.storageKey}
     `;
     expect(rows).toHaveLength(1);
     expect(rows[0]!.user_id).toBe(userId);
     expect(rows[0]!.project_id).toBe(projectId);
     expect(rows[0]!.node_id).toBe(nodeId);
-    expect(rows[0]!.lease_gen).toBe(6);
     expect(rows[0]!.consumed_at).toBeNull();
     expect(rows[0]!.voided_at).toBeNull();
   });
@@ -555,15 +532,19 @@ describe("POST /assets/upload-ticket", () => {
         size,
         node_id: nodeId,
         space_id: spaceId,
-        lease_gen: 9,
       }),
     );
 
     const docName = canvasSpaceDocName(projectId, spaceId);
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     expect(events).toHaveLength(1);
-    expect(events[0]!.gen).toBe(9);
-    expect(events[0]!.update).toMatchObject({
+    expect(events[0]!.counts).toEqual({
+      running: 0,
+      done: 1,
+      failed: 0,
+      expired: 0,
+    });
+    expect(events[0]!.result).toMatchObject({
       content: `https://cdn.test.invalid/${hash}.mp4`,
     });
   });
@@ -589,13 +570,12 @@ describe("POST /assets/upload-ticket", () => {
         size,
         node_id: nodeId,
         space_id: spaceId,
-        lease_gen: 9,
       }),
     );
 
     const docName = canvasSpaceDocName(projectId, spaceId);
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
-    expect(events[0]!.update).toMatchObject({
+    expect(events[0]!.result).toMatchObject({
       content: `https://cdn.test.invalid/${hash}.mp4`,
       coverUrl,
     });
@@ -645,16 +625,15 @@ describe("POST /assets/upload-ticket", () => {
         size,
         node_id: nodeId,
         space_id: spaceId,
-        lease_gen: 9,
       }),
     );
 
     const docName = canvasSpaceDocName(projectId, spaceId);
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     expect(events).toHaveLength(1);
-    // The stream encodes an absent field as this sentinel, which collab turns
-    // back into undefined before it reaches the document (event-stream.ts:52).
-    expect(events[0]!.update.coverUrl).toBe("__undefined__");
+    // The five content fields travel together, so a video with no cover says
+    // so rather than leaving the field out: collab writes all five.
+    expect(events[0]!.result?.coverUrl).toBeNull();
   });
 
   // A focus crop asks with no node. There is nothing to announce to, and the
@@ -896,7 +875,7 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
       body({ project_id: projectId, node_id: nodeId, space_id: spaceId }),
     );
 
-    const counts = await countEventsFor(canvasSpaceDocName(projectId, spaceId));
+    const counts = await eventsFor(canvasSpaceDocName(projectId, spaceId));
     expect(counts.at(-1)).toMatchObject({
       nodeId,
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
@@ -965,8 +944,10 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     expect(armTaskTimer).not.toHaveBeenCalled();
   });
 
-  it("opens nothing when the studio already holds the file", async () => {
-    // A dedup hit sends no bytes, so there is nothing to time.
+  it("opens a row already finished when the studio already holds the file", async () => {
+    // A dedup hit sends no bytes, so there is nothing to time — but the node
+    // still gains the content, and the row is what the counts are computed
+    // from. It opens and settles in the same request.
     const { studioId, userId, projectId, cookie } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");
     await registerAsset(studioId, userId, hash, 40 * 1024 * 1024);
@@ -987,7 +968,9 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await tasksOn(nodeId)).toHaveLength(0);
+    const rows = await tasksOn(nodeId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("done");
     expect(armTaskTimer).not.toHaveBeenCalled();
   });
 });

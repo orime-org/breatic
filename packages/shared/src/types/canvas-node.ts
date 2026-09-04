@@ -517,82 +517,6 @@ export interface CanvasNodeFields {
 
 // ── Event bus payloads ────────────────────────────────────────────
 
-/**
- * Partial update payload for a NodeStateUpdateEvent.
- *
- * Mirrors `Partial<CanvasNodeFields['data']>` but allows `null` for
- * fields that can be explicitly cleared — most importantly `handlingBy`.
- *
- * Why null instead of undefined:
- *   `JSON.stringify({ handlingBy: undefined })` → `"{}"` — the key is
- *   dropped and the Collab consumer never sees it. Using `null` preserves
- *   the key through the JSON round-trip so the consumer can call
- *   `dataMap.delete("handlingBy")` to clear the field.
- */
-export type NodeStateUpdatePayload = {
-  [K in keyof CanvasNodeFields['data']]?: CanvasNodeFields['data'][K] | null;
-};
-
-/**
- * Worker → Collab event.
- *
- * Worker writes to canvas state via this event (never directly to Yjs).
- * Collab consumes the event and applies `update` (NodeStateUpdatePayload)
- * to the target node, with allowlist filtering on the receiving end.
- *
- * Universal rule: backend can ONLY modify state fields. It cannot
- * create or delete nodes — that's frontend's responsibility. So the
- * `update` payload here will only carry state-field updates (state /
- * content / coverUrl / errorMessage / handlingBy / width / height /
- * duration), enforced by the consumer's allowlist.
- *
- * docName carries the target Yjs doc. In the v10 multi-doc layout
- * (one Canvas Space doc per project per Space), this will be
- * `project-{projectId}/canvas-{spaceId}` once the worker rewrite in
- * PR-C lands. PR-A+B leaves this as the pre-v10 single-doc form
- * `project-{projectId}` because the worker hasn't migrated yet.
- *
- * Null-as-delete convention:
- *   A `null` value means "clear this field" (consumer calls Y.Map.delete).
- *   An absent key means "leave this field untouched".
- *   This distinction survives the JSON round-trip; `undefined` does not.
- */
-export interface NodeStateUpdateEvent {
-  type: 'node-state-update';
-  /**
-   * Yjs doc name. Pre-v10 form `project-{projectId}` until PR-C
-   * migrates the worker to emit `project-{projectId}/canvas-{spaceId}`.
-   */
-  docName: string;
-  /** Target node receiving the update. */
-  nodeId: string;
-  /**
-   * Fencing generation this event belongs to (#1580 #7, REQUIRED —
-   * pre-launch, no back-compat branch). The collab single-writer
-   * compare-and-sets before applying:
-   *   - handling-OPEN events (`update.handlingBy` is an object): applied
-   *     only when `gen >= data.leaseGen` (stale opens are dropped); on
-   *     apply, `leaseGen` advances to `gen`.
-   *   - every other event (close / content / renew): applied only when the
-   *     node's live `handlingBy.gen === gen` — no live lease, or a
-   *     different generation, means this event is superseded and is
-   *     dropped (the sweeper / a newer open already owns the node).
-   */
-  gen: number;
-  /** Partial update merged into target node's data Y.Map by Collab consumer. */
-  update: NodeStateUpdatePayload;
-  /**
-   * Lease renewal signal (#1580 #2). When set, the Collab consumer READS the
-   * node's current `handlingBy` and re-stamps `phase` + a fresh server
-   * `startedAt`, PRESERVING every other field (userId / type / clientId /
-   * gen). The Worker emits `renewLease: 'running'` at `markRunning` so the
-   * execution phase gets its own budget window — a long queue backlog does
-   * not eat into it. Read-modify-write (not a flat handlingBy overwrite) so
-   * the fencing generation survives the transition.
-   */
-  renewLease?: HandlingPhase;
-}
-
 /** The four numbers a node shows about its tasks. */
 export interface NodeTaskCounts {
   running: number;
@@ -635,7 +559,7 @@ export interface NodeTaskCountsEvent {
 }
 
 /** Single union for forward-compat. */
-export type NodeEvent = NodeStateUpdateEvent | NodeTaskCountsEvent;
+export type NodeEvent = NodeTaskCountsEvent;
 
 // ── Edges ──────────────────────────────────────────────────────────
 // Edges carry no shared wire data fields. `isPrimary` (the generative

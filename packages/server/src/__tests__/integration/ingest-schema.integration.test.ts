@@ -9,10 +9,9 @@
  * server will need at report time has to be on it. Two of those columns are
  * load bearing in a way no unit test can see:
  *
- *   1. `lease_gen` is the fencing generation the report path publishes its
- *      event with. Reading it off a row we wrote is what keeps the gen out of
- *      the caller's hands; without the column the event gets dropped by
- *      collab's CAS and the node hangs in handling for an hour.
+ *   1. `lease_gen` goes away. A node carries several tasks at once (#186), so
+ *      an upload's grant fences nothing: the report settles the row the ticket
+ *      opened, found by the storage key both sides already hold.
  *   2. `content_hash` goes away. It holds a hash the client claimed, and the
  *      ledger key becomes the one the Worker computes; a column nobody reads
  *      is a column someone will read by mistake.
@@ -57,7 +56,6 @@ const GRANT_COLUMNS = [
   "filename",
   "voided_at",
   "expires_at",
-  "lease_gen",
 ] as const;
 
 let sql: ReturnType<typeof postgres>;
@@ -97,15 +95,13 @@ describe("upload_grants carries everything the report and the sweep need", () =>
     expect(rows[0]?.data_type).toBe("timestamp with time zone");
   });
 
-  it("requires lease_gen on every row — the event needs it to survive the CAS", async () => {
-    const rows = await sql<{ is_nullable: string; data_type: string }[]>`
-      SELECT is_nullable, data_type FROM information_schema.columns
+  it("no longer carries lease_gen — an upload's outcome settles its own task row", async () => {
+    const rows = await sql<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'upload_grants'
         AND column_name = 'lease_gen'
     `;
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.is_nullable).toBe("NO");
-    expect(rows[0]?.data_type).toBe("integer");
+    expect(rows).toEqual([]);
   });
 
   it("no longer carries content_hash — the ledger key is the one the Worker computes", async () => {
