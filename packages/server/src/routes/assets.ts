@@ -126,7 +126,6 @@ const uploadTicketSchema = z.object({
    * which is where every consequence of this upload reads it from, so a
    * sweep-authored failure event survives collab's CAS.
    */
-  lease_gen: z.coerce.number().int().nonnegative(),
   /** Where the bytes land. Absent for a focus crop, which has no node. */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
@@ -195,7 +194,6 @@ assets.post(
         projectId: body.project_id,
         hit: dedupHit,
         userId: user.id,
-        leaseGen: body.lease_gen,
         metadata: {
           filename: body.filename,
           size: body.size,
@@ -257,7 +255,6 @@ assets.post(
       taskType: kind,
       ext,
       expiresAt: new Date(expiresAt),
-      leaseGen: body.lease_gen,
       context: {
         nodeId: body.node_id ?? null,
         spaceId: body.space_id ?? null,

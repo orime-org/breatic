@@ -63,11 +63,6 @@ export interface VideoCoverJobData {
   projectId: string;
   spaceId: string;
   nodeId: string;
-  /**
-   * The lease generation the node's handling was opened under. The write-back
-   * carries it so collab's CAS drops it once the node belongs to a newer one.
-   */
-  leaseGen: number;
   /** What the video weighs, for the history row's metadata. */
   sizeBytes: number;
   /** The video's mime type, for the history row's metadata. */

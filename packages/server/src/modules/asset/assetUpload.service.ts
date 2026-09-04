@@ -20,8 +20,9 @@
 import {
   assetRepo,
   assetService,
-  emitNodeStateDone,
+  emitNodeTaskCounts,
   nodeHistoryService,
+  nodeTaskService,
 } from "@breatic/domain";
 import { storageKey, getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -93,7 +94,6 @@ export async function checkUploadDedup(params: {
  * @param params.projectId - The project the node lives in.
  * @param params.hit - The asset being reused.
  * @param params.userId - Who asked.
- * @param params.leaseGen - The node's fencing gen, which the event carries.
  * @param params.metadata - The picked file's facts, for the history row.
  * @param params.metadata.filename - The name the file was picked under.
  * @param params.metadata.size - The file's byte size as the browser declared it.
@@ -106,7 +106,6 @@ export async function settleDedupHit(params: {
   projectId: string;
   hit: DedupHit;
   userId: string;
-  leaseGen: number;
   metadata: { filename: string; size: number; mimeType: string };
   nodeId?: string | undefined;
   spaceId?: string | undefined;
@@ -146,15 +145,36 @@ export async function settleDedupHit(params: {
   // A focus crop asks with no node. It reads its result from this request's
   // own answer, so there is nothing to announce and nowhere to announce it.
   if (params.nodeId === undefined || params.spaceId === undefined) return;
-  await emitNodeStateDone(
+
+  // A hit is an upload that finished before it started, so it gets the same
+  // row every other upload gets and reaches the node through the same door
+  // (#186, design §3.4): a task the user can see on the list, settled `done`
+  // in this one request, carrying the content it resolved to.
+  const opened = await nodeTaskService.open({
+    projectId: params.projectId,
+    spaceId: params.spaceId,
+    nodeId: params.nodeId,
+    kind: "upload",
+    startedByUserId: params.userId,
+    budgetMs: 0,
+    label: params.metadata.filename,
+  });
+  const settled = await nodeTaskService.settle({
+    taskId: opened.id,
+    outcome: "done",
+  });
+  await emitNodeTaskCounts(
     getStreamRedis(),
     canvasSpaceDocName(params.projectId, params.spaceId),
     params.nodeId,
+    settled.counts,
     {
       content: params.hit.fileUrl,
-      ...(cover !== null && { coverUrl: cover.fileUrl }),
+      coverUrl: cover?.fileUrl ?? null,
+      width: null,
+      height: null,
+      duration: null,
     },
-    params.leaseGen,
   );
 }
 
@@ -177,7 +197,6 @@ export async function settleDedupHit(params: {
  * @param params.taskType - The detected kind, used as the key's task segment.
  * @param params.ext - The dotted file extension for the key.
  * @param params.expiresAt - When the ticket stops being usable.
- * @param params.leaseGen - The node's fencing gen at the moment handling opened.
  * @param params.context - Node, space, and provenance for the report to use.
  * @param params.context.nodeId - Node the bytes land on, when there is one.
  * @param params.context.spaceId - Canvas space holding that node.
@@ -195,7 +214,6 @@ export async function issueUploadGrant(params: {
   taskType: string;
   ext: string;
   expiresAt: Date;
-  leaseGen: number;
   context: {
     nodeId?: string | null;
     spaceId?: string | null;
@@ -213,7 +231,6 @@ export async function issueUploadGrant(params: {
     storageKey: key,
     declaredSize: params.declaredSize,
     expiresAt: params.expiresAt,
-    leaseGen: params.leaseGen,
     context: { ...params.context, projectId: params.projectId },
   });
   return { key, studioId };

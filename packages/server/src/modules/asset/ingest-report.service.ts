@@ -30,8 +30,6 @@ import {
   nodeHistoryService,
   nodeTaskService,
   emitNodeTaskCounts,
-  emitNodeStateDone,
-  emitNodeStateFailed,
   videoCoverJobId,
   VIDEO_COVER_JOB,
   VIDEO_COVER_QUEUE,
@@ -134,7 +132,7 @@ function hasNode(grant: UploadGrant): grant is GrantWithNode {
 
 /**
  * Tell the node this upload succeeded, and hand it the URL to pin.
- * @param grant - The grant, which carries where the node lives and its gen.
+ * @param grant - The grant, which carries where the node lives.
  * @param fileUrl - The registered row's canonical URL.
  * @param nodeHistoryId - The history row holding the result, when one was
  *   written on this pass.
@@ -145,13 +143,6 @@ async function announceSuccess(
   nodeHistoryId?: string,
 ): Promise<void> {
   if (!hasNode(grant)) return;
-  await emitNodeStateDone(
-    getStreamRedis(),
-    canvasSpaceDocName(grant.projectId, grant.spaceId),
-    grant.nodeId,
-    { content: fileUrl },
-    grant.leaseGen,
-  );
   await settleUploadTask(grant, {
     outcome: "done",
     ...(nodeHistoryId !== undefined && { nodeHistoryId }),
@@ -161,7 +152,7 @@ async function announceSuccess(
 
 /**
  * Tell the node this upload failed.
- * @param grant - The grant, which carries where the node lives and its gen.
+ * @param grant - The grant, which carries where the node lives.
  * @param message - What the node shows.
  */
 async function announceFailure(
@@ -169,13 +160,6 @@ async function announceFailure(
   message: string,
 ): Promise<void> {
   if (!hasNode(grant)) return;
-  await emitNodeStateFailed(
-    getStreamRedis(),
-    canvasSpaceDocName(grant.projectId, grant.spaceId),
-    grant.nodeId,
-    message,
-    grant.leaseGen,
-  );
   await settleUploadTask(grant, {
     outcome: "failed",
     errorMessage: message,
@@ -266,7 +250,6 @@ async function queueVideoCover(
       projectId: grant.projectId,
       spaceId: grant.spaceId,
       nodeId: grant.nodeId,
-      leaseGen: grant.leaseGen,
       sizeBytes: asset.sizeBytes,
       mimeType: contentType,
       filename: grant.filename,

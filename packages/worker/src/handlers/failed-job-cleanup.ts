@@ -34,7 +34,6 @@ import type { getStreamRedis } from "@breatic/core";
 import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
   taskService,
-  emitNodeStateFailed,
   settleTaskForNode,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -88,7 +87,7 @@ export async function cleanupFailedJobNodes(
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
 
-  const { projectId, spaceId, targetNodeIds, nodeGens } = job.data;
+  const { projectId, spaceId, targetNodeIds } = job.data;
   if (!projectId) return 0;
 
   // #1618 A / adversarial hole ①: a task that billed (Stage 3) then
@@ -173,7 +172,6 @@ export async function cleanupFailedJobNodes(
         url: outputs[i]?.url,
         coverUrl: outputs[i]?.cover_url,
       })),
-      (nodeId) => nodeGens?.[nodeId] ?? 0,
     );
     return targetNodeIds.length;
   }
@@ -214,17 +212,6 @@ export async function cleanupFailedJobNodes(
   let emitted = 0;
   for (const nodeId of targetNodeIds) {
     try {
-      await emitNodeStateFailed(
-        streamRedis,
-        docName,
-        nodeId,
-        `Task failed: ${reason}`,
-        // #1580 #7: echo the node's lease gen so the collab CAS accepts the
-        // reclaim only while this job's lease is still live. 0 (never a
-        // valid gen) marks a producer bug; collab drops it with a warn.
-        nodeGens?.[nodeId] ?? 0,
-      );
-      emitted++;
       // The row this run opened on that node (#186, design §3.6).
       await settleTaskForNode(streamRedis, docName, {
         taskId: job.data.taskId,
@@ -232,6 +219,7 @@ export async function cleanupFailedJobNodes(
         outcome: "failed",
         errorMessage: `Task failed: ${reason}`,
       });
+      emitted++;
     } catch {
       // Best-effort: continue with the remaining nodes. The caller
       // (application entry) logs the failure; the collab handling-lease

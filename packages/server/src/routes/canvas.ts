@@ -42,9 +42,7 @@ import {
 } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
-  AppError,
   ValidationError,
-  publishNodeEvent,
   getStreamRedis,
   logger,
   env,
@@ -269,71 +267,12 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
         t("server.error.validation"),
       );
     }
-    // Publish a `state='handling'` event right away so
-    // collaborators see the node enter handling without waiting for the
-    // worker to start (spec §10.15.4 — collaboration visibility).
-    // #1580 adversarial fix: under gen fencing this OPEN is a HARD
-    // prerequisite, not best-effort — it is what installs the live
-    // handlingBy.gen (and advances leaseGen) that every worker write-back
-    // CAS-checks against. If it cannot be published, enqueueing anyway
-    // would bill the user for a result that can never land on the node.
-    try {
-      await publishNodeEvent(getStreamRedis(), {
-        type: "node-state-update",
-        docName: canvasSpaceDocName(projectId, spaceId),
-        nodeId: targetNodeId,
-        // #1580 #7: the frontend read the node's leaseGen and sent
-        // gen = leaseGen + 1 in the body (schema guarantees coverage for
-        // the target node). Collab applies this open iff gen >= leaseGen
-        // and advances the counter; the worker echoes the same gen in
-        // every write-back for the CAS.
-        gen: body.node_gens![targetNodeId]!,
-        update: {
-          state: "handling",
-          handlingBy: {
-            userId: user.id,
-            // No display-name snapshot — collaborators render "who is
-            // handling" by resolving this id against the project member
-            // roster they fetch, which is current on rename
-            // (email-registration rewrite 2026-06-06; roster replaced the
-            // `meta.users` Yjs map in #1882).
-            // Worker-driven path — this endpoint dispatches BullMQ jobs.
-            // Collab `onDisconnect` leaves backend-driven handling nodes
-            // alone; Worker owns the terminal state transition.
-            type: "backend",
-            // Lease start (#1569): the collab sweeper reclaims this node
-            // if it is still handling past its budget (the worker-crash /
-            // stalled-death safety net). Server-authored (NTP-bounded), so
-            // it is trusted directly — no client-clock normalization needed.
-            startedAt: Date.now(),
-            // #1580 #2: the QUEUE phase (enqueue → Worker pickup). The Worker
-            // re-stamps to phase 'running' at markRunning, so a long queue
-            // backlog does not eat into the execution budget window.
-            phase: "queued",
-            // #1580 #7: owner gen — same value as event.gen above.
-            gen: body.node_gens![targetNodeId]!,
-          },
-        },
-      });
-    } catch (err) {
-      logger.error(
-        { err, projectId, targetNodeId, taskId: task.id },
-        "handling-open publish failed; aborting task before enqueue",
-      );
-      await taskService.markFailed(
-        task.id,
-        "Failed to publish handling-open event; task aborted before enqueue",
-      );
-      throw new AppError(503, t("server.canvas.stream_unavailable"));
-    }
   }
 
-  // Per spec §4.2: worker reads targetNodeIds to emit NodeStateUpdateEvent
-  // and writes the result back into `project-{projectId}/canvas-{spaceId}`
+  // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
+  // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
   // (v10 multi-doc). The job payload carries spaceId so the worker can
   // compute the canvas-{spaceId} doc name without reloading the task row.
-  // `mode` rides along so the worker knows whether to verify + release
-  // the canvas-node lock on completion.
   const job = await tasksQueue.add(
     "execute-task",
     {
@@ -347,9 +286,6 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
       params: body.params,
       source: body.source,
       targetNodeIds: targetNodeId ? [targetNodeId] : [],
-      // #1580 #7: lease gen per target node, echoed by every worker
-      // write-back so the collab CAS can fence superseded writes.
-      nodeGens: body.node_gens,
       mode,
     },
     defaultJobOpts(),

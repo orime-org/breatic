@@ -76,6 +76,13 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // A node carries several tasks at once (#186), so nothing refuses a second
+  // one and nothing aborts a task over a stream that would not take an event:
+  // the lock that answered "busy", the error naming its holder, and the 503
+  // the handling-open publish raised are all gone.
+  'canvas.generatePanel.errorBusy',
+  'server.canvas.node_locked',
+  'server.canvas.stream_unavailable',
   // The panel's static price line and its placeholder upgrade button, both
   // replaced in #106: prices now come from the subscription config through
   // `TierOffer`, and each tier has its own button in the comparison table.

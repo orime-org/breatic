@@ -95,7 +95,6 @@
     "canvas": {
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
-      "stream_unavailable": "The task event stream is unavailable. Please try again.",
       "history_entry_not_found": "History entry not found"
     },
     "memory": {

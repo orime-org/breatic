@@ -554,7 +554,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
-      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 });
 
@@ -643,7 +642,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
-      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 });
 
@@ -720,7 +718,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
-      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
     }, { attempts: 1 }); // 1 attempt so it fails fast without retries
 
@@ -812,7 +809,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "remove-bg",
       params: {},
       targetNodeIds: [nodeId],
-      nodeGens: { [nodeId]: 1 },
       mode: "append" as const,
       // 2 attempts with minimal backoff so the retry runs inside the test window.
     }, { attempts: 2, backoff: { type: "fixed" as const, delay: 100 } });
@@ -895,7 +891,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       toolName: "multi-angle",
       params: {},
       targetNodeIds: nodeIds,
-      nodeGens: Object.fromEntries(nodeIds.map((id) => [id, 1])),
       mode: "append" as const,
     }, { attempts: 1 });
 
@@ -992,7 +987,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
         toolName: "remove-bg",
         params: {},
         targetNodeIds: [opts.nodeId],
-        nodeGens: { [opts.nodeId]: 1 },
         mode: "append" as const,
       },
       { attempts: 1 },
@@ -1145,7 +1139,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
         toolName: "tts",
         params: {},
         targetNodeIds: [nodeId],
-        nodeGens: { [nodeId]: 1 },
         mode: "append" as const,
       },
       { attempts: 1 },

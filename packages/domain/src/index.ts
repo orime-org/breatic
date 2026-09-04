@@ -87,10 +87,4 @@ export type {
 
 // ── Canvas node state write-back (worker finishes a generation, server
 //    finishes an upload — one shape, one place) ──
-export {
-  emitNodeStateDone,
-  emitNodeStateFailed,
-  emitNodeLeaseRunning,
-  emitNodeTaskCounts,
-  type NodeStateDoneFields,
-} from "@domain/canvas-node/node-state-events.js";
+export { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";

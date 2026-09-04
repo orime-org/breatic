@@ -5,8 +5,7 @@
  * The envelope every canvas Generate shares, whatever it generates.
  *
  * Generate modifies the node itself, so the task runs in `overwrite` mode
- * against `target_node_id`, gen-fenced by `node_gens` (#1580 #7: the frontend
- * reads the node's `leaseGen` and sends `gen = leaseGen + 1`). That fence is
+ * against `target_node_id`. A node carries several tasks at once (#186), so
  * what stops a stale panel from overwriting a newer result, so it must read
  * identically for every modality — hence one implementation rather than one
  * per panel. What each modality puts in `params` is its own business and stays
@@ -27,8 +26,6 @@ export interface OverwriteTaskInput {
   model: string;
   /** The fully assembled request params, prompt and sources included. */
   params: Record<string, unknown>;
-  /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
-  leaseGen?: number;
 }
 
 /**
@@ -39,7 +36,6 @@ export interface OverwriteTaskInput {
 export function buildOverwriteTaskPayload(
   input: OverwriteTaskInput,
 ): TaskCreateInput {
-  const gen = (input.leaseGen ?? 0) + 1;
   return {
     task_type: input.taskType,
     model: input.model,
@@ -50,6 +46,5 @@ export function buildOverwriteTaskPayload(
     source: 'canvas',
     target_node_id: input.nodeId,
     mode: 'overwrite',
-    node_gens: { [input.nodeId]: gen },
   };
 }

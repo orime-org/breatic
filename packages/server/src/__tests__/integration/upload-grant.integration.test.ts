@@ -123,7 +123,6 @@ function grantFields(over: {
   return {
     ...over,
     expiresAt: new Date(Date.now() + 300_000),
-    leaseGen: 1,
     context: {},
   };
 }

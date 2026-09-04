@@ -51,7 +51,6 @@ export interface UploadGrant {
   /** How long the browser has to start the upload. */
   expiresAt: Date;
   /** The node's fencing gen; an event without it is dropped by collab's CAS. */
-  leaseGen: number;
   nodeId: string | null;
   projectId: string | null;
   spaceId: string | null;
@@ -77,7 +76,6 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     consumedAt: row.consumedAt,
     voidedAt: row.voidedAt,
     expiresAt: row.expiresAt,
-    leaseGen: row.leaseGen,
     nodeId: row.nodeId,
     projectId: row.projectId,
     spaceId: row.spaceId,
@@ -99,7 +97,6 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.storageKey - The minted tenant-neutral key K.
  * @param input.declaredSize - Client-declared byte size (UX pre-check only).
  * @param input.expiresAt - When the ticket stops being usable.
- * @param input.leaseGen - The node's fencing gen at the moment handling opened.
  * @param input.context - Where these bytes are going and what started them.
  * @param input.context.nodeId - Node the bytes land on, when there is one.
  * @param input.context.projectId - Project that node belongs to.
@@ -117,7 +114,6 @@ export async function issueGrant(input: {
   storageKey: string;
   declaredSize: number;
   expiresAt: Date;
-  leaseGen: number;
   context: {
     nodeId?: string | null;
     projectId?: string | null;
@@ -136,7 +132,6 @@ export async function issueGrant(input: {
       storageKey: input.storageKey,
       declaredSize: input.declaredSize,
       expiresAt: input.expiresAt,
-      leaseGen: input.leaseGen,
       nodeId: input.context.nodeId ?? null,
       projectId: input.context.projectId ?? null,
       spaceId: input.context.spaceId ?? null,

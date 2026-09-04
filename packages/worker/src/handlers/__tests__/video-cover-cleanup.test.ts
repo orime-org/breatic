@@ -23,7 +23,8 @@ const mockPublicUrl = vi.hoisted(() => vi.fn((key: string) => `https://cdn/${key
 const mockGetStorageAdapter = vi.hoisted(() => vi.fn());
 const mockFindCoverOf = vi.hoisted(() => vi.fn());
 const mockRecordUpload = vi.hoisted(() => vi.fn());
-const mockEmitDone = vi.hoisted(() => vi.fn());
+const mockEmitCounts = vi.hoisted(() => vi.fn());
+const mockFindTask = vi.hoisted(() => vi.fn());
 const mockActivityInsert = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
@@ -37,17 +38,16 @@ vi.mock("@breatic/domain", () => ({
   assetService: { register: vi.fn() },
   assetRepo: { setCoverAsset: vi.fn(), findCoverOf: mockFindCoverOf },
   nodeHistoryService: { recordUpload: mockRecordUpload },
-  emitNodeStateDone: mockEmitDone,
   // The task row a video upload settles on (#186): its cover is the last
   // thing the upload waits for, so this handler is where it lands.
   nodeTaskService: {
-    findByStorageKey: vi.fn(async () => null),
+    findByStorageKey: mockFindTask,
     settle: vi.fn(async () => ({
       applied: true,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
     })),
   },
-  emitNodeTaskCounts: vi.fn(),
+  emitNodeTaskCounts: mockEmitCounts,
 }));
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
@@ -72,7 +72,6 @@ const DATA: VideoCoverJobData = {
   projectId: "proj-1",
   spaceId: "space-1",
   nodeId: "node-1",
-  leaseGen: 4,
   sizeBytes: 999,
   mimeType: "video/mp4",
   filename: "clip.mp4",
@@ -90,7 +89,8 @@ beforeEach(() => {
   mockGetStorageAdapter.mockResolvedValue({ publicUrl: mockPublicUrl });
   mockFindCoverOf.mockResolvedValue(null);
   mockRecordUpload.mockResolvedValue({ entry: { id: "hist-1" }, inserted: true });
-  mockEmitDone.mockResolvedValue(undefined);
+  mockEmitCounts.mockResolvedValue(undefined);
+  mockFindTask.mockResolvedValue({ id: "row-1" });
 });
 
 describe("a failure that is not terminal yet", () => {
@@ -100,14 +100,14 @@ describe("a failure that is not terminal yet", () => {
     const queue = queueHolding({ data: DATA });
 
     expect(await reclaimFailedCoverJobById(queue, "job-1")).toBe(false);
-    expect(mockEmitDone).not.toHaveBeenCalled();
+    expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 
   it("says nothing when the job is no longer fetchable", async () => {
     const queue = queueHolding(undefined);
 
     expect(await reclaimFailedCoverJobById(queue, "job-1")).toBe(false);
-    expect(mockEmitDone).not.toHaveBeenCalled();
+    expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 });
 
@@ -117,13 +117,12 @@ describe("a terminal failure", () => {
 
     expect(await reclaimFailedCoverJobById(queue, "job-1")).toBe(true);
 
-    expect(mockEmitDone).toHaveBeenCalledTimes(1);
-    const [, docName, nodeId, fields, gen] = mockEmitDone.mock.calls[0]!;
+    expect(mockEmitCounts).toHaveBeenCalledTimes(1);
+    const [, docName, nodeId, , fields] = mockEmitCounts.mock.calls[0]!;
     expect(docName).toBe("project-proj-1/canvas-space-1");
     expect(nodeId).toBe("node-1");
     expect(fields.content).toBe(DATA.videoUrl);
-    expect(fields.coverUrl).toBeUndefined();
-    expect(gen).toBe(4);
+    expect(fields.coverUrl).toBeNull();
   });
 
   // The job registered the cover and linked it, then died on the event. An
@@ -142,7 +141,7 @@ describe("a terminal failure", () => {
     await reclaimFailedCoverJobById(queue, "job-1");
 
     expect(mockFindCoverOf).toHaveBeenCalledWith("video-row-1");
-    expect(mockEmitDone.mock.calls[0]![3].coverUrl).toBe(
+    expect(mockEmitCounts.mock.calls[0]![4].coverUrl).toBe(
       "https://cdn/image/existing_cover.png",
     );
   });

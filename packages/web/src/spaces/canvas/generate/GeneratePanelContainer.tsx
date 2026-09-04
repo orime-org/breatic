@@ -14,7 +14,6 @@ import {
   isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
-  readNodeLeaseGen,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -677,7 +676,6 @@ function GeneratePanelBody({
         // non-style model must not be sent (the server would reject or the
         // worker silently drop it).
         styleImageUrl: fresh.styleSupported ? fresh.styleImageUrl : undefined,
-        leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is still alive AND the panel is still on this

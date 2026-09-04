@@ -34,7 +34,6 @@ const mockRecordUpload = vi.hoisted(() => vi.fn());
 const mockFindTask = vi.hoisted(() => vi.fn());
 const mockSettleTask = vi.hoisted(() => vi.fn());
 const mockEmitCounts = vi.hoisted(() => vi.fn());
-const mockEmitDone = vi.hoisted(() => vi.fn());
 const mockActivityInsert = vi.hoisted(() => vi.fn());
 const mockPublishActivity = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
@@ -50,7 +49,6 @@ vi.mock("@breatic/domain", () => ({
   assetService: { register: mockRegister },
   assetRepo: { setCoverAsset: mockSetCover },
   nodeHistoryService: { recordUpload: mockRecordUpload },
-  emitNodeStateDone: mockEmitDone,
   // The task row a video upload settles on (#186): its cover is the last
   // thing the upload waits for, so this handler is where it lands.
   nodeTaskService: {
@@ -95,7 +93,6 @@ const DATA: VideoCoverJobData = {
   projectId: "proj-1",
   spaceId: "space-1",
   nodeId: "node-1",
-  leaseGen: 4,
   sizeBytes: 999,
   mimeType: "video/mp4",
   filename: "clip.mp4",
@@ -114,12 +111,12 @@ beforeEach(() => {
   mockExtract.mockResolvedValue(EXTRACTED);
   mockRegister.mockResolvedValue({ asset: REGISTERED_COVER, deduped: true });
   mockRecordUpload.mockResolvedValue({ entry: { id: "hist-1" }, inserted: true });
+  mockEmitCounts.mockResolvedValue(undefined);
   mockFindTask.mockResolvedValue({ id: "row-1" });
   mockSettleTask.mockResolvedValue({
     applied: true,
     counts: { running: 0, done: 1, failed: 0, expired: 0 },
   });
-  mockEmitDone.mockResolvedValue(undefined);
 });
 
 describe("a cover that comes out", () => {
@@ -149,21 +146,20 @@ describe("a cover that comes out", () => {
   it("pins the registered canonical, not the object just uploaded", async () => {
     await runVideoCover(job());
 
-    const emitted = mockEmitDone.mock.calls[0]!;
-    expect(emitted[3].coverUrl).toBe(`https://cdn/${REGISTERED_COVER.storageKey}`);
-    expect(emitted[3].coverUrl).not.toContain(EXTRACTED.key);
+    const emitted = mockEmitCounts.mock.calls[0]!;
+    expect(emitted[4].coverUrl).toBe(`https://cdn/${REGISTERED_COVER.storageKey}`);
+    expect(emitted[4].coverUrl).not.toContain(EXTRACTED.key);
   });
 
   it("tells the node about the video and its cover in one event", async () => {
     await runVideoCover(job());
 
-    expect(mockEmitDone).toHaveBeenCalledTimes(1);
-    const [, docName, nodeId, fields, gen] = mockEmitDone.mock.calls[0]!;
+    expect(mockEmitCounts).toHaveBeenCalledTimes(1);
+    const [, docName, nodeId, , fields] = mockEmitCounts.mock.calls[0]!;
     expect(docName).toBe("project-proj-1/canvas-space-1");
     expect(nodeId).toBe("node-1");
     expect(fields.content).toBe(DATA.videoUrl);
     expect(fields.coverUrl).toBe(`https://cdn/${REGISTERED_COVER.storageKey}`);
-    expect(gen).toBe(4);
   });
 
   it("records the upload under the granted key, carrying the cover", async () => {
@@ -226,7 +222,7 @@ describe("a replay of the same job", () => {
 
     await runVideoCover(job());
 
-    expect(mockEmitDone).toHaveBeenCalledTimes(1);
+    expect(mockEmitCounts).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -245,10 +241,10 @@ describe("no cover comes out", () => {
   it("still tells the node the video is ready, without a cover", async () => {
     await runVideoCover(job());
 
-    expect(mockEmitDone).toHaveBeenCalledTimes(1);
-    const fields = mockEmitDone.mock.calls[0]![3];
+    expect(mockEmitCounts).toHaveBeenCalledTimes(1);
+    const fields = mockEmitCounts.mock.calls[0]![4];
     expect(fields.content).toBe(DATA.videoUrl);
-    expect(fields.coverUrl).toBeUndefined();
+    expect(fields.coverUrl).toBeNull();
   });
 
   it("leaves the history row and the feed row without a thumbnail", async () => {
@@ -271,7 +267,7 @@ describe("the cover cannot be registered", () => {
     await expect(runVideoCover(job())).resolves.toBeUndefined();
 
     expect(mockSetCover).not.toHaveBeenCalled();
-    expect(mockEmitDone.mock.calls[0]![3].coverUrl).toBeUndefined();
+    expect(mockEmitCounts.mock.calls[0]![4].coverUrl).toBeNull();
     expect(mockWarn).toHaveBeenCalled();
   });
 
@@ -286,7 +282,7 @@ describe("the cover cannot be registered", () => {
 
     await expect(runVideoCover(job())).rejects.toThrow(/update lost/);
 
-    expect(mockEmitDone).not.toHaveBeenCalled();
+    expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 
   it("warns when the redundant object could not be queued for reclaim", async () => {
@@ -299,7 +295,7 @@ describe("the cover cannot be registered", () => {
     await runVideoCover(job());
 
     expect(mockWarn).toHaveBeenCalled();
-    expect(mockEmitDone.mock.calls[0]![3].coverUrl).toBe(
+    expect(mockEmitCounts.mock.calls[0]![4].coverUrl).toBe(
       `https://cdn/${REGISTERED_COVER.storageKey}`,
     );
   });
@@ -308,9 +304,9 @@ describe("the cover cannot be registered", () => {
 describe("the event cannot be published", () => {
   // Nothing else writes this node's URL: the value lives only in Yjs and this
   // event is the only thing that puts it there. Swallowing the failure leaves
-  // the node spinning until collab's hour-long sweeper reclaims it.
+  // the node showing a task that never ends.
   it("fails the job so BullMQ retries it", async () => {
-    mockEmitDone.mockRejectedValue(new Error("redis gone"));
+    mockEmitCounts.mockRejectedValue(new Error("redis gone"));
 
     await expect(runVideoCover(job())).rejects.toThrow("redis gone");
   });

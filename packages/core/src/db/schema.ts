@@ -2095,7 +2095,6 @@ export const uploadGrants = pgTable(
      * by collab's CAS and the node hangs in handling until the lease sweeper
      * reclaims it an hour later.
      */
-    leaseGen: integer("lease_gen").notNull(),
     /** Node these bytes land on. Absent for a focus crop, which has no node. */
     nodeId: uuid("node_id"),
     /** Project the node belongs to, checked against the user's access at ticket time. */

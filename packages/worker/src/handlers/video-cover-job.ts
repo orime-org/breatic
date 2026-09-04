@@ -30,7 +30,6 @@ import {
   assetService,
   assetRepo,
   nodeHistoryService,
-  emitNodeStateDone,
   nodeTaskService,
   emitNodeTaskCounts,
   type VideoCoverJobData,
@@ -92,13 +91,6 @@ export async function announceUpload(
   }
 
   const docName = canvasSpaceDocName(data.projectId, data.spaceId);
-  await emitNodeStateDone(
-    getStreamRedis(),
-    docName,
-    data.nodeId,
-    { content: data.videoUrl, ...(coverUrl !== undefined && { coverUrl }) },
-    data.leaseGen,
-  );
 
   // A video's upload is not done until its cover has had its chance, so this
   // is where its task row settles rather than in the ingest report (#186,

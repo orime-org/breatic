@@ -12,7 +12,6 @@ import {
   isNodeHandling,
   isNodeLocked,
   readCanvasGraph,
-  readNodeLeaseGen,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -686,7 +685,6 @@ function VideoGeneratePanelBody({
         mode: fresh.mode,
         slotUrls: fresh.slotUrls,
         referenceUrls: fresh.referenceUrls,
-        leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is alive AND the panel is still on this node:

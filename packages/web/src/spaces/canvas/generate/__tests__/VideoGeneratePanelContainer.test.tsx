@@ -565,7 +565,6 @@ describe('VideoGeneratePanelContainer', () => {
       expect(typeof payload.params.duration).toBe('number');
       expect(payload.target_node_id).toBe('target');
       expect(payload.mode).toBe('overwrite');
-      expect(payload.node_gens).toEqual({ target: 4 });
     });
 
     it('builds the payload from live Yjs, not from the render closure', async () => {

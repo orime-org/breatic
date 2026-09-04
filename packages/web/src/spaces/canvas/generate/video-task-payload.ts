@@ -59,8 +59,6 @@ export interface VideoTaskInput {
    * (#1927); under the rest this value contributes nothing.
    */
   referenceUrls?: readonly string[];
-  /** The node's current persistent lease counter; gen = leaseGen + 1. Absent = 0. */
-  leaseGen?: number;
 }
 
 /**
@@ -127,6 +125,5 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
       prompt: input.promptText,
       ...sourceParams(input.mode, input.slotUrls, input.referenceUrls ?? []),
     },
-    leaseGen: input.leaseGen,
   });
 }

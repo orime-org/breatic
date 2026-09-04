@@ -29,12 +29,7 @@ import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
 import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import {
-  emitNodeStateDone,
-  emitNodeStateFailed,
-  settleTaskForNode,
-  emitNodeLeaseRunning,
-} from "@breatic/domain";
+import { settleTaskForNode } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -90,17 +85,6 @@ export interface TaskJobData {
    * node (understand, skill agents without node bindings).
    */
   targetNodeIds?: string[];
-  /**
-   * Lease generation per target node (#1580 #7, unified-gen design). The
-   * frontend read each node's `leaseGen` counter and sent gen = leaseGen+1
-   * in the REST body; the server threads the map here. Every write-back
-   * (done / failed / renew / crash-net reclaim) echoes the node's gen so
-   * the collab CAS can verify the write still belongs to the live lease.
-   * Present iff `targetNodeIds` is non-empty (route schemas enforce
-   * coverage); a missing entry is a producer bug — the emit helpers then
-   * send gen 0, which collab rejects with a permanent warn log.
-   */
-  nodeGens?: Record<string, number>;
   /**
    * Execution mode (spec §10.13 / §10.15). Required — producer (server
    * routes) must always declare intent.
@@ -177,39 +161,26 @@ export async function verifyJobLockOwnership(
 }
 
 /**
- * Publish the failure write-back for every target node, isolating each
- * publish (#1580 adversarial fix: a stream hiccup on node K must not skip
- * nodes K+1..N, and must never escape into BullMQ's retry machinery for a
- * task already marked failed). Mirrors the success path's per-node
- * try/catch; the collab lease sweeper backstops any node this misses.
+ * Settle this run's row on every target node as failed, isolating each one
+ * (#1580 adversarial fix: a stream hiccup on node K must not skip nodes
+ * K+1..N, and must never escape into BullMQ's retry machinery for a task
+ * already marked failed). Best-effort for the same reason: the job is
+ * already over, and a node whose count did not update is repaired by the
+ * next state change on it.
  * @param streamRedis - Redis client for the stream DB.
  * @param docName - Canvas doc the nodes live in.
- * @param nodeIds - Target nodes to mark failed.
- * @param genOf - Lease gen resolver for one node (#1580 #7).
+ * @param nodeIds - Target nodes whose rows settle as failed.
  * @param errorMessage - Human-readable failure reason.
  * @param taskId - The job whose row on each node settles as failed.
  */
-async function emitFailedBestEffort(
+async function settleFailedBestEffort(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeIds: string[],
-  genOf: (nodeId: string) => number,
   errorMessage: string,
   taskId: string,
 ): Promise<void> {
   for (const nodeId of nodeIds) {
-    try {
-      await emitNodeStateFailed(streamRedis, docName, nodeId, errorMessage, genOf(nodeId));
-    } catch (err) {
-      logger.warn(
-        { err, nodeId, docName },
-        "Failed to publish NodeStateUpdateEvent (failure)",
-      );
-    }
-    // The row this run opened on that node (#186, design §3.6). Best-effort
-    // for the same reason as the line above: the job is already over, and a
-    // node whose count did not update is repaired by the next state change
-    // on it.
     try {
       await settleTaskForNode(streamRedis, docName, {
         taskId,
@@ -398,7 +369,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds, nodeGens } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, skillName, source, toolName, targetNodeIds } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -412,7 +383,6 @@ async function runTaskBody(
    * @param nodeId - The target node whose lease gen the job carries.
    * @returns The node's lease gen, or 0 when the job is missing it.
    */
-  const genOf = (nodeId: string): number => nodeGens?.[nodeId] ?? 0;
 
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
@@ -473,7 +443,6 @@ async function runTaskBody(
           url: storedOutputs[i]?.url,
           coverUrl: storedOutputs[i]?.cover_url,
         })),
-        genOf,
         { rethrowOnRecordFailure: true },
       );
     }
@@ -513,29 +482,13 @@ async function runTaskBody(
     );
     await taskService.markFailed(taskId, "Task retry not allowed after provider call");
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, "Retry not allowed after provider returned a result", taskId);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, "Retry not allowed after provider returned a result", taskId);
     }
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
   await taskService.markRunning(taskId, job.id ?? "");
 
-  // #1580 #2: transition the lease queue→running so execution gets its own
-  // budget window (a long queue backlog must not eat into it). Best-effort:
-  // a publish miss just leaves the node in 'queued' (default budget), which
-  // is still safe — the sweeper backstop remains.
-  if (canvasDocName) {
-    for (const nodeId of nodeIds) {
-      try {
-        await emitNodeLeaseRunning(streamRedis, canvasDocName, nodeId, genOf(nodeId));
-      } catch (err) {
-        logger.warn(
-          { err, taskId, nodeId },
-          "lease renewal (queue→running) publish failed; node stays queued",
-        );
-      }
-    }
-  }
 
   // ─── Stage 1: Call the provider ───────────────────────────────────
   // Errors here rethrow → BullMQ retries. For SYNC providers a retry
@@ -619,7 +572,7 @@ async function runTaskBody(
     // result, node stuck on the stale error. Same contract the QueueEvents
     // net enforces via job.finishedOn.
     if (canvasDocName && isTerminalAttempt(job)) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg, taskId);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
     }
     // Terminal attempts only - a retryable failure may still succeed,
     // and the feed records outcomes, not attempts.
@@ -652,7 +605,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, msg);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, msg, taskId);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, msg, taskId);
     }
     if (projectId) {
       await recordGenerationActivity({
@@ -701,7 +654,7 @@ async function runTaskBody(
     await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
     await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
     if (canvasDocName) {
-      await emitFailedBestEffort(streamRedis, canvasDocName, nodeIds, genOf, errorMsg, taskId);
+      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
     }
     if (projectId) {
       await recordGenerationActivity({
@@ -833,7 +786,6 @@ async function runTaskBody(
         url: persistedOutputs[i]?.url,
         coverUrl: persistedOutputs[i]?.cover_url,
       })),
-      genOf,
       { rethrowOnRecordFailure: true },
     );
   }
@@ -974,10 +926,9 @@ async function recordGenerationActivity(args: {
  * re-record. Recording is idempotent (createGenerationSuccessIfAbsent backed
  * by the migration-0036 partial unique), so calling this more than once for a
  * task — double-live concurrent executions, or a redelivery — yields exactly
- * one history row per (task, node); the re-emit is gen-fenced by collab. Each
- * node is isolated: a failure on node K neither skips K+1..N nor escapes into
- * BullMQ's retry machinery (mirrors emitFailedBestEffort). Outputs whose url
- * is not a string are skipped.
+ * one history row per (task, node). Each node is isolated: a failure on node K
+ * neither skips K+1..N nor escapes into BullMQ's retry machinery (mirrors
+ * settleFailedBestEffort). Outputs whose url is not a string are skipped.
  * @param streamRedis - Redis client for the cross-service stream DB.
  * @param docName - Canvas doc the target nodes live in.
  * @param ctx - Shared task context + generation metadata.
@@ -991,7 +942,6 @@ async function recordGenerationActivity(args: {
  * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
  * @param outputs - Per-node results; a non-string url is skipped.
- * @param genOf - Lease-gen resolver for one node (#1580 #7 fencing).
  * @param opts - Failure-handling options.
  * @param opts.rethrowOnRecordFailure - When true, a node_history record
  *   failure is RE-THROWN (a billed generation MUST be recorded — the throw
@@ -1016,7 +966,6 @@ export async function recordGenerationForNodes(
     };
   },
   outputs: Array<{ nodeId: string; url?: string; coverUrl?: string }>,
-  genOf: (nodeId: string) => number,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
@@ -1042,17 +991,6 @@ export async function recordGenerationForNodes(
       // (no retry left) fall back to best-effort.
       logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_history record failed");
       if (opts.rethrowOnRecordFailure) throw err;
-    }
-    try {
-      await emitNodeStateDone(
-        streamRedis,
-        docName,
-        o.nodeId,
-        { content: url, coverUrl: o.coverUrl },
-        genOf(o.nodeId),
-      );
-    } catch (err) {
-      logger.warn({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "Failed to publish NodeStateUpdateEvent (success)");
     }
     // The row this run opened on that node (#186, design §3.6).
     try {
