@@ -97,6 +97,7 @@ import {
   planGroupShortcut,
 } from '@web/spaces/canvas/canvas-group-shortcut';
 import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
+import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
   fileToNodeSpec,
   checkFileAdmission,
@@ -104,8 +105,7 @@ import {
   runMediaUpload,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  type UploadFailureReason,
-  type UploadLease,
+  type UploadFailure,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
@@ -114,7 +114,6 @@ import { sendFileToIngest } from '@web/data/upload/ingest-upload';
 import {
   stashRetryFile,
   getRetryFile,
-  clearRetryFile,
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
@@ -956,7 +955,7 @@ function CanvasSpaceInner({
                   // fixed by retrying on this page, so the crop pipeline must
                   // be able to say "reload" rather than the generic "try
                   // again".
-                  onFailure: (reason) => reject(new Error(reason)),
+                  onFailure: (outcome) => reject(new Error(outcome.reason)),
                 },
               );
             }),
@@ -2024,55 +2023,26 @@ function CanvasSpaceInner({
   // said in a localized toast.
   const failUploadNode = React.useCallback(
     (
-      reason: UploadFailureReason,
+      outcome: UploadFailure,
       nodeId: string,
       file: File,
-      lease: UploadLease,
+      opts: { droppedHere: boolean },
     ): void => {
-      if (reason === 'storage') {
-        // No stash and no Retry: retrying asks again for room nobody has
-        // freed. What the node says is fixed English because it goes into
-        // Yjs and every collaborator reads it; the sentence explaining WHY
-        // is a toast, so it is in the language of the person who tried.
-        clearRetryFile(projectId, spaceId, nodeId);
-        failNodeHandling(
-          projectId,
-          spaceId,
-          nodeId,
-          `Storage is full: ${file.name}`,
-          lease,
-        );
-        toast.error(t('canvas.upload.storageFull'));
+      const plan = resolveUploadFailure(outcome);
+      // Either way the person who tried hears about it in their own language.
+      // Whether a task row exists decides who ends the task, not whether they
+      // are told (#186 §3.7.3).
+      toast.error(t(plan.toastKey));
+      if (plan.kind === 'serverKnows') {
+        // The row and its timer will take this to an end on their own. All
+        // that is left here is the File its Retry re-sends.
+        stashRetryFile(projectId, spaceId, plan.taskId, file);
         return;
       }
-      if (reason === 'hash') {
-        // CLEAR any stash from an earlier attempt (Gate-2 R5): leaving one
-        // behind keeps the Retry button alive on a node whose error says the
-        // file could not be read — and Retry would re-upload that STALE file,
-        // not the one the user just picked.
-        clearRetryFile(projectId, spaceId, nodeId);
-        failNodeHandling(
-          projectId,
-          spaceId,
-          nodeId,
-          `Could not read file: ${file.name}`,
-          lease,
-        );
-        toast.error(t('canvas.upload.hashUnavailable'));
-        return;
-      }
-      stashRetryFile(projectId, spaceId, nodeId, file);
-      failNodeHandling(
-        projectId,
-        spaceId,
-        nodeId,
-        `Upload failed: ${file.name}`,
-        lease,
-      );
-      // The sentence on the node is fixed English because every collaborator
-      // reads it; this one is in the language of the person who tried, and it
-      // is the only place they are told a retry is worth making.
-      toast.error(t('canvas.upload.failed'));
+      // No ticket, so no row, no grant and no timer: nothing is coming to end
+      // this. A node this drop created has never held anything and never
+      // will, so it goes; one that was already there stays as it was.
+      if (opts.droppedHere) removeNode(projectId, spaceId, nodeId);
     },
     [projectId, spaceId, t],
   );
@@ -2140,13 +2110,11 @@ function CanvasSpaceInner({
                   // The bytes are delivered; the node's content arrives from
                   // the server through Yjs. All that is left here is to stop
                   // holding the file for a Retry that is no longer offered.
-                  onSuccess: () => {
-                    clearRetryFile(projectId, spaceId, nodeId);
-                  },
-                  // Reason and all — `failUploadNode` above owns what each one
-                  // means for the node text, the Retry stash and the toast.
-                  onFailure: (reason) =>
-                    failUploadNode(reason, nodeId, file, lease),
+                  onSuccess: () => undefined,
+                  // Outcome and all — `failUploadNode` above owns what each
+                  // one means for the Retry stash, the toast and this node.
+                  onFailure: (outcome) =>
+                    failUploadNode(outcome, nodeId, file, { droppedHere: true }),
                 },
               ),
             );
@@ -3094,7 +3062,6 @@ function CanvasSpaceInner({
           // there is nobody else to write it. A media node's content arrives
           // from the server through Yjs.
           setContent: (id, content, lease) => {
-            clearRetryFile(projectId, spaceId, id);
             const landed = completeNodeHandling(
               projectId,
               spaceId,
@@ -3112,9 +3079,8 @@ function CanvasSpaceInner({
             failNodeHandling(projectId, spaceId, id, message, lease),
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (reason, id, f, lease) =>
-            failUploadNode(reason, id, f, lease),
-          onUploadSettled: (id) => clearRetryFile(projectId, spaceId, id),
+          onUploadFailure: (outcome, id, f) =>
+            failUploadNode(outcome, id, f, { droppedHere: false }),
         });
       })();
       trackOperation(nodeId, work);

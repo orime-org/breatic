@@ -143,6 +143,22 @@ export interface UploadContext {
 export type UploadFailureReason = 'hash' | 'storage' | 'upload';
 
 /**
+ * How an upload ended badly, and whether the server knows about it (#186
+ * §3.7.3).
+ *
+ * `taskId` is present exactly when the ticket was granted: past that point
+ * the server holds a task row for this upload and a timer that will judge it,
+ * so the browser leaves the outcome to them and only keeps the File for a
+ * retry, keyed by that task. Absent, nothing on the server ever heard of this
+ * upload — no row, no grant, no timer — so nobody is going to give it an
+ * ending and the browser says so locally.
+ */
+export interface UploadFailure {
+  reason: UploadFailureReason;
+  taskId?: string;
+}
+
+/**
  * Say which failure a ticket request ended in.
  *
  * A 507 answer means the account is out of room; anything else is transient as
@@ -205,9 +221,10 @@ export interface MediaUploadDeps {
   /**
    * Called when the upload cannot complete. `reason` tells the caller which
    * message to show: `hash` (we could not fingerprint the file — reload) vs
-   * `upload` (config / ticket / parts failed — retry).
+   * `upload` (config / ticket / parts failed — retry). `taskId` says whether
+   * the server has a row for this upload; see {@link UploadFailure}.
    */
-  onFailure: (reason: UploadFailureReason) => void;
+  onFailure: (outcome: UploadFailure) => void;
   /** Backoff sleep override (tests only — production uses real timers). */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -246,7 +263,7 @@ export async function runMediaUpload(
     const hash = await deps.hashFile(file);
     if (hash === null) {
       // Refused up front: nothing asked for, nothing sent, no bandwidth burnt.
-      deps.onFailure('hash');
+      deps.onFailure({ reason: 'hash' });
       return;
     }
     answer = await retryTransient(
@@ -271,7 +288,7 @@ export async function runMediaUpload(
       },
     );
   } catch (err) {
-    deps.onFailure(ticketFailureOf(err));
+    deps.onFailure({ reason: ticketFailureOf(err) });
     return;
   }
 
@@ -286,7 +303,10 @@ export async function runMediaUpload(
     const outcome = await deps.sendToIngest(file, answer, cfg);
     deps.onSuccess(outcome.fileUrl);
   } catch {
-    deps.onFailure('upload');
+    deps.onFailure({
+      reason: 'upload',
+      ...(answer.taskId !== undefined && { taskId: answer.taskId }),
+    });
   }
 }
 
@@ -314,12 +334,6 @@ export interface FillNodeDeps {
   requestTicket: MediaUploadDeps['requestTicket'];
   /** Send the bytes to the ingest Worker (media path). */
   sendToIngest: MediaUploadDeps['sendToIngest'];
-  /**
-   * The bytes are delivered, so the file no longer needs holding for a Retry
-   * this node is not offered any more. The node's content arrives from the
-   * server through Yjs; this callback has nothing to do with it.
-   */
-  onUploadSettled: (nodeId: string) => void;
   /** Backoff sleep override (tests only). */
   sleep?: MediaUploadDeps['sleep'];
   /** Read / extract a non-media file's text locally (the text path). */
@@ -350,7 +364,7 @@ export interface FillNodeDeps {
    * measured.
    */
   onUploadFailure: (
-    reason: UploadFailureReason,
+    outcome: UploadFailure,
     nodeId: string,
     file: File,
     lease: UploadLease,
@@ -429,8 +443,10 @@ export async function fillNodeFromFile(
         hashFile: deps.hashFile,
         requestTicket: deps.requestTicket,
         sendToIngest: deps.sendToIngest,
-        onSuccess: () => deps.onUploadSettled(nodeId),
-        onFailure: (reason) => deps.onUploadFailure(reason, nodeId, file, lease),
+        // The node's content arrives from the server through Yjs.
+        onSuccess: () => undefined,
+        onFailure: (outcome) =>
+          deps.onUploadFailure(outcome, nodeId, file, lease),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );

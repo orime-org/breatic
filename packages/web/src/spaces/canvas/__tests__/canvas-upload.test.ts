@@ -139,6 +139,7 @@ const TICKET = {
   kind: 'image',
   partSize: 5 * 1024 * 1024,
   totalParts: 1,
+  taskId: 'task-row-1',
 };
 
 /** Shared orchestration deps (config + hash + network spies). */
@@ -219,7 +220,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('hash');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'hash' });
   });
 
   it('retries a transient ticket failure before succeeding', async () => {
@@ -245,12 +246,14 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
   });
 
-  // Named apart from a ticket failure so the node's message and its Retry
-  // stash can differ, even though both are the browser's to write.
-  it('names a failure sending the bytes apart from one asking for a ticket', async () => {
+  // Past the ticket, the server holds a task row for this upload and a timer
+  // that will judge it. The failure names that row, which is how the browser
+  // tells this apart from one where nothing on the server ever knew (#186
+  // §3.7.3) — and what it keys the retry file by.
+  it('names the task row when the bytes failed after the ticket was granted', async () => {
     const deps = makeUploadDeps({
       sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
     });
@@ -258,7 +261,10 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
+      reason: 'upload',
+      taskId: TICKET.taskId,
+    });
   });
 
   // A full account is not something a retry fixes, and the message the user
@@ -270,7 +276,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, context, deps);
 
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('storage');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
   });
 
   it('reports a failure when the knobs cannot be fetched', async () => {
@@ -281,7 +287,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith('upload');
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
   });
 
   // A crop is a byproduct with no node: registered for dedup, and told apart
@@ -330,30 +336,12 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       // no copy of the sentences a user reads, so every failure hands its
       // reason out and CanvasSpace decides how to present it.
       onUploadFailure: vi.fn(),
-      onUploadSettled: vi.fn(),
       sleep: () => Promise.resolve(),
       ...over,
     };
   }
 
-  // Delivered bytes mean the file is no longer worth holding for a Retry this
-  // node is not offered any more. The drop path says the same thing, and a
-  // stash only one of them clears is a stash that outlives its node.
-  it('media file: says so once the bytes are delivered', async () => {
-    const deps = makeDeps();
-
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
-
-    expect(deps.onUploadSettled).toHaveBeenCalledExactlyOnceWith('n1');
-  });
-
-  it('media file: says nothing of the sort when the upload failed', async () => {
+  it('media file: hands a failure to the one exit and writes nothing itself', async () => {
     const deps = makeDeps({
       sendToIngest: vi.fn().mockRejectedValue(new Error('network')),
     });
@@ -366,8 +354,9 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       deps,
     );
 
-    expect(deps.onUploadSettled).not.toHaveBeenCalled();
     expect(deps.onUploadFailure).toHaveBeenCalledOnce();
+    expect(deps.setContent).not.toHaveBeenCalled();
+    expect(deps.setError).not.toHaveBeenCalled();
   });
 
   // The node opens handling and stays there. What it ends up holding comes
@@ -399,7 +388,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     // The fixed English sentence on the node is written by the one exit that
     // owns it; this pins only that the reason was handed over.
     expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
-      'upload',
+      { reason: 'upload' },
       'n1',
       file,
       LEASE,
