@@ -164,19 +164,7 @@ describe('the row of assets', () => {
     const box = screen.getByTestId('asset-box');
     expect(box.className).toMatch(/w-\[520px\]/);
     expect(box.className).toMatch(/h-\[560px\]/);
-  });
-
-  it('comes out of the left, where the conversation list comes out of', async () => {
-    // The reader opened it from something in the agent column, so it arrives
-    // from the same edge everything else in that column arrives from.
-    render(<MessageBubble message={withImages(3)} />);
-
-    await userEvent.click(screen.getAllByTestId('asset-thumb')[0]!);
-
-    const box = screen.getByTestId('asset-box');
-    expect(box.className).toMatch(/left-1/);
-    expect(box.className).toMatch(/top-\[84px\]/);
-    expect(box.className).not.toMatch(/left-\[50%\]/);
+    expect(box.className).not.toMatch(/inset-4/);
   });
 
   it('opens at the first one behind the button, not back at the start', async () => {

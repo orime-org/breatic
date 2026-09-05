@@ -12,19 +12,14 @@ import {
 import { useReturnFocus } from '@web/lib/overlay-focus';
 
 /**
- * Where the boxes a reply opens are drawn, and how big.
- *
- * `top-[84px] left-1` is the conversation list's own origin (`sheet.tsx`'s
- * `left-floating`: the top bar's 40, the agent header's 40, and 4 of gap), so
- * everything this column opens arrives from the same edge at the same place.
+ * The size the boxes a reply opens are drawn at.
  *
  * 520 is the width this project's dialogs are already drawn at; the height is
  * this box's own, chosen for the stage a picture is shown on and the list of
  * sources that shares the component. The viewport cap stops a window shorter
  * than 560 from putting the footer past the bottom edge.
  */
-const BOX_PLACE =
-  'left-1 top-[84px] h-[560px] max-h-[calc(100vh-100px)] w-[520px] max-w-none translate-x-0 translate-y-0';
+const BOX_SIZE = 'h-[560px] max-h-[calc(100vh-2rem)] w-[520px]';
 
 interface ReplyBoxProps {
   /** Whether the box is up. */
@@ -44,10 +39,9 @@ interface ReplyBoxProps {
 /**
  * A box for the things a reply found.
  *
- * One size whatever the agent column is doing, and out of the same edge as
- * everything else that column opens: what the reader opened it from is in
- * there, while the thing they opened it to look at wants the room it wants --
- * a picture at full size, or a list of addresses.
+ * One size whatever the agent column is doing: what the reader opened it from
+ * is in that column, and the thing they opened it to look at is not -- a
+ * picture at full size and a list of addresses each want the room they want.
  * That is the whole of the difference from the project's ordinary dialog, so
  * the size is all this passes; Escape, the backdrop, the focus trap and the
  * return of focus afterwards are the primitive's, and they are the reason a
@@ -75,7 +69,7 @@ export function ReplyBox({
       <DialogContent
         data-testid={testId}
         onCloseAutoFocus={returnFocus}
-        className={BOX_PLACE}
+        className={BOX_SIZE}
       >
         <DialogHeader>
           <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>
