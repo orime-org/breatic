@@ -73,6 +73,29 @@ export interface ChatSource {
   publisher: string;
 }
 
+/**
+ * One thing a turn found that has a face: a picture, a clip, or a track.
+ *
+ * Plain links are not among them. They belong in a row of squares only if
+ * there is something to put in the square, and a web page has nothing.
+ */
+export interface ChatAsset {
+  /** Which of the three it is, which decides what the square holds. */
+  kind: 'image' | 'video' | 'audio';
+  /** Where it is. */
+  url: string;
+  /** What to call it. */
+  title: string;
+  /**
+   * How long it runs, as it should read.
+   *
+   * Only a clip or a track has one, and only when the model gave it. A still
+   * frame cannot say how long a video is, so without this a clip and a
+   * picture are the same square.
+   */
+  duration?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -164,4 +187,10 @@ export interface ChatMessage {
    * first repeat.
    */
   citations?: Record<number, ChatSource>;
+  /**
+   * The pictures, clips and tracks this turn put in front of the reader.
+   *
+   * Absent, rather than empty, on a turn that found none.
+   */
+  assets?: ChatAsset[];
 }

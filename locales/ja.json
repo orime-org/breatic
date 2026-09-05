@@ -247,6 +247,9 @@
     "backToLatest": {
       "plain": "最新に戻る",
       "withNew": "{count, plural, other {新着 # 件}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
     }
   },
   "canvas": {

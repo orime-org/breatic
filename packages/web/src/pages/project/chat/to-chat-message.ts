@@ -17,7 +17,7 @@
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import { isReaderLine } from '@breatic/shared';
-import type { ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
+import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
 const INTERRUPTED = 'data-interrupted';
@@ -33,6 +33,39 @@ const BLOCKED = 'data-blocked';
 
 /** The tool whose results the source row and the citation chips are built from. */
 const SEARCH_TOOL = 'web_search';
+
+/** The tool that puts what a turn found in front of the reader. */
+const RESULTS_TOOL = 'show_search_results';
+
+/** Which field of its answer holds which kind. `links` has no face to draw. */
+const ASSET_FIELDS = [
+  ['images', 'image'],
+  ['videos', 'video'],
+  ['audios', 'audio'],
+] as const;
+
+/**
+ * The assets one finished `show_search_results` call carries.
+ *
+ * Read defensively: the model fills this in, so a field can be missing, be
+ * something other than a list, or hold an entry with no address at all.
+ * @param output - Whatever the call answered with.
+ * @returns The assets, in the order the fields are declared above.
+ */
+function assetsOf(output: unknown): ChatAsset[] {
+  if (output === null || typeof output !== 'object') return [];
+  const held = output as Record<string, unknown>;
+  return ASSET_FIELDS.flatMap(([field, kind]): ChatAsset[] => {
+    const list = held[field];
+    if (!Array.isArray(list)) return [];
+    return list.flatMap((entry): ChatAsset[] => {
+      if (entry === null || typeof entry !== 'object') return [];
+      const { url, title, duration } = entry as Record<string, unknown>;
+      if (typeof url !== 'string' || typeof title !== 'string') return [];
+      return [{ kind, url, title, ...(typeof duration === 'string' ? { duration } : {}) }];
+    });
+  });
+}
 
 /**
  * The pages one finished search returned, or nothing.
@@ -120,6 +153,7 @@ export function toChatMessage(
   const seen = new Set<string>();
   const citations: Record<number, ChatSource> = {};
   let numbered = 0;
+  const assets: ChatAsset[] = [];
 
   // Read before the loop because a tool part can come before the mark. A call
   // this turn cut short has nothing on it saying so — the SDK client leaves it
@@ -163,6 +197,9 @@ export function toChatMessage(
           ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
+      if (status === 'success' && getToolName(part) === RESULTS_TOOL) {
+        assets.push(...assetsOf(part.output));
+      }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         for (const source of sourcesOf(part.output)) {
           numbered += 1;
@@ -196,6 +233,7 @@ export function toChatMessage(
     ...(blocked ? { blocked: true as const } : {}),
     ...(sources.length > 0 ? { sources } : {}),
     ...(numbered > 0 ? { citations } : {}),
+    ...(assets.length > 0 ? { assets } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),
   };

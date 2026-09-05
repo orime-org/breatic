@@ -7,6 +7,7 @@ import { cn } from '@web/lib/utils';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
+import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { SourceRow } from '@web/pages/project/chat/SourceRow';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
@@ -117,6 +118,11 @@ export const MessageBubble = React.memo(function MessageBubble({
             stored, so a reload shows the answer and no trace of how it was
             assembled (A5). */}
         {running && runningCall !== undefined ? <ToolRunLine call={runningCall} /> : null}
+        {/* What the turn found, before where it came from: these are the
+            thing itself, and the sources are the account of it. */}
+        {running || message.assets === undefined ? null : (
+          <AssetRow assets={message.assets} />
+        )}
         {/* Where the answer came from. Content rather than process, so unlike
             the line above it stays once the turn has ended -- and it is drawn
             only then, because a row that grows as searches come back would

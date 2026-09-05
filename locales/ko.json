@@ -247,6 +247,9 @@
     "backToLatest": {
       "plain": "최신으로",
       "withNew": "{count, plural, other {새 메시지 #개}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
     }
   },
   "canvas": {
