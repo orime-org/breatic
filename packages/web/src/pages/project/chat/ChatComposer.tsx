@@ -127,9 +127,19 @@ function ChatComposerInner({
   // height, so a box that has grown never shrinks again.
   React.useLayoutEffect(() => {
     const el = box.current;
-    if (el === null) return;
-    el.style.height = 'auto';
-    el.style.height = `${String(el.scrollHeight)}px`;
+    if (el === null) return undefined;
+    /** Take the height of what is written, at the width there is. */
+    const fit = (): void => {
+      el.style.height = 'auto';
+      el.style.height = `${String(el.scrollHeight)}px`;
+    };
+    fit();
+    // The same words take a different number of lines at a different width,
+    // and the Agent column is draggable, so a height fixed at the old width
+    // leaves the reader's own sentence half hidden.
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [draft]);
   const atLimit = useAtLimitNotice(draft.length, CHAT_MESSAGE_MAX_CHARS);
 

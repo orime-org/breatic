@@ -238,16 +238,21 @@ describe('a history sheet left open when the list goes unreadable', () => {
     );
   });
 
-  it('closes the list when the same button is pressed again', async () => {
-    // 这个按钮说的是「开关」,不是「打开」。抽屉是非模态的,所以按在它上面先被
-    // 判成「点了抽屉外面」把抽屉关掉,紧接着按钮自己的 click 又把它打开 —— 读者
-    // 按了一下什么也没发生,而且多打了一次整份列表的请求。
+  it('puts the column out of reach behind the scrim, and Escape brings it back', async () => {
+    // E2:抽屉是模态的,遮罩挡住后面、后面点不到 —— 包括打开它的那个按钮。
+    // 所以「再按一次关掉」这条路在模态下不存在,读者的出路是遮罩、Escape 和
+    // 抽屉自己的关闭键。这条钉的是两半:按钮真的够不着,以及够不着之后仍有出路。
     renderColumn();
 
     await userEvent.click(await screen.findByTestId('open-conversation-history'));
     expect(screen.getByTestId('conversation-history-sheet')).toBeInTheDocument();
+    expect(screen.getByTestId('sheet-overlay')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId('open-conversation-history'));
+    await expect(
+      userEvent.click(screen.getByTestId('open-conversation-history')),
+    ).rejects.toThrow(/pointer-events: none/);
+
+    await userEvent.keyboard('{Escape}');
 
     await waitFor(() =>
       expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),

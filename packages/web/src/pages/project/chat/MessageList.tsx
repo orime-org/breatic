@@ -161,6 +161,12 @@ function MessageListInner({
   // conversation would say the whole history is new.
   const countWhenLeft = React.useRef(0);
   const count = messages.length;
+  // Read from the scroll listener, which is attached once and would otherwise
+  // be reading the length the list had when it was attached -- so every
+  // message arriving after that would be counted as missed, and the pill
+  // would offer to catch the reader up on the whole conversation.
+  const countNow = React.useRef(count);
+  countNow.current = count;
   // A streaming reply arrives as pieces appended to the message already at
   // the end, so the count sits still for the whole turn. Following the last
   // message's own shape as well is what keeps the answer in view while it is
@@ -233,7 +239,7 @@ function MessageListInner({
     const remember = (): void => {
       const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
       const atEnd = distance <= AT_BOTTOM_SLACK_PX;
-      if (!atEnd && stickToBottom.current) countWhenLeft.current = count;
+      if (!atEnd && stickToBottom.current) countWhenLeft.current = countNow.current;
       stickToBottom.current = atEnd;
       setAwayFromEnd(!atEnd);
     };

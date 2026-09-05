@@ -315,7 +315,11 @@ function readSource(item: unknown, index: number): SearchSource | null {
   const list = typeof snippets === "string" ? [snippets] : snippets;
   if (!Array.isArray(list)) return null;
 
-  const address = typeof url === "string" ? url : "";
+  // No address is unreadable in the sense that matters: what a reader does
+  // with a source is follow it, and a chip with nowhere to go is worse than
+  // one page fewer.
+  if (typeof url !== "string" || url === "") return null;
+  const address = url;
   const name = typeof title === "string" ? title : "";
   // Brave documents a snippet as page text or as serialised structured data,
   // so a non-string is within contract rather than a surprise.

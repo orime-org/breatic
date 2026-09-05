@@ -12,6 +12,7 @@ import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { ColumnBoxHost } from '@web/pages/project/chat/ColumnBox';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
@@ -241,8 +242,15 @@ export function ChatPanel({
     [onQuickAction, setDraft],
   );
 
+  // What the boxes a reply can open are laid out against. Held as state
+  // rather than a ref so that publishing it re-renders -- a ref is filled
+  // after the render that reads it, and the first box opened would find
+  // nothing there.
+  const [column, setColumn] = React.useState<HTMLElement | null>(null);
+
   return (
     <div
+      ref={setColumn}
       data-testid='chat-panel'
       data-project-id={projectId}
       // Takes the height that is left, not the height of the column. The
@@ -251,26 +259,31 @@ export function ChatPanel({
       // overflowed it by exactly the header, the page grew a scrollbar of its
       // own, and whichever end it was scrolled to lost that much: the toolbar
       // off the top, or the composer off the bottom.
-      className='flex w-full min-h-0 flex-1 flex-col'
+      // Positioned so that a box opened from a reply covers this column and
+      // not the window: what the reader opened it from is in here, and so is
+      // everything it is standing in front of.
+      className='relative flex w-full min-h-0 flex-1 flex-col'
     >
-      <MessageList
+      <ColumnBoxHost element={column}>
+        <MessageList
         // The conversation travels as a prop rather than as a key. The list
         // does have to notice a switch -- it is what tells it to follow the
         // bottom again -- but keying it made React tear down the scroller and
         // every bubble to do it, and the scroller it discarded stayed in the
         // document: an empty half-column above the conversation, in every
         // project, from the moment the first one opened.
-        conversationId={currentId}
-        messages={messages}
-        consolidating={consolidating}
-        ready={ready}
-        skeleton={skeleton}
-        sentCount={sentCount}
-        hasEarlier={hasMore}
-        onLoadEarlier={loadEarlier}
-        onQuickAction={quickAction}
-        navigating={navigating}
-      />
+          conversationId={currentId}
+          messages={messages}
+          consolidating={consolidating}
+          ready={ready}
+          skeleton={skeleton}
+          sentCount={sentCount}
+          hasEarlier={hasMore}
+          onLoadEarlier={loadEarlier}
+          onQuickAction={quickAction}
+          navigating={navigating}
+        />
+      </ColumnBoxHost>
       {/* One line, on the top edge of the composer, for everything this panel
           has to say -- and it says each thing once. Nothing here is a state
           the chat is in, so nothing here stays. */}

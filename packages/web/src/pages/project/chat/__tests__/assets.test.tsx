@@ -14,6 +14,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { squaresThatFit } from '@web/pages/project/chat/AssetRow';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import type { UIMessage } from 'ai';
@@ -139,15 +140,48 @@ describe('the row of assets', () => {
   it('opens one for a proper look, with the rest along the bottom', async () => {
     render(<MessageBubble message={withImages(3)} />);
 
-    await userEvent.click(screen.getAllByTestId('asset-thumb')[1]!);
+    await userEvent.click(screen.getAllByTestId('asset-thumb')[0]!);
 
     expect(screen.getByTestId('asset-box')).toBeInTheDocument();
-    expect(screen.getAllByTestId('asset-box-thumb')[1]).toHaveAttribute('aria-current', 'true');
+    expect(screen.getAllByTestId('asset-box-thumb')).toHaveLength(3);
+    expect(screen.getAllByTestId('asset-box-thumb')[0]).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('opens at the first one behind the button, not back at the start', async () => {
+    render(<MessageBubble message={withImages(8)} />);
+
+    const drawn = screen.getAllByTestId('asset-thumb').length;
+    await userEvent.click(screen.getByTestId('asset-row-more'));
+
+    expect(screen.getAllByTestId('asset-box-thumb')[drawn]).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
   });
 
   it('is absent on a turn that found none', () => {
     render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
 
     expect(screen.queryByTestId('asset-row')).not.toBeInTheDocument();
+  });
+});
+
+describe('how many squares a row of that width holds', () => {
+  // 96 见方加 8 的间距，而 Agent 列从 320 拖到 640、消息列表两边各 12 的内边距
+  // —— 所以行宽是 296 到 616。数不对的后果不是排版难看：行是 overflow-hidden 的，
+  // 放不下的那些连同「+N」按钮一起被裁掉，屏幕上不留任何痕迹。
+  it('draws them all when they all fit, with no button to make room for', () => {
+    expect(squaresThatFit(616, 5)).toBe(5);
+  });
+
+  it('gives up one square to the button when they do not', () => {
+    // 616 装得下 6 个（96×6 + 8×5 = 616），第 6 格让给按钮。
+    expect(squaresThatFit(616, 9)).toBe(5);
+  });
+
+  it('still draws one at the narrowest the column goes', () => {
+    // 296 只装得下 2 个，减去按钮剩 1 —— 少到不能再少，但不是零。
+    expect(squaresThatFit(296, 8)).toBe(1);
+    expect(squaresThatFit(296, 2)).toBe(2);
   });
 });

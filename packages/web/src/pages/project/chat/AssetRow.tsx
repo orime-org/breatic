@@ -5,19 +5,49 @@ import * as React from 'react';
 import { AudioLines, Play } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
 import type { ChatAsset } from '@web/pages/project/chat/types';
 
+/** A square, and the gap before the next one. Both from the classes below. */
+const SQUARE_PX = 96;
+const GAP_PX = 8;
+
 /**
- * How many squares the row draws before the rest go behind the button.
+ * What the row has to work with before it has been measured.
  *
- * The row is one line, and it neither wraps nor scrolls: a set of results
- * that reflows as the column is dragged is a set the reader cannot point at
- * twice. What it cannot show is one press away.
+ * The Agent column's floor is 320 and the message list pads it by 12 a side,
+ * so this is the least room the row can ever have. Starting here rather than
+ * at nothing means the first frame draws what will certainly fit, and the
+ * measurement that follows in the same frame only ever adds.
  */
-const SQUARES_IN_THE_ROW = 4;
+const NARROWEST_ROW_PX = 296;
+
+/**
+ * How many squares fit a row this wide, keeping room for the button.
+ *
+ * A count decided in advance cannot be right: the column runs from 320 to
+ * 640, and at its narrowest the row has 296px to work with -- four squares
+ * want 408, so the fourth and the button after it were both being cut off by
+ * the row's own `overflow-hidden`, with nothing on screen saying so.
+ *
+ * Measured, nothing reflows either: widening the column appends squares at
+ * the end and narrowing it takes them back behind the button, and the ones in
+ * between never move. What the row must not do is wrap or scroll, and it
+ * still does neither.
+ * @param width - How much room the row has.
+ * @param total - How many there are in all.
+ * @returns How many to draw, at least one.
+ */
+export function squaresThatFit(width: number, total: number): number {
+  const fit = Math.floor((width + GAP_PX) / (SQUARE_PX + GAP_PX));
+  // The button is a square too, so it costs one of them -- but only when
+  // there is something to put behind it.
+  return Math.max(1, fit >= total ? total : fit - 1);
+}
 
 interface AssetRowProps {
   /** What this turn found. */
@@ -41,12 +71,24 @@ export const AssetRow = React.memo(function AssetRow({
   const [openAt, setOpenAt] = React.useState<number | null>(null);
   const close = React.useCallback(() => setOpenAt(null), []);
 
-  const shown = assets.slice(0, SQUARES_IN_THE_ROW);
+  const row = React.useRef<HTMLDivElement>(null);
+  const [width, setWidth] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const el = row.current;
+    if (el === null) return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry?.contentRect.width ?? 0);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const shown = assets.slice(0, squaresThatFit(width || NARROWEST_ROW_PX, assets.length));
   const hidden = assets.length - shown.length;
 
   return (
     <>
-      <div data-testid='asset-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
+      <div ref={row} data-testid='asset-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
         {shown.map((asset, i) => (
           <AssetThumb key={asset.url} asset={asset} onOpen={() => setOpenAt(i)} />
         ))}
@@ -56,15 +98,13 @@ export const AssetRow = React.memo(function AssetRow({
             variant='outline'
             size='sm'
             className='size-24 shrink-0 text-xs text-muted-foreground'
-            onClick={() => setOpenAt(SQUARES_IN_THE_ROW)}
+            onClick={() => setOpenAt(shown.length)}
           >
             {t('chat.assets.more', { count: hidden })}
           </Button>
         ) : null}
       </div>
-      {openAt === null ? null : (
-        <AssetBox assets={assets} at={openAt} onMove={setOpenAt} onClose={close} />
-      )}
+      <AssetBox assets={assets} at={openAt} onMove={setOpenAt} onClose={close} />
     </>
   );
 });
@@ -124,8 +164,8 @@ function AssetThumb({ asset, onOpen }: AssetThumbProps): React.JSX.Element {
 interface AssetBoxProps {
   /** Everything this turn found. */
   assets: ChatAsset[];
-  /** Which one is on the stage. */
-  at: number;
+  /** Which one is on the stage, or none when the box is shut. */
+  at: number | null;
   /** Put another one on the stage. */
   onMove: (at: number) => void;
   /** Shut the box. */
@@ -142,60 +182,51 @@ interface AssetBoxProps {
  * @returns The box.
  */
 function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Element {
-  const t = useTranslation();
-  const current = assets[Math.min(at, assets.length - 1)];
+  const current = at === null ? undefined : assets[Math.min(at, assets.length - 1)];
   return (
-    <div className='absolute inset-0 z-40' data-testid='asset-box'>
-      <Button
-        variant={null}
-        size={null}
-        aria-label={t('common.close')}
-        className='absolute inset-0 cursor-default bg-black/80'
-        onClick={onClose}
-      />
-      <div className='absolute inset-4 z-10 flex flex-col overflow-hidden rounded-content-md border border-border bg-popover shadow-lg'>
-        <div className='flex items-center justify-between gap-2 px-4 py-3'>
-          <span className='truncate text-sm font-medium'>{current?.title}</span>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-[var(--btn-compact)] shrink-0 px-2 text-xs text-muted-foreground'
-            onClick={onClose}
-          >
-            {t('common.close')}
-          </Button>
-        </div>
-        <div className='mx-4 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-content-sm bg-muted'>
-          {current === undefined || current.kind === 'audio' ? (
-            <AudioLines className='size-10 text-muted-foreground' aria-hidden='true' />
-          ) : (
-            <img src={current.url} alt={current.title} className='max-h-full max-w-full object-contain' />
-          )}
-        </div>
-        <div className='flex gap-2 px-4 py-3'>
-          {assets.map((asset, i) => (
-            <Button
-              key={asset.url}
-              data-testid='asset-box-thumb'
-              variant={null}
-              size={null}
-              aria-label={asset.title}
-              aria-current={i === at}
-              onClick={() => onMove(i)}
-              className={cn(
-                'size-10 shrink-0 overflow-hidden rounded-chrome border p-0',
-                i === at ? 'border-active-border' : 'border-transparent',
-              )}
-            >
-              {asset.kind === 'audio' ? (
-                <AudioLines className='size-4 text-muted-foreground' aria-hidden='true' />
-              ) : (
-                <img src={asset.url} alt='' className='size-full object-cover' loading='lazy' />
-              )}
-            </Button>
-          ))}
-        </div>
+    <ColumnBox
+      open={at !== null}
+      onOpenChange={onClose}
+      testId='asset-box'
+      title={current?.title}
+      footer={
+        // Its own scroller rather than a row that runs off the edge: a turn
+        // can find more of these than the column is wide, and the ones past
+        // the edge would be the only way back to them.
+        <ScrollArea scrollbars='horizontal' viewportClassName='px-4 pb-3 pt-3'>
+          <div className='flex gap-2'>
+            {assets.map((asset, i) => (
+              <Button
+                key={asset.url}
+                data-testid='asset-box-thumb'
+                variant={null}
+                size={null}
+                aria-label={asset.title}
+                aria-current={i === at}
+                onClick={() => onMove(i)}
+                className={cn(
+                  'size-10 shrink-0 overflow-hidden rounded-chrome border p-0',
+                  i === at ? 'border-active-border' : 'border-transparent',
+                )}
+              >
+                {asset.kind === 'audio' ? (
+                  <AudioLines className='size-4 text-muted-foreground' aria-hidden='true' />
+                ) : (
+                  <img src={asset.url} alt='' className='size-full object-cover' loading='lazy' />
+                )}
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
+      }
+    >
+      <div className='mx-4 mt-3 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-content-sm bg-muted'>
+        {current === undefined || current.kind === 'audio' ? (
+          <AudioLines className='size-10 text-muted-foreground' aria-hidden='true' />
+        ) : (
+          <img src={current.url} alt={current.title} className='max-h-full max-w-full object-contain' />
+        )}
       </div>
-    </div>
+    </ColumnBox>
   );
 }

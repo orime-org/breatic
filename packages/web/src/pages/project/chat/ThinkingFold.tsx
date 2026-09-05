@@ -27,7 +27,7 @@ export function ThinkingFold({
   return (
     <div
       data-testid='thinking-fold'
-      className='mb-2 rounded border border-border bg-background/50 text-xs'
+      className='mb-2 text-xs'
     >
       <Button
         type='button'

@@ -7,6 +7,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
 import { SourceChip } from '@web/pages/project/chat/SourceChip';
 import type { ChatSource } from '@web/pages/project/chat/types';
 
@@ -45,7 +46,6 @@ export const SourceRow = React.memo(function SourceRow({
   const t = useTranslation();
   const [boxOpen, setBoxOpen] = React.useState(false);
   const openBox = React.useCallback(() => setBoxOpen(true), []);
-  const closeBox = React.useCallback(() => setBoxOpen(false), []);
 
   const shown = sources.slice(0, CHIPS_IN_THE_ROW);
   const hidden = sources.length - shown.length;
@@ -68,7 +68,7 @@ export const SourceRow = React.memo(function SourceRow({
           </Button>
         ) : null}
       </div>
-      {boxOpen ? <SourceBox sources={sources} onClose={closeBox} /> : null}
+      <SourceBox sources={sources} open={boxOpen} onOpenChange={setBoxOpen} />
     </>
   );
 });
@@ -76,8 +76,10 @@ export const SourceRow = React.memo(function SourceRow({
 interface SourceBoxProps {
   /** Every page this turn found. */
   sources: ChatSource[];
-  /** Shut the box. */
-  onClose: () => void;
+  /** Whether the box is up. */
+  open: boolean;
+  /** Called when the reader shuts it. */
+  onOpenChange: (open: boolean) => void;
 }
 
 /**
@@ -88,50 +90,36 @@ interface SourceBoxProps {
  * version of it that they have to read first.
  * @param root0 - The component props.
  * @param root0.sources - Every page this turn found.
- * @param root0.onClose - Shut the box.
+ * @param root0.open - Whether the box is up.
+ * @param root0.onOpenChange - Called when the reader shuts it.
  * @returns The box.
  */
-function SourceBox({ sources, onClose }: SourceBoxProps): React.JSX.Element {
+function SourceBox({ sources, open, onOpenChange }: SourceBoxProps): React.JSX.Element {
   const t = useTranslation();
   return (
-    <div className='absolute inset-0 z-40' data-testid='source-box'>
-      <Button
-        variant={null}
-        size={null}
-        aria-label={t('common.close')}
-        className='absolute inset-0 cursor-default bg-black/80'
-        onClick={onClose}
-      />
-      <div className='absolute inset-4 z-10 flex flex-col overflow-hidden rounded-content-md border border-border bg-popover shadow-lg'>
-        <div className='flex items-center justify-between px-4 py-3'>
-          <span className='text-sm font-medium'>{t('chat.sources.title')}</span>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-[var(--btn-compact)] px-2 text-xs text-muted-foreground'
-            onClick={onClose}
-          >
-            {t('common.close')}
-          </Button>
+    <ColumnBox
+      open={open}
+      onOpenChange={onOpenChange}
+      testId='source-box'
+      title={t('chat.sources.title')}
+    >
+      <ScrollArea className='min-h-0 flex-1' viewportClassName='px-2 py-2'>
+        <div className='flex flex-col gap-0.5'>
+          {sources.map((s) => (
+            <a
+              key={s.url}
+              data-testid='source-box-row'
+              href={s.url}
+              target='_blank'
+              rel='noreferrer noopener'
+              className='flex flex-col gap-0.5 rounded-chrome px-3 py-2 no-underline hover:bg-accent'
+            >
+              <span className='truncate text-xs text-foreground'>{s.title}</span>
+              <span className='truncate text-2xs text-muted-foreground'>{s.url}</span>
+            </a>
+          ))}
         </div>
-        <ScrollArea className='min-h-0 flex-1' viewportClassName='px-2 pb-3'>
-          <div className='flex flex-col gap-0.5'>
-            {sources.map((s) => (
-              <a
-                key={s.url}
-                data-testid='source-box-row'
-                href={s.url}
-                target='_blank'
-                rel='noreferrer noopener'
-                className='flex flex-col gap-0.5 rounded-chrome px-3 py-2 no-underline hover:bg-accent'
-              >
-                <span className='truncate text-xs text-foreground'>{s.title}</span>
-                <span className='truncate text-2xs text-muted-foreground'>{s.url}</span>
-              </a>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
-    </div>
+      </ScrollArea>
+    </ColumnBox>
   );
 }

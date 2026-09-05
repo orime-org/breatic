@@ -512,7 +512,10 @@ function ConversationHistorySheetInner({
   });
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    // Modal, which is what makes the scrim below exist at all: Radix renders
+    // the overlay only for a modal root (`sheet.tsx:29`), and the panel behind
+    // this list is not what the reader is working in while it is open.
+    <Sheet open={open} onOpenChange={onOpenChange} modal>
       <SheetContent
         onPointerDownOutside={(event) => {
           if (pressedTheButtonThatOpensThisList(event.target)) event.preventDefault();

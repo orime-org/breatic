@@ -39,8 +39,14 @@ const MARK_COLOURS = [
  * @returns A Tailwind background class.
  */
 function markColour(url: string): string {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    host = url;
+  }
   let hash = 0;
-  for (const ch of url) hash = (hash * 31 + ch.charCodeAt(0)) % 100_000;
+  for (const ch of host) hash = (hash * 31 + ch.charCodeAt(0)) % 100_000;
   return MARK_COLOURS[hash % MARK_COLOURS.length] ?? MARK_COLOURS[0];
 }
 
