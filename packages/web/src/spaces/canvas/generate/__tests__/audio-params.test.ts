@@ -187,23 +187,88 @@ describe('audioParamControls — each model states its own speaking params', () 
   });
 });
 
+// Stands in for the app's translator: returns what the shipped catalogs say
+// for the one key this module reaches for, and the key itself otherwise.
+const t = (
+  key: string,
+  params?: Record<string, string | number | Date>,
+): string =>
+  key === 'canvas.generatePanel.sfxDurationSeconds'
+    ? `${String(params?.n)} 秒`
+    : key;
+
 describe('formatAudioParam — a value reads in its own unit', () => {
   it('reads the two 0-1 params to two decimals', () => {
-    expect(formatAudioParam('stability', 0.5)).toBe('0.50');
-    expect(formatAudioParam('similarity', 0.75)).toBe('0.75');
+    expect(formatAudioParam('stability', 0.5, t)).toBe('0.50');
+    expect(formatAudioParam('similarity', 0.75, t)).toBe('0.75');
   });
 
   it('marks speed as a multiplier', () => {
-    expect(formatAudioParam('speed', 1)).toBe('1.00x');
+    expect(formatAudioParam('speed', 1, t)).toBe('1.00x');
   });
 
   it('marks volume in decibels, signed above zero', () => {
-    expect(formatAudioParam('volume', 0)).toBe('0 dB');
-    expect(formatAudioParam('volume', 5)).toBe('+5 dB');
-    expect(formatAudioParam('volume', -5)).toBe('-5 dB');
+    expect(formatAudioParam('volume', 0, t)).toBe('0 dB');
+    expect(formatAudioParam('volume', 5, t)).toBe('+5 dB');
+    expect(formatAudioParam('volume', -5, t)).toBe('-5 dB');
   });
 
   it('falls back to the bare number for a param it does not know', () => {
-    expect(formatAudioParam('latency_mode', 2)).toBe('2');
+    expect(formatAudioParam('latency_mode', 2, t)).toBe('2');
+  });
+
+  // A clip length reads in the reader's own language: all five catalogs carry
+  // a translation for it, while `x` and `dB` have none — which is what makes
+  // those two symbols rather than words.
+  it('reads a clip length through the translator', () => {
+    expect(formatAudioParam('duration', 5, t)).toBe('5 秒');
+    expect(formatAudioParam('duration', 180, t)).toBe('180 秒');
+  });
+
+  // A sound effect's length and a video's generated length read alike today
+  // and are separate quantities: one key each, so wording either of them later
+  // leaves the other alone (user 2026-09-05).
+  it('hands the number to the audio panel\'s own key, not the video panel\'s', () => {
+    const calls: { key: string; params?: Record<string, unknown> }[] = [];
+    const spy = (
+      key: string,
+      params?: Record<string, string | number | Date>,
+    ): string => {
+      calls.push({ key, params });
+      return 'x';
+    };
+    formatAudioParam('duration', 30, spy);
+    expect(calls).toEqual([
+      { key: 'canvas.generatePanel.sfxDurationSeconds', params: { n: 30 } },
+    ]);
+  });
+});
+
+// The sound-effect model states its length as a list of presets, which is the
+// shape ElevenLabs' own playground offers and the shape ParamOptionGroup
+// renders (#2088 A4).
+const SONILO = model({
+  duration: {
+    description: '',
+    values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+    default: 5,
+  },
+  audio_format: { description: '', default: 'mp3' },
+});
+
+describe('the sound-effect model gets a length picker (#2088 A4)', () => {
+  it('offers its ten presets as a choice, in the order the model states', () => {
+    expect(audioParamControls(SONILO)).toEqual([
+      {
+        name: 'duration',
+        labelKey: 'canvas.generatePanel.sfxDuration',
+        kind: 'choice',
+        options: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+      },
+    ]);
+  });
+
+  it('leaves out the output format, which the user does not choose', () => {
+    expect(audioParamControls(SONILO).map((c) => c.name)).not.toContain('audio_format');
   });
 });

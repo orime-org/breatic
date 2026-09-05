@@ -489,7 +489,15 @@ function AudioGeneratePanelBody({
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
   // whose identity never changes on an in-session locale switch, so depending
   // on it alone would freeze this copy in the old language.
-  const promptPlaceholder = t('canvas.generatePanel.audioPromptPlaceholder');
+  // What the box asks for rides on the mode (`audio-mode-options`): the two
+  // speech modes ask for lines to speak, sound effects for a description of a
+  // sound. The fallback is where the types land rather than a state to expect:
+  // `mode` is only empty when no mode is available, and `CatalogGatedFrame`
+  // holds the panel shut in that case (`generate-panel-frame.tsx`).
+  const promptPlaceholder = t(
+    AUDIO_MODE_OPTIONS.find((o) => o.value === mode)?.placeholderKey ??
+      'canvas.generatePanel.audioPromptPlaceholder',
+  );
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   const promptSlot = React.useMemo(
@@ -530,7 +538,14 @@ function AudioGeneratePanelBody({
       models={modeModels}
       model={vm.model}
       currentModel={vm.modelEntry}
-      creditEstimate={estimateAudioCredits(vm.modelEntry?.rate, promptText)}
+      creditEstimate={estimateAudioCredits(vm.modelEntry?.rate, {
+        text: promptText,
+        // Read off the node's record for the active model, which is where the
+        // length picker writes it. A model billing per second declares this
+        // param with a default, so a node that has never touched the picker
+        // still carries one.
+        ...(typeof params.duration === 'number' ? { seconds: params.duration } : {}),
+      })}
       modelTakesPrompt={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}

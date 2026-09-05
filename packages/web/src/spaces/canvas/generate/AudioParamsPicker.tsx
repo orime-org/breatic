@@ -63,7 +63,7 @@ function shownValue(
 }
 
 /**
- * The audio panel's speaking-parameter picker (#1960): a pill printing what
+ * The audio panel's parameter picker (#1960): a pill printing what
  * the params are set to, opening a popover holding one control per param the
  * active model declares.
  *
@@ -101,7 +101,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
     .map((control) => {
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
-      return formatAudioParam(control.name, shown);
+      return formatAudioParam(control.name, shown, t);
     })
     .filter(Boolean)
     .join(' · ');
@@ -121,7 +121,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
           variant={null}
           size={null}
           data-testid='generate-audio-params-trigger'
-          aria-label={t('canvas.generatePanel.voiceParams')}
+          aria-label={t('canvas.generatePanel.audioParams')}
           className={triggerClass}
         >
           {/* truncate: a vendor could name a stop at any length, and the
@@ -139,7 +139,8 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
         // Freeze on open (user 2026-07-18): no collision flip/shift — clips at
         // the screen edge like the panel rather than jumping near a border.
         avoidCollisions={false}
-        aria-label={t('canvas.generatePanel.voiceParams')}
+        aria-label={t('canvas.generatePanel.audioParams')}
+        // The same width as the image and video params popovers.
         className='w-64 p-3'
       >
         {controls.map((control, index) => (
@@ -189,6 +190,7 @@ function ParamControlRow({
   onChange,
   last,
 }: ParamControlRowProps): React.JSX.Element {
+  const t = useTranslation();
   const spacing = last ? undefined : 'mb-3';
 
   if (control.kind === 'choice') {
@@ -197,7 +199,7 @@ function ParamControlRow({
         label={label}
         options={control.options.map((option) => ({
           value: option,
-          label: formatAudioParam(control.name, option),
+          label: formatAudioParam(control.name, option, t),
         }))}
         value={value}
         onSelect={(next) => onChange({ [control.name]: Number(next) })}
@@ -218,7 +220,6 @@ function ParamControlRow({
   );
 }
 
-/** What {@link ParamSliderRow} needs. */
 /**
  * Whether the value has landed on a named stop.
  *
@@ -328,7 +329,7 @@ function ParamSliderRow({
           // Digits line up as the value changes rather than shifting the label.
           className='text-xs tabular-nums text-muted-foreground'
         >
-          {shown === undefined ? '' : formatAudioParam(control.name, shown)}
+          {shown === undefined ? '' : formatAudioParam(control.name, shown, t)}
         </span>
       </div>
       <Slider

@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which speaking parameters the audio panel offers, and what each one looks
+ * Which generation parameters the audio panel offers, and what each one looks
  * like (#1960).
  *
  * A model states its own: ElevenLabs takes stability and similarity, Fish
  * takes speed and volume, and both reach the vendor already
  * (`transports/elevenlabs.ts` sends `voice_settings`, `transports/fish.ts`
- * sends `prosody`). What was missing is only the control.
+ * sends `prosody`). What was missing is only the control. Sonilo takes a clip
+ * length, and its upstream refuses a request without one.
  *
  * The table below is the list of params this panel knows how to SHOW: a
  * parameter needs a human label, and a label has to be written by a human —
@@ -46,11 +47,17 @@ export type AudioParamControl =
     stops?: readonly { value: number; labelKey: string }[];
   };
 
+/** The app's translator, as `useTranslation` hands it over. */
+type Translate = (
+  key: string,
+  params?: Record<string, string | number | Date>,
+) => string;
+
 /** How one parameter is named and read, for the params this panel shows. */
 interface AudioParamSpec {
   labelKey: string;
   /** Renders a value for display — the unit belongs to the number. */
-  format: (value: number) => string;
+  format: (value: number, t: Translate) => string;
   /** Named positions on this param's scale, ascending. */
   stops?: readonly { value: number; labelKey: string }[];
 }
@@ -82,6 +89,16 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
     labelKey: 'canvas.generatePanel.voiceVolume',
     // Decibels — a unit symbol, not a word to translate.
     format: (v) => `${v > 0 ? '+' : ''}${v} dB`,
+  },
+  duration: {
+    labelKey: 'canvas.generatePanel.sfxDuration',
+    // Seconds is a word in four of the five catalogs, so it goes through the
+    // translator; the `x` above and the `dB` beside it are translated nowhere,
+    // which is what makes those two symbols. The key is this panel's own: a
+    // sound effect's length and a video's generated length read alike today
+    // and are separate quantities, so wording either later leaves the other
+    // alone (user 2026-09-05).
+    format: (v, t) => t('canvas.generatePanel.sfxDurationSeconds', { n: v }),
   },
 };
 
@@ -155,8 +172,13 @@ export function audioParamControls(model: ModelEntry): AudioParamControl[] {
  * A value as the user reads it, in that parameter's own unit.
  * @param name - The catalog param name.
  * @param value - The current value.
+ * @param t - The app's translator, for units that are words in some locale.
  * @returns The display string; the bare number when the param is unknown.
  */
-export function formatAudioParam(name: string, value: number): string {
-  return PARAMS[name]?.format(value) ?? String(value);
+export function formatAudioParam(
+  name: string,
+  value: number,
+  t: Translate,
+): string {
+  return PARAMS[name]?.format(value, t) ?? String(value);
 }
