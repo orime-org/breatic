@@ -117,27 +117,60 @@ describe('a document opened straight from the backend seed', () => {
     // that a tenth attribute added to the paragraph turns this red instead of
     // going unnoticed.
     const { editor } = await open();
-    const declared = Object.keys(
-      editor.prosemirrorState.schema.nodes['paragraph']?.spec.attrs ?? {},
-    );
+    const { schema } = editor.prosemirrorState;
 
-    const seeded = documentBodyFragment(doc).toString();
-    const named = [...seeded.matchAll(/<paragraph ([^>]*)>/g)]
-      .flatMap((match) => [...(match[1] ?? '').matchAll(/(\w+)=/g)])
-      .map((attr) => attr[1]);
-    expect(named.sort()).toEqual(declared.sort());
+    // Compared by VALUE as well as by name, and read off the Yjs elements
+    // rather than off the string they print as: `Y.XmlElement.toString()`
+    // renders the boolean `false` and the string `"false"` identically, and
+    // the string is the natural spelling — `setAttribute` is typed
+    // `(string, string)`. A seeded attribute the schema reads differently is
+    // one it overwrites on the first edit, and that write goes to every peer
+    // saying nothing about what the reader did.
+    // Looked up by position each time rather than held: typing into an empty
+    // document leaves a second block behind it, and the write-back reuses the
+    // element the seed wrote for the block that ends up second. A held
+    // reference therefore changes what it stands for, while the seeded block
+    // — the first one — keeps its own attributes.
+    const seededNodes = (): Record<string, Y.XmlElement> => {
+      const group = documentBodyFragment(doc).get(0) as Y.XmlElement;
+      const container = group.get(0) as Y.XmlElement;
+      return {
+        blockGroup: group,
+        blockContainer: container,
+        paragraph: container.get(0) as Y.XmlElement,
+      };
+    };
 
-    // And that the values match what the schema would have supplied: a seeded
-    // attribute the schema reads differently is one it overwrites on the first
-    // edit, which the name comparison above cannot see. Read off the block
-    // that was seeded, since typing into an empty document also leaves a fresh
-    // block behind it.
-    const attributesOfFirst = (): string =>
-      /<paragraph ([^>]*)>/.exec(documentBodyFragment(doc).toString())?.[1] ?? '';
-    const before = attributesOfFirst();
+    // Every attribute the schema declares is named, on all three nodes the
+    // seed writes rather than on the paragraph alone: a `@blocknote/core`
+    // release that puts an attribute back on `blockContainer` — 0.x has
+    // carried `blockColor` and `depth` there before — reopens the same hole
+    // on a node this used to skip.
+    for (const [name, element] of Object.entries(seededNodes())) {
+      const declared = Object.keys(schema.nodes[name]?.spec.attrs ?? {});
+      expect(
+        Object.keys(element.getAttributes()).sort(),
+        `${name} names every attribute the schema declares`,
+      ).toEqual(declared.sort());
+    }
+
+    // And nothing about them changes on the first keystroke, which is what
+    // says the schema reads each value the way the seed wrote it. Compared as
+    // objects: `Y.XmlElement.toString()` prints the boolean `false` and the
+    // string `"false"` alike, and the string is the natural spelling —
+    // `setAttribute` is typed `(string, string)`, so a seed written that way
+    // reads identically here while the schema rewrites it on the first edit.
+    const attributesNow = (): Record<string, Record<string, unknown>> =>
+      Object.fromEntries(
+        Object.entries(seededNodes()).map(([name, element]) => [
+          name,
+          element.getAttributes() as Record<string, unknown>,
+        ]),
+      );
+    const before = attributesNow();
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.insertText('typing', 2));
-    expect(attributesOfFirst()).toBe(before);
+    expect(attributesNow()).toEqual(before);
   });
 
   it('gives the user nothing to undo — the seed is not their edit', async () => {
