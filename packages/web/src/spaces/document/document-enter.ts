@@ -102,7 +102,11 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     }
 
     const atBlockStart = tr.selection.$anchor.parentOffset === 0;
-    const blockEmpty = blockContent.node.childCount === 0;
+    // Both of the reads below are about the block the selection OPENS in, and
+    // both stay true once it runs past that block. The empty branch answers by
+    // opening a block rather than replacing anything, so a selection reaching
+    // it would leave what the reader highlighted where it was.
+    const blockEmpty = tr.selection.empty && blockContent.node.childCount === 0;
     const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
 
     if (blockEmpty) {

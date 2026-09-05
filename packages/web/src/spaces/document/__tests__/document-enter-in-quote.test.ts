@@ -162,3 +162,38 @@ describe('C11 — Enter over a selection spanning two list items', () => {
     expect(view.state.doc.check()).toBeUndefined();
   });
 });
+
+describe('Enter over a selection that opens in an empty quoted block', () => {
+  // Emptiness and the caret's offset are read off the block the selection
+  // OPENS in, and both stay true once it runs past that block. The branch
+  // that answers an empty quoted line then opens another one without
+  // replacing anything, and what the reader had highlighted stays where it
+  // was — the same shape the list's Enter had.
+  it('replaces what is selected', () => {
+    const editor = open([
+      { type: 'paragraph', content: '', props: { quoted: true } },
+      { type: 'paragraph', content: 'keep me', props: { quoted: true } },
+    ]);
+    const view = editor.prosemirrorView!;
+    let from = -1;
+    let to = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.childCount === 0) from = pos + 1;
+      if (node.textContent === 'keep me') to = pos + 5;
+      return true;
+    });
+    editor.transact((tr) => {
+      tr.setSelection(
+        (view.state.selection.constructor as never as {
+          create: (doc: unknown, a: number, b: number) => never;
+        }).create(tr.doc, from, to),
+      );
+    });
+
+    expect(() => pressEnter(editor)).not.toThrow();
+    const text = blocksOf(editor)
+      .map((block) => JSON.stringify(block.content))
+      .join('|');
+    expect(text).not.toContain('keep');
+  });
+});
