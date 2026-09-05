@@ -60,13 +60,29 @@ export interface ExecuteGateInput {
    */
   voiceRequired?: boolean;
   /**
-   * Whether the active mode needs a reference audio, from the model's own
-   * `sourcesByMode`. Optional for the same reason as `voiceRequired`: a panel
-   * with no such mode leaves it out rather than passing false everywhere.
+   * The slots the active mode collects and needs at least one of (#1960).
+   *
+   * A set rather than the single `refAudioRequired` / `refAudioChosen` pair it
+   * replaces: reference-to-music offers three references and takes any one, so
+   * a boolean naming one slot greyed the button out for a user who had filled
+   * all three under different names. Empty or absent means this mode demands
+   * no source, which is the truth for image, video and the three audio modes
+   * that collect nothing.
    */
-  refAudioRequired?: boolean;
-  /** Whether the reference-audio slot holds a pick. Read only when required. */
-  refAudioChosen?: boolean;
+  requiredSlots?: readonly string[];
+  /** Which slots currently hold a pick. Read only against `requiredSlots`. */
+  filledSlots?: readonly string[];
+  /**
+   * Whether the active mode insists on lyrics (#1960).
+   *
+   * Text to music alone does: the gateway refuses that model outright without
+   * them (`invalid params, lyrics is required`, measured 2026-09-05), so the
+   * user would otherwise watch a generation start, spin and fail. Optional
+   * because most modes have no lyrics box at all.
+   */
+  lyricsRequired?: boolean;
+  /** What the lyrics box holds. Read only when `lyricsRequired`. */
+  lyricsText?: string;
   /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
@@ -99,7 +115,9 @@ export type ExecuteRefusal =
   | 'prompt-missing'
   | 'prompt-too-long'
   | 'voice-missing'
-  | 'ref-audio-missing';
+  | 'ref-audio-missing'
+  | 'reference-missing'
+  | 'lyrics-missing';
 
 /**
  * Which execute precondition fails, or null when Generate may proceed.
@@ -153,13 +171,28 @@ export function evaluateExecute(
   ) {
     return 'prompt-too-long';
   }
-  // Both remaining refusals name a control the user has to go and fill. Only
-  // one of them can be live at a time: `voiceRequired` says the model picks
-  // from a preset catalog, `refAudioRequired` says the mode needs a recording,
-  // and a model answering yes to both would be one whose panel shows a picker
-  // and a slot for the same voice.
+  // The lyrics box sits directly under the prompt editor, so it is reported
+  // right after it — the panel's own order, top to bottom.
+  if (input.lyricsRequired && (input.lyricsText ?? '').trim().length === 0) {
+    return 'lyrics-missing';
+  }
+  // The remaining refusals name a control the user has to go and fill. Only
+  // one can be live at a time: `voiceRequired` says the model picks from a
+  // preset catalog, `requiredSlots` says the mode needs a source picked off
+  // the canvas, and a model answering yes to both would be one whose panel
+  // shows a picker and a slot for the same voice.
   if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
-  if (input.refAudioRequired && !input.refAudioChosen) return 'ref-audio-missing';
+  const required = input.requiredSlots ?? [];
+  const filled = input.filledSlots ?? [];
+  if (required.length > 0 && !required.some((slot) => filled.includes(slot))) {
+    // Voice cloning asks for one specific thing and its message names it.
+    // Every other mode offers several and takes any one of them, which is a
+    // different sentence — and the safe one to fall back to, since it is never
+    // wrong for a mode whose single slot is something else.
+    return required.length === 1 && required[0] === 'refAudio'
+      ? 'ref-audio-missing'
+      : 'reference-missing';
+  }
   return null;
 }
 
@@ -170,8 +203,8 @@ export function evaluateExecute(
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * `prompt-missing`, `prompt-too-long`, `voice-missing` and `ref-audio-missing`
- * leave the button
+ * `prompt-missing`, `prompt-too-long`, `lyrics-missing`, `voice-missing`,
+ * `ref-audio-missing` and `reference-missing` leave the button
  * live, because they are the ones the user can act on — the click then says
  * what is wrong, which a greyed-out button cannot (GOV.UK and Adam Silver both
  * name the disabled-until-valid button an anti-pattern for exactly this: it
@@ -189,7 +222,9 @@ export function isExecuteButtonDisabled(
     refusal !== 'prompt-missing' &&
     refusal !== 'prompt-too-long' &&
     refusal !== 'voice-missing' &&
-    refusal !== 'ref-audio-missing'
+    refusal !== 'ref-audio-missing' &&
+    refusal !== 'reference-missing' &&
+    refusal !== 'lyrics-missing'
   );
 }
 
@@ -232,6 +267,12 @@ export function refusalToastKey(refusal: ExecuteRefusal): string | null {
   }
   if (refusal === 'ref-audio-missing') {
     return 'canvas.generatePanel.errorNoRefAudio';
+  }
+  if (refusal === 'reference-missing') {
+    return 'canvas.generatePanel.refuseExecuteNoReference';
+  }
+  if (refusal === 'lyrics-missing') {
+    return 'canvas.generatePanel.lyricsMissing';
   }
   return null;
 }

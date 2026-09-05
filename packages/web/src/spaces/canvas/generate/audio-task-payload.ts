@@ -72,6 +72,15 @@ export interface AudioTaskInput {
   slotUrls?: AudioSlotUrls;
   /** The slots the active mode collects; absent means it collects none. */
   slots?: readonly AudioSlot[];
+  /**
+   * The words to sing, on a mode that collects them (#1960).
+   *
+   * Absent means this mode has no lyrics box at all, and the field is then
+   * left out of the request entirely rather than sent empty. An empty STRING
+   * is a different statement — reference-to-music takes lyrics or not, and
+   * empty there means "no words", which the vendor honours.
+   */
+  lyricsText?: string;
 }
 
 /**
@@ -91,6 +100,10 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
     params: {
       ...input.params,
       prompt: input.promptText,
+      // Only when the mode collects them; see `lyricsText`. After the params
+      // spread for the same reason the prompt is: what the user wrote wins
+      // over a same-named key the catalog carries.
+      ...(input.lyricsText !== undefined ? { lyrics: input.lyricsText } : {}),
       // After the params spread on purpose: what the user picked in the slot
       // wins over a same-named key the catalog carries.
       ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),

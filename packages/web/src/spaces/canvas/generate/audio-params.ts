@@ -45,6 +45,16 @@ export type AudioParamControl =
      * the vendor describes exactly three points on that scale.
      */
     stops?: readonly { value: number; labelKey: string }[];
+  }
+  | {
+    name: string;
+    labelKey: string;
+    /**
+     * On or off — the model states a boolean default and nothing to move
+     * through. A list of stops and a range both describe a quantity; this one
+     * describes a decision, and the two existing kinds cannot carry it.
+     */
+    kind: 'toggle';
   };
 
 /** The app's translator, as `useTranslation` hands it over. */
@@ -90,6 +100,15 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
     // Decibels — a unit symbol, not a word to translate.
     format: (v) => `${v > 0 ? '+' : ''}${v} dB`,
   },
+  is_instrumental: {
+    // Not `musicInstrumental` — that key names the backing-track slot. This
+    // switch says "no vocals at all", which is a different sentence.
+    labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
+    // Never read: a toggle prints no value beside itself, the switch IS the
+    // value. Present because the table's shape says every param states how it
+    // reads, and one entry opting out would be one nobody decided.
+    format: (v) => String(v),
+  },
   duration: {
     labelKey: 'canvas.generatePanel.sfxDuration',
     // Seconds is a word in four of the five catalogs, so it goes through the
@@ -127,6 +146,12 @@ function controlFor(
     return options.length > 0
       ? { name, labelKey: spec.labelKey, kind: 'choice', options }
       : null;
+  }
+  // A boolean default with nothing to move through is a switch. Asked after
+  // `values`, which keeps the precedence the whole table follows: a model
+  // stating a list means the list, whatever its default happens to be.
+  if (typeof descriptor.default === 'boolean') {
+    return { name, labelKey: spec.labelKey, kind: 'toggle' };
   }
   const { min, max, step } = descriptor;
   if (typeof min !== 'number' || typeof max !== 'number' || typeof step !== 'number') {

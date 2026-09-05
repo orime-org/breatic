@@ -288,7 +288,9 @@ describe('a boolean param gets a switch (#1960 A4)', () => {
     expect(audioParamControls(MUSIC)).toEqual([
       {
         name: 'is_instrumental',
-        labelKey: 'canvas.generatePanel.musicInstrumental',
+        // Not `musicInstrumental` — that key names the backing-track SLOT.
+        // This switch says "no vocals at all", which is a different sentence.
+        labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
         kind: 'toggle',
       },
     ]);

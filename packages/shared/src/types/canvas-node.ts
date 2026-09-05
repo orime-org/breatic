@@ -499,6 +499,20 @@ export interface CanvasNodeFields {
      */
     refAudio?: { url: string; cover?: string };
     /**
+     * The three references the audio panel's reference-to-music mode collects
+     * (#1960, wire `data.musicSong` / `musicVoice` / `musicInstrumental`) —
+     * a whole song to write after, a vocal line to follow, a backing track to
+     * play over. Their `url`s are sent as `params.song` / `voice` /
+     * `instrumental`, the names minimax/music-01 reads them under.
+     *
+     * Three fields rather than one list because the vendor gives each its own
+     * role and a user may supply any combination. Shaped like `refAudio` for
+     * the same convergence reason, and `cover` is likewise always absent.
+     */
+    musicSong?: { url: string; cover?: string };
+    musicVoice?: { url: string; cover?: string };
+    musicInstrumental?: { url: string; cover?: string };
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends
