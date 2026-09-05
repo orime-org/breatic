@@ -101,7 +101,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
     .map((control) => {
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
-      return formatAudioParam(control.name, shown);
+      return formatAudioParam(control.name, shown, t);
     })
     .filter(Boolean)
     .join(' · ');
@@ -190,6 +190,7 @@ function ParamControlRow({
   onChange,
   last,
 }: ParamControlRowProps): React.JSX.Element {
+  const t = useTranslation();
   const spacing = last ? undefined : 'mb-3';
 
   if (control.kind === 'choice') {
@@ -198,7 +199,7 @@ function ParamControlRow({
         label={label}
         options={control.options.map((option) => ({
           value: option,
-          label: formatAudioParam(control.name, option),
+          label: formatAudioParam(control.name, option, t),
         }))}
         value={value}
         onSelect={(next) => onChange({ [control.name]: Number(next) })}
@@ -329,7 +330,7 @@ function ParamSliderRow({
           // Digits line up as the value changes rather than shifting the label.
           className='text-xs tabular-nums text-muted-foreground'
         >
-          {shown === undefined ? '' : formatAudioParam(control.name, shown)}
+          {shown === undefined ? '' : formatAudioParam(control.name, shown, t)}
         </span>
       </div>
       <Slider

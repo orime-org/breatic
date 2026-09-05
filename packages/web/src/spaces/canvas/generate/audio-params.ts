@@ -47,11 +47,17 @@ export type AudioParamControl =
     stops?: readonly { value: number; labelKey: string }[];
   };
 
+/** The app's translator, as `useTranslation` hands it over. */
+type Translate = (
+  key: string,
+  params?: Record<string, string | number | Date>,
+) => string;
+
 /** How one parameter is named and read, for the params this panel shows. */
 interface AudioParamSpec {
   labelKey: string;
   /** Renders a value for display — the unit belongs to the number. */
-  format: (value: number) => string;
+  format: (value: number, t: Translate) => string;
   /** Named positions on this param's scale, ascending. */
   stops?: readonly { value: number; labelKey: string }[];
 }
@@ -86,8 +92,10 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   },
   duration: {
     labelKey: 'canvas.generatePanel.sfxDuration',
-    // Seconds — a unit symbol, like the `x` above and the `dB` beside it.
-    format: (v) => `${v}s`,
+    // The same key the video panel renders its own clip length through, and
+    // all five catalogs carry a translation for it. The `x` above and the `dB`
+    // beside it have none, which is what makes those two symbols.
+    format: (v, t) => t('canvas.generatePanel.durationSeconds', { n: v }),
   },
 };
 
@@ -161,8 +169,13 @@ export function audioParamControls(model: ModelEntry): AudioParamControl[] {
  * A value as the user reads it, in that parameter's own unit.
  * @param name - The catalog param name.
  * @param value - The current value.
+ * @param t - The app's translator, for units that are words in some locale.
  * @returns The display string; the bare number when the param is unknown.
  */
-export function formatAudioParam(name: string, value: number): string {
-  return PARAMS[name]?.format(value) ?? String(value);
+export function formatAudioParam(
+  name: string,
+  value: number,
+  t: Translate,
+): string {
+  return PARAMS[name]?.format(value, t) ?? String(value);
 }

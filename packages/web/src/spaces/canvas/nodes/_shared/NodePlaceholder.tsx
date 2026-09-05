@@ -78,7 +78,7 @@ export function NodePlaceholder({
       ) : (
         <span className='flex flex-col gap-0.5'>
           <span className='text-xs'>{t(`canvas.nodePlaceholder.${modality}`)}</span>
-          <span className='text-2xs text-muted-foreground/70'>
+          <span className='text-2xs text-muted-foreground'>
             {t('canvas.nodePlaceholder.rightClickHint')}
           </span>
         </span>

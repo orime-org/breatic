@@ -187,31 +187,58 @@ describe('audioParamControls — each model states its own speaking params', () 
   });
 });
 
+// Stands in for the app's translator: returns what the shipped catalogs say
+// for the one key this module reaches for, and the key itself otherwise.
+const t = (
+  key: string,
+  params?: Record<string, string | number | Date>,
+): string =>
+  key === 'canvas.generatePanel.durationSeconds'
+    ? `${String(params?.n)} 秒`
+    : key;
+
 describe('formatAudioParam — a value reads in its own unit', () => {
   it('reads the two 0-1 params to two decimals', () => {
-    expect(formatAudioParam('stability', 0.5)).toBe('0.50');
-    expect(formatAudioParam('similarity', 0.75)).toBe('0.75');
+    expect(formatAudioParam('stability', 0.5, t)).toBe('0.50');
+    expect(formatAudioParam('similarity', 0.75, t)).toBe('0.75');
   });
 
   it('marks speed as a multiplier', () => {
-    expect(formatAudioParam('speed', 1)).toBe('1.00x');
+    expect(formatAudioParam('speed', 1, t)).toBe('1.00x');
   });
 
   it('marks volume in decibels, signed above zero', () => {
-    expect(formatAudioParam('volume', 0)).toBe('0 dB');
-    expect(formatAudioParam('volume', 5)).toBe('+5 dB');
-    expect(formatAudioParam('volume', -5)).toBe('-5 dB');
+    expect(formatAudioParam('volume', 0, t)).toBe('0 dB');
+    expect(formatAudioParam('volume', 5, t)).toBe('+5 dB');
+    expect(formatAudioParam('volume', -5, t)).toBe('-5 dB');
   });
 
   it('falls back to the bare number for a param it does not know', () => {
-    expect(formatAudioParam('latency_mode', 2)).toBe('2');
+    expect(formatAudioParam('latency_mode', 2, t)).toBe('2');
   });
 
-  // The suffix is a unit symbol, like the `x` on speed and the `dB` on volume:
-  // it reads the same in every locale we ship, so it is not localized.
-  it('marks a clip length in seconds', () => {
-    expect(formatAudioParam('duration', 5)).toBe('5s');
-    expect(formatAudioParam('duration', 180)).toBe('180s');
+  // A clip length reads in the reader's own language. The video panel already
+  // renders the same quantity through this key, and all five catalogs carry a
+  // translation for it — `x` and `dB` have none, which is what makes them
+  // symbols rather than words.
+  it('reads a clip length through the shared duration key', () => {
+    expect(formatAudioParam('duration', 5, t)).toBe('5 秒');
+    expect(formatAudioParam('duration', 180, t)).toBe('180 秒');
+  });
+
+  it('hands the number to the translator as the ICU parameter', () => {
+    const calls: { key: string; params?: Record<string, unknown> }[] = [];
+    const spy = (
+      key: string,
+      params?: Record<string, string | number | Date>,
+    ): string => {
+      calls.push({ key, params });
+      return 'x';
+    };
+    formatAudioParam('duration', 30, spy);
+    expect(calls).toEqual([
+      { key: 'canvas.generatePanel.durationSeconds', params: { n: 30 } },
+    ]);
   });
 });
 
