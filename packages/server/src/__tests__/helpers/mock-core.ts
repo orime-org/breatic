@@ -165,6 +165,10 @@ export const mocks = {
       running: 0, done: 0, failed: 0, expired: 0,
     }),
     listLive: vi.fn().mockResolvedValue([]),
+    harvestAndList: vi.fn().mockResolvedValue({
+      tasks: [],
+      counts: { running: 0, done: 0, failed: 0, expired: 0 },
+    }),
   },
   attachmentService: {
     listByConversation: vi.fn().mockResolvedValue([]),

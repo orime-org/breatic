@@ -6,10 +6,11 @@
  *
  * `GET /canvas/nodes/:nodeId/tasks` — the panel pulls its rows from here, not
  * from the canvas document. The document carries four numbers; the detail is
- * fetched when the user asks to see it. Asking also republishes those four
- * numbers (design §4.6.7): the document and the table are not kept in lock
- * step, and this is how a node showing a count the table no longer holds gets
- * back to the truth.
+ * fetched when the user asks to see it. Asking is also the one moment a task
+ * that outran its budget is judged dead (design §4.6), and the four numbers
+ * that judgement produced are republished (design §4.6.4): the document and
+ * the table are not kept in lock step, and this is how a node showing a count
+ * the table no longer holds gets back to the truth.
  *
  * `DELETE /canvas/node-tasks/:taskId` — one endpoint for both "finish" and
  * "clear", because the server decides from the row's current state which one
@@ -85,6 +86,10 @@ beforeEach(() => {
   // `clearAllMocks` forgets calls, not implementations, so counts set by one
   // case would otherwise be what the next one reads.
   mocks.nodeTaskService.countsFor.mockResolvedValue(ZERO);
+  mocks.nodeTaskService.harvestAndList.mockResolvedValue({
+    tasks: [],
+    counts: ZERO,
+  });
   mocks.nodeTaskService.findById.mockResolvedValue(settledRow());
   mocks.nodeTaskService.dismiss.mockResolvedValue({
     removed: true,
@@ -108,17 +113,32 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
   });
 
   it("hands back every live row on the node", async () => {
-    mocks.nodeTaskService.listLive.mockResolvedValue([settledRow()]);
+    mocks.nodeTaskService.harvestAndList.mockResolvedValue({
+      tasks: [settledRow()],
+      counts: ZERO,
+    });
 
     const res = await createApp().request(listUrl, { headers: AUTH });
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { tasks: unknown[] } };
     expect(body.data.tasks).toHaveLength(1);
-    expect(mocks.nodeTaskService.listLive).toHaveBeenCalledWith({
+  });
+
+  it("harvests before it reads, so no answer carries a row the budget already ended", async () => {
+    const res = await createApp().request(listUrl, { headers: AUTH });
+
+    expect(res.status).toBe(200);
+    // Reading this list is the only moment a task is judged dead (#186,
+    // design §4.6). Calling the plain readers instead would answer from the
+    // table untouched, leaving a row that ran out saying `running` — and the
+    // node it hangs on undeletable — until some other request moved it.
+    expect(mocks.nodeTaskService.harvestAndList).toHaveBeenCalledWith({
       projectId: PROJECT,
       nodeId: NODE,
     });
+    expect(mocks.nodeTaskService.listLive).not.toHaveBeenCalled();
+    expect(mocks.nodeTaskService.countsFor).not.toHaveBeenCalled();
   });
 
   it("lets anyone who can see the project read it", async () => {
@@ -141,7 +161,9 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
     );
 
     expect(res.status).toBe(403);
-    expect(mocks.nodeTaskService.listLive).not.toHaveBeenCalled();
+    // The guard runs before the read, and the read is also what expires rows —
+    // so a caller with no access cannot make the table move either.
+    expect(mocks.nodeTaskService.harvestAndList).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed node id before it reaches a query", async () => {
@@ -153,11 +175,11 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
   });
 
   it("publishes the node's counts, so a stale projection is pulled back", async () => {
-    mocks.nodeTaskService.countsFor.mockResolvedValue({
-      running: 0,
-      done: 3,
-      failed: 1,
-      expired: 0,
+    // The counts published are the ones the harvest produced, so a row this
+    // very request just expired is in the numbers every client receives.
+    mocks.nodeTaskService.harvestAndList.mockResolvedValue({
+      tasks: [],
+      counts: { running: 0, done: 3, failed: 1, expired: 0 },
     });
 
     await createApp().request(listUrl, { headers: AUTH });
@@ -171,7 +193,10 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
   });
 
   it("publishes all four zeros when the node has no tasks left", async () => {
-    mocks.nodeTaskService.listLive.mockResolvedValue([]);
+    mocks.nodeTaskService.harvestAndList.mockResolvedValue({
+      tasks: [],
+      counts: ZERO,
+    });
 
     await createApp().request(listUrl, { headers: AUTH });
 

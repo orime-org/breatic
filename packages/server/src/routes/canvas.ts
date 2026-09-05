@@ -481,11 +481,10 @@ canvas.get(
 
     await projectService.assertAccess(project_id, user.id, "viewer");
 
-    const at = { projectId: project_id, nodeId };
-    const [tasks, counts] = await Promise.all([
-      nodeTaskService.listLive(at),
-      nodeTaskService.countsFor(at),
-    ]);
+    const { tasks, counts } = await nodeTaskService.harvestAndList({
+      projectId: project_id,
+      nodeId,
+    });
 
     await emitNodeTaskCounts(
       getStreamRedis(),
