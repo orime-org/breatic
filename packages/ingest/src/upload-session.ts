@@ -9,12 +9,19 @@
  * that remembers. This is that something: one instance per upload, holding
  * which parts landed and what the ticket said to expect.
  *
- * It does not watch the clock. An upload has two exits — the object was
- * assembled and the outcome reported, or a step failed and that was reported —
- * and how long it took is neither of them (design §6.3). A task's lifetime
- * belongs to the timer Durable Object, which knows nothing about this chain.
- * The parts an abandoned upload leaves behind are expired by the bucket's own
- * lifecycle rule seven days after the upload started.
+ * It does not judge an upload by how long it takes. An upload has two exits —
+ * the object was assembled and the outcome reported, or a step failed and that
+ * was reported — and elapsed time is neither of them (design §6.3). A task's
+ * lifetime belongs to the timer Durable Object, which knows nothing about this
+ * chain. The parts an abandoned upload leaves behind are expired by the
+ * bucket's own lifecycle rule seven days after the upload started.
+ *
+ * Time decides one thing: when this instance lets go. Opening an upload writes
+ * a horizon of twice the task budget, and every alarm firing is judged against
+ * it first — past it, everything here is dropped, whatever state the upload is
+ * in. Nothing else ends this: storage is billed until it is deleted, an upload
+ * nobody finishes never reaches the step that would delete it, and the retry
+ * rhythm below re-arms itself for as long as the server stays silent.
  *
  * The bytes do not pass through here either, in either direction. A Durable
  * Object bills wall-clock time against a fixed 128 MB, so waiting on a slow
@@ -179,11 +186,19 @@ export class UploadSession implements DurableObject {
   /**
    * The alarm going off.
    *
-   * The only clock this instance keeps, and it is a retry rhythm rather than a
-   * verdict on the upload (design §6.3). Two jobs, told apart by whether the
-   * server has answered: before it, deliver the outcome again; after it, the
-   * instance has been holding that answer for anyone who asks, and this is the
-   * end of that window.
+   * The only clock this instance keeps, and it decides nothing about whether
+   * the upload succeeded (design §6.3). Three jobs, in this order.
+   *
+   * The horizon comes first and answers on its own. Past it, this instance
+   * lets go of everything whatever state it is in — nothing here can matter
+   * any more, and the retry rhythm below has no other end: it re-arms itself
+   * every thirty seconds and that survives the handler failing, so this is
+   * what stops it asking for ever.
+   *
+   * Before the horizon there are two, told apart by whether the server has
+   * answered: after it, this instance has been holding that answer for anyone
+   * who asks, and the alarm is the end of that window; before it, deliver the
+   * outcome again.
    *
    * It only ever re-delivers. The facts it reports came from the Worker and
    * are already stored, and the two steps that produced them are not this
@@ -191,35 +206,34 @@ export class UploadSession implements DurableObject {
    * @throws {Error} When the server did not answer.
    */
   async alarm(): Promise<void> {
-    const stored = await this.#state.storage.get<FinishProgress>("finish");
-    if (stored?.reported === true) {
-      // Nobody is going to ask about this upload again. One instance per
-      // upload and uploads never stop arriving, so what it holds — the ticket,
-      // the part list, the outcome — is worth nothing from here on.
-      await this.#state.storage.deleteAll();
-      return;
-    }
-
     const upload = await this.#state.storage.get<OpenUpload>("upload");
     if (upload === undefined) return;
 
-    if (stored === undefined) {
-      // The horizon set when this upload opened, reached with nothing ever
-      // finished. Nobody is coming back for it: the task it belongs to was
-      // judged dead two budgets ago, and the parts it wrote are dropped by
-      // the bucket's own lifecycle rule.
+    // One instance per upload and uploads never stop arriving, so what this
+    // holds — the ticket, the part list, the outcome — is worth nothing from
+    // here on. What it wrote into R2 without ever registering is collected
+    // offline; the parts of an upload that never finished are dropped by the
+    // bucket's own lifecycle rule.
+    const deleteAfter = await this.#state.storage.get<number>("deleteAfter");
+    const stored = await this.#state.storage.get<FinishProgress>("finish");
+    if (
+      (deleteAfter !== undefined && Date.now() >= deleteAfter) ||
+      stored?.reported === true
+    ) {
       await this.#state.storage.deleteAll();
       return;
     }
 
+    if (stored === undefined) return;
+
     if ((await this.#deliver(upload, stored)) === "not_accepted") {
-      // Cloudflare retries a failing alarm, so failing here is what buys the
-      // next attempt beyond the one `#deliver` scheduled. The node this upload
-      // belongs to counts it as running until the server hears the outcome,
-      // and nothing but this will tell it.
+      // Cloudflare retries a failing alarm, so failing here buys attempts
+      // beyond the one `#deliver` scheduled. The node this upload belongs to
+      // counts it as running until the server hears the outcome, and nothing
+      // but this will tell it.
       //
-      // Named, because the retries are finite: after the last one this upload
-      // has nobody left, and the message is what says which one it was.
+      // Named, because a person reading the log needs to know which upload
+      // the server would not answer for.
       throw new Error(
         `the server did not answer for ${upload.ticket.storageKey}`,
       );
@@ -293,6 +307,23 @@ export class UploadSession implements DurableObject {
   }
 
   /**
+   * Arm the alarm `afterMs` from now, or on the horizon if that is sooner.
+   *
+   * There is one alarm slot, so every moment the finishing sequence wants is
+   * one the horizon does not get. Capping them keeps the horizon reachable:
+   * whichever of these is armed last, it fires no later than the moment this
+   * instance is meant to let go.
+   * @param afterMs - How far out this caller wants it.
+   */
+  async #armWithin(afterMs: number): Promise<void> {
+    const deleteAfter = await this.#state.storage.get<number>("deleteAfter");
+    const wanted = Date.now() + afterMs;
+    await this.#state.storage.setAlarm(
+      deleteAfter === undefined ? wanted : Math.min(wanted, deleteAfter),
+    );
+  }
+
+  /**
    * Tell the server the outcome, and remember that it heard.
    * @param upload - What was uploaded.
    * @param settled - The facts to report.
@@ -304,10 +335,11 @@ export class UploadSession implements DurableObject {
   ): Promise<"delivered" | "not_accepted"> {
     const answer = await this.#report(upload, settled);
     if (answer === "unavailable") {
-      // The one clock this instance keeps. The outcome is decided and the
-      // bytes are stored; what is left is saying so, and the node counts this
-      // task as running until the server hears it.
-      await this.#state.storage.setAlarm(Date.now() + REPORT_RETRY_MS);
+      // The outcome is decided and the bytes are stored; what is left is
+      // saying so, and the node counts this task as running until the server
+      // hears it. Never past the horizon: the last of these lands exactly on
+      // it, and that firing is the one that lets this instance go.
+      await this.#armWithin(REPORT_RETRY_MS);
       return "not_accepted";
     }
 
@@ -320,7 +352,7 @@ export class UploadSession implements DurableObject {
     // still be asking for it, which is its transport's whole redelivery
     // budget. The crop path reads its entire result off that response. The
     // alarm that ends the window is also what lets this instance go.
-    await this.#state.storage.setAlarm(Date.now() + completeRetryBudgetMs());
+    await this.#armWithin(completeRetryBudgetMs());
     return "delivered";
   }
 
@@ -506,18 +538,21 @@ export class UploadSession implements DurableObject {
     );
     const upload: OpenUpload = { ticket, uploadId: created.uploadId };
     await this.#state.storage.put("upload", upload);
-    // The horizon past which this instance stops holding what it knows. An
-    // upload nobody finishes never reaches the step that would let it go, and
-    // a Durable Object's storage is billed until something deletes it. The
-    // ticket signs twice the task budget, so by the time this fires the task
+    // The horizon past which this instance stops holding what it knows. A
+    // Durable Object's storage is billed until something deletes it, and an
+    // upload nobody finishes never reaches the step that would let it go. The
+    // ticket signs twice the task budget, so by the time this arrives the task
     // this upload belongs to was judged dead two budgets ago.
     //
-    // Set once. A part landing does not move it: this instance judges nothing
-    // by how long an upload takes (design §6.3), and the finishing sequence
-    // replaces it with an alarm of its own that ends the same way.
-    await this.#state.storage.setAlarm(
-      Date.now() + ticket.bookkeepingTtlSeconds * 1000,
-    );
+    // Written as well as armed: the alarm slot is one, and the finishing
+    // sequence takes it for the retry rhythm and the answer window. The moment
+    // is what every one of those firings is judged against.
+    //
+    // Set once. A part landing moves neither: this instance judges nothing by
+    // how long an upload takes (design §6.3).
+    const deleteAfter = Date.now() + ticket.bookkeepingTtlSeconds * 1000;
+    await this.#state.storage.put("deleteAfter", deleteAfter);
+    await this.#state.storage.setAlarm(deleteAfter);
     return upload;
   }
 }

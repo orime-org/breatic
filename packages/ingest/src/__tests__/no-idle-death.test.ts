@@ -35,6 +35,9 @@ const PART_SIZE = 5 * 1024 * 1024;
 const FINAL_PART_SIZE = 1024;
 /** What these tickets sign: twice the two-hour task budget, in seconds. */
 const BOOKKEEPING_TTL = 4 * 60 * 60;
+/** The two halves of `SERVER_REPORT_URL` as vitest.config.ts binds it. */
+const REPORT_ORIGIN = "https://api.test.example";
+const REPORT_PATH = "/api/v1/assets/ingest-report";
 
 let seq = 0;
 
@@ -50,6 +53,20 @@ afterEach(() => {
 /** The instance holding one upload's bookkeeping. */
 function sessionOf(storageKey: string): DurableObjectStub {
   return env.UPLOAD_SESSION.get(env.UPLOAD_SESSION.idFromName(storageKey));
+}
+
+/**
+ * Move one upload's horizon into the past.
+ *
+ * The horizon is hours away, and what these cases are about is the rule the
+ * handler applies when it arrives — not the wait. Writing the moment rather
+ * than waiting for it keeps that rule the only thing under test.
+ * @param storageKey - The upload to age.
+ */
+async function passHorizon(storageKey: string): Promise<void> {
+  await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+    state.storage.put("deleteAfter", Date.now() - 1),
+  );
 }
 
 /**
@@ -141,6 +158,7 @@ describe("an upload nobody has finished", () => {
 
   it("drops what it knew once the horizon arrives", async () => {
     const { storageKey, uploadId, token } = await uploadedThrough(1);
+    await passHorizon(storageKey);
 
     expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(true);
 
@@ -166,6 +184,40 @@ describe("an upload nobody has finished", () => {
     );
     await waitOnExecutionContext(ctx);
     expect(late.status).toBe(410);
+  });
+
+  // The retry rhythm is this instance's own: it re-arms every thirty seconds
+  // and that survives the handler failing, so nothing stops it on its own.
+  // The horizon is what stops it, and it stops it whatever state the upload
+  // is in — an outcome nobody would take is not a reason to keep asking for
+  // ever, and the object it left in R2 is collected offline (#176).
+  it("stops asking at the horizon even with an outcome nobody took", async () => {
+    const { storageKey, uploadId, token } = await uploadedThrough(2);
+    fetchMock
+      .get(REPORT_ORIGIN)
+      .intercept({ path: REPORT_PATH, method: "POST" })
+      .reply(503, "")
+      .persist();
+
+    const ctx = createExecutionContext();
+    const refused = await worker.fetch(
+      new Request(`https://ingest.example.com/uploads/${uploadId}/complete`, {
+        method: "POST",
+        headers: { "x-upload-token": token },
+      }),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(refused.status).toBe(502);
+
+    await passHorizon(storageKey);
+    await runDurableObjectAlarm(sessionOf(storageKey));
+
+    const left = await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+      state.storage.list(),
+    );
+    expect(left.size).toBe(0);
   });
 });
 
