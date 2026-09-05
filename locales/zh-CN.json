@@ -231,10 +231,7 @@
       "backToReference": "回到引用 {index}"
     },
     "action": {
-      "retry": "重试",
-      "continue": "继续",
-      "copy": "复制",
-      "regenerate": "重新生成"
+      "copy": "复制"
     },
     "sources": {
       "title": "来源",

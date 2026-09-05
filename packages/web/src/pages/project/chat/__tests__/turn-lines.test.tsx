@@ -15,9 +15,8 @@
  * on rather than to start over.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ToolCall } from '@web/pages/project/chat/types';
@@ -139,51 +138,40 @@ describe('the line that says what a turn is doing', () => {
 });
 
 describe('how a turn ended', () => {
-  it('offers a retry on a turn that failed', async () => {
-    const onRetry = vi.fn();
-    render(
-      <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: '', failed: true }}
-        onRetry={onRetry}
-      />,
-    );
+  it('says a turn failed, and leaves the next move to the reader', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '', failed: true }} />);
 
-    await userEvent.click(screen.getByTestId('turn-retry'));
-    expect(onRetry).toHaveBeenCalledWith('m');
+    expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
+    // Nothing to press. Asking again is typing again, which the composer is
+    // already there for.
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('offers a retry on a turn that said nothing at all', () => {
-    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '' }} onRetry={vi.fn()} />);
+  it('says a turn produced nothing', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '' }} />);
 
     expect(screen.getByTestId('message-bubble-empty')).toBeInTheDocument();
-    expect(screen.getByTestId('turn-retry')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('offers a way to carry on, not to start over, on a turn cut off at the ceiling', async () => {
-    const onContinue = vi.fn();
+  it('says a turn was cut off at the length limit', () => {
     render(
       <MessageBubble
         message={{ id: 'm', role: 'assistant', content: 'half a sen', truncated: true }}
-        onContinue={onContinue}
       />,
     );
 
-    expect(screen.queryByTestId('turn-retry')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('turn-continue'));
-    expect(onContinue).toHaveBeenCalledWith('m');
+    expect(screen.getByTestId('message-bubble-truncated')).toBeInTheDocument();
   });
 
-  it('says a turn is waiting on the reader, and offers no retry for it', () => {
-    render(
-      <MessageBubble message={{ id: 'm', role: 'assistant', content: '', blocked: true }} onRetry={vi.fn()} />,
-    );
+  it('says a turn is waiting on the reader', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '', blocked: true }} />);
 
     expect(screen.getByTestId('message-bubble-blocked')).toBeInTheDocument();
-    expect(screen.queryByTestId('turn-retry')).not.toBeInTheDocument();
     expect(screen.queryByTestId('message-bubble-empty')).not.toBeInTheDocument();
   });
 
-  it('keeps what a stopped turn managed to say, and does not call it a fault', () => {
+  it('keeps what a stopped turn managed to say', () => {
     render(
       <MessageBubble
         message={{ id: 'm', role: 'assistant', content: 'as far as it got', interrupted: true }}
@@ -192,48 +180,44 @@ describe('how a turn ended', () => {
 
     expect(screen.getByTestId('message-bubble-content')).toHaveTextContent('as far as it got');
     expect(screen.getByTestId('message-bubble-interrupted')).toBeInTheDocument();
-    expect(screen.queryByTestId('turn-retry')).not.toBeInTheDocument();
   });
 
   it('says nothing about the ending while the turn is still running', () => {
-    render(
-      <MessageBubble message={{ id: 'm', role: 'assistant', content: '', streaming: true }} onRetry={vi.fn()} />,
-    );
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '', streaming: true }} />);
 
     expect(screen.queryByTestId('message-bubble-empty')).not.toBeInTheDocument();
+  });
+
+  it('draws each ending as an icon and a line, with nothing around it', () => {
+    // A bordered, filled bar reads as a thing in its own right sitting under
+    // the reply. What it is is a note about the reply, so it sits on the same
+    // surface as the words above it.
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '', failed: true }} />);
+
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line.className).not.toMatch(/\bborder\b|\bbg-/);
+    expect(line.querySelector('svg')).not.toBeNull();
   });
 });
 
 describe('what a finished reply offers', () => {
-  it('puts copy and regenerate under an answer', async () => {
-    const onRetry = vi.fn();
-    render(
-      <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: 'the answer' }}
-        onRetry={onRetry}
-      />,
-    );
+  it('offers copy under an answer', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'the answer' }} />);
 
     expect(screen.getByTestId('turn-copy')).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('turn-regenerate'));
-    expect(onRetry).toHaveBeenCalledWith('m');
   });
 
   it('offers none of that on a reply still arriving', () => {
     render(
-      <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: 'half', streaming: true }}
-        onRetry={vi.fn()}
-      />,
+      <MessageBubble message={{ id: 'm', role: 'assistant', content: 'half', streaming: true }} />,
     );
 
     expect(screen.queryByTestId('turn-copy')).not.toBeInTheDocument();
   });
 
-  it('offers copy on what the reader wrote, and nothing else', () => {
-    render(<MessageBubble message={{ id: 'm', role: 'user', content: 'my question' }} onRetry={vi.fn()} />);
+  it('offers copy on what the reader wrote too', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: 'my question' }} />);
 
     expect(screen.getByTestId('turn-copy')).toBeInTheDocument();
-    expect(screen.queryByTestId('turn-regenerate')).not.toBeInTheDocument();
   });
 });

@@ -24,10 +24,6 @@ interface MessageBubbleProps {
    * stored, and it is true of the reply that has not started yet.
    */
   consolidating?: boolean;
-  /** Run this turn again. Also what the retry on a failed turn calls. */
-  onRetry?: (messageId: string) => void;
-  /** Carry on from where a reply cut off at the ceiling stops. */
-  onContinue?: (messageId: string) => void;
 }
 
 /**
@@ -47,8 +43,6 @@ interface MessageBubbleProps {
 export const MessageBubble = React.memo(function MessageBubble({
   message,
   consolidating,
-  onRetry,
-  onContinue,
 }: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   // The newest call still running, which is the one the line names. Several
@@ -134,18 +128,12 @@ export const MessageBubble = React.memo(function MessageBubble({
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
             separates any two blocks in this scope. */}
-        {isUser ? null : (
-          <TurnEnding message={message} {...(onRetry ? { onRetry } : {})} {...(onContinue ? { onContinue } : {})} />
-        )}
+        {isUser ? null : <TurnEnding message={message} />}
         {/* Offered on a settled message only. A reply still arriving has
             nothing to copy yet and asking for it again mid-flight would race
             the turn that is running. */}
         {running || message.content === '' ? null : (
-          <TurnActions
-            messageId={message.id}
-            text={message.content}
-            {...(isUser ? { onHoverOnly: true } : onRetry ? { onRetry } : {})}
-          />
+          <TurnActions text={message.content} {...(isUser ? { onHoverOnly: true } : {})} />
         )}
       </div>
     </div>

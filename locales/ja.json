@@ -231,10 +231,7 @@
       "backToReference": "参照 {index} に戻る"
     },
     "action": {
-      "retry": "再試行",
-      "continue": "続ける",
-      "copy": "コピー",
-      "regenerate": "再生成"
+      "copy": "コピー"
     },
     "sources": {
       "title": "出典",

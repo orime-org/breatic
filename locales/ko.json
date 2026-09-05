@@ -231,10 +231,7 @@
       "backToReference": "참조 {index}(으)로 돌아가기"
     },
     "action": {
-      "retry": "다시 시도",
-      "continue": "계속",
-      "copy": "복사",
-      "regenerate": "다시 생성"
+      "copy": "복사"
     },
     "sources": {
       "title": "출처",

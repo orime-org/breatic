@@ -231,10 +231,7 @@
       "backToReference": "Back to reference {index}"
     },
     "action": {
-      "retry": "Retry",
-      "continue": "Continue",
-      "copy": "Copy",
-      "regenerate": "Regenerate"
+      "copy": "Copy"
     },
     "sources": {
       "title": "Sources",
