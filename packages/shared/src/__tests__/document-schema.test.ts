@@ -53,7 +53,10 @@ describe("这一份词表本身", () => {
     // 删掉，而下一个客户端碰到已经被包过的元素得认得出这个包装。
     expect(Object.keys(DOCUMENT_SCHEMA.nodes).length).toBeGreaterThan(0);
     expect(Object.keys(DOCUMENT_SCHEMA.marks).length).toBeGreaterThan(0);
-    expect(DOCUMENT_SCHEMA.nodes.unsupportedBlock).toEqual(["originalName"]);
+    expect(DOCUMENT_SCHEMA.nodes.unsupportedBlock).toEqual([
+      "originalName",
+      "wrapDepth",
+    ]);
     expect(DOCUMENT_SCHEMA.nodes.unsupportedInline).toEqual(["originalName"]);
     expect(DOCUMENT_SCHEMA.marks.unsupportedMark).toEqual([
       "originalName",

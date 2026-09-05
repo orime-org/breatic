@@ -53,6 +53,22 @@ const ORIGINAL_NAME = 'originalName';
 const ORIGINAL_VALUE = 'originalValue';
 
 /**
+ * How many nodes the binding wrapped this stand-in in to reach its slot.
+ *
+ * Read by `document-tab.ts` to know which of the wrappers around it stand for
+ * nothing on the peer's side. Nothing here can be written into: the element
+ * the stand-in speaks for has whatever content rule the build that wrote it
+ * gave it, and this one cannot know it.
+ */
+export const WRAP_DEPTH = 'wrapDepth';
+
+/** The block node's type name, which other files match against. */
+export const UNSUPPORTED_BLOCK = 'unsupportedBlock';
+
+/** The inline node's type name. */
+export const UNSUPPORTED_INLINE = 'unsupportedInline';
+
+/**
  * A block this build cannot represent.
  *
  * `group: 'blockContent'` is what a block's own node belongs to in BlockNote's
@@ -62,13 +78,13 @@ const ORIGINAL_VALUE = 'originalValue';
  * group, so nothing can join them by declaration.
  */
 export const UnsupportedBlock = Node.create({
-  name: 'unsupportedBlock',
+  name: UNSUPPORTED_BLOCK,
   group: 'blockContent',
   atom: true,
   selectable: true,
 
   addAttributes() {
-    return { [ORIGINAL_NAME]: { default: null } };
+    return { [ORIGINAL_NAME]: { default: null }, [WRAP_DEPTH]: { default: 0 } };
   },
 
   renderHTML({ HTMLAttributes }) {
@@ -84,7 +100,7 @@ export const UnsupportedBlock = Node.create({
 
 /** An inline node this build cannot represent. */
 export const UnsupportedInline = Node.create({
-  name: 'unsupportedInline',
+  name: UNSUPPORTED_INLINE,
   group: 'inline',
   inline: true,
   atom: true,
@@ -192,7 +208,7 @@ const NAME_PROP = {
  * name through `type.create(...)` and builds it straight from Yjs.
  */
 export const unsupportedBlockSpec = createBlockSpecFromTiptapNode(
-  { node: UnsupportedBlock, type: 'unsupportedBlock', content: 'none' },
+  { node: UnsupportedBlock, type: UNSUPPORTED_BLOCK, content: 'none' },
   NAME_PROP,
 );
 
@@ -211,7 +227,7 @@ export const unsupportedInlineSpec = createInlineContentSpecFromTipTapNode(
 );
 
 /** The two node names the label decoration dresses. */
-const LABELLED = new Set(['unsupportedBlock', 'unsupportedInline']);
+const LABELLED = new Set([UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE]);
 
 /**
  * The label decorations for every stand-in in the document.

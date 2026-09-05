@@ -146,7 +146,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     // build cannot represent is wrapped in these rather than deleted, and a
     // client that meets an already-wrapped element has to recognise the
     // wrapper.
-    unsupportedBlock: ["originalName"],
+    unsupportedBlock: ["originalName", "wrapDepth"],
     unsupportedInline: ["originalName"],
   },
 

@@ -30,6 +30,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -168,6 +169,61 @@ function visitAndType(build: (fragment: Y.XmlFragment) => void): {
   });
   expect(at, 'the shape carries a paragraph to type into').toBeGreaterThan(-1);
   view.dispatch(view.state.tr.insertText('!', at));
+
+  const after = fragment.toString();
+  editor.unmount();
+  return { before, after };
+}
+
+/**
+ * The same visit, with one key pressed in a block that IS known.
+ *
+ * Typing and pressing a key reach the write-back by different routes: typing
+ * changes a block's text and leaves every block where it was, while a key
+ * bound to a structural command moves blocks between parents. The second
+ * shape is the one that runs the children out of step.
+ * @param build - Fills the fragment with the shape under test.
+ * @param inText - Text of the node to put the caret in.
+ * @param key - The key to press, in ProseMirror's chord notation.
+ * @returns The shared document before mounting and after the key.
+ */
+function visitAndPress(
+  build: (fragment: Y.XmlFragment) => void,
+  inText: string,
+  key: string,
+): { before: string; after: string } {
+  const remote = new Y.Doc();
+  build(documentBodyFragment(remote));
+
+  const local = new Y.Doc();
+  Y.applyUpdate(local, Y.encodeStateAsUpdate(remote));
+  const fragment = documentBodyFragment(local);
+  const before = fragment.toString();
+
+  const editor = buildDocumentEditor({
+    fragment,
+    extensions: [documentFallbackExtension()],
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+
+  const view = editor.prosemirrorView!;
+  let at = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (at === -1 && node.isText && node.text === inText) at = pos + 1;
+    return at === -1;
+  });
+  expect(at, `the shape carries "${inText}"`).toBeGreaterThan(-1);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+
+  const [modifier, base] = key.includes('+') ? key.split('+') : [null, key];
+  const event = new KeyboardEvent('keydown', {
+    key: base as string,
+    shiftKey: modifier === 'Shift',
+    bubbles: true,
+  });
+  view.someProp('handleKeyDown', (handler) => handler(view, event));
 
   const after = fragment.toString();
   editor.unmount();
@@ -323,6 +379,78 @@ describe('an unknown element after this client edits something else', () => {
     // boundary rather than a fault: the keystroke landed and the known blocks
     // came through whole.
     expect(after).toContain('!keep me');
+  });
+
+  // Typing leaves the block structure alone, so the write-back walks the
+  // children in step and `meta.mapping` answers for the stand-in's slot. An
+  // edit that MOVES blocks does not: the walk runs out of matching pairs and
+  // falls to `matchNodeName`, which compares an element's name against the
+  // stand-in's own — never equal, by construction. Tab is the shortest way
+  // there, and C1 puts it on every block.
+  it('keeps a blockGroup child whole when Tab moves the block after it', () => {
+    const { before, after } = visitAndPress(
+      (f) => {
+        f.insert(0, [
+          group([
+            container('a', [paragraph('first')]),
+            furnished('futureTopLevelContainer'),
+            container('c', [paragraph('third')]),
+          ]),
+        ]);
+      },
+      'third',
+      'Tab',
+    );
+
+    expect(before).toContain('colour="crimson"');
+    expect(after).toContain('futuretoplevelcontainer');
+    expect(after).toContain('colour="crimson"');
+    expect(after).toContain('inner text a peer can read');
+  });
+
+  it('keeps a blockContent child whole when Tab moves the block after it', () => {
+    const { before, after } = visitAndPress(
+      (f) => {
+        f.insert(0, [
+          group([
+            container('a', [paragraph('first'), furnished('futureNested')]),
+            container('c', [paragraph('third')]),
+          ]),
+        ]);
+      },
+      'third',
+      'Tab',
+    );
+
+    expect(before).toContain('colour="crimson"');
+    expect(after).toContain('futurenested');
+    expect(after).toContain('colour="crimson"');
+    expect(after).toContain('inner text a peer can read');
+  });
+
+  it('keeps it whole when Shift-Tab moves a block back out', () => {
+    const { before, after } = visitAndPress(
+      (f) => {
+        f.insert(0, [
+          group([
+            container('a', [
+              paragraph('first'),
+              group([
+                furnished('futureOutdent'),
+                container('c', [paragraph('third')]),
+              ]),
+            ]),
+          ]),
+        ]);
+      },
+      'third',
+      'Shift+Tab',
+    );
+
+    expect(before).toContain('colour="crimson"');
+    expect(after).toContain('futureoutdent');
+    expect(after).toContain('colour="crimson"');
+    expect(after).toContain('inner text a peer can read');
   });
 });
 
