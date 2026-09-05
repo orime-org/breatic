@@ -91,18 +91,19 @@ function MessageSkeleton(): React.JSX.Element {
               conversation, and a conversation is what the reader is waiting
               for. The widths grow group by group so it reads as content rather
               than as three identical cells. */}
-          {/* `h-3` is what the rest of the app uses for a line of text
-              standing in for itself. The question keeps its bubble's radius;
+          {/* `h-4` is what the rest of the app uses for a line of text
+              standing in for itself, and a bar stands for a line rather than
+              for the glyphs on it. The question keeps its bubble's radius;
               the answer has no bubble, so it keeps the component's own. */}
           <Skeleton
             data-skeleton-bar
-            className='ml-auto mb-2 h-3 rounded-lg'
+            className='ml-auto mb-2 h-4 rounded-lg'
             style={{ width: `${56 + round * 9}%` }}
           />
-          <Skeleton data-skeleton-bar className='mb-1 h-3' style={{ width: '93%' }} />
+          <Skeleton data-skeleton-bar className='mb-1 h-4' style={{ width: '93%' }} />
           <Skeleton
             data-skeleton-bar
-            className='h-3'
+            className='h-4'
             style={{ width: `${64 + round * 8}%` }}
           />
         </div>
