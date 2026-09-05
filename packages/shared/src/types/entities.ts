@@ -89,6 +89,15 @@ export type MessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   /**
+   * How long this turn spent thinking, in milliseconds.
+   *
+   * A fact about the turn rather than something the model streamed, so it
+   * travels the way the four marks below do. One figure for the turn: the
+   * reader is shown one fold, and the model may think in several stretches
+   * with tool calls between them, which is the sum this holds.
+   */
+  | { type: "thinking-time"; ms: number }
+  /**
    * One use of one tool, from the call to whatever came back.
    *
    * A call and its result are one thing that happened, so they are one part
@@ -226,6 +235,8 @@ export interface MessageData {
   turnIndex: number;
   /** The `reasoning` parts joined. Never sent back to the model. */
   thinking?: string;
+  /** How long the turn spent thinking, in milliseconds. Absent when it did not. */
+  thinkingMs?: number;
   /**
    * The turn was stopped before it finished, so `content` is as far as it got.
    *

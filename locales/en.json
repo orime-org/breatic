@@ -247,7 +247,9 @@
     },
     "assets": {
       "more": "+{count, number}"
-    }
+    },
+    "thinking": "Thought for a moment",
+    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s"
   },
   "canvas": {
     "group": {

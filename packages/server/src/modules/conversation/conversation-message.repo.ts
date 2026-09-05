@@ -62,6 +62,12 @@ function toMessageData(row: StoredRow): MessageData {
     .map((p) => p.text)
     .join("");
 
+  // Beside the reasoning text it measures, and derived the same way: the row
+  // keeps the pieces and the flat views are read out of them.
+  const thoughtFor = parts.find(
+    (p): p is Extract<MessagePart, { type: "thinking-time" }> => p.type === "thinking-time",
+  )?.ms;
+
   return {
     id: row.id,
     role: row.role as MessageData["role"],
@@ -70,6 +76,7 @@ function toMessageData(row: StoredRow): MessageData {
     parts,
     content: text,
     ...(reasoning ? { thinking: reasoning } : {}),
+    ...(thoughtFor === undefined ? {} : { thinkingMs: thoughtFor }),
     ...(parts.some((p) => p.type === "interrupted") ? { interrupted: true as const } : {}),
     ...(parts.some((p) => p.type === "failed") ? { failed: true as const } : {}),
   };

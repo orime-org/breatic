@@ -45,6 +45,17 @@ describe("what a finished turn writes down", () => {
     }
   });
 
+  it("carries how long the turn thought, both ways", () => {
+    // 时长跟那四个标记同一条通道：它是我们知道的关于这一轮的事，模型没有流过
+    // 它。走 data part 才能一次同时到实时流和存储，刷新之后读到的是同一个数。
+    expect(toUiParts([{ type: "thinking-time", ms: 6200 }])).toEqual([
+      { type: "data-thinking-time", data: { ms: 6200 } },
+    ]);
+    expect(toStoredParts([{ type: "data-thinking-time", data: { ms: 6200 } }] as never)).toEqual([
+      { type: "thinking-time", ms: 6200 },
+    ]);
+  });
+
   it("keeps prose and reasoning as they came", () => {
     const stored = toStoredParts([
       { type: "text", text: "好的" },

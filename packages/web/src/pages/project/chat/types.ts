@@ -119,6 +119,8 @@ export interface ChatMessage {
   content: string;
   /** Optional hidden chain-of-thought, foldable in the UI. */
   thinking?: string;
+  /** How long the turn thought, in milliseconds. Measured by the server. */
+  thinkingMs?: number;
   toolCalls?: ToolCall[];
   /** Streaming = the bubble is still receiving tokens. */
   streaming?: boolean;

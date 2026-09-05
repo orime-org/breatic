@@ -80,7 +80,10 @@ export const MessageBubble = React.memo(function MessageBubble({
         )}
       >
         {message.thinking ? (
-          <ThinkingFold thinking={message.thinking} />
+          <ThinkingFold
+            thinking={message.thinking}
+            {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
+          />
         ) : null}
         {message.content || message.streaming ? (
           <div data-testid='message-bubble-content'>

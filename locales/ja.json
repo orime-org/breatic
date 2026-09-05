@@ -247,7 +247,9 @@
     },
     "assets": {
       "more": "+{count, number}"
-    }
+    },
+    "thinking": "少し考えました",
+    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました"
   },
   "canvas": {
     "group": {

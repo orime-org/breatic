@@ -31,6 +31,9 @@ const TRUNCATED = 'data-truncated';
 /** The part type carrying a turn that stopped to wait for an answer. */
 const BLOCKED = 'data-blocked';
 
+/** How long the turn thought, as the wire names it. */
+const THINKING_TIME = 'data-thinking-time';
+
 /** The tool whose results the source row and the citation chips are built from. */
 const SEARCH_TOOL = 'web_search';
 
@@ -145,6 +148,7 @@ export function toChatMessage(
   let truncated = false;
   let failed = false;
   let blocked = false;
+  let thinkingMs: number | undefined;
   // Two readings of the same searches. The row shows each page once; the
   // markers in the prose resolve against the sequence the model was shown,
   // which counts a page found twice as two.
@@ -218,6 +222,10 @@ export function toChatMessage(
     else if (part.type === FAILED) failed = true;
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;
+    else if (part.type === THINKING_TIME) {
+      const ms = (part as { data?: { ms?: unknown } }).data?.ms;
+      if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) thinkingMs = ms;
+    }
   }
 
   return {
@@ -227,6 +235,7 @@ export function toChatMessage(
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content,
     ...(thinking !== '' ? { thinking } : {}),
+    ...(thinkingMs === undefined ? {} : { thinkingMs }),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),

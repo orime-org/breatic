@@ -202,6 +202,10 @@ export class MainAgent {
     // for either -- so a turn waiting on an answer and a turn that hit its
     // ceiling are indistinguishable from the outside.
     let askedTheUser = false;
+    /** Where the stretch of thinking now open began, if one is. */
+    let thinkingOpenedAt: number | undefined;
+    /** How long the turn has thought so far, summed over closed stretches. */
+    let thoughtForMs = 0;
 
     /**
      * Stop after a step that asked the reader something, and record that it
@@ -379,6 +383,18 @@ export class MainAgent {
         // stream within milliseconds, makes no further model call, and is
         // passed on to every tool the turn invokes.
         abortSignal: signal,
+        // How long the model thought, summed across the stretches it thought
+        // in. The provider says when each one opens and closes, so this is
+        // measured rather than inferred from what came after it -- the gap
+        // between a stretch ending and the next part starting is a tool call
+        // and a round trip, which is not thinking.
+        onChunk: ({ chunk }) => {
+          if (chunk.type === "reasoning-start") thinkingOpenedAt = Date.now();
+          else if (chunk.type === "reasoning-end" && thinkingOpenedAt !== undefined) {
+            thoughtForMs += Date.now() - thinkingOpenedAt;
+            thinkingOpenedAt = undefined;
+          }
+        },
         onStepFinish: ({ usage, content }) => {
           tokensUsed += usage?.totalTokens ?? 0;
           // The other way a call can fail, and the only place its reason is
@@ -440,6 +456,18 @@ export class MainAgent {
           // a part of the reply, so storage and a reload get it too.
           if (askedTheUser) {
             writer.write({ type: "data-blocked", data: {} });
+          }
+          // Said on the wire for the same reason as the two above: the SDK
+          // turns the frame into a part of the reply, so the figure reaches
+          // the reader as the turn ends and reads the same after a reload.
+          // A stretch still open here is one the turn broke off inside, and
+          // what it had thought so far is still how long it thought.
+          if (thinkingOpenedAt !== undefined) {
+            thoughtForMs += Date.now() - thinkingOpenedAt;
+            thinkingOpenedAt = undefined;
+          }
+          if (thoughtForMs > 0) {
+            writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
           }
         },
       });
