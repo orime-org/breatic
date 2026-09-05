@@ -179,19 +179,31 @@ function isRow(content: PMNode, id: BlockTypeId): boolean {
   return ROW_OF_TYPE[content.type.name] === id;
 }
 
+/** One block the selection covers: its content node and where that node is. */
+export interface BlockUnder {
+  readonly node: PMNode;
+  readonly pos: number;
+}
+
 /**
- * The content node of every block the selection covers, in document order.
+ * Every block the selection covers, in document order.
+ *
+ * Which blocks a selection covers answers two questions in this Space — which
+ * rows tick, and which blocks a command writes to — and the two have to agree.
+ * Read separately they can drift apart, and `runBlockType` reads both within
+ * one call: it takes the positions from here and asks `tickedOver` whether the
+ * row it is about to set is already on.
  * @param doc - The document.
  * @param selection - The selection over it.
- * @returns Those nodes.
+ * @returns Those blocks, in document order.
  */
-function blocksUnder(doc: PMNode, selection: Selection): PMNode[] {
-  const found: PMNode[] = [];
-  doc.nodesBetween(selection.from, selection.to, (node) => {
+export function blocksUnder(doc: PMNode, selection: Selection): BlockUnder[] {
+  const found: BlockUnder[] = [];
+  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
     if (!node.isTextblock) {
       return true;
     }
-    found.push(node);
+    found.push({ node, pos });
     return false;
   });
   return found;
@@ -208,7 +220,7 @@ export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> 
   if (blocks.length === 0) {
     return new Set();
   }
-  return new Set(ROWS.filter((id) => blocks.every((content) => isRow(content, id))));
+  return new Set(ROWS.filter((id) => blocks.every(({ node }) => isRow(node, id))));
 }
 
 /**
@@ -224,8 +236,8 @@ export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> 
  */
 export function rowsUnder(doc: PMNode, selection: Selection): BlockTypeId[] {
   const rows: BlockTypeId[] = [];
-  blocksUnder(doc, selection).forEach((content) => {
-    const row = CONTENT_ROWS.find((id) => isRow(content, id));
+  blocksUnder(doc, selection).forEach(({ node }) => {
+    const row = CONTENT_ROWS.find((id) => isRow(node, id));
     if (row !== undefined) rows.push(row);
   });
   return rows;
@@ -244,7 +256,7 @@ export function rowsUnder(doc: PMNode, selection: Selection): BlockTypeId[] {
  */
 export function faceOf(doc: PMNode, selection: Selection): BlockTypeId {
   const anchored = contentAt(doc, selection.anchor);
-  const content = anchored ?? blocksUnder(doc, selection)[0];
+  const content = anchored ?? blocksUnder(doc, selection)[0]?.node;
   if (content === undefined) {
     return 'paragraph';
   }

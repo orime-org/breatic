@@ -119,14 +119,16 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
 
     if (blockEmpty) {
-      if (atBlockStart && indented) {
+      // Every block that carries the quote is a textblock, so an empty one
+      // puts the caret at offset 0 and `atBlockStart` is already true here.
+      // The one atom in the schema, `unsupportedBlock`, declares no `quoted`
+      // and is turned away by the test above.
+      if (indented) {
         // BlockNote lifts this one out a level, which creates no block and so
         // loses no props.
         return false;
       }
-      return atBlockStart
-        ? openQuotedBlockAfter(tr, bnBlock.afterPos, childContainer)
-        : false;
+      return openQuotedBlockAfter(tr, bnBlock.afterPos, childContainer);
     }
 
     tr.deleteSelection();

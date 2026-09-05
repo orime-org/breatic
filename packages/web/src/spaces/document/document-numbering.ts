@@ -139,10 +139,7 @@ function countListItem(block: Block, key: string, walk: Walk): void {
  * @param walk - The running state, advanced in place.
  */
 function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
-  const containers: PMNode[] = [];
-  group.forEach((child) => containers.push(child));
-
-  containers.forEach((container) => {
+  group.forEach((container) => {
     const block = describe(container);
     const run = walk.runOf.get(block.id);
     const key = `${parentKey}|${run === undefined ? NOT_QUOTED : `quote${String(run)}`}`;

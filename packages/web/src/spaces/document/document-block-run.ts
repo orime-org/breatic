@@ -26,7 +26,7 @@
 import { updateBlockTr } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
-import type { Selection, Transaction } from '@tiptap/pm/state';
+import type { Transaction } from '@tiptap/pm/state';
 
 import {
   ORDERED_LIST,
@@ -35,6 +35,7 @@ import {
 import {
   LEVEL_OF_ROW,
   TYPE_OF_ROW,
+  blocksUnder,
   tickedOver,
   type BlockTypeId,
   type TypeRow,
@@ -56,28 +57,6 @@ const LIST_ROWS: ReadonlySet<BlockTypeId> = new Set<BlockTypeId>([
 interface Update {
   readonly type?: string;
   readonly props: Readonly<Record<string, unknown>>;
-}
-
-/**
- * Where every block the selection covers begins.
- *
- * `updateBlockTr` is given the position before a `blockContainer`, and a
- * container opens with its content node, so the content node's own position is
- * one past it.
- * @param doc - The document.
- * @param selection - The selection over it.
- * @returns Those positions, in document order.
- */
-function blockPositions(doc: PMNode, selection: Selection): number[] {
-  const found: number[] = [];
-  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    if (!node.isTextblock) {
-      return true;
-    }
-    found.push(pos - 1);
-    return false;
-  });
-  return found;
 }
 
 /**
@@ -156,12 +135,14 @@ function updateFor(
  */
 export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
   editor.transact((tr) => {
-    const positions = blockPositions(tr.doc, tr.selection);
+    const covered = blocksUnder(tr.doc, tr.selection);
     const cancelling = tickedOver(tr.doc, tr.selection).has(id);
     const written = tr.mapping.maps.length;
     const { anchor, head } = tr.selection;
-    for (const origin of positions) {
-      const at = tr.mapping.map(origin);
+    for (const { pos } of covered) {
+      // `updateBlockTr` is given the position before a `blockContainer`, and a
+      // container opens with its content node, so the container is one back.
+      const at = tr.mapping.map(pos - 1);
       const content = tr.doc.nodeAt(at)?.firstChild;
       if (!content) {
         continue;
@@ -196,6 +177,6 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
  */
 export function canRunBlockType(editor: RunEditor): boolean {
   return editor.transact(
-    (tr) => blockPositions(tr.doc, tr.selection).length > 0,
+    (tr) => blocksUnder(tr.doc, tr.selection).length > 0,
   );
 }
