@@ -106,8 +106,16 @@ function expected(from: BlockTypeId, to: BlockTypeId): Shape {
   return { type: types[to]! };
 }
 
+/** What the block under test carries below it, to be carried through a press. */
+const KEPT_CHILD = 'kept below';
+
 /**
  * Opens an editor holding one block with the block under test indented under it.
+ *
+ * The block under test carries a child of its own, so a press is asked to
+ * leave the tree below it standing as well as the level it sits at. An
+ * implementation that rebuilds the block by replacing it drops that child, and
+ * a fixture without one agrees with it.
  * @param inner - The block to indent, which is the one the row acts on.
  * @returns The editor.
  */
@@ -122,7 +130,13 @@ function open(
   editor.mount(root);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'first', children: [inner] },
+    {
+      type: 'paragraph',
+      content: 'first',
+      children: [
+        { ...inner, children: [{ type: 'paragraph', content: KEPT_CHILD }] },
+      ],
+    },
   ] as never);
   const inserted = (editor.document as unknown as ReadBlock[])[0]!.children[0]!;
   editor.setTextCursorPosition(inserted.id, 'end');
@@ -159,8 +173,11 @@ describe('A4 · C2 — every transition between two content rows', () => {
         const block = indented(editor);
         expect(block).toBeDefined();
         expect(shapeOf(block!)).toEqual(expected(from, to));
-        // C2: still the only child of the block above it.
+        // C2: still the only child of the block above it, and still holding
+        // the block that was indented under IT.
         expect(editor.document).toHaveLength(1);
+        expect(block!.children).toHaveLength(1);
+        expect(editor.prosemirrorState.doc.textContent).toContain(KEPT_CHILD);
       });
     });
   });

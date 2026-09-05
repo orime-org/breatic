@@ -15,6 +15,10 @@
  * rule, and the menu would then meet a block it cannot name.
  */
 
+import { readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
@@ -87,5 +91,34 @@ describe('the document schema', () => {
     expect(
       Object.keys(schema.blockSchema.numberedListItem.propSchema),
     ).toContain('number');
+  });
+});
+
+describe('the schema migrations BlockNote runs over a bound document', () => {
+  it('holds the one rule this version was read against', () => {
+    // `SchemaMigration` rewrites the SHARED document on bind, and the rules it
+    // runs are internal — the extension exposes none of them, and the package
+    // exports no path that reaches the table. So the table is read off the
+    // types it ships, which is the one place a rule added upstream shows up
+    // without running anything.
+    //
+    // What this protects: today the single rule moves colour attributes,
+    // which our documents cannot carry, so the migration is a no-op and the
+    // bytes survive binding. A second rule arriving in an upgrade is a
+    // rewrite of everyone's document that nothing else here would notice.
+    const require_ = createRequire(resolve('package.json'));
+    const packageRoot = dirname(dirname(require_.resolve('@blocknote/core')));
+    const rules = readdirSync(
+      join(
+        packageRoot,
+        'types/src/yjs/extensions/schemaMigration/migrationRules',
+      ),
+    )
+      .filter((name) => name.endsWith('.d.ts'))
+      .filter((name) => !name.endsWith('.test.d.ts'))
+      .filter((name) => name !== 'index.d.ts' && name !== 'migrationRule.d.ts')
+      .sort();
+
+    expect(rules).toEqual(['moveColorAttributes.d.ts']);
   });
 });

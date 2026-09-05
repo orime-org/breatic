@@ -4,7 +4,7 @@
 /**
  * The block type menu end to end (task #904).
  *
- * The half jsdom cannot reach: the eight chords really held down, the menu
+ * The half jsdom cannot reach: the nine chords really held down, the menu
  * really opened with a pointer and a row really clicked, and where the ticks
  * and the rule land in a real layout — every rectangle jsdom reports is zero,
  * and a keystroke there is handed to `handleKeyDown` by hand, so the browser's
@@ -212,7 +212,7 @@ test('presses each of the nine rows and the document follows every time', async 
     .toBe(`checkListItem[quoted] ${line}`);
 });
 
-test('holds each of the eight chords and lands where the row does', async () => {
+test('holds each of the nine chords and lands where the row does', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a line the keys will work on');
 
@@ -408,7 +408,7 @@ interface SelectionShape {
   select: (p: Page) => Promise<void>;
 }
 
-/** The eight chords, one per row of `document-block-type-shortcuts.ts`. */
+/** The nine chords, one per row of `document-block-type-shortcuts.ts`. */
 const CHORDS: Array<[id: string, chord: string]> = [
   ['paragraph', `${MOD}+Alt+0`],
   ['heading-1', `${MOD}+Alt+1`],
@@ -416,6 +416,7 @@ const CHORDS: Array<[id: string, chord: string]> = [
   ['heading-3', `${MOD}+Alt+3`],
   ['bullet-list', `${MOD}+Shift+8`],
   ['ordered-list', `${MOD}+Shift+7`],
+  ['task-list', `${MOD}+Shift+9`],
   ['code-block', `${MOD}+Alt+c`],
   ['quote', `${MOD}+Shift+b`],
 ];
@@ -560,7 +561,7 @@ async function tickedRows(p: Page): Promise<string[]> {
   }, SLOT);
 }
 
-// The checklist wants all nine rows pressed and all eight chords held on each
+// The checklist wants all nine rows pressed and all nine chords held on each
 // of six selections. What each cell produces is pinned by the unit tests; what
 // is asked here is whether the real path runs: a real pointer opening the menu,
 // a real row taking the click, a real keystroke reaching the same command. One
@@ -571,7 +572,7 @@ async function tickedRows(p: Page): Promise<string[]> {
 // ticked Text row, whose target is the state the blocks are already in (the
 // exception in §6.7).
 for (const shape of SHAPES) {
-  test(`${shape.name}: nine rows pressed and eight chords held`, async () => {
+  test(`${shape.name}: nine rows pressed and nine chords held`, async () => {
     // Seventeen cells, each of them reselecting, opening, pressing, undoing.
     test.setTimeout(180_000);
     await openFreshDocument(page);

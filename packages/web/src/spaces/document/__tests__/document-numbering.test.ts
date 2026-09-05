@@ -23,7 +23,7 @@
  * between levels, none at the end.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import * as Y from 'yjs';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
@@ -32,6 +32,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
+import { runBlockType } from '@web/spaces/document/document-block-run';
 
 /** One block, as the fixtures describe it. */
 interface Spec {
@@ -269,5 +270,122 @@ describe('blocks that carry no number', () => {
     const n = numbersFor([li('a'), { id: 'p', type: 'paragraph' }, li('b')]);
     expect(n.get('a')).toBe('1.');
     expect(n.get('b')).toBe('2.');
+  });
+});
+
+describe('the numbers a row press leaves behind', () => {
+  // The cases above build a document and read it. These press a row on a live
+  // editor first, which is what C3 and C9b ①② ask for: their subject is a
+  // block the reader TURNED INTO something, and a fixture that starts out as
+  // the result skips the step under test.
+  const live: ReturnType<typeof buildDocumentEditor>[] = [];
+
+  afterEach(() => {
+    live.splice(0).forEach((editor) => {
+      editor.unmount();
+    });
+  });
+
+  /**
+   * Opens a mounted editor over the given blocks.
+   * @param blocks - What to put in it.
+   * @returns The editor.
+   */
+  function openLive(
+    blocks: readonly Readonly<Record<string, unknown>>[],
+  ): ReturnType<typeof buildDocumentEditor> {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    live.push(editor);
+    editor.replaceBlocks(editor.document, blocks as never);
+    return editor;
+  }
+
+  /** Every block id in reading order, nested blocks included. */
+  function idsInOrder(
+    blocks: readonly { id: string; children?: readonly unknown[] }[],
+  ): string[] {
+    return blocks.flatMap((block) => [
+      block.id,
+      ...idsInOrder(
+        (block.children ?? []) as readonly {
+          id: string;
+          children?: readonly unknown[];
+        }[],
+      ),
+    ]);
+  }
+
+  /** What each block shows, in reading order. */
+  function shown(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): (string | undefined)[] {
+    const doc = editor.prosemirrorState.doc;
+    const numbers = computeNumbering(doc, quoteRuns(doc));
+    return idsInOrder(
+      editor.document as unknown as { id: string; children?: unknown[] }[],
+    ).map((id) => numbers.get(id));
+  }
+
+  it('C3 — puts the list back exactly as it was when the quote comes off', () => {
+    const editor = openLive([
+      { type: 'numberedListItem', content: 'one' },
+      { type: 'numberedListItem', content: 'two' },
+      { type: 'numberedListItem', content: 'three' },
+      { type: 'numberedListItem', content: 'four' },
+    ]);
+    const before = editor.prosemirrorState.doc.toString();
+    const second = (editor.document as unknown as { id: string }[])[1]!;
+
+    editor.setTextCursorPosition(second.id, 'end');
+    runBlockType(editor, 'quote');
+    expect(shown(editor)).toEqual(['1.', '1.', '2.', '3.']);
+
+    runBlockType(editor, 'quote');
+    expect(shown(editor)).toEqual(['1.', '2.', '3.', '4.']);
+    // The round trip, which the numbers alone do not settle: a press that
+    // rebuilt the blocks could hand back the same numbers over a different
+    // document.
+    expect(editor.prosemirrorState.doc.toString()).toBe(before);
+  });
+
+  it('C9b ① — lets the items close over one turned into a heading', () => {
+    const editor = openLive([
+      { type: 'numberedListItem', content: 'first' },
+      { type: 'numberedListItem', content: 'middle' },
+      { type: 'numberedListItem', content: 'third' },
+    ]);
+    const middle = (editor.document as unknown as { id: string }[])[1]!;
+
+    editor.setTextCursorPosition(middle.id, 'end');
+    runBlockType(editor, 'heading-1');
+
+    expect(shown(editor)).toEqual(['1.', '1', '2.']);
+  });
+
+  it('C9b ② — leaves the item after it first, when it opened the list', () => {
+    // demo §4.3: a sub-list of two, the first turned into a heading.
+    const editor = openLive([
+      {
+        type: 'numberedListItem',
+        content: 'top',
+        children: [
+          { type: 'numberedListItem', content: 'became-heading' },
+          { type: 'numberedListItem', content: 'second' },
+        ],
+      },
+    ]);
+    const opener = (
+      editor.document as unknown as { children: { id: string }[] }[]
+    )[0]!.children[0]!;
+
+    editor.setTextCursorPosition(opener.id, 'end');
+    runBlockType(editor, 'heading-1');
+
+    expect(shown(editor)).toEqual(['1.', '1', '1.']);
   });
 });

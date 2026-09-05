@@ -229,3 +229,66 @@ describe('a document opened straight from the backend seed', () => {
     );
   });
 });
+
+describe('a seed written with node names this schema does not use', () => {
+  // The negative half of the contract above. `Y.XmlElement.toString()`
+  // lowercases what it prints, so a seed written in lower case reads back
+  // looking right; the editor registers `blockGroup` and `blockContainer` in
+  // camel case, and what it cannot resolve it stands in for.
+  //
+  // The cost lands on the FIRST EDIT, not on mounting: the bytes survive
+  // binding untouched, and the first transaction replaces the seed with the
+  // fallback and broadcasts that as this client's own work. A case asserting
+  // only what the editor renders would stay green through exactly that.
+  let doc: Y.Doc;
+  let awareness: Awareness;
+  const containers: HTMLElement[] = [];
+
+  beforeEach(() => {
+    doc = new Y.Doc();
+    const fragment = documentBodyFragment(doc);
+    doc.transact(() => {
+      const group = new Y.XmlElement('blockgroup');
+      const holder = new Y.XmlElement('blockcontainer');
+      holder.setAttribute('id', 'seeded-in-lower-case');
+      const paragraph = new Y.XmlElement('paragraph');
+      paragraph.insert(0, [new Y.XmlText('hello')]);
+      holder.insert(0, [paragraph]);
+      group.insert(0, [holder]);
+      fragment.insert(0, [group]);
+    });
+    awareness = new Awareness(doc);
+  });
+
+  afterEach(() => {
+    _resetDocumentEditorCacheForTests();
+    containers.splice(0).forEach((element) => {
+      element.remove();
+    });
+    awareness.destroy();
+    doc.destroy();
+  });
+
+  it('loses the seeded text on the first edit, and says so in the bytes', async () => {
+    const rendered = renderHook(() =>
+      useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
+    );
+    await waitFor(() => expect(rendered.result.current).not.toBeNull());
+    const handle = rendered.result.current as DocumentEditorHandle;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    containers.push(container);
+    adoptDocumentEditor(handle, container);
+
+    expect(documentBodyFragment(doc).toString()).toContain('hello');
+
+    act(() => {
+      const view = handle.editor.prosemirrorView;
+      view.dispatch(view.state.tr);
+    });
+
+    const after = documentBodyFragment(doc).toString();
+    expect(after).not.toContain('hello');
+    expect(after).toContain('unsupportedblock');
+  });
+});

@@ -118,6 +118,13 @@ describe('two people on one document', () => {
     expect(shown(a)).toEqual(shown(b));
     expect(shown(a).join('|')).toContain('from A');
     expect(shown(a).join('|')).toContain('from B');
+    // One top-level group, rather than each side's group standing beside the
+    // other's — the shape this file's opening paragraph names. Comparing what
+    // the two clients show agrees with either, because both sides would show
+    // the same two groups.
+    expect(a.prosemirrorState.doc.childCount).toBe(1);
+    expect(a.prosemirrorState.doc.child(0).type.name).toBe('blockGroup');
+    expect(a.prosemirrorState.doc.child(0).childCount).toBe(shown(a).length);
   });
 
   it('both clearing it at once ends on one empty block, still writable', () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 A20 的跟随那半: holding a link while a co-editor edits around it.
+ * #904 验收 A21 ① 的跟随那半: holding a link while a co-editor edits around it.
  *
  * The module reads the collaboration binding out of the sync plugin's state,
  * and reaching that state means naming the plugin's key. Two libraries mint a

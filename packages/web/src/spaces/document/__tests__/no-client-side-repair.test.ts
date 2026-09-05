@@ -41,6 +41,7 @@ import {
   _resetDocumentEditorCacheForTests,
   adoptDocumentEditor,
   getDocumentEditor,
+  type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import {
   documentBodyFragment,
@@ -57,6 +58,7 @@ const NAME = 'project-p/document-s';
 describe('opening a document does not write to it', () => {
   let doc: Y.Doc;
   let awareness: Awareness;
+  const mountedContainers: HTMLElement[] = [];
 
   beforeEach(() => {
     doc = new Y.Doc();
@@ -64,6 +66,9 @@ describe('opening a document does not write to it', () => {
   });
   afterEach(() => {
     _resetDocumentEditorCacheForTests();
+    mountedContainers.splice(0).forEach((element) => {
+      element.remove();
+    });
     awareness.destroy();
     doc.destroy();
   });
@@ -117,6 +122,71 @@ describe('opening a document does not write to it', () => {
 
     expect(body.length).toBe(2);
     expect(body.toString()).toBe(before);
+  });
+
+  it('leaves a body whose blocks carry no id alone as well', async () => {
+    // `UniqueID` fills a missing id in, and filling one in is a write. The
+    // body above always carries ids because the seed and every editor write
+    // them; a body that reached this client without them is the shape that
+    // plugin exists for, and the one input where a repair costs a byte.
+    const source = new Y.Doc();
+    const body = documentBodyFragment(source);
+    const holder = new Y.XmlElement('blockContainer');
+    const para = new Y.XmlElement('paragraph');
+    para.insert(0, [new Y.XmlText('no id on this block')]);
+    holder.insert(0, [para]);
+    const group = new Y.XmlElement('blockGroup');
+    group.insert(0, [holder]);
+    body.insert(0, [group]);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
+    source.destroy();
+
+    const shared = documentBodyFragment(doc);
+    const before = shared.toString();
+    const local: Uint8Array[] = [];
+    /**
+     * Records updates this client originates.
+     * @param update - The encoded update.
+     * @param origin - Who caused it.
+     */
+    const record = (update: Uint8Array, origin: unknown): void => {
+      if (origin !== 'remote-provider') local.push(update);
+    };
+    doc.on('update', record);
+
+    const rendered = mount(true);
+    await waitFor(() => expect(rendered.result.current).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 50));
+    doc.off('update', record);
+
+    expect(local).toHaveLength(0);
+    expect(shared.toString()).toBe(before);
+  });
+
+  it('builds the editor with the cross-version fallbacks in place', async () => {
+    // Read off the editor the PRODUCTION assembly hands back, because the
+    // order the extensions are spread in is what decides whether the fallback
+    // mark and the collaboration binding both survive — and each of the two
+    // wrong orders keeps one of them.
+    loadBodyEndingIn('heading');
+    const rendered = mount(true);
+    await waitFor(() => expect(rendered.result.current).not.toBeNull());
+    const handle = rendered.result.current as DocumentEditorHandle;
+    // On the page: the plugins are assembled by the view, so an unmounted
+    // editor carries none of them and every assertion below would pass over
+    // an empty list.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    adoptDocumentEditor(handle, container);
+    const { editor } = handle;
+
+    expect(editor.pmSchema.marks['unsupportedMark']).toBeDefined();
+    expect(editor.pmSchema.nodes['unsupportedBlock']).toBeDefined();
+    const keys = editor.prosemirrorState.plugins.map((plugin) =>
+      String((plugin as unknown as { key: string }).key),
+    );
+    expect(keys.some((key) => key.includes('y-sync'))).toBe(true);
   });
 
   it('writes nothing at all from a read-only client', async () => {

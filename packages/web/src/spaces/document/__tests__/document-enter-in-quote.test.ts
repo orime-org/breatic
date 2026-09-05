@@ -41,6 +41,7 @@ interface ReadBlock {
   readonly id: string;
   readonly type: string;
   readonly props: Readonly<Record<string, unknown>>;
+  readonly children: readonly ReadBlock[];
 }
 
 /**
@@ -272,6 +273,30 @@ describe('Enter at the end of a quoted line', () => {
         );
       }
     }
+  });
+
+  it('lifts an empty indented line out a level, keeping the quote', () => {
+    // The one case this handler declines: an empty quoted block that sits
+    // indented. BlockNote lifts it a level, which creates no block, so nothing
+    // is there to lose the quote. Every other case here is a top-level block,
+    // and the branch reading the depth is never taken by one.
+    const editor = open([
+      {
+        type: 'paragraph',
+        props: { quoted: true },
+        content: 'parent',
+        children: [{ type: 'paragraph', props: { quoted: true }, content: '' }],
+      },
+    ]);
+    const kid = blocksOf(editor)[0]?.children[0];
+    expect(kid).toBeDefined();
+    editor.setTextCursorPosition((kid as ReadBlock).id, 'start');
+    pressEnter(editor);
+
+    const blocks = blocksOf(editor);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.children).toHaveLength(0);
+    expect(blocks[1]?.props['quoted']).toBe(true);
   });
 
   it('keeps a heading whole when Enter opens a line above it', () => {
