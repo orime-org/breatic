@@ -334,8 +334,8 @@ describe('evaluateExecute — the reference-audio slot', () => {
   /** A cloning model with nothing picked yet. */
   const cloning = {
     ...ok,
-    refAudioRequired: true,
-    refAudioChosen: false,
+    requiredSlots: ['refAudio'],
+    filledSlots: [] as readonly string[],
   };
 
   it('names the empty slot when the mode needs an audio source', () => {
@@ -343,14 +343,14 @@ describe('evaluateExecute — the reference-audio slot', () => {
   });
 
   it('passes once something is picked', () => {
-    expect(evaluateExecute({ ...cloning, refAudioChosen: true })).toBeNull();
+    expect(evaluateExecute({ ...cloning, filledSlots: ['refAudio'] })).toBeNull();
   });
 
   it('says nothing about it on a mode that needs no audio source', () => {
     // Text to speech declares no audio source, so an unfilled slot it never shows
     // must not refuse anything.
     expect(
-      evaluateExecute({ ...ok, refAudioRequired: false, refAudioChosen: false }),
+      evaluateExecute({ ...ok, requiredSlots: [], filledSlots: [] }),
     ).toBeNull();
   });
 
@@ -375,10 +375,102 @@ describe('evaluateExecute — the reference-audio slot', () => {
       'prompt-too-long',
       'voice-missing',
       'ref-audio-missing',
+      'reference-missing',
+      'lyrics-missing',
     ];
     for (const refusal of actionable) {
       expect(isExecuteButtonDisabled(refusal), refusal).toBe(false);
       expect(refusalToastKey(refusal), refusal).not.toBeNull();
     }
+  });
+});
+
+/**
+ * A mode that offers several slots and needs any one of them (#1960 A6).
+ *
+ * Reference to music collects a whole song, a vocal line and a backing track,
+ * and one is enough — the vendor takes whichever are given. The gate weighed a
+ * single `refAudioRequired` / `refAudioChosen` pair before, so a user who
+ * filled all three of these still faced a greyed-out button: none of them is
+ * named `refAudio`.
+ */
+describe('evaluateExecute — a mode with several slots takes any one', () => {
+  const MUSIC_SLOTS = ['musicSong', 'musicVoice', 'musicInstrumental'];
+  /** Reference to music with all three slots empty. */
+  const a2m = { ...ok, requiredSlots: MUSIC_SLOTS, filledSlots: [] as readonly string[] };
+
+  it('asks for a reference while every slot is empty', () => {
+    expect(evaluateExecute(a2m)).toBe('reference-missing');
+  });
+
+  it('passes on any one of the three, not just the first', () => {
+    for (const slot of MUSIC_SLOTS) {
+      expect(evaluateExecute({ ...a2m, filledSlots: [slot] }), slot).toBeNull();
+    }
+  });
+
+  it('passes with several filled', () => {
+    expect(evaluateExecute({ ...a2m, filledSlots: MUSIC_SLOTS })).toBeNull();
+  });
+
+  it('ignores a pick that is not one of this mode\'s slots', () => {
+    // A voice sample picked on the cloning mode stays on the node when the
+    // user switches to music. It is not one of the three this mode collects,
+    // so it must not stand in for one.
+    expect(evaluateExecute({ ...a2m, filledSlots: ['refAudio'] })).toBe(
+      'reference-missing',
+    );
+  });
+
+  it('says "any one of these" rather than naming the voice sample', () => {
+    expect(isExecuteButtonDisabled('reference-missing')).toBe(false);
+    expect(refusalToastKey('reference-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoReference',
+    );
+  });
+});
+
+/**
+ * Lyrics on text to music (#1960 A12).
+ *
+ * The upstream refuses a request without them — measured on 2026-09-05, the
+ * gateway answers `invalid params, lyrics is required` — so the user would
+ * otherwise watch a generation start, spin, and fail. The vendor page's "leave
+ * empty for auto-generated lyrics" is not what the gateway does.
+ *
+ * Reference to music states them as optional and empty is fine there, so this
+ * is asked of the mode rather than of the panel.
+ */
+describe('evaluateExecute — the lyrics box', () => {
+  /** Text to music with a style written and the lyrics box still empty. */
+  const t2m = { ...ok, lyricsRequired: true, lyricsText: '' };
+
+  it('names the lyrics when the box is empty', () => {
+    expect(evaluateExecute(t2m)).toBe('lyrics-missing');
+  });
+
+  it('treats whitespace as empty, the way it treats the prompt', () => {
+    expect(evaluateExecute({ ...t2m, lyricsText: '  \n\t ' })).toBe('lyrics-missing');
+  });
+
+  it('passes once something is written', () => {
+    expect(evaluateExecute({ ...t2m, lyricsText: '[Verse]\nmorning light' })).toBeNull();
+  });
+
+  it('says nothing about lyrics on a mode that does not ask for them', () => {
+    expect(evaluateExecute({ ...ok, lyricsRequired: false, lyricsText: '' })).toBeNull();
+  });
+
+  it('reports the style prompt first, the panel order', () => {
+    // The style box sits above the lyrics box, so an empty one is what the
+    // user is told about first.
+    expect(evaluateExecute({ ...t2m, promptText: '' })).toBe('prompt-missing');
+  });
+
+  it('leaves the button live and speaks on click', () => {
+    expect(isExecuteButtonDisabled('lyrics-missing')).toBe(false);
+    expect(refusalToastKey('lyrics-missing')).toBe(
+      'canvas.generatePanel.lyricsMissing',
+    );
   });
 });
