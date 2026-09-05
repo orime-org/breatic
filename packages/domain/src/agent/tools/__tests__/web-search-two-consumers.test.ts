@@ -9,11 +9,10 @@
  * the same object, and that rendering is where every guard against page text
  * posing as this tool's own markup lives.
  *
- * The numbering is the reason the rendering takes a starting offset. A turn
- * may search more than once, and the model writes `[N]` against a single
- * space of numbers -- so the second search's first source is not source one.
- * The offset is the caller's, because no single tool call can know how many
- * sources went before it.
+ * The numbering is why the sources carry an index. A turn may search more
+ * than once and the model writes `[N]` against a single space of numbers, so
+ * the second search's first source is not source one. The turn holds the
+ * count and each search reserves its block from it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -51,7 +50,7 @@ vi.stubGlobal("fetch", () => {
   throw new Error("a real fetch escaped: web_search must go through httpRequest");
 });
 
-import { webSearch, renderSearchForModel } from "@domain/agent/tools/web-search.js";
+import { renderSearchForModel, makeSearchTools } from "@domain/agent/tools/web-search.js";
 import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
 
 /**
@@ -74,6 +73,7 @@ function grounding(
  * @returns The structured answer the tool produced.
  */
 async function run(query: string, messages: unknown[] = []): Promise<SearchAnswer> {
+  const webSearch = makeSearchTools().web_search;
   const execute = webSearch.execute;
   if (execute === undefined) throw new Error("web_search has no execute");
   const parsed = (
@@ -83,22 +83,21 @@ async function run(query: string, messages: unknown[] = []): Promise<SearchAnswe
 }
 
 /**
- * The history a second search sees: an earlier search's rendering.
- * @param answer - What that earlier search answered with.
- * @returns The tool message the model was given.
+ * Invoke a turn's own `web_search`, the way the model runtime does.
+ * @param tools - What `makeSearchTools` handed this turn.
+ * @param query - What to search for.
+ * @returns The structured answer.
  */
-function earlierSearch(answer: SearchAnswer): unknown {
-  return {
-    role: "tool",
-    content: [
-      {
-        type: "tool-result",
-        toolCallId: "t0",
-        toolName: "web_search",
-        output: { type: "text", value: renderSearchForModel(answer) },
-      },
-    ],
-  };
+async function runWith(
+  tools: ReturnType<typeof makeSearchTools>,
+  query: string,
+): Promise<SearchAnswer> {
+  const execute = tools.web_search.execute;
+  if (execute === undefined) throw new Error("web_search has no execute");
+  const parsed = (
+    tools.web_search.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
+  ).parse({ query });
+  return (await execute(parsed, { toolCallId: "t1", messages: [] } as never)) as SearchAnswer;
 }
 
 beforeEach(() => {
@@ -106,32 +105,24 @@ beforeEach(() => {
 });
 
 describe("what the tool answers with", () => {
-  it("numbers its sources from what the turn has already shown the model", async () => {
+  it("carries on numbering where the turn's earlier search left off", async () => {
     // The model writes [N] against one space of numbers, and it sees each
     // search as it comes back. A second search numbered from one hands it two
     // sources called 1, and the marker it writes then points at two pages.
-    // What went before is in the history this call was given.
-    httpRequestMock.mockResolvedValue(
+    // The turn holds the count, so the second search continues it.
+    httpRequestMock.mockImplementation(() =>
       grounding([
         { url: "https://c.example", title: "C", snippets: ["c"] },
         { url: "https://d.example", title: "D", snippets: ["d"] },
       ]),
     );
-    const first: SearchAnswer = {
-      query: "q",
-      sent: 3,
-      sources: [1, 2, 3].map((n) => ({
-        url: `https://s${String(n)}.example`,
-        title: `S${String(n)}`,
-        publisher: "S",
-        excerpts: ["x"],
-        index: n,
-      })),
-    };
+    const tools = makeSearchTools();
 
-    const second = await run("q", [earlierSearch(first)]);
+    const first = await runWith(tools, "q");
+    const second = await runWith(tools, "q");
 
-    expect(second.sources.map((s) => s.index)).toEqual([4, 5]);
+    expect(first.sources.map((s) => s.index)).toEqual([1, 2]);
+    expect(second.sources.map((s) => s.index)).toEqual([3, 4]);
   });
 
   it("numbers from one when the turn has searched for nothing yet", async () => {
@@ -275,12 +266,48 @@ describe("the rendering the model reads", () => {
     const answer = answerOf([
       { url: "https://a.example", title: "A", publisher: "A", excerpts: ["one"], index: 1 },
     ]);
-    const toModelOutput = webSearch.toModelOutput;
+    const toModelOutput = makeSearchTools().web_search.toModelOutput;
     if (toModelOutput === undefined) throw new Error("web_search declares no toModelOutput");
 
     expect(toModelOutput({ toolCallId: "t1", input: { query: "q", count: 5 }, output: answer })).toEqual({
       type: "text",
       value: renderSearchForModel(answer),
     });
+  });
+});
+
+describe("two searches issued in one step", () => {
+  // `ai@7.0.68` runs every tool call of a step through one `Promise.all` and
+  // hands each of them the SAME `messages` (dist/index.js:8171-8180), so a
+  // sibling's result is never in the history a call reads. Nothing disables
+  // parallel tool calls, and a two-part question is exactly when a model
+  // issues two searches at once. Numbers recovered from that history would
+  // collide, and a collided number is a chip that opens the wrong page.
+  it("gives the second search numbers the first did not use", async () => {
+    // 每次调用一份新的 Response：body 只能读一次，共用一个会让第二次读到锁住的流。
+    httpRequestMock.mockImplementation(() =>
+      grounding([
+        { url: "https://a.example", title: "A", snippets: ["a"] },
+        { url: "https://b.example", title: "B", snippets: ["b"] },
+      ]),
+    );
+    const tools = makeSearchTools();
+
+    const [first, second] = await Promise.all([runWith(tools, "one"), runWith(tools, "two")]);
+
+    const numbers = [...first.sources, ...second.sources].map((s) => s.index);
+    expect(new Set(numbers).size).toBe(numbers.length);
+    expect(numbers.sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("starts a fresh turn back at one", async () => {
+    httpRequestMock.mockImplementation(() =>
+      grounding([{ url: "https://a.example", title: "A", snippets: ["a"] }]),
+    );
+
+    await runWith(makeSearchTools(), "turn one");
+    const laterTurn = await runWith(makeSearchTools(), "turn two");
+
+    expect(laterTurn.sources[0]?.index).toBe(1);
   });
 });

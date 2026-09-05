@@ -412,31 +412,6 @@ function keepInside(text: string): string {
 }
 
 /**
- * How many sources this turn has already put in front of the model.
- *
- * `messages` is the history the model was given for this step, so every
- * search that already came back is in it as a rendered block. Counting the
- * blocks counts the numbers already handed out, without any state shared
- * between calls -- two searches running at once each read their own snapshot.
- * @param messages - The history this call was given.
- * @returns The count, or zero when there is nothing to read.
- */
-function sourcesAlreadyShown(messages: unknown): number {
-  if (!Array.isArray(messages)) return 0;
-  let seen = 0;
-  for (const message of messages) {
-    const content = (message as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-    for (const part of content) {
-      const output = (part as { output?: { value?: unknown } }).output;
-      if (typeof output?.value !== "string") continue;
-      seen += output.value.match(/<source index="/g)?.length ?? 0;
-    }
-  }
-  return seen;
-}
-
-/**
  * Render a search for the model to read.
  *
  * Every source the service sent and this tool could read goes to the model
@@ -488,205 +463,229 @@ export function renderSearchForModel(answer: SearchAnswer): string {
  * Returns extracts of each source's own page text, which is what the model
  * reads. Requires the `BRAVE_SEARCH_API_KEY` environment variable.
  */
-export const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
-  description:
-    "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
-    "of each page. Something absent from an extract may still be on the page. `count` asks " +
-    "for that many sources; the search returns what it finds.",
-  inputSchema,
-  // What the panel reads about a running call. The key is resolved by the web
-  // package, which cannot import this one -- the SDK carries this field onto
-  // the UI message part, so the name of the line and the tool that shows it
-  // stay in one place.
-  metadata: { runningLine: "chat.tool.searching" },
-  // The SDK's own conversion, which is what a running turn reaches
-  // (`ai@7.0.68` dist/index.js:4868 builds each step's tool result through it).
-  // The numbers are already on the sources, so this and the request assembler
-  // produce the same text.
-  toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output) }),
-  execute: async (
-    { query: asked, count },
-    { abortSignal, messages }: { abortSignal?: AbortSignal; messages?: unknown },
-  ): Promise<SearchAnswer> => {
-    // Two forms, settled here so no site downstream chooses between them. The
-    // request carries the words as asked, on one line; every sentence printed
-    // back to the model carries `shown`, which can no longer open a region of
-    // this tool's own -- a query is the model's to write, and a page that asks
-    // the model to search for a marker would otherwise reach the answer
-    // through it.
-    const query = onOneLine(asked);
-    const shown = keepInside(query);
-    // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
-    // read via the injected config Proxy, not process.env directly.
-    const apiKey = env.BRAVE_SEARCH_API_KEY;
-    if (!apiKey) {
-      // Defensive: `buildToolSet` leaves this tool out of the set entirely
-      // when the key is missing, so a turn should never reach here. The
-      // reader's line is the one for a failure nothing described, because a
-      // line of its own would exist for this branch alone -- five translations
-      // of a sentence no reader is on a path to meet.
-      throw toolFailed(
-        reason(
-          "Web search is not available on this deployment: it has no search credentials.",
-          NEXT_MOVE.stop,
-        ),
-        FAILURE_LINES.generic,
-      );
-    }
+/**
+ * The tools one turn searches with.
+ *
+ * A turn's sources share one space of numbers, and that number has to be
+ * settled where the search runs, because it is what the model is shown.
+ * Nothing in the history a call is handed can supply it: `ai@7.0.68` runs
+ * every tool call of a step through one `Promise.all` and gives them all the
+ * same `messages` (`dist/index.js:8171-8180`), so a sibling search's result
+ * is never in what this one reads. Two searches in a step would take the
+ * same numbers, and a number standing for two pages sends the reader to the
+ * wrong one.
+ *
+ * The turn keeps the count and each call reserves its block from it. The
+ * reservation is one synchronous statement, which JavaScript runs to
+ * completion, so calls running together cannot interleave inside it.
+ * @returns This turn's search tools, keyed as the model names them.
+ */
+export function makeSearchTools(): {
+  web_search: Tool<z.infer<typeof inputSchema>, SearchAnswer>;
+} {
+  let handedOut = 0;
 
-    const { web_search_max_tokens: maxTokens, web_search_timeout_ms: budgetMs } =
-      getAgentConfig();
-
-    try {
-      const url = new URL("https://api.search.brave.com/res/v1/llm/context");
-      url.searchParams.set("q", query);
-      // How many sources to ask for. What comes back is what the search found.
-      url.searchParams.set("maximum_number_of_urls", String(count));
-      // How much text comes back. Both ends of this key's range are the
-      // service's own (it rejects below 1024 and states 32768 as its ceiling),
-      // so a figure that reaches here is one it will take.
-      url.searchParams.set("maximum_number_of_tokens", String(maxTokens));
-      // The same amount again, per source. Left unstated this sits at the
-      // service's own 4096 tokens, while the whole-search figure goes as high
-      // as 32768 -- so a single page that answers the question cannot fill
-      // what the search was given. Stating it lets the service spend the
-      // budget where the text is: measured across two queries and seven of
-      // the counts the schema allows, four of fourteen cells moved, by 32%,
-      // 11%, 4% and -2%. The budget is shared, which is where that last one
-      // comes from.
-      //
-      // The key's own ceiling is 8192, measured: 8193 comes back 422, while
-      // the whole-search key runs to 32768. So the configured figure is held
-      // to the range this one takes.
-      url.searchParams.set(
-        "maximum_number_of_tokens_per_url",
-        String(Math.min(maxTokens, MAX_TOKENS_PER_SOURCE)),
-      );
-
-      // Through the shared transport, which owns the retrying. A search is a
-      // read: its only effect is the response, so a delivery that produced
-      // none produced no effect to repeat — which is what `replaySafe` states.
-      //
-      // The budget goes in as `timeoutMs` rather than as a signal on the init:
-      // the transport replaces the caller's signal, so one left there would be
-      // a no-op and this search would silently get the transport's default
-      // instead of the figure below. That figure bounds ONE DELIVERY, not the
-      // whole search — the transport may deliver this request more than once
-      // and gives each of them the full budget.
-      //
-      // `redirect: "manual"` is not a detail of this endpoint. The Fetch
-      // specification strips only Authorization, Cookie and Proxy-Authorization
-      // across origins, so a custom header travels: following a 301 would carry
-      // the subscription token to whatever host the redirect names. We never
-      // intend to leave this host, so a 3xx is a refusal (see refusalReason).
-      const res = await httpRequest(
-        url.toString(),
-        {
-          headers: {
-            Accept: "application/json",
-            "X-Subscription-Token": apiKey,
-          },
-          redirect: "manual",
-        },
-        {
-          replaySafe: true,
-          timeoutMs: budgetMs,
-          ...(abortSignal ? { signal: abortSignal } : {}),
-        },
-      );
-
-      if (!res.ok) {
-        // A body nobody reads keeps its connection out of the pool: the
-        // transport measured reuse collapsing past undici's buffering
-        // threshold, and says a caller discarding one should cancel it. A run
-        // of refusals — a revoked key, a rate limit — is a run of these.
-        //
-        // Discarding the promise is safe only while nothing awaits between the
-        // transport handing this response back and this line: cancelling a body
-        // that has already errored rejects, and neither server nor worker
-        // installs an `unhandledRejection` handler. Measured against a real server, a socket
-        // broken 0 to 50ms after the headers is always still healthy here, and
-        // an await of 30ms is what makes it reject.
-        void res.body?.cancel();
-        throw toolFailed(refusalReason(shown, res.status), FAILURE_LINES.upstream);
-      }
-
-      // Reading and parsing are guarded apart because they are two different
-      // facts about the same answer. A read that threw means this side never
-      // saw what the service meant to send, so asking again may well get it; a
-      // body that arrived whole and is not the payload is the service answering
-      // something else, and a second delivery returns the same bytes.
-      let text: string;
-      try {
-        text = await readWithin(res, budgetMs);
-      } catch (err: unknown) {
-        // Asked here rather than left to the guard below, which never sees
-        // this: the outer guard passes anything carrying failure detail
-        // straight through, past the question of whether the user stopped.
-        if (isStop(err, abortSignal)) throw stoppedByUser();
+  const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
+    description:
+      "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
+      "of each page. Something absent from an extract may still be on the page. `count` asks " +
+      "for that many sources; the search returns what it finds.",
+    inputSchema,
+    // What the panel reads about a running call. The key is resolved by the web
+    // package, which cannot import this one -- the SDK carries this field onto
+    // the UI message part, so the name of the line and the tool that shows it
+    // stay in one place.
+    metadata: { runningLine: "chat.tool.searching" },
+    // The SDK's own conversion, which is what a running turn reaches
+    // (`ai@7.0.68` dist/index.js:4868 builds each step's tool result through it).
+    // The numbers are already on the sources, so this and the request assembler
+    // produce the same text.
+    toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output) }),
+    execute: async (
+      { query: asked, count },
+      { abortSignal }: { abortSignal?: AbortSignal },
+    ): Promise<SearchAnswer> => {
+      // Two forms, settled here so no site downstream chooses between them. The
+      // request carries the words as asked, on one line; every sentence printed
+      // back to the model carries `shown`, which can no longer open a region of
+      // this tool's own -- a query is the model's to write, and a page that asks
+      // the model to search for a marker would otherwise reach the answer
+      // through it.
+      const query = onOneLine(asked);
+      const shown = keepInside(query);
+      // BRAVE_SEARCH_API_KEY is a typed config field (defaults to "");
+      // read via the injected config Proxy, not process.env directly.
+      const apiKey = env.BRAVE_SEARCH_API_KEY;
+      if (!apiKey) {
+        // Defensive: `buildToolSet` leaves this tool out of the set entirely
+        // when the key is missing, so a turn should never reach here. The
+        // reader's line is the one for a failure nothing described, because a
+        // line of its own would exist for this branch alone -- five translations
+        // of a sentence no reader is on a path to meet.
         throw toolFailed(
           reason(
-            `Searching for "${shown}" failed while reading the answer: ${reasonOf(err)}. The ` +
-              "service answered, so it is the body that did not arrive.",
-            NEXT_MOVE.retryOnce,
+            "Web search is not available on this deployment: it has no search credentials.",
+            NEXT_MOVE.stop,
           ),
-          FAILURE_LINES.upstream,
+          FAILURE_LINES.generic,
         );
       }
 
-      let data: unknown;
+      const { web_search_max_tokens: maxTokens, web_search_timeout_ms: budgetMs } =
+        getAgentConfig();
+
       try {
-        data = JSON.parse(text);
-      } catch {
-        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
+        const url = new URL("https://api.search.brave.com/res/v1/llm/context");
+        url.searchParams.set("q", query);
+        // How many sources to ask for. What comes back is what the search found.
+        url.searchParams.set("maximum_number_of_urls", String(count));
+        // How much text comes back. Both ends of this key's range are the
+        // service's own (it rejects below 1024 and states 32768 as its ceiling),
+        // so a figure that reaches here is one it will take.
+        url.searchParams.set("maximum_number_of_tokens", String(maxTokens));
+        // The same amount again, per source. Left unstated this sits at the
+        // service's own 4096 tokens, while the whole-search figure goes as high
+        // as 32768 -- so a single page that answers the question cannot fill
+        // what the search was given. Stating it lets the service spend the
+        // budget where the text is: measured across two queries and seven of
+        // the counts the schema allows, four of fourteen cells moved, by 32%,
+        // 11%, 4% and -2%. The budget is shared, which is where that last one
+        // comes from.
+        //
+        // The key's own ceiling is 8192, measured: 8193 comes back 422, while
+        // the whole-search key runs to 32768. So the configured figure is held
+        // to the range this one takes.
+        url.searchParams.set(
+          "maximum_number_of_tokens_per_url",
+          String(Math.min(maxTokens, MAX_TOKENS_PER_SOURCE)),
+        );
+
+        // Through the shared transport, which owns the retrying. A search is a
+        // read: its only effect is the response, so a delivery that produced
+        // none produced no effect to repeat — which is what `replaySafe` states.
+        //
+        // The budget goes in as `timeoutMs` rather than as a signal on the init:
+        // the transport replaces the caller's signal, so one left there would be
+        // a no-op and this search would silently get the transport's default
+        // instead of the figure below. That figure bounds ONE DELIVERY, not the
+        // whole search — the transport may deliver this request more than once
+        // and gives each of them the full budget.
+        //
+        // `redirect: "manual"` is not a detail of this endpoint. The Fetch
+        // specification strips only Authorization, Cookie and Proxy-Authorization
+        // across origins, so a custom header travels: following a 301 would carry
+        // the subscription token to whatever host the redirect names. We never
+        // intend to leave this host, so a 3xx is a refusal (see refusalReason).
+        const res = await httpRequest(
+          url.toString(),
+          {
+            headers: {
+              Accept: "application/json",
+              "X-Subscription-Token": apiKey,
+            },
+            redirect: "manual",
+          },
+          {
+            replaySafe: true,
+            timeoutMs: budgetMs,
+            ...(abortSignal ? { signal: abortSignal } : {}),
+          },
+        );
+
+        if (!res.ok) {
+          // A body nobody reads keeps its connection out of the pool: the
+          // transport measured reuse collapsing past undici's buffering
+          // threshold, and says a caller discarding one should cancel it. A run
+          // of refusals — a revoked key, a rate limit — is a run of these.
+          //
+          // Discarding the promise is safe only while nothing awaits between the
+          // transport handing this response back and this line: cancelling a body
+          // that has already errored rejects, and neither server nor worker
+          // installs an `unhandledRejection` handler. Measured against a real server, a socket
+          // broken 0 to 50ms after the headers is always still healthy here, and
+          // an await of 30ms is what makes it reject.
+          void res.body?.cancel();
+          throw toolFailed(refusalReason(shown, res.status), FAILURE_LINES.upstream);
+        }
+
+        // Reading and parsing are guarded apart because they are two different
+        // facts about the same answer. A read that threw means this side never
+        // saw what the service meant to send, so asking again may well get it; a
+        // body that arrived whole and is not the payload is the service answering
+        // something else, and a second delivery returns the same bytes.
+        let text: string;
+        try {
+          text = await readWithin(res, budgetMs);
+        } catch (err: unknown) {
+          // Asked here rather than left to the guard below, which never sees
+          // this: the outer guard passes anything carrying failure detail
+          // straight through, past the question of whether the user stopped.
+          if (isStop(err, abortSignal)) throw stoppedByUser();
+          throw toolFailed(
+            reason(
+              `Searching for "${shown}" failed while reading the answer: ${reasonOf(err)}. The ` +
+                "service answered, so it is the body that did not arrive.",
+              NEXT_MOVE.retryOnce,
+            ),
+            FAILURE_LINES.upstream,
+          );
+        }
+
+        let data: unknown;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
+        }
+
+        // A search that found nothing has one observed shape: `generic` present
+        // and empty. A body without it is the service answering something other
+        // than this endpoint's payload -- a moved schema, or something else in
+        // its place. Calling that "found nothing" would report an absence of
+        // pages when what happened is an answer this side could not read.
+        const found: unknown = (data as { grounding?: { generic?: unknown } } | null)?.grounding?.generic;
+        if (!Array.isArray(found)) {
+          throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
+        }
+        if (found.length === 0) return { query, sources: [], sent: 0 };
+
+        // Reserved before anything is read, so a search running beside this
+        // one takes the block after rather than the same one.
+        let numbered = handedOut;
+        handedOut += found.length;
+        const sources = found
+          .map((item) => {
+            const source = readSource(item, numbered + 1);
+            if (source !== null) numbered += 1;
+            return source;
+          })
+          .filter((source): source is SearchSource => source !== null);
+        // Sources arrived and not one of them could be read: the answer is the
+        // endpoint's payload in name only.
+        if (sources.length === 0) {
+          throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
+        }
+
+        return { query, sources, sent: found.length };
+      } catch (err: unknown) {
+        // Every throw above passes straight through: each already says what
+        // happened, and rewriting one here would replace a specific reason with
+        // this general one.
+        if (toolFailureOf(err) !== undefined) throw err;
+        if (isStop(err, abortSignal)) throw stoppedByUser();
+
+        throw toolFailed(
+          reason(
+            `Searching for "${shown}" failed: the search service could not be reached ` +
+              `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
+              "a different query would fix.",
+            NEXT_MOVE.stop,
+          ),
+          FAILURE_LINES.unreachable,
+        );
       }
+    },
+  });
 
-      // A search that found nothing has one observed shape: `generic` present
-      // and empty. A body without it is the service answering something other
-      // than this endpoint's payload -- a moved schema, or something else in
-      // its place. Calling that "found nothing" would report an absence of
-      // pages when what happened is an answer this side could not read.
-      const found: unknown = (data as { grounding?: { generic?: unknown } } | null)?.grounding?.generic;
-      if (!Array.isArray(found)) {
-        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
-      }
-      if (found.length === 0) return { query, sources: [], sent: 0 };
-
-      // Where this turn's numbering has got to. The history handed to this
-      // call is what the model has been shown, so counting the blocks in it
-      // counts exactly the sources the model already has numbers for.
-      const shownSoFar = sourcesAlreadyShown(messages);
-      let numbered = shownSoFar;
-      const sources = found
-        .map((item) => {
-          const source = readSource(item, numbered + 1);
-          if (source !== null) numbered += 1;
-          return source;
-        })
-        .filter((source): source is SearchSource => source !== null);
-      // Sources arrived and not one of them could be read: the answer is the
-      // endpoint's payload in name only.
-      if (sources.length === 0) {
-        throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
-      }
-
-      return { query, sources, sent: found.length };
-    } catch (err: unknown) {
-      // Every throw above passes straight through: each already says what
-      // happened, and rewriting one here would replace a specific reason with
-      // this general one.
-      if (toolFailureOf(err) !== undefined) throw err;
-      if (isStop(err, abortSignal)) throw stoppedByUser();
-
-      throw toolFailed(
-        reason(
-          `Searching for "${shown}" failed: the search service could not be reached ` +
-            `(${reasonOf(err)}). The service is unreachable from here, which is not something ` +
-            "a different query would fix.",
-          NEXT_MOVE.stop,
-        ),
-        FAILURE_LINES.unreachable,
-      );
-    }
-  },
-});
+  return { web_search: webSearch };
+}

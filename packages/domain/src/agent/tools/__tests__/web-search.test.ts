@@ -64,7 +64,10 @@ vi.stubGlobal("fetch", () => {
   throw new Error("a real fetch escaped: web_search must go through httpRequest");
 });
 
-import { webSearch, renderSearchForModel } from "@domain/agent/tools/web-search.js";
+import { renderSearchForModel, makeSearchTools } from "@domain/agent/tools/web-search.js";
+
+/** 只读形状的断言用它：schema 和描述跟这一轮的编号无关。 */
+const webSearch = makeSearchTools().web_search;
 import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
 
 /**
@@ -83,7 +86,8 @@ async function run(
   args: { query: string; count?: number },
   abortSignal?: AbortSignal,
 ): Promise<string> {
-  const execute = webSearch.execute;
+  // 一轮一份：编号是每轮从头起的，一个文件里的用例各是各的一轮。
+  const execute = makeSearchTools().web_search.execute;
   if (execute === undefined) throw new Error("web_search has no execute");
   // Through the schema first, the way the SDK reaches `execute`: that is where
   // `count` takes its default, so a copy of the default here would be a second
