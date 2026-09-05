@@ -272,3 +272,41 @@ describe('the sound-effect model gets a length picker (#2088 A4)', () => {
     expect(audioParamControls(SONILO).map((c) => c.name)).not.toContain('audio_format');
   });
 });
+
+// The music model's `is_instrumental` says "no vocals, backing track only".
+// It is neither a list of stops nor a range — it is on or off — and the two
+// existing kinds cannot carry it: given no `values` and no bounds, `controlFor`
+// answers null today and the switch never reaches the screen while the value
+// still travels to the vendor (#1960 A4).
+const MUSIC = model({
+  is_instrumental: { description: '', default: false },
+  audio_setting: { description: '', default: null },
+});
+
+describe('a boolean param gets a switch (#1960 A4)', () => {
+  it('reads a boolean default as a toggle, with no numbers to carry', () => {
+    expect(audioParamControls(MUSIC)).toEqual([
+      {
+        name: 'is_instrumental',
+        labelKey: 'canvas.generatePanel.musicInstrumental',
+        kind: 'toggle',
+      },
+    ]);
+  });
+
+  it('leaves out a param this panel has no label for', () => {
+    expect(audioParamControls(MUSIC).map((c) => c.name)).not.toContain('audio_setting');
+  });
+
+  it('still reads a boolean stated as a two-item list as a choice, not a toggle', () => {
+    // `values` wins over the default's type, the same precedence the two
+    // existing kinds already follow. Nothing declares this today; the rule
+    // exists so a model that does gets one answer rather than two.
+    const listed = model({
+      is_instrumental: { description: '', values: [true, false], default: false },
+    });
+    // Neither of those two is a finite number, so the list drives no choice
+    // and this param renders nothing rather than a switch that ignores it.
+    expect(audioParamControls(listed)).toEqual([]);
+  });
+});
