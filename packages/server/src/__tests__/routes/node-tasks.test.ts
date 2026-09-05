@@ -137,8 +137,25 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
       projectId: PROJECT,
       nodeId: NODE,
     });
-    expect(mocks.nodeTaskService.listLive).not.toHaveBeenCalled();
-    expect(mocks.nodeTaskService.countsFor).not.toHaveBeenCalled();
+  });
+
+  it("still answers the rows when the counts could not be published", async () => {
+    mocks.nodeTaskService.harvestAndList.mockResolvedValue({
+      tasks: [settledRow()],
+      counts: ZERO,
+    });
+    mocks.emitNodeTaskCounts.mockRejectedValueOnce(new Error("stream is down"));
+
+    const res = await createApp().request(listUrl, { headers: AUTH });
+
+    // The rows and the counts were both in hand before the broadcast was
+    // attempted, and the broadcast is a courtesy to whoever else has this
+    // canvas open. Throwing the answer away over it leaves this reader with
+    // nothing, and a refresh hits the same outage.
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { tasks: unknown[] } };
+    expect(body.data.tasks).toHaveLength(1);
+    expect(mocks.logger.error).toHaveBeenCalled();
   });
 
   it("lets anyone who can see the project read it", async () => {
@@ -189,6 +206,9 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
       `project-${PROJECT}/canvas-${SPACE}`,
       NODE,
       { running: 0, done: 3, failed: 1, expired: 0 },
+      // No content: reading a list moves no task into `done`, and the
+      // parameter is required so that saying so is not optional.
+      undefined,
     );
   });
 
@@ -205,6 +225,7 @@ describe("GET /canvas/nodes/:nodeId/tasks", () => {
       `project-${PROJECT}/canvas-${SPACE}`,
       NODE,
       ZERO,
+      undefined,
     );
   });
 
@@ -254,6 +275,26 @@ describe("DELETE /canvas/node-tasks/:taskId", () => {
       removed: true,
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
     });
+  });
+
+  it("still answers when the counts could not be published", async () => {
+    mocks.nodeTaskService.dismiss.mockResolvedValue({
+      removed: true,
+      counts: ZERO,
+    });
+    mocks.emitNodeTaskCounts.mockRejectedValueOnce(new Error("stream is down"));
+
+    const res = await createApp().request(url, {
+      method: "DELETE",
+      headers: AUTH,
+    });
+
+    // The row is already soft-deleted by this point. Answering 500 would send
+    // the user back to a button whose second press finds no row at all, and
+    // that path broadcasts too — so the outage would keep the record on
+    // screen with no way to get rid of it.
+    expect(res.status).toBe(200);
+    expect(mocks.logger.error).toHaveBeenCalled();
   });
 
   it("guards on the project the row names, not the one the request names", async () => {
@@ -339,6 +380,7 @@ describe("DELETE /canvas/node-tasks/:taskId", () => {
       `project-${PROJECT}/canvas-${SPACE}`,
       NODE,
       { running: 0, done: 2, failed: 0, expired: 0 },
+      undefined,
     );
   });
 

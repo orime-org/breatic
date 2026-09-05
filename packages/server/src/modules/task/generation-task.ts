@@ -15,9 +15,10 @@
  * as alive.
  */
 
-import { getStreamRedis, getNodeTaskConfig, AppError, logger } from "@breatic/core";
+import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
-import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
+import { nodeTaskService } from "@breatic/domain";
+import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
 
 /**
@@ -69,6 +70,6 @@ export async function openGenerationTasks(opts: {
       );
       throw new AppError(503, t("canvas.task.notStarted"));
     }
-    await emitNodeTaskCounts(getStreamRedis(), docName, nodeId, opened.counts);
+    await publishCountsQuietly(docName, nodeId, opened.counts);
   }
 }

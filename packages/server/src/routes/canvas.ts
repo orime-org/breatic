@@ -31,8 +31,9 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
+import { nodeTaskService } from "@breatic/domain";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { assertSkillUsable } from "@breatic/domain";
 import {
   assertStorageAllowance,
@@ -40,11 +41,7 @@ import {
   projectService,
 } from "@server/modules";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import {
-  ValidationError,
-  getStreamRedis,
-  logger,
-} from "@breatic/core";
+import { ValidationError, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
@@ -405,8 +402,7 @@ canvas.get(
       nodeId,
     });
 
-    await emitNodeTaskCounts(
-      getStreamRedis(),
+    await publishCountsQuietly(
       canvasSpaceDocName(project_id, space_id),
       nodeId,
       counts,
@@ -474,8 +470,7 @@ canvas.delete(
       );
     }
 
-    await emitNodeTaskCounts(
-      getStreamRedis(),
+    await publishCountsQuietly(
       canvasSpaceDocName(projectId, spaceId),
       nodeId,
       result.counts,

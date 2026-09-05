@@ -21,7 +21,8 @@ import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
 import { signUploadTicket, t, canvasSpaceDocName } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
-import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
+import { nodeTaskService } from "@breatic/domain";
+import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -37,7 +38,6 @@ import {
   env,
   logger,
   ValidationError,
-  getStreamRedis,
   getNodeTaskConfig,
 } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -261,10 +261,10 @@ assets.post(
       },
     });
 
-    // The task this upload is, and the deadline that will judge it (#186,
-    // design §4.6.5). Order is fixed: the row, then the alarm, then the
-    // ticket. An upload nobody holds a deadline for has no one to judge it,
-    // so a timer that could not be armed stops the request here.
+    // The task row this upload is, opened before the ticket that starts it
+    // (#186, design §4.6.5). Nothing schedules a deadline: the row carries
+    // its own budget, and whoever opens this node's task list is what judges
+    // it against the clock.
     //
     // An upload with no node behind it — a focus crop — opens nothing: the
     // counts live in a node's corner, and there is no corner.
@@ -282,8 +282,7 @@ assets.post(
         storageKey: key,
       });
 
-      await emitNodeTaskCounts(
-        getStreamRedis(),
+      await publishCountsQuietly(
         canvasSpaceDocName(body.project_id, body.space_id),
         body.node_id,
         opened.counts,

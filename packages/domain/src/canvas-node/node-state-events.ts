@@ -29,15 +29,22 @@ import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
  * @param docName - Canvas doc the node lives in.
  * @param nodeId - The node these counts belong to.
  * @param counts - All four, freshly counted from `node_tasks`.
- * @param result - The five content fields, on the transition into `done`
- *   and on no other.
+ * @param result - The five content fields, on the transition into `done` and
+ *   on no other. Required rather than optional, and it is the one caller-side
+ *   distinction that matters: an event carrying content is the only way that
+ *   content reaches the node, so losing it has to fail whoever sent it and let
+ *   the retry happen. An event carrying only the four numbers is a courtesy to
+ *   other viewers, and failing a request over one throws away an answer
+ *   already in hand. Having to name this parameter is what keeps the second
+ *   kind from being written against this function by accident; the server
+ *   sends those through `publishCountsQuietly`, which logs and carries on.
  */
 export async function emitNodeTaskCounts(
   streamRedis: ReturnType<typeof getStreamRedis>,
   docName: string,
   nodeId: string,
   counts: NodeTaskCounts,
-  result?: NodeTaskResult,
+  result: NodeTaskResult | undefined,
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
     type: "node-task-counts",
