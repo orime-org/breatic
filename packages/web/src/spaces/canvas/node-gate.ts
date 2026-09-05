@@ -47,7 +47,6 @@ export type NodeGateReason = 'locked' | 'handling';
 export interface NodeGateState {
   /** The user froze this node (or its group) — blocks every mutation. */
   locked: boolean;
-  /** A task is writing this node — blocks content-affecting mutations. */
 }
 
 /** A blocked verdict: the reason plus the i18n key for the warning toast. */

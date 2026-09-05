@@ -17,7 +17,7 @@
  */
 
 import { verifyUploadTicket } from "@breatic/shared";
-import { partLayoutRefusal } from "@ingest/part-layout.js";
+import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
   assembleObject,
   hashStoredObject,
@@ -95,11 +95,16 @@ function missingSettings(env: Env): string[] {
 /**
  * Issue the token the next request carries.
  *
- * Its window comes off the ticket rather than from a figure held here: the
- * value lives in `config/storage.yaml`, which also checks it against the other
- * windows, and a copy in this Worker would be a second place for it to drift
- * out of that relation.
- * @param ticket - The verified ticket.
+ * Its window comes off whatever was presented — the ticket on the first one,
+ * the previous token on every re-issue — rather than from a figure held here:
+ * the value lives in `config/storage.yaml`, which also checks it against the
+ * other windows, and a copy in this Worker would be a second place for it to
+ * drift out of that relation.
+ *
+ * Every issue starts the window over. It is sized for the gap between two
+ * parts, and carrying the remaining life forward instead would make that same
+ * figure a ceiling on the whole upload.
+ * @param grant - What the ticket or the presented token signed.
  * @param uploadId - R2's id for the multipart upload.
  * @param secret - The shared secret.
  * @returns The signed token.
@@ -120,6 +125,7 @@ async function issueToken(
       storageKey: grant.storageKey,
       uploadId,
       contentType: grant.contentType,
+      sessionTokenTtlSeconds: grant.sessionTokenTtlSeconds,
       expiresAt: Date.now() + grant.sessionTokenTtlSeconds * 1000,
       partSize: grant.partSize,
       totalParts: grant.totalParts,
@@ -246,25 +252,8 @@ async function uploadPart(
   return Response.json({
     partNumber,
     etag: written.etag,
-    token: await issueToken(
-      { ...session, sessionTokenTtlSeconds: tokenTtlSecondsOf(session) },
-      uploadId,
-      env.INGEST_SHARED_SECRET,
-    ),
+    token: await issueToken(session, uploadId, env.INGEST_SHARED_SECRET),
   });
-}
-
-/**
- * How long the next token should last, taken from the one presented.
- *
- * The window was decided when the ticket was signed and travels forward with
- * every re-issue, so a long upload never needs a longer-lived credential and
- * this Worker never holds a second copy of the figure.
- * @param session - The token this request presented.
- * @returns The window, in seconds.
- */
-function tokenTtlSecondsOf(session: SessionTokenPayload): number {
-  return Math.max(1, Math.ceil((session.expiresAt - Date.now()) / 1000));
 }
 
 /** What the browser hands back to finish an upload. */
@@ -276,7 +265,6 @@ interface FinishBody {
 interface ClaimAnswer {
   granted: boolean;
   reason?: "no_grant" | "in_flight" | "already_registered";
-  result?: unknown;
 }
 
 /**
@@ -334,17 +322,8 @@ async function completeUpload(
 
   const body = (await request.json<FinishBody>().catch(() => null)) ?? {};
   const parts = body.parts ?? [];
-  for (const part of parts) {
-    // A part's own size is not in the list, so the length the layout would
-    // judge is the one it signed for that position.
-    const isFinal = part.partNumber === session.totalParts;
-    const refusal = partLayoutRefusal(
-      part.partNumber,
-      isFinal ? 1 : session.partSize,
-      session,
-    );
-    if (refusal !== null) return new Response(refusal, { status: 400 });
-  }
+  const refusal = partListRefusal(parts, session);
+  if (refusal !== null) return new Response(refusal, { status: 400 });
   if (parts.length !== session.totalParts) {
     return new Response(
       `Cannot finish with ${parts.length} of ${session.totalParts} parts`,
@@ -357,17 +336,17 @@ async function completeUpload(
     return new Response("Could not reach the server", { status: 502 });
   }
   if (!claim.granted) {
-    if (claim.reason === "already_registered") {
-      // The bytes this would write are the ones already described, so writing
-      // them again is the overwrite the permission exists to stop. What the
-      // ledger holds is what the browser gets.
-      return Response.json({ data: claim.result ?? {} });
+    if (claim.reason === "no_grant") {
+      return new Response("No grant for this key", { status: 403 });
     }
+    // Some other multipart upload holds this key — which is what a replayed
+    // ticket looks like, since it had to open one of its own. Completing it
+    // would write over what the ledger already describes.
     return new Response(
-      claim.reason === "no_grant"
-        ? "No grant for this key"
+      claim.reason === "already_registered"
+        ? "This key is already registered"
         : "Another delivery is finishing this upload",
-      { status: claim.reason === "no_grant" ? 403 : 409 },
+      { status: 409 },
     );
   }
 
@@ -412,7 +391,11 @@ async function completeUpload(
     // finish, and retrying it is the browser's to do (design §6.6).
     return new Response("The server did not take the report", { status: 502 });
   }
-  return Response.json({ data: reported });
+  // Flat, the way opening an upload and writing a part answer. What the
+  // server registered is already the payload of its own envelope; wrapping it
+  // again would leave the browser reading `fileUrl` off a field that holds
+  // another envelope.
+  return Response.json(reported);
 }
 
 /**

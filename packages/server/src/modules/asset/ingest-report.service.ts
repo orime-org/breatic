@@ -306,11 +306,10 @@ export async function applyIngestReport(
       ? report.contentType
       : "application/octet-stream";
 
-  // A retry. The Durable Object keeps its alarm until we answer, so the most
-  // likely reason it is asking again is that our answer — or the event that
-  // went with it — never arrived. Publishing again is the point: collab
-  // applies these last-write-wins, so a duplicate costs nothing while a lost
-  // one leaves the node spinning.
+  // A retry: the browser did not hear the answer to its finish request, so it
+  // sent the same upload again. Publishing again is the point — collab applies
+  // these last-write-wins, so a duplicate costs nothing while a lost one
+  // leaves the node spinning.
   if (grant.consumedAt !== null) {
     const existing =
       report.outcome === "completed"

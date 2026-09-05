@@ -8,10 +8,11 @@
  * part, then ask to complete. The Worker hands back a fresh session token with
  * every part, so a leaked one can only write the next part of this one upload.
  *
- * Every step is replay-safe by construction rather than by hope: the Durable
- * Object holding this upload answers a repeated open with the upload already
- * open, records a part under its own number, and completes once. That is what
- * lets the shared transport deliver any of them again.
+ * The Worker keeps nothing between requests, so what one upload has to
+ * remember travels with it: the upload id and every part's receipt are held
+ * here and handed back to finish. A repeated part is written under its own
+ * number, and a repeated finish is refused by R2 rather than written twice —
+ * which is what lets the shared transport deliver any of these again.
  */
 
 import { httpRequest } from '@breatic/shared';
@@ -143,9 +144,9 @@ export async function sendFileToIngest(
  * Send one request to the Worker and read what it answered.
  *
  * The three endpoints differ only in where they point, what they carry and how
- * long one delivery may take; everything else — replaying is safe because the
- * Durable Object answers a repeat with what it already decided, and a non-2xx
- * is the Worker's refusal rather than weather — is the same for all of them.
+ * long one delivery may take; everything else — replaying is safe, and a
+ * non-2xx is the Worker's refusal rather than weather — is the same for all
+ * of them. All three answer flat, so what comes back is read directly.
  * @param url - The endpoint.
  * @param init - Method, headers and body.
  * @param timeoutMs - One delivery's deadline; the transport's default when absent.
@@ -230,8 +231,9 @@ async function completeUpload(
   // No deadline of its own. This request carries no bytes, and how long the
   // Worker spends reading the assembled object back to hash it happens inside
   // Cloudflare's network, at a rate the browser's upload figures say nothing
-  // about. A deadline reached here loses nothing: the request is replayed, and
-  // the alarm reaches the same outcome on its own.
+  // about. A deadline reached here costs only this delivery: the retry brings
+  // the same upload id, which is granted the key again and answered out of
+  // the ledger.
   return askWorker<IngestOutcome>(
     `${ticket.uploadUrl}/uploads/${uploadId}/complete`,
     {

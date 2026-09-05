@@ -257,8 +257,10 @@ describe("an upload whose parts all arrived", () => {
 
     const response = await complete(uploadId, token, parts);
 
+    // Flat, like the other two endpoints: the browser reads `fileUrl` off
+    // the answer itself rather than off an envelope inside it.
     expect(await response.json()).toMatchObject({
-      data: { fileUrl: "https://cdn.test.example/stored.mp4" },
+      fileUrl: "https://cdn.test.example/stored.mp4",
     });
   });
 });
@@ -279,25 +281,18 @@ describe("the exclusive permission to finish", () => {
     expect(response.status).toBe(409);
   });
 
-  it("hands back what is already in the ledger when the key is registered", async () => {
+  it("refuses when another upload already registered this key", async () => {
     const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
-    expectClaim({
-      data: {
-        granted: false,
-        reason: "already_registered",
-        result: { fileUrl: "https://cdn.test.example/earlier.mp4" },
-      },
-    });
+    expectClaim({ data: { granted: false, reason: "already_registered" } });
 
     const response = await complete(uploadId, token, parts);
 
-    // The bytes it would have written are the ones already described, so
-    // writing them again is the overwrite this permission exists to stop.
+    // Only a replay gets this answer: it had to open its own multipart
+    // upload, and completing that one would write over the object the ledger
+    // describes. This upload's own retry is granted instead, and finishes
+    // through the report our server answers out of the ledger.
     expect(await env.BUCKET.head(storageKey)).toBeNull();
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      data: { fileUrl: "https://cdn.test.example/earlier.mp4" },
-    });
+    expect(response.status).toBe(409);
   });
 
   it("refuses when there is no grant for this key", async () => {
@@ -344,6 +339,20 @@ describe("an upload missing parts", () => {
     const response = await complete(uploadId, token, forged);
 
     expect(response.status).toBe(400);
+  });
+
+  it("refuses a list that names one part twice", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    // Two entries, two parts expected — so counting alone says this list is
+    // complete while part 2 was never sent at all.
+    const duplicated = [parts[0]!, parts[0]!];
+
+    // No interceptors: reaching either server URL would throw, which is the
+    // assertion that this is refused before anything is asked or written.
+    const response = await complete(uploadId, token, duplicated);
+
+    expect(response.status).toBe(400);
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 });
 

@@ -203,9 +203,18 @@ export type FinalizeClaim =
  * delivery brings the id the browser already holds, which is why three
  * deliveries of one report all get through.
  *
- * One atomic CAS decides it: the row is updated only while the grant is live
- * and the key is either unclaimed or claimed by this very upload. Concurrent
- * askers see exactly one winner, the same way {@link consumeGrant} does.
+ * Registration does not end an upload's own claim on its key. The browser may
+ * not have heard the answer, and its retry brings the same uploadId — for
+ * which R2 refuses a second complete rather than writing anything, and the
+ * repeated report is answered out of the ledger. Letting that one through is
+ * how the retry finishes with the URL that was actually registered instead of
+ * one this table would have to guess; dedup means the registered URL can name
+ * an object under an entirely different key.
+ *
+ * One atomic CAS decides it: the row is updated only while the grant is not
+ * voided and the key is either unclaimed or claimed by this very upload.
+ * Concurrent askers see exactly one winner, the same way {@link consumeGrant}
+ * does.
  * @param params - The key and the upload asking to finish on it.
  * @param params.storageKey - The key being finished.
  * @param params.uploadId - The multipart upload the caller holds.
@@ -221,7 +230,6 @@ export async function claimFinalize(params: {
     .where(
       and(
         eq(uploadGrants.storageKey, params.storageKey),
-        isNull(uploadGrants.consumedAt),
         isNull(uploadGrants.voidedAt),
         or(
           isNull(uploadGrants.finalizingUploadId),
@@ -232,21 +240,13 @@ export async function claimFinalize(params: {
     .returning({ id: uploadGrants.id });
   if (won.length === 1) return { granted: true };
 
-  // Losing the CAS says only "not right now". Which of the four reasons it was
+  // Losing the CAS says only "not you". Which of the three reasons it was
   // decides what the Worker tells the browser, so the row is read back.
-  const rows = await db
-    .select({
-      consumedAt: uploadGrants.consumedAt,
-      voidedAt: uploadGrants.voidedAt,
-    })
-    .from(uploadGrants)
-    .where(eq(uploadGrants.storageKey, params.storageKey))
-    .limit(1);
-  const row = rows[0];
-  if (row === undefined || row.voidedAt !== null) {
+  const grant = await findGrantByKey(params.storageKey);
+  if (grant === null || grant.voidedAt !== null) {
     return { granted: false, reason: "no_grant" };
   }
-  if (row.consumedAt !== null) {
+  if (grant.consumedAt !== null) {
     return { granted: false, reason: "already_registered" };
   }
   return { granted: false, reason: "in_flight" };

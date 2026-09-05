@@ -19,7 +19,10 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { describe, it, expect } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
-import { signSessionToken } from "@ingest/session-token.js";
+import {
+  signSessionToken,
+  verifySessionToken,
+} from "@ingest/session-token.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 
@@ -107,6 +110,7 @@ describe("a part the Worker will not take", () => {
         storageKey,
         uploadId,
         contentType: "video/mp4",
+        sessionTokenTtlSeconds: 900,
         expiresAt: Date.now() - 1,
         partSize: PART_SIZE,
         totalParts: 2,
@@ -184,5 +188,34 @@ describe("a part the Worker takes", () => {
 
     expect(next.token).toBeTruthy();
     expect((await sendPart(uploadId, 2, bytes(1024), next.token)).status).toBe(200);
+  });
+
+  // What "re-issued with every part" is worth: each one starts the window
+  // again. Carrying the remaining life forward instead leaves the deadline
+  // where the ticket first put it, and then a window sized for the gap
+  // between two parts is also the ceiling on the whole upload — which is
+  // the opposite of why it is re-issued at all.
+  it("starts the window again on every part", async () => {
+    const ttlSeconds = 10;
+    const { uploadId, token } = await openUpload({
+      sessionTokenTtlSeconds: ttlSeconds,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+
+    const sentAt = Date.now();
+    const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
+    const next = await response.json<{ token: string }>();
+
+    const payload = await verifySessionToken(
+      next.token,
+      env.INGEST_SHARED_SECRET,
+      Date.now(),
+    );
+    // A second short of the full window, to leave room for the time this
+    // request itself took.
+    expect(payload?.expiresAt).toBeGreaterThanOrEqual(
+      sentAt + (ttlSeconds - 1) * 1_000,
+    );
   });
 });

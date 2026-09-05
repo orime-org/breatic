@@ -302,7 +302,7 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     });
   });
 
-  it("tells a caller the key is already registered once the grant is consumed", async () => {
+  it("still lets its own upload through after the key is registered", async () => {
     const userId = await insertUser();
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
@@ -310,9 +310,28 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     await claimFinalize({ storageKey, uploadId: "upload-a" });
     await consumeGrant({ storageKey, userId });
 
-    // Even the upload that holds the permission gets this answer: the bytes
-    // it wrote are in the ledger, and writing them again is the overwrite.
+    // Registration is not what ends this upload's claim on the key — the
+    // browser may not have heard the answer, and its retry brings the same
+    // uploadId. R2 refuses a second complete on that id rather than writing
+    // anything, and the report it then repeats is answered from the ledger,
+    // so this delivery finishes with the URL that was actually registered
+    // instead of one guessed from the key.
     expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: true,
+    });
+  });
+
+  it("refuses a different upload once the key is registered", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-a" });
+    await consumeGrant({ storageKey, userId });
+
+    // A replay: it had to open its own multipart upload, and completing that
+    // one WOULD overwrite the object the ledger describes.
+    expect(await claimFinalize({ storageKey, uploadId: "upload-b" })).toEqual({
       granted: false,
       reason: "already_registered",
     });

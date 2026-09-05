@@ -9,9 +9,11 @@
  * quota, while a stolen session token can only add bytes to the one upload it
  * names, which is already going to be replaced on the next part anyway.
  *
- * It is re-issued with every part, so its lifetime only has to cover the gap
- * between two parts rather than a whole upload — which is why a slow 2 GiB
- * upload never needs a long-lived credential.
+ * It is re-issued with every part, and every re-issue starts its window over,
+ * so the window only has to cover the gap between two parts rather than the
+ * whole upload — which is why a slow 2 GiB upload never needs a long-lived
+ * credential. Carrying the remaining life forward instead would make the
+ * window a ceiling on the upload as well.
  *
  * It carries the signed part layout for the same reason it carries the upload
  * id: the Worker is in front of the bytes and has to judge a part before it
@@ -33,6 +35,16 @@ export interface SessionTokenPayload extends PartLayout {
    * cannot alter.
    */
   contentType: string;
+  /**
+   * How long a token lasts, in seconds, as the ticket signed it.
+   *
+   * It rides here so that the next re-issue can start a fresh window without
+   * this Worker holding a copy of the figure — the value lives in
+   * `config/storage.yaml`, which checks it against the other windows, and a
+   * second copy here would be a second place for it to drift out of that
+   * relation.
+   */
+  sessionTokenTtlSeconds: number;
   /** Epoch ms after which it is refused. */
   expiresAt: number;
 }

@@ -51,3 +51,37 @@ export function partLayoutRefusal(
     : sizeBytes === layout.partSize;
   return fits ? null : "Part length does not match the signed layout";
 }
+
+/**
+ * Why the list handed back to finish an upload is not a list of this upload's
+ * parts.
+ *
+ * Lengths are not in it and cannot be: the bytes were judged when they were
+ * written, and this list is a record of what R2 accepted. What is left to
+ * judge is which positions it names — every one inside the signed layout, and
+ * each named once. Without the second check, one part sent twice counts as
+ * two and a list that is missing a part passes for complete.
+ *
+ * How MANY it names is judged by the caller, because a short list is not a
+ * malformed one: the upload is still open and sending what is missing
+ * finishes it.
+ * @param parts - The list the browser handed back.
+ * @param layout - What the ticket signed.
+ * @returns The refusal, or null when every entry fits.
+ */
+export function partListRefusal(
+  parts: readonly { partNumber: number }[],
+  layout: PartLayout,
+): string | null {
+  const seen = new Set<number>();
+  for (const part of parts) {
+    if (part.partNumber < 1 || part.partNumber > layout.totalParts) {
+      return "Part number outside the signed layout";
+    }
+    if (seen.has(part.partNumber)) {
+      return "Part number listed more than once";
+    }
+    seen.add(part.partNumber);
+  }
+  return null;
+}
