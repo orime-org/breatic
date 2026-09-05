@@ -88,7 +88,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-2",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "success",
           output: "the page said something",
@@ -202,7 +202,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-3",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "error",
           failure: {
@@ -236,7 +236,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-9",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "error",
         },
@@ -259,7 +259,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-3",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.com" },
           status: "error",
           failure: {
@@ -380,7 +380,7 @@ describe("history on its way to the model", () => {
         {
           type: "tool",
           toolCallId: "tc-7",
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://en.wikipedia.org/wiki/Bau" },
           status: "error",
           failure: {

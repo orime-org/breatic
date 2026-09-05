@@ -162,7 +162,7 @@ function toolTurn(turnIndex: number, size: number): MessageData[] {
         {
           type: "tool",
           toolCallId: `call-${turnIndex}`,
-          toolName: "web_fetch",
+          toolName: "web_search",
           input: { url: "https://example.test/page" },
           status: "success",
           output: "a".repeat(size),

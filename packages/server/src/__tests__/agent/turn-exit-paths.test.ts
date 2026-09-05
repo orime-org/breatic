@@ -229,7 +229,7 @@ describe("what a plain chat turn hands the model", () => {
   // `streamText`. The defect being fixed was that `chat()` passed an empty
   // tool set, and where that shows is at the far end: a tool set that never
   // made it that far is a tool the model cannot call.
-  it("gives it the six baseline tools, and only those", async () => {
+  it("gives it the five baseline tools, and only those", async () => {
     await runTurn(saidAndSpent("hi", 100));
 
     const called = thisCase.model?.doStreamCalls[0];
@@ -239,7 +239,6 @@ describe("what a plain chat turn hands the model", () => {
       "ask_user_question",
       "propose_canvas_action",
       "show_search_results",
-      "web_fetch",
       "web_search",
     ]);
   });

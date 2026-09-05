@@ -11,7 +11,6 @@ import { askUser } from "@domain/agent/tools/ask-user.js";
 import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
-import { webFetch } from "@domain/agent/tools/web-fetch.js";
 import { webSearch } from "@domain/agent/tools/web-search.js";
 
 /**
@@ -25,7 +24,6 @@ import { webSearch } from "@domain/agent/tools/web-search.js";
  */
 export const TOOL_MAP: Readonly<Record<string, Tool>> = {
   web_search: webSearch,
-  web_fetch: webFetch,
   ask_user_question: askUser,
   // Interaction tools (spec/07 §10.18.4 v13). LLM calls these to send
   // structured payloads the frontend renders as UI components, not for
@@ -44,14 +42,12 @@ export const TOOL_MAP: Readonly<Record<string, Tool>> = {
  * model could not search, so it made things up instead.
  *
  * It happens to equal the whole of `TOOL_MAP` right now. That is arithmetic,
- * not intent: PR-2 deleted six entries and six remain. The moment a tool
- * arrives that is not for everyone, this list stops matching the map, and it
- * is this list — not the map — that answers "what does a caller get by
- * default".
+ * not intent. The moment a tool arrives that is not for everyone, this list
+ * stops matching the map, and it is this list — not the map — that answers
+ * "what does a caller get by default".
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
-  "web_fetch",
   "ask_user_question",
   "ask_user_choice",
   "propose_canvas_action",
@@ -138,7 +134,6 @@ export {
   askUserChoice,
   proposeCanvasAction,
   showSearchResults,
-  webFetch,
   webSearch,
 };
 

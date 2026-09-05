@@ -198,7 +198,6 @@
       "failure": {
         "upstream": "実行エラー",
         "unreachable": "実行エラー",
-        "blocked": "実行エラー",
         "generic": "実行エラー"
       }
     },

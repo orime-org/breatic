@@ -500,7 +500,7 @@ describe("the memory chain still sees the same messages", () => {
           {
             type: "tool",
             toolCallId: `call-${i}`,
-            toolName: "web_fetch",
+            toolName: "web_search",
             input: { url: "https://example.com" },
             status: "success",
             output: "page text",

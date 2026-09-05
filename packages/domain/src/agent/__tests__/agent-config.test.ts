@@ -103,7 +103,6 @@ describe("buildAgentConfig", () => {
       "ask_user_question",
       "propose_canvas_action",
       "show_search_results",
-      "web_fetch",
       "web_search",
     ]);
   });
@@ -165,7 +164,7 @@ describe("buildAgentConfig", () => {
     // means the model asks a question, nothing renders it, and the raw
     // sentinel string comes back as the answer.
     const config = buildAgentConfig({ skillName: "researchy" });
-    expect(Object.keys(config.tools).sort()).toEqual(["web_fetch", "web_search"]);
+    expect(Object.keys(config.tools).sort()).toEqual(["web_search"]);
   });
 
   it("keeps them away even when the skill itself asks for one", () => {
