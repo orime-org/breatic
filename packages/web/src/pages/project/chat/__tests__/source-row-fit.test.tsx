@@ -9,14 +9,45 @@
  * report -- which is the only way this row's arithmetic is exercised at all.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { act, cleanup, render, screen } from '@testing-library/react';
 
 import { SourceRow } from '@web/pages/project/chat/SourceRow';
 import type { ChatSource } from '@web/pages/project/chat/types';
 
 afterEach(() => {
   cleanup();
+});
+
+/**
+ * The callbacks of every observer the row has set watching something.
+ *
+ * The global stub in the setup file does nothing, so a row observed through
+ * it can never hear that it changed size. Calling these is what standing for
+ * a column drag looks like here.
+ */
+const observed: (() => void)[] = [];
+
+beforeEach(() => {
+  observed.length = 0;
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      private readonly notify: () => void;
+
+      constructor(callback: () => void) {
+        this.notify = callback;
+      }
+
+      observe(): void {
+        observed.push(this.notify);
+      }
+
+      unobserve(): void {}
+
+      disconnect(): void {}
+    },
+  );
 });
 
 /**
@@ -105,16 +136,18 @@ describe('a row of source chips', () => {
   });
 
   it('takes back the ones it hid when the row grows', () => {
-    // A pass measures only what it draws, so the widths of the hidden ones
-    // survive from the pass that did draw them. Without that the row could
-    // only ever count what is on screen, and hiding one would hide it for
-    // good however wide the column became.
+    // Dragging the agent column re-sizes this row without re-rendering it, so
+    // the observer is the only thing that tells it, and the widths of the ones
+    // it had hidden survive from the pass that did draw them. Without either,
+    // hiding a chip would hide it for good however wide the column became.
     withLayout({ row: 296, widths: [104, 93, 68, 71, 66] });
-    const { rerender } = render(<SourceRow sources={[1, 2, 3, 4, 5].map(source)} />);
+    render(<SourceRow sources={[1, 2, 3, 4, 5].map(source)} />);
     expect(screen.getAllByTestId('source-chip')).toHaveLength(2);
 
     withLayout({ row: 616, widths: [104, 93, 68, 71, 66] });
-    rerender(<SourceRow sources={[1, 2, 3, 4, 5].map(source)} />);
+    act(() => {
+      observed.forEach((notify) => notify());
+    });
 
     expect(screen.getAllByTestId('source-chip')).toHaveLength(5);
     expect(screen.queryByTestId('source-row-more')).toBeNull();

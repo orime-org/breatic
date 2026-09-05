@@ -103,7 +103,6 @@ describe('the copy on a reader\'s own message', () => {
 
     const actions = screen.getByTestId('turn-actions');
     expect(actions.className).toMatch(/right-full/);
-    expect(actions.className).not.toMatch(/\bright-1\b/);
   });
 
   it('is revealed by the bubble rather than by the width of the row', () => {

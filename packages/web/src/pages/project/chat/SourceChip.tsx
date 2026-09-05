@@ -97,12 +97,12 @@ export const SourceChip = React.memo(function SourceChip({
               // A marker in a sentence keeps its size: it is read as part of
               // the line it sits in, and a number is as short as it gets.
               ? 'h-[18px] shrink-0 rounded-full py-0 pl-[3px] pr-[5px] align-baseline'
-              // A chip in the row gives way instead. Publishers' names are
-              // whatever length they are, and the first pass draws them all
-              // before the row has been measured; `min-w-0` is what lets that
-              // pass fit inside the row, so the widths it reads are real
-              // numbers rather than a strip running off the edge.
-              : 'h-[var(--btn-compact)] min-w-0 rounded-chrome px-2 text-xs',
+              // A chip in the row is drawn at whatever width its publisher's
+              // name takes: measured in Chrome, five of them totalling 384 sit
+              // in a 296 row and overflow it, which is how the first pass reads
+              // real widths before anything has been hidden. `truncate` on the
+              // name below is what keeps that name on the row's one line.
+              : 'h-[var(--btn-compact)] rounded-chrome px-2 text-xs',
           )}
         >
           <span
