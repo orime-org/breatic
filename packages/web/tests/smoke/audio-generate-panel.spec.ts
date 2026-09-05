@@ -624,19 +624,25 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
     { timeout: 10_000 },
   );
 
-  // The switch is the model's own boolean param, and it prints its name on the
-  // pill's face while it is on — a switch has no value to print.
-  await page.getByTestId('generate-audio-params-trigger').click();
+  // The pill carries the switch's NAME whichever way it is set: this model
+  // declares one param and nothing else, so a pill printing a value only while
+  // the switch was on would be an arrow with no words beside it.
+  const pill = page.getByTestId('generate-audio-params-trigger');
+  await expect(pill).toContainText('Instrumental only', { timeout: 10_000 });
+
+  await pill.click();
   const instrumental = page.getByTestId('generate-audio-is_instrumental-toggle');
   await expect(instrumental).toBeVisible({ timeout: 10_000 });
+  await expect(instrumental).toHaveAttribute('aria-checked', 'false');
   await instrumental.click();
-  await expect(page.getByTestId('generate-audio-params-trigger')).toContainText(
-    'Instrumental only',
-    { timeout: 10_000 },
-  );
-  // Off again, so the case leaves the node the way it found it and the pill
-  // says nothing rather than saying "false".
+  await expect(instrumental).toHaveAttribute('aria-checked', 'true', {
+    timeout: 10_000,
+  });
+  // Off again, so the case leaves the node the way it found it.
   await instrumental.click();
+  await expect(instrumental).toHaveAttribute('aria-checked', 'false', {
+    timeout: 10_000,
+  });
   await page.keyboard.press('Escape');
 });
 
