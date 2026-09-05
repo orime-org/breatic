@@ -31,13 +31,14 @@ import {
 
 describe("what a finished turn writes down", () => {
   it("carries a turn's ending back out the way it came in", () => {
-    // The three marks make the round trip on their own: a reload reads them
+    // The four marks make the round trip on their own: a reload reads them
     // out of storage and the panel draws from what `toUiParts` hands back,
     // so a mark that survives storage and not the way back is invisible.
     for (const [stored, wire] of [
       ["interrupted", "data-interrupted"],
       ["failed", "data-failed"],
       ["truncated", "data-truncated"],
+      ["blocked", "data-blocked"],
     ] as const) {
       expect(toUiParts([{ type: stored }])).toEqual([{ type: wire, data: {} }]);
       expect(toStoredParts([{ type: wire, data: {} }] as never)).toEqual([{ type: stored }]);

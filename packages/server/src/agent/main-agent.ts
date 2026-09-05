@@ -431,6 +431,16 @@ export class MainAgent {
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
+          // Said here for the same reason: the panel draws a neutral line and
+          // no retry for a turn waiting on an answer, and it cannot work out
+          // that this is what happened. Which tools block is a list in
+          // `@breatic/domain`, and the web build may not import that package
+          // -- a copy of the list on the other side is a second thing that
+          // has to stay true as tools are added. The SDK turns the frame into
+          // a part of the reply, so storage and a reload get it too.
+          if (askedTheUser) {
+            writer.write({ type: "data-blocked", data: {} });
+          }
         },
       });
 

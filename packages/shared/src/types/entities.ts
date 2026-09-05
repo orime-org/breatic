@@ -182,7 +182,17 @@ export type MessagePart =
    *
    * A part for the same reason the other two are.
    */
-  | { type: "truncated" };
+  | { type: "truncated" }
+  /**
+   * The model asked the reader something and stopped to wait for the answer.
+   *
+   * Not a way a turn goes wrong -- it is a turn doing what it was asked to,
+   * and a reader offered a retry would be offered a way out of nothing. It is
+   * a part rather than something read back off the tool names because the
+   * list of tools that block lives in `@breatic/domain`, which the panel may
+   * not import; a second copy of that list is a second thing to keep true.
+   */
+  | { type: "blocked" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
