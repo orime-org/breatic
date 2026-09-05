@@ -13,6 +13,7 @@ import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
+import { useCanvasStore } from '@web/stores/canvas';
 import { NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 
@@ -90,6 +91,37 @@ describe('FLOW_NODE_TYPES', () => {
     expect(
       screen.getByTestId('node-content-view-tasks'),
     ).toBeInTheDocument();
+  });
+
+  // `deriveStatus` puts the error box up for `expired` as readily as for
+  // `failed`, so the box's way in has to lead somewhere for both. The list
+  // shows one state at a time; sending this reader to `failed` shows an empty
+  // one.
+  it('opens the expired list when that is the node’s only failure', () => {
+    renderImage({
+      kind: 'image',
+      status: 'error',
+      name: 'N',
+      taskCounts: { running: 0, done: 0, failed: 0, expired: 1 },
+    });
+
+    fireEvent.click(screen.getByTestId('node-content-view-tasks'));
+
+    expect(useCanvasStore.getState().taskPanelStatus).toBe('expired');
+  });
+
+  // Text this browser could not extract writes `errorMessage` and opens no
+  // task at all (§3.7.4), so the box has no list to lead to.
+  it('offers no way in when the node carries no failed task', () => {
+    renderImage({
+      kind: 'image',
+      status: 'error',
+      name: 'N',
+      errorMessage: 'could not read this file',
+      taskCounts: { running: 0, done: 0, failed: 0, expired: 0 },
+    });
+
+    expect(screen.queryByTestId('node-content-view-tasks')).toBeNull();
   });
 
   // xyflow starts a node drag one pixel into a press, so a count without

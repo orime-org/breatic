@@ -3796,6 +3796,7 @@ function CanvasSpaceInner({
           {/* Node task list: the fourth panel in that same host + lifecycle,
               anchored to the node's right beside its counts column. */}
           <NodeTaskPanelContainer
+            nodes={nodes}
             projectId={projectId}
             spaceId={spaceId}
             onReplace={replaceNodeFromTask}

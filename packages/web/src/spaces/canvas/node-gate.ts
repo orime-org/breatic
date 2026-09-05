@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The single source of truth for canvas node-state gating: given a node's
- * lock and the operation the user is attempting, decide whether it is allowed
- * and — when blocked — which warning toast explains why.
+ * The single source of truth for the canvas lock gate: given a node's lock,
+ * decide whether a mutation is allowed and — when blocked — which warning
+ * toast explains why.
  *
  * `locked` is the node's OWN lock (`data.locked`) and freezes EVERY mutation
  * of THIS node. A GROUP lock does NOT flow in here: it freezes only member

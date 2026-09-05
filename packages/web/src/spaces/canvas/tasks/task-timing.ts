@@ -7,8 +7,8 @@
  * Both are derived from what the server decided — the instant the task opened
  * and the allowance it was given — so a reader's clock only changes how
  * accurate the number looks, never what anything is judged to be. Whether a
- * task ran out of time is the timer's call (§4.6); a row may read zero left
- * for a while before the server says so.
+ * task ran out of time is settled server-side when somebody reads this node's
+ * task list (§4.6); a row may read zero left for a while before that happens.
  */
 
 const SECOND_MS = 1000;
@@ -27,8 +27,8 @@ export interface DurationParts {
  * Break a duration into hours, minutes and whole seconds.
  *
  * Anything at or below zero reads as all zeros: a row can outlive its
- * allowance before the timer's knock arrives, and counting backwards there
- * would say something nobody decided.
+ * allowance before anyone opens the list that harvests it, and counting
+ * backwards there would say something nobody decided.
  * @param ms - The duration in milliseconds.
  * @returns The three units, each floored.
  */

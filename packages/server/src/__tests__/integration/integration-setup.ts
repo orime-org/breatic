@@ -68,7 +68,6 @@ process.env.ALLOWED_ORIGINS = "http://localhost:8000";
 // fixed test value, and tests that verify a ticket read it back from here.
 process.env.INGEST_BASE_URL = "https://ingest.test.invalid";
 process.env.INGEST_SHARED_SECRET = "integration-suite-ingest-secret";
-process.env.PUBLIC_API_BASE_URL = "https://api.test.invalid";
 
 // Each test file hands back the connections it opened.
 //

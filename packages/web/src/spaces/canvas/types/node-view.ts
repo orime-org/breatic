@@ -258,8 +258,9 @@ export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
  * reaches the task table: text extracted in the browser (§3.7.4). It is the
  * only writer left for that field.
  *
- * There is no clock: whether a task has run past its deadline is judged by
- * the timer that holds it (§4.6), never by whoever is looking at the node.
+ * There is no clock: whether a task has run past its deadline is settled
+ * server-side when somebody reads the node's task list (§4.6), never by
+ * whoever is looking at the node.
  * @param data - The wire data fields carrying `taskCounts`, `errorMessage` and `content`.
  * @returns The derived display status.
  */

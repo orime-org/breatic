@@ -214,26 +214,17 @@ assets.post(
     // the secret the Worker would reject every ticket we sign; without the
     // base URL the browser has nowhere to send its parts. Neither is anything
     // the user did, so this is our own misconfiguration and reads as a 500.
-    // A third joins them once a node is involved: the timer that will judge
-    // this upload dead runs at Cloudflare's edge and knocks back here, so it
-    // needs the address the internet knows us by. Unset, it would be handed a
-    // path with no host and the knock would land nowhere.
-    if (
-      !env.INGEST_SHARED_SECRET ||
-      !env.INGEST_BASE_URL ||
-      !env.PUBLIC_API_BASE_URL
-    ) {
+    if (!env.INGEST_SHARED_SECRET || !env.INGEST_BASE_URL) {
       logger.error(
         {
           hasSecret: Boolean(env.INGEST_SHARED_SECRET),
           hasBaseUrl: Boolean(env.INGEST_BASE_URL),
-          hasPublicApiUrl: Boolean(env.PUBLIC_API_BASE_URL),
         },
         "upload_ticket_ingest_unconfigured",
       );
       throw new Error(
-        "ingest Worker is not configured: INGEST_BASE_URL, INGEST_SHARED_SECRET " +
-          "and PUBLIC_API_BASE_URL are all required",
+        "ingest Worker is not configured: INGEST_BASE_URL and " +
+          "INGEST_SHARED_SECRET are both required",
       );
     }
 

@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NodeToolbar, Position } from '@xyflow/react';
 import * as React from 'react';
 
+import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { canvasApi, type NodeTaskEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -25,8 +26,17 @@ import {
 } from '@web/spaces/canvas/upload-retry-files';
 import { useCanvasStore } from '@web/stores/canvas';
 
+/** What this panel reads off its host: that it exists, and its four counts. */
+type TaskHostNode = Pick<CanvasNodeView, 'id' | 'data'>;
+
 /** What {@link NodeTaskPanelContainer} needs from the canvas around it. */
 export interface NodeTaskPanelContainerProps {
+  /**
+   * The canvas's nodes, Yjs-observed. Two things are read off the host: that
+   * it still exists, and its four task counts — which move on their own while
+   * this list stays the snapshot one fetch returned.
+   */
+  nodes: ReadonlyArray<TaskHostNode>;
   /** Project the nodes belong to; the list is keyed on project and node. */
   projectId: string;
   /** Space the nodes live in, for addressing this session's retry stash. */
@@ -47,6 +57,7 @@ interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
  * The task list for one node, anchored to its right.
  * @param props - The panel inputs.
  * @param props.nodeId - The node whose tasks these are.
+ * @param props.nodes - The canvas's nodes, for the host's counts and existence.
  * @param props.status - Which state the reader asked for.
  * @param props.projectId - Project the node belongs to.
  * @param props.spaceId - Space the node lives in.
@@ -57,6 +68,7 @@ interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
 function OpenNodeTaskPanel({
   nodeId,
   status,
+  nodes,
   projectId,
   spaceId,
   onReplace,
@@ -65,9 +77,32 @@ function OpenNodeTaskPanel({
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const queryClient = useQueryClient();
+  // Close when the host disappears (a collaborator deletes it) — mirrors the
+  // Generate / reset / history panels' node-gone guard, which
+  // `resolvePanelSelectionAction` leaves this case to.
+  const hostNode = nodes.find((n) => n.id === nodeId);
+  const nodeGone = hostNode === undefined;
+  React.useEffect(() => {
+    if (nodeGone) closeActivePanel();
+  }, [nodeGone, closeActivePanel]);
+
+  // The counts come off the document and move live; these rows are one fetch.
+  // Keying on them is what keeps the two from contradicting each other on
+  // screen — a row counting down beside a count that already says the task
+  // ended — and it makes opening the list show the state its counts describe
+  // whatever the cache holds.
+  // A group and an annotation hold no tasks, so their views carry no counts.
+  const counts =
+    hostNode !== undefined && 'taskCounts' in hostNode.data
+      ? hostNode.data.taskCounts
+      : undefined;
+  const countsKey =
+    counts === undefined
+      ? 'none'
+      : `${counts.running}/${counts.done}/${counts.failed}/${counts.expired}`;
   const queryKey = React.useMemo(
-    () => ['node-tasks', projectId, nodeId] as const,
-    [projectId, nodeId],
+    () => ['node-tasks', projectId, nodeId, countsKey] as const,
+    [projectId, nodeId, countsKey],
   );
   const query = useQuery<NodeTaskEntry[]>({
     queryKey,
@@ -119,7 +154,11 @@ function OpenNodeTaskPanel({
   );
 
   return (
-    <NodeToolbar nodeId={nodeId} isVisible position={Position.Right}>
+    // Offset past the counts column, which sits at the node's right edge with
+    // an 8px margin and is 44px wide (`TaskCountColumn`, `min-w-11`). Without
+    // it the list paints over the very buttons that switch and close it, since
+    // the toolbar portals out at a z-index above the node's own layer.
+    <NodeToolbar nodeId={nodeId} isVisible position={Position.Right} offset={60}>
       <NodeTaskPanel
         status={status}
         entries={entries}
