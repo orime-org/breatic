@@ -197,14 +197,25 @@ function MessageListInner({
    * scrollLeft 141 was dragged back to 11 by a single call, so a reader in a
    * narrow window lost their place on every reply.
    *
-   * Instant, not smooth — a smooth scroll raises scroll events all the way
-   * down, and every one of them reads as "the reader is far from the end"
-   * until it lands, which would switch following off mid-turn.
+   * Instant: this is the column keeping up with a turn as it is written, and
+   * a smooth scroll raises events all the way down that each read as "the
+   * reader is far from the end", which would switch following off mid-turn.
+   * The press that asks to come back travels instead, and says so by setting
+   * `travelling` first.
    */
   const goToBottom = React.useCallback((): void => {
     const viewport = viewportRef.current;
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, []);
+
+  /**
+   * Whether the column is on its way back to the end under its own power.
+   *
+   * A journey raises the same scroll events a reader does, so without this
+   * the first of them reads as the reader leaving and puts the way-back
+   * button on screen for the length of the journey.
+   */
+  const travelling = React.useRef(false);
 
   // Before the effect that follows, so a message the reader just sent is
   // already allowed to pull the column down by the time it runs.
@@ -239,9 +250,27 @@ function MessageListInner({
     const remember = (): void => {
       const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
       const atEnd = distance <= AT_BOTTOM_SLACK_PX;
+      // A journey of the column's own is not the reader going anywhere, so
+      // it is read only once it arrives.
+      if (travelling.current) {
+        if (!atEnd) return;
+        travelling.current = false;
+      }
       if (!atEnd && stickToBottom.current) countWhenLeft.current = countNow.current;
       stickToBottom.current = atEnd;
       setAwayFromEnd(!atEnd);
+    };
+
+    /**
+     * Give the column back to whoever is scrolling it.
+     *
+     * A browser stops its own scrolling the moment the reader scrolls, and a
+     * journey called off that way never arrives -- so the arrival that would
+     * have ended it never comes, and every later event would be read as the
+     * column's own.
+     */
+    const handOver = (): void => {
+      travelling.current = false;
     };
 
     // A column that changes width rewraps every line, so the same words take a
@@ -256,9 +285,13 @@ function MessageListInner({
     });
 
     viewport.addEventListener('scroll', remember, { passive: true });
+    viewport.addEventListener('wheel', handOver, { passive: true });
+    viewport.addEventListener('keydown', handOver);
     observer.observe(viewport);
     return () => {
       viewport.removeEventListener('scroll', remember);
+      viewport.removeEventListener('wheel', handOver);
+      viewport.removeEventListener('keydown', handOver);
       observer.disconnect();
     };
   }, [goToBottom]);
@@ -267,12 +300,22 @@ function MessageListInner({
     if (stickToBottom.current) goToBottom();
   }, [count, lastShape, goToBottom]);
 
-  /** Take the reader back to the newest message and stay there. */
+  /**
+   * Take the reader back to the newest message and stay there.
+   *
+   * Travels rather than arrives: the reader chose this, and watching the
+   * column move is what tells them where they went. Following is switched
+   * back on before it starts, so a turn that lands mid-journey keeps the end
+   * in view.
+   */
   const backToEnd = React.useCallback(() => {
     stickToBottom.current = true;
     setAwayFromEnd(false);
-    goToBottom();
-  }, [goToBottom]);
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    travelling.current = true;
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+  }, []);
 
   const missed = Math.max(0, count - countWhenLeft.current);
 
