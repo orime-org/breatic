@@ -320,6 +320,7 @@
       "voiceSpeed": "속도",
       "voiceVolume": "볼륨",
       "sfxDuration": "길이",
+      "sfxDurationSeconds": "{n}초",
       "selectFromCanvas": "캔버스에서 참조 선택",
       "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",

@@ -320,6 +320,7 @@
       "voiceSpeed": "语速",
       "voiceVolume": "音量",
       "sfxDuration": "时长",
+      "sfxDurationSeconds": "{n} 秒",
       "selectFromCanvas": "从画布选择参考",
       "selectStyleFromCanvas": "从画布选择风格参考",
       "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",

@@ -193,7 +193,7 @@ const t = (
   key: string,
   params?: Record<string, string | number | Date>,
 ): string =>
-  key === 'canvas.generatePanel.durationSeconds'
+  key === 'canvas.generatePanel.sfxDurationSeconds'
     ? `${String(params?.n)} 秒`
     : key;
 
@@ -217,16 +217,18 @@ describe('formatAudioParam — a value reads in its own unit', () => {
     expect(formatAudioParam('latency_mode', 2, t)).toBe('2');
   });
 
-  // A clip length reads in the reader's own language. The video panel already
-  // renders the same quantity through this key, and all five catalogs carry a
-  // translation for it — `x` and `dB` have none, which is what makes them
-  // symbols rather than words.
-  it('reads a clip length through the shared duration key', () => {
+  // A clip length reads in the reader's own language: all five catalogs carry
+  // a translation for it, while `x` and `dB` have none — which is what makes
+  // those two symbols rather than words.
+  it('reads a clip length through the translator', () => {
     expect(formatAudioParam('duration', 5, t)).toBe('5 秒');
     expect(formatAudioParam('duration', 180, t)).toBe('180 秒');
   });
 
-  it('hands the number to the translator as the ICU parameter', () => {
+  // A sound effect's length and a video's generated length read alike today
+  // and are separate quantities: one key each, so wording either of them later
+  // leaves the other alone (user 2026-09-05).
+  it('hands the number to the audio panel\'s own key, not the video panel\'s', () => {
     const calls: { key: string; params?: Record<string, unknown> }[] = [];
     const spy = (
       key: string,
@@ -237,7 +239,7 @@ describe('formatAudioParam — a value reads in its own unit', () => {
     };
     formatAudioParam('duration', 30, spy);
     expect(calls).toEqual([
-      { key: 'canvas.generatePanel.durationSeconds', params: { n: 30 } },
+      { key: 'canvas.generatePanel.sfxDurationSeconds', params: { n: 30 } },
     ]);
   });
 });

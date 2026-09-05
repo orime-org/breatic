@@ -92,10 +92,13 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   },
   duration: {
     labelKey: 'canvas.generatePanel.sfxDuration',
-    // The same key the video panel renders its own clip length through, and
-    // all five catalogs carry a translation for it. The `x` above and the `dB`
-    // beside it have none, which is what makes those two symbols.
-    format: (v, t) => t('canvas.generatePanel.durationSeconds', { n: v }),
+    // Seconds is a word in four of the five catalogs, so it goes through the
+    // translator; the `x` above and the `dB` beside it are translated nowhere,
+    // which is what makes those two symbols. The key is this panel's own: a
+    // sound effect's length and a video's generated length read alike today
+    // and are separate quantities, so wording either later leaves the other
+    // alone (user 2026-09-05).
+    format: (v, t) => t('canvas.generatePanel.sfxDurationSeconds', { n: v }),
   },
 };
 
