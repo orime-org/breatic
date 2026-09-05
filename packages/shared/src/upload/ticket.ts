@@ -44,6 +44,17 @@ export interface UploadTicketPayload {
    * second place for the value to drift out of the relations checked at load.
    */
   sessionTokenTtlSeconds: number;
+  /**
+   * How long the instance holding this upload's bookkeeping keeps it, in
+   * seconds. Twice the task budget, so an upload nobody finishes is let go of
+   * long after the task it belongs to was judged dead.
+   *
+   * Signed in for the same reason `sessionTokenTtlSeconds` is: it is derived
+   * from `config/node-tasks.yaml`, the Worker cannot read that file, and a
+   * copy inside the Worker is a second place for the relation between the two
+   * to come apart.
+   */
+  bookkeepingTtlSeconds: number;
 }
 
 /** Why a ticket did not verify. */

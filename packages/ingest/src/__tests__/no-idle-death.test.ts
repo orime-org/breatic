@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The upload session does not watch the clock (#186, design §6.3).
+ * The upload session does not judge an upload by how long it takes
+ * (#186, design §6.3).
  *
  * It has two exits: the object was assembled and the outcome reported, or a
- * step failed and that was reported. How long an upload takes is not one of
+ * step failed and that was reported. How long the upload took is not one of
  * them — a task's lifetime belongs to the timer Durable Object, which knows
- * nothing about this chain and which this chain knows nothing about.
+ * nothing about this chain and which this chain knows nothing about. So no
+ * part is refused for arriving late and no upload is failed for being slow.
  *
- * So no part arriving arms anything, opening an upload arms nothing, and an
- * upload that never finishes is left where it is. The parts already written
- * are dropped by the bucket's own lifecycle rule, which expires a multipart
- * upload seven days after it starts.
+ * The one thing time decides is when this instance stops holding what it
+ * knows. An upload nobody finishes never reaches the step that would let the
+ * instance go, and a Durable Object's storage is billed until something
+ * deletes it, so opening one sets the horizon its ticket signed — twice the
+ * task budget, by which point the task it belongs to has long been judged
+ * dead and nothing about this upload can matter any more.
  */
 
 import {
@@ -20,6 +24,7 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
   fetchMock,
+  runInDurableObject,
   runDurableObjectAlarm,
 } from "cloudflare:test";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
@@ -28,6 +33,8 @@ import worker from "@ingest/index.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const FINAL_PART_SIZE = 1024;
+/** What these tickets sign: twice the two-hour task budget, in seconds. */
+const BOOKKEEPING_TTL = 4 * 60 * 60;
 
 let seq = 0;
 
@@ -64,6 +71,7 @@ async function uploadedThrough(
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
       sessionTokenTtlSeconds: 900,
+      bookkeepingTtlSeconds: BOOKKEEPING_TTL,
     },
     env.INGEST_SHARED_SECRET,
   );
@@ -101,24 +109,63 @@ async function uploadedThrough(
 }
 
 describe("an upload nobody has finished", () => {
-  it("has no alarm armed after it opens", async () => {
+  it("sets the horizon the ticket signed when it opens", async () => {
+    const before = Date.now();
     const { storageKey } = await uploadedThrough(0);
 
-    // `runDurableObjectAlarm` answers false when there is nothing scheduled,
-    // which is the whole assertion: opening an upload starts no clock.
-    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(false);
+    const armed = await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+      state.storage.getAlarm(),
+    );
+    expect(armed).toBeGreaterThanOrEqual(before + BOOKKEEPING_TTL * 1000);
+    expect(armed).toBeLessThanOrEqual(
+      before + BOOKKEEPING_TTL * 1000 + 5_000,
+    );
   });
 
-  it("has no alarm armed after a part lands", async () => {
-    const { storageKey } = await uploadedThrough(1);
+  it("leaves it where it is as parts land", async () => {
+    const opened = await uploadedThrough(0);
+    const atOpen = await runInDurableObject(sessionOf(opened.storageKey), (_i, s) =>
+      s.storage.getAlarm(),
+    );
 
-    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(false);
+    const filled = await uploadedThrough(2);
+    const atFull = await runInDurableObject(sessionOf(filled.storageKey), (_i, s) =>
+      s.storage.getAlarm(),
+    );
+
+    // Both were set once, when their upload opened. A part landing judges
+    // nothing about how long this is taking, so it moves nothing.
+    expect(atFull).toBeGreaterThanOrEqual(atOpen ?? 0);
+    expect(atFull).toBeLessThanOrEqual((atOpen ?? 0) + 5_000);
   });
 
-  it("has no alarm armed once every part has landed", async () => {
-    const { storageKey } = await uploadedThrough(2);
+  it("drops what it knew once the horizon arrives", async () => {
+    const { storageKey, uploadId, token } = await uploadedThrough(1);
 
-    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(false);
+    expect(await runDurableObjectAlarm(sessionOf(storageKey))).toBe(true);
+
+    const left = await runInDurableObject(sessionOf(storageKey), (_i, state) =>
+      state.storage.list(),
+    );
+    expect(left.size).toBe(0);
+
+    // Nothing is left to write into, and the caller is told so rather than
+    // reading whatever R2 throws at a part with no upload behind it.
+    const ctx = createExecutionContext();
+    const late = await worker.fetch(
+      new Request(
+        `https://ingest.example.com/uploads/${uploadId}/parts/2`,
+        {
+          method: "PUT",
+          headers: { "x-upload-token": token },
+          body: new Uint8Array(FINAL_PART_SIZE),
+        },
+      ),
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(late.status).toBe(410);
   });
 });
 

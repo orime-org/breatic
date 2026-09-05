@@ -88,6 +88,7 @@ async function uploadedThrough(
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
       sessionTokenTtlSeconds: 900,
+      bookkeepingTtlSeconds: 4 * 60 * 60,
     },
     env.INGEST_SHARED_SECRET,
   );

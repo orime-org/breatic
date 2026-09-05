@@ -7,7 +7,9 @@
 
 ## 分层(包内)
 - `src/index.ts` = fetch handler，三个端点的路由 + CORS
-- `src/upload-session.ts` = Durable Object，一次上传一个实例。它持有这次上传的全部状态（uploadId、分片布局、收到了哪些片、拼没拼过、报告投没投出去），所有关于这次上传的判定都在它这儿。**字节不经过它**——DO 按墙钟时长 × 固定 128 MB 计费，等慢网络的那段时间按这个价收；`index.ts` 收字节、调 R2，只把 `(partNumber, etag, sizeBytes)` 报给它。**它也不看时间**：只有成功和出错两个出口，寿命归 `TaskTimer`；唯一的闹钟是投递给 server 失败后的重投
+- `src/upload-session.ts` = Durable Object，一次上传一个实例。它持有这次上传的状态（uploadId、票据、收到了哪些片、报告投没投出去）。**字节不经过它，两个方向都不经过**——DO 按墙钟时长 × 固定 128 MB 计费，等慢网络的那段时间按这个价收，把几个 G 的对象读回来算哈希同理；`index.ts` 收字节、调 R2、拼装、算哈希，只把 `(partNumber, etag, sizeBytes)` 和 `(sizeBytes, sha256)` 这两组小 JSON 报给它。**它不按时间判上传的死活**：只有成功和出错两个出口，寿命归 `TaskTimer`。**时间只决定它什么时候松手**：开传时按票据签的 `bookkeepingTtlSeconds`（= 任务时限 × 2）设一个地平线，到点还没收尾就 `deleteAll()`——DO 存储在被删之前一直计费，而没人收尾的上传永远走不到那个让实例被回收的步骤
+- `src/stored-object.ts` = Worker 这一侧对 R2 上那个对象做的两件事：拼装、算哈希
+- `src/part-layout.ts` = 一片合不合票据签的布局。Worker 写 R2 之前判一次（唯一拦得住字节的时刻），DO 记账之前判一次（「片数齐了吗」靠数行数回答，那要求每个非末片正好一片长）
 - 本包内部用 `@ingest/*` 前缀
 
 ## 可 import 谁

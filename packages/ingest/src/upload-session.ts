@@ -200,12 +200,17 @@ export class UploadSession implements DurableObject {
       return;
     }
 
-    // The alarm re-delivers what is recorded and does nothing else. Both of
-    // these are what a deleted instance looks like, and neither is something
-    // to report: without the facts there is no outcome to tell, and without
-    // the upload there is nothing to tell it about.
     const upload = await this.#state.storage.get<OpenUpload>("upload");
-    if (stored === undefined || upload === undefined) return;
+    if (upload === undefined) return;
+
+    if (stored === undefined) {
+      // The horizon set when this upload opened, reached with nothing ever
+      // finished. Nobody is coming back for it: the task it belongs to was
+      // judged dead two budgets ago, and the parts it wrote are dropped by
+      // the bucket's own lifecycle rule.
+      await this.#state.storage.deleteAll();
+      return;
+    }
 
     if ((await this.#deliver(upload, stored)) === "not_accepted") {
       // Cloudflare retries a failing alarm, so failing here is what buys the
@@ -501,6 +506,18 @@ export class UploadSession implements DurableObject {
     );
     const upload: OpenUpload = { ticket, uploadId: created.uploadId };
     await this.#state.storage.put("upload", upload);
+    // The horizon past which this instance stops holding what it knows. An
+    // upload nobody finishes never reaches the step that would let it go, and
+    // a Durable Object's storage is billed until something deletes it. The
+    // ticket signs twice the task budget, so by the time this fires the task
+    // this upload belongs to was judged dead two budgets ago.
+    //
+    // Set once. A part landing does not move it: this instance judges nothing
+    // by how long an upload takes (design §6.3), and the finishing sequence
+    // replaces it with an alarm of its own that ends the same way.
+    await this.#state.storage.setAlarm(
+      Date.now() + ticket.bookkeepingTtlSeconds * 1000,
+    );
     return upload;
   }
 }

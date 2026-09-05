@@ -338,6 +338,13 @@ assets.post(
         contentType: body.content_type,
         expiresAt,
         sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
+        // Twice the task budget. An upload nobody finishes never reaches the
+        // step that lets its instance go, so the instance is told when to let
+        // go on its own — long after the task it belongs to was judged dead,
+        // which is what makes the moment safe to pick without asking anyone.
+        // A crop has no task and finishes in seconds; the same horizon holds.
+        bookkeepingTtlSeconds:
+          (getNodeTaskConfig().default_budget_ms * 2) / 1000,
       },
       env.INGEST_SHARED_SECRET,
     );
