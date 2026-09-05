@@ -64,12 +64,20 @@ vi.stubGlobal("fetch", () => {
   throw new Error("a real fetch escaped: web_search must go through httpRequest");
 });
 
-import { webSearch } from "@domain/agent/tools/web-search.js";
+import { webSearch, renderSearchForModel } from "@domain/agent/tools/web-search.js";
+import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
 
 /**
- * Invoke the tool the way the model runtime does.
+ * Invoke the tool and read what the model would be handed.
+ *
+ * The tool answers with a structured object, which the panel and the model
+ * read differently; every assertion in this file is about the model's half,
+ * so the rendering happens here rather than in each test. A first search is
+ * what one call on its own is, hence the offset of zero -- the numbering
+ * across several searches is pinned in `web-search-two-consumers.test.ts`.
  * @param args - The tool's declared input.
- * @returns Whatever string the tool produced.
+ * @param abortSignal - Passed through when the test supplies one.
+ * @returns The text a first search would hand the model.
  */
 async function run(
   args: { query: string; count?: number },
@@ -83,11 +91,12 @@ async function run(
   const parsed = (
     webSearch.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
   ).parse(args);
-  return (await execute(parsed, {
+  const answer = (await execute(parsed, {
     ...(abortSignal ? { abortSignal } : {}),
     toolCallId: "t1",
     messages: [],
-  } as never)) as string;
+  } as never)) as SearchAnswer;
+  return renderSearchForModel(answer, 0);
 }
 
 /**
@@ -857,9 +866,13 @@ describe("web_search pins the numbers and words it promises", () => {
     const shown = (out.match(/<source\b/g) ?? []).length;
     expect(shown).toBe(2);
     expect(out).toContain(`Showing ${String(shown)} of 5 sources`);
-    // The number a block carries is its place among what the service sent, so
-    // the two readable ones keep 1 and 4 rather than becoming 1 and 2.
-    expect(out).toMatch(/<source index="1">[\s\S]*<source index="4">/);
+    // The number a block carries counts what reached the model, so the two
+    // readable ones are 1 and 2 rather than the 1 and 4 they sat at in the
+    // payload. The panel resolves a `[N]` the model wrote against the same
+    // sources, and it is never told which entries were dropped -- numbering by
+    // the service's positions would point `[4]` at a source nothing holds.
+    expect(out).toMatch(/<source index="1">[\s\S]*<source index="2">/);
+    expect(out).not.toContain('<source index="4">');
   });
 
   it("says count is what the search is asked for, not what it returns", async () => {

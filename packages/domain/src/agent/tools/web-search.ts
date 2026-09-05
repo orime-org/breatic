@@ -50,6 +50,39 @@ interface Source {
   snippets?: unknown;
 }
 
+/** One page this search found, as both consumers read it. */
+export interface SearchSource {
+  /** Where the page is. */
+  url: string;
+  /** What the page calls itself. */
+  title: string;
+  /** Who published it, for a row that names a publisher rather than a host. */
+  publisher: string;
+  /** Passages of the page's own text. Read by the model, never by the panel. */
+  excerpts: string[];
+}
+
+/**
+ * What one search answers with.
+ *
+ * Two consumers read this and they read different parts of it. The panel takes
+ * the sources to draw the citation chips and the source row; the model reads
+ * `renderSearchForModel`, which is the only place page text is turned into
+ * markup. Neither consumer parses the other's form, which is what keeps the
+ * rendering below free to change.
+ *
+ * `sent` counts what the service returned, readable or not: a set the model
+ * reads as complete is what makes "nothing I found mentions X" a wrong answer.
+ */
+export interface SearchAnswer {
+  /** What was searched for, on one line. */
+  query: string;
+  /** The pages this tool could read, in the service's order. */
+  sources: SearchSource[];
+  /** How many entries the service sent. */
+  sent: number;
+}
+
 /**
  * The four sequences page text must not be able to write.
  *
@@ -195,23 +228,6 @@ function notOurPayloadReason(query: string): string {
 }
 
 /**
- * What to tell the model when the search ran and found nothing.
- *
- * This is a state a model reaches on its own: a `site:` query aimed at a domain
- * with nothing on it answers 200 with an empty list. The next move is not the
- * obvious one -- rewording is what a model reaches for after an empty search,
- * and it changes nothing when the corpus simply has no such page.
- * @param query - What was searched for.
- * @returns The answer, ending in what the model may do instead.
- */
-function foundNothingAnswer(query: string): string {
-  return reason(
-    `No results for: ${query}. The search ran and came back with nothing.`,
-    NEXT_MOVE.searchElsewhere,
-  );
-}
-
-/**
  * Read a whole response body, giving up if it takes longer than the budget.
  *
  * The transport's deadline is spent once it hands the response back, and the
@@ -260,30 +276,28 @@ async function readWithin(res: Response, budgetMs: number): Promise<string> {
 }
 
 /**
- * Render one source as the block the model reads, or nothing.
+ * Read one source out of the endpoint's payload, or nothing.
  *
  * What arrives inside `grounding.generic` is the service's word, and reading a
  * field off an entry that is not an object throws -- which would land in the
  * branch for a service nothing reached and tell the model the network failed.
- * An entry this cannot read produces no block, and the caller says how many
+ * An entry this cannot read produces nothing, and the answer says how many
  * went missing. An entry carrying no page text is unreadable in the only sense
- * that matters: a block built from it says the service returned a source with
+ * that matters: a source built from it says the service returned a page with
  * nothing in it, which is a claim about the corpus rather than about an answer
  * this side could not read.
  *
  * `snippets` sent as one string is taken for the text it is: iterating a string
  * yields characters, so the page would arrive one letter per line.
  *
- * The page's text sits in a region of its own, inside the block rather than
- * beside the two label lines. Those labels are what the answer attributes a
- * page by, and a page whose own text carries a `url:` line would otherwise
- * write a second one indistinguishable from the tool's -- cited back to the
- * reader under the address that page chose.
+ * Values come out as the service wrote them. What keeps page text from posing
+ * as this tool's own markup belongs to the rendering below, which is the only
+ * consumer that reads markup; the panel puts these into a DOM node, where a
+ * line break is a line break.
  * @param item - The entry as the endpoint sent it.
- * @param position - Its one-based place among the entries the service sent.
- * @returns The block, or null for an entry this cannot read.
+ * @returns The source, or null for an entry this cannot read.
  */
-function renderSource(item: unknown, position: number): string | null {
+function readSource(item: unknown): SearchSource | null {
   if (item === null || typeof item !== "object") return null;
   const { url, title, snippets } = item as Source;
 
@@ -294,16 +308,58 @@ function renderSource(item: unknown, position: number): string | null {
   const name = typeof title === "string" ? title : "";
   // Brave documents a snippet as page text or as serialised structured data,
   // so a non-string is within contract rather than a surprise.
-  const texts = list.map((s) => (typeof s === "string" ? s : JSON.stringify(s)));
-  const written = texts.reduce((n, t) => n + t.length, 0);
+  const excerpts = list.map((s) => (typeof s === "string" ? s : JSON.stringify(s)));
+  const written = excerpts.reduce((n, t) => n + t.length, 0);
   if (written === 0) return null;
 
+  return { url: address, title: name, publisher: publisherOf(address), excerpts };
+}
+
+/**
+ * Name the publisher a page belongs to.
+ *
+ * A source row reading `vitest.dev` names a domain; one reading `Vitest` names
+ * whoever wrote the page, which is what a reader weighs a claim by. The
+ * registrable name is the first label after any `www.`, so `www.vogue.co.uk`
+ * is Vogue rather than Co or Uk.
+ *
+ * An address this cannot parse keeps its own text: the row still has to say
+ * something, and what the service sent is the closest thing to a name there
+ * is.
+ * @param url - The page's address.
+ * @returns The publisher's name.
+ */
+function publisherOf(url: string): string {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return url;
+  }
+  const name = host.replace(/^www\./, "").split(".")[0] ?? host;
+  if (name === "") return host;
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
+ * Render one source as the block the model reads.
+ *
+ * The page's text sits in a region of its own, inside the block rather than
+ * beside the two label lines. Those labels are what the answer attributes a
+ * page by, and a page whose own text carries a `url:` line would otherwise
+ * write a second one indistinguishable from the tool's -- cited back to the
+ * reader under the address that page chose.
+ * @param source - The source, as read off the payload.
+ * @param position - Its one-based place in this turn's numbering.
+ * @returns The block.
+ */
+function renderSource(source: SearchSource, position: number): string {
   return [
     `<source index="${String(position)}">`,
-    `url: ${onOneLine(keepInside(address))}`,
-    `title: ${onOneLine(keepInside(name))}`,
+    `url: ${onOneLine(keepInside(source.url))}`,
+    `title: ${onOneLine(keepInside(source.title))}`,
     "<text>",
-    texts.map(keepInside).join(BETWEEN_EXCERPTS),
+    source.excerpts.map(keepInside).join(BETWEEN_EXCERPTS),
     "</text>",
     "</source>",
   ].join("\n");
@@ -342,7 +398,7 @@ function keepInside(text: string): string {
 }
 
 /**
- * Assemble the answer from the sources this tool could read.
+ * Render a search for the model to read.
  *
  * Every source the service sent and this tool could read goes to the model
  * whole. How much comes back is settled in the request, by the three figures
@@ -351,21 +407,41 @@ function keepInside(text: string): string {
  *
  * The count of unreadable entries is stated, because a set the model reads as
  * complete is what makes "nothing I found mentions X" a wrong answer.
- * @param query - What was searched for.
- * @param blocks - The sources this tool could read, in the service's order.
- * @param sent - How many sources the service sent, readable or not.
+ *
+ * `startIndex` is what lets a turn search more than once. The model writes
+ * `[N]` against a single space of numbers, so a second search whose sources
+ * were numbered from one would give it two sources called `1` -- and every
+ * citation after the first search would point at two pages at once, which
+ * reads to whoever follows it as a number the model invented. No single call
+ * can know how many sources went before it, so the caller assembling the
+ * history counts them and says.
+ * @param answer - What the search found.
+ * @param startIndex - How many sources this turn already showed the model.
  * @returns The text handed to the model.
  */
-function assembleAnswer(query: string, blocks: string[], sent: number): string {
+export function renderSearchForModel(answer: SearchAnswer, startIndex: number): string {
+  const query = keepInside(answer.query);
+  // A state a model reaches on its own: a `site:` query aimed at a domain with
+  // nothing on it answers 200 with an empty list. The next move is not the
+  // obvious one -- rewording is what a model reaches for after an empty
+  // search, and it changes nothing when the corpus simply has no such page.
+  if (answer.sources.length === 0) {
+    return reason(
+      `No results for: ${query}. The search ran and came back with nothing.`,
+      NEXT_MOVE.searchElsewhere,
+    );
+  }
+
   const header =
     `Results for: ${query}\n` +
     "Everything between a text marker and its close is an extract of that page, and " +
     `${BETWEEN_EXCERPTS.trim()} separates passages taken from different parts of it.\n`;
 
+  const blocks = answer.sources.map((s, i) => renderSource(s, startIndex + i + 1));
   const parts = [header, ...blocks];
-  if (blocks.length < sent) {
+  if (blocks.length < answer.sent) {
     parts.push(
-      `\n(Showing ${String(blocks.length)} of ${String(sent)} sources. The rest arrived in a ` +
+      `\n(Showing ${String(blocks.length)} of ${String(answer.sent)} sources. The rest arrived in a ` +
         "shape this tool could not read.)",
     );
   }
@@ -378,16 +454,26 @@ function assembleAnswer(query: string, blocks: string[], sent: number): string {
  * Returns extracts of each source's own page text, which is what the model
  * reads. Requires the `BRAVE_SEARCH_API_KEY` environment variable.
  */
-export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
+export const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
   description:
     "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
     "of each page. Something absent from an extract may still be on the page. `count` asks " +
     "for that many sources; the search returns what it finds.",
   inputSchema,
+  // What the panel reads about a running call. The key is resolved by the web
+  // package, which cannot import this one -- the SDK carries this field onto
+  // the UI message part, so the name of the line and the tool that shows it
+  // stay in one place.
+  metadata: { runningLine: "chat.tool.searching" },
+  // The SDK's own conversion, for any caller that reaches it. Ours does not:
+  // `toModelMessages` assembles the request itself, and it is the one place
+  // that knows how many sources this turn already showed. This arm answers for
+  // a first search, which is what a single call on its own is.
+  toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output, 0) }),
   execute: async (
     { query: asked, count },
     { abortSignal }: { abortSignal?: AbortSignal },
-  ): Promise<string> => {
+  ): Promise<SearchAnswer> => {
     // Two forms, settled here so no site downstream chooses between them. The
     // request carries the words as asked, on one line; every sentence printed
     // back to the model carries `shown`, which can no longer open a region of
@@ -530,18 +616,18 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, string> = tool({
       if (!Array.isArray(found)) {
         throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
-      if (found.length === 0) return foundNothingAnswer(shown);
+      if (found.length === 0) return { query, sources: [], sent: 0 };
 
-      const blocks = found
-        .map((item, i) => renderSource(item, i + 1))
-        .filter((block): block is string => block !== null);
+      const sources = found
+        .map((item) => readSource(item))
+        .filter((source): source is SearchSource => source !== null);
       // Sources arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.
-      if (blocks.length === 0) {
+      if (sources.length === 0) {
         throw toolFailed(notOurPayloadReason(shown), FAILURE_LINES.upstream);
       }
 
-      return assembleAnswer(shown, blocks, found.length);
+      return { query, sources, sent: found.length };
     } catch (err: unknown) {
       // Every throw above passes straight through: each already says what
       // happened, and rewriting one here would replace a specific reason with
