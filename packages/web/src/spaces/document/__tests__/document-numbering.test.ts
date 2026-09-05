@@ -94,7 +94,10 @@ function docOf(specs: readonly Spec[]): PMNode {
  */
 function numbersFor(specs: readonly Spec[]): Map<string, string> {
   const doc = docOf(specs);
-  return computeNumbering(doc, quoteRuns(doc));
+  return computeNumbering(
+    doc,
+    quoteRuns(doc).map((run) => run.ids),
+  );
 }
 
 /** A numbered list item. */

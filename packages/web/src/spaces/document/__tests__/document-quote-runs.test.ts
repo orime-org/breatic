@@ -46,16 +46,16 @@ interface Spec {
  * @returns The container node.
  */
 function container(spec: Spec): PMNode {
-  const content = schema.nodes['paragraph']!.create({
+  const content = schema.nodes['paragraph'].create({
     quoted: spec.quoted === true,
   });
   const parts: PMNode[] = [content];
   if (spec.children !== undefined && spec.children.length > 0) {
     parts.push(
-      schema.nodes['blockGroup']!.create(null, spec.children.map(container)),
+      schema.nodes['blockGroup'].create(null, spec.children.map(container)),
     );
   }
-  return schema.nodes['blockContainer']!.create({ id: spec.id }, parts);
+  return schema.nodes['blockContainer'].create({ id: spec.id }, parts);
 }
 
 /**
@@ -64,11 +64,28 @@ function container(spec: Spec): PMNode {
  * @returns Each run's block ids, in reading order.
  */
 function runsOf(specs: readonly Spec[]): string[][] {
-  const doc = schema.nodes['doc']!.create(
+  return quoteRuns(docOf(specs)).map((run) => [...run.ids]);
+}
+
+/**
+ * The block drawn right after each run.
+ * @param specs - The top-level blocks, in order.
+ * @returns One entry per run, in document order.
+ */
+function aftersOf(specs: readonly Spec[]): (string | null)[] {
+  return quoteRuns(docOf(specs)).map((run) => run.after);
+}
+
+/**
+ * A document holding these blocks.
+ * @param specs - The top-level blocks, in order.
+ * @returns The document node.
+ */
+function docOf(specs: readonly Spec[]): PMNode {
+  return schema.nodes['doc'].create(
     null,
-    schema.nodes['blockGroup']!.create(null, specs.map(container)),
+    schema.nodes['blockGroup'].create(null, specs.map(container)),
   );
-  return quoteRuns(doc);
 }
 
 /** A quoted block. */
@@ -133,6 +150,34 @@ describe('indentation does not break a run', () => {
   it('keeps a deeper run going through three levels', () => {
     expect(runsOf([q('one', [q('two', [q('three')])])])).toEqual([
       ['one', 'two', 'three'],
+    ]);
+  });
+});
+
+describe('what is drawn right after a run', () => {
+  it('names the block that follows a run at the same level', () => {
+    expect(aftersOf([q('a'), q('b'), plain('c')])).toEqual(['c']);
+  });
+
+  it('names the block that follows a run ending inside an indent', () => {
+    // The run's last block is `child`, one level in; `next` sits back out at
+    // the top. Reading order puts them next to each other and the screen
+    // stacks them, but they are in different groups — a CSS sibling
+    // combinator does not reach from one to the other, which is why this is
+    // read off the walk instead.
+    expect(aftersOf([q('parent', [q('child')]), plain('next')])).toEqual([
+      'next',
+    ]);
+  });
+
+  it('names nothing for a run the document ends on', () => {
+    expect(aftersOf([plain('a'), q('b'), q('c')])).toEqual([null]);
+  });
+
+  it('names one block per run', () => {
+    expect(aftersOf([q('a'), plain('b'), q('c'), plain('d')])).toEqual([
+      'b',
+      'd',
     ]);
   });
 });

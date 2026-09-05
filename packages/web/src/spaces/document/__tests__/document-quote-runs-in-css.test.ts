@@ -84,7 +84,7 @@ function open(
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
     extensions: [documentDecorationsExtension()],
-  } as never);
+  });
   const root = document.createElement('div');
   root.className = 'doc-body-editor';
   document.body.appendChild(root);
@@ -102,11 +102,11 @@ describe('what the stylesheet reaches a quote by', () => {
   it('puts the per-block declarations on the block content element', () => {
     const editor = open([{ ...QUOTED, content: 'inside' }]);
 
-    const marked = editor.prosemirrorView!.dom.querySelectorAll(
+    const marked = editor.prosemirrorView.dom.querySelectorAll(
       '[data-quoted="true"]',
     );
     expect(marked).toHaveLength(1);
-    expect(marked[0]!.classList.contains('bn-block-content')).toBe(true);
+    expect(marked[0].classList.contains('bn-block-content')).toBe(true);
 
     const rule = ruleFor('.ProseMirror [data-quoted=\'true\']');
     expect(rule).toContain('padding-inline-start');
@@ -123,7 +123,7 @@ describe('what the stylesheet reaches a quote by', () => {
       { type: 'paragraph', content: 'after' },
     ]);
 
-    const { dom } = editor.prosemirrorView!;
+    const { dom } = editor.prosemirrorView;
     expect(dom.querySelectorAll('[data-quoted-first]')).toHaveLength(1);
     expect(dom.querySelectorAll('[data-quoted-last]')).toHaveLength(1);
     expect(dom.querySelector('[data-quoted-first]')!.textContent).toBe('one');
@@ -155,11 +155,32 @@ describe('what the stylesheet reaches a quote by', () => {
     // The block BELOW the run gives its own top space up, so the run's two
     // edges are equal: what it carries is the run's 1.1em and nothing added
     // to it. Measured before this rule: 17.6px above and 31.2px below.
-    expect(
-      ruleFor(
-        '.bn-block-outer:has(> .bn-block > [data-quoted-last])\n  + .bn-block-outer\n  > .bn-block\n  > .bn-block-content',
-      ),
-    ).toContain('margin-top: 0');
+    expect(ruleFor('.bn-block-content[data-after-quoted]')).toContain(
+      'margin-top: 0',
+    );
+  });
+
+  it('marks the block below a run that ends inside an indent', () => {
+    // The mark is on the block rather than reached from its neighbour because
+    // the two need not be neighbours: here the run ends on the indented child
+    // while the block below sits back out at the top level, and no CSS
+    // sibling combinator crosses that. Measured with one, this block kept its
+    // 12.75px top margin and stood 29.25px below the run against 16.5px above.
+    const editor = open([
+      { ...QUOTED, content: 'parent', children: [{ ...QUOTED, content: 'child' }] },
+      { type: 'paragraph', content: 'below' },
+    ]);
+
+    const { dom } = editor.prosemirrorView;
+    // The shape first, or the case below would pass on a flat document where
+    // the two ARE siblings and a combinator would have done.
+    const nested = dom.querySelector('.bn-block-group .bn-block-group');
+    expect(nested, 'the child sits in a group of its own').not.toBeNull();
+    expect(nested!.textContent).toBe('child');
+
+    const marked = dom.querySelectorAll('[data-after-quoted]');
+    expect(marked).toHaveLength(1);
+    expect(marked[0].textContent).toBe('below');
   });
 
   it('marks a lone quoted block as both ends of its own run', () => {
@@ -168,7 +189,7 @@ describe('what the stylesheet reaches a quote by', () => {
       { ...QUOTED, content: 'alone' },
     ]);
 
-    const only = editor.prosemirrorView!.dom.querySelector('[data-quoted="true"]');
+    const only = editor.prosemirrorView.dom.querySelector('[data-quoted="true"]');
     expect(only!.hasAttribute('data-quoted-first')).toBe(true);
     expect(only!.hasAttribute('data-quoted-last')).toBe(true);
   });
@@ -180,7 +201,7 @@ describe('what the stylesheet reaches a quote by', () => {
       { ...QUOTED, content: 'two' },
     ]);
 
-    const { dom } = editor.prosemirrorView!;
+    const { dom } = editor.prosemirrorView;
     expect(dom.querySelectorAll('[data-quoted-first]')).toHaveLength(2);
     expect(dom.querySelectorAll('[data-quoted-last]')).toHaveLength(2);
   });

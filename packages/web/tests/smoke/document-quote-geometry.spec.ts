@@ -258,6 +258,77 @@ test.describe('a run of quoted blocks', () => {
     ).toBeLessThan(1);
   });
 
+  test('keeps those edges when the run ends inside an indent (A8b)', async () => {
+    await openFreshDocument(page);
+    // Built block by block: a select-all here swallows the document on the
+    // next Enter. Quote goes on the first and is inherited down the run.
+    await page.keyboard.type('- outer one');
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('inner two');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('inner three');
+    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
+    // Out of the indent for the block below, so the run's last block and it
+    // sit in different groups — which is where a sibling combinator gave up.
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await page.keyboard.type('below the run');
+    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
+
+    const seen = await page.evaluate(
+      ({ editor, quoted }) => {
+        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
+        const marks = [...document.querySelectorAll(quoted)];
+        const last = all.indexOf(marks[marks.length - 1] as Element);
+        const below = all[last + 1];
+        /** How many groups deep an element sits. */
+        const depth = (element: Element): number => {
+          let n = 0;
+          let at: Element | null = element;
+          while (at !== null) {
+            if (at.classList.contains('bn-block-group')) n += 1;
+            at = at.parentElement;
+          }
+          return n;
+        };
+        if (below === undefined) return null;
+        return {
+          lastDepth: depth(all[last] as Element),
+          belowDepth: depth(below),
+          gap:
+            below.getBoundingClientRect().top -
+            (all[last] as Element).getBoundingClientRect().bottom,
+        };
+      },
+      { editor: EDITOR, quoted: QUOTED },
+    );
+
+    expect(seen, 'a block below the run').not.toBeNull();
+    const measured = seen as NonNullable<typeof seen>;
+    // The shape first: without it this passes on a flat document, where the
+    // two are siblings and a combinator would have reached across.
+    expect(
+      measured.lastDepth,
+      'the run ends a level deeper than the block below',
+    ).toBeGreaterThan(measured.belowDepth);
+    // The run's own 1.1em and nothing added to it — 16.5px on this body size,
+    // the same as the case above measures on both edges of a flat run.
+    // Measured before the mark went on the block itself: 29.25px, that margin
+    // plus the 12.75px this block kept.
+    expect(
+      measured.gap,
+      `${String(measured.gap)}px below the run`,
+    ).toBeGreaterThan(15.5);
+    expect(
+      measured.gap,
+      `${String(measured.gap)}px below the run`,
+    ).toBeLessThan(17.5);
+  });
+
   test('draws the rule down a run that holds a heading (A8)', async () => {
     await openFreshDocument(page);
     await writeQuotedRun(page);

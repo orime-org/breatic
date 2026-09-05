@@ -40,6 +40,17 @@ const QUOTE_FIRST_ATTRIBUTE = 'data-quoted-first';
 /** The attribute marking the block a quote closes on. */
 const QUOTE_LAST_ATTRIBUTE = 'data-quoted-last';
 
+/**
+ * The attribute marking the block drawn right below a quote.
+ *
+ * It gives up its own top margin so the run's outer edge measures the same
+ * below as above. Marked here rather than reached with a CSS sibling
+ * combinator because the two blocks need not be siblings: a run can end
+ * inside an indented group while the block below sits back out in the group
+ * above, and no combinator crosses that.
+ */
+const AFTER_QUOTE_ATTRIBUTE = 'data-after-quoted';
+
 const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
 
 /**
@@ -58,12 +69,19 @@ function blockDecorations(doc: PMNode): DecorationSet {
   // One walk: the run ends are marked from it, and a list inside a run
   // starts over from it (§3.4).
   const runs = quoteRuns(doc);
-  const numbers = computeNumbering(doc, runs);
+  const numbers = computeNumbering(
+    doc,
+    runs.map((run) => run.ids),
+  );
   const opens = new Set<string>();
   const closes = new Set<string>();
+  const afters = new Set<string>();
   runs.forEach((run) => {
-    opens.add(run[0]!);
-    closes.add(run[run.length - 1]!);
+    opens.add(run.ids[0]);
+    closes.add(run.ids[run.ids.length - 1]);
+    if (run.after !== null) {
+      afters.add(run.after);
+    }
   });
 
   const decorations: Decoration[] = [];
@@ -82,6 +100,9 @@ function blockDecorations(doc: PMNode): DecorationSet {
     }
     if (closes.has(id)) {
       attrs[QUOTE_LAST_ATTRIBUTE] = '';
+    }
+    if (afters.has(id)) {
+      attrs[AFTER_QUOTE_ATTRIBUTE] = '';
     }
     const content = node.firstChild;
     if (Object.keys(attrs).length === 0 || content === null) {

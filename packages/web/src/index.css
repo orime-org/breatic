@@ -1004,12 +1004,17 @@ body {
   margin-bottom: 1.1em;
 }
 
+/* The block below the run gives its top margin up, and it is marked by the
+   decoration layer rather than reached with a sibling combinator: a run can
+   end inside an indented group while the block below sits back out in the
+   group above, and no combinator crosses that. Measured with one, the block
+   below such a run kept its 12.75px and stood 29.25px under the run against
+   the 16.5px over it. */
 .doc-body-editor
   .ProseMirror
-  .bn-block-outer:has(> .bn-block > [data-quoted-last])
-  + .bn-block-outer
+  .bn-block-outer
   > .bn-block
-  > .bn-block-content {
+  > .bn-block-content[data-after-quoted] {
   margin-top: 0;
 }
 

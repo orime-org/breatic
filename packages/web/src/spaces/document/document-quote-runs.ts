@@ -43,29 +43,50 @@ function walkGroup(
   });
 }
 
+/** One quote, and the block drawn right below it. */
+export interface QuoteRun {
+  /** The run's block ids, in reading order. */
+  readonly ids: readonly string[];
+  /**
+   * The block drawn right after the run, or null when the document ends on it.
+   *
+   * Read off this same walk because reading order is the only thing that
+   * answers it: a run's last block can sit inside an indented group while the
+   * block below sits back out in the group above, and those two are not
+   * siblings in the DOM. A CSS sibling combinator does not reach across that,
+   * so the stylesheet is given a mark on the block itself instead — measured,
+   * the block below a run ending one level in kept a 12.75px top margin and
+   * stood 29.25px below the run against the 16.5px above it.
+   */
+  readonly after: string | null;
+}
+
 /**
  * The runs of quoted blocks a document holds.
  * @param doc - The document to read.
- * @returns Each run's block ids, in reading order; runs in document order.
+ * @returns One entry per run, in document order.
  */
-export function quoteRuns(doc: PMNode): string[][] {
+export function quoteRuns(doc: PMNode): QuoteRun[] {
   const blocks: { id: string; quoted: boolean }[] = [];
   if (doc.childCount > 0) {
     walkGroup(doc.child(0), blocks);
   }
 
-  const runs: string[][] = [];
-  let open: string[] | null = null;
+  const runs: { ids: string[]; after: string | null }[] = [];
+  let open: { ids: string[]; after: string | null } | null = null;
   for (const block of blocks) {
     if (!block.quoted) {
+      if (open !== null) {
+        open.after = block.id;
+      }
       open = null;
       continue;
     }
     if (open === null) {
-      open = [];
+      open = { ids: [], after: null };
       runs.push(open);
     }
-    open.push(block.id);
+    open.ids.push(block.id);
   }
   return runs;
 }
