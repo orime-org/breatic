@@ -8,19 +8,13 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
+import { fitsInRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
 import { SourceChip } from '@web/pages/project/chat/SourceChip';
 import type { ChatSource } from '@web/pages/project/chat/types';
 
-/**
- * How many chips the row draws before the rest go behind the button.
- *
- * The row is one line and never scrolls, so something has to decide where it
- * stops. Measuring what fits would need the width, and the column is
- * resizable -- the count would change under the reader as they drag. A fixed
- * count keeps the row still; what it cannot show is one press away, and that
- * press shows everything rather than the remainder.
- */
-const CHIPS_IN_THE_ROW = 3;
+/** The gap between two chips, and how wide the button after them is. */
+const GAP_PX = 8;
+const MORE_PX = 28;
 
 interface SourceRowProps {
   /** Every page this turn found, deduplicated. */
@@ -47,15 +41,32 @@ export const SourceRow = React.memo(function SourceRow({
   const [boxOpen, setBoxOpen] = React.useState(false);
   const openBox = React.useCallback(() => setBoxOpen(true), []);
 
-  const shown = sources.slice(0, CHIPS_IN_THE_ROW);
-  const hidden = sources.length - shown.length;
+  const { row, rowPx, widths } = useRowMeasure();
+  // Publishers' names are each their own length, so what fits is measured
+  // rather than assumed. Every chip stays drawn -- taking one away would take
+  // its width with it, and the next measurement would disagree with this one
+  // -- and the strip they sit in is cut to where they stop fitting.
+  const shown =
+    rowPx === 0 || widths.length === 0
+      ? sources.length
+      : fitsInRow(widths, GAP_PX, rowPx - GAP_PX - MORE_PX, 0);
+  const hidden = sources.length - shown;
+  const cutAt = widths
+    .slice(0, shown)
+    .reduce((sum, w, i) => sum + w + (i > 0 ? GAP_PX : 0), 0);
 
   return (
     <>
-      <div data-testid='source-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
-        {shown.map((s) => (
-          <SourceChip key={s.url} source={s} label={s.publisher} testId='source-chip' />
-        ))}
+      <div data-testid='source-row' className='mt-[0.85em] flex gap-2'>
+        <div
+          ref={row}
+          className='flex gap-2 overflow-hidden'
+          style={cutAt > 0 ? { maxWidth: `${String(cutAt)}px` } : undefined}
+        >
+          {sources.map((s) => (
+            <SourceChip key={s.url} source={s} label={s.publisher} testId='source-chip' />
+          ))}
+        </div>
         {hidden > 0 ? (
           <Button
             data-testid='source-row-more'

@@ -126,7 +126,11 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     );
   }
 
-  if (message.content === '' && message.role === 'assistant') {
+  // 「什么都没产出」，不是「没有正文」：一轮搜完图、没写正文，屏幕上是一排
+  // 缩略图，底下再说一句「没有输出内容」就跟眼前的东西对着干。
+  const producedSomething =
+    message.assets !== undefined || message.sources !== undefined || message.toolCalls !== undefined;
+  if (message.content === '' && !producedSomething && message.role === 'assistant') {
     return (
       <EndingLine testId='message-bubble-empty' text={t('chat.message.empty')} tone='neutral' />
     );

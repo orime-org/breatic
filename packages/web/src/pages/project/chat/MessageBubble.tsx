@@ -75,7 +75,9 @@ export const MessageBubble = React.memo(function MessageBubble({
           // themes, and it is the only neutral fill that does -- `bg-muted`
           // is a recess and goes darker than the surface in dark mode.
           isUser
-            ? 'max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
+            // Positioned so the copy that appears on hover can sit under it
+            // without reserving a strip there while nobody is hovering.
+            ? 'relative max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
             : 'w-full text-foreground',
         )}
       >

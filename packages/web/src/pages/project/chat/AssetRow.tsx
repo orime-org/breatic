@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { AudioLines } from 'lucide-react';
+import { AudioLines, Play } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -10,55 +10,24 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
+import { fitsInRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
 import type { ChatAsset } from '@web/pages/project/chat/types';
 
-/**
- * A square, and the gap before the next one. Both from the classes below.
- *
- * 46 is the size this project already gives a thumbnail -- node history rows
- * and the project activity list both draw one, down to the same rounding,
- * border and fill -- and it is the size that lets a row of them read as a set
- * in a column whose floor is 320: four of them and the button fit in 296,
- * where a single 96 left room for one square and nothing else.
- */
+/** A square, the gap before the next one, and the button that opens the rest. */
 const SQUARE_PX = 46;
 const GAP_PX = 8;
-
-/**
- * What the row has to work with before it has been measured.
- *
- * The Agent column's floor is 320 and the message list pads it by 12 a side,
- * so this is the least room the row can ever have. Starting here rather than
- * at nothing means the first frame draws what will certainly fit, and the
- * measurement that follows in the same frame only ever adds.
- */
-const NARROWEST_ROW_PX = 296;
 
 /** The square, as a class. Kept in one place so the arithmetic cannot drift from it. */
 const SQUARE_CLASS = 'size-[46px] shrink-0';
 
 /**
- * How many squares fit a row this wide, keeping room for the button.
+ * What the row has before it has been measured.
  *
- * A count decided in advance cannot be right: the column runs from 320 to
- * 640, and at its narrowest the row has 296px to work with -- four squares
- * want 408, so the fourth and the button after it were both being cut off by
- * the row's own `overflow-hidden`, with nothing on screen saying so.
- *
- * Measured, nothing reflows either: widening the column appends squares at
- * the end and narrowing it takes them back behind the button, and the ones in
- * between never move. What the row must not do is wrap or scroll, and it
- * still does neither.
- * @param width - How much room the row has.
- * @param total - How many there are in all.
- * @returns How many to draw, at least one.
+ * The Agent column's floor is 320 and the message list pads it by 12 a side,
+ * so this is the least room the row can ever have: the first frame draws what
+ * will certainly fit, and the measurement that follows only ever adds.
  */
-export function squaresThatFit(width: number, total: number): number {
-  const fit = Math.floor((width + GAP_PX) / (SQUARE_PX + GAP_PX));
-  // The button is a square too, so it costs one of them -- but only when
-  // there is something to put behind it.
-  return Math.max(1, fit >= total ? total : fit - 1);
-}
+const NARROWEST_ROW_PX = 296;
 
 interface AssetRowProps {
   /** What this turn found. */
@@ -82,19 +51,19 @@ export const AssetRow = React.memo(function AssetRow({
   const [openAt, setOpenAt] = React.useState<number | null>(null);
   const close = React.useCallback(() => setOpenAt(null), []);
 
-  const row = React.useRef<HTMLDivElement>(null);
-  const [width, setWidth] = React.useState(0);
-  React.useLayoutEffect(() => {
-    const el = row.current;
-    if (el === null) return undefined;
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(entry?.contentRect.width ?? 0);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  const shown = assets.slice(0, squaresThatFit(width || NARROWEST_ROW_PX, assets.length));
+  const { row, rowPx } = useRowMeasure();
+  // Every square is the one size, so what fits is arithmetic on that size --
+  // the source row beside this one measures instead, because its chips are
+  // each their own width. The rule the two share is `fitsInRow`.
+  const shown = assets.slice(
+    0,
+    fitsInRow(
+      assets.map(() => SQUARE_PX),
+      GAP_PX,
+      rowPx === 0 ? NARROWEST_ROW_PX : rowPx,
+      SQUARE_PX,
+    ),
+  );
   const hidden = assets.length - shown.length;
 
   return (
@@ -152,23 +121,38 @@ function AssetThumb({ asset, onOpen }: AssetThumbProps): React.JSX.Element {
         'relative overflow-hidden rounded-content-sm border border-border bg-muted p-0',
       )}
     >
-      {asset.kind === 'audio' ? (
-        <AudioLines className='size-4 text-muted-foreground' aria-hidden='true' />
+      {asset.kind !== 'image' ? (
+        <AssetFace asset={asset} />
       ) : (
-        <>
-          <img src={asset.url} alt='' className='size-full object-cover' loading='lazy' />
-          {/* How long it runs is what a still frame cannot say, and at this
-              size it is the whole of the overlay: the square is for telling
-              one apart from another, and everything else about it is in the
-              box a press away. */}
-          {asset.kind === 'video' && asset.duration !== undefined ? (
-            <span className='absolute inset-x-1 bottom-0.5 text-right text-2xs text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]'>
-              {asset.duration}
-            </span>
-          ) : null}
-        </>
+        <img src={asset.url} alt='' className='size-full object-cover' loading='lazy' />
       )}
     </Button>
+  );
+}
+
+/**
+ * The face a square wears when there is no picture to fill it.
+ *
+ * `show_search_results` gives one address per result, described as the asset
+ * or its page, so a clip's address is the clip -- an `img` pointed at it
+ * draws nothing. A clip says how long it runs, which is what a still frame
+ * could not have said either; a track says that it is one.
+ * @param root0 - The component props.
+ * @param root0.asset - The thing this square holds.
+ * @returns The face.
+ */
+function AssetFace({ asset }: { asset: ChatAsset }): React.JSX.Element {
+  return (
+    <span className='flex size-full flex-col items-center justify-center gap-0.5'>
+      {asset.kind === 'video' ? (
+        <Play className='size-4 fill-current text-muted-foreground' aria-hidden='true' />
+      ) : (
+        <AudioLines className='size-4 text-muted-foreground' aria-hidden='true' />
+      )}
+      {asset.duration === undefined ? null : (
+        <span className='text-2xs text-muted-foreground'>{asset.duration}</span>
+      )}
+    </span>
   );
 }
 
@@ -231,7 +215,7 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
                   i === at ? 'border-active-border' : 'border-transparent',
                 )}
               >
-                {asset.kind === 'audio' ? (
+                {asset.kind !== 'image' ? (
                   <AudioLines className='size-4 text-muted-foreground' aria-hidden='true' />
                 ) : (
                   <img src={asset.url} alt='' className='size-full object-cover' loading='lazy' />
@@ -243,7 +227,7 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
       }
     >
       <div className='mx-4 mt-3 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-content-sm bg-muted'>
-        {current === undefined || current.kind === 'audio' ? (
+        {current === undefined || current.kind !== 'image' ? (
           <AudioLines className='size-10 text-muted-foreground' aria-hidden='true' />
         ) : (
           <img src={current.url} alt={current.title} className='max-h-full max-w-full object-contain' />

@@ -20,8 +20,16 @@ import type { Element, Root, RootContent, Text } from 'hast';
 /** What the marker looks like: a number in square brackets. */
 const MARKER = /\[(\d{1,3})\]/g;
 
-/** Elements whose text is not prose the model wrote for the reader. */
-const NOT_PROSE = new Set(['a', 'code', 'pre']);
+/**
+ * Elements whose text is not prose the model wrote for the reader.
+ *
+ * `math` covers the whole MathML subtree KaTeX renders beside the visible
+ * formula, whose `annotation` holds the LaTeX the model wrote -- the source a
+ * reader copies a formula to get. A formula containing `[1]` would otherwise
+ * have that source rewritten, and the chip spliced into a subtree KaTeX
+ * clips out of sight.
+ */
+const NOT_PROSE = new Set(['a', 'code', 'pre', 'math']);
 
 /**
  * Rewrite every resolvable marker into an element of its own.

@@ -42,9 +42,12 @@ export const TurnActions = React.memo(function TurnActions({
     <div
       data-testid='turn-actions'
       className={cn(
-        'mt-[0.85em] flex items-center gap-1',
-        onHoverOnly === true &&
-          'opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
+        'flex items-center gap-1',
+        // 读者自己那条消息下面不留位置：透明只是看不见，元素还占着一行、还
+        // 接得住点击、还在 Tab 序里，于是那条空白按下去会静默复制一次。
+        onHoverOnly === true
+          ? 'absolute right-0 top-full mt-2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
+          : 'mt-[0.85em]',
       )}
     >
       <Button

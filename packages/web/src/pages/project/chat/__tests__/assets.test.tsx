@@ -14,7 +14,6 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { squaresThatFit } from '@web/pages/project/chat/AssetRow';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import type { UIMessage } from 'ai';
@@ -173,26 +172,6 @@ describe('the row of assets', () => {
   });
 });
 
-describe('how many squares a row of that width holds', () => {
-  // 46 见方加 8 的间距，而 Agent 列从 320 拖到 640、消息列表两边各 12 的内边距
-  // —— 所以行宽是 296 到 616。数不对的后果不是排版难看：行是 overflow-hidden 的，
-  // 放不下的那些连同「+N」按钮一起被裁掉，屏幕上不留任何痕迹。
-  it('draws them all when they all fit, with no button to make room for', () => {
-    // 616 装得下 11 个（46×11 + 8×10 = 586），9 个全画。
-    expect(squaresThatFit(616, 9)).toBe(9);
-  });
-
-  it('gives up one square to the button when they do not', () => {
-    expect(squaresThatFit(616, 20)).toBe(10);
-  });
-
-  it('draws four at the narrowest the column goes', () => {
-    // 296 装得下 5 个（46×5 + 8×4 = 262），第 5 格让给按钮。
-    expect(squaresThatFit(296, 8)).toBe(4);
-    expect(squaresThatFit(296, 5)).toBe(5);
-  });
-});
-
 describe('getting the reader back where they were', () => {
   /**
    * A reply carrying that many pictures.
@@ -236,5 +215,29 @@ describe('getting the reader back where they were', () => {
 
     await waitFor(() => expect(screen.queryByTestId('asset-box')).toBeNull());
     expect(document.activeElement).toBe(more);
+  });
+});
+
+describe('what a square draws', () => {
+  it('gives a clip an icon rather than an image its address cannot fill', () => {
+    // `show_search_results` 的 url 描述是「Direct URL to the asset / page」，
+    // 视频那个字段给的是片子或它的页面，不是一张图。塞进 <img> 就是一个空格子
+    // 加一个飘在虚空上的时长。
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'a clip',
+          assets: [
+            { kind: 'video', url: 'https://v.example/1.mp4', title: 'A clip', duration: '1:24' },
+          ],
+        }}
+      />,
+    );
+
+    const thumb = screen.getByTestId('asset-thumb');
+    expect(thumb.querySelector('img')).toBeNull();
+    expect(thumb).toHaveTextContent('1:24');
   });
 });
