@@ -232,3 +232,30 @@ export async function listLive(opts: {
 }): Promise<NodeTaskListRow[]> {
   return repo.listLive(opts.projectId, opts.nodeId);
 }
+
+/**
+ * Everything one read of a node's task list does, in the one order that works.
+ *
+ * Judging a task dead happens here and nowhere else (#186, design §4.6): a row
+ * that outran its budget is still `running` in the table until somebody opens
+ * this list. So the read starts by harvesting, and only then reports what it
+ * found.
+ *
+ * The order is fixed and lives here rather than at the route, because the
+ * three steps are one business rule: harvest, read the rows, recount. Reading
+ * before the harvest would put a `running` row beside an `expired` count in
+ * one answer, and recounting before it would report numbers the rows contradict.
+ * @param opts - Project and node.
+ * @param opts.projectId - Owning project.
+ * @param opts.nodeId - The node whose list is being opened.
+ * @returns The live rows and the counts that describe them.
+ */
+export async function harvestAndList(opts: {
+  projectId: string;
+  nodeId: string;
+}): Promise<{ tasks: NodeTaskListRow[]; counts: NodeTaskCounts }> {
+  await repo.harvestExpired(opts.projectId, opts.nodeId);
+  const tasks = await repo.listLive(opts.projectId, opts.nodeId);
+  const counts = await repo.countsFor(opts.projectId, opts.nodeId);
+  return { tasks, counts };
+}

@@ -122,6 +122,46 @@ export async function settleRunning(
 }
 
 /**
+ * Move every row on one node that outran its budget to `expired`.
+ *
+ * This is the whole of judging a task dead (#186, design §4.6): there is no
+ * resident timer, so a row that ran past `started_at + budget_ms` keeps saying
+ * `running` until this runs — which happens when somebody reads that node's
+ * list, and nowhere else.
+ *
+ * Both sides of the comparison come from the database clock, the same one
+ * `started_at` defaults to, so no application host's drift gets between them.
+ * @param projectId - Owning project.
+ * @param nodeId - The node whose list is being read.
+ * @returns How many rows this call moved.
+ */
+export async function harvestExpired(
+  projectId: string,
+  nodeId: string,
+): Promise<number> {
+  const rows = await db
+    .update(nodeTasks)
+    .set({
+      status: "expired",
+      // The list shows a reason on every terminal row, and this row reached
+      // its end without anybody reporting anything.
+      errorMessage: "expired",
+      settledAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(nodeTasks.projectId, projectId),
+        eq(nodeTasks.nodeId, nodeId),
+        isNull(nodeTasks.deletedAt),
+        eq(nodeTasks.status, "running"),
+        sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
+      ),
+    )
+    .returning({ id: nodeTasks.id });
+  return rows.length;
+}
+
+/**
  * Attach a result to a row that already settled.
  *
  * The case this exists for: the deadline passed, the timer moved the row to
