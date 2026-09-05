@@ -97,27 +97,30 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
   },
 ];
 
-/** The empty list, so `slotsForMode` returns one stable reference. */
+/** The empty list, so a mode this panel does not offer answers one reference. */
 const NO_SLOTS: readonly AudioSlot[] = [];
 
-/**
- * The slots a mode collects, in display order.
- *
- * A mode this panel does not offer collects nothing: the node's `mode` field is
- * shared with the other panels, so it can hold a value this one never shows,
- * and collecting slots for it would render controls the submit ignores.
- * @param mode - The active mode.
- * @returns The mode's slots in display order; empty when it collects none.
- */
-export function audioSlotsForMode(mode: string): readonly AudioSlot[] {
-  return AUDIO_MODE_OPTIONS.find((o) => o.value === mode)?.slots ?? NO_SLOTS;
-}
+/** What a mode this panel does not offer collects and asks for: nothing. */
+const NOT_OURS: AudioModeOption = {
+  value: '',
+  label: '',
+  testId: 'generate-audio-mode-none',
+  placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
+  slots: NO_SLOTS,
+};
 
 /**
- * Whether a mode collects lyrics, and whether it insists on them (#1960).
+ * The option behind a mode string.
+ *
+ * One lookup for every field rather than one function per field: the node's
+ * `mode` is shared with the other panels, so it can hold a value this one
+ * never shows, and each caller would otherwise repeat the same `find` and the
+ * same answer for that case. What comes back for a mode this panel does not
+ * offer collects nothing and asks for nothing, which is what a panel showing
+ * no such mode should do.
  * @param mode - The active mode.
- * @returns How this mode treats lyrics, or undefined when it has no such box.
+ * @returns Its option, or a collects-nothing stand-in.
  */
-export function lyricsForMode(mode: string): 'required' | 'optional' | undefined {
-  return AUDIO_MODE_OPTIONS.find((o) => o.value === mode)?.lyrics;
+export function audioModeOption(mode: string): AudioModeOption {
+  return AUDIO_MODE_OPTIONS.find((o) => o.value === mode) ?? NOT_OURS;
 }

@@ -139,7 +139,7 @@ describe('the music reference slots', () => {
   it('names messages all five catalogs answer', () => {
     for (const slot of MUSIC_SLOTS) {
       const spec = AUDIO_SLOTS[slot];
-      const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey, spec.errorKey];
+      const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey];
       for (const [locale, catalog] of LOCALE_CATALOGS) {
         for (const key of keys) {
           expect(
@@ -149,6 +149,17 @@ describe('the music reference slots', () => {
         }
       }
     }
+  });
+
+  // Their mode takes any one of the three, so it refuses with one sentence
+  // about the set. A per-slot refusal would have to name one of them, which is
+  // not what the gate means — and an unread key is one that drifts.
+  it('states no refusal of its own, the way its mode refuses', () => {
+    for (const slot of MUSIC_SLOTS) {
+      expect(AUDIO_SLOTS[slot], slot).not.toHaveProperty('errorKey');
+    }
+    // The voice sample keeps one: its mode demands that slot by itself.
+    expect(AUDIO_SLOTS.refAudio.errorKey).toBe('canvas.generatePanel.errorNoRefAudio');
   });
 
   it('reaches slotForPurpose, the lookup whose wrong answer is silent', () => {

@@ -22,13 +22,13 @@ models:
     tier: recommended
     icon: "minimax"
     description: "Studio-grade, 100+ instruments"
-    guide: "Highest fidelity with studio-grade mixing and structural tags for precise song structure control. 100+ instrument palette, style-adaptive mixing. Lyrics are REQUIRED — the gateway refuses a request without them. Supports instrumental-only mode. Choose for a song written from a description."
+    guide: "Highest fidelity with studio-grade mixing and structural tags for precise song structure control. 100+ instrument palette, style-adaptive mixing. Lyrics are required unless is_instrumental is set — the gateway refuses an empty lyrics on a vocal run and accepts one on an instrumental. Choose for a song written from a description."
     # $0.15 a call, measured 2026-09-05. 1 credit = 1 US cent.
     cost_per_call: 15
     generation_time: 180
     params:
       lyrics:
-        description: "Song lyrics, required (10-3000 chars)"
+        description: "Song lyrics, required unless instrumental"
         default: null
       is_instrumental:
         description: "Instrumental only, no vocals"
@@ -50,6 +50,9 @@ models:
     cost_per_call: 35
     generation_time: 120
     params:
+      lyrics:
+        description: "Song lyrics, optional here"
+        default: null
       song:
         description: "Reference song URL (>=15s, wav/mp3)"
         default: null

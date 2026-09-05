@@ -36,13 +36,17 @@ import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
-  audioSlotsForMode,
-  lyricsForMode,
+  AUDIO_MODE_OPTIONS,
+  audioModeOption,
 } from '@web/spaces/canvas/generate/audio-mode-options';
+import {
+  audioFlagValue,
+  INSTRUMENTAL_PARAM,
+} from '@web/spaces/canvas/generate/audio-params';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
@@ -235,16 +239,18 @@ function AudioGeneratePanelBody({
     () => getLyricsFragment(projectId, spaceId, nodeId),
     [projectId, spaceId, nodeId],
   );
-  const slots = audioSlotsForMode(mode);
+  const modeOption = audioModeOption(mode);
+  const slots = modeOption.slots;
   /** Whether this mode shows a lyrics box at all, and whether it insists. */
-  const lyrics = lyricsForMode(mode);
+  const lyrics = modeOption.lyrics;
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasStore((s) => {
     const session = s.pickSession;
     if (session?.nodeId !== nodeId) return undefined;
-    return (Object.keys(AUDIO_SLOTS) as AudioSlot[]).find(
-      (slot) => AUDIO_SLOTS[slot].purpose === session.purpose,
-    );
+    const name = slotForPurpose(session.purpose);
+    return name !== undefined && name in AUDIO_SLOTS
+      ? (name as AudioSlot)
+      : undefined;
   });
   const onPickSlot = React.useCallback(
     (slot: AudioSlot) => {
@@ -280,10 +286,8 @@ function AudioGeneratePanelBody({
     // Every audio purpose is weighed, not just this mode's: a pick started on
     // one mode has to end when the panel switches to a mode that does not
     // collect that slot, whichever slot it was.
-    const running = (Object.keys(AUDIO_SLOTS) as AudioSlot[]).find(
-      (slot) => AUDIO_SLOTS[slot].purpose === session.purpose,
-    );
-    if (running === undefined || slots.includes(running)) return;
+    const running = slotForPurpose(session.purpose);
+    if (running === undefined || slots.includes(running as AudioSlot)) return;
     endPick();
     // The slot list comes from the mode, so this is a mode change reaching
     // the pick — and the write may well have been a collaborator's.
@@ -461,6 +465,11 @@ function AudioGeneratePanelBody({
       filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
       lyricsRequired: lyrics === 'required',
       lyricsText: freshLyrics,
+      instrumental: audioFlagValue(
+        fresh.modelEntry,
+        INSTRUMENTAL_PARAM,
+        fresh.params[INSTRUMENTAL_PARAM],
+      ),
     });
     if (refusal != null) {
       const key = refusalToastKey(refusal);
@@ -541,10 +550,7 @@ function AudioGeneratePanelBody({
   // sound. The fallback is where the types land rather than a state to expect:
   // `mode` is only empty when no mode is available, and `CatalogGatedFrame`
   // holds the panel shut in that case (`generate-panel-frame.tsx`).
-  const promptPlaceholder = t(
-    AUDIO_MODE_OPTIONS.find((o) => o.value === mode)?.placeholderKey ??
-      'canvas.generatePanel.audioPromptPlaceholder',
-  );
+  const promptPlaceholder = t(modeOption.placeholderKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   const promptSlot = React.useMemo(
@@ -658,6 +664,11 @@ function AudioGeneratePanelBody({
         filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
         lyricsRequired: lyrics === 'required',
         lyricsText,
+        instrumental: audioFlagValue(
+          vm.modelEntry,
+          INSTRUMENTAL_PARAM,
+          params[INSTRUMENTAL_PARAM],
+        ),
       })}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}

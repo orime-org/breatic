@@ -75,14 +75,23 @@ export interface ExecuteGateInput {
   /**
    * Whether the active mode insists on lyrics (#1960).
    *
-   * Text to music alone does: the gateway refuses that model outright without
-   * them (`invalid params, lyrics is required`, measured 2026-09-05), so the
+   * Text to music alone does: the gateway refuses an empty `lyrics` on a vocal
+   * run (`invalid params, lyrics is required`, measured 2026-09-05), so the
    * user would otherwise watch a generation start, spin and fail. Optional
    * because most modes have no lyrics box at all.
    */
   lyricsRequired?: boolean;
   /** What the lyrics box holds. Read only when `lyricsRequired`. */
   lyricsText?: string;
+  /**
+   * Whether the track is marked instrumental — no vocals at all (#1960).
+   *
+   * It lifts the lyrics requirement, because the gateway lifts it: measured
+   * 2026-09-05, `lyrics: ""` with `is_instrumental: true` is accepted and
+   * completes. Demanding words to sing for a track the user marked vocal-free
+   * is a rule we would be inventing.
+   */
+  instrumental?: boolean;
   /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
@@ -173,7 +182,11 @@ export function evaluateExecute(
   }
   // The lyrics box sits directly under the prompt editor, so it is reported
   // right after it — the panel's own order, top to bottom.
-  if (input.lyricsRequired && (input.lyricsText ?? '').trim().length === 0) {
+  if (
+    input.lyricsRequired &&
+    input.instrumental !== true &&
+    (input.lyricsText ?? '').trim().length === 0
+  ) {
     return 'lyrics-missing';
   }
   // The remaining refusals name a control the user has to go and fill. Only
@@ -185,13 +198,12 @@ export function evaluateExecute(
   const required = input.requiredSlots ?? [];
   const filled = input.filledSlots ?? [];
   if (required.length > 0 && !required.some((slot) => filled.includes(slot))) {
-    // Voice cloning asks for one specific thing and its message names it.
-    // Every other mode offers several and takes any one of them, which is a
-    // different sentence — and the safe one to fall back to, since it is never
-    // wrong for a mode whose single slot is something else.
-    return required.length === 1 && required[0] === 'refAudio'
-      ? 'ref-audio-missing'
-      : 'reference-missing';
+    // A mode demanding ONE slot names it; the slot carries that sentence
+    // (`SlotSpec.errorKey`), which is how the video panel words its own
+    // refusals. A mode offering several and taking any one of them refuses
+    // with a sentence about the set, because naming any single member of it
+    // would be the wrong sentence.
+    return required.length === 1 ? 'ref-audio-missing' : 'reference-missing';
   }
   return null;
 }

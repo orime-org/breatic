@@ -69,8 +69,15 @@ export interface SlotSpec {
   tipKey: string;
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;
-  /** Translation key for the refusal shown when execute finds it empty. */
-  errorKey: string;
+  /**
+   * Translation key for the refusal shown when execute finds this slot empty.
+   *
+   * Only on a slot a mode demands by itself. A mode collecting several and
+   * taking any one of them — reference to music offers a song, a vocal line
+   * and a backing track — refuses with one sentence about the set, so naming
+   * any single member of it would be the wrong sentence.
+   */
+  errorKey?: string;
 }
 
 /** A registry of slots, keyed by the name its panel calls each one. */

@@ -68,7 +68,6 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.musicSong',
     tipKey: 'canvas.generatePanel.musicSongTip',
     clearLabelKey: 'canvas.generatePanel.removeMusicSong',
-    errorKey: 'canvas.generatePanel.errorNoMusicSong',
   },
   musicVoice: {
     field: 'musicVoice',
@@ -83,7 +82,6 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.musicVoice',
     tipKey: 'canvas.generatePanel.musicVoiceTip',
     clearLabelKey: 'canvas.generatePanel.removeMusicVoice',
-    errorKey: 'canvas.generatePanel.errorNoMusicVoice',
   },
   musicInstrumental: {
     field: 'musicInstrumental',
@@ -98,7 +96,6 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.musicInstrumental',
     tipKey: 'canvas.generatePanel.musicInstrumentalTip',
     clearLabelKey: 'canvas.generatePanel.removeMusicInstrumental',
-    errorKey: 'canvas.generatePanel.errorNoMusicInstrumental',
   },
 } as const satisfies Record<AudioSlot, SlotSpec>;
 

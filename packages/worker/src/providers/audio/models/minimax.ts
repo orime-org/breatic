@@ -28,39 +28,28 @@ export const MODELS: ReadonlySet<string> = new Set([
   "minimax-music-3.0",
 ]);
 
-/** The one model whose upstream refuses a request without lyrics. */
-const LYRICS_REQUIRED = "minimax-music-3.0";
-
 /**
  * Convert user-facing params to API params for MiniMax music models.
  *
- * The lyrics fallback applies to `minimax-music-3.0` alone. Its gateway
- * answers `invalid params, lyrics is required` for an empty value and rejects
- * anything under ten characters (measured 2026-09-05), and what it substitutes
- * is the STYLE brief -- so a user writing "warm indie folk, 90 BPM" would hear
- * those words sung. The panel refuses an empty lyrics box before submitting,
- * which leaves this covering only the under-ten case and a request built
- * outside the panel. `minimax-music-01` states lyrics as optional and empty
- * stays empty there: substituting the brief would put words into a song the
- * user asked to have none.
+ * Pass-through. The lyrics travel exactly as written, which is what the
+ * gateway takes -- measured 2026-09-05: `lyrics: "la"` is accepted and
+ * completes, and `lyrics: ""` with `is_instrumental: true` is accepted and
+ * completes. This module used to substitute the style brief below ten
+ * characters, a floor read off the vendor page rather than measured; on a
+ * two-word lyric that put the user's own "warm indie folk, 90 BPM" into the
+ * song as words to sing. What the gateway does refuse -- an empty lyrics on a
+ * vocal run -- the panel refuses first, and states why.
  * @param prompt - User's music description
- * @param modelName - Resolved model name, which decides the fallback above
+ * @param _modelName - Resolved model name (unused)
  * @param params - Validated params from YAML config
  * @returns Tuple of [prompt, apiParams]
  */
 export async function buildRequest(
   prompt: string,
-  modelName: string,
+  _modelName: string,
   params: Record<string, unknown>,
 ): Promise<[string, Record<string, unknown>]> {
-  const apiParams = { ...params };
-  if (modelName === LYRICS_REQUIRED) {
-    const lyrics = apiParams.lyrics;
-    if (typeof lyrics !== "string" || lyrics.length < 10) {
-      apiParams.lyrics = prompt || "instrumental music";
-    }
-  }
-  return [prompt, apiParams];
+  return [prompt, { ...params }];
 }
 
 export default { MODELS, buildRequest } satisfies ModelFamily;

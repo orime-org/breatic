@@ -194,6 +194,30 @@ export function audioParamControls(model: ModelEntry): AudioParamControl[] {
 }
 
 /**
+ * Whether a switch is on: what the node holds, else the model's own default.
+ *
+ * Two readers since #1960 — the params popover draws the switch from it, and
+ * the execute gate asks whether the track is marked instrumental, because the
+ * gateway lifts its lyrics requirement when it is. One copy, so the switch on
+ * screen and the condition the gate judges can never disagree.
+ * @param model - The active model.
+ * @param name - The param name.
+ * @param held - What the node holds for it, if anything.
+ * @returns True when the switch is on; false when it is off or unstated.
+ */
+export function audioFlagValue(
+  model: ModelEntry | undefined,
+  name: string,
+  held: unknown,
+): boolean {
+  if (typeof held === 'boolean') return held;
+  return model?.params?.[name]?.default === true;
+}
+
+/** The param a music model states for "no vocals at all" (#1960). */
+export const INSTRUMENTAL_PARAM = 'is_instrumental';
+
+/**
  * A value as the user reads it, in that parameter's own unit.
  * @param name - The catalog param name.
  * @param value - The current value.

@@ -17,6 +17,7 @@ import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import {
+  audioFlagValue,
   audioParamControls,
   formatAudioParam,
   type AudioParamControl,
@@ -66,22 +67,6 @@ function shownValue(
   if (typeof held === 'number') return held;
   const fallback = model.params?.[name]?.default;
   return typeof fallback === 'number' ? fallback : undefined;
-}
-
-/**
- * Whether a switch is on: what the node holds, else the model's own default.
- *
- * Its own reader rather than a branch inside {@link shownValue}: that one
- * answers "which number is showing" and a switch has no number, so folding the
- * two would make every caller of it handle a type it never returns.
- * @param model - The active model.
- * @param name - The param name.
- * @param held - What the node holds for it, if anything.
- * @returns True when the switch is on; false when it is off or unstated.
- */
-function shownFlag(model: ModelEntry, name: string, held: unknown): boolean {
-  if (typeof held === 'boolean') return held;
-  return model.params?.[name]?.default === true;
 }
 
 /**
@@ -177,7 +162,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
             control={control}
             label={t(control.labelKey)}
             value={shownValue(model, control.name, value[control.name])}
-            flag={shownFlag(model, control.name, value[control.name])}
+            flag={audioFlagValue(model, control.name, value[control.name])}
             onChange={onChange}
             last={index === controls.length - 1}
           />
