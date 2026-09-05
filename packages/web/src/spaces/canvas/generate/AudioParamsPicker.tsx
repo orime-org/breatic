@@ -140,9 +140,8 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
         // the screen edge like the panel rather than jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.voiceParams')}
-        // Wide enough that the ten length presets fill their rows evenly. At
-        // 256px the last one wrapped alone onto a third row.
-        className='w-72 p-3'
+        // The same width as the image and video params popovers.
+        className='w-64 p-3'
       >
         {controls.map((control, index) => (
           <ParamControlRow

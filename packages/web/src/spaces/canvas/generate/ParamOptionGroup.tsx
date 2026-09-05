@@ -74,7 +74,15 @@ export function ParamOptionGroup({
   return (
     <div className={className}>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>
-      <div className='flex flex-wrap gap-1.5'>
+      {/*
+        Equal columns that fill the popover's width, rather than options sized
+        to their own text. Natural widths leave whatever the last row could not
+        fit as dead space on the right — 75px in the ten-preset duration group,
+        against the 12px padding on the left, and a different amount per row.
+        `auto-fit` collapses the empty tracks, so a group with fewer options
+        than columns still spans the full width.
+      */}
+      <div className='grid grid-cols-[repeat(auto-fit,minmax(3rem,1fr))] gap-1.5'>
         {options.map((option) => (
           <Button
             key={String(option.value)}
