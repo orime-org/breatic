@@ -191,7 +191,9 @@
       "interrupted": "중지됨",
       "truncated": "길이 제한에 도달함",
       "waiting": "응답 중",
-      "consolidating": "이 대화의 기억을 정리하는 중…"
+      "consolidating": "이 대화의 기억을 정리하는 중…",
+      "blocked": "답변을 기다리는 중",
+      "empty": "이번 턴에는 답변이 없습니다"
     },
     "tool": {
       "unfinished": "중지됨",
@@ -199,7 +201,9 @@
         "upstream": "실행 오류",
         "unreachable": "실행 오류",
         "generic": "실행 오류"
-      }
+      },
+      "searching": "“{query}” 검색 중",
+      "running": "{tool} 실행 중"
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {
@@ -225,6 +229,12 @@
       "taskTodo": "미완료",
       "footnotes": "각주",
       "backToReference": "참조 {index}(으)로 돌아가기"
+    },
+    "action": {
+      "retry": "다시 시도",
+      "continue": "계속",
+      "copy": "복사",
+      "regenerate": "다시 생성"
     }
   },
   "canvas": {

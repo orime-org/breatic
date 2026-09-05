@@ -43,6 +43,18 @@ export interface ToolCall {
    * acts on it, and the user learns what happened from the reply.
    */
   failureKey?: string;
+  /**
+   * The translation key for the sentence shown while this call runs.
+   *
+   * Declared by the tool, in the SDK's `metadata`, and carried here on the
+   * part. A table of tool names in this package instead would be a second
+   * list to keep true as tools are added, and the one they are declared in
+   * belongs to a package the web build may not import.
+   *
+   * Absent on a tool that declares none, and on every replayed call: the
+   * sentence only ever shows while a turn runs.
+   */
+  runningLine?: string;
 }
 
 /**

@@ -191,7 +191,9 @@
       "interrupted": "停止しました",
       "truncated": "長さの上限に達しました",
       "waiting": "応答中",
-      "consolidating": "この会話の記憶を整理しています…"
+      "consolidating": "この会話の記憶を整理しています…",
+      "blocked": "回答をお待ちしています",
+      "empty": "このターンの返信はありません"
     },
     "tool": {
       "unfinished": "停止しました",
@@ -199,7 +201,9 @@
         "upstream": "実行エラー",
         "unreachable": "実行エラー",
         "generic": "実行エラー"
-      }
+      },
+      "searching": "「{query}」を検索中",
+      "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -225,6 +229,12 @@
       "taskTodo": "未完了",
       "footnotes": "脚注",
       "backToReference": "参照 {index} に戻る"
+    },
+    "action": {
+      "retry": "再試行",
+      "continue": "続ける",
+      "copy": "コピー",
+      "regenerate": "再生成"
     }
   },
   "canvas": {

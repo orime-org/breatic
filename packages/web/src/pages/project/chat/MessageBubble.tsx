@@ -4,11 +4,12 @@
 import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
-import { useTranslation } from '@web/i18n/use-translation';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
-import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
+import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
+import { TurnActions } from '@web/pages/project/chat/TurnActions';
+import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -21,6 +22,10 @@ interface MessageBubbleProps {
    * stored, and it is true of the reply that has not started yet.
    */
   consolidating?: boolean;
+  /** Run this turn again. Also what the retry on a failed turn calls. */
+  onRetry?: (messageId: string) => void;
+  /** Carry on from where a reply cut off at the ceiling stops. */
+  onContinue?: (messageId: string) => void;
 }
 
 /**
@@ -40,15 +45,24 @@ interface MessageBubbleProps {
 export const MessageBubble = React.memo(function MessageBubble({
   message,
   consolidating,
+  onRetry,
+  onContinue,
 }: MessageBubbleProps): React.JSX.Element {
-  const t = useTranslation();
   const isUser = message.role === 'user';
+  // The newest call still running, which is the one the line names. Several
+  // can run at once -- nothing disables parallel tool calls -- and one line
+  // for the turn is what was settled; a stack of them is a log.
+  const runningCall = React.useMemo(
+    () => message.toolCalls?.filter((c) => c.status === 'pending').at(-1),
+    [message.toolCalls],
+  );
+  const running = message.streaming === true;
   return (
     <div
       data-testid='message-bubble'
       data-role={message.role}
       className={cn(
-        'flex w-full',
+        'group flex w-full',
         isUser ? 'justify-end' : 'justify-start',
       )}
     >
@@ -91,58 +105,33 @@ export const MessageBubble = React.memo(function MessageBubble({
                 rendering, and what the reply is made of never enters into it
                 (user 2026-08-25). The space between the two is in the
                 stylesheet, beside the mark's own figures. */}
-            {message.streaming ? <WaitingDot consolidating={consolidating} /> : null}
+            {running && runningCall === undefined ? (
+              <WaitingDot consolidating={consolidating} />
+            ) : null}
           </div>
         ) : null}
-        {message.toolCalls?.map((tc) => (
-          <ToolCallCard key={tc.id} toolCall={tc} />
-        ))}
+        {/* What the turn is doing, at the end of whatever it has said so far.
+            It is gone the moment the turn ends and nothing about it is
+            stored, so a reload shows the answer and no trace of how it was
+            assembled (A5). */}
+        {running && runningCall !== undefined ? <ToolRunLine call={runningCall} /> : null}
         {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
             separates any two blocks in this scope. */}
-        {message.interrupted ? (
-          // The backend stores this mark so a cut-off answer can be told apart
-          // from a complete one; without drawing it the whole chain is wasted.
-          <div
-            data-testid='message-bubble-interrupted'
-            className='mt-[0.85em] text-xs text-muted-foreground'
-          >
-            {t('chat.message.interrupted')}
-          </div>
-        ) : null}
-        {message.truncated ? (
-          // Its own line rather than the stop mark's: nobody stopped this
-          // reply and nothing about it failed. What ran out is the room one
-          // model call gets, and the reader's next move is to ask it to go on.
-          <div
-            data-testid='message-bubble-truncated'
-            className='mt-[0.85em] text-xs text-muted-foreground'
-          >
-            {t('chat.message.truncated')}
-          </div>
-        ) : null}
-        {message.failed ? (
-          // On the turn it belongs to rather than as a banner: what failed is
-          // this reply, and a bar at the top of the panel would say the whole
-          // conversation had. The wording is ours — what the server sends on
-          // this path is a hardcoded English sentence.
-          //
-          // Announced only when it just happened. Someone waiting on an answer
-          // has nothing else to go on: the reply stops growing and the stop
-          // button turns back into send, both of which can only be seen. But
-          // failure is also stored and comes back with the history, and an
-          // assertive region on those would read out every past failure in
-          // the conversation the moment the panel opens — so the mark that
-          // separates the two is what decides whether this one speaks.
-          <div
-            data-testid='message-bubble-error'
-            {...(message.failedJustNow ? { role: 'alert' } : {})}
-            className='mt-[0.85em] rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
-          >
-            {t('chat.error.turnFailed')}
-          </div>
-        ) : null}
+        {isUser ? null : (
+          <TurnEnding message={message} {...(onRetry ? { onRetry } : {})} {...(onContinue ? { onContinue } : {})} />
+        )}
+        {/* Offered on a settled message only. A reply still arriving has
+            nothing to copy yet and asking for it again mid-flight would race
+            the turn that is running. */}
+        {running || message.content === '' ? null : (
+          <TurnActions
+            messageId={message.id}
+            text={message.content}
+            {...(isUser ? { onHoverOnly: true } : onRetry ? { onRetry } : {})}
+          />
+        )}
       </div>
     </div>
   );

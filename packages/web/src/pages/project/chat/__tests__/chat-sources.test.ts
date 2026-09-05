@@ -180,3 +180,38 @@ describe('a turn that stopped to wait for an answer', () => {
     expect(message.blocked).toBeUndefined();
   });
 });
+
+describe('the sentence a running tool declares', () => {
+  it('travels from the part to the call, so no table of tool names is needed here', () => {
+    const message = toChatMessage(
+      reply([
+        {
+          type: 'tool-web_search',
+          toolCallId: 'a',
+          state: 'input-available',
+          input: { query: 'q' },
+          toolMetadata: { runningLine: 'chat.tool.searching' },
+        } as never,
+      ]),
+      { streaming: true },
+    );
+
+    expect(message.toolCalls?.[0]?.runningLine).toBe('chat.tool.searching');
+  });
+
+  it('leaves it off a tool that declares none', () => {
+    const message = toChatMessage(
+      reply([
+        {
+          type: 'tool-propose_canvas_action',
+          toolCallId: 'a',
+          state: 'input-available',
+          input: {},
+        } as never,
+      ]),
+      { streaming: true },
+    );
+
+    expect(message.toolCalls?.[0]?.runningLine).toBeUndefined();
+  });
+});

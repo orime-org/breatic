@@ -59,6 +59,22 @@ function sourcesOf(output: unknown): ChatSource[] {
 }
 
 /**
+ * The sentence key a tool declared for while it runs, if it declared one.
+ *
+ * Declared in the SDK's `metadata` and carried onto the part as
+ * `toolMetadata`. Read defensively: it is the tool's own word, typed as free
+ * JSON, and a replayed call has no metadata at all.
+ * @param part - The tool part.
+ * @returns The key in a spreadable object, or an empty one.
+ */
+function runningLineOf(part: unknown): { runningLine?: string } {
+  const metadata = (part as { toolMetadata?: unknown }).toolMetadata;
+  if (metadata === null || typeof metadata !== 'object') return {};
+  const line = (metadata as { runningLine?: unknown }).runningLine;
+  return typeof line === 'string' ? { runningLine: line } : {};
+}
+
+/**
  * How far a tool got, in the panel's words.
  * @param state - The tool part's state, as the SDK reports it.
  * @param stillRunning - Whether the turn that made this call is still going.
@@ -126,6 +142,10 @@ export function toChatMessage(
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
         ...cutShort,
+        // Declared by the tool, carried by the SDK. Read off whatever the
+        // part has: a replayed call has no metadata at all, and the line it
+        // would name is not drawn on one anyway.
+        ...runningLineOf(part),
         // The key vouches for itself: it is either one of ours or it is not,
         // and the table is what answers that. The same field carries the SDK's
         // own fixed English sentence when it has nothing else to put there,

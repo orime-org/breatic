@@ -191,7 +191,9 @@
       "interrupted": "Stopped",
       "truncated": "Cut off at the length limit",
       "waiting": "Replying",
-      "consolidating": "Tidying up this conversation's memory…"
+      "consolidating": "Tidying up this conversation's memory…",
+      "blocked": "Waiting for your answer",
+      "empty": "No reply this turn"
     },
     "tool": {
       "unfinished": "Stopped",
@@ -199,7 +201,9 @@
         "upstream": "Execution error",
         "unreachable": "Execution error",
         "generic": "Execution error"
-      }
+      },
+      "searching": "Searching for “{query}”",
+      "running": "Calling {tool}"
     },
     "loadEarlier": "Load earlier messages",
     "conversation": {
@@ -225,6 +229,12 @@
       "taskTodo": "Not done",
       "footnotes": "Footnotes",
       "backToReference": "Back to reference {index}"
+    },
+    "action": {
+      "retry": "Retry",
+      "continue": "Continue",
+      "copy": "Copy",
+      "regenerate": "Regenerate"
     }
   },
   "canvas": {

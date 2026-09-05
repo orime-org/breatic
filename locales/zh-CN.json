@@ -191,7 +191,9 @@
       "interrupted": "已停止",
       "truncated": "已达长度上限",
       "waiting": "正在回复",
-      "consolidating": "正在整理这条会话的记忆…"
+      "consolidating": "正在整理这条会话的记忆…",
+      "blocked": "等你回答",
+      "empty": "这一轮没有回复"
     },
     "tool": {
       "unfinished": "已停止",
@@ -199,7 +201,9 @@
         "upstream": "执行错误",
         "unreachable": "执行错误",
         "generic": "执行错误"
-      }
+      },
+      "searching": "正在搜索「{query}」",
+      "running": "正在调用 {tool}"
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {
@@ -225,6 +229,12 @@
       "taskTodo": "未完成",
       "footnotes": "脚注",
       "backToReference": "回到引用 {index}"
+    },
+    "action": {
+      "retry": "重试",
+      "continue": "继续",
+      "copy": "复制",
+      "regenerate": "重新生成"
     }
   },
   "canvas": {
