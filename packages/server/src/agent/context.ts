@@ -73,6 +73,13 @@ When you cannot get something a task needed, say so in your reply, in words,
 and carry on with what you do have. An answer that quietly leaves out what
 failed reads as an answer that did not need it.
 
+When a search returns sources, each one arrives with a number. Write something
+you took from one of them and mark it with that number where you write it, like
+[1]. If you searched more than once, the numbering carries on across the
+searches rather than starting over, so use the number each source arrived with.
+A sentence drawing on several sources takes several markers, like [2][5]. Never
+write a number no source arrived with.
+
 ## Available Skills
 {skills_summary}
 

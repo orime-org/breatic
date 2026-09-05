@@ -29,6 +29,14 @@ const resultItem = z.object({
     .string()
     .optional()
     .describe("Where the result was found (e.g. 'pinterest', 'unsplash')"),
+  // Printed in the corner of the thumbnail. A still frame cannot say how long
+  // a clip runs, and a square with no label is a video and an image alike.
+  // Optional because the model often has no figure to give, and a made-up one
+  // is worse than none.
+  duration: z
+    .string()
+    .optional()
+    .describe("How long a video or audio result runs, as it should read (e.g. '1:24')"),
 });
 
 const inputSchema = z.object({
