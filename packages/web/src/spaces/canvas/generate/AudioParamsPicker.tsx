@@ -63,7 +63,7 @@ function shownValue(
 }
 
 /**
- * The audio panel's speaking-parameter picker (#1960): a pill printing what
+ * The audio panel's parameter picker (#1960): a pill printing what
  * the params are set to, opening a popover holding one control per param the
  * active model declares.
  *

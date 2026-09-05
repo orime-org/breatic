@@ -33,9 +33,9 @@ models:
         description: "Clip length in seconds"
         # Probed 2026-09-04: the gateway refuses a missing duration, 0 ("must
         # be at least 1"), 181 ("must be at most 180") and 2.5 ("must be an
-        # integer"). The presets follow ElevenLabs' own playground, which
-        # offers named stops rather than a slider, minus the ones this
-        # upstream will not take.
+        # integer"). Named stops rather than a slider, the shape ElevenLabs'
+        # playground uses; the stops themselves are ours, chosen as integers
+        # across the 1..180 this gateway accepts.
         values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180]
         default: 5
       audio_format:

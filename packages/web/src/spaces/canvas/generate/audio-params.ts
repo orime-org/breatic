@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which speaking parameters the audio panel offers, and what each one looks
+ * Which generation parameters the audio panel offers, and what each one looks
  * like (#1960).
  *
  * A model states its own: ElevenLabs takes stability and similarity, Fish

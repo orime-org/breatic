@@ -59,7 +59,7 @@ describe("the sonilo family hands its params through untouched (#2088)", () => {
   it("returns the params it was given, adding and dropping nothing", async () => {
     // The upstream reads `prompt`, `duration` and `audio_format` under exactly
     // those names, and the dispatcher assigns the prompt itself right after
-    // this returns (`audio/index.ts:110`).
+    // this returns (`audio/index.ts:118`).
     const params = { duration: 5, audio_format: "mp3" };
     const [prompt, apiParams] = await sonilo.buildRequest(
       "glass shattering",

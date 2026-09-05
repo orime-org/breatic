@@ -25,7 +25,7 @@ interface NodePlaceholderProps {
 /**
  * Empty-state body shown when a content node has no `content` / `url` yet. Two
  * lines: the modality's primary double-click action (upload / write), then a
- * shared, dimmer hint pointing at the right-click menu (generate & more). Both
+ * shared, smaller hint pointing at the right-click menu (generate & more). Both
  * lines are i18n keys. A single click selects the node; a **double**-click, or
  * Enter / Space on the focused button, fires `onActivate`. An explicit `hint`
  * (e.g. an in-progress status) overrides both lines with one line.
