@@ -32,7 +32,6 @@ import vocalRemover from "@worker/providers/audio/models/vocal-remover.js";
 // ── Transports ──────────────────────────────────────────────────────
 
 import * as wavespeedTransport from "@worker/providers/audio/transports/wavespeed.js";
-import * as minimaxTransport from "@worker/providers/audio/transports/minimax.js";
 import * as elevenlabsTransport from "@worker/providers/audio/transports/elevenlabs.js";
 import * as falTransport from "@worker/providers/audio/transports/fal.js";
 
@@ -62,7 +61,6 @@ for (const family of ALL_FAMILIES) {
 /** Provider name -> transport module. */
 const _TRANSPORTS = new Map<string, Transport>([
   ["wavespeed", wavespeedTransport],
-  ["minimax", minimaxTransport],
   ["elevenlabs", elevenlabsTransport],
   ["fal", falTransport],
 ]);

@@ -65,7 +65,11 @@ const PROVIDERS_DIR = join(import.meta.dirname, "..");
 const DEADLINES_BEFORE: ReadonlyArray<readonly [string, readonly string[]]> = [
   ["audio/transports/elevenlabs.ts", ["resolved.timeout * 1000"]],
   ["audio/transports/fal.ts", ["resolved.timeout * 1000"]],
-  ["audio/transports/minimax.ts", ["resolved.timeout * 1000"]],
+  // `audio/transports/minimax.ts` was here and is gone: the two music models
+  // were the only ones routing to it, and #1960 moved both to WaveSpeed
+  // because the direct connection builds prompt / lyrics / is_instrumental
+  // alone and sends none of the three reference URLs music-01 reads. A call
+  // site genuinely removed, which is the one edit this list takes.
   ["audio/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
   ["image/transports/byteplus.ts", ["resolved.timeout * 1000"]],
   ["image/transports/dashscope.ts", ["resolved.timeout * 1000"]],

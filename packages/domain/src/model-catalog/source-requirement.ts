@@ -147,17 +147,16 @@ export function computeSourcesByMode(
  * the model declares, so an undeclared field reaches the upstream as nothing.
  * @param type - The source type to look for.
  * @param params - The submitted task params.
- * @param declared - The param names the model declares, or undefined to accept
- *   any field in the vocabulary (the callers that have no model in hand).
+ * @param declared - The param names the model declares.
  * @returns True when the params carry at least one usable source of that type.
  */
 function hasSource(
   type: SourceType,
   params: Record<string, unknown>,
-  declared?: ReadonlySet<string>,
+  declared: ReadonlySet<string>,
 ): boolean {
   for (const [field, shape] of SOURCE_TYPE_PARAM_FIELDS[type]) {
-    if (declared && !declared.has(field)) continue;
+    if (!declared.has(field)) continue;
     const value = params[field];
     const present =
       shape === "list"
@@ -187,13 +186,12 @@ function hasSource(
  * @param params - The submitted task params (`params.images` / `video_url` / … are the source carriers).
  * @param declared - The param names the model declares, so a field belonging to
  *   another vendor's spelling cannot satisfy this model's requirement (#1960).
- *   Omitted by callers holding no model entry.
  * @returns True when a required source type is missing → reject before enqueue.
  */
 export function violatesSourceRequirement(
   sourcesByMode: Record<string, SourceType[]>,
   params: Record<string, unknown>,
-  declared?: ReadonlySet<string>,
+  declared: ReadonlySet<string>,
 ): boolean {
   const modes = Object.values(sourcesByMode);
   if (modes.length === 0) return false; // unknown model — existence is not this gate's job

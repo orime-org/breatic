@@ -94,9 +94,17 @@ describe("the source gate holds for cloning", () => {
 
   it("refuses a submit with no reference audio, and takes one that has it", () => {
     const sources = computeSourcesByMode("tts", "voice_clone");
-    expect(violatesSourceRequirement(sources, { prompt: "x" })).toBe(true);
+    // The model's own declaration: qwen3-tts/voice-clone reads its reference
+    // under `audio`, and the gate asks whether the field a payload uses is one
+    // this model declares.
+    const declared = new Set(["audio"]);
+    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
     expect(
-      violatesSourceRequirement(sources, { prompt: "x", audio: "https://cdn/a.m4a" }),
+      violatesSourceRequirement(
+        sources,
+        { prompt: "x", audio: "https://cdn/a.m4a" },
+        declared,
+      ),
     ).toBe(false);
   });
 });

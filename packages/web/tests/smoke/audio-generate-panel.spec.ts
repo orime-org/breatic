@@ -619,11 +619,14 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
   });
   expect(heights.lyrics).toBeGreaterThan(0);
   expect(heights.style).toBeGreaterThan(0);
-  // 60 against 106 measured 2026-09-05. A band rather than the two numbers:
-  // both floors are stated in rem and the ratio is what was asked for, so a
-  // type-scale change moves both and this still holds.
-  expect(heights.style / heights.lyrics).toBeGreaterThan(0.4);
-  expect(heights.style / heights.lyrics).toBeLessThan(0.62);
+  // 3.25rem against 6.5rem, each plus a 1px border either side: 54 against
+  // 106, a ratio of 0.509. A narrow band rather than the two numbers, because
+  // both floors are stated in rem and the ratio is what was asked for — but
+  // narrow enough that a floor which is not half fails it. The first band
+  // written here was 0.4 to 0.62, which accepted the 0.566 the arithmetic was
+  // then producing.
+  expect(heights.style / heights.lyrics).toBeGreaterThan(0.48);
+  expect(heights.style / heights.lyrics).toBeLessThan(0.54);
 
   // Nothing here picks a voice, clones one, or collects a reference: the mode
   // states its slots and this one states none.
@@ -642,6 +645,21 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
     'Write the lyrics first',
     { timeout: 10_000 },
   );
+
+  // Both boxes read as typable. The rule that says so lives on a class the
+  // panel owns (`index.css`); it used to key on the prompt editor's test id,
+  // which is a prop now, so the lyrics box matched nothing and showed an arrow.
+  for (const id of ['generate-prompt-editor', 'generate-lyrics-editor']) {
+    await expect
+      .poll(
+        () =>
+          page
+            .locator(`[data-testid="${id}"] .ProseMirror`)
+            .evaluate((el) => getComputedStyle(el).cursor),
+        { timeout: 10_000 },
+      )
+      .toBe('text');
+  }
 
   // The pill names the state it is in, the way every other pill on this row
   // prints its current value. This model declares one param and nothing else,

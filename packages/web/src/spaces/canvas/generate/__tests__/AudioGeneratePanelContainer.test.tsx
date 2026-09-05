@@ -794,6 +794,28 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(box.textContent).toContain('morning light');
   });
 
+  // The extension hides its placeholder on a read-only editor by default,
+  // which would leave a dimmed box with nothing in it at all — no words, no
+  // prompt, nothing saying what it is for.
+  it('keeps the lyrics box saying what it asks for while it is locked', async () => {
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(box.querySelector('.ProseMirror')).toHaveAttribute(
+        'contenteditable',
+        'false',
+      ),
+    );
+    expect(box.querySelector('[data-placeholder]')).toHaveAttribute(
+      'data-placeholder',
+      'Write the lyrics',
+    );
+  });
+
   it('leaves it writable while the track has vocals', async () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     const box = await screen.findByTestId('generate-lyrics-editor');
@@ -802,6 +824,30 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
         'contenteditable',
         'true',
       ),
+    );
+  });
+
+  // The box says those words are not used and refuses typing; the request has
+  // to say the same. Measured 2026-09-05, `is_instrumental: true` with an
+  // empty `lyrics` is accepted and completes — that combination is the one
+  // this sends. The words stay on the node, so turning the switch back off
+  // returns them.
+  it('sends no words for a track the user marked vocal-free', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    typePrompt('rain on a tin roof');
+    typeLyrics('morning light');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.lyrics).toBe('');
+    // Still on the node: the fragment is untouched.
+    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+      'morning light',
     );
   });
 

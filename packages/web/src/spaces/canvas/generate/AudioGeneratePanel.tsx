@@ -310,10 +310,12 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
 
           The wrapper is here whether or not there is a second box, and the
           labels are holes rather than a second branch: React reconciles by
-          position, so a `promptSlot` that sits directly under the panel in one
-          branch and under a div in the other is torn down and rebuilt on every
-          switch into or out of a music mode — taking the ProseMirror view, the
-          collaborative binding and the undo stack with it. */}
+          position, so a `promptSlot` sitting directly under the panel in one
+          branch and under a div in the other is a different element each time
+          and gets torn down. The editor it holds is recreated on a mode switch
+          anyway, by a separate mechanism — its placeholder rides on the mode
+          and is a `useEditor` dependency (#2100) — so what this buys today is
+          one teardown instead of two, and the ground for that one to go. */}
       <div className='flex flex-col gap-2'>
         {lyricsSlot !== null && (
           <FieldLabel textKey='canvas.generatePanel.musicStyleLabel' />

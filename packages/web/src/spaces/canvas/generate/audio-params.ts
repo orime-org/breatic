@@ -86,6 +86,9 @@ type AudioParamSpec = {
     }
 );
 
+/** The param a music model states for "no vocals at all" (#1960). */
+export const INSTRUMENTAL_PARAM = 'is_instrumental';
+
 const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
     labelKey: 'canvas.generatePanel.voiceStability',
@@ -114,7 +117,7 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
     // Decibels — a unit symbol, not a word to translate.
     format: (v) => `${v > 0 ? '+' : ''}${v} dB`,
   },
-  is_instrumental: {
+  [INSTRUMENTAL_PARAM]: {
     // Not `musicInstrumental` — that key names the backing-track slot. This
     // switch says "no vocals at all", which is a different sentence.
     labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
@@ -232,9 +235,6 @@ export function audioFlagValue(
   if (typeof held === 'boolean') return held;
   return model?.params?.[name]?.default === true;
 }
-
-/** The param a music model states for "no vocals at all" (#1960). */
-export const INSTRUMENTAL_PARAM = 'is_instrumental';
 
 /**
  * A value as the user reads it, in that parameter's own unit.

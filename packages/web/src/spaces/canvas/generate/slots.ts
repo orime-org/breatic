@@ -72,10 +72,11 @@ export interface SlotSpec {
   /**
    * Translation key for the refusal shown when execute finds this slot empty.
    *
-   * Only on a slot a mode demands by itself. A mode collecting several and
-   * taking any one of them — reference to music offers a song, a vocal line
-   * and a backing track — refuses with one sentence about the set, so naming
-   * any single member of it would be the wrong sentence.
+   * Only on a slot whose panel looks the sentence up here — the video
+   * container does (`VideoGeneratePanelContainer`). The audio panel reaches
+   * every refusal sentence through `refusalToastKey`, the way it reaches the
+   * other eight, so its slots carry none and there is one place per panel
+   * where a refusal is worded.
    */
   errorKey?: string;
 }

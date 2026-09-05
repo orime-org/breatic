@@ -118,9 +118,11 @@ export interface ExecuteGateInput {
  *
  * A boolean could say "no" but not "why", so every one of these collapsed into
  * the same greyed-out button that explained nothing (#1949). Naming the reason
- * lets the button and the submit path treat them differently: only
- * `prompt-missing` is something the user can act on, and only it leaves the
- * button clickable so the click can say what is missing.
+ * lets the button and the submit path treat them differently: the ones the
+ * user can act on leave the button clickable, so the click can say what is
+ * missing. Which ones those are is answered in one place —
+ * {@link refusalToastKey} — and read from there by
+ * {@link isExecuteButtonDisabled}.
  */
 export type ExecuteRefusal =
   | 'node-gone'

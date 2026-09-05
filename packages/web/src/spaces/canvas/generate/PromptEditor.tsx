@@ -469,7 +469,10 @@ export const PromptEditor = React.forwardRef<
       className={
         // Dimmed while it refuses typing, so the state is on screen and not
         // only in what the box does when clicked.
-        'nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border' +
+        // `prompt-editor` is what index.css reaches for: the test id is a prop
+        // now (#1960), and a rule keyed on one instance's id leaves every other
+        // instance without it.
+        'prompt-editor nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border' +
         (readOnly ? ' opacity-50' : '')
       }
       viewportClassName={
@@ -488,10 +491,10 @@ export const PromptEditor = React.forwardRef<
         // every other editor that installs the extension.
         // Half states its floor once, on ProseMirror alone: the viewport's own
         // min-height measures the border box, so an outer floor below
-        // `content + py-2` never binds. 2.125 + 1rem of padding = 3.25rem,
+        // `content + py-2` never binds. 2.25 + the 1rem of py-2 = 3.25rem,
         // exactly half of full's 6.5rem.
         (startingHeight === 'half'
-          ? '[&_.ProseMirror]:min-h-[2.125rem] '
+          ? '[&_.ProseMirror]:min-h-[2.25rem] '
           : 'min-h-[6.5rem] [&_.ProseMirror]:min-h-[5.25rem] ') +
         'max-h-40 px-2.5 py-2 [&_.ProseMirror]:outline-none' +
         dimReferences

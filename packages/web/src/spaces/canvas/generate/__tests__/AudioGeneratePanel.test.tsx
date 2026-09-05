@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import * as React from 'react';
+import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
@@ -363,20 +363,10 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
  * switch into or out of a music mode, silently and while the text survives.
  */
 describe('AudioGeneratePanel — the style box across a mode switch', () => {
-  let mounts = 0;
-
-  /** Counts how many times it has been mounted. */
-  function CountedPrompt(): React.JSX.Element {
-    React.useEffect(() => {
-      mounts += 1;
-    }, []);
-    return <div data-testid='prompt-editor' />;
-  }
-
   it('keeps the same editor alive when the lyrics box arrives and leaves', () => {
-    mounts = 0;
-    const props = { ...BASE, promptSlot: <CountedPrompt /> };
+    const props = { ...BASE, promptSlot: <div data-testid='prompt-editor' /> };
     const { rerender } = renderPanel(<AudioGeneratePanel {...props} />);
+    const before = screen.getByTestId('prompt-editor');
     rerender(
       <TooltipProvider>
         <AudioGeneratePanel
@@ -385,11 +375,12 @@ describe('AudioGeneratePanel — the style box across a mode switch', () => {
         />
       </TooltipProvider>,
     );
+    expect(screen.getByTestId('prompt-editor')).toBe(before);
     rerender(
       <TooltipProvider>
         <AudioGeneratePanel {...props} />
       </TooltipProvider>,
     );
-    expect(mounts).toBe(1);
+    expect(screen.getByTestId('prompt-editor')).toBe(before);
   });
 });

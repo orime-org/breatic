@@ -23,7 +23,24 @@ import { initCore } from "@breatic/core";
 import { describe, it, expect, beforeAll } from "vitest";
 
 import { getFullModelConfig } from "../model-catalog.js";
-import { computeSourcesByMode, violatesSourceRequirement } from "../source-requirement.js";
+import {
+  computeSourcesByMode,
+  violatesSourceRequirement,
+  SOURCE_TYPE_PARAM_FIELDS,
+} from "../source-requirement.js";
+
+
+/**
+ * Every carrier field in the vocabulary, for the cases that are about the
+ * RULE rather than about one model's declarations: the gate asks whether
+ * the model declares a field, and a case exercising the shape of a value
+ * answers yes to all of them.
+ */
+const EVERY_FIELD: ReadonlySet<string> = new Set(
+  Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
+    fields.map(([field]) => field),
+  ),
+);
 
 /** The model that runs reference-to-video (config/models/video/kling.yaml). */
 const REF_MODEL = "kling-o3-pro-ref";
@@ -56,9 +73,9 @@ describe("reference-to-video config wiring (#1927)", () => {
 
   it("refuses a reference task carrying no images", () => {
     const sources = computeSourcesByMode("video", "ref");
-    expect(violatesSourceRequirement(sources, { prompt: "x" })).toBe(true);
+    expect(violatesSourceRequirement(sources, { prompt: "x" }, EVERY_FIELD)).toBe(true);
     expect(
-      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }),
+      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }, EVERY_FIELD),
     ).toBe(false);
   });
 

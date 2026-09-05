@@ -458,8 +458,20 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
+    const freshInstrumental = audioFlagValue(
+      fresh.modelEntry,
+      INSTRUMENTAL_PARAM,
+      fresh.params[INSTRUMENTAL_PARAM],
+    );
+    // Empty on a track the user marked vocal-free: the box says those words
+    // are not used and refuses typing, and the request says the same. That
+    // pair is also the one combination measured to complete without words
+    // (2026-09-05). What is written stays on the node, so turning the switch
+    // back off returns it.
     const freshLyrics = lyrics
-      ? (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
+      ? freshInstrumental
+        ? ''
+        : (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
       : undefined;
     const maxInputChars = fresh.modelEntry?.max_input_chars;
     const refusal = evaluateExecute({
@@ -477,11 +489,7 @@ function AudioGeneratePanelBody({
       filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
-      instrumental: audioFlagValue(
-        fresh.modelEntry,
-        INSTRUMENTAL_PARAM,
-        fresh.params[INSTRUMENTAL_PARAM],
-      ),
+      instrumental: freshInstrumental,
     });
     if (refusal != null) {
       const key = refusalToastKey(refusal);

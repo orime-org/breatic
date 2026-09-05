@@ -14,7 +14,21 @@ import { describe, it, expect } from "vitest";
 import {
   computeSourcesByMode,
   violatesSourceRequirement,
+  SOURCE_TYPE_PARAM_FIELDS,
 } from "@domain/model-catalog/source-requirement.js";
+
+
+/**
+ * Every carrier field in the vocabulary, for the cases that are about the
+ * RULE rather than about one model's declarations: the gate asks whether
+ * the model declares a field, and a case exercising the shape of a value
+ * answers yes to all of them.
+ */
+const EVERY_FIELD: ReadonlySet<string> = new Set(
+  Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
+    fields.map(([field]) => field),
+  ),
+);
 
 describe("computeSourcesByMode (#1675)", () => {
   it("maps image i2i/edit → image, t2i → []", () => {
@@ -55,29 +69,29 @@ describe("computeSourcesByMode (#1675)", () => {
 
 describe("violatesSourceRequirement (#1675 server gate)", () => {
   it("passes an unknown model (empty sourcesByMode)", () => {
-    expect(violatesSourceRequirement({}, {})).toBe(false);
+    expect(violatesSourceRequirement({}, {}, EVERY_FIELD)).toBe(false);
   });
 
   it("passes a hybrid (t2i+i2i) with no source — image-less is a valid t2i run", () => {
     const sbm = computeSourcesByMode("image", ["t2i", "i2i"]);
-    expect(violatesSourceRequirement(sbm, {})).toBe(false);
-    expect(violatesSourceRequirement(sbm, { images: [] })).toBe(false);
+    expect(violatesSourceRequirement(sbm, {}, EVERY_FIELD)).toBe(false);
+    expect(violatesSourceRequirement(sbm, { images: [] }, EVERY_FIELD)).toBe(false);
   });
 
   it("gates a pure i2v (no source-less mode) when no image is present", () => {
     const sbm = computeSourcesByMode("video", "i2v");
-    expect(violatesSourceRequirement(sbm, {})).toBe(true);
-    expect(violatesSourceRequirement(sbm, { images: [] })).toBe(true);
-    expect(violatesSourceRequirement(sbm, { images: ["u"] })).toBe(false);
+    expect(violatesSourceRequirement(sbm, {}, EVERY_FIELD)).toBe(true);
+    expect(violatesSourceRequirement(sbm, { images: [] }, EVERY_FIELD)).toBe(true);
+    expect(violatesSourceRequirement(sbm, { images: ["u"] }, EVERY_FIELD)).toBe(false);
     // image source may arrive via the `image` field too
-    expect(violatesSourceRequirement(sbm, { image: "u" })).toBe(false);
+    expect(violatesSourceRequirement(sbm, { image: "u" }, EVERY_FIELD)).toBe(false);
   });
 
   it("gates a video-edit when no video is present (image does NOT satisfy)", () => {
     const sbm = computeSourcesByMode("video", "edit");
-    expect(violatesSourceRequirement(sbm, { images: ["u"] })).toBe(true);
-    expect(violatesSourceRequirement(sbm, { video_url: "u" })).toBe(false);
-    expect(violatesSourceRequirement(sbm, { video: "u" })).toBe(false);
+    expect(violatesSourceRequirement(sbm, { images: ["u"] }, EVERY_FIELD)).toBe(true);
+    expect(violatesSourceRequirement(sbm, { video_url: "u" }, EVERY_FIELD)).toBe(false);
+    expect(violatesSourceRequirement(sbm, { video: "u" }, EVERY_FIELD)).toBe(false);
   });
 
   it("gates animate until BOTH the character image AND the driving video are present", () => {
@@ -85,22 +99,22 @@ describe("violatesSourceRequirement (#1675 server gate)", () => {
     // character image AND a driving video, both required — the motion comes
     // from the video, so an image on its own has nothing to animate to.
     const sbm = computeSourcesByMode("video", "animate");
-    expect(violatesSourceRequirement(sbm, { image: "u" })).toBe(true); // video missing
-    expect(violatesSourceRequirement(sbm, { video: "u" })).toBe(true); // image missing
-    expect(violatesSourceRequirement(sbm, { image: "u", video: "u" })).toBe(false);
+    expect(violatesSourceRequirement(sbm, { image: "u" }, EVERY_FIELD)).toBe(true); // video missing
+    expect(violatesSourceRequirement(sbm, { video: "u" }, EVERY_FIELD)).toBe(true); // image missing
+    expect(violatesSourceRequirement(sbm, { image: "u", video: "u" }, EVERY_FIELD)).toBe(false);
   });
 
   it("gates talking_head until BOTH image AND audio are present", () => {
     const sbm = computeSourcesByMode("video", "talking_head");
-    expect(violatesSourceRequirement(sbm, { images: ["u"] })).toBe(true); // audio missing
-    expect(violatesSourceRequirement(sbm, { audio: "u" })).toBe(true); // image missing
-    expect(violatesSourceRequirement(sbm, { images: ["u"], audio: "u" })).toBe(false);
+    expect(violatesSourceRequirement(sbm, { images: ["u"] }, EVERY_FIELD)).toBe(true); // audio missing
+    expect(violatesSourceRequirement(sbm, { audio: "u" }, EVERY_FIELD)).toBe(true); // image missing
+    expect(violatesSourceRequirement(sbm, { images: ["u"], audio: "u" }, EVERY_FIELD)).toBe(false);
   });
 
   it("accepts audio source via any carrier field (audio / audio_url / ref_audio_url)", () => {
     const sbm = computeSourcesByMode("tts", "voice_clone");
-    expect(violatesSourceRequirement(sbm, { ref_audio_url: "u" })).toBe(false);
-    expect(violatesSourceRequirement(sbm, {})).toBe(true);
+    expect(violatesSourceRequirement(sbm, { ref_audio_url: "u" }, EVERY_FIELD)).toBe(false);
+    expect(violatesSourceRequirement(sbm, {}, EVERY_FIELD)).toBe(true);
   });
 
   it("does NOT accept a malformed non-array `images` (a bare string) — the worker reads `images` as an array, so a string is not a usable source", () => {
@@ -109,18 +123,18 @@ describe("violatesSourceRequirement (#1675 server gate)", () => {
     // `images` as an array (google/byteplus transports), so a bare string is a
     // guaranteed-failure input, not a source. The gate must still reject it.
     const sbm = computeSourcesByMode("image", "i2i");
-    expect(violatesSourceRequirement(sbm, { images: "https://cdn/x.png" })).toBe(true);
+    expect(violatesSourceRequirement(sbm, { images: "https://cdn/x.png" }, EVERY_FIELD)).toBe(true);
     // an array whose entries are not usable strings is likewise no source
-    expect(violatesSourceRequirement(sbm, { images: [123] })).toBe(true);
-    expect(violatesSourceRequirement(sbm, { images: [""] })).toBe(true);
+    expect(violatesSourceRequirement(sbm, { images: [123] }, EVERY_FIELD)).toBe(true);
+    expect(violatesSourceRequirement(sbm, { images: [""] }, EVERY_FIELD)).toBe(true);
     // the correct array shape still passes
-    expect(violatesSourceRequirement(sbm, { images: ["https://cdn/x.png"] })).toBe(false);
+    expect(violatesSourceRequirement(sbm, { images: ["https://cdn/x.png"] }, EVERY_FIELD)).toBe(false);
   });
 
   it("still accepts a bare string in a STRING-convention field (image / video_url / audio)", () => {
     // The singular fields are string-convention (mini-tool + provider read them
     // as a single URL), so a bare string there IS a valid source.
-    expect(violatesSourceRequirement(computeSourcesByMode("image", "i2i"), { image: "u" })).toBe(false);
-    expect(violatesSourceRequirement(computeSourcesByMode("video", "edit"), { video_url: "u" })).toBe(false);
+    expect(violatesSourceRequirement(computeSourcesByMode("image", "i2i"), { image: "u" }, EVERY_FIELD)).toBe(false);
+    expect(violatesSourceRequirement(computeSourcesByMode("video", "edit"), { video_url: "u" }, EVERY_FIELD)).toBe(false);
   });
 });

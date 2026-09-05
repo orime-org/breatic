@@ -23,6 +23,8 @@ import { describe, it, expect } from 'vitest';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import { refusalToastKey } from '@web/spaces/canvas/generate/generate-guards';
+import type { ExecuteRefusal } from '@web/spaces/canvas/generate/generate-guards';
+import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { allSlotSpecs, slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
@@ -164,12 +166,46 @@ describe('the music reference slots', () => {
     }
   });
 
-  it('leaves both refusal sentences answerable in all five catalogs', () => {
-    for (const refusal of ['ref-audio-missing', 'reference-missing'] as const) {
+  // Walked rather than hand-listed: `i18n-no-missing-keys` only reads keys
+  // spelled inside a `t("…")` call, and every one of these is table data —
+  // returned from `refusalToastKey`, held on a mode option, held on a param
+  // spec. A key added to one of those tables and to no catalog is invisible to
+  // CI and shows up as the key itself on screen.
+  it('answers every execute refusal in all five catalogs', () => {
+    const refusals: ExecuteRefusal[] = [
+      'node-gone',
+      'no-model',
+      'submitting',
+      'prompt-missing',
+      'prompt-too-long',
+      'voice-missing',
+      'ref-audio-missing',
+      'reference-missing',
+      'lyrics-missing',
+    ];
+    for (const refusal of refusals) {
       const key = refusalToastKey(refusal);
-      expect(key, refusal).toBeTypeOf('string');
+      if (key === null) continue;
       for (const [locale, catalog] of LOCALE_CATALOGS) {
-        expect(readPath(catalog, key!), `${locale} is missing ${key}`).toBeTypeOf(
+        expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf(
+          'string',
+        );
+      }
+    }
+  });
+
+  it('answers every mode placeholder and every param label in all five catalogs', () => {
+    const keys = [
+      ...AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey),
+      'canvas.generatePanel.musicStyleLabel',
+      'canvas.generatePanel.musicLyricsLabel',
+      'canvas.generatePanel.musicLyricsPlaceholder',
+      'canvas.generatePanel.musicInstrumentalOnly',
+      'canvas.generatePanel.musicWithVocals',
+    ];
+    for (const key of keys) {
+      for (const [locale, catalog] of LOCALE_CATALOGS) {
+        expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf(
           'string',
         );
       }
