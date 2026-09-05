@@ -259,7 +259,7 @@ test('a quoted list: a heading moves the block, Quote takes the quote off', asyn
     .toBe('heading1 quoted list item');
 });
 
-test('draws the tick right of the chord and the rule after Code block', async () => {
+test('draws the tick right of the chord and a rule at each group boundary', async () => {
   await openFreshDocument(page);
   await typeAndSelectLine(page, 'a heading to tick');
   await page.keyboard.press(`${MOD}+Alt+1`);
@@ -279,20 +279,24 @@ test('draws the tick right of the chord and the rule after Code block', async ()
     const shortcutRights = ['heading-1', 'heading-2', 'heading-3'].map(
       (id) => Math.round(rect(`${slot}-shortcut-${id}`)?.right ?? -1),
     );
-    const codeBlock = rect(`${slot}-item-code-block`);
-    const quote = rect(`${slot}-item-quote`);
-    const rule = document
-      .querySelector(`[data-testid="${slot}-menu"] [data-testid="doc-bubble-rule"]`)
-      ?.getBoundingClientRect() ?? null;
+    const rows = ['task-list', 'ordered-list', 'quote'].map((id) => ({
+      id,
+      top: rect(`${slot}-item-${id}`)?.top ?? null,
+      bottom: rect(`${slot}-item-${id}`)?.bottom ?? null,
+    }));
+    const rules = [
+      ...document.querySelectorAll(
+        `[data-testid="${slot}-menu"] [data-testid="doc-bubble-rule"]`,
+      ),
+    ].map((element) => element.getBoundingClientRect().top);
     return {
       tickLeft: tick?.left ?? null,
       shortcutRight: shortcut?.right ?? null,
       sameRow: shortcut && tick
         ? Math.abs((shortcut.top + shortcut.height / 2) - (tick.top + tick.height / 2)) < 4
         : false,
-      ruleTop: rule?.top ?? null,
-      codeBlockBottom: codeBlock?.bottom ?? null,
-      quoteTop: quote?.top ?? null,
+      rules,
+      rows,
       activeRows: document.querySelectorAll(
         `[data-testid="${slot}-menu"] [data-active="true"]`,
       ).length,
@@ -306,11 +310,21 @@ test('draws the tick right of the chord and the rule after Code block', async ()
   expect(geometry.shortcutRight).not.toBeNull();
   expect(geometry.tickLeft as number).toBeGreaterThan(geometry.shortcutRight as number);
 
-  // The rule sits between Code block and Quote.
-  expect(geometry.ruleTop as number).toBeGreaterThanOrEqual(
-    geometry.codeBlockBottom as number,
-  );
-  expect(geometry.quoteTop as number).toBeGreaterThanOrEqual(geometry.ruleTop as number);
+  // The two rules fall where the three groups meet (§3.1 / A2): after the
+  // seven that set the block's type, and after Ordered. Pinned where they
+  // fall rather than by a pair of comparisons that hold for more than one
+  // arrangement — "some rule between Code block and Quote" was satisfied by
+  // both rules side by side, or by the type group split in half.
+  expect(geometry.rules).toHaveLength(2);
+  const [afterTypes, afterOrdered] = geometry.rules as [number, number];
+  const row = (id: string): { top: number; bottom: number } => {
+    const found = geometry.rows.find((each) => each.id === id);
+    return { top: found?.top as number, bottom: found?.bottom as number };
+  };
+  expect(afterTypes).toBeGreaterThanOrEqual(row('task-list').bottom);
+  expect(afterTypes).toBeLessThanOrEqual(row('ordered-list').top);
+  expect(afterOrdered).toBeGreaterThanOrEqual(row('ordered-list').bottom);
+  expect(afterOrdered).toBeLessThanOrEqual(row('quote').top);
 
   // Every row keeps the tick's column, so the ticked row's chord stays on the
   // line the others sit on (the demo's `.row .tick`).
