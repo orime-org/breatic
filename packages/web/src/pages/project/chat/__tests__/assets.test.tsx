@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { squaresThatFit } from '@web/pages/project/chat/AssetRow';
@@ -190,5 +190,51 @@ describe('how many squares a row of that width holds', () => {
     // 296 装得下 5 个（46×5 + 8×4 = 262），第 5 格让给按钮。
     expect(squaresThatFit(296, 8)).toBe(4);
     expect(squaresThatFit(296, 5)).toBe(5);
+  });
+});
+
+describe('getting the reader back where they were', () => {
+  /**
+   * A reply carrying that many pictures.
+   * @param n - How many.
+   * @returns The message.
+   */
+  const withImages = (n: number): Parameters<typeof MessageBubble>[0]['message'] => ({
+    id: 'm',
+    role: 'assistant',
+    content: 'here they are',
+    assets: Array.from({ length: n }, (_, i) => ({
+      kind: 'image' as const,
+      url: `https://i.example/${String(i)}.png`,
+      title: `Picture ${String(i)}`,
+    })),
+  });
+
+  // 框是从状态开的，不是从 Radix 的 Trigger 开的，而 Radix 的 dialog 关闭时
+  // 只把焦点交给 triggerRef（@radix-ui/react-dialog@1.1.23 dist/index.mjs:154）。
+  // 没有 trigger 就没人接，键盘用户按完 Escape 焦点落到 body，要从头 Tab 回来。
+  it('puts focus back on the square that opened the box', async () => {
+    render(<MessageBubble message={withImages(3)} />);
+    const thumb = screen.getAllByTestId('asset-thumb')[0]!;
+    thumb.focus();
+
+    await userEvent.click(thumb);
+    expect(screen.getByTestId('asset-box')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByTestId('asset-box')).toBeNull());
+    expect(document.activeElement).toBe(thumb);
+  });
+
+  it('puts focus back on the button when the box was opened from it', async () => {
+    render(<MessageBubble message={withImages(20)} />);
+    const more = screen.getByTestId('asset-row-more');
+    more.focus();
+
+    await userEvent.click(more);
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByTestId('asset-box')).toBeNull());
+    expect(document.activeElement).toBe(more);
   });
 });

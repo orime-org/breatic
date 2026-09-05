@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@web/components/ui/dialog';
+import { useReturnFocus } from '@web/lib/overlay-focus';
 
 /**
  * The Agent column, for anything that has to be laid out against it.
@@ -83,10 +84,12 @@ export function ColumnBox({
   footer,
 }: ColumnBoxProps): React.JSX.Element {
   const column = React.useContext(ColumnElement);
+  const returnFocus = useReturnFocus(open);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid={testId}
+        onCloseAutoFocus={returnFocus}
         container={column}
         overlayClassName={column === null ? undefined : 'absolute'}
         className={

@@ -32,6 +32,7 @@ import {
 import { cn } from '@web/lib/utils';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useReturnFocus } from '@web/lib/overlay-focus';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 
@@ -511,12 +512,18 @@ function ConversationHistorySheetInner({
     failed: nextPageFailed,
   });
 
+  // Modal traps focus, so closing has to hand it back. Radix only ever
+  // focuses its own Trigger, and the button that opens this list is in the
+  // header -- a sibling of this panel, not a trigger inside it.
+  const returnFocus = useReturnFocus(open);
+
   return (
     // Modal, which is what makes the scrim below exist at all: Radix renders
     // the overlay only for a modal root (`sheet.tsx:29`), and the panel behind
     // this list is not what the reader is working in while it is open.
     <Sheet open={open} onOpenChange={onOpenChange} modal>
       <SheetContent
+        onCloseAutoFocus={returnFocus}
         onPointerDownOutside={(event) => {
           if (pressedTheButtonThatOpensThisList(event.target)) event.preventDefault();
         }}

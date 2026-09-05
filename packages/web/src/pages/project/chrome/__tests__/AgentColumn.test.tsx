@@ -257,6 +257,10 @@ describe('a history sheet left open when the list goes unreadable', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),
     );
+    // 模态把焦点关在抽屉里，所以关掉之后必须交还 —— 否则键盘读者按完 Escape
+    // 要从头 Tab 回这个按钮。Radix 只把焦点交给它自己的 Trigger，而这个抽屉
+    // 是从状态开的、没有 Trigger。
+    expect(document.activeElement).toBe(screen.getByTestId('open-conversation-history'));
   });
 });
 
