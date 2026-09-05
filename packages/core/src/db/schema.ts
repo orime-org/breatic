@@ -658,8 +658,9 @@ export const nodeTasks = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     // Server clock, stamped when the row is written. The countdown the user
-    // sees is derived from this and `budget_ms`, and the timer Durable Object
-    // is set from the same pair — one source, so they cannot disagree.
+    // sees is derived from this and `budget_ms`, and so is the harvest that
+    // judges the row dead when somebody reads this node's task list — one
+    // source, so they cannot disagree.
     startedAt: timestamp("started_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

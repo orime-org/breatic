@@ -181,7 +181,6 @@ async function requestTicket(
       project_id: projectId,
       size,
       client_hash: hash,
-      lease_gen: 1,
     }),
   });
 }

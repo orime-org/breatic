@@ -183,9 +183,9 @@ function optionsOf(nth: number): { replaySafe: boolean; timeoutMs?: number } {
 // when one is given up on. Neither is visible in the response, so it is stated
 // here or nowhere.
 describe('what the shared transport is told', () => {
-  // The Durable Object behind this upload answers a repeated open with the
-  // upload already open, records a part under its own number, and completes
-  // once — so delivering any of the three again costs nothing.
+  // A repeated part is written under its own number, and a repeated finish is
+  // refused by R2 rather than written twice — so delivering any of the three
+  // again costs nothing.
   it('declares every step replay-safe', async () => {
     wireHappyPath(2, {});
 

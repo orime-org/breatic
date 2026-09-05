@@ -95,7 +95,6 @@ describe("POST /assets/upload-ticket — project ownership", () => {
         project_id: PROJ_UUID,
         size: 1,
         client_hash: "a".repeat(64),
-        lease_gen: 1,
       }),
     });
     expect(res.status).toBe(403);

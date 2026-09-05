@@ -5,9 +5,9 @@
  * How long one part may take, and why every window around it has to be wider.
  *
  * Both answers come from one piece of arithmetic: the browser sizes each
- * part's deadline with it, and the ticket endpoint checks the Durable Object's
- * idle window against it. Two copies would drift apart the first time either
- * side's figures moved.
+ * part's deadline with it, and the ticket endpoint checks the session token's
+ * window against it. Two copies would drift apart the first time either side's
+ * figures moved.
  */
 
 import { describe, it, expect } from "vitest";

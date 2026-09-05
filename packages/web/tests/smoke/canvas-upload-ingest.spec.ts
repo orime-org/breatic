@@ -116,8 +116,8 @@ async function imageSources(target: Page): Promise<string[]> {
  *
  * `testsrc` is a synthetic pattern that compresses to almost nothing, so the
  * clip is looped until it clears the 8 MiB part size several times over —
- * which is the whole point of this file, since one part exercises none of the
- * Durable Object's accounting.
+ * which is the whole point of this file, since one part exercises neither the
+ * part list the browser has to hand back nor the layout check over it.
  *
  * The comment tag carries random bytes because ffmpeg's output is otherwise
  * deterministic: an identical file hashes the same, and the ticket answers the

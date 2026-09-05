@@ -10,6 +10,7 @@ import {
 
 import {
   deriveStatus,
+  failedTaskListToOpen,
   isContentNodeView,
   toNodeView,
 } from '@web/spaces/canvas/types/node-view';
@@ -286,6 +287,44 @@ describe('deriveStatus — task counts → 3-state display status (#186 §7.6)',
 
   it('shows nothing for a node that has never carried a task', () => {
     expect(deriveStatus({})).toBe('idle');
+  });
+});
+
+describe('failedTaskListToOpen', () => {
+  // The error box's "View" is the one way into the list from a node, and the
+  // list shows one state at a time. Which state it should show is decided from
+  // the same counts that put the error box there in the first place —
+  // `deriveStatus` treats `failed` and `expired` alike, so sending every
+  // reader to `failed` lands half of them on an empty list.
+  it('opens the failed list when the node holds a failed task', () => {
+    expect(failedTaskListToOpen(counts({ failed: 1 }))).toBe('failed');
+  });
+
+  it('opens the expired list when that is the only kind of failure', () => {
+    expect(failedTaskListToOpen(counts({ expired: 2 }))).toBe('expired');
+  });
+
+  it('prefers failed when the node holds both', () => {
+    expect(failedTaskListToOpen(counts({ failed: 1, expired: 1 }))).toBe(
+      'failed',
+    );
+  });
+
+  // A text node whose extraction failed in the browser carries an
+  // `errorMessage` and no task row at all (#186 §3.7.4). There is nothing for
+  // a list to show, so the error box offers no way into one.
+  it('opens nothing when no task failed', () => {
+    expect(failedTaskListToOpen(counts({ done: 3 }))).toBeNull();
+  });
+
+  it('opens nothing for a node that has never carried a task', () => {
+    expect(failedTaskListToOpen(undefined)).toBeNull();
+  });
+
+  // A group or an annotation shows no task column at all, and reaches here as
+  // null rather than as four zeros.
+  it('opens nothing for a kind that holds no tasks', () => {
+    expect(failedTaskListToOpen(null)).toBeNull();
   });
 });
 

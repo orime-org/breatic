@@ -27,9 +27,9 @@ export type RestoreDecision =
  * fresh gate state + performs the write. Invariants:
  * - INV-9: `readOnly` → noop (an editor→viewer downgrade cannot write).
  * - INV-4: a failed / content-less entry → noop (never restorable).
- * - INV-1 / INV-2: a locked node, or one with a live handling lease, → blocked
- *   with the gate's toast key (the caller must pass `handling` already OR'd
- *   with the live-lease read).
+ * - INV-1 / INV-2: a locked node, or one with a task still running, → blocked
+ *   with the gate's toast key (the caller passes `handling` read off the
+ *   node's own task counts).
  * - INV-8: video restores carry the cover (`thumbnailUrl`, `null` clears a
  *   stale poster); image / audio pass `undefined` so `coverUrl` is untouched
  *   (writing it would leak an asset-GC phantom reference).

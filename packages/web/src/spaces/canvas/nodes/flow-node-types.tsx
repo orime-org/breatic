@@ -24,6 +24,7 @@ import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
 import type { NodeTaskCounts } from '@breatic/shared';
 import { cn } from '@web/lib/utils';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
+import { failedTaskListToOpen } from '@web/spaces/canvas/types/node-view';
 
 /** A node with no task rows yet reads as four zeros rather than nothing. */
 const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
@@ -193,9 +194,13 @@ function makeFlowNode(
       },
       [closeActivePanel, openTaskPanel, props.id],
     );
+    // Absent when no task on this node failed, which is what keeps the error
+    // box from offering a way into a list with nothing in it: the counts that
+    // put that box on screen also say which of the two failure states to show.
+    const failedList = failedTaskListToOpen(taskCounts);
     const onViewTasks = React.useCallback((): void => {
-      openTaskPanel(props.id, 'failed');
-    }, [openTaskPanel, props.id]);
+      if (failedList !== null) openTaskPanel(props.id, failedList);
+    }, [failedList, openTaskPanel, props.id]);
     return (
       <NodeIdContext.Provider value={props.id}>
         <NodeScaleContext.Provider value={headerScale}>
@@ -210,7 +215,7 @@ function makeFlowNode(
                 locked={data.locked}
                 onRename={onRename}
                 onActivate={onActivate}
-                onViewTasks={onViewTasks}
+                {...(failedList !== null && { onViewTasks })}
               />
               {/* The resize controls render AFTER the body for the same reason
                 the connection handles below do: absolutely-positioned siblings

@@ -10,11 +10,10 @@
  * this is the only thing that keeps an upload inside what its ticket
  * authorised.
  *
- * Both sides of the upload read it from here. The Worker judges a part before
- * it writes, which is the only moment the bound can still stop the bytes; the
- * instance judges it again before recording it, because "have they all
- * arrived?" is answered by counting rows and only holds while every non-final
- * row is exactly one part long.
+ * The Worker judges a part twice against it. Before the write, which is the
+ * only moment the bound can still stop the bytes; and again at the end, over
+ * the list the browser hands back, where what is left to judge is which
+ * positions that list names.
  */
 
 /** What a ticket signed about the shape of one upload. */

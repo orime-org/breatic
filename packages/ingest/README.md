@@ -100,16 +100,16 @@ from that URL before it can pull a frame out of it.
 The Worker itself still runs on this machine, which is the half `wrangler dev
 --remote` gives up: that flag moves the Worker to Cloudflare's edge, where
 `SERVER_REPORT_URL` on localhost is unreachable and no report ever arrives.
-Durable Objects stay local either way — Cloudflare does not offer them as a
-remote binding, and an upload session is exactly the kind of state that belongs
-next to the code reading it.
+This Worker binds no Durable Object and keeps nothing between requests: an
+upload's id and its part receipts travel with the browser and come back to
+finish it.
 
 ## Tests
 
 They run inside workerd, the runtime this Worker deploys to. The things worth
-testing here have no Node equivalent to stand in for them: a Durable Object that
-keeps state between requests, R2 multipart uploads, and `crypto.DigestStream`.
-A mock of any of them would be a mock of what we believe the platform does.
+testing here have no Node equivalent to stand in for them: R2 multipart uploads
+and `crypto.DigestStream`. A mock of either would be a mock of what we believe
+the platform does.
 
 The test configuration declares its own bindings and compatibility date in
 `vitest.config.ts`, so the suite runs on a checkout that has no `wrangler.toml`.

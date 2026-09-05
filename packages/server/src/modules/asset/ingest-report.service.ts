@@ -11,17 +11,19 @@
  * which generation its event is fenced on) is read off the grant row the ticket
  * endpoint wrote.
  *
- * Three outcomes, and each one ends with the node hearing about it:
+ * What a report can be:
  *
  *   - the bytes are good     → register, consume the grant, tell the node
  *   - the bytes are too big  → void the grant, tell the node it failed
  *   - the upload never       → void the grant, tell the node it failed
  *     finished
+ *   - any of those, on a key → say nothing: the delivery that registered it
+ *     already registered        already told the node
  *
- * The event is not optional on any of them. A node enters handling before the
- * first byte moves and only leaves it when something says so; if this service
- * returns without publishing, the node spins until collab's hour-long sweeper
- * reclaims it.
+ * A node starts counting a task before the first byte moves, and the event
+ * carrying that task's outcome is what stops it. A node whose event never got
+ * out catches up the moment somebody opens its task list, which harvests the
+ * rows against their budgets and republishes the counts (#186 §4.6).
  */
 
 import {

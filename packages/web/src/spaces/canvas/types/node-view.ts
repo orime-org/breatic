@@ -280,6 +280,28 @@ export function deriveStatus(
 }
 
 /**
+ * Which task list the error box's "View" should open, or null when there is
+ * nothing for it to show (#186 §7.6).
+ *
+ * The list shows one state at a time, and the error box is put on screen by
+ * {@link deriveStatus}, which treats `failed` and `expired` alike. So the same
+ * counts decide which of the two to open. A node whose error came from text
+ * this browser could not extract has no task row at all (design §3.7.4), and
+ * gets no way into a list that would be empty.
+ * @param counts - The node's four task counts. Absent on a node that never
+ *   carried one, null on the kinds that hold no tasks at all.
+ * @returns The state to open, or null when no task on this node failed.
+ */
+export function failedTaskListToOpen(
+  counts: NodeTaskCounts | null | undefined,
+): 'failed' | 'expired' | null {
+  if (counts === null || counts === undefined) return null;
+  if (counts.failed > 0) return 'failed';
+  if (counts.expired > 0) return 'expired';
+  return null;
+}
+
+/**
  * Projects a wire `CanvasNodeFields` into the narrowed view its
  * component renders. Every known `type` maps to a view; returns `null`
  * only for a dirty / unknown `type` — the caller treats `null` as "skip

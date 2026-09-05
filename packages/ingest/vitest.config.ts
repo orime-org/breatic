@@ -14,6 +14,12 @@ import { resolve } from "node:path";
 
 export default defineWorkersConfig({
   test: {
+    // vitest's default is 5s, and one case here deliberately waits two real
+    // seconds to tell a re-issued token's window from a carried-forward one.
+    // Two seconds of head-room is not enough on a machine running the other
+    // eight packages' suites beside this one; every other package in the repo
+    // raises this for the same reason.
+    testTimeout: 30_000,
     poolOptions: {
       workers: {
         main: "./src/index.ts",

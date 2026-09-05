@@ -16,8 +16,8 @@
  * nothing here: the only thing it still freezes is deleting the node, which
  * `group-membership.ts` decides from the node's own counts.
  *
- * The policy is pure and modality-agnostic: it keys on state + operation, never
- * on node type, so image / text / audio / video nodes all gate identically —
+ * The policy is pure and modality-agnostic: it keys on state, never on node
+ * type, so image / text / audio / video nodes all gate identically —
  * a future generatable modality inherits the gate by routing its mutating
  * entry points through this function. Enforcement points (the CanvasSpace
  * delete guard, upload activation, TextNode edit entry, the Generate panel)

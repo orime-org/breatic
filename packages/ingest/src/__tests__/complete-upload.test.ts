@@ -295,6 +295,35 @@ describe("the exclusive permission to finish", () => {
     expect(response.status).toBe(409);
   });
 
+  it("finishes again on the same upload id, writing nothing new", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim(undefined, 2);
+    expectReport();
+    expectReport();
+
+    const first = await complete(uploadId, token, parts);
+    const stored = await env.BUCKET.head(storageKey);
+
+    // The browser did not hear that answer, so it asks again with the upload
+    // id it still holds. R2 refuses a second complete on that id, and
+    // `assembleObject` reads the size off the object already standing there —
+    // so this delivery finishes without writing a byte, and our server
+    // answers the repeated report out of the ledger.
+    const second = await complete(uploadId, token, parts);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect((await env.BUCKET.head(storageKey))?.uploaded).toEqual(
+      stored?.uploaded,
+    );
+    expect(reports).toHaveLength(2);
+    expect(reports[1]).toMatchObject({
+      storage_key: storageKey,
+      outcome: "completed",
+      size_bytes: PART_SIZE + FINAL_PART_SIZE,
+    });
+  });
+
   it("refuses when there is no grant for this key", async () => {
     const { uploadId, token, parts } = await uploadedThrough(2);
     expectClaim({ data: { granted: false, reason: "no_grant" } });

@@ -1342,19 +1342,6 @@ function landHandlingContent(
 
 
 /**
- * The Yjs clientID of this browser's connection to a canvas doc — the
- * third field of the owner triple for nodes CREATED already-handling
- * (upload drop creates the node with its first lease inline; the factory
- * is pure, so the caller injects this).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space the node will be added to.
- * @returns The doc connection's Yjs clientID.
- */
-export function getCanvasClientId(projectId: string, spaceId: string): number {
-  return getDoc(docName.canvasSpace(projectId, spaceId)).clientID;
-}
-
-/**
  * Set (or clear) a group's background tint — frontend-owned. Passing
  * `undefined` clears the field (no color → neutral dashed group). No-op when the
  * group does not exist.

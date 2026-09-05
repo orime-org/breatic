@@ -598,7 +598,7 @@ describe("POST /assets/ingest-report — the same report twice", () => {
     `;
     expect(history[0]!.n).toBe("1");
 
-    // The event goes out again on purpose. A retry means the Durable Object
+    // The event goes out again on purpose. A repeated report means the browser
     // did not hear us the first time, and the likeliest reason is that the
     // event never reached the node. Collab applies it last-write-wins.
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
@@ -792,8 +792,8 @@ describe("a video, which needs a cover before the node hears anything", () => {
     expect(grants[0]!.consumed_at).not.toBeNull();
   });
 
-  // The job id is the storage key, so the Durable Object retrying its report
-  // cannot start a second extraction of the same upload.
+  // The job id is the storage key, so a repeated report cannot start a second
+  // extraction of the same upload.
   it("queues one job however many times the report arrives", async () => {
     const seed = await seedEditor();
     const { key } = await uploadVideo(seed);
