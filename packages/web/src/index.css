@@ -760,8 +760,16 @@ body {
    flatten onto one (user 2026-09-02). Both the size and the space above are
    read per level from the data attribute the editor writes, which level one
    omits. */
+/* The background and the body colour are ours. BlockNote sets both from
+   `--bn-colors-editor-background` and `--bn-colors-editor-text`, which it
+   declares on `.bn-root` — an element `BlockNoteView` renders and this Space
+   does not (§14 keeps our own bubble bar and link panel). Both `var()` calls
+   therefore fall through, and what the screen shows today it shows because a
+   substitution failed. */
 .doc-body-editor .bn-editor {
   padding-inline: 0;
+  background-color: transparent;
+  color: var(--color-foreground);
 }
 
 /* The body is set in our own stack at our own size. BlockNote's
@@ -859,6 +867,58 @@ body {
    for exactly this context-dependence. */
 .doc-body-editor .ProseMirror strong {
   font-weight: 700;
+}
+
+/* A to-do's tick is drawn here, at the values `components/ui/checkbox.tsx`
+   uses. BlockNote renders a bare `<input type="checkbox">` inside the block
+   and styles only its geometry, so the box itself came from the browser: 12
+   by 24 with square corners, ticked in the operating system's accent colour.
+   The Radix component cannot go inside a ProseMirror NodeView, so the values
+   are matched rather than the component reused.
+
+   The tick is a mask on the holder rather than a background on the input: an
+   `<input>` is a replaced element and takes no pseudo-element of its own, and
+   a mask carries its colour from a token where a background SVG would have to
+   spell one out. The holder is 24 wide (4 + 16 + 4 after the margins below),
+   so a 12px tick centred on the box starts 6 in. */
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div {
+  position: relative;
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-block: 4px;
+  margin-inline: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-content-xs);
+  background-color: var(--color-background);
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:hover {
+  border-color: var(--color-ring);
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div > input {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary);
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  background-color: var(--color-primary-foreground);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  pointer-events: none;
 }
 
 .doc-body-editor .ProseMirror ul,
