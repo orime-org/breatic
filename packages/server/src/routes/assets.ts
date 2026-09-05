@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import type { MiddlewareHandler } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
@@ -409,28 +410,74 @@ const ingestReportSchema = z.discriminatedUnion("outcome", [
  * the grant row, so a report can name a key and say what landed, and nothing
  * else.
  */
+/**
+ * Prove the caller is our own ingest Worker.
+ *
+ * These routes take no session: the address is all anybody needs to reach
+ * them, so this runs first and a caller who cannot present the secret costs
+ * one header comparison and the line below it.
+ * @param c - The request context.
+ * @param next - The rest of the chain.
+ * @returns A 401 body, or nothing when the chain ran.
+ */
+const requireIngestSecret: MiddlewareHandler = async (c, next) => {
+  const presented = c.req.header("x-ingest-secret") ?? "";
+  if (
+    !env.INGEST_SHARED_SECRET ||
+    !secretsMatch(presented, env.INGEST_SHARED_SECRET)
+  ) {
+    logger.warn(
+      { hasSecret: presented.length > 0, path: c.req.path },
+      "ingest_caller_unauthorized",
+    );
+    return c.json(
+      { error: { code: 401, message: t("server.auth.not_authenticated") } },
+      401,
+    );
+  }
+  await next();
+  return undefined;
+};
+
+/**
+ * `POST /assets/upload-grant/claim` — the ingest Worker asking whether this
+ * multipart upload may finish on this key (design §6.4).
+ *
+ * It answers 200 with a verdict rather than an error status: the Worker asked
+ * a question, and every answer — including the two refusals — is one it knows
+ * what to do with. An error status would put a real failure and a normal
+ * "somebody else is finishing this" in the same bucket.
+ */
 assets.post(
-  "/ingest-report",
-  // First, because this route takes no session: the address is all anybody
-  // needs to reach it, and a caller who cannot prove they hold the secret
-  // should cost one header comparison and the line below it.
-  async (c, next) => {
-    const presented = c.req.header("x-ingest-secret") ?? "";
-    if (
-      !env.INGEST_SHARED_SECRET ||
-      !secretsMatch(presented, env.INGEST_SHARED_SECRET)
-    ) {
-      logger.warn(
-        { hasSecret: presented.length > 0 },
-        "ingest_report_unauthorized",
-      );
-      return c.json(
-        { error: { code: 401, message: t("server.auth.not_authenticated") } },
-        401,
+  "/upload-grant/claim",
+  requireIngestSecret,
+  validate(
+    "json",
+    z.object({
+      storage_key: z.string().min(1).max(512),
+      upload_id: z.string().min(1).max(512),
+    }),
+  ),
+  async (c) => {
+    const { storage_key, upload_id } = c.req.valid("json");
+    const claim = await ingestReportService.claimFinalize({
+      storageKey: storage_key,
+      uploadId: upload_id,
+    });
+
+    if (!claim.granted) {
+      logger.info(
+        { key: storage_key, reason: claim.reason },
+        "upload_finalize_refused",
       );
     }
-    await next();
+    return c.json({ data: claim });
   },
+);
+
+assets.post(
+  "/ingest-report",
+  requireIngestSecret,
   validate("json", ingestReportSchema),
   async (c) => {
     const body = c.req.valid("json");

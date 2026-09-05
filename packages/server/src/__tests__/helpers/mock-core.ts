@@ -170,6 +170,12 @@ export const mocks = {
       counts: { running: 0, done: 0, failed: 0, expired: 0 },
     }),
   },
+  // Only the claim is doubled. `applyIngestReport` keeps its real
+  // implementation (see `serverModulesMock`), because the suites that reach
+  // it are about what it does, not about the route in front of it.
+  ingestReportService: {
+    claimFinalize: vi.fn().mockResolvedValue({ granted: true }),
+  },
   attachmentService: {
     listByConversation: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
@@ -581,6 +587,13 @@ export const serverModulesMock = async (importOriginal: () => Promise<Record<str
     // tests are about routing, so it answers "there is room" by default;
     // its own behaviour is pinned by the integration suites.
     assertStorageAllowance: mocks.assertStorageAllowance,
+    // Half doubled on purpose: the claim is what route tests drive, while
+    // `applyIngestReport` stays real so nothing that reaches it silently
+    // starts testing a double instead.
+    ingestReportService: {
+      ...(actual.ingestReportService as Record<string, unknown>),
+      claimFinalize: mocks.ingestReportService.claimFinalize,
+    },
     projectService: mocks.projectService,
     conversationService: mocks.conversationService,
     conversationRepo: mocks.conversationRepo,

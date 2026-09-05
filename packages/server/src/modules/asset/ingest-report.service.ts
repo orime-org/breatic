@@ -51,7 +51,9 @@ import {
   findGrantByKey,
   consumeGrant,
   voidGrant,
+  claimFinalize as claimFinalizeGrant,
   type UploadGrant,
+  type FinalizeClaim,
 } from "@server/modules/asset/upload-grant.repo.js";
 
 /**
@@ -271,6 +273,24 @@ async function queueVideoCover(
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
  */
+/**
+ * Decide whether one multipart upload may finish on a key (#186, design §6.4).
+ *
+ * The ingest Worker asks this before it tells R2 to assemble the object,
+ * because it holds no state and cannot know whether another delivery is
+ * already doing so. What comes back decides whether R2 is touched at all.
+ * @param params - The key and the upload asking to finish on it.
+ * @param params.storageKey - The key being finished.
+ * @param params.uploadId - The multipart upload the Worker holds.
+ * @returns Granted, or the reason it was refused.
+ */
+export async function claimFinalize(params: {
+  storageKey: string;
+  uploadId: string;
+}): Promise<FinalizeClaim> {
+  return claimFinalizeGrant(params);
+}
+
 export async function applyIngestReport(
   report: IngestReport,
 ): Promise<IngestOutcome> {
