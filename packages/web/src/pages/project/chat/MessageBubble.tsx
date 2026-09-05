@@ -64,10 +64,12 @@ export const MessageBubble = React.memo(function MessageBubble({
     >
       <div
         className={cn(
-          // `group` is on the bubble, which is as wide as the words in it.
-          // The row it sits in spans the panel, so hovering the blank beside
-          // a short message is not hovering the message.
-          'group text-sm',
+          // `group` covers the bubble and the line under it together: the
+          // pointer travelling from one to the other never leaves the thing
+          // that reveals the copy, so the copy does not go away as it is
+          // reached. It is as wide as the words in it, so hovering the blank
+          // beside a short message is not hovering the message.
+          'group flex flex-col text-sm',
           // Only what a person says gets a container. The agent is not one
           // side of a conversation -- it is the panel talking -- so its words
           // sit directly on the surface, with nothing drawn around them.
@@ -77,71 +79,75 @@ export const MessageBubble = React.memo(function MessageBubble({
           // `bg-accent` because it has to lift off the surface in both
           // themes, and it is the only neutral fill that does -- `bg-muted`
           // is a recess and goes darker than the surface in dark mode.
-          isUser
-            // Positioned so the copy that appears on hover is laid out
-            // against it, in the gutter the 80% cap leaves beside it.
-            ? 'relative max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
-            : 'w-full text-foreground',
+          isUser ? 'max-w-[80%] items-end text-foreground' : 'w-full text-foreground',
         )}
       >
-        {message.thinking ? (
-          <ThinkingFold
-            thinking={message.thinking}
-            {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
-          />
-        ) : null}
-        {message.content || message.streaming ? (
-          <div data-testid='message-bubble-content'>
-            {/* What the reader typed means the characters they typed: markdown
+        {/* The reader's own words keep their container; the line under it is
+            outside that container, on the surface. */}
+        <div className={cn(isUser && 'rounded-lg bg-accent px-3 py-2')}>
+          {message.thinking ? (
+            <ThinkingFold
+              thinking={message.thinking}
+              {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
+            />
+          ) : null}
+          {message.content || message.streaming ? (
+            <div data-testid='message-bubble-content'>
+              {/* What the reader typed means the characters they typed: markdown
                 is what the model writes in, not what the composer accepts. */}
-            {isUser ? (
-              <span className='whitespace-pre-wrap'>{message.content}</span>
-            ) : null}
-            {!isUser && message.content ? (
-              <MarkdownMessage
-                content={message.content}
-                streaming={message.streaming === true}
-                {...(message.citations ? { citations: message.citations } : {})}
-              />
-            ) : null}
-            {/* One mark for the whole turn, after everything said so far. It
+              {isUser ? (
+                <span className='whitespace-pre-wrap'>{message.content}</span>
+              ) : null}
+              {!isUser && message.content ? (
+                <MarkdownMessage
+                  content={message.content}
+                  streaming={message.streaming === true}
+                  {...(message.citations ? { citations: message.citations } : {})}
+                />
+              ) : null}
+              {/* One mark for the whole turn, after everything said so far. It
                 says the answer is still coming, which makes it this turn's
                 state rather than part of the answer — so it goes after the
                 rendering, and what the reply is made of never enters into it
                 (user 2026-08-25). The space between the two is in the
                 stylesheet, beside the mark's own figures. */}
-            {running && runningCall === undefined ? (
-              <WaitingDot consolidating={consolidating} />
-            ) : null}
-          </div>
-        ) : null}
-        {/* What the turn is doing, at the end of whatever it has said so far.
+              {running && runningCall === undefined ? (
+                <WaitingDot consolidating={consolidating} />
+              ) : null}
+            </div>
+          ) : null}
+          {/* What the turn is doing, at the end of whatever it has said so far.
             It is gone the moment the turn ends and nothing about it is
             stored, so a reload shows the answer and no trace of how it was
             assembled (A5). */}
-        {running && runningCall !== undefined ? <ToolRunLine call={runningCall} /> : null}
-        {/* What the turn found, before where it came from: these are the
+          {running && runningCall !== undefined ? <ToolRunLine call={runningCall} /> : null}
+          {/* What the turn found, before where it came from: these are the
             thing itself, and the sources are the account of it. */}
-        {running || message.assets === undefined ? null : (
-          <AssetRow assets={message.assets} />
-        )}
-        {/* Where the answer came from. Content rather than process, so unlike
+          {running || message.assets === undefined ? null : (
+            <AssetRow assets={message.assets} />
+          )}
+          {/* Where the answer came from. Content rather than process, so unlike
             the line above it stays once the turn has ended -- and it is drawn
             only then, because a row that grows as searches come back would
             move under the reader while they are still reading. */}
-        {running || message.sources === undefined ? null : (
-          <SourceRow sources={message.sources} />
-        )}
-        {/* How the turn ended goes last, after everything it produced: this
+          {running || message.sources === undefined ? null : (
+            <SourceRow sources={message.sources} />
+          )}
+          {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
             separates any two blocks in this scope. */}
-        {isUser ? null : <TurnEnding message={message} />}
+          {isUser ? null : <TurnEnding message={message} />}
+        </div>
         {/* Offered on a settled message only. A reply still arriving has
             nothing to copy yet and asking for it again mid-flight would race
             the turn that is running. */}
         {running || message.content === '' ? null : (
-          <TurnActions text={message.content} {...(isUser ? { onHoverOnly: true } : {})} />
+          <TurnActions
+            text={message.content}
+            {...(isUser ? { onHoverOnly: true } : {})}
+            {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
+          />
         )}
       </div>
     </div>

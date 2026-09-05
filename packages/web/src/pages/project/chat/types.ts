@@ -117,6 +117,14 @@ export interface ChatMessage {
    * to a markdown renderer with raw HTML enabled counts.
    */
   content: string;
+  /**
+   * When the message was written down, as an absolute instant.
+   *
+   * The server's own clock, ISO-formatted, so the panel can say it in the
+   * reader's day. A message this reader has only just sent has none until the
+   * conversation comes back with it.
+   */
+  sentAt?: string;
   /** Optional hidden chain-of-thought, foldable in the UI. */
   thinking?: string;
   /** How long the turn thought, in milliseconds. Measured by the server. */

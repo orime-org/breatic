@@ -157,6 +157,10 @@ export function toChatMessage(
   const citations: Record<number, ChatSource> = {};
   let numbered = 0;
   const assets: ChatAsset[] = [];
+  // The server writes it onto the stored message; a message this reader has
+  // only just sent is not stored yet and carries none.
+  const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
+  const sentAt = typeof written === 'string' ? written : undefined;
 
   // Read before the loop because a tool part can come before the mark. A call
   // this turn cut short has nothing on it saying so — the SDK client leaves it
@@ -234,6 +238,7 @@ export function toChatMessage(
     // messages it makes up itself, which none of these are.
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content,
+    ...(sentAt === undefined ? {} : { sentAt }),
     ...(thinking !== '' ? { thinking } : {}),
     ...(thinkingMs === undefined ? {} : { thinkingMs }),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),

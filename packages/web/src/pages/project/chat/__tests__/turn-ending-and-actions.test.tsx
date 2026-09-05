@@ -77,32 +77,59 @@ describe('the line that says nothing came back', () => {
 });
 
 describe('the copy on a reader\'s own message', () => {
-  it('takes no room and cannot be pressed until it is hovered', () => {
+  it('cannot be pressed until it is hovered', () => {
+    // The line is there whether or not the copy is showing; the copy itself
+    // is what waits. Transparent alone would leave a blank that copies when
+    // pressed and takes a tab stop with nothing visible on it.
     render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
 
-    const actions = screen.getByTestId('turn-actions');
-    expect(actions.className).toMatch(/\babsolute\b/);
-    expect(actions.className).toMatch(/pointer-events-none/);
-    expect(actions.className).toMatch(/group-hover:pointer-events-auto/);
+    const copy = screen.getByTestId('turn-copy');
+    expect(copy.className).toMatch(/pointer-events-none/);
+    expect(copy.className).toMatch(/group-hover:pointer-events-auto/);
   });
 
-  it('stays inside the bubble rather than reaching into the next message', () => {
-    // 消息之间是 gap-2（8px），而按钮高 24px：挂在气泡下方 8px 处，起点正好
-    // 是下一条消息的起点，盖住它顶上一行。
+  it('sits on a line of its own under the bubble', () => {
+    // Laid out rather than floated: a row that takes no space lets the reply
+    // below it come up underneath, and the two are then drawn on top of each
+    // other.
     render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
 
     const actions = screen.getByTestId('turn-actions');
-    expect(actions.className).not.toMatch(/top-full/);
+    expect(actions.className).not.toMatch(/\babsolute\b/);
   });
 
-  it('hangs outside the bubble instead of over its own last line', () => {
-    // The bubble shrink-wraps its text, so anything laid inside its box at the
-    // bottom right covers the end of the last line. The 80% cap leaves a
-    // gutter beside it that nothing else ever draws in.
+  it('keeps the bubble and its line in one thing to hover', () => {
+    // The pointer travelling from the bubble to the button must not leave
+    // whatever reveals the button, or the button goes away as it is reached.
     render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
 
     const actions = screen.getByTestId('turn-actions');
-    expect(actions.className).toMatch(/right-full/);
+    const stack = actions.parentElement;
+    expect(stack?.className).toMatch(/\bgroup\b/);
+    expect(stack?.querySelector('[data-testid="message-bubble-content"]')).not.toBeNull();
+  });
+
+  it('says when the message was sent, in the reader\'s own day', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'user',
+          content: '找参考图',
+          sentAt: '2026-09-05T02:30:00.000Z',
+        }}
+      />,
+    );
+
+    const stamp = screen.getByTestId('turn-sent-at');
+    // Whatever the reader's locale writes, it is the local reading of that
+    // instant rather than the string that arrived.
+    expect(stamp.textContent).toBe(
+      new Date('2026-09-05T02:30:00.000Z').toLocaleString(undefined, {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }),
+    );
   });
 
   it('is revealed by the bubble rather than by the width of the row', () => {
