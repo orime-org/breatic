@@ -156,6 +156,57 @@ async function writeQuotedRun(p: Page): Promise<void> {
   await expect(p.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
 }
 
+/** What a run's two outer edges measure, and the kind of block at each end. */
+interface RunEdges {
+  readonly opensOn: string | null;
+  readonly endsOn: string | null;
+  readonly above: number | null;
+  readonly below: number | null;
+  /** How many groups deep the run's last block and the one below it sit. */
+  readonly lastDepth: number;
+  readonly belowDepth: number;
+}
+
+/**
+ * Measures the gap above and below a run of quoted blocks.
+ * @param p - The page.
+ * @returns Both edges, with the content type of the block at each end.
+ */
+async function runEdges(p: Page): Promise<RunEdges> {
+  return p.evaluate(
+    ({ editor, quoted }) => {
+      const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
+      const marks = [...document.querySelectorAll(quoted)];
+      const first = all.indexOf(marks[0] as Element);
+      const last = all.indexOf(marks[marks.length - 1] as Element);
+      const box = (element: Element | undefined): DOMRect | null =>
+        element === undefined ? null : element.getBoundingClientRect();
+      const above = box(all[first - 1]);
+      const below = box(all[last + 1]);
+      const kind = (element: Element | undefined): string | null =>
+        element?.getAttribute('data-content-type') ?? null;
+      const depth = (element: Element | undefined): number => {
+        let n = 0;
+        let at: Element | null = element ?? null;
+        while (at !== null) {
+          if (at.classList.contains('bn-block-group')) n += 1;
+          at = at.parentElement;
+        }
+        return n;
+      };
+      return {
+        lastDepth: depth(all[last]),
+        belowDepth: depth(all[last + 1]),
+        opensOn: kind(all[first]),
+        endsOn: kind(all[last]),
+        above: above === null ? null : box(all[first])!.top - above.bottom,
+        below: below === null ? null : below.top - box(all[last])!.bottom,
+      };
+    },
+    { editor: EDITOR, quoted: QUOTED },
+  );
+}
+
 test.describe('a run of quoted blocks', () => {
   test('draws one unbroken rule down all three (A8)', async () => {
     await openFreshDocument(page);
@@ -226,25 +277,7 @@ test.describe('a run of quoted blocks', () => {
     await page.keyboard.type('a plain line below');
     await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
 
-    const edges = await page.evaluate(
-      ({ editor, quoted }) => {
-        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
-        const marks = [...document.querySelectorAll(quoted)];
-        const firstQuoted = all.indexOf(marks[0] as Element);
-        const lastQuoted = all.indexOf(marks[marks.length - 1] as Element);
-        const box = (element: Element | undefined): DOMRect | null =>
-          element === undefined ? null : element.getBoundingClientRect();
-        const above = box(all[firstQuoted - 1]);
-        const below = box(all[lastQuoted + 1]);
-        return {
-          above:
-            above === null ? null : box(all[firstQuoted])!.top - above.bottom,
-          below:
-            below === null ? null : below.top - box(all[lastQuoted])!.bottom,
-        };
-      },
-      { editor: EDITOR, quoted: QUOTED },
-    );
+    const edges = await runEdges(page);
 
     expect(edges.above, 'a line above the run').not.toBeNull();
     expect(edges.below, 'a line below the run').not.toBeNull();
@@ -276,27 +309,9 @@ test.describe('a run of quoted blocks', () => {
     await page.keyboard.type('a plain line below');
     await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
 
-    const edges = await page.evaluate(
-      ({ editor, quoted }) => {
-        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
-        const marks = [...document.querySelectorAll(quoted)];
-        const first = all.indexOf(marks[0] as Element);
-        const last = all.indexOf(marks[marks.length - 1] as Element);
-        const box = (element: Element | undefined): DOMRect | null =>
-          element === undefined ? null : element.getBoundingClientRect();
-        const above = box(all[first - 1]);
-        const below = box(all[last + 1]);
-        return {
-          endsOnHeading:
-            (all[last] as Element).getAttribute('data-content-type') === 'heading',
-          above: above === null ? null : box(all[first])!.top - above.bottom,
-          below: below === null ? null : below.top - box(all[last])!.bottom,
-        };
-      },
-      { editor: EDITOR, quoted: QUOTED },
-    );
+    const edges = await runEdges(page);
 
-    expect(edges.endsOnHeading, 'the run ends on a heading').toBe(true);
+    expect(edges.endsOn, 'the run ends on a heading').toBe('heading');
     // The run's outer edges belong to the run, not to whichever block happens
     // to sit at each end. Measured while they were set in `em`, which resolves
     // against the end block's own size: 16.5px above and 26.39px below, the
@@ -326,28 +341,9 @@ test.describe('a run of quoted blocks', () => {
     await page.keyboard.type('a plain line below');
     await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
 
-    const edges = await page.evaluate(
-      ({ editor, quoted }) => {
-        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
-        const marks = [...document.querySelectorAll(quoted)];
-        const first = all.indexOf(marks[0] as Element);
-        const last = all.indexOf(marks[marks.length - 1] as Element);
-        const box = (element: Element | undefined): DOMRect | null =>
-          element === undefined ? null : element.getBoundingClientRect();
-        const above = box(all[first - 1]);
-        const below = box(all[last + 1]);
-        return {
-          opensOnHeading:
-            (all[first] as Element).getAttribute('data-content-type') ===
-            'heading',
-          above: above === null ? null : box(all[first])!.top - above.bottom,
-          below: below === null ? null : below.top - box(all[last])!.bottom,
-        };
-      },
-      { editor: EDITOR, quoted: QUOTED },
-    );
+    const edges = await runEdges(page);
 
-    expect(edges.opensOnHeading, 'the run opens on a heading').toBe(true);
+    expect(edges.opensOn, 'the run opens on a heading').toBe('heading');
     // The other half of the pair the case above measures. Written in bare `em`
     // this edge resolved against the heading: 26.39px over the run against
     // 16.5px under it.
@@ -378,36 +374,10 @@ test.describe('a run of quoted blocks', () => {
     await page.keyboard.type('below the run');
     await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
 
-    const seen = await page.evaluate(
-      ({ editor, quoted }) => {
-        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
-        const marks = [...document.querySelectorAll(quoted)];
-        const last = all.indexOf(marks[marks.length - 1] as Element);
-        const below = all[last + 1];
-        /** How many groups deep an element sits. */
-        const depth = (element: Element): number => {
-          let n = 0;
-          let at: Element | null = element;
-          while (at !== null) {
-            if (at.classList.contains('bn-block-group')) n += 1;
-            at = at.parentElement;
-          }
-          return n;
-        };
-        if (below === undefined) return null;
-        return {
-          lastDepth: depth(all[last] as Element),
-          belowDepth: depth(below),
-          gap:
-            below.getBoundingClientRect().top -
-            (all[last] as Element).getBoundingClientRect().bottom,
-        };
-      },
-      { editor: EDITOR, quoted: QUOTED },
-    );
+    const seen = await runEdges(page);
 
-    expect(seen, 'a block below the run').not.toBeNull();
-    const measured = seen as NonNullable<typeof seen>;
+    expect(seen.below, 'a block below the run').not.toBeNull();
+    const measured = seen;
     // The shape first: without it this passes on a flat document, where the
     // two are siblings and a combinator would have reached across.
     expect(
@@ -419,12 +389,12 @@ test.describe('a run of quoted blocks', () => {
     // Measured before the mark went on the block itself: 29.25px, that margin
     // plus the 12.75px this block kept.
     expect(
-      measured.gap,
-      `${String(measured.gap)}px below the run`,
+      measured.below as number,
+      `${String(measured.below)}px below the run`,
     ).toBeGreaterThan(15.5);
     expect(
-      measured.gap,
-      `${String(measured.gap)}px below the run`,
+      measured.below as number,
+      `${String(measured.below)}px below the run`,
     ).toBeLessThan(17.5);
   });
 

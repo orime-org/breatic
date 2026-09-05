@@ -106,7 +106,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
       return false;
     }
 
-    const atBlockStart = tr.selection.$anchor.parentOffset === 0;
+    const atBlockStart = tr.selection.$from.parentOffset === 0;
     // Both of the reads below are about the block the selection OPENS in, and
     // both stay true once it runs past that block. The empty branch answers by
     // opening a block rather than replacing anything, so a selection reaching

@@ -22,6 +22,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -179,6 +180,48 @@ describe('Enter at the end of a quoted line', () => {
       expect(blocks[1]?.props[prop], `${type}: the block holding the text`).toBe(
         want,
       );
+    }
+  });
+
+  it('answers a selection the same way whichever end it was drawn from', () => {
+    // `Selection.anchor` is the end the drag started at, so it swaps with the
+    // direction; the cut is at `from`, which does not. Measured while the
+    // split asked the anchor: the same highlight over `abcd` gave a ticked
+    // task back unticked when drawn right to left, and turned a level 2
+    // heading into a paragraph.
+    const CASES = [
+      { type: 'checkListItem', props: { checked: true }, prop: 'checked' },
+      { type: 'numberedListItem', props: { start: 5 }, prop: 'start' },
+      { type: 'heading', props: { level: 2, quoted: true }, prop: 'level' },
+    ] as const;
+
+    for (const { type, props, prop } of CASES) {
+      const drawn = ([false, true] as const).map((backwards) => {
+        const editor = open([{ type, props, content: 'abcd' }]);
+        const view = editor.prosemirrorView;
+        const at = view.state.doc.resolve(0);
+        let start = 0;
+        view.state.doc.descendants((node, pos) => {
+          if (node.isTextblock && start === 0) start = pos + 1;
+          return true;
+        });
+        void at;
+        const stop = start + 2;
+        editor.transact((tr) => {
+          tr.setSelection(
+            TextSelection.create(
+              tr.doc,
+              backwards ? stop : start,
+              backwards ? start : stop,
+            ),
+          );
+        });
+        pressEnter(editor);
+        const blocks = blocksOf(editor);
+        return { type: blocks[1]?.type, value: blocks[1]?.props[prop] };
+      });
+
+      expect(drawn[1], `${type}: drawn right to left`).toEqual(drawn[0]);
     }
   });
 

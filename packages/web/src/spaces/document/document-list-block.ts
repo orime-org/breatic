@@ -56,10 +56,9 @@ export interface ListEditor {
  * A rebuild of `splitBlockTr`, which `@blocknote/core` keeps to itself while
  * exporting everything it depends on. Its two questions are kept apart the
  * way the original asks them: what TYPE the new block is, and whether it
- * carries the old one's PROPS. They differ per caller — the general Enter
- * answers both with "is the caret at the very start", while the list Enter
- * keeps the type and takes no props — and answering them with one value gave
- * a ticked to-do a ticked one after it.
+ * carries the old one's PROPS. They differ per caller: the general Enter
+ * answers both with "is the cut at the very start", while the list Enter
+ * always keeps the type and asks that question only of the props.
  *
  * Carrying the props is also what carries the TEXT: `tr.split` puts everything
  * past the cut in the new block, so at the very start of a block that new one
@@ -94,7 +93,9 @@ export function splitCarryingQuote(
     { type: info.bnBlock.node.type, attrs: {} },
     {
       type: keepType ? content.type : schema.nodes['paragraph'],
-      attrs: { ...carried, [QUOTED]: content.attrs[QUOTED] },
+      attrs: keepProps
+        ? carried
+        : { [QUOTED]: content.attrs[QUOTED] },
     },
   ]);
   return true;
@@ -157,8 +158,10 @@ export function handleListEnter(
 
   return editor.transact((tr) => {
     // At the very start of an item the split hands the text to the new block,
-    // so that block takes the props along with it.
-    const atStart = tr.selection.$anchor.parentOffset === 0;
+    // so that block takes the props along with it. Read off `$from`, the end
+    // of the selection the cut falls on — `$anchor` is the end the drag
+    // started at and swaps with its direction.
+    const atStart = tr.selection.$from.parentOffset === 0;
     tr.deleteSelection();
     tr.scrollIntoView();
     return splitCarryingQuote(tr, tr.selection.from, true, atStart);
