@@ -49,7 +49,11 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.refAudio',
     tipKey: 'canvas.generatePanel.refAudioTip',
     clearLabelKey: 'canvas.generatePanel.removeRefAudio',
-    errorKey: 'canvas.generatePanel.errorNoRefAudio',
+    // No `errorKey`: on this panel the refusal sentence is reached through
+    // `refusalToastKey`, the way every other execute refusal is, so a copy of
+    // it here would be a second place to change and a first place to forget.
+    // The video panel keeps its own on the slot because its container looks
+    // one up directly (`VideoGeneratePanelContainer`).
   },
   // The three below are what reference-to-music collects. They carry
   // `storesCover` for the same reason the voice sample does — audio paints no

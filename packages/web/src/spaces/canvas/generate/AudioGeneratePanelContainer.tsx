@@ -229,10 +229,6 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, models, mode],
   );
 
-  // The slots this mode collects, stated on the mode itself
-  // (`audio-mode-options.ts`) — reference-to-music offers three, so the old
-  // "does the model declare an audio source" rule would have shown the voice
-  // sample there too.
   // Read during render for the same reason the prompt fragment is: a
   // synchronous document read, seeded with the node, never created here.
   const lyricsFragment = React.useMemo(
@@ -240,6 +236,10 @@ function AudioGeneratePanelBody({
     [projectId, spaceId, nodeId],
   );
   const modeOption = audioModeOption(mode);
+  // The slots this mode collects, stated on the mode itself
+  // (`audio-mode-options.ts`) — reference-to-music offers three, so the old
+  // "does the model declare an audio source" rule would have shown the voice
+  // sample there too.
   const slots = modeOption.slots;
   /** Whether this mode shows a lyrics box at all, and whether it insists. */
   const lyrics = modeOption.lyrics;
@@ -304,6 +304,19 @@ function AudioGeneratePanelBody({
   // — and every memoised child under it — re-render on every frame of a drag.
   const stableSlotUrls = useContentStable(vm.slotUrls);
   const stableSlotThumbnails = useContentStable(vm.slotThumbnails);
+
+  /**
+   * Whether the track is marked vocal-free, so nothing is asked of the lyrics.
+   *
+   * One read for the two things that answer to it — the gate below and the
+   * lyrics box's own state — so the button and the box can never disagree
+   * about whether words are wanted.
+   */
+  const instrumental = audioFlagValue(
+    vm.modelEntry,
+    INSTRUMENTAL_PARAM,
+    params[INSTRUMENTAL_PARAM],
+  );
 
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
@@ -597,6 +610,10 @@ function AudioGeneratePanelBody({
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
+          // An instrumental track has no words to write, and the box saying so
+          // is what puts that switch's state on screen. What is already in it
+          // stays and comes back when the switch goes off.
+          readOnly={instrumental}
           fragment={lyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}
@@ -619,6 +636,7 @@ function AudioGeneratePanelBody({
       mentionNoMatchLabel,
       caretProvider,
       lyricsEditorRef,
+      instrumental,
     ],
   );
 
@@ -664,11 +682,7 @@ function AudioGeneratePanelBody({
         filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
         lyricsRequired: lyrics === 'required',
         lyricsText,
-        instrumental: audioFlagValue(
-          vm.modelEntry,
-          INSTRUMENTAL_PARAM,
-          params[INSTRUMENTAL_PARAM],
-        ),
+        instrumental,
       })}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}

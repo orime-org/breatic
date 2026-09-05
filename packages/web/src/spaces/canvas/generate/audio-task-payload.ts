@@ -77,8 +77,10 @@ export interface AudioTaskInput {
    *
    * Absent means this mode has no lyrics box at all, and the field is then
    * left out of the request entirely rather than sent empty. An empty STRING
-   * is a different statement — reference-to-music takes lyrics or not, and
-   * empty there means "no words", which the vendor honours.
+   * is a different statement: the track was marked instrumental, which is the
+   * one case the gateway accepts without words (measured 2026-09-05 — with
+   * `is_instrumental: true` it completes, and both music models refuse an
+   * empty lyrics on any vocal run).
    */
   lyricsText?: string;
 }

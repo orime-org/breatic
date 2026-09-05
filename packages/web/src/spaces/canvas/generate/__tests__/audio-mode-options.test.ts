@@ -123,6 +123,27 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
     ]);
   });
 
+  // Measured against the WaveSpeed gateway on 2026-09-05
+  // (`engineering/demo/2026-09-05-music01-empty-lyrics-probe.mjs` in the
+  // private repo): minimax/music-01 answers `2013 - invalid params` BOTH to
+  // `lyrics: ""` and to a body carrying no `lyrics` key at all. So the words
+  // are not optional there — they are the same requirement text-to-music has,
+  // and this mode declares no instrumental switch to lift it.
+  it('insists on lyrics under both music modes', () => {
+    const byValue = new Map(AUDIO_MODE_OPTIONS.map((o) => [o.value, o]));
+    expect(byValue.get('t2m')?.lyrics).toBe('required');
+    expect(byValue.get('a2m')?.lyrics).toBe('required');
+  });
+
+  it('asks for no lyrics under speech or sound effects', () => {
+    for (const value of ['tts', 'voice_clone', 'sfx']) {
+      expect(
+        AUDIO_MODE_OPTIONS.find((o) => o.value === value)?.lyrics,
+        value,
+      ).toBeUndefined();
+    }
+  });
+
   it('gives every option a label and a test id, like the other two panels', () => {
     for (const option of AUDIO_MODE_OPTIONS) {
       expect(option.label.length).toBeGreaterThan(0);

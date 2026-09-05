@@ -15,6 +15,7 @@
  *
  * minimax-music-01 (a2m):
  * - prompt           -> prompt (pass-through)
+ * - lyrics           -> lyrics (pass-through)
  * - song             -> song (pass-through)
  * - voice            -> voice (pass-through)
  * - instrumental     -> instrumental (pass-through)

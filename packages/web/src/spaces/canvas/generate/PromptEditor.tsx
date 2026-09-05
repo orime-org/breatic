@@ -76,6 +76,21 @@ interface PromptEditorProps {
    * ceiling; this is where each starts.
    */
   startingHeight?: 'full' | 'half';
+  /**
+   * Whether this box refuses typing while keeping what it holds (#1960).
+   *
+   * The lyrics box under an instrumental track: with no vocals there are no
+   * words to write, so the box says so rather than sitting there taking
+   * typing the run will not use. What is already in it stays, and comes back
+   * the moment the switch goes off — a Yjs fragment is the value, and nothing
+   * here writes to it.
+   *
+   * Applied through `setEditable` in an effect rather than through
+   * `useEditor`'s options, which are baked in at creation: recreating the
+   * editor to flip a switch would tear down the collaborative binding and
+   * drop the caret mid-session.
+   */
+  readOnly?: boolean;
   /** Placeholder shown while the prompt is empty. */
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
@@ -130,6 +145,9 @@ interface PromptEditorProps {
  * @param root0.mentionEmptyLabel - Localized text for "this mode has nothing to offer".
  * @param root0.mentionNoMatchLabel - Localized text for "your query matched none of them".
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
+ * @param root0.testId - What tests reach for this editor by.
+ * @param root0.startingHeight - How tall the box opens before anything is typed.
+ * @param root0.readOnly - Whether the box refuses typing while keeping its content.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -149,6 +167,7 @@ export const PromptEditor = React.forwardRef<
     caretProvider = null,
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
+    readOnly = false,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -386,6 +405,12 @@ export const PromptEditor = React.forwardRef<
     // counts it as a keystroke (#1802 round-4; batch-4).
     dispatchMachineEdit(editor.view, tr);
   }, [editor, references]);
+  // Kept in step with the prop rather than passed to `useEditor`: its options
+  // are read once at creation, so flipping this through the deps would rebuild
+  // the editor and take the collaborative binding and the caret down with it.
+  React.useEffect(() => {
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
@@ -409,7 +434,12 @@ export const PromptEditor = React.forwardRef<
     // that actually clips and works for every editor, not just this one.
     <ScrollArea
       data-testid={testId}
-      className='nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border'
+      className={
+        // Dimmed while it refuses typing, so the state is on screen and not
+        // only in what the box does when clicked.
+        'nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border' +
+        (readOnly ? ' opacity-50' : '')
+      }
       viewportClassName={
         // min height = 4 text-sm lines (user 2026-07-12 P6): the panel opened at
         // ~2 lines which felt cramped for a prompt. The viewport holds 4 lines of

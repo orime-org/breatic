@@ -431,7 +431,7 @@
       "musicStyleLabel": "风格",
       "musicLyricsLabel": "歌词",
       "lyricsMissing": "先写下歌词",
-      "refuseExecuteNoReference": "至少挑一个参考"
+      "refuseExecuteNoReference": "挑一段整曲、人声或伴奏"
     },
     "nodeMenu": {
       "generate": "生成",

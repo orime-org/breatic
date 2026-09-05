@@ -48,6 +48,7 @@ import { t } from '@breatic/shared';
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import {
   addNode,
+  getLyricsFragment,
   getPromptFragment,
   nodeDataMap,
   readCanvasGraph,
@@ -138,6 +139,38 @@ const SFX: ModelEntry = {
   rate: { credits: 1, per: 5, unit: 'seconds' },
 };
 
+/** Text to music, as `config/models/audio/minimax.yaml` declares it (#1960). */
+const T2M: ModelEntry = {
+  ...ELEVEN,
+  name: 'minimax-music-3.0',
+  display_name: 'MiniMax Music 3.0',
+  modality: 'audio',
+  mode: 't2m',
+  params: {
+    lyrics: { description: '', default: null },
+    is_instrumental: { description: '', default: false },
+  },
+  sourcesByMode: { t2m: [] },
+  cost_per_call: 15,
+  rate: undefined,
+};
+
+/** Reference to music: three audio slots, and lyrics the gateway insists on. */
+const A2M: ModelEntry = {
+  ...T2M,
+  name: 'minimax-music-01',
+  display_name: 'MiniMax Music 01',
+  mode: 'a2m',
+  params: {
+    lyrics: { description: '', default: null },
+    song: { description: '', default: null },
+    voice: { description: '', default: null },
+    instrumental: { description: '', default: null },
+  },
+  sourcesByMode: { a2m: ['audio'] },
+  cost_per_call: 35,
+};
+
 /**
  * A catalog holding both tts models — the two buckets this panel reads.
  * @returns A model catalog.
@@ -148,7 +181,7 @@ function catalog(): ModelCatalog {
     video: [],
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
-    audio: [SFX],
+    audio: [SFX, T2M, A2M],
     tts: [ELEVEN, FISH, CLONE],
     three_d: [],
     understand: [],
@@ -191,15 +224,31 @@ function seedAudioNode(over: Record<string, unknown> = {}): void {
 }
 
 /**
- * Writes a prompt into the seeded node's fragment — what typing produces.
- * @param text - The lines to speak.
+ * Writes text into one of the node's fragments — what typing produces.
+ * @param fragment - The fragment to write into.
+ * @param text - What to write.
  */
-function typePrompt(text: string): void {
-  const fragment = getPromptFragment('p', 's', 'target');
+function typeInto(fragment: Y.XmlFragment | null, text: string): void {
   if (!fragment) throw new Error('seedAudioNode must run first');
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
   fragment.insert(0, [paragraph]);
+}
+
+/**
+ * Writes a prompt into the seeded node's fragment — what typing produces.
+ * @param text - The lines to speak.
+ */
+function typePrompt(text: string): void {
+  typeInto(getPromptFragment('p', 's', 'target'), text);
+}
+
+/**
+ * Writes words into the seeded node's lyrics fragment (#1960).
+ * @param text - The words to sing.
+ */
+function typeLyrics(text: string): void {
+  typeInto(getLyricsFragment('p', 's', 'target'), text);
 }
 
 /**
@@ -621,5 +670,137 @@ describe('AudioGeneratePanelContainer — a mode switch that takes the slot away
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
       en.canvas.generatePanel.pickEndedByPeer,
     );
+  });
+});
+
+/**
+ * The two music modes (#1960).
+ *
+ * The surface they add is a second editor: a style brief above, the words to
+ * sing below. Both boxes are live views of their own Yjs fragment, which is
+ * why the container owns them and the panel takes them as slots.
+ *
+ * Measured against the WaveSpeed gateway on 2026-09-05: both models refuse a
+ * run without lyrics — music-3.0 unless the track is marked instrumental,
+ * music-01 unconditionally, since it declares no such switch.
+ */
+describe('AudioGeneratePanelContainer — the music modes', () => {
+  it('opens a second box for the words to sing', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeInTheDocument();
+  });
+
+  it('opens one box on a mode that collects no lyrics', async () => {
+    await openPanel({ mode: 'sfx', model: 'sonilo-sfx-v1' });
+    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+  });
+
+  it('refuses text to music while the lyrics box is empty, and says which', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    typePrompt('warm indie folk, 90 BPM');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'Write the lyrics first',
+        expect.anything(),
+      ),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('refuses reference to music on the same empty box', async () => {
+    // It has no instrumental switch, so nothing lifts the requirement here.
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'minimax-music-01',
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    typePrompt('same mood, slower');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'Write the lyrics first',
+        expect.anything(),
+      ),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('sends the style and the words as two separate fields', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    typePrompt('warm indie folk, 90 BPM');
+    typeLyrics('[Verse]\nmorning light');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const payload = create.mock.calls[0]?.[0];
+    expect(payload?.task_type).toBe('audio');
+    expect(payload?.model).toBe('minimax-music-3.0');
+    expect(payload?.params.prompt).toBe('warm indie folk, 90 BPM');
+    expect(payload?.params.lyrics).toBe('[Verse]\nmorning light');
+  });
+
+  it('carries a picked reference under the name its vendor reads', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'minimax-music-01',
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    typePrompt('same mood, slower');
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.song).toBe('https://x/y.mp3');
+  });
+
+  // The switch and the box are one statement: with no vocals there are no
+  // words to write, so the box says so by going read-only rather than sitting
+  // there taking typing the run will not use. What is already in it stays —
+  // turning the switch back off must return the user's own lyrics.
+  it('locks the lyrics box while the track is marked instrumental', async () => {
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    typeLyrics('morning light');
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(box.querySelector('.ProseMirror')).toHaveAttribute(
+        'contenteditable',
+        'false',
+      ),
+    );
+    expect(box.textContent).toContain('morning light');
+  });
+
+  it('leaves it writable while the track has vocals', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(box.querySelector('.ProseMirror')).toHaveAttribute(
+        'contenteditable',
+        'true',
+      ),
+    );
+  });
+
+  it('runs an instrumental track with the lyrics box empty', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    typePrompt('rain on a tin roof');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.is_instrumental).toBe(true);
   });
 });

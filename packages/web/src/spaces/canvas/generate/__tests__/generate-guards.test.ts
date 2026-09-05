@@ -438,8 +438,8 @@ describe('evaluateExecute — a mode with several slots takes any one', () => {
  * otherwise watch a generation start, spin, and fail. The vendor page's "leave
  * empty for auto-generated lyrics" is not what the gateway does.
  *
- * Reference to music states them as optional and empty is fine there, so this
- * is asked of the mode rather than of the panel.
+ * Both music modes demand them (measured 2026-09-05), and no other mode shows
+ * the box at all, so this is asked of the mode rather than of the panel.
  */
 describe('evaluateExecute — the lyrics box', () => {
   /** Text to music with a style written and the lyrics box still empty. */
@@ -455,6 +455,22 @@ describe('evaluateExecute — the lyrics box', () => {
 
   it('passes once something is written', () => {
     expect(evaluateExecute({ ...t2m, lyricsText: '[Verse]\nmorning light' })).toBeNull();
+  });
+
+  // Judged on the text the vendor will actually receive, the same rule the
+  // prompt's own length check follows: the worker cleans every AIGC prompt
+  // through `extractPromptText` before the request goes out, and everything
+  // that function does shortens. A box holding only characters it strips is a
+  // box the vendor reads as empty, and `2013 - invalid params` is what the
+  // user would watch the generation fail with.
+  it('sees through characters the vendor never receives', () => {
+    // A zero-width space survives `.trim()` and is stripped on the way out.
+    expect(evaluateExecute({ ...t2m, lyricsText: '\u200B' })).toBe(
+      'lyrics-missing',
+    );
+    expect(evaluateExecute({ ...t2m, lyricsText: '<!-- a note -->' })).toBe(
+      'lyrics-missing',
+    );
   });
 
   it('says nothing about lyrics on a mode that does not ask for them', () => {

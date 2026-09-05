@@ -45,13 +45,13 @@ models:
     tier: recommended
     icon: "minimax"
     description: "Voice cloning, style transfer"
-    guide: "Reference-based generation. Takes a reference track (whole song, vocal line or backing track) and writes a new song after it, following its vocal patterns, rhythms and arrangement. Choose when the user provides reference audio or wants a specific voice or style carried over."
+    guide: "Reference-based generation. Takes a reference track (whole song, vocal line or backing track) and writes a new song after it, following its vocal patterns, rhythms and arrangement. Lyrics are required — measured 2026-09-05, the gateway refuses a run whose body carries an empty lyrics or none at all, and this model declares no instrumental switch to lift that. Choose when the user provides reference audio or wants a specific voice or style carried over."
     # $0.35 a call, measured 2026-09-05 — it was declared as 10 and bills 35.
     cost_per_call: 35
     generation_time: 120
     params:
       lyrics:
-        description: "Song lyrics, optional here"
+        description: "Song lyrics, required"
         default: null
       song:
         description: "Reference song URL (>=15s, wav/mp3)"

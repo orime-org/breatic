@@ -75,10 +75,11 @@ export interface ExecuteGateInput {
   /**
    * Whether the active mode insists on lyrics (#1960).
    *
-   * Text to music alone does: the gateway refuses an empty `lyrics` on a vocal
-   * run (`invalid params, lyrics is required`, measured 2026-09-05), so the
-   * user would otherwise watch a generation start, spin and fail. Optional
-   * because most modes have no lyrics box at all.
+   * Both music modes do: the gateway refuses a vocal run without them
+   * (`invalid params, lyrics is required` from music-3.0, `2013 - invalid
+   * params` from music-01, measured 2026-09-05), so the user would otherwise
+   * watch a generation start, spin and fail. Optional because every other mode
+   * has no lyrics box at all.
    */
   lyricsRequired?: boolean;
   /** What the lyrics box holds. Read only when `lyricsRequired`. */
@@ -90,6 +91,10 @@ export interface ExecuteGateInput {
    * 2026-09-05, `lyrics: ""` with `is_instrumental: true` is accepted and
    * completes. Demanding words to sing for a track the user marked vocal-free
    * is a rule we would be inventing.
+   *
+   * Only text-to-music can answer yes — it is the one model declaring the
+   * switch. Reference-to-music declares none, so nothing lifts its own
+   * requirement.
    */
   instrumental?: boolean;
   /**
@@ -182,10 +187,17 @@ export function evaluateExecute(
   }
   // The lyrics box sits directly under the prompt editor, so it is reported
   // right after it — the panel's own order, top to bottom.
+  //
+  // Judged on the text the vendor will receive, the same rule the prompt's
+  // length check follows above: the worker cleans the lyrics through this
+  // function before the request goes out (`prompt-params.ts`), and everything
+  // it does shortens. A box holding a zero-width space or an HTML comment
+  // survives `.trim()` and reaches the gateway empty, which is the
+  // `invalid params` the refusal exists to spare the user.
   if (
     input.lyricsRequired &&
     input.instrumental !== true &&
-    (input.lyricsText ?? '').trim().length === 0
+    extractPromptText(input.lyricsText).length === 0
   ) {
     return 'lyrics-missing';
   }
@@ -198,11 +210,10 @@ export function evaluateExecute(
   const required = input.requiredSlots ?? [];
   const filled = input.filledSlots ?? [];
   if (required.length > 0 && !required.some((slot) => filled.includes(slot))) {
-    // A mode demanding ONE slot names it; the slot carries that sentence
-    // (`SlotSpec.errorKey`), which is how the video panel words its own
-    // refusals. A mode offering several and taking any one of them refuses
-    // with a sentence about the set, because naming any single member of it
-    // would be the wrong sentence.
+    // A mode demanding ONE slot names it; a mode offering several and taking
+    // any one of them refuses with a sentence about the set, because naming
+    // any single member of it would be the wrong sentence. Both sentences are
+    // reached through `refusalToastKey`, the way every other refusal here is.
     return required.length === 1 ? 'ref-audio-missing' : 'reference-missing';
   }
   return null;

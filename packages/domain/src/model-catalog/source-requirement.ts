@@ -80,7 +80,7 @@ type SourceFieldShape = "list" | "single";
  * config source params + worker transports (image: `images` is a list, `image` /
  * `end_image` single; video / audio fields all single).
  */
-const SOURCE_TYPE_PARAM_FIELDS: Readonly<
+export const SOURCE_TYPE_PARAM_FIELDS: Readonly<
   Record<SourceType, ReadonlyArray<readonly [field: string, shape: SourceFieldShape]>>
 > = {
   image: [["images", "list"], ["image", "single"], ["end_image", "single"]],

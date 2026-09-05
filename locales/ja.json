@@ -431,7 +431,7 @@
       "musicStyleLabel": "スタイル",
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
-      "refuseExecuteNoReference": "参考を1つ以上選んでください"
+      "refuseExecuteNoReference": "楽曲・ボーカル・伴奏のいずれかを選んでください"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -44,11 +44,20 @@ export interface AudioModeOption extends ModeOption {
   /**
    * Whether this mode collects lyrics alongside the prompt (#1960).
    *
-   * Only text-to-music demands them — the gateway refuses that model outright
-   * without them (`invalid params, lyrics is required`, measured 2026-09-05).
-   * Reference-to-music takes them or not, and every other mode has no such box
-   * at all, which is why this is stated on the mode rather than derived from
-   * the model.
+   * Both music modes demand them, measured against the gateway on 2026-09-05:
+   * text-to-music answers `invalid params, lyrics is required`, and
+   * reference-to-music answers `2013 - invalid params` both to an empty
+   * `lyrics` and to a body carrying no `lyrics` key at all. The vendor page's
+   * "leave empty for auto-generated lyrics" is not what either one does.
+   *
+   * `optional` therefore has no user today. It stays in the type because the
+   * question it answers — does this mode SHOW a lyrics box — is a different
+   * one from whether the box may be left empty, and a model whose upstream
+   * writes its own words would be the third answer rather than a second
+   * meaning for the absent case.
+   *
+   * Every other mode has no such box at all, which is why this is stated on
+   * the mode rather than derived from the model.
    */
   lyrics?: 'required' | 'optional';
 }
@@ -93,7 +102,10 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     testId: 'generate-audio-mode-a2m',
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
     slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
-    lyrics: 'optional',
+    // Required here as well, and with no instrumental switch to lift it:
+    // minimax/music-01 declares no such param, so every run it takes is a
+    // vocal one.
+    lyrics: 'required',
   },
 ];
 

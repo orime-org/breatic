@@ -20,6 +20,7 @@ import {
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
+  getLyricsFragment,
   getPromptFragment,
   isNodeLocked,
   setNodeStyleImage,
@@ -865,6 +866,30 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
   it('getPromptFragment returns null for a missing node', () => {
     expect(getPromptFragment(PID, SID, 'ghost')).toBeNull();
+  });
+
+  // Born with the node, never created on demand (#1960). Lazy creation is what
+  // lost content in #1880: two clients each making their own container merged
+  // into one that kept a single client's words and dropped the other's.
+  it('getLyricsFragment reads the fragment an audio node was born with', () => {
+    addNode(PID, SID, sampleFields('audio'));
+    const frag = getLyricsFragment(PID, SID, 'n1');
+    expect(frag).toBeInstanceOf(Y.XmlFragment);
+    const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
+      'data',
+    ) as Y.Map<unknown>;
+    expect(data.get('lyrics')).toBe(frag);
+  });
+
+  it('getLyricsFragment reads nothing on a node that asks for no lyrics', () => {
+    // Only the two music modes collect words to sing, and they live on audio
+    // nodes alone — a container here would be one nothing ever reads.
+    addNode(PID, SID, sampleFields('image'));
+    expect(getLyricsFragment(PID, SID, 'n1')).toBeNull();
+  });
+
+  it('getLyricsFragment returns null for a missing node', () => {
+    expect(getLyricsFragment(PID, SID, 'ghost')).toBeNull();
   });
 
   it('readNodeLeaseGen returns 0 for a node with no leaseGen and the stored value otherwise', () => {

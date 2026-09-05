@@ -440,7 +440,7 @@
       "musicStyleLabel": "Style",
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
-      "refuseExecuteNoReference": "Pick at least one reference"
+      "refuseExecuteNoReference": "Pick a song, vocals or backing"
     },
     "edge": {
       "delete": "Delete connection"

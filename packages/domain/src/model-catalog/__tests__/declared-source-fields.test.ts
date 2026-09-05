@@ -21,18 +21,14 @@ import { initCore } from "@breatic/core";
 import { describe, it, expect, beforeAll } from "vitest";
 
 import { getFullModelConfig, MODALITIES } from "@domain/model-catalog/model-catalog.js";
-import { computeSourcesByMode } from "@domain/model-catalog/source-requirement.js";
+import {
+  computeSourcesByMode,
+  SOURCE_TYPE_PARAM_FIELDS,
+} from "@domain/model-catalog/source-requirement.js";
 
 beforeAll(() => {
   initCore(process.env);
 });
-
-/** The fields each source type may travel under, mirroring the gate's table. */
-const FIELDS: Readonly<Record<string, readonly string[]>> = {
-  image: ["images", "image", "end_image"],
-  video: ["video", "video_url"],
-  audio: ["audio", "audio_url", "ref_audio_url", "song", "voice", "instrumental"],
-};
 
 describe("every model needing a source declares a field that carries it", () => {
   it("holds across the whole catalog", () => {
@@ -53,7 +49,10 @@ describe("every model needing a source declares a field that carries it", () => 
         const byMode = computeSourcesByMode(modality, model.mode);
         for (const [mode, sources] of Object.entries(byMode)) {
           for (const type of sources) {
-            const carriers = FIELDS[type] ?? [];
+            // The gate's own table, imported rather than copied: a hand-copy
+            // is a second list of carrier fields, and the day the two disagree
+            // is the day this passes for a model the gate refuses.
+            const carriers = SOURCE_TYPE_PARAM_FIELDS[type].map(([f]) => f);
             if (!carriers.some((field) => declared.has(field))) {
               offenders.push(
                 `${model.name} (${mode}) needs ${type} but declares none of ${carriers.join("/")}`,

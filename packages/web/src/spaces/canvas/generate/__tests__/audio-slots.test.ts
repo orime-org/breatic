@@ -21,6 +21,8 @@
 import { describe, it, expect } from 'vitest';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
+import { refusalToastKey } from '@web/spaces/canvas/generate/generate-guards';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { allSlotSpecs, slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
@@ -44,7 +46,7 @@ describe('the reference-audio slot', () => {
 
   it('names messages all five catalogs answer', () => {
     const spec = AUDIO_SLOTS.refAudio;
-    const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey, spec.errorKey];
+    const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey];
     for (const [locale, catalog] of LOCALE_CATALOGS) {
       for (const key of keys) {
         expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf('string');
@@ -151,15 +153,27 @@ describe('the music reference slots', () => {
     }
   });
 
-  // Their mode takes any one of the three, so it refuses with one sentence
-  // about the set. A per-slot refusal would have to name one of them, which is
-  // not what the gate means — and an unread key is one that drifts.
-  it('states no refusal of its own, the way its mode refuses', () => {
-    for (const slot of MUSIC_SLOTS) {
+  // No audio slot carries a refusal sentence of its own: on this panel the
+  // sentence is reached through `refusalToastKey`, the way every other execute
+  // refusal is, and a copy on the slot is one nothing reads and everything can
+  // drift from. The video panel keeps its own because its container looks one
+  // up directly.
+  it('states no refusal of its own, the way this panel refuses', () => {
+    for (const slot of Object.keys(AUDIO_SLOTS) as AudioSlot[]) {
       expect(AUDIO_SLOTS[slot], slot).not.toHaveProperty('errorKey');
     }
-    // The voice sample keeps one: its mode demands that slot by itself.
-    expect(AUDIO_SLOTS.refAudio.errorKey).toBe('canvas.generatePanel.errorNoRefAudio');
+  });
+
+  it('leaves both refusal sentences answerable in all five catalogs', () => {
+    for (const refusal of ['ref-audio-missing', 'reference-missing'] as const) {
+      const key = refusalToastKey(refusal);
+      expect(key, refusal).toBeTypeOf('string');
+      for (const [locale, catalog] of LOCALE_CATALOGS) {
+        expect(readPath(catalog, key!), `${locale} is missing ${key}`).toBeTypeOf(
+          'string',
+        );
+      }
+    }
   });
 
   it('reaches slotForPurpose, the lookup whose wrong answer is silent', () => {

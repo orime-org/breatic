@@ -96,6 +96,51 @@ describe("reference to music: minimax-music-01", () => {
   });
 });
 
+/**
+ * The rule behind the two `declares … lyrics` assertions above.
+ *
+ * Those name two models, so a third music model added later satisfies neither
+ * and nothing says so — while the panel would show it a lyrics box whose
+ * contents `validateParams` drops on the way out, and the gateway would answer
+ * `2013 - invalid params` on a request the user filled in correctly.
+ *
+ * Measured 2026-09-05 against both: music-3.0 refuses an empty `lyrics` on a
+ * vocal run, and music-01 refuses a run whose body carries no `lyrics` key at
+ * all (`engineering/demo/2026-09-05-music01-empty-lyrics-probe.mjs`).
+ */
+describe("every music model declares the lyrics its mode collects", () => {
+  /** The audio modes whose panel shows a lyrics box (`audio-mode-options`). */
+  const LYRICS_MODES = new Set(["t2m", "a2m"]);
+
+  it("holds across the audio bucket", () => {
+    const bucket = getFullModelConfig("audio") as {
+      models?: Array<{
+        name: string;
+        mode: string | string[];
+        params?: Record<string, unknown>;
+      }>;
+    };
+    const offenders: string[] = [];
+    for (const model of bucket.models ?? []) {
+      const modes = Array.isArray(model.mode) ? model.mode : [model.mode];
+      const music = modes.filter((m) => LYRICS_MODES.has(m));
+      if (music.length === 0) continue;
+      if (!("lyrics" in (model.params ?? {}))) {
+        offenders.push(`${model.name} (${music.join("/")}) declares no lyrics`);
+      }
+    }
+    expect(offenders).toEqual([]);
+    // The rule is worth nothing if no model is subject to it.
+    expect(
+      (bucket.models ?? []).filter((m) =>
+        (Array.isArray(m.mode) ? m.mode : [m.mode]).some((x) =>
+          LYRICS_MODES.has(x),
+        ),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+});
+
 describe("both music models reach the gateway that was measured", () => {
   // The direct MiniMax transport builds prompt / lyrics / is_instrumental and
   // sends no reference URL at all, so a deployment holding MINIMAX_API_KEY
