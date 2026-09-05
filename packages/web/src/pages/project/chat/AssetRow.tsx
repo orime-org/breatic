@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { AudioLines, Play } from 'lucide-react';
+import { AudioLines } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -12,8 +12,16 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
 import type { ChatAsset } from '@web/pages/project/chat/types';
 
-/** A square, and the gap before the next one. Both from the classes below. */
-const SQUARE_PX = 96;
+/**
+ * A square, and the gap before the next one. Both from the classes below.
+ *
+ * 46 is the size this project already gives a thumbnail -- node history rows
+ * and the project activity list both draw one, down to the same rounding,
+ * border and fill -- and it is the size that lets a row of them read as a set
+ * in a column whose floor is 320: four of them and the button fit in 296,
+ * where a single 96 left room for one square and nothing else.
+ */
+const SQUARE_PX = 46;
 const GAP_PX = 8;
 
 /**
@@ -25,6 +33,9 @@ const GAP_PX = 8;
  * measurement that follows in the same frame only ever adds.
  */
 const NARROWEST_ROW_PX = 296;
+
+/** The square, as a class. Kept in one place so the arithmetic cannot drift from it. */
+const SQUARE_CLASS = 'size-[46px] shrink-0';
 
 /**
  * How many squares fit a row this wide, keeping room for the button.
@@ -97,7 +108,7 @@ export const AssetRow = React.memo(function AssetRow({
             data-testid='asset-row-more'
             variant='outline'
             size='sm'
-            className='size-24 shrink-0 text-xs text-muted-foreground'
+            className={cn(SQUARE_CLASS, 'text-xs text-muted-foreground')}
             onClick={() => setOpenAt(shown.length)}
           >
             {t('chat.assets.more', { count: hidden })}
@@ -120,9 +131,9 @@ interface AssetThumbProps {
  * One square in the row.
  *
  * A picture fills it, cropped. A clip does the same and says how long it runs,
- * because a still frame cannot. A track has no picture at all, so it gets a
- * face of its own: its name and its length, which is everything there is to
- * know about it from the outside.
+ * because a still frame cannot. A track has no picture at all, so it shows
+ * what it is; its name and its length are in the box, which is where there is
+ * room to read them.
  * @param root0 - The component props.
  * @param root0.asset - The thing this square holds.
  * @param root0.onOpen - Open it for a proper look.
@@ -136,23 +147,23 @@ function AssetThumb({ asset, onOpen }: AssetThumbProps): React.JSX.Element {
       size={null}
       onClick={onOpen}
       aria-label={asset.title}
-      className='relative size-24 shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted p-0'
+      className={cn(
+        SQUARE_CLASS,
+        'relative overflow-hidden rounded-content-sm border border-border bg-muted p-0',
+      )}
     >
       {asset.kind === 'audio' ? (
-        <span className='flex size-full flex-col items-center justify-center gap-1 px-2'>
-          <AudioLines className='size-6 text-muted-foreground' aria-hidden='true' />
-          <span className='w-full truncate text-2xs text-muted-foreground'>{asset.title}</span>
-          {asset.duration === undefined ? null : (
-            <span className='text-2xs text-muted-foreground'>{asset.duration}</span>
-          )}
-        </span>
+        <AudioLines className='size-4 text-muted-foreground' aria-hidden='true' />
       ) : (
         <>
           <img src={asset.url} alt='' className='size-full object-cover' loading='lazy' />
-          {asset.kind === 'video' ? (
-            <span className='absolute inset-x-1 bottom-1 flex items-center gap-1 text-2xs text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]'>
-              <Play className='size-3 fill-current' aria-hidden='true' />
-              {asset.duration === undefined ? null : <span>{asset.duration}</span>}
+          {/* How long it runs is what a still frame cannot say, and at this
+              size it is the whole of the overlay: the square is for telling
+              one apart from another, and everything else about it is in the
+              box a press away. */}
+          {asset.kind === 'video' && asset.duration !== undefined ? (
+            <span className='absolute inset-x-1 bottom-0.5 text-right text-2xs text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.6)]'>
+              {asset.duration}
             </span>
           ) : null}
         </>
@@ -188,7 +199,18 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
       open={at !== null}
       onOpenChange={onClose}
       testId='asset-box'
-      title={current?.title}
+      title={
+        current === undefined ? null : (
+          <span className='flex items-baseline gap-2'>
+            <span className='truncate'>{current.title}</span>
+            {current.duration === undefined ? null : (
+              <span className='shrink-0 text-xs font-normal text-muted-foreground'>
+                {current.duration}
+              </span>
+            )}
+          </span>
+        )
+      }
       footer={
         // Its own scroller rather than a row that runs off the edge: a turn
         // can find more of these than the column is wide, and the ones past

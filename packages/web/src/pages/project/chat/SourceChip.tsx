@@ -90,12 +90,18 @@ export const SourceChip = React.memo(function SourceChip({
           target='_blank'
           rel='noreferrer noopener'
           className={cn(
-            'inline-flex shrink-0 items-center gap-1.5 border border-border bg-card',
+            'inline-flex items-center gap-1.5 border border-border bg-card',
             'text-2xs text-muted-foreground no-underline',
             'hover:bg-accent hover:text-foreground',
             testId === 'citation-chip'
-              ? 'h-[18px] rounded-full py-0 pl-[3px] pr-[5px] align-baseline'
-              : 'h-[var(--btn-compact)] rounded-chrome px-2 text-xs',
+              // A marker in a sentence keeps its size: it is read as part of
+              // the line it sits in, and a number is as short as it gets.
+              ? 'h-[18px] shrink-0 rounded-full py-0 pl-[3px] pr-[5px] align-baseline'
+              // A chip in the row gives way instead. Publishers' names are
+              // whatever length they are and the column goes down to 320, so
+              // chips that refused to shrink were simply cut off by the row --
+              // along with the button that opens the rest.
+              : 'h-[var(--btn-compact)] min-w-0 rounded-chrome px-2 text-xs',
           )}
         >
           <span
@@ -106,7 +112,7 @@ export const SourceChip = React.memo(function SourceChip({
               testId === 'citation-chip' ? 'size-2.5' : 'size-3',
             )}
           />
-          <span>{label}</span>
+          <span className={testId === 'citation-chip' ? undefined : 'truncate'}>{label}</span>
         </a>
       </HoverCardTrigger>
       {/* The gap is measured from the edge the reader sees. Nothing wraps the

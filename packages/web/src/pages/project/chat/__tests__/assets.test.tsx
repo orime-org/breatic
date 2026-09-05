@@ -118,7 +118,7 @@ describe('the row of assets', () => {
     expect(screen.getByTestId('asset-thumb')).toHaveTextContent('1:24');
   });
 
-  it('gives audio a face of its own, with its name and how long it runs', () => {
+  it('gives audio a face of its own, and its name and length in the box', async () => {
     render(
       <MessageBubble
         message={{
@@ -132,9 +132,16 @@ describe('the row of assets', () => {
       />,
     );
 
+    // 46 见方的格子只放得下一个「这是什么」的图标 —— 名字和时长在打开后的
+    // 框里，那儿才有地方读。名字仍在无障碍名上，读屏用户不受影响。
     const thumb = screen.getByTestId('asset-thumb');
-    expect(thumb).toHaveTextContent('A track');
-    expect(thumb).toHaveTextContent('0:30');
+    expect(thumb).toHaveAttribute('aria-label', 'A track');
+
+    await userEvent.click(thumb);
+
+    const box = screen.getByTestId('asset-box');
+    expect(box).toHaveTextContent('A track');
+    expect(box).toHaveTextContent('0:30');
   });
 
   it('opens one for a proper look, with the rest along the bottom', async () => {
@@ -167,21 +174,21 @@ describe('the row of assets', () => {
 });
 
 describe('how many squares a row of that width holds', () => {
-  // 96 见方加 8 的间距，而 Agent 列从 320 拖到 640、消息列表两边各 12 的内边距
+  // 46 见方加 8 的间距，而 Agent 列从 320 拖到 640、消息列表两边各 12 的内边距
   // —— 所以行宽是 296 到 616。数不对的后果不是排版难看：行是 overflow-hidden 的，
   // 放不下的那些连同「+N」按钮一起被裁掉，屏幕上不留任何痕迹。
   it('draws them all when they all fit, with no button to make room for', () => {
-    expect(squaresThatFit(616, 5)).toBe(5);
+    // 616 装得下 11 个（46×11 + 8×10 = 586），9 个全画。
+    expect(squaresThatFit(616, 9)).toBe(9);
   });
 
   it('gives up one square to the button when they do not', () => {
-    // 616 装得下 6 个（96×6 + 8×5 = 616），第 6 格让给按钮。
-    expect(squaresThatFit(616, 9)).toBe(5);
+    expect(squaresThatFit(616, 20)).toBe(10);
   });
 
-  it('still draws one at the narrowest the column goes', () => {
-    // 296 只装得下 2 个，减去按钮剩 1 —— 少到不能再少，但不是零。
-    expect(squaresThatFit(296, 8)).toBe(1);
-    expect(squaresThatFit(296, 2)).toBe(2);
+  it('draws four at the narrowest the column goes', () => {
+    // 296 装得下 5 个（46×5 + 8×4 = 262），第 5 格让给按钮。
+    expect(squaresThatFit(296, 8)).toBe(4);
+    expect(squaresThatFit(296, 5)).toBe(5);
   });
 });
