@@ -205,3 +205,62 @@ test('sets a numbered heading number in that heading own size', async () => {
   // 2026-09-02): a size of its own flattens all three levels onto one.
   expect(measured.markerFont).toBe(measured.headingFont);
 });
+
+test('draws the body in our own font and the code block on our own panel', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('plain line');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('```');
+  await page.keyboard.type('code here');
+
+  const measured = await page.evaluate((sel) => {
+    const root = document.querySelector(sel) as HTMLElement | null;
+    if (root === null) return null;
+    const rootStyle = getComputedStyle(document.documentElement);
+    /** What a token value computes to once the browser has resolved it. */
+    const paint = (property: string, value: string): string => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, value);
+      document.body.appendChild(probe);
+      const painted = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return painted;
+    };
+    const token = (name: string): string =>
+      rootStyle.getPropertyValue(name).trim();
+    const editor = getComputedStyle(root);
+    const code = root.querySelector('[data-content-type="codeBlock"]');
+    const pre = code?.querySelector('pre') ?? null;
+    return {
+      editorFont: editor.fontFamily,
+      editorSize: editor.fontSize,
+      wantFont: paint('font-family', token('--font-sans')),
+      wantSize: paint('font-size', token('--font-size-base')),
+      codeFound: code !== null,
+      codeColor: code === null ? null : getComputedStyle(code).color,
+      preBackground: pre === null ? null : getComputedStyle(pre).backgroundColor,
+      wantColor: paint('color', token('--color-foreground')),
+      wantPanel: paint('background-color', token('--color-muted')),
+    };
+  }, EDITOR);
+
+  expect(measured).not.toBeNull();
+  const seen = measured as NonNullable<typeof measured>;
+  // BlockNote's own `.bn-default-styles` sets a font stack and 16px, and
+  // neither is ours: the stack it ships carries no CJK face, and the body
+  // stood 1px above every other surface in the product (§9.1, A15 ④).
+  expect(seen.editorFont, 'the body is set in our own stack').toBe(seen.wantFont);
+  expect(seen.editorSize, 'the body is set at our own size').toBe(seen.wantSize);
+
+  // And the code block, which BlockNote paints near-black with white text on
+  // purpose — deliberately theme-independent, which our light panel is not
+  // (A15 ②). The white text is set on the block and inherited by the `pre`
+  // inside it, so it survives a panel that only sets a background.
+  expect(seen.codeFound, 'the document holds a code block').toBe(true);
+  expect(seen.codeColor, 'the code block writes in body colour').toBe(
+    seen.wantColor,
+  );
+  expect(seen.preBackground, 'the code block sits on the muted panel').toBe(
+    seen.wantPanel,
+  );
+});

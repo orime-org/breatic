@@ -92,6 +92,7 @@ interface QuoteBox {
   readonly borderWidth: number;
   readonly borderColor: string;
   readonly paddingLeft: number;
+  readonly fontSize: number;
   readonly color: string;
   readonly first: boolean;
   readonly last: boolean;
@@ -113,6 +114,7 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         borderWidth: parseFloat(style.borderInlineStartWidth),
         borderColor: style.borderInlineStartColor,
         paddingLeft: parseFloat(style.paddingInlineStart),
+        fontSize: parseFloat(style.fontSize),
         color: style.color,
         first: element.hasAttribute('data-quoted-first'),
         last: element.hasAttribute('data-quoted-last'),
@@ -261,7 +263,14 @@ test.describe('a run of quoted blocks', () => {
     await writeQuotedRun(page);
     // The middle block becomes a heading, which a quote can hold: `quoted` is
     // a prop on every block, and C9b covers a numbered heading inside one.
+    //
+    // The chord goes to the block the caret is in, so the run's own selection
+    // has to be gone before it lands — collapsing it takes a frame, and the
+    // bubble bar's own disappearance is what says that frame has passed.
     await page.keyboard.press('ArrowLeft');
+    await expect(page.getByTestId('doc-selection-bubble-bar')).toBeHidden({
+      timeout: 10_000,
+    });
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press(`${MOD}+Alt+1`);
     await expect(
@@ -309,7 +318,11 @@ test.describe('a run of quoted blocks', () => {
         tokens.border,
       );
       expect(box.borderWidth, 'the rule is 2px').toBe(2);
-      expect(box.paddingLeft, 'the text stands 1em clear of the rule').toBe(16);
+      // `1em`, which is the block's own size — writing the pixel here would
+      // pin the body's font size in a case that is about the quote.
+      expect(box.paddingLeft, 'the text stands 1em clear of the rule').toBe(
+        box.fontSize,
+      );
     }
   });
 });

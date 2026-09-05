@@ -756,6 +756,16 @@ body {
   padding-inline: 0;
 }
 
+/* The body is set in our own stack at our own size. BlockNote's
+   `.bn-default-styles` names a stack of its own and a flat 16px, and both
+   reach the editor: the stack it ships carries no CJK face, so Chinese fell
+   through to whatever the platform offered after `SF Pro Display`, and 16px
+   stood the body 1px above every other surface in the product (§9.1). */
+.doc-body-editor .bn-editor.bn-default-styles {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+}
+
 .doc-body-editor .ProseMirror .bn-block-content {
   margin-block: 0;
   padding-block: 0;
@@ -1101,6 +1111,17 @@ body {
   padding: 0.75em 1em;
   background: var(--color-muted);
   border-radius: var(--radius-content-sm);
+}
+
+/* BlockNote paints the code block near-black with white text and says in its
+   own source that this is deliberately theme-independent. The panel above is
+   ours and it is light, and the two land on different elements — theirs on the
+   block's content wrapper, ours on the `pre` inside it — so the white text was
+   inherited straight through onto our light panel. The colour has to be said
+   here, on the same element as theirs, since nothing else undoes it. */
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='codeBlock'] {
+  color: var(--color-foreground);
+  background-color: transparent;
 }
 
 
