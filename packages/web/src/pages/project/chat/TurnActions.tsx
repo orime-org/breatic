@@ -46,12 +46,15 @@ export const TurnActions = React.memo(function TurnActions({
         // No strip is reserved under the reader's own message. Transparent
         // alone is not enough: the element would keep its line, keep taking
         // clicks and keep its place in the tab order, so that blank would
-        // copy when pressed with nothing visible there. Inside the bubble's
-        // own box rather than below it -- the gap between messages is 8px and
-        // this is 24px tall, so hanging it underneath covers the top of the
-        // next message.
+        // copy when pressed with nothing visible there.
+        //
+        // It hangs in the gutter beside the bubble. The bubble shrink-wraps
+        // its text and is capped at 80% of the row, so that gutter is always
+        // there and nothing else ever draws in it; anywhere inside the box
+        // sits on top of the text, which for a message on one line is the
+        // only line there is.
         onHoverOnly === true
-          ? 'absolute bottom-1 right-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
+          ? 'absolute bottom-1 right-full mr-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
           : 'mt-[0.85em]',
       )}
     >
@@ -61,7 +64,6 @@ export const TurnActions = React.memo(function TurnActions({
         size='icon'
         className='size-[var(--btn-compact)] text-muted-foreground'
         aria-label={t('chat.action.copy')}
-        title={t('chat.action.copy')}
         onClick={copy}
       >
         <Copy className='size-3.5' aria-hidden='true' />

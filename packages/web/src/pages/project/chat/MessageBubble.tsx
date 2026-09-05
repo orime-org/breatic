@@ -58,13 +58,16 @@ export const MessageBubble = React.memo(function MessageBubble({
       data-testid='message-bubble'
       data-role={message.role}
       className={cn(
-        'group flex w-full',
+        'flex w-full',
         isUser ? 'justify-end' : 'justify-start',
       )}
     >
       <div
         className={cn(
-          'text-sm',
+          // `group` is on the bubble, which is as wide as the words in it.
+          // The row it sits in spans the panel, so hovering the blank beside
+          // a short message is not hovering the message.
+          'group text-sm',
           // Only what a person says gets a container. The agent is not one
           // side of a conversation -- it is the panel talking -- so its words
           // sit directly on the surface, with nothing drawn around them.
@@ -75,8 +78,8 @@ export const MessageBubble = React.memo(function MessageBubble({
           // themes, and it is the only neutral fill that does -- `bg-muted`
           // is a recess and goes darker than the surface in dark mode.
           isUser
-            // Positioned so the copy that appears on hover can sit under it
-            // without reserving a strip there while nobody is hovering.
+            // Positioned so the copy that appears on hover is laid out
+            // against it, in the gutter the 80% cap leaves beside it.
             ? 'relative max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
             : 'w-full text-foreground',
         )}

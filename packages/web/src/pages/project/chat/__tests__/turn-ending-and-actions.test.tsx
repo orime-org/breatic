@@ -94,4 +94,29 @@ describe('the copy on a reader\'s own message', () => {
     const actions = screen.getByTestId('turn-actions');
     expect(actions.className).not.toMatch(/top-full/);
   });
+
+  it('hangs outside the bubble instead of over its own last line', () => {
+    // The bubble shrink-wraps its text, so anything laid inside its box at the
+    // bottom right covers the end of the last line. The 80% cap leaves a
+    // gutter beside it that nothing else ever draws in.
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    const actions = screen.getByTestId('turn-actions');
+    expect(actions.className).toMatch(/right-full/);
+    expect(actions.className).not.toMatch(/\bright-1\b/);
+  });
+
+  it('is revealed by the bubble rather than by the width of the row', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    const row = screen.getByTestId('message-bubble');
+    expect(row.className).not.toMatch(/\bgroup\b/);
+    expect(row.firstElementChild?.className).toMatch(/\bgroup\b/);
+  });
+
+  it('leaves the tooltip to the browser no longer', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    expect(screen.getByTestId('turn-copy')).not.toHaveAttribute('title');
+  });
 });
