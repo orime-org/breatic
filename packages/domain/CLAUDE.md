@@ -6,10 +6,10 @@
 **server + worker 共享的业务内核**(AIGC 业务大脑)。装两个服务都要用、但 **collab 永不触碰**的共享业务。
 
 ## 进本包判定题
-是不是 —— 只有 server + worker 共享、collab 绝不碰的业务(积分"花" / 任务 / 节点历史 / agent / model-catalog / canvas-lock)?是 → domain。若 collab 也要用 → 进 core;若只一个服务用 → 留那个服务。
+是不是 —— 只有 server + worker 共享、collab 绝不碰的业务(资产 / studio 级鉴权 / 积分"花" / 任务 / 节点历史 / agent / model-catalog / canvas-lock)?是 → domain。若 collab 也要用 → 进 core;若只一个服务用 → 留那个服务。
 
 ## 装啥
-积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务 · 节点历史 · agent(模型 / 工具 / skill 加载 / llm)· model-catalog(含每次成本)· canvas-lock(节点覆盖锁)。
+asset(资产登记 + studio 内去重 + 回收队列,server 的上传握手与 worker 的产物落库都读它)· auth(**studio 级**鉴权:`studioAuth.service` + `studioMembers.repo`;project 级那套在 core)· 积分"花"侧(credit + `markCompletedAndBill` 原子扣费)· 任务 · 节点历史 · agent(模型 / 工具 / skill 加载 / llm)· model-catalog(含每次成本 + 按用量计费的 `rate`)· canvas-lock(节点覆盖锁)。
 
 ## agent 这块的抽象判定线(MANDATORY)
 

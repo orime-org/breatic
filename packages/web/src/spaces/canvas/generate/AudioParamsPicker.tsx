@@ -220,7 +220,6 @@ function ParamControlRow({
   );
 }
 
-/** What {@link ParamSliderRow} needs. */
 /**
  * Whether the value has landed on a named stop.
  *

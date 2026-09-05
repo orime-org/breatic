@@ -17,9 +17,12 @@ import * as React from 'react';
  *     be reproducing the trademark itself, so its mark names what the model
  *     does instead.
  *   - `sonilo`      → a sound spreading from a point, for the same reason.
- * The picker shows generation models (t2i / i2i / tts); every one of their
- * config `icon` names is covered here — there is deliberately NO generic
- * "unknown model" fallback (user 2026-07-09).
+ * The picker shows generation models across every mode the panels offer —
+ * t2i / i2i on the image panel, tts / voice_clone / sfx on the audio one —
+ * and every `icon` name their configs state is covered here, since there is
+ * deliberately NO generic "unknown model" fallback (user 2026-07-09). A model
+ * that states no `icon` at all draws no mark; `elevenlabs-sfx-v2` is one
+ * today (todo #2060 puts a guard on the names that ARE stated).
  */
 const MARKS: Readonly<Record<string, React.JSX.Element>> = {
   // Two billowing sails above a hull.

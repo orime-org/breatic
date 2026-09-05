@@ -147,9 +147,11 @@ export interface ModelEntry {
    */
   takes_prompt: boolean;
   /**
-   * What this model charges per unit of input (#1960), for the panel to state
-   * before the user generates. Absent on models that bill per call — those
-   * state `cost_per_call` instead.
+   * What this model charges per unit of whatever its vendor counts (#1960) --
+   * see {@link ModelRate.unit}, which spans both the input handed to the model
+   * and the output asked of it -- for the panel to state before the user
+   * generates. Absent on models that bill per call, which state
+   * `cost_per_call` instead.
    */
   rate?: ModelRate;
   /**
@@ -357,9 +359,10 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
-  // What the model charges per unit of input (#1960). Absent on models that
-  // bill per call, and a malformed one degrades to absent — a panel with no
-  // rate says nothing, where a half-parsed one would state a wrong price.
+  // What the model charges per unit of what its vendor counts (#1960). Absent
+  // on models that bill per call, and a malformed one degrades to absent — a
+  // panel with no rate says nothing, where a half-parsed one would state a
+  // wrong price.
   rate: z
     .object({
       credits: z.number(),
