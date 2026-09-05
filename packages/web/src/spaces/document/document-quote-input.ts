@@ -15,43 +15,24 @@
  * `build-document-editor.ts` passes this one.
  */
 
-import { createExtension, getBlockInfoFromSelection } from '@blocknote/core';
+import { createExtension } from '@blocknote/core';
 
 import { QUOTED } from '@web/spaces/document/document-list-block';
-
-/** What this rule needs from the editor it runs in. */
-interface QuoteInputEditor {
-  readonly prosemirrorState: unknown;
-}
 
 /**
  * The extension carrying the `> ` shorthand.
  *
  * The pattern matches the list shorthands next door: one optional leading
  * space, the marker, then the space that fires the rule.
+ *
+ * One prop and no type: `updateBlockTr` resolves the node type as
+ * `block.type || blockInfo.blockNoteType` (`updateBlock.ts:86`) and merges
+ * props onto what the node already carries
+ * (`{ ...node.attrs, ...filteredNewAttrs }`, `:462`), so a block keeps its
+ * own type and its own props by being handed neither. A level-2 heading typed
+ * `> ` into stays a level-2 heading, numbered if it was numbered.
  */
 export const documentQuoteInputExtension = createExtension(() => ({
   key: 'document-quote-input',
-  inputRules: [
-    {
-      find: /^\s?>\s$/,
-      replace({ editor }: { editor: QuoteInputEditor }) {
-        const info = getBlockInfoFromSelection(
-          editor.prosemirrorState as never,
-        );
-        // The block's own type and props go back untouched save for the one
-        // this rule sets: typing the shorthand into a level-2 heading leaves a
-        // level-2 heading, quoted.
-        return {
-          type: info.blockNoteType,
-          props: {
-            ...(info.isBlockContainer
-              ? (info.blockContent.node.attrs as Record<string, unknown>)
-              : {}),
-            [QUOTED]: true,
-          },
-        };
-      },
-    },
-  ],
+  inputRules: [{ find: /^\s?>\s$/, replace: () => ({ props: { [QUOTED]: true } }) }],
 }) as never);

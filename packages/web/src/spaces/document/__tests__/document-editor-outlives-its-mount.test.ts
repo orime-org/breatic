@@ -30,8 +30,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  createDocumentUndoManager,
-  documentUndoExtension,
+  createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
@@ -53,10 +52,10 @@ function open(): {
   root: HTMLElement;
   } {
   const doc = new Y.Doc();
-  const manager = createDocumentUndoManager(doc);
+  const { manager, extension } = createDocumentUndo(doc);
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    extensions: [documentUndoExtension(manager)],
+    extensions: [extension],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

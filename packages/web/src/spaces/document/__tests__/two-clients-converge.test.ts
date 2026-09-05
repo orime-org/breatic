@@ -24,8 +24,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import {
-  createDocumentUndoManager,
-  documentUndoExtension,
+  createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
 
 const live: ReturnType<typeof buildDocumentEditor>[] = [];
@@ -50,7 +49,7 @@ afterEach(() => {
 function open(doc: Y.Doc): ReturnType<typeof buildDocumentEditor> {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    extensions: [documentUndoExtension(createDocumentUndoManager(doc))],
+    extensions: [createDocumentUndo(doc).extension],
   });
   const container = document.createElement('div');
   document.body.appendChild(container);

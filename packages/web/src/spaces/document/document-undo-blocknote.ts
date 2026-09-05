@@ -104,11 +104,20 @@ interface UserDrivenMarker {
   userDriven: boolean;
 }
 
-/** Each manager's marker, written by the plugin and read by the manager. */
-const markers = new WeakMap<Y.UndoManager, UserDrivenMarker>();
+/** An undo manager and the extension that drives it. */
+export interface DocumentUndo {
+  /** The manager, for a caller that needs the stack itself. */
+  readonly manager: Y.UndoManager;
+  /** The extension, for the assembly to register. */
+  readonly extension: ExtensionFactoryInstance;
+}
 
 /**
- * Builds an undo manager for a document's body.
+ * Builds an undo manager for a document's body, with its extension.
+ *
+ * The two come out together because they share one marker, and a plugin
+ * writing to a marker some other manager does not read leaves undo working
+ * while it keeps the wrong things.
  *
  * Tracking only the sync plugin's origin is what keeps a peer's edits off our
  * stack, and it works by IDENTITY: yjs decides membership with `Set.has`, so
@@ -129,9 +138,9 @@ const markers = new WeakMap<Y.UndoManager, UserDrivenMarker>();
  * the same test — the first doc-changing, non-appended transaction of a
  * dispatch is the one that speaks for it.
  * @param doc - The document Space's Y.Doc.
- * @returns A manager bound to that document's body.
+ * @returns The manager bound to that document's body, and its extension.
  */
-export function createDocumentUndoManager(doc: Y.Doc): Y.UndoManager {
+export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
   const marker: UserDrivenMarker = { userDriven: true };
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and
@@ -145,8 +154,7 @@ export function createDocumentUndoManager(doc: Y.Doc): Y.UndoManager {
         captureTransaction: () => marker.userDriven,
       }),
   );
-  markers.set(manager, marker);
-  return manager;
+  return { manager, extension: undoExtension(manager, marker) };
 }
 
 /**
@@ -199,24 +207,15 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
 }
 
 /**
- * The extension that registers the undo plugin over a manager we hold.
- * @param manager - The manager built by {@link createDocumentUndoManager}.
+ * The extension that registers the undo plugin over one manager.
+ * @param manager - The manager the plugins drive.
+ * @param marker - The marker that manager reads.
  * @returns The extension, for the assembly to register.
- * @throws {Error} When the manager was not built by
- *   {@link createDocumentUndoManager}, and so has no marker of its own.
  */
-export function documentUndoExtension(
+function undoExtension(
   manager: Y.UndoManager,
+  marker: UserDrivenMarker,
 ): ExtensionFactoryInstance {
-  const marker = markers.get(manager);
-  // A manager from anywhere else has no marker, and standing in a fresh one
-  // would pair a plugin that writes to it with a manager that reads somewhere
-  // else — undo would go on working and start keeping the wrong things.
-  if (marker === undefined) {
-    throw new Error(
-      'documentUndoExtension needs a manager from createDocumentUndoManager',
-    );
-  }
   return createExtension(() => ({
     key: 'yUndo',
     // The selection plugin sits SECOND on purpose. Both it and `yUndoPlugin`

@@ -31,6 +31,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
+import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 
 /** One block, as the fixtures describe it. */
 interface Spec {
@@ -92,7 +93,8 @@ function docOf(specs: readonly Spec[]): PMNode {
  * @returns Block id to the string the reader sees.
  */
 function numbersFor(specs: readonly Spec[]): Map<string, string> {
-  return computeNumbering(docOf(specs));
+  const doc = docOf(specs);
+  return computeNumbering(doc, quoteRuns(doc));
 }
 
 /** A numbered list item. */

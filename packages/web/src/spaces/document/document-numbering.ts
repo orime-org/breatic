@@ -27,7 +27,6 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 
 /** How deep a heading path goes; §3.4 names exactly three levels. */
 const DEEPEST_LEVEL = 3;
@@ -175,13 +174,13 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
  * what an existing document with a deeper one should show is `#920`.
  * @param doc - The document to read.
  * @param runs - The document's quote runs. Taken as an argument because the
- *   decoration plugin needs them too, and reading them is a walk of the whole
+ *   decoration plugin reads them too, and reading them is a walk of the whole
  *   document that then happened twice per keystroke.
  * @returns Block id to the literal string the reader sees.
  */
 export function computeNumbering(
   doc: PMNode,
-  runs: readonly (readonly string[])[] = quoteRuns(doc),
+  runs: readonly (readonly string[])[],
 ): Map<string, string> {
   const runOf = new Map<string, number>();
   runs.forEach((run, index) => {

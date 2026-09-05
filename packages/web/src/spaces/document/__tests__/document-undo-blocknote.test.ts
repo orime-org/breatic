@@ -32,8 +32,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  createDocumentUndoManager,
-  documentUndoExtension,
+  createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
 import {
   clearDocument,
@@ -74,7 +73,7 @@ function blockNodeNames(): string[] {
 function undoAfterAPeerAppends(blockName: string): string {
   const doc = new Y.Doc();
   const body = documentBodyFragment(doc);
-  const manager = createDocumentUndoManager(doc);
+  const { manager } = createDocumentUndo(doc);
 
   // Alice, on the origin the sync plugin stamps local edits with.
   doc.transact(() => {
@@ -135,10 +134,10 @@ async function undoThroughRealEditor(
 ): Promise<string> {
   const doc = new Y.Doc();
   const body = documentBodyFragment(doc);
-  const manager = createDocumentUndoManager(doc);
+  const { manager, extension: undoExtension } = createDocumentUndo(doc);
   const editor = buildDocumentEditor({
     fragment: body,
-    extensions: [documentUndoExtension(manager)],
+    extensions: [undoExtension],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -225,11 +224,11 @@ describe('undoing a clear', () => {
     } {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-    const manager = createDocumentUndoManager(doc);
+    const { manager, extension: undoExtension } = createDocumentUndo(doc);
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(doc),
       extensions: [
-        documentUndoExtension(manager),
+        undoExtension,
         documentSelectAllExtension(null),
       ],
     } as never);

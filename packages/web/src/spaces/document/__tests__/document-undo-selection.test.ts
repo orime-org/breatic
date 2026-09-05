@@ -26,8 +26,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  createDocumentUndoManager,
-  documentUndoExtension,
+  createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
 
 const SENTENCE = 'alpha beta gamma';
@@ -91,10 +90,10 @@ async function openWithSentence(): Promise<{
   manager: Y.UndoManager;
 }> {
   const doc = new Y.Doc();
-  const manager = createDocumentUndoManager(doc);
+  const { manager, extension: undoExtension } = createDocumentUndo(doc);
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    extensions: [documentUndoExtension(manager)],
+    extensions: [undoExtension],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

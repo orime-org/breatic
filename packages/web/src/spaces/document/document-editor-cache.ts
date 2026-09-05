@@ -68,8 +68,7 @@ import { documentLocaleRedrawExtension } from '@web/spaces/document/document-loc
 import { documentPlaceholderExtension } from '@web/spaces/document/document-placeholders-blocknote';
 import { documentSelectAllExtension } from '@web/spaces/document/document-select-all-guard';
 import {
-  createDocumentUndoManager,
-  documentUndoExtension,
+  createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 
@@ -140,7 +139,8 @@ function createDocumentEditor(
   doc: Y.Doc,
   inputs: DocumentEditorInputs,
 ): DocumentEditorHandle {
-  const undoManager = createDocumentUndoManager(doc);
+  const { manager: undoManager, extension: undoExtension } =
+    createDocumentUndo(doc);
   const clearListeners = new Set<() => void>();
 
   const editor = buildDocumentEditor({
@@ -152,7 +152,7 @@ function createDocumentEditor(
         inputs.caretProvider.awareness as never,
         inputs.resolveCollaboratorName,
       ),
-      documentUndoExtension(undoManager),
+      undoExtension,
       documentSelectAllExtension(() => {
         clearListeners.forEach((listener) => {
           listener();
