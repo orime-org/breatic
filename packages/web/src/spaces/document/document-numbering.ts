@@ -27,6 +27,8 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import type { QuoteRun } from '@web/spaces/document/document-quote-runs';
+
 
 /** How deep a heading path goes; §3.4 names exactly three levels. */
 const DEEPEST_LEVEL = 3;
@@ -180,11 +182,11 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
  */
 export function computeNumbering(
   doc: PMNode,
-  runs: readonly (readonly string[])[],
+  runs: readonly QuoteRun[],
 ): Map<string, string> {
   const runOf = new Map<string, number>();
   runs.forEach((run, index) => {
-    run.forEach((id) => runOf.set(id, index));
+    run.ids.forEach((id) => runOf.set(id, index));
   });
   const walk: Walk = {
     counters: new Array<number>(DEEPEST_LEVEL).fill(0),

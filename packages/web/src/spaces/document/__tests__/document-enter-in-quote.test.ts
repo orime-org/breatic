@@ -63,7 +63,7 @@ function open(
 
 /** The document as plain records. */
 function blocksOf(editor: ReturnType<typeof buildDocumentEditor>): ReadBlock[] {
-  return editor.document as unknown as ReadBlock[];
+  return editor.document;
 }
 
 /**
@@ -72,7 +72,7 @@ function blocksOf(editor: ReturnType<typeof buildDocumentEditor>): ReadBlock[] {
  * @returns Whether a handler claimed it.
  */
 function pressEnter(editor: ReturnType<typeof buildDocumentEditor>): boolean {
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
   return (
     view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false
@@ -88,7 +88,7 @@ function caretToEndOf(
   editor: ReturnType<typeof buildDocumentEditor>,
   index: number,
 ): void {
-  editor.setTextCursorPosition(blocksOf(editor)[index]!.id, 'end');
+  editor.setTextCursorPosition(blocksOf(editor)[index].id, 'end');
 }
 
 const KINDS = [
@@ -137,6 +137,27 @@ describe('Enter at the end of a quoted line', () => {
     expect(blocks[1]?.props['quoted']).toBe(true);
   });
 
+  it('opens an unticked to-do after a ticked one', () => {
+    // What the new block carries is the writer's next line, not a copy of the
+    // one they just finished: a to-do they have already ticked hands the next
+    // one its own empty state. BlockNote answers the same way — its list Enter
+    // asks to keep the type and not the props.
+    for (const at of ['end', 'start'] as const) {
+      const editor = open([
+        { type: 'checkListItem', props: { checked: true }, content: 'done' },
+      ]);
+      editor.setTextCursorPosition(blocksOf(editor)[0].id, at);
+      pressEnter(editor);
+
+      const blocks = blocksOf(editor);
+      expect(blocks).toHaveLength(2);
+      expect(
+        blocks[1]?.props['checked'],
+        `the block opened with the caret at the ${at}`,
+      ).toBe(false);
+    }
+  });
+
   it('keeps a heading whole when Enter opens a line above it', () => {
     // Enter at the very start pushes the heading down and leaves an empty one
     // above, so the block carrying the text is the NEW one — and it has to
@@ -150,7 +171,7 @@ describe('Enter at the end of a quoted line', () => {
         content: 'title',
       },
     ]);
-    editor.setTextCursorPosition(blocksOf(editor)[0]!.id, 'start');
+    editor.setTextCursorPosition(blocksOf(editor)[0].id, 'start');
     pressEnter(editor);
 
     const blocks = blocksOf(editor);
@@ -168,7 +189,7 @@ describe('C11 — Enter over a selection spanning two list items', () => {
       { type: 'numberedListItem', content: 'first' },
       { type: 'numberedListItem', content: 'second' },
     ]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     // From inside the first item to inside the second.
     const from = 4;
     const to = view.state.doc.content.size - 4;
@@ -198,7 +219,7 @@ describe('Enter over a selection that opens in an empty quoted block', () => {
       { type: 'paragraph', content: '', props: { quoted: true } },
       { type: 'paragraph', content: 'keep me', props: { quoted: true } },
     ]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     let from = -1;
     let to = -1;
     view.state.doc.descendants((node, pos) => {

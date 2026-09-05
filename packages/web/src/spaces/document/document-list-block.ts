@@ -62,27 +62,30 @@ const PINNED_NUMBER = 'number';
  * Splits the block at a position, carrying the quote into the new one.
  *
  * A rebuild of `splitBlockTr`, which `@blocknote/core` keeps to itself while
- * exporting everything it depends on.
+ * exporting everything it depends on. Its two questions are kept apart the
+ * way the original asks them: what TYPE the new block is, and whether it
+ * carries the old one's PROPS. They differ per caller — the general Enter
+ * answers both with "is the caret at the very start", while the list Enter
+ * keeps the type and takes no props — and answering them with one value gave
+ * a ticked to-do a ticked one after it.
  *
- * A split that keeps the type hands the new block everything the old one
- * carried, less the pinned number. Enter at the very start of a block is that
- * split, and it pushes the block's text down into the NEW one — so what the
- * writer sees afterwards is whatever that block arrived as. Measured with the
- * quote alone carried across: a level 2 quoted heading came back level 1 and
- * stopped being numbered, while the same heading outside a quote, which never
- * reaches this function, kept both.
+ * A split that carries the props leaves the pinned number behind: that number
+ * belongs to the item the writer set it on, and the one after it counts along.
  *
- * A split that does not keep the type opens a paragraph, and a paragraph
- * holds none of those props, so it takes the quote alone.
+ * The quote rides across either way, which is the one place this parts from
+ * the original: a quote is a prop on each block here, so a block split off a
+ * quoted one leaves the quote unless it is put there (A7b).
  * @param tr - The transaction to split in.
  * @param posInBlock - Where to split.
  * @param keepType - Whether the new block keeps this one's type.
+ * @param keepProps - Whether it also keeps this one's props.
  * @returns Whether the split happened.
  */
 export function splitCarryingQuote(
   tr: Transaction,
   posInBlock: number,
   keepType = true,
+  keepProps = false,
 ): boolean {
   const info = getBlockInfo(getNearestBlockPos(tr.doc, posInBlock));
   if (!info.isBlockContainer) {
@@ -90,12 +93,15 @@ export function splitCarryingQuote(
   }
   const schema = getPmSchema(tr);
   const content = info.blockContent.node;
-  const carried = { ...content.attrs, [PINNED_NUMBER]: undefined };
-  const openedType = keepType ? content.type : schema.nodes['paragraph'];
-  const openedAttrs = keepType ? carried : { [QUOTED]: content.attrs[QUOTED] };
+  const carried = keepProps
+    ? { ...content.attrs, [PINNED_NUMBER]: undefined }
+    : {};
   tr.split(posInBlock, 2, [
     { type: info.bnBlock.node.type, attrs: {} },
-    { type: openedType, attrs: openedAttrs },
+    {
+      type: keepType ? content.type : schema.nodes['paragraph'],
+      attrs: { ...carried, [QUOTED]: content.attrs[QUOTED] },
+    },
   ]);
   return true;
 }

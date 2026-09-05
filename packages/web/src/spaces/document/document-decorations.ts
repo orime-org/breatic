@@ -69,10 +69,7 @@ function blockDecorations(doc: PMNode): DecorationSet {
   // One walk: the run ends are marked from it, and a list inside a run
   // starts over from it (§3.4).
   const runs = quoteRuns(doc);
-  const numbers = computeNumbering(
-    doc,
-    runs.map((run) => run.ids),
-  );
+  const numbers = computeNumbering(doc, runs);
   const opens = new Set<string>();
   const closes = new Set<string>();
   const afters = new Set<string>();

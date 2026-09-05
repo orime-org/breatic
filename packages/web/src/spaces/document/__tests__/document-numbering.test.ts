@@ -74,7 +74,7 @@ function container(spec: Spec): PMNode {
       parts.push(group);
     }
   }
-  return schema.nodes['blockContainer']!.create({ id: spec.id }, parts);
+  return schema.nodes['blockContainer'].create({ id: spec.id }, parts);
 }
 
 /**
@@ -83,8 +83,8 @@ function container(spec: Spec): PMNode {
  * @returns The doc node.
  */
 function docOf(specs: readonly Spec[]): PMNode {
-  const group = schema.nodes['blockGroup']!.create(null, specs.map(container));
-  return schema.nodes['doc']!.create(null, group);
+  const group = schema.nodes['blockGroup'].create(null, specs.map(container));
+  return schema.nodes['doc'].create(null, group);
 }
 
 /**
@@ -94,10 +94,7 @@ function docOf(specs: readonly Spec[]): PMNode {
  */
 function numbersFor(specs: readonly Spec[]): Map<string, string> {
   const doc = docOf(specs);
-  return computeNumbering(
-    doc,
-    quoteRuns(doc).map((run) => run.ids),
-  );
+  return computeNumbering(doc, quoteRuns(doc));
 }
 
 /** A numbered list item. */

@@ -994,14 +994,19 @@ body {
    adding to it, which is what makes the two equal: the block above the run
    carries no bottom margin of its own, and the block below gives up its top
    one to the last rule here. Measured before that: 17.6px above the run and
-   31.2px below it, growing to 63px when the block below was an h1. */
+   31.2px below it, growing to 63px when the block below was an h1.
+
+   The size is read off the body rather than off the end block, because the
+   space belongs to the run and not to whichever block happens to sit at each
+   end. Written as a bare `em` it resolved against the end block, and a run
+   ending on an h1 stood 26.39px from what followed it against 16.5px above. */
 .doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted-first] {
-  margin-top: 1.1em;
+  margin-top: calc(1.1 * var(--font-size-base));
   padding-top: 0;
 }
 
 .doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted-last] {
-  margin-bottom: 1.1em;
+  margin-bottom: calc(1.1 * var(--font-size-base));
 }
 
 /* The block below the run gives its top margin up, and it is marked by the

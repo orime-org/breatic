@@ -127,7 +127,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
 
     tr.deleteSelection();
     tr.scrollIntoView();
-    return splitCarryingQuote(tr, tr.selection.from, atBlockStart);
+    return splitCarryingQuote(tr, tr.selection.from, atBlockStart, atBlockStart);
   });
 }
 
