@@ -53,7 +53,6 @@ vi.stubGlobal("fetch", () => {
 import {
   renderSearchForModel,
   makeSearchTools,
-  highestSourceNumber,
 } from "@domain/agent/tools/web-search.js";
 import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
 
@@ -304,19 +303,7 @@ describe("two searches issued in one step", () => {
     expect(numbers.sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
   });
 
-  it("carries on from what the conversation has already numbered", async () => {
-    // 前几轮存下的来源会连号一起回灌给模型，所以新一轮从 1 起会让同一段上下文
-    // 里出现两个 1 号，而系统提示词叫模型「用来源自带的号」。
-    httpRequestMock.mockImplementation(() =>
-      grounding([{ url: "https://a.example", title: "A", snippets: ["a"] }]),
-    );
-
-    const answer = await runWith(makeSearchTools(6), "q");
-
-    expect(answer.sources[0]?.index).toBe(7);
-  });
-
-  it("starts at one when the conversation has numbered nothing", async () => {
+  it("starts at one however long the conversation before it was", async () => {
     httpRequestMock.mockImplementation(() =>
       grounding([{ url: "https://a.example", title: "A", snippets: ["a"] }]),
     );
@@ -325,39 +312,5 @@ describe("two searches issued in one step", () => {
     const laterTurn = await runWith(makeSearchTools(), "turn two");
 
     expect(laterTurn.sources[0]?.index).toBe(1);
-  });
-});
-
-describe("where a turn's numbering starts", () => {
-  it("reads the highest number the conversation has already shown", () => {
-    // 每条来源自带它当初拿到的号，所以走一遍历史取最大值就够了；不用去数
-    // 渲染出来的文本。
-    expect(
-      highestSourceNumber([
-        { parts: [{ type: "text", text: "hi" }] },
-        {
-          parts: [
-            {
-              type: "tool",
-              toolName: "web_search",
-              status: "success",
-              output: { sources: [{ index: 3 }, { index: 5 }] },
-            },
-          ],
-        },
-      ]),
-    ).toBe(5);
-  });
-
-  it("counts nothing when the conversation has searched for nothing", () => {
-    expect(highestSourceNumber([{ parts: [{ type: "text", text: "hi" }] }])).toBe(0);
-  });
-
-  it("ignores a row stored before the sources carried numbers", () => {
-    expect(
-      highestSourceNumber([
-        { parts: [{ type: "tool", toolName: "web_search", status: "success", output: "old text" }] },
-      ]),
-    ).toBe(0);
   });
 });

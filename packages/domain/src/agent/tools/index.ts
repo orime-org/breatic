@@ -11,7 +11,7 @@ import { askUser } from "@domain/agent/tools/ask-user.js";
 import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
-import { highestSourceNumber, makeSearchTools } from "@domain/agent/tools/web-search.js";
+import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -22,12 +22,12 @@ import { highestSourceNumber, makeSearchTools } from "@domain/agent/tools/web-se
  * importers and nothing consults it, so a guard standing on that list would
  * miss any tool registered here without also being re-exported.
  */
-export const TOOL_MAP: Readonly<Record<string, (numberedSoFar: number) => Tool>> = {
+export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // How to build each tool for one turn. A tool that carries state for the
   // length of a turn -- the search tools share one space of citation numbers
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
-  web_search: (numberedSoFar) => makeSearchTools(numberedSoFar).web_search,
+  web_search: () => makeSearchTools().web_search,
   ask_user_question: () => askUser,
   // Interaction tools (spec/07 §10.18.4 v13). LLM calls these to send
   // structured payloads the frontend renders as UI components, not for
@@ -115,7 +115,6 @@ function isConfigured(name: string): boolean {
  * skill's metadata from taking down the whole assembly. Tools whose required
  * configuration is missing are skipped too — see `TOOL_REQUIREMENTS`.
  * @param toolNames - Array of tool name strings to include.
- * @param numberedSoFar - The highest citation number this conversation has handed out.
  * @returns A `Record<string, Tool>` suitable for the AI SDK `tools` option.
  * @example
  * ```ts
@@ -123,14 +122,11 @@ function isConfigured(name: string): boolean {
  * const tools = buildToolSet(BASELINE_TOOLS);
  * ```
  */
-export function buildToolSet(
-  toolNames: readonly string[],
-  numberedSoFar = 0,
-): Record<string, Tool> {
+export function buildToolSet(toolNames: readonly string[]): Record<string, Tool> {
   const result: Record<string, Tool> = {};
   for (const name of toolNames) {
     const build = TOOL_MAP[name];
-    if (build && isConfigured(name)) result[name] = build(numberedSoFar);
+    if (build && isConfigured(name)) result[name] = build();
   }
   return result;
 }
@@ -138,7 +134,6 @@ export function buildToolSet(
 export {
   askUser,
   askUserChoice,
-  highestSourceNumber,
   makeSearchTools,
   proposeCanvasAction,
   showSearchResults,

@@ -464,33 +464,6 @@ export function renderSearchForModel(answer: SearchAnswer): string {
  * reads. Requires the `BRAVE_SEARCH_API_KEY` environment variable.
  */
 /**
- * The highest citation number this conversation has handed out.
- *
- * Each source carries the number it was given when its search ran, so the
- * answer is in the stored parts; a turn starts its own numbering above it.
- * Rows stored before sources carried numbers, and the placeholder compaction
- * leaves behind, count for nothing -- they are strings, and there is no
- * number in them to clash with.
- * @param history - The conversation as it was written down.
- * @returns The highest number, or zero when nothing has been numbered.
- */
-export function highestSourceNumber(history: readonly { parts?: unknown }[]): number {
-  let highest = 0;
-  for (const message of history) {
-    if (!Array.isArray(message.parts)) continue;
-    for (const part of message.parts) {
-      const sources = (part as { output?: { sources?: unknown } }).output?.sources;
-      if (!Array.isArray(sources)) continue;
-      for (const source of sources) {
-        const index = (source as { index?: unknown }).index;
-        if (typeof index === "number" && index > highest) highest = index;
-      }
-    }
-  }
-  return highest;
-}
-
-/**
  * The tools one turn searches with.
  *
  * A turn's sources share one space of numbers, and that number has to be
@@ -506,17 +479,15 @@ export function highestSourceNumber(history: readonly { parts?: unknown }[]): nu
  * reservation is one synchronous statement, which JavaScript runs to
  * completion, so calls running together cannot interleave inside it.
  *
- * It starts where the conversation left off, because earlier turns' sources
- * are replayed to the model with the numbers they were given: a turn
- * starting again at one would put two different pages under `1` in the same
- * context, and the model is told to cite the number a source arrived with.
- * @param numberedSoFar - The highest number this conversation has handed out.
+ * The count starts at zero every turn, so a reply's sources read `1` upward
+ * however long the conversation before it was, and each reply's row stands on
+ * its own.
  * @returns This turn's search tools, keyed as the model names them.
  */
-export function makeSearchTools(numberedSoFar = 0): {
+export function makeSearchTools(): {
   web_search: Tool<z.infer<typeof inputSchema>, SearchAnswer>;
 } {
-  let handedOut = numberedSoFar;
+  let handedOut = 0;
 
   const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
     description:

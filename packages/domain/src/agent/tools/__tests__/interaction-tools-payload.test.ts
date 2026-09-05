@@ -85,7 +85,7 @@ const SENTINELS = [
  * @throws {Error} If the tool is not registered or has no `execute`.
  */
 async function run(name: string, input: Record<string, unknown>): Promise<unknown> {
-  const tool: Tool | undefined = TOOL_MAP[name]?.(0);
+  const tool: Tool | undefined = TOOL_MAP[name]?.();
   const execute = (tool as { execute?: unknown } | undefined)?.execute as
     | ExecuteFn
     | undefined;

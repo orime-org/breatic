@@ -16,7 +16,6 @@ import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
 import {
   buildAgentConfig,
   finalizeTurn,
-  highestSourceNumber,
   TOOLS_THAT_BLOCK,
 } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
@@ -305,11 +304,6 @@ export class MainAgent {
         basePrompt: buildSystemPrompt(),
         memoryContext,
         interactive: true,
-        // Where this conversation's citation numbering has got to. Earlier
-        // turns' sources are replayed with the numbers they were given, so a
-        // turn starting again at one would put two pages under the same
-        // number in one context.
-        numberedSoFar: highestSourceNumber(compressedHistory),
       });
 
       return {

@@ -65,13 +65,6 @@ export interface AgentConfigRequest {
    * stand as the answer. Such a caller does not get them.
    */
   interactive?: boolean;
-  /**
-   * The highest citation number this conversation has already handed out.
-   *
-   * A turn numbers its sources above it, because earlier turns' sources are
-   * replayed to the model with the numbers they were given.
-   */
-  numberedSoFar?: number;
 }
 
 /** The three things, resolved. */
@@ -159,6 +152,6 @@ export function buildAgentConfig(
     // model's behaviour runs on whatever the deployment defaults to.
     modelId: skill?.model ?? getAgentConfig().default_model,
     instructions: sections.join("\n\n"),
-    tools: buildToolSet(toolNames, request.numberedSoFar ?? 0),
+    tools: buildToolSet(toolNames),
   };
 }

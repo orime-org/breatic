@@ -478,10 +478,6 @@ export const domainMock = () => ({
   // the real function never does.
   reasoningFor: vi.fn().mockReturnValue({ providerOptions: {} }),
   buildToolSet: vi.fn().mockReturnValue({}),
-  // Real behaviour, because a turn asks it where this conversation's citation
-  // numbering has got to before it builds its tools; a stub returning nothing
-  // would make every turn start again at one.
-  highestSourceNumber: vi.fn().mockReturnValue(0),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with
   // these names is match them against the names the model was offered, so a
