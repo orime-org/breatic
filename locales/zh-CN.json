@@ -235,6 +235,10 @@
       "continue": "继续",
       "copy": "复制",
       "regenerate": "重新生成"
+    },
+    "sources": {
+      "title": "来源",
+      "more": "+{count, number}"
     }
   },
   "canvas": {

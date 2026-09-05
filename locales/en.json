@@ -235,6 +235,10 @@
       "continue": "Continue",
       "copy": "Copy",
       "regenerate": "Regenerate"
+    },
+    "sources": {
+      "title": "Sources",
+      "more": "+{count, number}"
     }
   },
   "canvas": {

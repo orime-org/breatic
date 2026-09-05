@@ -31,7 +31,10 @@ import {
   DISPLAY_MATH_TAG,
   displayMathPlugin,
 } from '@web/pages/project/chat/display-math-plugin';
+import { citationPlugin } from '@web/pages/project/chat/citation-plugin';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
+import { SourceChip } from '@web/pages/project/chat/SourceChip';
+import type { ChatSource } from '@web/pages/project/chat/types';
 
 interface MarkdownMessageProps {
   /** The assistant's prose, as markdown. */
@@ -42,6 +45,14 @@ interface MarkdownMessageProps {
   size?: keyof typeof SIZE_CLASS;
   /** Whether a single newline in the source is a line the reader sees. */
   softBreaks?: boolean;
+  /**
+   * What a `[N]` the model wrote points at.
+   *
+   * A number with nothing behind it stays the text it is: the model writes
+   * these itself, so one it invented would otherwise be drawn as a chip
+   * pointing nowhere.
+   */
+  citations?: Record<number, ChatSource>;
 }
 
 /**
@@ -284,6 +295,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   streaming = false,
   size = 'sm',
   softBreaks = false,
+  citations,
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
   // Unique per rendered message, so the footnote ids below are too.
@@ -300,9 +312,34 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   // The wrapping step reads what KaTeX left behind, so it follows it. The
   // footnote step runs before the colouring, which only rebuilds code
   // elements.
+  // Which numbers a source stands behind. Built once per set so the plugin
+  // below is rebuilt only when they change.
+  const numbers = useMemo(() => new Set(Object.keys(citations ?? {}).map(Number)), [citations]);
+  // The citation step runs before the colouring, which rebuilds code
+  // elements. Markers inside a link, inline code or a code block are left
+  // alone by the plugin itself.
   const rehypePlugins = useMemo<Rehype>(
-    () => [[rehypeKatex, KATEX], displayMathPlugin, [footnoteScopePlugin, scope], ...REHYPE_TAIL],
-    [scope],
+    () => [
+      [rehypeKatex, KATEX],
+      displayMathPlugin,
+      [footnoteScopePlugin, scope],
+      [citationPlugin, numbers],
+      ...REHYPE_TAIL,
+    ],
+    [scope, numbers],
+  );
+  const components = useMemo<Components>(
+    () => ({
+      ...COMPONENTS,
+      // The element the plugin above writes. It only writes one for a number
+      // `citations` resolves, so a chip here always has a source behind it.
+      'citation-chip': ({ index }: { index?: string }): ReactElement | null => {
+        const cited = citations?.[Number(index)];
+        if (cited === undefined) return null;
+        return <SourceChip source={cited} label={String(Number(index))} testId='citation-chip' />;
+      },
+    }),
+    [citations],
   );
   const remarkRehypeOptions = useMemo(
     () => ({
@@ -326,7 +363,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   return (
     <div className={SIZE_CLASS[size]} data-testid='markdown-body'>
       <Markdown
-        components={COMPONENTS}
+        components={components}
         rehypePlugins={rehypePlugins}
         remarkPlugins={softBreaks ? REMARK_PLUGINS_WITH_BREAKS : REMARK_PLUGINS}
         remarkRehypeOptions={remarkRehypeOptions}

@@ -106,7 +106,7 @@ export function TurnEnding({
             data-testid='turn-retry'
             variant='outline'
             size='sm'
-            className='ml-auto h-btn-compact'
+            className='ml-auto h-[var(--btn-compact)]'
             onClick={retry}
           >
             {t('chat.action.retry')}
@@ -127,7 +127,7 @@ export function TurnEnding({
             data-testid='turn-continue'
             variant='outline'
             size='sm'
-            className='ml-auto h-btn-compact'
+            className='ml-auto h-[var(--btn-compact)]'
             onClick={carryOn}
           >
             {t('chat.action.continue')}
@@ -170,7 +170,7 @@ export function TurnEnding({
             data-testid='turn-retry'
             variant='outline'
             size='sm'
-            className='ml-auto h-btn-compact'
+            className='ml-auto h-[var(--btn-compact)]'
             onClick={retry}
           >
             {t('chat.action.retry')}

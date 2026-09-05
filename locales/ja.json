@@ -235,6 +235,10 @@
       "continue": "続ける",
       "copy": "コピー",
       "regenerate": "再生成"
+    },
+    "sources": {
+      "title": "出典",
+      "more": "+{count, number}"
     }
   },
   "canvas": {

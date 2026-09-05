@@ -235,6 +235,10 @@
       "continue": "계속",
       "copy": "복사",
       "regenerate": "다시 생성"
+    },
+    "sources": {
+      "title": "출처",
+      "more": "+{count, number}"
     }
   },
   "canvas": {

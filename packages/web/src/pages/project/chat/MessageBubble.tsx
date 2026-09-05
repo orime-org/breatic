@@ -7,6 +7,7 @@ import { cn } from '@web/lib/utils';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
+import { SourceRow } from '@web/pages/project/chat/SourceRow';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
@@ -97,6 +98,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               <MarkdownMessage
                 content={message.content}
                 streaming={message.streaming === true}
+                {...(message.citations ? { citations: message.citations } : {})}
               />
             ) : null}
             {/* One mark for the whole turn, after everything said so far. It
@@ -115,6 +117,13 @@ export const MessageBubble = React.memo(function MessageBubble({
             stored, so a reload shows the answer and no trace of how it was
             assembled (A5). */}
         {running && runningCall !== undefined ? <ToolRunLine call={runningCall} /> : null}
+        {/* Where the answer came from. Content rather than process, so unlike
+            the line above it stays once the turn has ended -- and it is drawn
+            only then, because a row that grows as searches come back would
+            move under the reader while they are still reading. */}
+        {running || message.sources === undefined ? null : (
+          <SourceRow sources={message.sources} />
+        )}
         {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
