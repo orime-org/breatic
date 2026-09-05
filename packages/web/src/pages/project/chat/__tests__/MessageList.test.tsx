@@ -489,3 +489,54 @@ describe('the skeleton that stands in while messages are on their way', () => {
     expect((bars[1] as HTMLElement).className).not.toContain('ml-auto');
   });
 });
+
+describe('the way back to the newest message', () => {
+  it('stays out of the way while the reader is at the end', () => {
+    stateGeometry({ scrollHeight: 500, clientHeight: 500, scrollTop: 0 });
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+  });
+
+  it('offers a way back once the reader has left the end', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+  });
+
+  it('says how many messages arrived while they were away', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    const { rerender } = render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+    rerender(<MessageList ready messages={[bubble('a', 'hi'), bubble('b', 'and more')]} />);
+
+    expect(screen.getByTestId('back-to-latest')).toHaveTextContent('1');
+  });
+
+  it('goes away once the reader is back at the end', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    // The column takes itself to the end as it mounts, so leaving it is a
+    // move the reader makes afterwards.
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+    expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
+
+    geometry.scrollTop = 1600;
+    if (viewport) fireEvent.scroll(viewport);
+    expect(screen.queryByTestId('back-to-latest')).not.toBeInTheDocument();
+  });
+});

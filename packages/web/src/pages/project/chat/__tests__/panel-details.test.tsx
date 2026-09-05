@@ -49,3 +49,19 @@ describe('an empty conversation', () => {
     expect(first.parentElement?.className).toMatch(/flex-wrap/);
   });
 });
+
+describe('a code block in a reply', () => {
+  it('offers to put its contents on the clipboard', async () => {
+    const { MarkdownMessage } = await import('@web/pages/project/chat/MarkdownMessage');
+    render(<MarkdownMessage content={'```ts\nconst a = 1;\n```'} />);
+
+    expect(screen.getByTestId('code-copy')).toBeInTheDocument();
+  });
+
+  it('leaves inline code alone, which has nothing worth a button', async () => {
+    const { MarkdownMessage } = await import('@web/pages/project/chat/MarkdownMessage');
+    render(<MarkdownMessage content={'a `const` in a sentence'} />);
+
+    expect(screen.queryByTestId('code-copy')).not.toBeInTheDocument();
+  });
+});

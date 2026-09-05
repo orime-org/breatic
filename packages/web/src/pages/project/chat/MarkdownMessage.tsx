@@ -32,6 +32,7 @@ import {
   displayMathPlugin,
 } from '@web/pages/project/chat/display-math-plugin';
 import { citationPlugin } from '@web/pages/project/chat/citation-plugin';
+import { CodeBlock } from '@web/pages/project/chat/CodeBlock';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
 import { SourceChip } from '@web/pages/project/chat/SourceChip';
 import type { ChatSource } from '@web/pages/project/chat/types';
@@ -270,6 +271,7 @@ function MarkdownLink({
  */
 const COMPONENTS = {
   a: MarkdownLink,
+  pre: CodeBlock,
   table: ScrollableTable,
   input: TaskMark,
   [DISPLAY_MATH_TAG]: ScrollableMath,

@@ -239,6 +239,14 @@
     "sources": {
       "title": "出典",
       "more": "+{count, number}"
+    },
+    "code": {
+      "copy": "コードをコピー",
+      "copied": "コピーしました"
+    },
+    "backToLatest": {
+      "plain": "最新に戻る",
+      "withNew": "{count, plural, other {新着 # 件}}"
     }
   },
   "canvas": {

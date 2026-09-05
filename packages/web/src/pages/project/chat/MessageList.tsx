@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { ArrowDown } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -151,6 +152,14 @@ function MessageListInner({
   // the fact reads a reader who never moved as one who left, and since the
   // gap only widens from there, following never starts again for that turn.
   const stickToBottom = React.useRef(true);
+  // The same fact, in the form the screen can read. The ref is what the
+  // scroll handlers act on -- they run on every scroll event and must not
+  // render -- so the state beside it is set only when the answer changes.
+  const [awayFromEnd, setAwayFromEnd] = React.useState(false);
+  // How many messages arrived while the reader was away. Counted from where
+  // the column stood when they left: a number counted from the start of the
+  // conversation would say the whole history is new.
+  const countWhenLeft = React.useRef(0);
   const count = messages.length;
   // A streaming reply arrives as pieces appended to the message already at
   // the end, so the count sits still for the whole turn. Following the last
@@ -223,7 +232,10 @@ function MessageListInner({
     /** Record where the reader put themselves, while it is still true. */
     const remember = (): void => {
       const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-      stickToBottom.current = distance <= AT_BOTTOM_SLACK_PX;
+      const atEnd = distance <= AT_BOTTOM_SLACK_PX;
+      if (!atEnd && stickToBottom.current) countWhenLeft.current = count;
+      stickToBottom.current = atEnd;
+      setAwayFromEnd(!atEnd);
     };
 
     // A column that changes width rewraps every line, so the same words take a
@@ -249,46 +261,74 @@ function MessageListInner({
     if (stickToBottom.current) goToBottom();
   }, [count, lastShape, goToBottom]);
 
+  /** Take the reader back to the newest message and stay there. */
+  const backToEnd = React.useCallback(() => {
+    stickToBottom.current = true;
+    setAwayFromEnd(false);
+    goToBottom();
+  }, [goToBottom]);
+
+  const missed = Math.max(0, count - countWhenLeft.current);
+
   return (
-    <ScrollArea
-      className='min-h-0 flex-1'
-      viewportRef={viewportRef}
-      data-testid='message-list'
-    >
-      {!ready ? (
-        skeleton ? <MessageSkeleton /> : null
-      ) : count === 0 ? (
-        <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
-      ) : (
-        <div className='flex flex-col gap-2 p-3'>
-          {/* At the top, because that is where the conversation continues
+    <div className='relative flex min-h-0 flex-1 flex-col'>
+      <ScrollArea
+        className='min-h-0 flex-1'
+        viewportRef={viewportRef}
+        data-testid='message-list'
+      >
+        {!ready ? (
+          skeleton ? <MessageSkeleton /> : null
+        ) : count === 0 ? (
+          <ChatEmpty onQuickAction={onQuickAction} frozen={navigating} />
+        ) : (
+          <div className='flex flex-col gap-2 p-3'>
+            {/* At the top, because that is where the conversation continues
               upward. Without it a conversation past its first page simply
               begins in the middle, with nothing on screen saying that what
               came before is still there. */}
-          {hasEarlier ? (
-            <Button
-              variant='outline'
-              size='sm'
-              className='self-center'
-              onClick={onLoadEarlier}
-              data-testid='chat-load-earlier'
-            >
-              {t('chat.loadEarlier')}
-            </Button>
-          ) : null}
-          {messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              // Only the bubble that is still waiting has anywhere to put it,
-              // and handing the same value to every bubble takes the whole
-              // list through a render each time a fold starts and ends.
-              consolidating={m.streaming === true ? consolidating : undefined}
-            />
-          ))}
-        </div>
-      )}
-    </ScrollArea>
+            {hasEarlier ? (
+              <Button
+                variant='outline'
+                size='sm'
+                className='self-center'
+                onClick={onLoadEarlier}
+                data-testid='chat-load-earlier'
+              >
+                {t('chat.loadEarlier')}
+              </Button>
+            ) : null}
+            {messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                // Only the bubble that is still waiting has anywhere to put it,
+                // and handing the same value to every bubble takes the whole
+                // list through a render each time a fold starts and ends.
+                consolidating={m.streaming === true ? consolidating : undefined}
+              />
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+      {/* Over the foot of the column rather than in it: it is a way back, not
+          part of the conversation, and a row of its own would push the newest
+          message up every time the reader looked away. */}
+      {awayFromEnd && count > 0 ? (
+        <Button
+          data-testid='back-to-latest'
+          variant='outline'
+          size='sm'
+          onClick={backToEnd}
+          className='absolute inset-x-0 bottom-3 mx-auto flex h-[var(--btn-inline)] w-fit items-center gap-1.5 rounded-full bg-card px-3 text-xs shadow-md'
+        >
+          <ArrowDown className='size-3.5' aria-hidden='true' />
+          <span>
+            {missed > 0 ? t('chat.backToLatest.withNew', { count: missed }) : t('chat.backToLatest.plain')}
+          </span>
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

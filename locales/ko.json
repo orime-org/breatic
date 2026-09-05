@@ -239,6 +239,14 @@
     "sources": {
       "title": "출처",
       "more": "+{count, number}"
+    },
+    "code": {
+      "copy": "코드 복사",
+      "copied": "복사했습니다"
+    },
+    "backToLatest": {
+      "plain": "최신으로",
+      "withNew": "{count, plural, other {새 메시지 #개}}"
     }
   },
   "canvas": {
