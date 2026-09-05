@@ -130,6 +130,42 @@ test('draws each indent level further right than the one above it', async () => 
   expect(boxes[2]!.left).toBeGreaterThan(boxes[1]!.left);
 });
 
+test('leaves the same space above every block but the first', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('- a');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('a1');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('a2');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.type('b');
+
+  const gaps = await page.evaluate((sel) => {
+    const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+    return all.map((element, index) => ({
+      text: (element.textContent ?? '').trim(),
+      marginTop: parseFloat(getComputedStyle(element).marginTop),
+      gap:
+        index === 0
+          ? null
+          : element.getBoundingClientRect().top -
+            all[index - 1]!.getBoundingClientRect().bottom,
+    }));
+  }, EDITOR);
+
+  expect(gaps.map((row) => row.text)).toEqual(['a', 'a1', 'a2', 'b']);
+  // The first block of the DOCUMENT carries no space above it. Indenting
+  // opens a new block group, and `a1` is the first child of that one — it
+  // used to match the same rule and sit flush against its parent while every
+  // other pair stood 13.6px apart.
+  expect(gaps[0]!.marginTop, 'the document opens flush').toBe(0);
+  for (const row of gaps.slice(1)) {
+    expect(row.marginTop, `the space above "${row.text}"`).toBeGreaterThan(8);
+  }
+});
+
 test('draws a marker beside a bulleted item and a numbered one', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('- bulleted');

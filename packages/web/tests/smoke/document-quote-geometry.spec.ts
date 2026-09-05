@@ -212,4 +212,104 @@ test.describe('a run of quoted blocks', () => {
     expect(margins[1]!.top).toBe(0);
     expect(margins[1]!.bottom).toBe(0);
   });
+
+  test('sits the same distance from what is above and below it (A8b)', async () => {
+    await openFreshDocument(page);
+    await writeQuotedRun(page);
+    // A plain line below the run as well, so both edges have a neighbour.
+    await page.locator(`${EDITOR} .bn-block-content`).last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await page.keyboard.type('a plain line below');
+    await expect(page.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
+
+    const edges = await page.evaluate(
+      ({ editor, quoted }) => {
+        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
+        const marks = [...document.querySelectorAll(quoted)];
+        const firstQuoted = all.indexOf(marks[0] as Element);
+        const lastQuoted = all.indexOf(marks[marks.length - 1] as Element);
+        const box = (element: Element | undefined): DOMRect | null =>
+          element === undefined ? null : element.getBoundingClientRect();
+        const above = box(all[firstQuoted - 1]);
+        const below = box(all[lastQuoted + 1]);
+        return {
+          above:
+            above === null ? null : box(all[firstQuoted])!.top - above.bottom,
+          below:
+            below === null ? null : below.top - box(all[lastQuoted])!.bottom,
+        };
+      },
+      { editor: EDITOR, quoted: QUOTED },
+    );
+
+    expect(edges.above, 'a line above the run').not.toBeNull();
+    expect(edges.below, 'a line below the run').not.toBeNull();
+    // Both edges are the run's own 1.1em and nothing else. The gap below used
+    // to be that margin plus the next block's own, added rather than replaced,
+    // and it grew again for any block with a bigger one — an h1 below the run
+    // put 63px there against 17px above it.
+    expect(
+      Math.abs((edges.below as number) - (edges.above as number)),
+      `above ${String(edges.above)}px, below ${String(edges.below)}px`,
+    ).toBeLessThan(1);
+  });
+
+  test('draws the rule down a run that holds a heading (A8)', async () => {
+    await openFreshDocument(page);
+    await writeQuotedRun(page);
+    // The middle block becomes a heading, which a quote can hold: `quoted` is
+    // a prop on every block, and C9b covers a numbered heading inside one.
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press(`${MOD}+Alt+1`);
+    await expect(
+      page.locator(`${QUOTED}[data-content-type="heading"]`),
+    ).toHaveCount(1, { timeout: 10_000 });
+
+    const boxes = await quoteBoxes(page);
+    expect(boxes).toHaveLength(3);
+    for (let i = 1; i < boxes.length; i += 1) {
+      const gap = boxes[i]!.top - boxes[i - 1]!.bottom;
+      expect(
+        Math.abs(gap),
+        `blocks ${i - 1} and ${i} leave a ${gap}px gap in the rule`,
+      ).toBeLessThan(1);
+    }
+  });
+
+  test('draws its text and its rule in our own values (A8b)', async () => {
+    await openFreshDocument(page);
+    await writeQuotedRun(page);
+
+    const tokens = await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      const paint = (value: string): string => {
+        const probe = document.createElement('span');
+        probe.style.color = value;
+        document.body.appendChild(probe);
+        const painted = getComputedStyle(probe).color;
+        probe.remove();
+        return painted;
+      };
+      return {
+        muted: paint(style.getPropertyValue('--color-muted-foreground').trim()),
+        border: paint(style.getPropertyValue('--color-border').trim()),
+      };
+    });
+
+    const boxes = await quoteBoxes(page);
+    for (const box of boxes) {
+      // The six things A8b names, by value rather than by "more than zero":
+      // the muted text is the only signal besides the rule that a block is
+      // quoted, and an inequality passes on a unit slip.
+      expect(box.color, 'the quote draws its text muted').toBe(tokens.muted);
+      expect(box.borderColor, 'the rule is drawn in the border token').toBe(
+        tokens.border,
+      );
+      expect(box.borderWidth, 'the rule is 2px').toBe(2);
+      expect(box.paddingLeft, 'the text stands 1em clear of the rule').toBe(16);
+    }
+  });
 });

@@ -761,12 +761,22 @@ body {
   padding-block: 0;
 }
 
+/* The space above a block, which every one of them carries. The exception is
+   the first block of the DOCUMENT, and that is what the second rule names:
+   `:first-child` alone means "first of its own group", and indenting opens a
+   new group — measured, the first child of every indented list sat flush
+   against its parent while every other pair stood 13.6px apart. */
+.doc-body-editor .ProseMirror .bn-block-content {
+  margin-top: var(--doc-paragraph-margin);
+}
+
 .doc-body-editor
   .ProseMirror
-  .bn-block-outer:not(:first-child)
+  > .bn-block-group
+  > .bn-block-outer:first-child
   > .bn-block
   > .bn-block-content {
-  margin-top: var(--doc-paragraph-margin);
+  margin-top: 0;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
@@ -775,9 +785,7 @@ body {
 
 .doc-body-editor
   .ProseMirror
-  .bn-block-outer:not(:first-child)
-  > .bn-block
-  > .bn-block-content[data-content-type='heading'] {
+  .bn-block-content[data-content-type='heading'] {
   margin-top: 1.9em;
 }
 
@@ -789,9 +797,7 @@ body {
 
 .doc-body-editor
   .ProseMirror
-  .bn-block-outer:not(:first-child)
-  > .bn-block
-  > .bn-block-content[data-content-type='heading'][data-level='2'] {
+  .bn-block-content[data-content-type='heading'][data-level='2'] {
   margin-top: 1.7em;
 }
 
@@ -803,9 +809,7 @@ body {
 
 .doc-body-editor
   .ProseMirror
-  .bn-block-outer:not(:first-child)
-  > .bn-block
-  > .bn-block-content[data-content-type='heading'][data-level='3'] {
+  .bn-block-content[data-content-type='heading'][data-level='3'] {
   margin-top: 1.5em;
 }
 
@@ -967,30 +971,42 @@ body {
 /* Inside a run the space between two blocks goes INSIDE the box. The rule is
    drawn on the box's border, and a margin sits outside it — measured, a 13.6px
    break in the rule between every pair. Padding puts the same gap where the
-   border can reach it, so the rule arrives unbroken. */
-.doc-body-editor
-  .ProseMirror
-  .bn-block-outer:not(:first-child)
-  > .bn-block
-  > [data-quoted='true'] {
+   border can reach it, so the rule arrives unbroken.
+
+   Written with `.bn-block-content` and placed after the heading rules above,
+   which are otherwise the more specific of the two: a heading inside a run
+   kept its own 1.9em margin and broke the rule beside it by 45.6px. A quote
+   holds any block, headings included (C9b covers a numbered one). */
+.doc-body-editor .ProseMirror .bn-block-content[data-quoted='true'] {
   margin-top: 0;
   padding-top: var(--doc-paragraph-margin);
 }
 
-/* The run's own outer margins, carried by the blocks at its ends — outside
-   the box, where they hold the run apart from what surrounds it. The end
-   blocks give up their inner space so the text meets the run's edges. */
-.doc-body-editor
-  .ProseMirror
-  .bn-block-outer:not(:first-child)
-  > .bn-block
-  > [data-quoted-first] {
+/* The run's own outer space, held as margin on the blocks at its two ends —
+   outside the box, where it stands the run apart from what surrounds it. The
+   end blocks give up their inner space so the text meets the run's edges.
+
+   Each edge REPLACES the space that would otherwise be there rather than
+   adding to it, which is what makes the two equal: the block above the run
+   carries no bottom margin of its own, and the block below gives up its top
+   one to the last rule here. Measured before that: 17.6px above the run and
+   31.2px below it, growing to 63px when the block below was an h1. */
+.doc-body-editor .ProseMirror .bn-block-content[data-quoted-first] {
   margin-top: 1.1em;
   padding-top: 0;
 }
 
-.doc-body-editor .ProseMirror [data-quoted-last] {
+.doc-body-editor .ProseMirror .bn-block-content[data-quoted-last] {
   margin-bottom: 1.1em;
+}
+
+.doc-body-editor
+  .ProseMirror
+  .bn-block-outer:has(> .bn-block > [data-quoted-last])
+  + .bn-block-outer
+  > .bn-block
+  > .bn-block-content {
+  margin-top: 0;
 }
 
 /* A quote is the one block here that holds other blocks, so it is the one that

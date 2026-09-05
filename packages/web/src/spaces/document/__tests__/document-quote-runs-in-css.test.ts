@@ -129,8 +129,12 @@ describe('what the stylesheet reaches a quote by', () => {
     expect(dom.querySelector('[data-quoted-first]')!.textContent).toBe('one');
     expect(dom.querySelector('[data-quoted-last]')!.textContent).toBe('three');
 
-    expect(ruleFor('> [data-quoted-first]')).toContain('margin-top');
-    expect(ruleFor('[data-quoted-last]')).toContain('margin-bottom');
+    expect(ruleFor('.bn-block-content[data-quoted-first]')).toContain(
+      'margin-top',
+    );
+    expect(ruleFor('.bn-block-content[data-quoted-last]')).toContain(
+      'margin-bottom',
+    );
   });
 
   it('puts the space inside a run on the padding, and the run’s own on the margin', () => {
@@ -138,15 +142,24 @@ describe('what the stylesheet reaches a quote by', () => {
     // run reads as one quote or as several: the rule is drawn on the box, so a
     // margin between two blocks breaks it and padding does not. Measured
     // before the padding form: a 13.6px break in the rule between every pair.
-    const between = ruleFor('> [data-quoted=\'true\']');
+    const between = ruleFor('.bn-block-content[data-quoted=\'true\']');
     expect(between).toContain('margin-top: 0');
     expect(between).toContain('padding-top: var(--doc-paragraph-margin)');
 
     // And the first block of a run hands that space back to the margin, where
     // it holds the whole run apart from the paragraph above it.
-    const first = ruleFor('> [data-quoted-first]');
+    const first = ruleFor('.bn-block-content[data-quoted-first]');
     expect(first).toContain('margin-top');
     expect(first).toContain('padding-top: 0');
+
+    // The block BELOW the run gives its own top space up, so the run's two
+    // edges are equal: what it carries is the run's 1.1em and nothing added
+    // to it. Measured before this rule: 17.6px above and 31.2px below.
+    expect(
+      ruleFor(
+        '.bn-block-outer:has(> .bn-block > [data-quoted-last])\n  + .bn-block-outer\n  > .bn-block\n  > .bn-block-content',
+      ),
+    ).toContain('margin-top: 0');
   });
 
   it('marks a lone quoted block as both ends of its own run', () => {
