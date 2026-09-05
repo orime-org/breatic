@@ -180,7 +180,27 @@ describe("cleaning the lyrics a music model is handed (#1960)", () => {
     expect("lyrics" in validated).toBe(false);
   });
 
-  it("cleans after validation, so a model not declaring it keeps none", () => {
+  it("cleans after validation, so the value cleaned is the one being sent", () => {
+    // The validator here REPLACES the lyrics, the way the real one replaces a
+    // missing value with the model's declared default. Cleaning before it runs
+    // would clean the submitted string and send the substituted one uncleaned;
+    // the assertion is on which of the two came out stripped.
+    const substitute = (
+      model: string,
+      params: Record<string, unknown>,
+    ): [string, Record<string, unknown>] => [
+      model,
+      { ...params, lyrics: "<b>from the catalog</b>" },
+    ];
+    const [, , validated] = takePromptAndValidate(
+      { prompt: "p", lyrics: "<i>from the user</i>" },
+      "minimax-music-3.0",
+      substitute,
+    );
+    expect(validated.lyrics).toBe("from the catalog");
+  });
+
+  it("leaves a model that does not declare it without one", () => {
     const dropEverything = (
       model: string,
     ): [string, Record<string, unknown>] => [model, {}];

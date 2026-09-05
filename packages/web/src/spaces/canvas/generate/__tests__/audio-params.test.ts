@@ -198,6 +198,20 @@ const t = (
     : key;
 
 describe('formatAudioParam — a value reads in its own unit', () => {
+  // A switch's value IS its state, so it reads as the state's own name. The
+  // pill printing the param's NAME instead said "Instrumental only" whether
+  // the switch was on or off, on the one model that declares this param and
+  // nothing else — the whole pill face asserting the opposite half the time.
+  it('reads a switch as the state it is in', () => {
+    // The stub translator answers with the key, so these are the two keys.
+    expect(formatAudioParam('is_instrumental', true, t)).toBe(
+      'canvas.generatePanel.musicInstrumentalOnly',
+    );
+    expect(formatAudioParam('is_instrumental', false, t)).toBe(
+      'canvas.generatePanel.musicWithVocals',
+    );
+  });
+
   it('reads the two 0-1 params to two decimals', () => {
     expect(formatAudioParam('stability', 0.5, t)).toBe('0.50');
     expect(formatAudioParam('similarity', 0.75, t)).toBe('0.75');

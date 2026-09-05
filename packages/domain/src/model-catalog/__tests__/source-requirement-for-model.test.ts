@@ -115,3 +115,69 @@ describe("violatesSourceRequirementForModel (#1675)", () => {
     ).toBe(true);
   });
 });
+
+/**
+ * One vendor's spelling does not satisfy another model's requirement (#1960).
+ *
+ * The audio row of the carrier table holds six field names, because six
+ * vendors spell the same thing six ways, and four modes read that one row.
+ * The gate asks a second question of every field — does THIS model declare it
+ * — and that question is the only thing standing between a payload carrying
+ * `song` and the talking-head gate, whose transport reads `audio_url` and
+ * would build a request with no audio at all.
+ */
+describe("a field this model does not declare is not a source it can use", () => {
+  /**
+   * A real catalog model needing an audio source and NOTHING else, reading it
+   * under a name other than `song`.
+   *
+   * Audio alone, so the second case can satisfy the whole requirement with one
+   * field — a model needing an image as well would violate for the image.
+   * @returns The model name, or undefined when the catalog serves none.
+   */
+  function anAudioGatedModelNotReadingSong(): string | undefined {
+    const catalog = getModelCatalog();
+    for (const entry of Object.values(catalog).flatMap((b) =>
+      Array.isArray(b) ? b : [],
+    )) {
+      const byMode: Record<string, string[]> = entry.sourcesByMode ?? {};
+      const modes = Object.values(byMode);
+      if (modes.length === 0) continue;
+      if (modes.some((sources) => sources.length === 0)) continue;
+      const required = new Set(modes.flat());
+      if (required.size !== 1 || !required.has("audio")) continue;
+      const declared = new Set(Object.keys(entry.params ?? {}));
+      if (declared.has("song")) continue;
+      if (!["audio", "audio_url", "ref_audio_url"].some((f) => declared.has(f))) {
+        continue;
+      }
+      return entry.name;
+    }
+    return undefined;
+  }
+
+  it("refuses a payload whose only audio field belongs to another vendor", () => {
+    const model = anAudioGatedModelNotReadingSong();
+    expect(model, "the catalog serves no audio-gated model to test with").toBeTruthy();
+    if (!model) return;
+    expect(
+      violatesSourceRequirementForModel(model, { song: "https://cdn/s.mp3" }),
+    ).toBe(true);
+  });
+
+  it("accepts the same payload under the name that model does declare", () => {
+    const model = anAudioGatedModelNotReadingSong();
+    if (!model) return;
+    const catalog = getModelCatalog();
+    const entry = Object.values(catalog)
+      .flatMap((b) => (Array.isArray(b) ? b : []))
+      .find((m) => m.name === model);
+    const field = ["audio", "audio_url", "ref_audio_url"].find((f) =>
+      Object.keys(entry?.params ?? {}).includes(f),
+    );
+    expect(field).toBeTruthy();
+    expect(
+      violatesSourceRequirementForModel(model, { [field!]: "https://cdn/s.mp3" }),
+    ).toBe(false);
+  });
+});

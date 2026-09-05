@@ -216,16 +216,20 @@ describe('buildAudioTaskPayload — the music models (#1960)', () => {
     expect(payload.params).not.toHaveProperty('lyrics');
   });
 
-  it('sends an empty lyrics through on the mode where they are optional', () => {
-    // `music-01` takes them or not. Empty stays empty rather than being
-    // dropped or filled with the style brief — the user would hear their own
-    // "warm indie folk, 90 BPM" sung back at them.
+  it('sends an empty lyrics through on an instrumental track', () => {
+    // Measured 2026-09-05: `is_instrumental: true` with an empty `lyrics` is
+    // accepted and completes, and it is the only empty case the panel can
+    // build — both music models refuse an empty one on a vocal run. Empty
+    // stays empty rather than being dropped or filled with the style brief;
+    // the user would hear their own "warm indie folk, 90 BPM" sung back.
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-01', 'audio'),
+      model: model('minimax-music-3.0', 'audio'),
+      params: { is_instrumental: true },
       lyricsText: '',
     });
     expect(payload.params.lyrics).toBe('');
+    expect(payload.params.is_instrumental).toBe(true);
   });
 
   it('puts each of the three reference tracks under its own vendor name', () => {

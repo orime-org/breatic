@@ -306,17 +306,24 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
 
       {/* Two boxes look alike once the placeholders are typed over, so each
           carries a word saying which is which. Only when there are two: a
-          single box needs no label to be told apart from nothing. */}
-      {lyricsSlot === null ? (
-        promptSlot
-      ) : (
-        <div className='flex flex-col gap-2'>
+          single box needs no label to be told apart from nothing.
+
+          The wrapper is here whether or not there is a second box, and the
+          labels are holes rather than a second branch: React reconciles by
+          position, so a `promptSlot` that sits directly under the panel in one
+          branch and under a div in the other is torn down and rebuilt on every
+          switch into or out of a music mode — taking the ProseMirror view, the
+          collaborative binding and the undo stack with it. */}
+      <div className='flex flex-col gap-2'>
+        {lyricsSlot !== null && (
           <FieldLabel textKey='canvas.generatePanel.musicStyleLabel' />
-          {promptSlot}
+        )}
+        {promptSlot}
+        {lyricsSlot !== null && (
           <FieldLabel textKey='canvas.generatePanel.musicLyricsLabel' />
-          {lyricsSlot}
-        </div>
-      )}
+        )}
+        {lyricsSlot}
+      </div>
 
       <div className='flex items-center gap-1.5'>
         <ModeToggle

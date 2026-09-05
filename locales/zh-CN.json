@@ -426,6 +426,7 @@
       "selectMusicVoiceFromCanvas": "挑一段人声，跟着它唱",
       "selectMusicInstrumentalFromCanvas": "挑一段伴奏，新歌盖在上面",
       "musicInstrumentalOnly": "纯伴奏",
+      "musicWithVocals": "有人声",
       "musicPromptPlaceholder": "写下曲风、情绪、乐器和速度",
       "musicLyricsPlaceholder": "写下歌词",
       "musicStyleLabel": "风格",

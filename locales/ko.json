@@ -426,6 +426,7 @@
       "selectMusicVoiceFromCanvas": "따라갈 보컬 고르기",
       "selectMusicInstrumentalFromCanvas": "얹을 반주 고르기",
       "musicInstrumentalOnly": "반주만",
+      "musicWithVocals": "보컬 있음",
       "musicPromptPlaceholder": "장르, 분위기, 악기, 템포를 적으세요",
       "musicLyricsPlaceholder": "가사를 적으세요",
       "musicStyleLabel": "스타일",

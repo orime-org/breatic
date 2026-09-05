@@ -241,7 +241,7 @@ function AudioGeneratePanelBody({
   // "does the model declare an audio source" rule would have shown the voice
   // sample there too.
   const slots = modeOption.slots;
-  /** Whether this mode shows a lyrics box at all, and whether it insists. */
+  /** Whether this mode shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modeOption.lyrics;
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasStore((s) => {
@@ -458,10 +458,9 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    const freshLyrics =
-      lyrics === undefined
-        ? undefined
-        : (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current);
+    const freshLyrics = lyrics
+      ? (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
+      : undefined;
     const maxInputChars = fresh.modelEntry?.max_input_chars;
     const refusal = evaluateExecute({
       promptText: freshPrompt,
@@ -476,7 +475,7 @@ function AudioGeneratePanelBody({
       voiceChosen: fresh.voiceChosen,
       requiredSlots: slots,
       filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
-      lyricsRequired: lyrics === 'required',
+      lyricsRequired: lyrics,
       lyricsText: freshLyrics,
       instrumental: audioFlagValue(
         fresh.modelEntry,
@@ -573,7 +572,7 @@ function AudioGeneratePanelBody({
           ref={promptEditorRef}
           // Half height beside a lyrics box: a style brief is a line or two,
           // and the box grows with whatever is typed into it either way.
-          startingHeight={lyrics === undefined ? 'full' : 'half'}
+          startingHeight={lyrics ? 'half' : 'full'}
           fragment={fragment}
           placeholder={promptPlaceholder}
           onTextChange={onPromptChange}
@@ -606,10 +605,14 @@ function AudioGeneratePanelBody({
   const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
   const lyricsSlot = React.useMemo(
     () =>
-      lyrics !== undefined && lyricsFragment ? (
+      lyrics && lyricsFragment ? (
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
+          // One newline per line the user made. The prompt default puts a
+          // blank line between blocks, which reads as prose; here the line
+          // structure is the content and the vendor is handed it as typed.
+          blockSeparator={'\n'}
           // An instrumental track has no words to write, and the box saying so
           // is what puts that switch's state on screen. What is already in it
           // stays and comes back when the switch goes off.
@@ -680,7 +683,7 @@ function AudioGeneratePanelBody({
         voiceChosen: vm.voiceChosen,
         requiredSlots: slots,
         filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
-        lyricsRequired: lyrics === 'required',
+        lyricsRequired: lyrics,
         lyricsText,
         instrumental,
       })}

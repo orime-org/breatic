@@ -426,6 +426,7 @@
       "selectMusicVoiceFromCanvas": "合わせるボーカルを選ぶ",
       "selectMusicInstrumentalFromCanvas": "重ねる伴奏を選ぶ",
       "musicInstrumentalOnly": "伴奏のみ",
+      "musicWithVocals": "ボーカルあり",
       "musicPromptPlaceholder": "ジャンル、雰囲気、楽器、テンポを書く",
       "musicLyricsPlaceholder": "歌詞を書く",
       "musicStyleLabel": "スタイル",

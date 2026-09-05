@@ -63,14 +63,28 @@ type Translate = (
   params?: Record<string, string | number | Date>,
 ) => string;
 
-/** How one parameter is named and read, for the params this panel shows. */
-interface AudioParamSpec {
+/**
+ * How one parameter is named and read, for the params this panel shows.
+ *
+ * Two shapes, because a value is either a quantity or a state. A quantity
+ * renders in its own unit; a state renders as its own name, since a switch has
+ * no value beside itself — the switch IS the value. Splitting them is what
+ * lets each entry state exactly one of the two.
+ */
+type AudioParamSpec = {
   labelKey: string;
-  /** Renders a value for display — the unit belongs to the number. */
-  format: (value: number, t: Translate) => string;
-  /** Named positions on this param's scale, ascending. */
-  stops?: readonly { value: number; labelKey: string }[];
-}
+} & (
+  | {
+      /** Renders a value for display — the unit belongs to the number. */
+      format: (value: number, t: Translate) => string;
+      /** Named positions on this param's scale, ascending. */
+      stops?: readonly { value: number; labelKey: string }[];
+    }
+  | {
+      /** What each state of a switch is called. */
+      stateKeys: { readonly on: string; readonly off: string };
+    }
+);
 
 const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
@@ -104,10 +118,15 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
     // Not `musicInstrumental` — that key names the backing-track slot. This
     // switch says "no vocals at all", which is a different sentence.
     labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
-    // Never read: a toggle prints no value beside itself, the switch IS the
-    // value. Present because the table's shape says every param states how it
-    // reads, and one entry opting out would be one nobody decided.
-    format: (v) => String(v),
+    // Both states named, because the pill prints this the way it prints every
+    // other param: the current value. The one model declaring this param
+    // declares nothing else the panel can show, so this string is the whole
+    // pill face — and a face reading "Instrumental only" while the switch is
+    // off states the opposite of the truth.
+    stateKeys: {
+      on: 'canvas.generatePanel.musicInstrumentalOnly',
+      off: 'canvas.generatePanel.musicWithVocals',
+    },
   },
   duration: {
     labelKey: 'canvas.generatePanel.sfxDuration',
@@ -170,7 +189,7 @@ function controlFor(
     min,
     max,
     step,
-    ...(spec.stops ? { stops: spec.stops } : {}),
+    ...('stops' in spec && spec.stops ? { stops: spec.stops } : {}),
   };
 }
 
@@ -220,14 +239,20 @@ export const INSTRUMENTAL_PARAM = 'is_instrumental';
 /**
  * A value as the user reads it, in that parameter's own unit.
  * @param name - The catalog param name.
- * @param value - The current value.
+ * @param value - The current value; a boolean for a switch.
  * @param t - The app's translator, for units that are words in some locale.
- * @returns The display string; the bare number when the param is unknown.
+ * @returns The display string; the bare value when the param is unknown.
  */
 export function formatAudioParam(
   name: string,
-  value: number,
+  value: number | boolean,
   t: Translate,
 ): string {
-  return PARAMS[name]?.format(value, t) ?? String(value);
+  const spec = PARAMS[name];
+  if (typeof value === 'boolean') {
+    return spec && 'stateKeys' in spec
+      ? t(value ? spec.stateKeys.on : spec.stateKeys.off)
+      : String(value);
+  }
+  return spec && 'format' in spec ? spec.format(value, t) : String(value);
 }

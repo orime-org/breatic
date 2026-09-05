@@ -225,18 +225,26 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    // Every member of the union, kept by hand — a plain array literal accepts
-    // a short list, so a new refusal reaches this case only if whoever adds it
-    // writes it in. The compiler will not say so.
-    const all: ExecuteRefusal[] = [
-      'node-gone',
-      'no-model',
-      'submitting',
-      'prompt-missing',
-      'prompt-too-long',
-      'voice-missing',
-      'ref-audio-missing',
-    ];
+    // Every member of the union, and the compiler says so: the record's key
+    // type is the union itself, so a refusal added without a line here fails
+    // typecheck rather than quietly going unchecked. A plain array literal
+    // accepts a short list, and this case ran on seven of nine members for as
+    // long as it took two refusals to be added elsewhere.
+    const speaks: Record<ExecuteRefusal, boolean> = {
+      'node-gone': false,
+      'no-model': false,
+      submitting: false,
+      'prompt-missing': true,
+      'prompt-too-long': true,
+      'voice-missing': true,
+      'ref-audio-missing': true,
+      'reference-missing': true,
+      'lyrics-missing': true,
+    };
+    const all = Object.keys(speaks) as ExecuteRefusal[];
+    for (const refusal of all) {
+      expect(refusalToastKey(refusal) != null, refusal).toBe(speaks[refusal]);
+    }
     for (const refusal of all) {
       expect(refusalToastKey(refusal) != null).toBe(
         !isExecuteButtonDisabled(refusal),

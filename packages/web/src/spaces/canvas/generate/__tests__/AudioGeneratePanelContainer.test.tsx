@@ -224,31 +224,42 @@ function seedAudioNode(over: Record<string, unknown> = {}): void {
 }
 
 /**
- * Writes text into one of the node's fragments — what typing produces.
+ * Writes lines into one of the node's fragments — what typing produces.
+ *
+ * One paragraph per line, because that is the only document the editor can
+ * make: its schema is Document / Paragraph / Text with no hard break, so Enter
+ * splits a block and nothing else creates a line. A single paragraph holding a
+ * raw newline reads back through `getText` verbatim, which would make an
+ * assertion about line shape pass against any serializer at all.
  * @param fragment - The fragment to write into.
- * @param text - What to write.
+ * @param lines - The lines, in order.
  */
-function typeInto(fragment: Y.XmlFragment | null, text: string): void {
+function typeInto(fragment: Y.XmlFragment | null, lines: string[]): void {
   if (!fragment) throw new Error('seedAudioNode must run first');
-  const paragraph = new Y.XmlElement('paragraph');
-  paragraph.insert(0, [new Y.XmlText(text)]);
-  fragment.insert(0, [paragraph]);
+  fragment.insert(
+    0,
+    lines.map((line) => {
+      const paragraph = new Y.XmlElement('paragraph');
+      paragraph.insert(0, [new Y.XmlText(line)]);
+      return paragraph;
+    }),
+  );
 }
 
 /**
  * Writes a prompt into the seeded node's fragment — what typing produces.
- * @param text - The lines to speak.
+ * @param lines - The lines to speak.
  */
-function typePrompt(text: string): void {
-  typeInto(getPromptFragment('p', 's', 'target'), text);
+function typePrompt(...lines: string[]): void {
+  typeInto(getPromptFragment('p', 's', 'target'), lines);
 }
 
 /**
  * Writes words into the seeded node's lyrics fragment (#1960).
- * @param text - The words to sing.
+ * @param lines - The words to sing, one line per paragraph.
  */
-function typeLyrics(text: string): void {
-  typeInto(getLyricsFragment('p', 's', 'target'), text);
+function typeLyrics(...lines: string[]): void {
+  typeInto(getLyricsFragment('p', 's', 'target'), lines);
 }
 
 /**
@@ -733,7 +744,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     typePrompt('warm indie folk, 90 BPM');
-    typeLyrics('[Verse]\nmorning light');
+    typeLyrics('[Verse]', 'morning light');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
@@ -741,6 +752,9 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(payload?.task_type).toBe('audio');
     expect(payload?.model).toBe('minimax-music-3.0');
     expect(payload?.params.prompt).toBe('warm indie folk, 90 BPM');
+    // One newline per line the user pressed Enter on. The style box keeps
+    // the prompt default (a blank line between blocks); lyrics are the field
+    // whose line structure IS the content.
     expect(payload?.params.lyrics).toBe('[Verse]\nmorning light');
   });
 

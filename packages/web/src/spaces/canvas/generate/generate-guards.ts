@@ -222,33 +222,29 @@ export function evaluateExecute(
 /**
  * Whether a refusal should grey the execute button out.
  *
+ * Derived from {@link refusalToastKey} rather than restating its partition:
+ * the two answer one question — can the user act on this — and a refusal that
+ * speaks is one a click must be able to reach. Written out twice they were two
+ * lists to extend, and a refusal added to one and not the other is either a
+ * dead click or a message about a button nobody can press.
+ *
  * Both panels ask this rather than each spelling the set out: two copies of
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * `prompt-missing`, `prompt-too-long`, `lyrics-missing`, `voice-missing`,
- * `ref-audio-missing` and `reference-missing` leave the button
- * live, because they are the ones the user can act on — the click then says
- * what is wrong, which a greyed-out button cannot (GOV.UK and Adam Silver both
- * name the disabled-until-valid button an anti-pattern for exactly this: it
- * never tells anyone why). The other three are facts about the environment,
- * and a button that invites a click it will not honour is worse than one that
- * plainly cannot be pressed.
+ * The refusals that speak leave the button live, because they are the ones the
+ * user can act on — the click then says what is wrong, which a greyed-out
+ * button cannot (GOV.UK and Adam Silver both name the disabled-until-valid
+ * button an anti-pattern for exactly this: it never tells anyone why). The
+ * silent ones are facts about the environment, and a button that invites a
+ * click it will not honour is worse than one that plainly cannot be pressed.
  * @param refusal - The failing condition from {@link evaluateExecute}, or null.
  * @returns True when the button must be disabled.
  */
 export function isExecuteButtonDisabled(
   refusal: ExecuteRefusal | null,
 ): boolean {
-  return (
-    refusal != null &&
-    refusal !== 'prompt-missing' &&
-    refusal !== 'prompt-too-long' &&
-    refusal !== 'voice-missing' &&
-    refusal !== 'ref-audio-missing' &&
-    refusal !== 'reference-missing' &&
-    refusal !== 'lyrics-missing'
-  );
+  return refusal != null && refusalToastKey(refusal) === null;
 }
 
 /**

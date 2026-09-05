@@ -22,10 +22,11 @@
  * from the records on every render, so there is no second copy to keep in step.
  *
  * Not every key a model declares under `params` is one of these. `prompt`,
- * `images` (the reference rail) and `style_images` (`data.styleImageUrl`) are
- * declared params whose values live elsewhere on the node or on the prompt;
- * the execute payload spreads the records first and then overwrites those
- * three, so whatever a record holds for them does not reach the request.
+ * `images` (the reference rail), `style_images` (`data.styleImageUrl`) and
+ * `lyrics` (its own Yjs fragment, #1960) are declared params whose values live
+ * elsewhere on the node or on the prompt; the execute payload spreads the
+ * records first and then overwrites them, so whatever a record holds for them
+ * does not reach the request.
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';

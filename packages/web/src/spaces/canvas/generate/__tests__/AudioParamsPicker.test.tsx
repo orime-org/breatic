@@ -67,7 +67,7 @@ const STOPPED = model({
  */
 function open(
   entry: ModelEntry,
-  value: Record<string, number>,
+  value: Record<string, number | boolean>,
   onChange: (partial: Record<string, number | boolean>) => void = () => {},
 ): void {
   render(<AudioParamsPicker model={entry} value={value} onChange={onChange} />);
@@ -374,5 +374,65 @@ describe('AudioParamsPicker trigger carries the values, like the video panel', (
     expect(
       screen.getByTestId('generate-audio-params-trigger').className,
     ).toContain('bg-background');
+  });
+});
+
+/**
+ * The instrumental switch (#1960).
+ *
+ * The only boolean param the audio catalog declares, and the only control on
+ * this panel whose value is a state rather than a number. It is also the one
+ * that lifts the lyrics requirement, so what it is set to has to be legible
+ * without opening the popover.
+ */
+describe('AudioParamsPicker — a switch', () => {
+  const MUSIC = model({
+    lyrics: { description: '', default: null },
+    is_instrumental: { description: '', default: false },
+  });
+
+  it('renders the boolean param as a switch, not as a slider', () => {
+    open(MUSIC, {});
+    expect(
+      screen.getByRole('switch', { name: 'Instrumental only' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('slider')).toBeNull();
+  });
+
+  it('reports the flip up, so the node stores it', () => {
+    const onChange = vi.fn();
+    open(MUSIC, {}, onChange);
+    fireEvent.click(screen.getByRole('switch', { name: 'Instrumental only' }));
+    expect(onChange).toHaveBeenCalledWith({ is_instrumental: true });
+  });
+
+  it('opens on the value the node holds, not on the declared default', () => {
+    open(MUSIC, { is_instrumental: true });
+    expect(screen.getByRole('switch', { name: 'Instrumental only' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  // The pill is the only place this state shows without opening anything, and
+  // it used to print the param's NAME either way round.
+  it('names the state on the pill, whichever way it is set', () => {
+    render(<AudioParamsPicker model={MUSIC} value={{}} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-audio-params-trigger')).toHaveTextContent(
+      'With vocals',
+    );
+  });
+
+  it('names the other state once the switch is on', () => {
+    render(
+      <AudioParamsPicker
+        model={MUSIC}
+        value={{ is_instrumental: true }}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('generate-audio-params-trigger')).toHaveTextContent(
+      'Instrumental only',
+    );
   });
 });

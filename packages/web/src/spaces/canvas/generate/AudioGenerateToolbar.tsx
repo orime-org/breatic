@@ -52,9 +52,10 @@ interface AudioGenerateToolbarProps {
  * both would collect something this panel can never send.
  *
  * The slots come from the mode, so text to speech shows none and voice cloning shows
- * the recording to clone (#1960 PR2). Which modes collect what is not decided
- * here: the container reads it off the catalog's `sourcesByMode`, the same
- * field the server's own gate reads before enqueueing.
+ * the recording to clone (#1960 PR2). Which modes collect what is stated on the
+ * mode itself (`audio-mode-options.ts`), not derived from the model:
+ * reference-to-music offers three, and the catalogue's per-mode source flag
+ * says only that the mode needs audio — it cannot tell the three apart.
  *
  * Built from the same {@link ToggleTool} and {@link SlotTool} the image and
  * video rows are, so the three rows cannot drift in look or in behaviour.

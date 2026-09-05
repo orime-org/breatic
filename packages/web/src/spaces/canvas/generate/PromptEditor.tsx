@@ -91,6 +91,15 @@ interface PromptEditorProps {
    * drop the caret mid-session.
    */
   readOnly?: boolean;
+  /**
+   * What joins two blocks in the string this box hands to the model (#1960).
+   *
+   * The editor's schema has no hard break, so Enter is the only line the user
+   * can make and it always splits a block. A prompt reads as prose and takes
+   * TipTap's own default of a blank line; a lyrics box asks for lines, where
+   * a blank line between every pair is not what was typed.
+   */
+  blockSeparator?: string;
   /** Placeholder shown while the prompt is empty. */
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
@@ -148,6 +157,7 @@ interface PromptEditorProps {
  * @param root0.testId - What tests reach for this editor by.
  * @param root0.startingHeight - How tall the box opens before anything is typed.
  * @param root0.readOnly - Whether the box refuses typing while keeping its content.
+ * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -168,6 +178,7 @@ export const PromptEditor = React.forwardRef<
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
     readOnly = false,
+    blockSeparator,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -184,6 +195,11 @@ export const PromptEditor = React.forwardRef<
   // editor on a mode toggle.
   const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
   imageRefsDisabledRef.current = imageRefsDisabled;
+  // Read through a ref for the same reason the pool is: the two `onUpdate`
+  // handlers are baked into the editor at creation, and rebuilding it to change
+  // a separator would tear down the collaborative binding.
+  const blockSeparatorRef = React.useRef(blockSeparator);
+  blockSeparatorRef.current = blockSeparator;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
   // list would stay stale. The effect below calls it when `imageRefsDisabled` /
@@ -212,7 +228,11 @@ export const PromptEditor = React.forwardRef<
           caretProvider,
           resolveCollaboratorName: collaboratorNames?.resolve,
         }),
-        Placeholder.configure({ placeholder }),
+        // `showOnlyWhenEditable` defaults to true, and the lyrics box goes
+        // read-only under an instrumental track (#1960) — leaving a dimmed box
+        // with nothing in it at all. What the box asks for is true whether or
+        // not it is taking typing right now.
+        Placeholder.configure({ placeholder, showOnlyWhenEditable: false }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
@@ -242,11 +262,15 @@ export const PromptEditor = React.forwardRef<
       // also fire onUpdate via y-prosemirror, so the container's mirrors stay
       // current for both local and remote changes.
       onCreate: ({ editor: e }) => {
-        onTextChange(serializePromptText(e, poolRef.current));
+        onTextChange(
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+        );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
       onUpdate: ({ editor: e }) => {
-        onTextChange(serializePromptText(e, poolRef.current));
+        onTextChange(
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+        );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
     },
@@ -296,7 +320,9 @@ export const PromptEditor = React.forwardRef<
         }
       },
       serializePrompt: (): string | null =>
-        editor ? serializePromptText(editor, poolRef.current) : null,
+        editor
+          ? serializePromptText(editor, poolRef.current, blockSeparatorRef.current)
+          : null,
     }),
     [editor],
   );
@@ -309,7 +335,9 @@ export const PromptEditor = React.forwardRef<
   // node gains words; an emptied node leaves the button lit but dead).
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    onTextChange(serializePromptText(editor, references));
+    onTextChange(
+      serializePromptText(editor, references, blockSeparatorRef.current),
+    );
   }, [editor, references, onTextChange]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
@@ -408,8 +436,12 @@ export const PromptEditor = React.forwardRef<
   // Kept in step with the prop rather than passed to `useEditor`: its options
   // are read once at creation, so flipping this through the deps would rebuild
   // the editor and take the collaborative binding and the caret down with it.
+  //
+  // `emitUpdate` off: it defaults to true, and the handler it would fire
+  // re-serializes the prompt and re-walks the document for `@` mentions — work
+  // `onCreate` has already done, on every mount of every panel's editor.
   React.useEffect(() => {
-    editor?.setEditable(!readOnly);
+    editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
@@ -441,11 +473,12 @@ export const PromptEditor = React.forwardRef<
         (readOnly ? ' opacity-50' : '')
       }
       viewportClassName={
-        // min height = 4 text-sm lines (user 2026-07-12 P6): the panel opened at
-        // ~2 lines which felt cramped for a prompt. The viewport holds 4 lines of
-        // ProseMirror content plus its py-2, and still caps at max-h-40 (scrolls
-        // past 4). ProseMirror's own min-h carries the 4-line floor so the empty
-        // editor renders at full height, not just the placeholder line.
+        // min height = 4 text-sm lines on `full` (user 2026-07-12 P6): the panel
+        // opened at ~2 lines which felt cramped for a prompt. `half` is two, for
+        // a box asking for a line or two beside one holding a whole song
+        // (#1960). Both cap at max-h-40 and scroll past their floor.
+        // ProseMirror's own min-h carries the floor so the empty editor renders
+        // at its height, not just the placeholder line.
         // Original symmetric padding (D, user 2026-07-12): the P3 top padding
         // (pt-5) that gave a first-line collaborator caret's above-label room is
         // reverted — the label now FLIPS below the caret on the first line
@@ -453,8 +486,12 @@ export const PromptEditor = React.forwardRef<
         // top gap is needed and the prompt keeps its original edges.
         // The placeholder itself is drawn by a rule in index.css, shared with
         // every other editor that installs the extension.
+        // Half states its floor once, on ProseMirror alone: the viewport's own
+        // min-height measures the border box, so an outer floor below
+        // `content + py-2` never binds. 2.125 + 1rem of padding = 3.25rem,
+        // exactly half of full's 6.5rem.
         (startingHeight === 'half'
-          ? 'min-h-[3.25rem] [&_.ProseMirror]:min-h-[2.625rem] '
+          ? '[&_.ProseMirror]:min-h-[2.125rem] '
           : 'min-h-[6.5rem] [&_.ProseMirror]:min-h-[5.25rem] ') +
         'max-h-40 px-2.5 py-2 [&_.ProseMirror]:outline-none' +
         dimReferences

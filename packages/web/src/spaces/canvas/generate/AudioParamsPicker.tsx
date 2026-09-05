@@ -106,12 +106,16 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 
   const label = controls
     .map((control) => {
-      // A switch has no value to print, so the pill carries its NAME. Both
-      // ways round: a music model declares this one param and nothing else, so
-      // a pill that said nothing while the switch was off was a face with an
-      // arrow and no words on it — nothing on screen said what opening it
-      // offered. Which way it is set is what the switch itself shows.
-      if (control.kind === 'toggle') return t(control.labelKey);
+      // A switch reads as the state it is in, which is how every other pill
+      // here reads: the current value. Its value is a boolean rather than a
+      // number, and that is the only difference.
+      if (control.kind === 'toggle') {
+        return formatAudioParam(
+          control.name,
+          audioFlagValue(model, control.name, value[control.name]),
+          t,
+        );
+      }
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
       return formatAudioParam(control.name, shown, t);

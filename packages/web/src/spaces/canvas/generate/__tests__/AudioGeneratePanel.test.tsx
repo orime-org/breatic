@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type * as React from 'react';
+import * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
@@ -351,5 +351,45 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
     ]) {
       expect(screen.queryByTestId(gone)).toBeNull();
     }
+  });
+});
+
+/**
+ * The two boxes share one wrapper (#1960).
+ *
+ * React reconciles by position, and the prompt editor is a live ProseMirror
+ * view bound to a Yjs fragment: moving it between two branches of a ternary
+ * tears down that view, the collaborative binding and the undo stack on every
+ * switch into or out of a music mode, silently and while the text survives.
+ */
+describe('AudioGeneratePanel — the style box across a mode switch', () => {
+  let mounts = 0;
+
+  /** Counts how many times it has been mounted. */
+  function CountedPrompt(): React.JSX.Element {
+    React.useEffect(() => {
+      mounts += 1;
+    }, []);
+    return <div data-testid='prompt-editor' />;
+  }
+
+  it('keeps the same editor alive when the lyrics box arrives and leaves', () => {
+    mounts = 0;
+    const props = { ...BASE, promptSlot: <CountedPrompt /> };
+    const { rerender } = renderPanel(<AudioGeneratePanel {...props} />);
+    rerender(
+      <TooltipProvider>
+        <AudioGeneratePanel
+          {...props}
+          lyricsSlot={<div data-testid='lyrics-editor' />}
+        />
+      </TooltipProvider>,
+    );
+    rerender(
+      <TooltipProvider>
+        <AudioGeneratePanel {...props} />
+      </TooltipProvider>,
+    );
+    expect(mounts).toBe(1);
   });
 });

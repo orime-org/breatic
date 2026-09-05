@@ -131,8 +131,8 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
   // and this mode declares no instrumental switch to lift it.
   it('insists on lyrics under both music modes', () => {
     const byValue = new Map(AUDIO_MODE_OPTIONS.map((o) => [o.value, o]));
-    expect(byValue.get('t2m')?.lyrics).toBe('required');
-    expect(byValue.get('a2m')?.lyrics).toBe('required');
+    expect(byValue.get('t2m')?.lyrics).toBe(true);
+    expect(byValue.get('a2m')?.lyrics).toBe(true);
   });
 
   it('asks for no lyrics under speech or sound effects', () => {
@@ -140,7 +140,7 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
       expect(
         AUDIO_MODE_OPTIONS.find((o) => o.value === value)?.lyrics,
         value,
-      ).toBeUndefined();
+      ).toBe(false);
     }
   });
 

@@ -435,6 +435,7 @@
       "selectMusicVoiceFromCanvas": "Pick a vocal line to follow",
       "selectMusicInstrumentalFromCanvas": "Pick a backing track to play over",
       "musicInstrumentalOnly": "Instrumental only",
+      "musicWithVocals": "With vocals",
       "musicPromptPlaceholder": "Describe the genre, mood, instruments and tempo",
       "musicLyricsPlaceholder": "Write the lyrics",
       "musicStyleLabel": "Style",

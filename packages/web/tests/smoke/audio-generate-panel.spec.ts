@@ -643,11 +643,11 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
     { timeout: 10_000 },
   );
 
-  // The pill carries the switch's NAME whichever way it is set: this model
-  // declares one param and nothing else, so a pill printing a value only while
-  // the switch was on would be an arrow with no words beside it.
+  // The pill names the state it is in, the way every other pill on this row
+  // prints its current value. This model declares one param and nothing else,
+  // so this string is the whole pill face.
   const pill = page.getByTestId('generate-audio-params-trigger');
-  await expect(pill).toContainText('Instrumental only', { timeout: 10_000 });
+  await expect(pill).toContainText('With vocals', { timeout: 10_000 });
 
   await pill.click();
   const instrumental = page.getByTestId('generate-audio-is_instrumental-toggle');
@@ -657,11 +657,18 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
   await expect(instrumental).toHaveAttribute('aria-checked', 'true', {
     timeout: 10_000,
   });
+  await expect(pill).toContainText('Instrumental only', { timeout: 10_000 });
+  // The lyrics box says so too: nothing to write while the track has no
+  // vocals, and what is already in it stays.
+  await expect(
+    page.getByTestId('generate-lyrics-editor').locator('.ProseMirror'),
+  ).toHaveAttribute('contenteditable', 'false');
   // Off again, so the case leaves the node the way it found it.
   await instrumental.click();
   await expect(instrumental).toHaveAttribute('aria-checked', 'false', {
     timeout: 10_000,
   });
+  await expect(pill).toContainText('With vocals', { timeout: 10_000 });
   await page.keyboard.press('Escape');
 });
 
@@ -702,13 +709,16 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
     timeout: 15_000,
   });
 
-  // Empty, the click says a reference is missing. The wording is the one for a
-  // mode offering several, not the voice sample's own sentence.
+  // With both boxes filled and no slot picked, the click says a reference is
+  // missing and names the three this mode offers. The lyrics go in first
+  // because they are refused ahead of the slots — this model demands them too.
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('same mood, slower');
+  await page.getByTestId('generate-lyrics-editor').click();
+  await page.keyboard.type('same road home');
   await page.getByTestId('generate-audio-execute').click();
   await expect(page.locator('[data-sonner-toast]').first()).toContainText(
-    'Pick at least one reference',
+    'Pick a song, vocals or backing',
     { timeout: 10_000 },
   );
 
