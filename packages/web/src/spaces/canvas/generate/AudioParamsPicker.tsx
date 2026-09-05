@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { Slider } from '@web/components/ui/slider';
+import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import {
@@ -23,8 +24,13 @@ import {
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/** What this picker edits, by the catalog's own param names. */
-export type AudioParamsValue = Record<string, number>;
+/**
+ * What this picker edits, by the catalog's own param names.
+ *
+ * Booleans as well as numbers since #1960: the music models take a switch
+ * ("no vocals at all"), which is a decision rather than a quantity.
+ */
+export type AudioParamsValue = Record<string, number | boolean>;
 
 interface AudioParamsPickerProps {
   /** The current model, whose declarations decide what is offered. */
@@ -60,6 +66,22 @@ function shownValue(
   if (typeof held === 'number') return held;
   const fallback = model.params?.[name]?.default;
   return typeof fallback === 'number' ? fallback : undefined;
+}
+
+/**
+ * Whether a switch is on: what the node holds, else the model's own default.
+ *
+ * Its own reader rather than a branch inside {@link shownValue}: that one
+ * answers "which number is showing" and a switch has no number, so folding the
+ * two would make every caller of it handle a type it never returns.
+ * @param model - The active model.
+ * @param name - The param name.
+ * @param held - What the node holds for it, if anything.
+ * @returns True when the switch is on; false when it is off or unstated.
+ */
+function shownFlag(model: ModelEntry, name: string, held: unknown): boolean {
+  if (typeof held === 'boolean') return held;
+  return model.params?.[name]?.default === true;
 }
 
 /**
@@ -99,6 +121,14 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 
   const label = controls
     .map((control) => {
+      // A switch has no value to print, so the pill names it while it is on
+      // and says nothing while it is off — a face reading "Instrumental only ·
+      // 0.50" states what is set, and printing "false" would not.
+      if (control.kind === 'toggle') {
+        return shownFlag(model, control.name, value[control.name])
+          ? t(control.labelKey)
+          : undefined;
+      }
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
       return formatAudioParam(control.name, shown, t);
@@ -149,6 +179,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
             control={control}
             label={t(control.labelKey)}
             value={shownValue(model, control.name, value[control.name])}
+            flag={shownFlag(model, control.name, value[control.name])}
             onChange={onChange}
             last={index === controls.length - 1}
           />
@@ -159,6 +190,8 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 });
 
 interface ParamControlRowProps {
+  /** Whether a switch control is on. Read only when `control.kind` is toggle. */
+  flag?: boolean;
   control: AudioParamControl;
   label: string;
   value: number | undefined;
@@ -179,6 +212,7 @@ interface ParamControlRowProps {
  * @param root0.control - The control this param calls for.
  * @param root0.label - The localized param name.
  * @param root0.value - The value to show.
+ * @param root0.flag - Whether a switch control is on.
  * @param root0.onChange - Called with the changed param.
  * @param root0.last - Whether this is the last row.
  * @returns The row.
@@ -187,11 +221,24 @@ function ParamControlRow({
   control,
   label,
   value,
+  flag,
   onChange,
   last,
 }: ParamControlRowProps): React.JSX.Element {
   const t = useTranslation();
   const spacing = last ? undefined : 'mb-3';
+
+  if (control.kind === 'toggle') {
+    return (
+      <ParamToggleRow
+        control={control}
+        label={label}
+        checked={flag === true}
+        onChange={onChange}
+        className={spacing}
+      />
+    );
+  }
 
   if (control.kind === 'choice') {
     return (
@@ -217,6 +264,50 @@ function ParamControlRow({
       onChange={onChange}
       className={spacing}
     />
+  );
+}
+
+interface ParamToggleRowProps {
+  control: Extract<AudioParamControl, { kind: 'toggle' }>;
+  label: string;
+  checked: boolean;
+  onChange: (next: AudioParamsValue) => void;
+  className?: string;
+}
+
+/**
+ * One switch: its name on the left, the switch on the right.
+ *
+ * The label is a `<label>` bound to the switch, so the words are part of the
+ * hit target rather than something to aim past.
+ * @param root0 - Component props.
+ * @param root0.control - The toggle control.
+ * @param root0.label - The translated param name.
+ * @param root0.checked - Whether it is on.
+ * @param root0.onChange - Called with the changed param.
+ * @param root0.className - Row spacing from the parent.
+ * @returns The switch row.
+ */
+function ParamToggleRow({
+  control,
+  label,
+  checked,
+  onChange,
+  className,
+}: ParamToggleRowProps): React.JSX.Element {
+  const id = `generate-audio-${control.name}-toggle`;
+  return (
+    <div className={cn('flex items-center justify-between gap-3', className)}>
+      <label htmlFor={id} className='cursor-pointer text-xs text-foreground'>
+        {label}
+      </label>
+      <Switch
+        id={id}
+        checked={checked}
+        onCheckedChange={(next) => onChange({ [control.name]: next })}
+        data-testid={id}
+      />
+    </div>
   );
 }
 

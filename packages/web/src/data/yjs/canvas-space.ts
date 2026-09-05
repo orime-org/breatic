@@ -497,6 +497,12 @@ function buildDataMap(
   // modalities that offer Generate get one; on a group or a sticky it would be
   // a container nothing ever reads.
   if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
+  // The words to sing, a second fragment beside the style brief (#1960). Only
+  // audio nodes, since the two music modes are the only place one is asked
+  // for — the same "no container nothing reads" rule the prompt follows, just
+  // with a narrower answer. Born with the node for the same reason as well:
+  // lazy creation is what lost content in #1880.
+  if (type === 'audio') map.set('lyrics', new Y.XmlFragment());
   return map;
 }
 
@@ -1173,6 +1179,31 @@ export function getPromptFragment(
   const data = nodeDataMap(doc, nodeId);
   if (!data) return null;
   const existing = data.get('prompt');
+  return existing instanceof Y.XmlFragment ? existing : null;
+}
+
+/**
+ * Reads a node's lyrics fragment (#1960), the collaborative text behind the
+ * music modes' second editor.
+ *
+ * Seeded with the node the way `prompt` is, and read-only here for the same
+ * reason: minting one on demand is what let two clients each create their own
+ * and lose one outright (#1880). Null for a node that is missing, one that is
+ * not an audio node, or one older than this field.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose lyrics fragment to read.
+ * @returns The lyrics Y.XmlFragment, or null when there is none.
+ */
+export function getLyricsFragment(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return null;
+  const existing = data.get('lyrics');
   return existing instanceof Y.XmlFragment ? existing : null;
 }
 

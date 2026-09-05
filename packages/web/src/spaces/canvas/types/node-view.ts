@@ -164,6 +164,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
   musicVoice?: { url: string; cover?: string };
   musicInstrumental?: { url: string; cover?: string };
   /**
+   * The words to sing (#1960, wire `data.lyrics`) — a `Y.XmlFragment`, read
+   * through `getLyricsFragment` rather than from here. Projected so that a
+   * node carrying one is distinguishable from one that predates the field.
+   */
+  lyrics?: unknown;
+  /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
    * as the reference rail's focus entries and offers them in the @ mention
@@ -334,6 +340,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     musicSong: data.musicSong,
     musicVoice: data.musicVoice,
     musicInstrumental: data.musicInstrumental,
+    lyrics: data.lyrics,
     focusImages: data.focusImages,
   };
   switch (type) {

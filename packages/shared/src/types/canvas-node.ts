@@ -513,6 +513,15 @@ export interface CanvasNodeFields {
     musicVoice?: { url: string; cover?: string };
     musicInstrumental?: { url: string; cover?: string };
     /**
+     * The words to sing, on an audio node (#1960, wire `data.lyrics`) — a
+     * `Y.XmlFragment` beside `prompt`, since two people may write lyrics at
+     * once the way they may write a prompt at once.
+     *
+     * `unknown` for the same reason `prompt` is: the wire shape describes what
+     * the key holds, and a CRDT fragment has no plain-JSON form to state here.
+     */
+    lyrics?: unknown;
+    /**
      * Focus crops created on this node's generate panel (#1782) — maintained
      * in the doc as a `Y.Array` CRDT SEQUENCE (the one exception to the
      * plain-values convention of the web `buildDataMap`): concurrent appends

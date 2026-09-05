@@ -22,6 +22,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { voicesApi } from '@web/data/api/voices';
 import {
+  getLyricsFragment,
   getPromptFragment,
   isNodeHandling,
   isNodeLocked,
@@ -38,6 +39,10 @@ import { toast } from '@web/lib/toast';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
+import {
+  audioSlotsForMode,
+  lyricsForMode,
+} from '@web/spaces/canvas/generate/audio-mode-options';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
@@ -80,11 +85,9 @@ import { useCanvasStore } from '@web/stores';
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */
 const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
-/** No slots — shared so every "this mode collects nothing" answer is one array. */
-const NO_SLOTS: readonly AudioSlot[] = [];
+/** No references — one array so the lyrics editor's prop stays stable. */
+const NO_REFERENCES: ReferenceRailItem[] = [];
 
-/** The one slot voice cloning collects, likewise shared for a stable identity. */
-const REF_AUDIO_ONLY: readonly AudioSlot[] = ['refAudio'];
 
 interface AudioGeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -123,6 +126,26 @@ function AudioGeneratePanelBody({
   const endPick = useCanvasStore((s) => s.endPick);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
   const startRefAudioPick = useCanvasStore((s) => s.startRefAudioPick);
+  const startMusicSongPick = useCanvasStore((s) => s.startMusicSongPick);
+  const startMusicVoicePick = useCanvasStore((s) => s.startMusicVoicePick);
+  const startMusicInstrumentalPick = useCanvasStore(
+    (s) => s.startMusicInstrumentalPick,
+  );
+  /** Which store action starts each slot's pick. */
+  const startPick = React.useMemo(
+    (): Record<AudioSlot, (id: string) => void> => ({
+      refAudio: startRefAudioPick,
+      musicSong: startMusicSongPick,
+      musicVoice: startMusicVoicePick,
+      musicInstrumental: startMusicInstrumentalPick,
+    }),
+    [
+      startRefAudioPick,
+      startMusicSongPick,
+      startMusicVoicePick,
+      startMusicInstrumentalPick,
+    ],
+  );
   const referencePicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession.purpose === 'reference',
   );
@@ -154,6 +177,10 @@ function AudioGeneratePanelBody({
   );
 
   const {
+    lyricsText,
+    lyricsTextRef,
+    onLyricsChange,
+    lyricsEditorRef,
     promptText,
     promptTextRef,
     onPromptChange,
@@ -198,33 +225,40 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, models, mode],
   );
 
-  // The slots this mode collects. One entry or none, from the same catalog
-  // field the server's own gate reads before enqueueing — so the control the
-  // user sees and the condition the backend enforces come from one rule.
-  const slots = React.useMemo(
-    () => (vm.refAudioRequired ? REF_AUDIO_ONLY : NO_SLOTS),
-    [vm.refAudioRequired],
+  // The slots this mode collects, stated on the mode itself
+  // (`audio-mode-options.ts`) — reference-to-music offers three, so the old
+  // "does the model declare an audio source" rule would have shown the voice
+  // sample there too.
+  // Read during render for the same reason the prompt fragment is: a
+  // synchronous document read, seeded with the node, never created here.
+  const lyricsFragment = React.useMemo(
+    () => getLyricsFragment(projectId, spaceId, nodeId),
+    [projectId, spaceId, nodeId],
   );
+  const slots = audioSlotsForMode(mode);
+  /** Whether this mode shows a lyrics box at all, and whether it insists. */
+  const lyrics = lyricsForMode(mode);
   /** The slot whose pick is running on this node, if any. */
-  const activeSlot = useCanvasStore((s) =>
-    s.pickSession?.nodeId === nodeId &&
-    s.pickSession.purpose === AUDIO_SLOTS.refAudio.purpose
-      ? ('refAudio' as AudioSlot)
-      : undefined,
-  );
+  const activeSlot = useCanvasStore((s) => {
+    const session = s.pickSession;
+    if (session?.nodeId !== nodeId) return undefined;
+    return (Object.keys(AUDIO_SLOTS) as AudioSlot[]).find(
+      (slot) => AUDIO_SLOTS[slot].purpose === session.purpose,
+    );
+  });
   const onPickSlot = React.useCallback(
-    (_slot: AudioSlot) => {
+    (slot: AudioSlot) => {
       const session = useCanvasStore.getState().pickSession;
-      if (
-        session?.nodeId === nodeId &&
-        session.purpose === AUDIO_SLOTS.refAudio.purpose
-      ) {
+      const purpose = AUDIO_SLOTS[slot].purpose;
+      // Clicking the slot whose pick is already running ends it; clicking
+      // another one moves the pick to that slot.
+      if (session?.nodeId === nodeId && session.purpose === purpose) {
         endPick();
-      } else {
-        startRefAudioPick(nodeId);
+        return;
       }
+      startPick[slot](nodeId);
     },
-    [startRefAudioPick, endPick, nodeId],
+    [startPick, endPick, nodeId],
   );
   // A slot's ✕: clears the node's pick-time copy, and deliberately leaves a
   // running pick running — the ✕ renders whenever the slot holds something,
@@ -232,8 +266,7 @@ function AudioGeneratePanelBody({
   // (`generate-tools.tsx`). Clearing mid-pick lands on empty with the canvas
   // still offering candidates, which is the state the user asked for.
   const onClearSlot = React.useCallback(
-    (_slot: AudioSlot) =>
-      clearSlot(projectId, spaceId, nodeId, AUDIO_SLOTS.refAudio),
+    (slot: AudioSlot) => clearSlot(projectId, spaceId, nodeId, AUDIO_SLOTS[slot]),
     [projectId, spaceId, nodeId],
   );
   // A running slot pick outlives the control that started it when the mode
@@ -241,20 +274,21 @@ function AudioGeneratePanelBody({
   // rendering, so the pick loses its control — Exit on the banner would be the
   // only way out, while the canvas kept dimming candidates for a slot that is
   // gone.
-  const collectsRefAudio = vm.refAudioRequired;
   React.useEffect(() => {
-    if (collectsRefAudio) return;
     const session = useCanvasStore.getState().pickSession;
-    if (
-      session?.nodeId === nodeId &&
-      session.purpose === AUDIO_SLOTS.refAudio.purpose
-    ) {
-      endPick();
-      // The slot list comes from the mode, so this is a mode change reaching
-      // the pick — and the write may well have been a collaborator's.
-      toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
-    }
-  }, [collectsRefAudio, nodeId, endPick, t, getLastWriteWasLocal]);
+    if (session?.nodeId !== nodeId) return;
+    // Every audio purpose is weighed, not just this mode's: a pick started on
+    // one mode has to end when the panel switches to a mode that does not
+    // collect that slot, whichever slot it was.
+    const running = (Object.keys(AUDIO_SLOTS) as AudioSlot[]).find(
+      (slot) => AUDIO_SLOTS[slot].purpose === session.purpose,
+    );
+    if (running === undefined || slots.includes(running)) return;
+    endPick();
+    // The slot list comes from the mode, so this is a mode change reaching
+    // the pick — and the write may well have been a collaborator's.
+    toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
+  }, [slots, nodeId, endPick, t, getLastWriteWasLocal]);
 
   // Both rebuild with the view model, which rebuilds on every canvas mutation
   // — every frame of any node drag — and both flow into React.memo components
@@ -407,6 +441,10 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
+    const freshLyrics =
+      lyrics === undefined
+        ? undefined
+        : (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current);
     const maxInputChars = fresh.modelEntry?.max_input_chars;
     const refusal = evaluateExecute({
       promptText: freshPrompt,
@@ -419,8 +457,10 @@ function AudioGeneratePanelBody({
       maxInputChars,
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
-      refAudioRequired: fresh.refAudioRequired,
-      refAudioChosen: fresh.slotUrls.refAudio !== undefined,
+      requiredSlots: slots,
+      filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
+      lyricsRequired: lyrics === 'required',
+      lyricsText: freshLyrics,
     });
     if (refusal != null) {
       const key = refusalToastKey(refusal);
@@ -448,7 +488,10 @@ function AudioGeneratePanelBody({
         slotUrls: fresh.slotUrls,
         // The mode's own slots, so a pick made for the other mode cannot ride
         // this submit: a pick survives a mode switch by design.
-        slots: fresh.refAudioRequired ? REF_AUDIO_ONLY : NO_SLOTS,
+        slots,
+        // Only on a mode that collects them; absent leaves the field out of
+        // the request rather than sending it empty.
+        ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
         leaseGen: readNodeLeaseGen(projectId, spaceId, nodeId),
       });
       await canvasApi.createTask(payload);
@@ -477,9 +520,13 @@ function AudioGeneratePanelBody({
     freshVm,
     closeActivePanel,
     t,
+    lyrics,
+    slots,
     // Stable for this mount's lifetime; listed because they come from a hook,
     // where the linter cannot see that for itself.
     isMountedRef,
+    lyricsEditorRef,
+    lyricsTextRef,
     promptEditorRef,
     promptTextRef,
     setIsSubmitting,
@@ -533,12 +580,43 @@ function AudioGeneratePanelBody({
     ],
   );
 
+  const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
+  const lyricsSlot = React.useMemo(
+    () =>
+      lyrics !== undefined && lyricsFragment ? (
+        <PromptEditor
+          ref={lyricsEditorRef}
+          fragment={lyricsFragment}
+          placeholder={lyricsPlaceholder}
+          onTextChange={onLyricsChange}
+          // Lyrics are words to sing, not a place to point at other nodes:
+          // no `@` mention travels to the vendor from here.
+          onAtMentionsChange={noop}
+          references={NO_REFERENCES}
+          imageRefsDisabled
+          mentionEmptyLabel={mentionEmptyLabel}
+          mentionNoMatchLabel={mentionNoMatchLabel}
+          caretProvider={caretProvider}
+        />
+      ) : null,
+    [
+      lyrics,
+      lyricsFragment,
+      lyricsPlaceholder,
+      onLyricsChange,
+      mentionEmptyLabel,
+      mentionNoMatchLabel,
+      caretProvider,
+      lyricsEditorRef,
+    ],
+  );
+
   return (
     <AudioGeneratePanel
       models={modeModels}
       model={vm.model}
       currentModel={vm.modelEntry}
-      creditEstimate={estimateAudioCredits(vm.modelEntry?.rate, {
+      creditEstimate={estimateAudioCredits(vm.modelEntry, {
         text: promptText,
         // Read off the node's record for the active model, which is where the
         // length picker writes it. A model billing per second declares this
@@ -571,10 +649,13 @@ function AudioGeneratePanelBody({
         maxInputChars: vm.modelEntry?.max_input_chars,
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
-        refAudioRequired: vm.refAudioRequired,
-        refAudioChosen: vm.slotUrls.refAudio !== undefined,
+        requiredSlots: slots,
+        filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
+        lyricsRequired: lyrics === 'required',
+        lyricsText,
       })}
       promptSlot={promptSlot}
+      lyricsSlot={lyricsSlot}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}

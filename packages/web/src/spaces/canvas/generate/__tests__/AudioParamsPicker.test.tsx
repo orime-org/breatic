@@ -68,7 +68,7 @@ const STOPPED = model({
 function open(
   entry: ModelEntry,
   value: Record<string, number>,
-  onChange: (partial: Record<string, number>) => void = () => {},
+  onChange: (partial: Record<string, number | boolean>) => void = () => {},
 ): void {
   render(<AudioParamsPicker model={entry} value={value} onChange={onChange} />);
   fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));

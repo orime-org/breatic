@@ -102,6 +102,8 @@ const BASE = {
   creditEstimate: 10,
   executeRefusal: null,
   promptSlot: <div data-testid='prompt-editor' />,
+  // Null on every mode but the two music ones, which is what BASE stands for.
+  lyricsSlot: null,
   references: [],
   params: {},
   referencePicking: false,

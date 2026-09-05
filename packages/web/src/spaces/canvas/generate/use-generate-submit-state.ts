@@ -35,6 +35,22 @@ export interface GenerateSubmitState {
   onPromptChange: (text: string) => void;
   /** The mounted prompt editor, which serializes the prompt at click time. */
   promptEditorRef: React.RefObject<PromptEditorHandle | null>;
+  /**
+   * The lyrics as state, for the one panel that collects them (#1960).
+   *
+   * Here rather than in the audio panel alone for the reason the header gives:
+   * these six — now eight — are one mechanism, and a second panel growing a
+   * second text box would otherwise copy the mirror-plus-ref pattern and be
+   * one `useRef` away from a click that reads a stale value. Empty on the
+   * panels that show no lyrics box.
+   */
+  lyricsText: string;
+  /** The same lyrics, readable synchronously inside the click handler. */
+  lyricsTextRef: React.RefObject<string>;
+  /** Records a lyrics change in both. Stable across renders. */
+  onLyricsChange: (text: string) => void;
+  /** The mounted lyrics editor, which serializes them at click time. */
+  lyricsEditorRef: React.RefObject<PromptEditorHandle | null>;
   /** Whether a submit is out — what the button draws a spinner from. */
   isSubmitting: boolean;
   /** Sets the flag above; the ref below is the one a click reads. */
@@ -59,6 +75,14 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   }, []);
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
 
+  const [lyricsText, setLyricsText] = React.useState('');
+  const lyricsTextRef = React.useRef('');
+  const onLyricsChange = React.useCallback((text: string) => {
+    lyricsTextRef.current = text;
+    setLyricsText(text);
+  }, []);
+  const lyricsEditorRef = React.useRef<PromptEditorHandle>(null);
+
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
 
@@ -76,6 +100,10 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   }, []);
 
   return {
+    lyricsText,
+    lyricsTextRef,
+    onLyricsChange,
+    lyricsEditorRef,
     promptText,
     promptTextRef,
     onPromptChange,

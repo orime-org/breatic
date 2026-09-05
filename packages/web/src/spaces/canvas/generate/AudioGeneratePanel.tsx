@@ -38,6 +38,17 @@ import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-stat
 const SHELL =
   'flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
 
+/**
+ * One word naming the box under it.
+ * @param root0 - Component props.
+ * @param root0.textKey - The i18n key for the word.
+ * @returns The label.
+ */
+function FieldLabel({ textKey }: { textKey: string }): React.JSX.Element {
+  const t = useTranslation();
+  return <span className='text-xs text-muted-foreground'>{t(textKey)}</span>;
+}
+
 interface AudioGeneratePanelProps {
   /** The tts models this panel offers. */
   models: ModelEntry[];
@@ -103,6 +114,13 @@ interface AudioGeneratePanelProps {
    * the document, so an editor here would take typing and store none of it.
    */
   promptSlot: React.ReactNode;
+  /**
+   * The injected lyrics editor, or null on a mode that collects none (#1960).
+   *
+   * Its own slot rather than a flag: the editor is a live collaborative view
+   * of a Yjs fragment, and the container is the layer that owns those.
+   */
+  lyricsSlot: React.ReactNode;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -160,6 +178,7 @@ interface AudioGeneratePanelProps {
  * @param root0.voiceSelectedName - That voice's name, once known.
  * @param root0.executeRefusal - Which execute precondition fails.
  * @param root0.promptSlot - The injected prompt editor, or null.
+ * @param root0.lyricsSlot - The injected lyrics editor, or null.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -197,6 +216,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   voiceSelectedName,
   executeRefusal,
   promptSlot,
+  lyricsSlot,
   references,
   referencePicking = false,
   slots,
@@ -284,7 +304,19 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         modelTakesPrompt={modelTakesPrompt}
       />
 
-      {promptSlot}
+      {/* Two boxes look alike once the placeholders are typed over, so each
+          carries a word saying which is which. Only when there are two: a
+          single box needs no label to be told apart from nothing. */}
+      {lyricsSlot === null ? (
+        promptSlot
+      ) : (
+        <div className='flex flex-col gap-2'>
+          <FieldLabel textKey='canvas.generatePanel.musicStyleLabel' />
+          {promptSlot}
+          <FieldLabel textKey='canvas.generatePanel.musicLyricsLabel' />
+          {lyricsSlot}
+        </div>
+      )}
 
       <div className='flex items-center gap-1.5'>
         <ModeToggle
