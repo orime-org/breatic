@@ -26,6 +26,7 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
       'elevenlabs',
       'fish-audio',
       'midjourney',
+      'minimax',
       'nano-banana',
       'qwen',
       'seedream',

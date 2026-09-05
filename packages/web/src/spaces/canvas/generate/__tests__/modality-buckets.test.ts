@@ -49,7 +49,7 @@ const CATALOG: ModelCatalog = {
   image: [model('flux', 'image')],
   video: [model('kling', 'video')],
   tts: [model('elevenlabs-v3', 'tts'), model('fish-s2-pro', 'tts')],
-  audio: [model('minimax-music-2.5', 'audio')],
+  audio: [model('minimax-music-3.0', 'audio')],
   three_d: [],
   understand: [],
   total: 5,
@@ -68,7 +68,7 @@ describe('modelsForModality (#1960 §6.9)', () => {
     expect(modelsForModality(CATALOG, 'audio').map((m) => m.name)).toEqual([
       'elevenlabs-v3',
       'fish-s2-pro',
-      'minimax-music-2.5',
+      'minimax-music-3.0',
     ]);
   });
 

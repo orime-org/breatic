@@ -30,13 +30,24 @@ afterAll(() => {
 });
 
 /**
- * A real catalog image model whose EVERY mode needs a source (so the gate fires).
+ * A real catalog image model whose EVERY mode needs a source (so the gate
+ * fires), and which reads that source from `images`.
+ *
+ * The second half arrived with #1960: the gate now asks whether the MODEL
+ * declares the field a payload uses, so a model reading its source from
+ * `image` is not one an `images` payload satisfies. Picking any gated model
+ * and handing it `images` assumed one spelling for all of them, which was
+ * only true while the gate ignored declarations.
  * @returns The model name, or undefined if the catalog has none.
  */
 function aGatedImageModel(): string | undefined {
   return getModelCatalog().image.find((m) => {
     const modes = Object.values(m.sourcesByMode);
-    return modes.length > 0 && modes.every((s) => s.length > 0);
+    return (
+      modes.length > 0 &&
+      modes.every((s) => s.length > 0) &&
+      Object.keys(m.params ?? {}).includes("images")
+    );
   })?.name;
 }
 
