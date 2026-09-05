@@ -64,23 +64,21 @@ const ROWS: readonly BlockTypeId[] = [
  * than by testing for it at the lookup, is what keeps the rule from depending
  * on where Quote happens to sit in `ROWS`.
  */
-export const CONTENT_ROWS: readonly BlockTypeId[] = ROWS.filter(
-  (id) => id !== 'quote',
-);
+export const CONTENT_ROWS: readonly BlockTypeId[] = ROWS.filter((id) => id !== 'quote');
 
 /** Which of a block's three independent properties a row sets. */
 export type BlockTypeDimension = 'type' | 'numbered' | 'quoted';
 
 /**
- * A row that names a block type, which is the seven minus the headings.
+ * The five rows that name a block type.
  *
- * A heading's row does not name a type: all three become `heading` and differ
- * by level, which `LEVEL_OF_ROW` below carries.
+ * The three headings are out because their row does not name a type: all
+ * three become `heading` and differ by level, which `LEVEL_OF_ROW` below
+ * carries. Quote is out because it is a prop rather than a type. Ordered is
+ * IN — it names `numberedListItem` on every block but a heading, where it is
+ * a prop instead (§3.1).
  */
-export type TypeRow = Exclude<
-  BlockTypeId,
-  'heading-1' | 'heading-2' | 'heading-3' | 'quote'
->;
+export type TypeRow = Exclude<BlockTypeId, 'heading-1' | 'heading-2' | 'heading-3' | 'quote'>;
 
 /**
  * Which of the menu's three groups a row is in (user 2026-09-02).
@@ -205,17 +203,12 @@ function blocksUnder(doc: PMNode, selection: Selection): PMNode[] {
  * @param selection - The selection over it.
  * @returns The ticked rows.
  */
-export function tickedOver(
-  doc: PMNode,
-  selection: Selection,
-): Set<BlockTypeId> {
+export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> {
   const blocks = blocksUnder(doc, selection);
   if (blocks.length === 0) {
     return new Set();
   }
-  return new Set(
-    ROWS.filter((id) => blocks.every((content) => isRow(content, id))),
-  );
+  return new Set(ROWS.filter((id) => blocks.every((content) => isRow(content, id))));
 }
 
 /**
@@ -229,10 +222,7 @@ export function tickedOver(
  *   eight — a fallback node standing in for a type this version cannot draw —
  *   contributes nothing.
  */
-export function rowsUnder(
-  doc: PMNode,
-  selection: Selection,
-): BlockTypeId[] {
+export function rowsUnder(doc: PMNode, selection: Selection): BlockTypeId[] {
   const rows: BlockTypeId[] = [];
   blocksUnder(doc, selection).forEach((content) => {
     const row = CONTENT_ROWS.find((id) => isRow(content, id));

@@ -453,10 +453,7 @@ body {
    Fallback to a neutral tint if the property is absent. */
 .collaboration-carets__selection .reference-mention,
 .reference-mention.collaboration-carets__selection {
-  background-color: var(
-    --collab-selection-bg,
-    color-mix(in srgb, var(--color-muted) 45%, transparent)
-  );
+  background-color: var(--collab-selection-bg, color-mix(in srgb, var(--color-muted) 45%, transparent));
 }
 /* A remote selection over PLAIN TEXT paints the per-user rectangle (the normal
    selection band). A chip is EXCLUDED here via :has(.reference-mention) — its
@@ -651,9 +648,7 @@ body {
   --doc-entry-size: 32px;
   --doc-entry-inset: 16px;
   --doc-entry-clearance: 8px;
-  --doc-body-gutter: calc(
-    var(--doc-entry-size) + var(--doc-entry-inset) + var(--doc-entry-clearance)
-  );
+  --doc-body-gutter: calc(var(--doc-entry-size) + var(--doc-entry-inset) + var(--doc-entry-clearance));
 }
 
 .doc-body-editor .ProseMirror {
@@ -780,12 +775,7 @@ body {
   margin-top: var(--doc-paragraph-margin);
 }
 
-.doc-body-editor
-  .ProseMirror
-  > .bn-block-group
-  > .bn-block-outer:first-child
-  > .bn-block
-  > .bn-block-content {
+.doc-body-editor .ProseMirror > .bn-block-group > .bn-block-outer:first-child > .bn-block > .bn-block-content {
   margin-top: 0;
 }
 
@@ -793,33 +783,23 @@ body {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
 }
 
-.doc-body-editor
-  .ProseMirror
-  .bn-block-content[data-content-type='heading'] {
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   margin-top: 1.9em;
 }
 
-.doc-body-editor
-  .ProseMirror
-  .bn-block-content[data-content-type='heading'][data-level='2'] {
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
   font-size: calc(var(--font-size-base) * 4 / 3); /* 20px */
 }
 
-.doc-body-editor
-  .ProseMirror
-  .bn-block-content[data-content-type='heading'][data-level='2'] {
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='2'] {
   margin-top: 1.7em;
 }
 
-.doc-body-editor
-  .ProseMirror
-  .bn-block-content[data-content-type='heading'][data-level='3'] {
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
   font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
 }
 
-.doc-body-editor
-  .ProseMirror
-  .bn-block-content[data-content-type='heading'][data-level='3'] {
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
   margin-top: 1.5em;
 }
 
@@ -983,11 +963,12 @@ body {
    break in the rule between every pair. Padding puts the same gap where the
    border can reach it, so the rule arrives unbroken.
 
-   Written with `.bn-block-content` and placed after the heading rules above,
-   which are otherwise the more specific of the two: a heading inside a run
-   kept its own 1.9em margin and broke the rule beside it by 45.6px. A quote
+   Written through the block's own wrappers so it outranks the heading rules
+   above: those name two attributes for levels 2 and 3, so matching their
+   count is not enough — measured, an h2 in a run kept its 34px margin and an
+   h3 its 25.5px, each a break of that size in the rule beside it. A quote
    holds any block, headings included (C9b covers a numbered one). */
-.doc-body-editor .ProseMirror .bn-block-content[data-quoted='true'] {
+.doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted='true'] {
   margin-top: 0;
   padding-top: var(--doc-paragraph-margin);
 }
@@ -1001,12 +982,12 @@ body {
    carries no bottom margin of its own, and the block below gives up its top
    one to the last rule here. Measured before that: 17.6px above the run and
    31.2px below it, growing to 63px when the block below was an h1. */
-.doc-body-editor .ProseMirror .bn-block-content[data-quoted-first] {
+.doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted-first] {
   margin-top: 1.1em;
   padding-top: 0;
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-quoted-last] {
+.doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted-last] {
   margin-bottom: 1.1em;
 }
 
@@ -1123,7 +1104,6 @@ body {
   color: var(--color-foreground);
   background-color: transparent;
 }
-
 
 /* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline
    alone cannot do that: the body offers an underline mark of its own, so
