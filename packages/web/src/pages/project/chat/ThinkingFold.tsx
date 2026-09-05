@@ -32,7 +32,10 @@ export function ThinkingFold({
   const [open, setOpen] = React.useState(false);
   // Rounded to the second the reader is shown, so the minutes and the seconds
   // are read off one figure and cannot disagree at the boundary.
-  const seconds = ms === undefined ? undefined : Math.round(ms / 1000);
+  // At least one: the server sends any figure above zero, and a stretch under
+  // half a second would round to none at all -- a line saying it thought for
+  // no time is a line that contradicts itself.
+  const seconds = ms === undefined ? undefined : Math.max(1, Math.round(ms / 1000));
   const label =
     seconds === undefined
       ? t('chat.thinking')

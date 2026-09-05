@@ -43,10 +43,15 @@ export const TurnActions = React.memo(function TurnActions({
       data-testid='turn-actions'
       className={cn(
         'flex items-center gap-1',
-        // 读者自己那条消息下面不留位置：透明只是看不见，元素还占着一行、还
-        // 接得住点击、还在 Tab 序里，于是那条空白按下去会静默复制一次。
+        // No strip is reserved under the reader's own message. Transparent
+        // alone is not enough: the element would keep its line, keep taking
+        // clicks and keep its place in the tab order, so that blank would
+        // copy when pressed with nothing visible there. Inside the bubble's
+        // own box rather than below it -- the gap between messages is 8px and
+        // this is 24px tall, so hanging it underneath covers the top of the
+        // next message.
         onHoverOnly === true
-          ? 'absolute right-0 top-full mt-2 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
+          ? 'absolute bottom-1 right-1 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto'
           : 'mt-[0.85em]',
       )}
     >

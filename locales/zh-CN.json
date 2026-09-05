@@ -661,7 +661,8 @@
   },
   "common": {
     "cancel": "取消",
-    "loading": "加载中..."
+    "loading": "加载中...",
+    "clipboardError": "复制失败"
   },
   "members": {
     "popover": {

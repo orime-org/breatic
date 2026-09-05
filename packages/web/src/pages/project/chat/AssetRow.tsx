@@ -51,7 +51,7 @@ export const AssetRow = React.memo(function AssetRow({
   const [openAt, setOpenAt] = React.useState<number | null>(null);
   const close = React.useCallback(() => setOpenAt(null), []);
 
-  const { row, rowPx } = useRowMeasure();
+  const { room, rowPx } = useRowMeasure();
   // Every square is the one size, so what fits is arithmetic on that size --
   // the source row beside this one measures instead, because its chips are
   // each their own width. The rule the two share is `fitsInRow`.
@@ -68,7 +68,7 @@ export const AssetRow = React.memo(function AssetRow({
 
   return (
     <>
-      <div ref={row} data-testid='asset-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
+      <div ref={room} data-testid='asset-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
         {shown.map((asset, i) => (
           <AssetThumb key={asset.url} asset={asset} onOpen={() => setOpenAt(i)} />
         ))}

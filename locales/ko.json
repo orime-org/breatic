@@ -661,7 +661,8 @@
   },
   "common": {
     "cancel": "취소",
-    "loading": "불러오는 중..."
+    "loading": "불러오는 중...",
+    "clipboardError": "복사하지 못했습니다"
   },
   "members": {
     "popover": {

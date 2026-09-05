@@ -46,7 +46,7 @@ type ExecuteFn = (...args: unknown[]) => unknown;
 function registeredTools(): Array<[string, ExecuteFn]> {
   return Object.entries(TOOL_MAP).map(([name, build]) => [
     name,
-    (build() as { execute?: unknown }).execute as ExecuteFn,
+    (build(0) as { execute?: unknown }).execute as ExecuteFn,
   ]);
 }
 

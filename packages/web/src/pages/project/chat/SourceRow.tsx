@@ -41,29 +41,23 @@ export const SourceRow = React.memo(function SourceRow({
   const [boxOpen, setBoxOpen] = React.useState(false);
   const openBox = React.useCallback(() => setBoxOpen(true), []);
 
-  const { row, rowPx, widths } = useRowMeasure();
+  const { room, items, rowPx, widths } = useRowMeasure();
   // Publishers' names are each their own length, so what fits is measured
-  // rather than assumed. Every chip stays drawn -- taking one away would take
-  // its width with it, and the next measurement would disagree with this one
-  // -- and the strip they sit in is cut to where they stop fitting.
+  // rather than assumed. The room is read off the outer row, which nothing
+  // here sizes; the widths off the strip inside it. Only what fits is drawn,
+  // so nothing hidden keeps a tab stop or a place in what a screen reader
+  // reads out.
   const shown =
     rowPx === 0 || widths.length === 0
       ? sources.length
-      : fitsInRow(widths, GAP_PX, rowPx - GAP_PX - MORE_PX, 0);
+      : fitsInRow(widths, GAP_PX, rowPx, MORE_PX);
   const hidden = sources.length - shown;
-  const cutAt = widths
-    .slice(0, shown)
-    .reduce((sum, w, i) => sum + w + (i > 0 ? GAP_PX : 0), 0);
 
   return (
     <>
-      <div data-testid='source-row' className='mt-[0.85em] flex gap-2'>
-        <div
-          ref={row}
-          className='flex gap-2 overflow-hidden'
-          style={cutAt > 0 ? { maxWidth: `${String(cutAt)}px` } : undefined}
-        >
-          {sources.map((s) => (
+      <div ref={room} data-testid='source-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
+        <div ref={items} className='flex gap-2'>
+          {sources.slice(0, shown).map((s) => (
             <SourceChip key={s.url} source={s} label={s.publisher} testId='source-chip' />
           ))}
         </div>

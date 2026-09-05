@@ -661,7 +661,8 @@
   },
   "common": {
     "cancel": "キャンセル",
-    "loading": "読み込み中..."
+    "loading": "読み込み中...",
+    "clipboardError": "コピーできませんでした"
   },
   "members": {
     "popover": {

@@ -661,7 +661,8 @@
   },
   "common": {
     "cancel": "Cancel",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "clipboardError": "Could not copy"
   },
   "members": {
     "popover": {

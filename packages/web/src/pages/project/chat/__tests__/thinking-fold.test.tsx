@@ -48,6 +48,13 @@ describe('how long it thought', () => {
     expect(label).toContain('35');
   });
 
+  it('never says it thought for no time at all', () => {
+    // 服务端只要 >0 就发，而 1–499ms 四舍五入到 0，屏幕上就成了「思考了 0 秒」。
+    render(<ThinkingFold thinking='x' ms={120} />);
+
+    expect(screen.getByTestId('thinking-fold-toggle').textContent ?? '').not.toMatch(/\b0\b/);
+  });
+
   it('still names itself when the turn carries no figure', () => {
     render(<ThinkingFold thinking='x' />);
 

@@ -53,6 +53,22 @@ describe('the line that says nothing came back', () => {
     expect(screen.queryByTestId('message-bubble-empty')).toBeNull();
   });
 
+  it('says it for a turn that only called tools and drew nothing', () => {
+    // 工具行跑完就撤，所以一轮只有工具调用、搜索全空时屏幕上什么都没有。
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 't1', name: 'web_search', args: {}, status: 'success' }],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-empty')).toBeInTheDocument();
+  });
+
   it('still says it when the turn produced nothing at all', () => {
     render(<MessageBubble message={{ id: 'm', role: 'assistant', content: '' }} />);
 
@@ -68,5 +84,14 @@ describe('the copy on a reader\'s own message', () => {
     expect(actions.className).toMatch(/\babsolute\b/);
     expect(actions.className).toMatch(/pointer-events-none/);
     expect(actions.className).toMatch(/group-hover:pointer-events-auto/);
+  });
+
+  it('stays inside the bubble rather than reaching into the next message', () => {
+    // 消息之间是 gap-2（8px），而按钮高 24px：挂在气泡下方 8px 处，起点正好
+    // 是下一条消息的起点，盖住它顶上一行。
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    const actions = screen.getByTestId('turn-actions');
+    expect(actions.className).not.toMatch(/top-full/);
   });
 });

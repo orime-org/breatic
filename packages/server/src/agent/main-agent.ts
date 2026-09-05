@@ -13,7 +13,12 @@ import { streamTextRetry } from "@breatic/domain";
 import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
+import {
+  buildAgentConfig,
+  finalizeTurn,
+  highestSourceNumber,
+  TOOLS_THAT_BLOCK,
+} from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
@@ -206,6 +211,12 @@ export class MainAgent {
     let thinkingOpenedAt: number | undefined;
     /** How long the turn has thought so far, summed over closed stretches. */
     let thoughtForMs = 0;
+    /** Count the stretch now open, if one is, and leave none open. */
+    const closeThinking = (): void => {
+      if (thinkingOpenedAt === undefined) return;
+      thoughtForMs += Date.now() - thinkingOpenedAt;
+      thinkingOpenedAt = undefined;
+    };
 
     /**
      * Stop after a step that asked the reader something, and record that it
@@ -294,6 +305,11 @@ export class MainAgent {
         basePrompt: buildSystemPrompt(),
         memoryContext,
         interactive: true,
+        // Where this conversation's citation numbering has got to. Earlier
+        // turns' sources are replayed with the numbers they were given, so a
+        // turn starting again at one would put two pages under the same
+        // number in one context.
+        numberedSoFar: highestSourceNumber(compressedHistory),
       });
 
       return {
@@ -459,13 +475,10 @@ export class MainAgent {
           }
           // Said on the wire for the same reason as the two above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
-          // the reader as the turn ends and reads the same after a reload.
-          // A stretch still open here is one the turn broke off inside, and
-          // what it had thought so far is still how long it thought.
-          if (thinkingOpenedAt !== undefined) {
-            thoughtForMs += Date.now() - thinkingOpenedAt;
-            thinkingOpenedAt = undefined;
-          }
+          // the reader as the turn ends. A turn that never gets here -- one
+          // stopped mid-answer -- has the same figure written into its
+          // stored parts at the exit below, which runs however it ended.
+          closeThinking();
           if (thoughtForMs > 0) {
             writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
           }
@@ -512,7 +525,21 @@ export class MainAgent {
               ? "blocked"
               : "completed";
 
+        // A stretch still open is one the turn broke off inside, and what it
+        // had thought so far is still how long it thought. Closed here rather
+        // than in the model stream's own end callback: `ai@7.0.68` closes an
+        // aborted stream from the reader's abort path
+        // (`dist/index.js:9355-9372`) and the callback that would have run
+        // instead fires from a flush that returns early with no steps
+        // recorded (`:9269-9277`), so a turn stopped during its first step --
+        // the stop button pressed while the first answer streams -- never
+        // reaches it. This exit runs however the turn ended.
+        closeThinking();
+
         const replyParts = toStoredParts(responseMessage.parts);
+        if (thoughtForMs > 0 && !replyParts.some((p) => p.type === "thinking-time")) {
+          replyParts.push({ type: "thinking-time", ms: thoughtForMs });
+        }
 
         // Both marks are recorded rather than left to be inferred: without
         // them a stopped turn and a failed one read back as a turn that
