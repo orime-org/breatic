@@ -83,11 +83,10 @@ function sourcesOf(output: unknown): ChatSource[] {
   if (!Array.isArray(found)) return [];
   return found.flatMap((entry): ChatSource[] => {
     if (entry === null || typeof entry !== 'object') return [];
-    const { url, title, publisher } = entry as Record<string, unknown>;
-    if (typeof url !== 'string' || typeof title !== 'string' || typeof publisher !== 'string') {
-      return [];
-    }
-    return [{ url, title, publisher }];
+    const { url, title, publisher, index } = entry as Record<string, unknown>;
+    if (typeof url !== 'string' || url === '' || typeof title !== 'string') return [];
+    if (typeof publisher !== 'string' || typeof index !== 'number') return [];
+    return [{ url, title, publisher, index }];
   });
 }
 
@@ -202,8 +201,10 @@ export function toChatMessage(
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         for (const source of sourcesOf(part.output)) {
+          // The number came with the source, decided when the search ran, so
+          // it is the same number the model was shown.
+          citations[source.index] = source;
           numbered += 1;
-          citations[numbered] = source;
           if (seen.has(source.url)) continue;
           seen.add(source.url);
           sources.push(source);

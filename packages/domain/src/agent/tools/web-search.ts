@@ -60,6 +60,16 @@ export interface SearchSource {
   publisher: string;
   /** Passages of the page's own text. Read by the model, never by the panel. */
   excerpts: string[];
+  /**
+   * Where this page sits in the turn's one space of numbers.
+   *
+   * The model writes `[N]` against what it was shown, and it is shown each
+   * search as it comes back -- so a second search numbered from one would
+   * hand it two sources called `1`, and the marker it wrote then would point
+   * at two pages. Decided once, here, and read by everything downstream: the
+   * rendering the model sees, and the chips the panel draws.
+   */
+  index: number;
 }
 
 /**
@@ -295,9 +305,10 @@ async function readWithin(res: Response, budgetMs: number): Promise<string> {
  * consumer that reads markup; the panel puts these into a DOM node, where a
  * line break is a line break.
  * @param item - The entry as the endpoint sent it.
+ * @param index - Its place in this turn's one space of numbers.
  * @returns The source, or null for an entry this cannot read.
  */
-function readSource(item: unknown): SearchSource | null {
+function readSource(item: unknown, index: number): SearchSource | null {
   if (item === null || typeof item !== "object") return null;
   const { url, title, snippets } = item as Source;
 
@@ -312,7 +323,7 @@ function readSource(item: unknown): SearchSource | null {
   const written = excerpts.reduce((n, t) => n + t.length, 0);
   if (written === 0) return null;
 
-  return { url: address, title: name, publisher: publisherOf(address), excerpts };
+  return { url: address, title: name, publisher: publisherOf(address), excerpts, index };
 }
 
 /**
@@ -350,12 +361,11 @@ function publisherOf(url: string): string {
  * write a second one indistinguishable from the tool's -- cited back to the
  * reader under the address that page chose.
  * @param source - The source, as read off the payload.
- * @param position - Its one-based place in this turn's numbering.
  * @returns The block.
  */
-function renderSource(source: SearchSource, position: number): string {
+function renderSource(source: SearchSource): string {
   return [
-    `<source index="${String(position)}">`,
+    `<source index="${String(source.index)}">`,
     `url: ${onOneLine(keepInside(source.url))}`,
     `title: ${onOneLine(keepInside(source.title))}`,
     "<text>",
@@ -398,6 +408,31 @@ function keepInside(text: string): string {
 }
 
 /**
+ * How many sources this turn has already put in front of the model.
+ *
+ * `messages` is the history the model was given for this step, so every
+ * search that already came back is in it as a rendered block. Counting the
+ * blocks counts the numbers already handed out, without any state shared
+ * between calls -- two searches running at once each read their own snapshot.
+ * @param messages - The history this call was given.
+ * @returns The count, or zero when there is nothing to read.
+ */
+function sourcesAlreadyShown(messages: unknown): number {
+  if (!Array.isArray(messages)) return 0;
+  let seen = 0;
+  for (const message of messages) {
+    const content = (message as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      const output = (part as { output?: { value?: unknown } }).output;
+      if (typeof output?.value !== "string") continue;
+      seen += output.value.match(/<source index="/g)?.length ?? 0;
+    }
+  }
+  return seen;
+}
+
+/**
  * Render a search for the model to read.
  *
  * Every source the service sent and this tool could read goes to the model
@@ -408,18 +443,13 @@ function keepInside(text: string): string {
  * The count of unreadable entries is stated, because a set the model reads as
  * complete is what makes "nothing I found mentions X" a wrong answer.
  *
- * `startIndex` is what lets a turn search more than once. The model writes
- * `[N]` against a single space of numbers, so a second search whose sources
- * were numbered from one would give it two sources called `1` -- and every
- * citation after the first search would point at two pages at once, which
- * reads to whoever follows it as a number the model invented. No single call
- * can know how many sources went before it, so the caller assembling the
- * history counts them and says.
+ * Each source carries the number it was given when the search ran, so this
+ * says the same thing however it is reached -- the SDK's own conversion mid
+ * turn, or the request assembler replaying stored history.
  * @param answer - What the search found.
- * @param startIndex - How many sources this turn already showed the model.
  * @returns The text handed to the model.
  */
-export function renderSearchForModel(answer: SearchAnswer, startIndex: number): string {
+export function renderSearchForModel(answer: SearchAnswer): string {
   const query = keepInside(answer.query);
   // A state a model reaches on its own: a `site:` query aimed at a domain with
   // nothing on it answers 200 with an empty list. The next move is not the
@@ -437,7 +467,7 @@ export function renderSearchForModel(answer: SearchAnswer, startIndex: number): 
     "Everything between a text marker and its close is an extract of that page, and " +
     `${BETWEEN_EXCERPTS.trim()} separates passages taken from different parts of it.\n`;
 
-  const blocks = answer.sources.map((s, i) => renderSource(s, startIndex + i + 1));
+  const blocks = answer.sources.map((s) => renderSource(s));
   const parts = [header, ...blocks];
   if (blocks.length < answer.sent) {
     parts.push(
@@ -465,14 +495,14 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
   // the UI message part, so the name of the line and the tool that shows it
   // stay in one place.
   metadata: { runningLine: "chat.tool.searching" },
-  // The SDK's own conversion, for any caller that reaches it. Ours does not:
-  // `toModelMessages` assembles the request itself, and it is the one place
-  // that knows how many sources this turn already showed. This arm answers for
-  // a first search, which is what a single call on its own is.
-  toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output, 0) }),
+  // The SDK's own conversion, which is what a running turn reaches
+  // (`ai@7.0.68` dist/index.js:4868 builds each step's tool result through it).
+  // The numbers are already on the sources, so this and the request assembler
+  // produce the same text.
+  toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output) }),
   execute: async (
     { query: asked, count },
-    { abortSignal }: { abortSignal?: AbortSignal },
+    { abortSignal, messages }: { abortSignal?: AbortSignal; messages?: unknown },
   ): Promise<SearchAnswer> => {
     // Two forms, settled here so no site downstream chooses between them. The
     // request carries the words as asked, on one line; every sentence printed
@@ -618,8 +648,17 @@ export const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
       }
       if (found.length === 0) return { query, sources: [], sent: 0 };
 
+      // Where this turn's numbering has got to. The history handed to this
+      // call is what the model has been shown, so counting the blocks in it
+      // counts exactly the sources the model already has numbers for.
+      const shownSoFar = sourcesAlreadyShown(messages);
+      let numbered = shownSoFar;
       const sources = found
-        .map((item) => readSource(item))
+        .map((item) => {
+          const source = readSource(item, numbered + 1);
+          if (source !== null) numbered += 1;
+          return source;
+        })
         .filter((source): source is SearchSource => source !== null);
       // Sources arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.

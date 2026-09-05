@@ -71,6 +71,14 @@ export interface ChatSource {
   title: string;
   /** Who published it. This is what the row shows, not the host. */
   publisher: string;
+  /**
+   * The number the model was shown for this page.
+   *
+   * Decided when the search ran and carried on the source, so a `[N]` in the
+   * prose resolves to the page the model meant however many searches the turn
+   * made.
+   */
+  index: number;
 }
 
 /**

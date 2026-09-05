@@ -73,13 +73,32 @@ function grounding(
  * @param query - What to search for.
  * @returns The structured answer the tool produced.
  */
-async function run(query: string): Promise<SearchAnswer> {
+async function run(query: string, messages: unknown[] = []): Promise<SearchAnswer> {
   const execute = webSearch.execute;
   if (execute === undefined) throw new Error("web_search has no execute");
   const parsed = (
     webSearch.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
   ).parse({ query });
-  return (await execute(parsed, { toolCallId: "t1", messages: [] } as never)) as SearchAnswer;
+  return (await execute(parsed, { toolCallId: "t1", messages } as never)) as SearchAnswer;
+}
+
+/**
+ * The history a second search sees: an earlier search's rendering.
+ * @param answer - What that earlier search answered with.
+ * @returns The tool message the model was given.
+ */
+function earlierSearch(answer: SearchAnswer): unknown {
+  return {
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolCallId: "t0",
+        toolName: "web_search",
+        output: { type: "text", value: renderSearchForModel(answer) },
+      },
+    ],
+  };
 }
 
 beforeEach(() => {
@@ -87,6 +106,44 @@ beforeEach(() => {
 });
 
 describe("what the tool answers with", () => {
+  it("numbers its sources from what the turn has already shown the model", async () => {
+    // The model writes [N] against one space of numbers, and it sees each
+    // search as it comes back. A second search numbered from one hands it two
+    // sources called 1, and the marker it writes then points at two pages.
+    // What went before is in the history this call was given.
+    httpRequestMock.mockResolvedValue(
+      grounding([
+        { url: "https://c.example", title: "C", snippets: ["c"] },
+        { url: "https://d.example", title: "D", snippets: ["d"] },
+      ]),
+    );
+    const first: SearchAnswer = {
+      query: "q",
+      sent: 3,
+      sources: [1, 2, 3].map((n) => ({
+        url: `https://s${String(n)}.example`,
+        title: `S${String(n)}`,
+        publisher: "S",
+        excerpts: ["x"],
+        index: n,
+      })),
+    };
+
+    const second = await run("q", [earlierSearch(first)]);
+
+    expect(second.sources.map((s) => s.index)).toEqual([4, 5]);
+  });
+
+  it("numbers from one when the turn has searched for nothing yet", async () => {
+    httpRequestMock.mockResolvedValue(
+      grounding([{ url: "https://a.example", title: "A", snippets: ["a"] }]),
+    );
+
+    const answer = await run("q");
+
+    expect(answer.sources[0]?.index).toBe(1);
+  });
+
   it("answers with a structured object, not the model's text", async () => {
     httpRequestMock.mockResolvedValue(
       grounding([{ url: "https://vitest.dev/guide", title: "Guide", snippets: ["A"] }]),
@@ -146,19 +203,19 @@ describe("the rendering the model reads", () => {
     sent: sources.length,
   });
 
-  it("numbers the sources from the offset it is given", () => {
+  it("prints the number each source was given when the search ran", () => {
+    // The number is decided once, in `execute`, so this and the SDK's own
+    // conversion say the same thing however the rendering is reached.
     const answer = answerOf([
-      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["one"] },
-      { url: "https://b.example", title: "B", publisher: "B", excerpts: ["two"] },
+      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["one"], index: 4 },
+      { url: "https://b.example", title: "B", publisher: "B", excerpts: ["two"], index: 5 },
     ]);
 
-    expect(renderSearchForModel(answer, 0)).toContain('<source index="1">');
-    expect(renderSearchForModel(answer, 0)).toContain('<source index="2">');
+    const rendered = renderSearchForModel(answer);
 
-    const later = renderSearchForModel(answer, 3);
-    expect(later).toContain('<source index="4">');
-    expect(later).toContain('<source index="5">');
-    expect(later).not.toContain('<source index="1">');
+    expect(rendered).toContain('<source index="4">');
+    expect(rendered).toContain('<source index="5">');
+    expect(rendered).not.toContain('<source index="1">');
   });
 
   it("keeps page text from closing the region it sits in", () => {
@@ -171,7 +228,7 @@ describe("the rendering the model reads", () => {
       },
     ]);
 
-    const rendered = renderSearchForModel(answer, 0);
+    const rendered = renderSearchForModel(answer);
 
     expect(rendered).not.toContain("</text></source>");
     expect(rendered).not.toContain('<source index="9">');
@@ -187,27 +244,26 @@ describe("the rendering the model reads", () => {
       },
     ]);
 
-    const lines = renderSearchForModel(answer, 0).split("\n");
+    const lines = renderSearchForModel(answer).split("\n");
 
     expect(lines.filter((l) => l.startsWith("url: "))).toHaveLength(1);
   });
 
   it("separates passages taken from different parts of a page", () => {
     const answer = answerOf([
-      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["first", "second"] },
+      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["first", "second"], index: 1 },
     ]);
 
-    expect(renderSearchForModel(answer, 0)).not.toContain("firstsecond");
+    expect(renderSearchForModel(answer)).not.toContain("firstsecond");
   });
 
   it("says how many entries it could not read", () => {
     const rendered = renderSearchForModel(
       {
         query: "q",
-        sources: [{ url: "https://a.example", title: "A", publisher: "A", excerpts: ["x"] }],
+        sources: [{ url: "https://a.example", title: "A", publisher: "A", excerpts: ["x"], index: 1 }],
         sent: 3,
       },
-      0,
     );
 
     expect(rendered).toContain("1 of 3");
@@ -215,14 +271,14 @@ describe("the rendering the model reads", () => {
 
   it("is what the SDK conversion would produce for a first search", () => {
     const answer = answerOf([
-      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["one"] },
+      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["one"], index: 1 },
     ]);
     const toModelOutput = webSearch.toModelOutput;
     if (toModelOutput === undefined) throw new Error("web_search declares no toModelOutput");
 
     expect(toModelOutput({ toolCallId: "t1", input: { query: "q", count: 5 }, output: answer })).toEqual({
       type: "text",
-      value: renderSearchForModel(answer, 0),
+      value: renderSearchForModel(answer),
     });
   });
 });

@@ -36,29 +36,13 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * count belongs here, because only something walking the whole history knows
  * how many sources a turn has already shown.
  *
- * The SDK has a field for the first half (`toModelOutput`) and it is declared
- * too, for any caller that reaches it. This table is what `toModelMessages`
- * reaches, because the SDK's signature has nowhere to put the count.
+ * The SDK declares the same conversion on the tool itself, and both reach the
+ * same function. A source carries the number it was given when the search
+ * ran, so a replayed history reads exactly as the running turn did.
  */
-const RENDER_FOR_MODEL: Record<string, (output: unknown, startIndex: number) => string> = {
-  web_search: (output, startIndex) =>
-    renderSearchForModel(output as SearchAnswer, startIndex),
+const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
+  web_search: (output) => renderSearchForModel(output as SearchAnswer),
 };
-
-/**
- * How many sources a tool result showed the model.
- *
- * Only the tools in the table above put numbered sources in front of the
- * model, and only a call that ended successfully put any there at all.
- * @param part - The tool part.
- * @returns The count, or zero for a part that showed none.
- */
-function sourcesShownBy(part: ToolPart): number {
-  if (part.status !== "success" || typeof part.output === "string") return 0;
-  if (RENDER_FOR_MODEL[part.toolName] === undefined) return 0;
-  const sources = (part.output as { sources?: unknown } | null)?.sources;
-  return Array.isArray(sources) ? sources.length : 0;
-}
 
 /**
  * Whether this use of a tool is one the model is shown.
@@ -97,10 +81,9 @@ export function reachesTheModel(part: ToolPart): boolean {
  * detail, never the key the panel translates, and a sentence saying as much
  * for the rows that predate the field.
  * @param part - The tool part to render
- * @param sourcesSoFar - How many sources this turn has already numbered
  * @returns The output in its typed form, saying plainly when the tool failed
  */
-function toolOutput(part: ToolPart, sourcesSoFar: number): ToolResultPart["output"] {
+function toolOutput(part: ToolPart): ToolResultPart["output"] {
   if (part.status === "error") {
     // The field is newer than some of the rows it is read off, and a row
     // written before it existed has none. An empty string reads as a call
@@ -117,9 +100,7 @@ function toolOutput(part: ToolPart, sourcesSoFar: number): ToolResultPart["outpu
   // what every long conversation would meet.
   if (typeof part.output === "string") return { type: "text", value: part.output };
   const render = RENDER_FOR_MODEL[part.toolName];
-  if (render !== undefined) {
-    return { type: "text", value: render(part.output, sourcesSoFar) };
-  }
+  if (render !== undefined) return { type: "text", value: render(part.output) };
   // Whatever the tool answered with, as it was stored. It came out of a
   // `JSON.stringify` on the way into the table, so it is JSON by
   // construction -- the cast says that rather than re-deriving it.
@@ -186,10 +167,6 @@ const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence
  */
 export function toModelMessages(history: readonly MessageData[]): ModelMessage[] {
   const out: ModelMessage[] = [];
-  // What the model has been shown, counted as this walk goes. The model writes
-  // `[N]` against one space of numbers, so a turn that searched twice must not
-  // hand it two sources called `1`.
-  let sourcesSoFar = 0;
 
   for (const message of history) {
     if (message.role === "user") {
@@ -237,11 +214,10 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
             type: "tool-result",
             toolCallId: part.toolCallId,
             toolName: part.toolName,
-            output: toolOutput(part, sourcesSoFar),
+            output: toolOutput(part),
           },
         ],
       });
-      sourcesSoFar += sourcesShownBy(part);
     }
     if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
     else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });

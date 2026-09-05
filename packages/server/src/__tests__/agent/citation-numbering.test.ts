@@ -10,11 +10,10 @@
  * at two places at once -- which reads, to whoever follows the citation, as a
  * number the model invented.
  *
- * The count runs across the whole history because that is what the model
- * sees. The number is not stored: it says where a source sits in this turn,
- * which is a fact about the turn rather than about the source, and a stored
- * one would be wrong the moment the same result is replayed inside a longer
- * history.
+ * The number is decided once, when the search runs, and travels on the source.
+ * Replaying a stored history therefore reads exactly as the running turn did:
+ * the SDK's own conversion mid-turn and this assembler reach the same
+ * function, and neither of them counts anything.
  */
 
 import { describe, it, expect } from "vitest";
@@ -52,7 +51,7 @@ function searchTurn(id: string, output: unknown): MessageData {
  * @param at - What to name them from.
  * @returns The answer as the tool produces it.
  */
-function answerWith(n: number, at: string): unknown {
+function answerWith(n: number, at: string, from = 1): unknown {
   return {
     query: "q",
     sent: n,
@@ -61,6 +60,7 @@ function answerWith(n: number, at: string): unknown {
       title: `${at}${String(i)}`,
       publisher: at,
       excerpts: ["text"],
+      index: from + i,
     })),
   };
 }
@@ -81,10 +81,10 @@ function toolTexts(history: MessageData[]): string[] {
 }
 
 describe("numbering across several searches", () => {
-  it("carries on from where the previous search stopped", () => {
+  it("prints the number each source was given when its search ran", () => {
     const texts = toolTexts([
       searchTurn("a", answerWith(3, "a")),
-      searchTurn("b", answerWith(2, "b")),
+      searchTurn("b", answerWith(2, "b", 4)),
     ]);
 
     expect(texts).toHaveLength(2);
@@ -95,16 +95,17 @@ describe("numbering across several searches", () => {
     expect(texts[1]).not.toContain('<source index="1">');
   });
 
-  it("counts only the sources that reached the model", () => {
-    // Two entries arrived, one was unreadable, so the next search starts at
-    // two -- not at three.
-    const partial = { query: "q", sent: 2, sources: [
-      { url: "https://a.example", title: "A", publisher: "A", excerpts: ["x"] },
-    ] };
+  it("says the same thing however long the history it sits in gets", () => {
+    // The number belongs to the source, so a result replayed inside a longer
+    // conversation still reads as the number the model was shown.
+    const answer = answerWith(2, "a", 7);
+    const alone = toolTexts([searchTurn("a", answer)]);
+    const later = toolTexts([
+      searchTurn("z", answerWith(3, "z")),
+      searchTurn("a", answer),
+    ]);
 
-    const texts = toolTexts([searchTurn("a", partial), searchTurn("b", answerWith(1, "b"))]);
-
-    expect(texts[1]).toContain('<source index="2">');
+    expect(later[1]).toBe(alone[0]);
   });
 });
 
@@ -127,12 +128,13 @@ describe("what the string arms are for", () => {
     expect(texts).toEqual([older]);
   });
 
-  it("does not let a placeholder consume a number", () => {
+  it("leaves a real search beside a placeholder untouched", () => {
     const texts = toolTexts([
       searchTurn("a", DROPPED_TOOL_RESULT),
-      searchTurn("b", answerWith(1, "b")),
+      searchTurn("b", answerWith(1, "b", 4)),
     ]);
 
-    expect(texts[1]).toContain('<source index="1">');
+    expect(texts[0]).toBe(DROPPED_TOOL_RESULT);
+    expect(texts[1]).toContain('<source index="4">');
   });
 });

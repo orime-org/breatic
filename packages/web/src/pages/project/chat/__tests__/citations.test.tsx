@@ -31,6 +31,7 @@ const source = (n: number): ChatSource => ({
   url: `https://s${String(n)}.example/page`,
   title: `Page ${String(n)}`,
   publisher: `Publisher${String(n)}`,
+  index: n,
 });
 
 afterEach(cleanup);

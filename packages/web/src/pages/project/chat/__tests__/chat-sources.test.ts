@@ -21,9 +21,10 @@ import type { UIMessage } from 'ai';
  * One `web_search` result part, as the protocol carries it.
  * @param id - The tool call id.
  * @param urls - One entry per source, as `url|title|publisher`.
+ * @param from - The number the tool gave this search's first source.
  * @returns The part.
  */
-function searched(id: string, urls: string[]): UIMessage['parts'][number] {
+function searched(id: string, urls: string[], from = 1): UIMessage['parts'][number] {
   return {
     type: 'tool-web_search',
     toolCallId: id,
@@ -32,9 +33,9 @@ function searched(id: string, urls: string[]): UIMessage['parts'][number] {
     output: {
       query: 'q',
       sent: urls.length,
-      sources: urls.map((spec) => {
+      sources: urls.map((spec, i) => {
         const [url, title, publisher] = spec.split('|');
-        return { url, title, publisher, excerpts: ['page text'] };
+        return { url, title, publisher, excerpts: ['page text'], index: from + i };
       }),
     },
   } as unknown as UIMessage['parts'][number];
@@ -56,7 +57,7 @@ describe('the row at the foot of a reply', () => {
     );
 
     expect(message.sources).toEqual([
-      { url: 'https://vitest.dev/g', title: 'Guide', publisher: 'Vitest' },
+      { url: 'https://vitest.dev/g', title: 'Guide', publisher: 'Vitest', index: 1 },
     ]);
   });
 
@@ -100,7 +101,7 @@ describe('the numbers the prose markers resolve against', () => {
     const message = toChatMessage(
       reply([
         searched('a', ['https://a.example|A|A', 'https://b.example|B|B']),
-        searched('b', ['https://c.example|C|C']),
+        searched('b', ['https://c.example|C|C'], 3),
       ]),
     );
 
@@ -115,7 +116,7 @@ describe('the numbers the prose markers resolve against', () => {
     const message = toChatMessage(
       reply([
         searched('a', ['https://same.example|Same|Same']),
-        searched('b', ['https://same.example|Same|Same']),
+        searched('b', ['https://same.example|Same|Same'], 2),
       ]),
     );
 
