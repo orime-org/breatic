@@ -145,12 +145,12 @@ export type UploadFailureReason = 'hash' | 'storage' | 'upload';
  * How an upload ended badly, and whether the server knows about it (#186
  * §3.7.3).
  *
- * `taskId` is present exactly when the ticket was granted: past that point
- * the server holds a task row for this upload and a timer that will judge it,
- * so the browser leaves the outcome to them and only keeps the File for a
- * retry, keyed by that task. Absent, nothing on the server ever heard of this
- * upload — no row, no grant, no timer — so nobody is going to give it an
- * ending and the browser says so locally.
+ * `taskId` is present exactly when the ticket was granted: past that point the
+ * server holds a task row for this upload, carrying the budget it will be
+ * judged against, so the browser leaves the outcome to that row and only keeps
+ * the File for a retry, keyed by it. Absent, nothing on the server ever heard
+ * of this upload — no row, no grant — so nobody is going to give it an ending
+ * and the browser says so locally.
  */
 export interface UploadFailure {
   reason: UploadFailureReason;

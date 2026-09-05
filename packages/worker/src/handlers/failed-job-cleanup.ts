@@ -222,8 +222,9 @@ export async function cleanupFailedJobNodes(
       emitted++;
     } catch {
       // Best-effort: continue with the remaining nodes. The caller
-      // (application entry) logs the failure; the collab handling-lease
-      // sweeper reclaims any node this misses.
+      // (application entry) logs the failure; a node this misses keeps its
+      // row counting until somebody opens its task list, which harvests the
+      // row against its budget and republishes the counts (#186 §4.6).
     }
   }
   return emitted;

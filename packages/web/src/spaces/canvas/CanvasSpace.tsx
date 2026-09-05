@@ -2039,14 +2039,14 @@ function CanvasSpaceInner({
       // are told (#186 §3.7.3).
       toast.error(t(plan.toastKey));
       if (plan.kind === 'serverKnows') {
-        // The row and its timer will take this to an end on their own. All
-        // that is left here is the File its Retry re-sends.
+        // The row takes this to an end on its own, judged against the budget
+        // it carries. All that is left here is the File its Retry re-sends.
         stashRetryFile(projectId, spaceId, plan.taskId, file);
         return;
       }
-      // No ticket, so no row, no grant and no timer: nothing is coming to end
-      // this. A node this drop created has never held anything and never
-      // will, so it goes; one that was already there stays as it was.
+      // No ticket, so no row and no grant: nothing on the server can end this.
+      // A node this drop created has never held anything and never will, so it
+      // goes; one that was already there stays as it was.
       if (opts.droppedHere) removeNode(projectId, spaceId, nodeId);
     },
     [projectId, spaceId, t],

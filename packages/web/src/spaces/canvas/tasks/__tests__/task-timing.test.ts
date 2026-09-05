@@ -6,8 +6,9 @@
  *
  * Both numbers are derived every second from two absolute instants the server
  * decided — the moment it opened and the allowance it was given. Nothing here
- * judges anything: whether a task ran out of time is the timer's call, and a
- * row can read "0 left" for a while before the server says so.
+ * judges anything: whether a task ran out of time is settled server-side when
+ * somebody reads the node's task list, so a row can read "0 left" for a while
+ * before the server says so.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,8 +42,8 @@ describe('splitDuration', () => {
   });
 
   it('floors a negative duration at zero rather than counting backwards', () => {
-    // A row can outlive its allowance before the timer's knock arrives; the
-    // number stops at zero instead of reading "-3 minutes".
+    // A row can outlive its allowance before anyone opens the list that
+    // harvests it; the number stops at zero instead of reading "-3 minutes".
     expect(splitDuration(-5 * MINUTE)).toEqual({
       hours: 0,
       minutes: 0,

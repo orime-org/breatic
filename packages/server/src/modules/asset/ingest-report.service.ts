@@ -47,6 +47,7 @@ import {
 import { canvasSpaceDocName, t } from "@breatic/shared";
 import type { NodeTaskResult } from "@breatic/shared";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import {
   findGrantByKey,
   consumeGrant,
@@ -103,7 +104,9 @@ export type IngestOutcome =
   | { status: "registered"; fileUrl: string; kind: string }
   | { status: "already_registered"; fileUrl: string; kind: string }
   | { status: "rejected"; reason: "over_cap" }
-  | { status: "voided" };
+  | { status: "voided" }
+  /** A failure reported for an upload another delivery already registered. */
+  | { status: "stale" };
 
 /**
  * A grant whose upload has a node behind it.
@@ -206,17 +209,28 @@ async function settleUploadTask(
     }),
   });
 
+  // The content rides along whenever the row holds this outcome, a repeated
+  // report included — the Worker repeats one it heard no 2xx for, and that
+  // retry is the whole recovery for an event that never reached the node. A
+  // row that settled some OTHER way leaves the node's content alone: the user
+  // may have retried, and choosing for them is not ours to do.
+  const content = settled.landed ? outcome.result : undefined;
+  const docName = canvasSpaceDocName(grant.projectId, grant.spaceId);
+
+  // Which of the two this is decides who owns a failure to publish, and it is
+  // decided here rather than by which function called us: a failure and a
+  // report that arrived after the row settled some other way both come
+  // through carrying nothing.
+  if (content === undefined) {
+    await publishCountsQuietly(docName, grant.nodeId, settled.counts);
+    return;
+  }
   await emitNodeTaskCounts(
     getStreamRedis(),
-    canvasSpaceDocName(grant.projectId, grant.spaceId),
+    docName,
     grant.nodeId,
     settled.counts,
-    // The content rides along whenever the row holds this outcome, a repeated
-    // report included — the Worker repeats one it heard no 2xx for, and that
-    // retry is the whole recovery for an event that never reached the node. A
-    // row that settled some OTHER way leaves the node's content alone: the
-    // user may have retried, and choosing for them is not ours to do.
-    settled.landed ? outcome.result : undefined,
+    content,
   );
 }
 
@@ -297,24 +311,32 @@ export async function applyIngestReport(
   const grant = await findGrantByKey(report.storageKey);
   if (grant === null) throw new NotFoundError(t("server.error.not_found"));
 
+  // What the report says happened is the first question, because a failure
+  // never settles anything as done. A key that is already registered got that
+  // way through an earlier delivery of this same upload, and what it wrote
+  // stands: this report carries no hash to find the registered row by, so
+  // anything it announced would name a URL built from the key — and dedup
+  // means the registered URL can name an object under an entirely different
+  // one.
+  if (report.outcome === "aborted") {
+    if (grant.consumedAt !== null) return { status: "stale" };
+    await voidGrant(grant.storageKey);
+    await announceFailure(grant, "aborted");
+    return { status: "voided" };
+  }
+
   const adapter = await getStorageAdapter();
-  // An `aborted` report names no type, and what it becomes is what a browser
-  // would have been sent for bytes of unknown type. Only the already-consumed
-  // branch below reads it on that path.
-  const contentType =
-    report.outcome === "completed"
-      ? report.contentType
-      : "application/octet-stream";
+  const contentType = report.contentType;
 
   // A retry: the browser did not hear the answer to its finish request, so it
   // sent the same upload again. Publishing again is the point — collab applies
   // these last-write-wins, so a duplicate costs nothing while a lost one
   // leaves the node spinning.
   if (grant.consumedAt !== null) {
-    const existing =
-      report.outcome === "completed"
-        ? await assetRepo.findByStudioAndHash(grant.studioId, report.sha256)
-        : null;
+    const existing = await assetRepo.findByStudioAndHash(
+      grant.studioId,
+      report.sha256,
+    );
     const fileUrl = existing?.fileUrl ?? adapter.publicUrl(grant.storageKey);
     const settledKind = existing?.kind ?? assetService.detectAssetKind(contentType);
     // A video's event belongs to the cover job, which sends one carrying both
@@ -328,12 +350,6 @@ export async function applyIngestReport(
       await announceSuccess(grant, fileUrl);
     }
     return { status: "already_registered", fileUrl, kind: settledKind };
-  }
-
-  if (report.outcome === "aborted") {
-    await voidGrant(grant.storageKey);
-    await announceFailure(grant, "aborted");
-    return { status: "voided" };
   }
 
   // The declared size got the ticket issued; this is the first time anyone has

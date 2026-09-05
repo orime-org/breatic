@@ -470,6 +470,13 @@ assets.post(
         413,
       );
     }
+    if (outcome.status === "stale") {
+      logger.info(
+        { key: body.storage_key },
+        "ingest_report_stale",
+      );
+      return c.json({ data: { ok: true } });
+    }
     if (outcome.status === "voided") {
       logger.info(
         {

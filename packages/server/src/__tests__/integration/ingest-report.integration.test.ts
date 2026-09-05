@@ -19,16 +19,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-/**
- * A ticket for a node now opens a task and arms the timer that will judge it
- * (#186 §4.6.5), and that timer lives in a Worker no harness runs. Without an
- * alarm the endpoint refuses the ticket, which is the behaviour under test
- * elsewhere; here it would stop every upload before a byte moved.
- */
-vi.mock("@server/modules/asset/task-timer.client.js", () => ({
-  armTaskTimer: vi.fn(async () => true),
-}));
-
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -451,12 +441,12 @@ describe("POST /assets/ingest-report — a completed upload", () => {
   });
 });
 
-// The whole retry chain rests on this. A report answered 2xx tells the Durable
-// Object it is done and its alarm is deleted, so an answer given while the
-// node was never told leaves that node in handling with nothing left to reach
-// it — the alarm that would have tried again is gone.
+// The event that settles a successful upload is the only way its content
+// reaches the node. Answering 2xx while that event was lost would end the
+// delivery with nothing left to carry the result, so the report is refused
+// and the Worker's own retry is what tries again.
 describe("POST /assets/ingest-report — an event that could not be published", () => {
-  it("refuses the report so the Durable Object keeps its alarm", async () => {
+  it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: crypto.randomUUID() });
 
@@ -520,6 +510,64 @@ describe("POST /assets/ingest-report — an aborted upload", () => {
     expect(events).toHaveLength(2);
     expect(events[1]!.counts).toMatchObject({ running: 0, failed: 1 });
     expect(events[1]!.result).toBeUndefined();
+  });
+
+  it("leaves a registered upload alone when a later delivery reports it aborted", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    expect((await report(completed(key))).status).toBe(200);
+
+    // The browser did not hear that answer and asked the Worker to finish
+    // again. That delivery holds the same upload id, so it is granted the key,
+    // but this time it could not read the object back — so it reports
+    // aborted. What the earlier delivery registered stands.
+    const res = await report({
+      storage_key: key,
+      outcome: "aborted",
+      reason: "hashing failed",
+    });
+
+    expect(res.status).toBe(200);
+    const tasks = await sql<{ status: string }[]>`
+      SELECT status FROM node_tasks WHERE node_id = ${nodeId}
+    `;
+    expect(tasks[0]!.status).toBe("done");
+
+    // Two events: the one the ticket sent, and the one that settled the task.
+    // A third would mean this report announced something — and it has no hash
+    // to look the registered asset up by, so anything it announced would name
+    // a URL built from the key rather than the one in the ledger.
+    const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
+    const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
+    expect(events).toHaveLength(2);
+  });
+
+  it("still answers 200 when the node's counts could not be published", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    const res = await report({
+      storage_key: key,
+      outcome: "aborted",
+      reason: "parts_missing",
+    });
+    xadd.mockRestore();
+
+    // The grant is voided and the row is failed before that event is tried,
+    // and the event carries four numbers and no content. Opening the node's
+    // task list republishes them (design §4.6.4), so the answer to a request
+    // that already did its writing is not thrown away over it.
+    expect(res.status).toBe(200);
+    const grants = await sql<{ voided_at: Date | null }[]>`
+      SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).not.toBeNull();
   });
 });
 

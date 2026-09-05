@@ -14,12 +14,12 @@ import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
 /**
  * What to do about a failed upload.
  *
- * `serverKnows` — the ticket was granted, so a task row and its timer exist.
- * That row is going to reach an end whatever the browser does; keeping the
+ * `serverKnows` — the ticket was granted, so a task row exists, carrying its
+ * own budget. That row reaches an end whatever the browser does; keeping the
  * File under its id is what lets the row's own Retry re-send it.
  *
- * `nobodyKnows` — the ticket never was. No row, no grant, no timer: nothing
- * is coming to end this, so the empty node this drop created has no future.
+ * `nobodyKnows` — the ticket never was. No row and no grant: nothing on the
+ * server can end this, so the empty node this drop created has no future.
  */
 export type UploadFailurePlan =
   | {
