@@ -84,7 +84,9 @@ function wireHappyPath(parts: number, outcome: unknown): void {
     answers(200, { uploadId: 'upload-1', token: 'token-0' }),
   );
   for (let n = 1; n <= parts; n += 1) {
-    mockedRequest.mockResolvedValueOnce(answers(200, { token: `token-${n}` }));
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { token: `token-${n}`, partNumber: n, etag: `etag-${n}` }),
+    );
   }
   mockedRequest.mockResolvedValueOnce(answers(200, outcome));
 }
@@ -141,6 +143,32 @@ describe('sending a file to the ingest Worker', () => {
     );
     expect(headersOf(2)['x-upload-token']).toBe('token-1');
     expect(outcome).toEqual({ fileUrl: 'https://cdn/x.png', kind: 'image' });
+  });
+
+  // Nothing on the Worker's side remembers which parts landed, so finishing
+  // means handing back every receipt this upload collected (design §6.1).
+  it('hands back every part receipt when it asks to finish', async () => {
+    wireHappyPath(3, {});
+
+    await sendFileToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
+
+    // Call 0 opens, 1..3 are the parts, so 4 is the one that finishes.
+    const body = mockedRequest.mock.calls[4]?.[1]?.body;
+    expect(JSON.parse(body as string)).toEqual({
+      parts: [
+        { partNumber: 1, etag: 'etag-1' },
+        { partNumber: 2, etag: 'etag-2' },
+        { partNumber: 3, etag: 'etag-3' },
+      ],
+    });
+  });
+
+  it('says the body is JSON, so the Worker parses rather than guesses', async () => {
+    wireHappyPath(1, {});
+
+    await sendFileToIngest(fileOf(1024), ticketFor(1), cfg);
+
+    expect(headersOf(2)['content-type']).toBe('application/json');
   });
 });
 

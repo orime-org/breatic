@@ -268,12 +268,6 @@ async function queueVideoCover(
 }
 
 /**
- * Apply one report from the ingest Worker.
- * @param report - What the Worker says happened.
- * @returns What was decided, for the route to answer with.
- * @throws {NotFoundError} When the key names no grant we ever issued.
- */
-/**
  * Decide whether one multipart upload may finish on a key (#186, design §6.4).
  *
  * The ingest Worker asks this before it tells R2 to assemble the object,
@@ -291,6 +285,12 @@ export async function claimFinalize(params: {
   return claimFinalizeGrant(params);
 }
 
+/**
+ * Apply one report from the ingest Worker.
+ * @param report - What the Worker says happened.
+ * @returns What was decided, for the route to answer with.
+ * @throws {NotFoundError} When the key names no grant we ever issued.
+ */
 export async function applyIngestReport(
   report: IngestReport,
 ): Promise<IngestOutcome> {

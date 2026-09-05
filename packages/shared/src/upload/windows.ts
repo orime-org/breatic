@@ -103,11 +103,7 @@ export interface UploadWindows extends PartDeadlineConfig {
    * completing runs, so it has to outlast the longer of the two.
    */
   sessionTokenTtlSeconds: number;
-  /**
-   * How long a signed ticket stays usable. It has to run out before the
-   * Durable Object lets go of a finished upload, because letting go is also
-   * what makes the key look untouched again.
-   */
+  /** How long a signed ticket stays usable before the Worker refuses it. */
   ticketExpiresSeconds: number;
 }
 
@@ -157,17 +153,6 @@ export function assertUploadWindows(windows: UploadWindows): void {
       `session_token_ttl_seconds ${windows.sessionTokenTtlSeconds} is under ` +
         `the ${Math.ceil(mustOutlastMs / 1000)}s it has to outlast — one ` +
         `part's whole delivery chain, and the chain completing an upload runs`,
-    );
-  }
-  // Deleting what it knew is also what stops the Durable Object recognising
-  // the key as already used. A ticket that outlives that could open a second
-  // multipart upload over an object the ledger already describes, and the
-  // sha256 on that row would stop describing the bytes.
-  if (windows.ticketExpiresSeconds * 1000 >= mustOutlastMs) {
-    throw new Error(
-      `ticket_expires_seconds ${windows.ticketExpiresSeconds} outlives the ` +
-        `${Math.ceil(mustOutlastMs / 1000)}s a finished upload is remembered ` +
-        `for, so a ticket could reopen a key already registered`,
     );
   }
 }

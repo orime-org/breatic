@@ -82,6 +82,12 @@ export interface IngestOutcome {
   kind?: string;
 }
 
+/** What one part's write left behind: R2's receipt for it. */
+interface PartReceipt {
+  partNumber: number;
+  etag: string;
+}
+
 /** What opening an upload answers with. */
 interface OpenedUpload {
   uploadId: string;
@@ -91,9 +97,13 @@ interface OpenedUpload {
 /**
  * Send one file to the ingest Worker and complete it.
  *
+ * The receipts are collected on the way: the Worker keeps nothing between
+ * requests, so what it needs to assemble the object is the list this side
+ * built up (design §6.1).
+ *
  * Stops at the first step the Worker refuses. A part that never lands leaves
- * the upload incomplete, and the Worker's own alarm is what eventually settles
- * it — so there is nothing useful for this side to do past the refusal.
+ * the upload incomplete, and nothing here can finish it — the task's own
+ * budget is what settles that, when somebody opens the node's task list.
  * @param file - The file to upload.
  * @param ticket - What the ticket endpoint issued for it.
  * @param cfg - The upload knobs, which size the per-delivery deadlines.
@@ -110,13 +120,23 @@ export async function sendFileToIngest(
   const opened = await openUpload(ticket, cfg);
 
   let token = opened.token;
+  const parts: PartReceipt[] = [];
   for (let part = 1; part <= ticket.totalParts; part += 1) {
     const start = (part - 1) * ticket.partSize;
     const bytes = file.slice(start, start + ticket.partSize);
-    token = await sendPart(ticket, opened.uploadId, part, bytes, token, cfg);
+    const landed = await sendPart(
+      ticket,
+      opened.uploadId,
+      part,
+      bytes,
+      token,
+      cfg,
+    );
+    token = landed.token;
+    parts.push({ partNumber: landed.partNumber, etag: landed.etag });
   }
 
-  return completeUpload(ticket, opened.uploadId, token);
+  return completeUpload(ticket, opened.uploadId, token, parts);
 }
 
 /**
@@ -171,7 +191,7 @@ async function openUpload(
  * @param bytes - This part's bytes.
  * @param token - The token this part is authorised by.
  * @param cfg - The upload knobs.
- * @returns The token for the next part.
+ * @returns This part's receipt and the token for the next part.
  * @throws {UploadHttpError} When the Worker refuses the part.
  */
 async function sendPart(
@@ -181,8 +201,8 @@ async function sendPart(
   bytes: Blob,
   token: string,
   cfg: UploadClientConfig,
-): Promise<string> {
-  const answer = await askWorker<{ token: string }>(
+): Promise<PartReceipt & { token: string }> {
+  return askWorker<PartReceipt & { token: string }>(
     `${ticket.uploadUrl}/uploads/${uploadId}/parts/${part}`,
     { method: 'PUT', body: bytes, headers: { 'x-upload-token': token } },
     // The deadline is a stall guard sized to this part, not to the file: a
@@ -190,7 +210,6 @@ async function sendPart(
     // has stopped should not hold the upload for the whole file's budget.
     computePutTimeoutMs(bytes.size, cfg),
   );
-  return answer.token;
 }
 
 /**
@@ -198,6 +217,7 @@ async function sendPart(
  * @param ticket - The signed ticket.
  * @param uploadId - The upload to finish.
  * @param token - The most recently issued session token.
+ * @param parts - Every receipt this upload collected.
  * @returns What the server filed the upload as.
  * @throws {UploadHttpError} When the upload did not become an object.
  */
@@ -205,6 +225,7 @@ async function completeUpload(
   ticket: UploadTicket,
   uploadId: string,
   token: string,
+  parts: PartReceipt[],
 ): Promise<IngestOutcome> {
   // No deadline of its own. This request carries no bytes, and how long the
   // Worker spends reading the assembled object back to hash it happens inside
@@ -213,6 +234,13 @@ async function completeUpload(
   // the alarm reaches the same outcome on its own.
   return askWorker<IngestOutcome>(
     `${ticket.uploadUrl}/uploads/${uploadId}/complete`,
-    { method: 'POST', headers: { 'x-upload-token': token } },
+    {
+      method: 'POST',
+      headers: {
+        'x-upload-token': token,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ parts }),
+    },
   );
 }

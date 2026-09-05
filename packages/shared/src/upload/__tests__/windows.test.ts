@@ -183,15 +183,4 @@ describe("assertUploadWindows", () => {
     ).toThrow(/session_token_ttl_seconds/);
   });
 
-  // Letting go of a finished upload is also what stops the Durable Object
-  // recognising the key as used. A ticket still valid then could open a second
-  // multipart upload over an object the ledger already describes, leaving the
-  // sha256 on that row describing bytes that are gone.
-  it("refuses a ticket that outlives the memory of a finished upload", () => {
-    const past = Math.ceil(completeRetryBudgetMs() / 1000) + 1;
-
-    expect(() =>
-      assertUploadWindows(windows({ ticketExpiresSeconds: past })),
-    ).toThrow(/ticket_expires_seconds/);
-  });
 });
