@@ -286,3 +286,70 @@ describe('Enter on a selection that spans blocks', () => {
     expect(textsOf(editor)).toEqual(['aa', 'bb', '']);
   });
 });
+
+describe('Enter on a selection the caret did not make', () => {
+  // Round 2 of the implementation adversary, reported by five reviewers
+  // independently. Dropping the `!selectionEmpty` guard let the list's Enter
+  // claim the key on selection kinds `document-enter.ts` answers for: a
+  // whole-document selection and a node selection each have their own handler
+  // there, and neither is reached once the block under the anchor is a list
+  // item.
+
+  it('appends a block on a whole-document selection, leaving the text', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'shopping list' },
+      { type: 'bulletListItem', content: 'milk' },
+      { type: 'paragraph', content: 'note' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(() => { pressEnter(editor); }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['shopping list', 'milk', 'note', '']);
+  });
+
+  it('opens a block after a node-selected list item, leaving that item whole', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'aa' },
+      { type: 'paragraph', content: 'bb' },
+    ]);
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at === -1 && node.type.name === 'blockContainer') at = pos;
+      return at === -1;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+
+    expect(() => { pressEnter(editor); }).not.toThrow();
+    expect(typesOf(editor)).toEqual(['bulletListItem', 'paragraph', 'paragraph']);
+    expect(textsOf(editor)).toEqual(['aa', '', 'bb']);
+  });
+
+  it('replaces what is selected when the selection opens in an empty item', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: '' },
+      { type: 'paragraph', content: 'keep me' },
+    ]);
+    const view = editor.prosemirrorView!;
+    // From inside the empty item to the middle of the paragraph, the way a
+    // drag downwards makes it.
+    let from = -1;
+    let to = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'bulletListItem') from = pos + 1;
+      if (node.type.name === 'paragraph' && node.textContent === 'keep me') to = pos + 5;
+      return true;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.between(view.state.doc.resolve(from), view.state.doc.resolve(to)),
+      ),
+    );
+
+    expect(() => { pressEnter(editor); }).not.toThrow();
+    // The run that was highlighted is gone, which is what Enter over a
+    // selection does everywhere else.
+    expect(textsOf(editor).join('|')).not.toContain('keep');
+  });
+});

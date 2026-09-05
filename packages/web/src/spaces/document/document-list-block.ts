@@ -35,6 +35,7 @@ import {
   getPmSchema,
   updateBlockTr,
 } from '@blocknote/core';
+import { AllSelection, NodeSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 /** The block type this file rebuilds. */
@@ -85,14 +86,21 @@ export function splitCarryingQuote(
 /**
  * What Enter does inside a list item.
  *
- * An empty item leaves the list; anything else splits into another item of the
- * same kind, replacing whatever was selected. A rebuild of `handleEnter`,
- * which is internal.
+ * An empty item with the caret in it leaves the list; everything else splits
+ * into another item of the same kind, replacing whatever was selected. A
+ * rebuild of `handleEnter`, which is internal.
  *
- * A selected run reaches the same split, which it did not when this handler
+ * A selected run reaches that split, which it did not when this handler
  * declined the key over one: what ran in its place splits by the schema alone,
  * and the schema carries no `quoted` — so the half below the split came back a
  * plain paragraph, out of both the list and the quote it was written in.
+ *
+ * Two selection kinds are handed straight back, because `document-enter.ts`
+ * answers for them and its answer is the same whatever block they cover: a
+ * whole-document selection gets a block appended and the document left alone
+ * (`Enter is not a request to replace the document`), and a node selection
+ * gets a block opened after the one selected. Claiming those here deleted the
+ * document and the selected item respectively.
  * @param editor - The editor Enter was pressed in.
  * @param listItemType - The list block type this handler belongs to.
  * @returns Whether this handler claimed the key.
@@ -101,9 +109,17 @@ export function handleListEnter(
   editor: ListEditor,
   listItemType: string,
 ): boolean {
-  const blockInfo = editor.transact((tr) => getBlockInfoFromSelection(tr));
+  const { blockInfo, selection } = editor.transact((tr) => ({
+    blockInfo: getBlockInfoFromSelection(tr),
+    selection: {
+      ownedElsewhere:
+        tr.selection instanceof AllSelection ||
+        tr.selection instanceof NodeSelection,
+      caret: tr.selection.empty,
+    },
+  }));
 
-  if (!blockInfo.isBlockContainer) {
+  if (!blockInfo.isBlockContainer || selection.ownedElsewhere) {
     return false;
   }
   const { bnBlock, blockContent } = blockInfo;
@@ -111,7 +127,11 @@ export function handleListEnter(
     return false;
   }
 
-  if (blockContent.node.childCount === 0) {
+  // Leaving the list is what an empty item does for a caret. A selection that
+  // merely STARTS in one has content of its own to replace, and taking this
+  // branch would leave that content where it was while the item silently
+  // stopped being one.
+  if (selection.caret && blockContent.node.childCount === 0) {
     editor.transact((tr) => {
       updateBlockTr(tr, bnBlock.beforePos, { type: 'paragraph', props: {} });
     });
