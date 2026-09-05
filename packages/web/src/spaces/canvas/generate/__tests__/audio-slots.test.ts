@@ -89,3 +89,78 @@ describe('allSlotSpecs', () => {
     expect(allSlotSpecs().some((s) => s.field === 'refAudio')).toBe(true);
   });
 });
+
+/**
+ * The three music reference slots (#1960 A6).
+ *
+ * Reference to music takes a whole song, a vocal line and a backing track, and
+ * the vendor reads each under its own name. They ride the same registry as the
+ * voice sample so the two lookups above reach them for free — a slot missing
+ * from `slotForPurpose` wires an edge instead of filling the slot, and one
+ * missing from `allSlotSpecs` makes a still-held asset look unheld when its
+ * source node is deleted. Both failures compile.
+ */
+describe('the music reference slots', () => {
+  const MUSIC_SLOTS = ['musicSong', 'musicVoice', 'musicInstrumental'] as const;
+
+  it('takes an audio node in each, under the name the vendor reads', () => {
+    // minimax/music-01 names them `song`, `voice` and `instrumental`
+    // (measured against the gateway 2026-09-05).
+    expect(AUDIO_SLOTS.musicSong.param).toBe('song');
+    expect(AUDIO_SLOTS.musicVoice.param).toBe('voice');
+    expect(AUDIO_SLOTS.musicInstrumental.param).toBe('instrumental');
+    for (const slot of MUSIC_SLOTS) {
+      expect(AUDIO_SLOTS[slot].accepts, slot).toBe('audio');
+    }
+  });
+
+  it('names its node field after itself, as the voice sample does', () => {
+    for (const slot of MUSIC_SLOTS) {
+      expect(AUDIO_SLOTS[slot].field, slot).toBe(slot);
+      expect(AUDIO_SLOTS[slot].purpose, slot).toBe(slot);
+    }
+  });
+
+  it('stores a cover alongside the URL, since audio paints no thumbnail', () => {
+    for (const slot of MUSIC_SLOTS) {
+      expect(AUDIO_SLOTS[slot].storesCover, slot).toBe(true);
+    }
+  });
+
+  it('gives each one its own test ids, so the three are distinguishable', () => {
+    const ids = MUSIC_SLOTS.flatMap((slot) => [
+      AUDIO_SLOTS[slot].testId,
+      AUDIO_SLOTS[slot].thumbnailTestId,
+      AUDIO_SLOTS[slot].clearTestId,
+    ]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('names messages all five catalogs answer', () => {
+    for (const slot of MUSIC_SLOTS) {
+      const spec = AUDIO_SLOTS[slot];
+      const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey, spec.errorKey];
+      for (const [locale, catalog] of LOCALE_CATALOGS) {
+        for (const key of keys) {
+          expect(
+            readPath(catalog, key),
+            `${locale} is missing ${key}`,
+          ).toBeTypeOf('string');
+        }
+      }
+    }
+  });
+
+  it('reaches slotForPurpose, the lookup whose wrong answer is silent', () => {
+    for (const slot of MUSIC_SLOTS) {
+      expect(slotForPurpose(slot), slot).toBe(slot);
+    }
+  });
+
+  it('reaches allSlotSpecs, which the delete accounting walks', () => {
+    const fields = allSlotSpecs().map((s) => s.field);
+    for (const slot of MUSIC_SLOTS) {
+      expect(fields, slot).toContain(slot);
+    }
+  });
+});
