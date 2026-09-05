@@ -22,7 +22,7 @@
  * — falls straight through.
  */
 
-import { createExtension, getBlockInfoFromSelection } from '@blocknote/core';
+import { createExtension, getBlockInfoAtNearest } from '@blocknote/core';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
@@ -90,7 +90,11 @@ function openQuotedBlockAfter(
  */
 function handleQuotedEnter(editor: ListEditor): boolean {
   return editor.transact((tr) => {
-    const info = getBlockInfoFromSelection(tr);
+    // Read at `from`, the end of the selection the cut falls on. Asking the
+    // selection instead reads its ANCHOR — the end the drag started at — so
+    // the same highlight named a different block depending on which way it
+    // was drawn, and the quote test below answered for the wrong one.
+    const info = getBlockInfoAtNearest(tr, tr.selection.from);
     if (!info.isBlockContainer) {
       return false;
     }

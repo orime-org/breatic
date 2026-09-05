@@ -30,6 +30,7 @@ import {
   createExtension,
   defaultBlockSpecs,
   getBlockInfo,
+  getBlockInfoAtNearest,
   getBlockInfoFromSelection,
   getNearestBlockPos,
   getPmSchema,
@@ -63,9 +64,7 @@ export interface ListEditor {
  * Carrying the props is also what carries the TEXT: `tr.split` puts everything
  * past the cut in the new block, so at the very start of a block that new one
  * holds the writer's own line and has to arrive as the line they had — with
- * its tick, its pinned number, its list's start. A heading outside a quote,
- * the one shape no handler here claims, is the measure: BlockNote's own Enter
- * brings it through with all of them.
+ * its tick, its pinned number, its list's start.
  *
  * The quote rides across either way, which is the one place this parts from
  * the original: a quote is a prop on each block here, so a block split off a
@@ -88,13 +87,12 @@ export function splitCarryingQuote(
   }
   const schema = getPmSchema(tr);
   const content = info.blockContent.node;
-  const carried = keepProps ? { ...content.attrs } : {};
   tr.split(posInBlock, 2, [
     { type: info.bnBlock.node.type, attrs: {} },
     {
       type: keepType ? content.type : schema.nodes['paragraph'],
       attrs: keepProps
-        ? carried
+        ? { ...content.attrs }
         : { [QUOTED]: content.attrs[QUOTED] },
     },
   ]);
@@ -127,8 +125,12 @@ export function handleListEnter(
   editor: ListEditor,
   listItemType: string,
 ): boolean {
+  // Read at `from`, the end of the selection the cut falls on. Asking the
+  // selection instead reads its ANCHOR — the end the drag started at — so the
+  // same highlight named a different block depending on which way it was
+  // drawn, and this handler declined a key it should have claimed.
   const { blockInfo, selection } = editor.transact((tr) => ({
-    blockInfo: getBlockInfoFromSelection(tr),
+    blockInfo: getBlockInfoAtNearest(tr, tr.selection.from),
     selection: {
       ownedElsewhere:
         tr.selection instanceof AllSelection ||

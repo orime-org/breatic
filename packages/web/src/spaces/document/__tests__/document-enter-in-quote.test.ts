@@ -185,27 +185,26 @@ describe('Enter at the end of a quoted line', () => {
 
   it('answers a selection the same way whichever end it was drawn from', () => {
     // `Selection.anchor` is the end the drag started at, so it swaps with the
-    // direction; the cut is at `from`, which does not. Measured while the
-    // split asked the anchor: the same highlight over `abcd` gave a ticked
-    // task back unticked when drawn right to left, and turned a level 2
-    // heading into a paragraph.
+    // direction; the cut is at `from`, which does not. Both ends sit in one
+    // block here, so what this pins is the cut itself: the highlight opens at
+    // offset 0, so the text goes to the new block and that block arrives as
+    // the line the reader had. Measured while the split asked the anchor, a
+    // ticked task came back unticked when drawn right to left.
     const CASES = [
-      { type: 'checkListItem', props: { checked: true }, prop: 'checked' },
-      { type: 'numberedListItem', props: { start: 5 }, prop: 'start' },
-      { type: 'heading', props: { level: 2, quoted: true }, prop: 'level' },
+      { type: 'checkListItem', props: { checked: true }, prop: 'checked', want: true },
+      { type: 'numberedListItem', props: { start: 5 }, prop: 'start', want: 5 },
+      { type: 'heading', props: { level: 2, quoted: true }, prop: 'level', want: 2 },
     ] as const;
 
-    for (const { type, props, prop } of CASES) {
-      const drawn = ([false, true] as const).map((backwards) => {
+    for (const { type, props, prop, want } of CASES) {
+      for (const backwards of [false, true] as const) {
         const editor = open([{ type, props, content: 'abcd' }]);
         const view = editor.prosemirrorView;
-        const at = view.state.doc.resolve(0);
         let start = 0;
         view.state.doc.descendants((node, pos) => {
           if (node.isTextblock && start === 0) start = pos + 1;
           return true;
         });
-        void at;
         const stop = start + 2;
         editor.transact((tr) => {
           tr.setSelection(
@@ -217,11 +216,61 @@ describe('Enter at the end of a quoted line', () => {
           );
         });
         pressEnter(editor);
-        const blocks = blocksOf(editor);
-        return { type: blocks[1]?.type, value: blocks[1]?.props[prop] };
-      });
 
-      expect(drawn[1], `${type}: drawn right to left`).toEqual(drawn[0]);
+        const drawn = backwards ? 'right to left' : 'left to right';
+        const blocks = blocksOf(editor);
+        expect(blocks, `${type}: ${drawn}`).toHaveLength(2);
+        expect(blocks[1]?.type, `${type}: ${drawn}`).toBe(type);
+        expect(blocks[1]?.props[prop], `${type}: ${drawn}`).toBe(want);
+      }
+    }
+  });
+
+  it('answers a selection running past its first block the same way too', () => {
+    // Which BLOCK a handler is answering for is read off the selection as
+    // well, and reading it there reads the anchor: drawn right to left over
+    // two blocks, the ticked task and the unordered item both had their key
+    // declined and came back split into a plain paragraph, out of the list,
+    // and a quoted line came back out of the quote.
+    const CASES = [
+      { type: 'checkListItem', props: { checked: true } },
+      { type: 'bulletListItem', props: {} },
+      { type: 'paragraph', props: { quoted: true } },
+    ] as const;
+
+    for (const { type, props } of CASES) {
+      for (const backwards of [false, true] as const) {
+        const editor = open([
+          { type, props, content: 'abcd' },
+          { type: 'paragraph', content: 'efgh' },
+        ]);
+        const view = editor.prosemirrorView;
+        const spots: number[] = [];
+        view.state.doc.descendants((node, pos) => {
+          if (node.isTextblock) spots.push(pos + 1);
+          return true;
+        });
+        const start = spots[0] + 2;
+        const stop = spots[1] + 2;
+        editor.transact((tr) => {
+          tr.setSelection(
+            TextSelection.create(
+              tr.doc,
+              backwards ? stop : start,
+              backwards ? start : stop,
+            ),
+          );
+        });
+        pressEnter(editor);
+
+        const drawn = backwards ? 'right to left' : 'left to right';
+        const blocks = blocksOf(editor);
+        expect(blocks, `${type}: ${drawn}`).toHaveLength(2);
+        expect(blocks[1]?.type, `${type}: ${drawn}`).toBe(type);
+        expect(blocks[1]?.props['quoted'], `${type}: ${drawn}`).toBe(
+          props['quoted' as keyof typeof props] === true,
+        );
+      }
     }
   });
 
