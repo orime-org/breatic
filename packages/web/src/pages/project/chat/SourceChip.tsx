@@ -98,9 +98,10 @@ export const SourceChip = React.memo(function SourceChip({
               // the line it sits in, and a number is as short as it gets.
               ? 'h-[18px] shrink-0 rounded-full py-0 pl-[3px] pr-[5px] align-baseline'
               // A chip in the row gives way instead. Publishers' names are
-              // whatever length they are and the column goes down to 320, so
-              // chips that refused to shrink were simply cut off by the row --
-              // along with the button that opens the rest.
+              // whatever length they are, and the first pass draws them all
+              // before the row has been measured; `min-w-0` is what lets that
+              // pass fit inside the row, so the widths it reads are real
+              // numbers rather than a strip running off the edge.
               : 'h-[var(--btn-compact)] min-w-0 rounded-chrome px-2 text-xs',
           )}
         >
