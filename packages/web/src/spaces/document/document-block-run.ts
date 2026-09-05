@@ -34,23 +34,16 @@ import {
 } from '@web/spaces/document/document-list-block';
 import {
   LEVEL_OF_ROW,
+  TYPE_OF_ROW,
   tickedOver,
   type BlockTypeId,
+  type TypeRow,
 } from '@web/spaces/document/document-block-ticks';
 
 /** What the editor object offers this file. */
 export interface RunEditor {
   transact: <T>(run: (tr: Transaction) => T) => T;
 }
-
-/** The block type each non-heading row turns a block into. */
-const TYPE_OF_ROW: Readonly<Partial<Record<BlockTypeId, string>>> = {
-  paragraph: 'paragraph',
-  'bullet-list': 'bulletListItem',
-  'ordered-list': ORDERED_LIST,
-  'task-list': 'checkListItem',
-  'code-block': 'codeBlock',
-};
 
 /** The rows that are a list, and so have something to cancel. */
 const LIST_ROWS: ReadonlySet<BlockTypeId> = new Set<BlockTypeId>([
@@ -140,7 +133,9 @@ function updateFor(
   if (id === 'ordered-list' && content.type.name === 'heading') {
     return { type: 'heading', props: { numbered: true } };
   }
-  return { type: TYPE_OF_ROW[id]!, props: {} };
+  // Quote returned at the top and the three headings just above, so what is
+  // left is exactly what `TYPE_OF_ROW` is total over — no assertion needed.
+  return { type: TYPE_OF_ROW[id as TypeRow], props: {} };
 }
 
 /**

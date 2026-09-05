@@ -215,7 +215,7 @@ function SlotShell({
  * The block type slot.
  *
  * Its icon tracks the current block (user 2026-08-26); the menu's nine rows
- * follow the demo's block type menu, eight of them carrying a shortcut column.
+ * follow the demo's block type menu, each carrying a shortcut column.
  * @param props - See {@link SlotProps}.
  * @returns The slot.
  */

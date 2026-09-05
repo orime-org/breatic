@@ -55,8 +55,8 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
  * @returns The decorations for this document.
  */
 function blockDecorations(doc: PMNode): DecorationSet {
-  // Read once and handed on: both what a run's ends are marked with and how a
-  // numbered heading restarts inside one are drawn from the same walk.
+  // One walk: the run ends are marked from it, and a list inside a run
+  // starts over from it (§3.4).
   const runs = quoteRuns(doc);
   const numbers = computeNumbering(doc, runs);
   const opens = new Set<string>();

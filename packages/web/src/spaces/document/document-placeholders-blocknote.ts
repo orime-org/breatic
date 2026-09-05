@@ -34,7 +34,7 @@
  *
  * The string is read per render rather than captured once, because the editor
  * is built once per document and would otherwise keep whichever language was
- * active at that moment. Asking for the redraw is `locale-redraw`'s job: an
+ * active at that moment. Asking for the redraw is `document-locale-redraw`'s job: an
  * attribute is recomputed only when something dispatches, and switching
  * language dispatches nothing.
  */

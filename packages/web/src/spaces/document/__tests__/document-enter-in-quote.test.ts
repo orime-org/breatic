@@ -191,9 +191,6 @@ describe('Enter over a selection that opens in an empty quoted block', () => {
     });
 
     expect(() => pressEnter(editor)).not.toThrow();
-    const text = blocksOf(editor)
-      .map((block) => JSON.stringify(block.content))
-      .join('|');
-    expect(text).not.toContain('keep');
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('keep');
   });
 });

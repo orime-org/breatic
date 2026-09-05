@@ -22,6 +22,8 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
+import { ORDERED_LIST } from '@web/spaces/document/document-list-block';
+
 /** The nine rows the menu offers. */
 export type BlockTypeId =
   | 'paragraph'
@@ -70,12 +72,22 @@ export const CONTENT_ROWS: readonly BlockTypeId[] = ROWS.filter(
 export type BlockTypeDimension = 'type' | 'numbered' | 'quoted';
 
 /**
- * What each row sets, which is what groups the menu (user 2026-09-02).
+ * A row that names a block type, which is the seven minus the headings.
  *
- * Rows sharing a dimension are alternatives to each other; rows in different
- * dimensions hold at the same time, which is why a heading can carry a number
- * and why either can sit inside a quote. `isRow` below reads exactly these
- * three properties, one branch per dimension.
+ * A heading's row does not name a type: all three become `heading` and differ
+ * by level, which `LEVEL_OF_ROW` below carries.
+ */
+export type TypeRow = Exclude<
+  BlockTypeId,
+  'heading-1' | 'heading-2' | 'heading-3' | 'quote'
+>;
+
+/**
+ * Which of the menu's three groups a row is in (user 2026-09-02).
+ *
+ * The seven that set the block's type exclude one another. Ordered coexists
+ * with a heading and replaces any other type (§3.1). Quote coexists with all
+ * of them.
  *
  * A total record rather than a partial one: adding a tenth row leaves this
  * failing to compile until the row says which of the three it sets, and the
@@ -93,14 +105,26 @@ export const DIMENSION_OF_ROW: Readonly<Record<BlockTypeId, BlockTypeDimension>>
   quote: 'quoted',
 };
 
-/** The row each plain block type stands for. */
-const ROW_OF_TYPE: Readonly<Record<string, BlockTypeId>> = {
+/**
+ * The block type each non-heading row turns a block into.
+ *
+ * Total over the rows that name a block type, so a tenth row of that kind
+ * leaves this failing to compile until it says what it becomes. Exported
+ * because `document-block-run.ts` writes what `ROW_OF_TYPE` below reads: one
+ * table, so the two cannot drift apart.
+ */
+export const TYPE_OF_ROW: Readonly<Record<TypeRow, string>> = {
   paragraph: 'paragraph',
-  codeBlock: 'code-block',
-  bulletListItem: 'bullet-list',
-  numberedListItem: 'ordered-list',
-  checkListItem: 'task-list',
+  'code-block': 'codeBlock',
+  'bullet-list': 'bulletListItem',
+  'ordered-list': ORDERED_LIST,
+  'task-list': 'checkListItem',
 };
+
+/** The row each plain block type stands for, read off the table above. */
+const ROW_OF_TYPE: Readonly<Record<string, BlockTypeId>> = Object.fromEntries(
+  Object.entries(TYPE_OF_ROW).map(([row, type]) => [type, row]),
+) as Readonly<Record<string, BlockTypeId>>;
 
 /**
  * The heading level each heading row stands for.

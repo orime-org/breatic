@@ -27,13 +27,18 @@ import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
 import {
-  handleListEnter,
   QUOTED,
   splitCarryingQuote,
   type ListEditor,
 } from '@web/spaces/document/document-list-block';
 
-/** The three block types that answer Enter with a list handler of their own. */
+/**
+ * The three block types that answer Enter with a handler of their own.
+ *
+ * Each of them registers that handler with the block, and a block's keymap is
+ * reached before the one this file adds — so by the time Enter arrives here
+ * over a list item, that handler has already declined it.
+ */
 const LIST_ITEM_TYPES = [
   'numberedListItem',
   'bulletListItem',
@@ -93,8 +98,8 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     const type = blockContent.node.type.name;
 
     if (LIST_ITEM_TYPES.some((listType) => listType === type)) {
-      // The list handlers already carry the quote across; they also answer
-      // Enter on an empty item by leaving the list, which is their own rule.
+      // A list item's own handler has already had this key and declined it,
+      // and the quote is one of the things it carries across itself.
       return false;
     }
     if (blockContent.node.attrs[QUOTED] !== true) {
@@ -193,9 +198,10 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
 /**
  * The extension that binds Enter for the whole document.
  *
- * The three list types are handled here rather than in each block's own
- * extension, so that one file decides what Enter does; the built-in list
- * bindings still exist and are overridden by this one.
+ * Reached after the block's own keymap, which the three list types register
+ * their handler with. What this file answers is what no block can: the two
+ * selection kinds that are not resolved inside any block, and the quote,
+ * which is a prop rather than a block type.
  */
 export const documentEnterExtension = createExtension(() => ({
   key: 'document-enter',
@@ -207,13 +213,6 @@ export const documentEnterExtension = createExtension(() => ({
       }
       if (selection instanceof NodeSelection) {
         return handleWholeBlockEnter(editor);
-      }
-      const type = editor.transact(
-        (tr) => getBlockInfoFromSelection(tr).blockNoteType,
-      );
-      const listType = LIST_ITEM_TYPES.find((each) => each === type);
-      if (listType !== undefined) {
-        return handleListEnter(editor, listType);
       }
       return handleQuotedEnter(editor);
     },
