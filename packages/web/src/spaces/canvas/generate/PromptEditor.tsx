@@ -66,6 +66,16 @@ interface PromptEditorProps {
    * Defaults to the prompt's own id, so the panels mounting one keep theirs.
    */
   testId?: string;
+  /**
+   * How tall the box opens before anything is typed (#1960).
+   *
+   * `full` is four lines of text-sm, the floor every prompt box has had since
+   * user 2026-07-12 P6. `half` is two, for a box that asks for a line or two
+   * rather than a passage — the music modes' style brief beside a lyrics box
+   * holding a whole song. Both grow with what is typed and cap at the same
+   * ceiling; this is where each starts.
+   */
+  startingHeight?: 'full' | 'half';
   /** Placeholder shown while the prompt is empty. */
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
@@ -138,6 +148,7 @@ export const PromptEditor = React.forwardRef<
     mentionNoMatchLabel,
     caretProvider = null,
     testId = 'generate-prompt-editor',
+    startingHeight = 'full',
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -412,7 +423,10 @@ export const PromptEditor = React.forwardRef<
         // top gap is needed and the prompt keeps its original edges.
         // The placeholder itself is drawn by a rule in index.css, shared with
         // every other editor that installs the extension.
-        'max-h-40 min-h-[6.5rem] px-2.5 py-2 [&_.ProseMirror]:min-h-[5.25rem] [&_.ProseMirror]:outline-none' +
+        (startingHeight === 'half'
+          ? 'min-h-[3.25rem] [&_.ProseMirror]:min-h-[2.625rem] '
+          : 'min-h-[6.5rem] [&_.ProseMirror]:min-h-[5.25rem] ') +
+        'max-h-40 px-2.5 py-2 [&_.ProseMirror]:outline-none' +
         dimReferences
       }
     >

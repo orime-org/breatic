@@ -552,6 +552,9 @@ function AudioGeneratePanelBody({
       fragment ? (
         <PromptEditor
           ref={promptEditorRef}
+          // Half height beside a lyrics box: a style brief is a line or two,
+          // and the box grows with whatever is typed into it either way.
+          startingHeight={lyrics === undefined ? 'full' : 'half'}
           fragment={fragment}
           placeholder={promptPlaceholder}
           onTextChange={onPromptChange}
@@ -576,6 +579,7 @@ function AudioGeneratePanelBody({
       mentionEmptyLabel,
       mentionNoMatchLabel,
       caretProvider,
+      lyrics,
       promptEditorRef,
     ],
   );

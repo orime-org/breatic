@@ -606,6 +606,25 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
     lyrics.locator('[data-placeholder]').first(),
   ).toHaveAttribute('data-placeholder', /lyric/i);
 
+  // The style box opens at half the lyrics box's height (user 2026-09-05): a
+  // brief is a line or two of words, and the words to sing are a whole song.
+  // Both grow as they are typed into and cap at the same ceiling; what differs
+  // is where each one starts.
+  const heights = await page.evaluate(() => {
+    const h = (id: string) =>
+      Math.round(
+        document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect().height ?? 0,
+      );
+    return { style: h('generate-prompt-editor'), lyrics: h('generate-lyrics-editor') };
+  });
+  expect(heights.lyrics).toBeGreaterThan(0);
+  expect(heights.style).toBeGreaterThan(0);
+  // 60 against 106 measured 2026-09-05. A band rather than the two numbers:
+  // both floors are stated in rem and the ratio is what was asked for, so a
+  // type-scale change moves both and this still holds.
+  expect(heights.style / heights.lyrics).toBeGreaterThan(0.4);
+  expect(heights.style / heights.lyrics).toBeLessThan(0.62);
+
   // Nothing here picks a voice, clones one, or collects a reference: the mode
   // states its slots and this one states none.
   await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
