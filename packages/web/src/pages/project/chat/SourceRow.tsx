@@ -7,7 +7,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
+import { ReplyBox } from '@web/pages/project/chat/ReplyBox';
 import { fitsInRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
 import { SourceChip } from '@web/pages/project/chat/SourceChip';
 import type { ChatSource } from '@web/pages/project/chat/types';
@@ -102,7 +102,7 @@ interface SourceBoxProps {
 function SourceBox({ sources, open, onOpenChange }: SourceBoxProps): React.JSX.Element {
   const t = useTranslation();
   return (
-    <ColumnBox
+    <ReplyBox
       open={open}
       onOpenChange={onOpenChange}
       testId='source-box'
@@ -125,6 +125,6 @@ function SourceBox({ sources, open, onOpenChange }: SourceBoxProps): React.JSX.E
           ))}
         </div>
       </ScrollArea>
-    </ColumnBox>
+    </ReplyBox>
   );
 }

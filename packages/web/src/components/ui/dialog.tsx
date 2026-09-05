@@ -55,25 +55,12 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-interface DialogContentProps
-  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
-  /**
-   * Where to put the dialog, when the middle of the window is the wrong
-   * place for it. Given a positioned element, the dialog can be laid out
-   * against that element instead — pass the geometry through `className`
-   * and `overlayClassName`, which override the defaults below.
-   */
-  container?: HTMLElement | null;
-  /** Styles the backdrop, for the same reason as `container`. */
-  overlayClassName?: string;
-}
-
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  DialogContentProps
->(({ className, children, container, overlayClassName, ...props }, ref) => (
-  <DialogPortal container={container ?? undefined}>
-    <DialogOverlay className={overlayClassName} />
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <DialogPortal>
+    <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(

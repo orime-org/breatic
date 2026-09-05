@@ -12,33 +12,16 @@ import {
 import { useReturnFocus } from '@web/lib/overlay-focus';
 
 /**
- * The Agent column, for anything that has to be laid out against it.
+ * The size the boxes a reply opens are drawn at.
  *
- * A dialog is portalled out of the tree it was written in, so the element it
- * lands in is what decides where it can be. Passing the column down as a prop
- * would mean threading it through every bubble and every part in one, for a
- * thing only the boxes below ask for.
+ * 520 is the width this project's dialogs are already drawn at; the height is
+ * this box's own, chosen for the stage a picture is shown on and the list of
+ * sources that shares the component. The viewport cap stops a window shorter
+ * than 560 from putting the footer past the bottom edge.
  */
-const ColumnElement = React.createContext<HTMLElement | null>(null);
+const BOX_SIZE = 'h-[560px] max-h-[calc(100vh-2rem)] w-[520px]';
 
-/**
- * Publish the column so the boxes in it can cover it.
- * @param root0 - The component props.
- * @param root0.element - The column, once it is in the document.
- * @param root0.children - The column's contents.
- * @returns The children, with the column available to them.
- */
-export function ColumnBoxHost({
-  element,
-  children,
-}: {
-  element: HTMLElement | null;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return <ColumnElement.Provider value={element}>{children}</ColumnElement.Provider>;
-}
-
-interface ColumnBoxProps {
+interface ReplyBoxProps {
   /** Whether the box is up. */
   open: boolean;
   /** Called when the reader shuts it -- Escape, the backdrop, or the button. */
@@ -54,18 +37,15 @@ interface ColumnBoxProps {
 }
 
 /**
- * A box over the Agent column, for the things a reply found.
+ * A box for the things a reply found.
  *
- * Over the column rather than over the window, which is what the demo shows:
- * the reader opened it from something in this column and what is behind it is
- * the rest of the same reply. That is the whole of the difference from the
- * project's ordinary dialog, so the geometry is all this passes -- Escape,
- * the backdrop, the focus trap and the return of focus afterwards are the
- * primitive's, and they are the reason a box drawn by hand was wrong.
- *
- * Falls back to the middle of the window if the column has not been published
- * yet: a box the reader asked for and cannot see is worse than one in the
- * wrong place.
+ * One size whatever the agent column is doing: what the reader opened it from
+ * is in that column, and the thing they opened it to look at is not -- a
+ * picture at full size and a list of addresses each want the room they want.
+ * That is the whole of the difference from the project's ordinary dialog, so
+ * the size is all this passes; Escape, the backdrop, the focus trap and the
+ * return of focus afterwards are the primitive's, and they are the reason a
+ * box drawn by hand was wrong.
  * @param root0 - The component props.
  * @param root0.open - Whether the box is up.
  * @param root0.onOpenChange - Called when the reader shuts it.
@@ -75,28 +55,21 @@ interface ColumnBoxProps {
  * @param root0.footer - An optional strip along the bottom.
  * @returns The box.
  */
-export function ColumnBox({
+export function ReplyBox({
   open,
   onOpenChange,
   title,
   testId,
   children,
   footer,
-}: ColumnBoxProps): React.JSX.Element {
-  const column = React.useContext(ColumnElement);
+}: ReplyBoxProps): React.JSX.Element {
   const returnFocus = useReturnFocus(open);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-testid={testId}
         onCloseAutoFocus={returnFocus}
-        container={column}
-        overlayClassName={column === null ? undefined : 'absolute'}
-        className={
-          column === null
-            ? 'max-h-[80vh]'
-            : 'absolute inset-4 w-auto max-w-none translate-x-0 translate-y-0 bg-popover shadow-lg'
-        }
+        className={BOX_SIZE}
       >
         <DialogHeader>
           <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>

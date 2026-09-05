@@ -153,6 +153,20 @@ describe('the row of assets', () => {
     expect(screen.getAllByTestId('asset-box-thumb')[0]).toHaveAttribute('aria-current', 'true');
   });
 
+  it('is the same size whatever the column around it is doing', async () => {
+    // The box a reply opens stands on its own: user 2026-09-05 settled that it
+    // is not laid out against the agent column, so nothing about the column
+    // reaches its geometry.
+    render(<MessageBubble message={withImages(3)} />);
+
+    await userEvent.click(screen.getAllByTestId('asset-thumb')[0]!);
+
+    const box = screen.getByTestId('asset-box');
+    expect(box.className).toMatch(/w-\[520px\]/);
+    expect(box.className).toMatch(/h-\[560px\]/);
+    expect(box.className).not.toMatch(/inset-4/);
+  });
+
   it('opens at the first one behind the button, not back at the start', async () => {
     render(<MessageBubble message={withImages(8)} />);
 

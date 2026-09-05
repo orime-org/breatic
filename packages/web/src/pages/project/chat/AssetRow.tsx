@@ -9,7 +9,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import { ColumnBox } from '@web/pages/project/chat/ColumnBox';
+import { ReplyBox } from '@web/pages/project/chat/ReplyBox';
 import { fitsInRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
 import type { ChatAsset } from '@web/pages/project/chat/types';
 
@@ -179,7 +179,7 @@ interface AssetBoxProps {
 function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Element {
   const current = at === null ? undefined : assets[Math.min(at, assets.length - 1)];
   return (
-    <ColumnBox
+    <ReplyBox
       open={at !== null}
       onOpenChange={onClose}
       testId='asset-box'
@@ -233,6 +233,6 @@ function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Ele
           <img src={current.url} alt={current.title} className='max-h-full max-w-full object-contain' />
         )}
       </div>
-    </ColumnBox>
+    </ReplyBox>
   );
 }
