@@ -51,14 +51,6 @@ export interface ListEditor {
 }
 
 /**
- * The prop that pins a number to the item the user set it on.
- *
- * It is the one thing a split does not carry: the number belongs to that
- * item, and the one after it counts along.
- */
-const PINNED_NUMBER = 'number';
-
-/**
  * Splits the block at a position, carrying the quote into the new one.
  *
  * A rebuild of `splitBlockTr`, which `@blocknote/core` keeps to itself while
@@ -69,8 +61,12 @@ const PINNED_NUMBER = 'number';
  * keeps the type and takes no props — and answering them with one value gave
  * a ticked to-do a ticked one after it.
  *
- * A split that carries the props leaves the pinned number behind: that number
- * belongs to the item the writer set it on, and the one after it counts along.
+ * Carrying the props is also what carries the TEXT: `tr.split` puts everything
+ * past the cut in the new block, so at the very start of a block that new one
+ * holds the writer's own line and has to arrive as the line they had — with
+ * its tick, its pinned number, its list's start. A heading outside a quote,
+ * the one shape no handler here claims, is the measure: BlockNote's own Enter
+ * brings it through with all of them.
  *
  * The quote rides across either way, which is the one place this parts from
  * the original: a quote is a prop on each block here, so a block split off a
@@ -93,9 +89,7 @@ export function splitCarryingQuote(
   }
   const schema = getPmSchema(tr);
   const content = info.blockContent.node;
-  const carried = keepProps
-    ? { ...content.attrs, [PINNED_NUMBER]: undefined }
-    : {};
+  const carried = keepProps ? { ...content.attrs } : {};
   tr.split(posInBlock, 2, [
     { type: info.bnBlock.node.type, attrs: {} },
     {
@@ -162,9 +156,12 @@ export function handleListEnter(
   }
 
   return editor.transact((tr) => {
+    // At the very start of an item the split hands the text to the new block,
+    // so that block takes the props along with it.
+    const atStart = tr.selection.$anchor.parentOffset === 0;
     tr.deleteSelection();
     tr.scrollIntoView();
-    return splitCarryingQuote(tr, tr.selection.from);
+    return splitCarryingQuote(tr, tr.selection.from, true, atStart);
   });
 }
 
@@ -265,15 +262,15 @@ export function buildListItemSpecs(): {
   return {
     numberedListItem: {
       ...defaultBlockSpecs.numberedListItem,
-      extensions: [buildListExtension(ordered!)],
+      extensions: [buildListExtension(ordered)],
     },
     bulletListItem: {
       ...defaultBlockSpecs.bulletListItem,
-      extensions: [buildListExtension(bullet!)],
+      extensions: [buildListExtension(bullet)],
     },
     checkListItem: {
       ...defaultBlockSpecs.checkListItem,
-      extensions: [buildListExtension(check!)],
+      extensions: [buildListExtension(check)],
     },
   };
 }

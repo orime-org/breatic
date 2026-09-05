@@ -307,6 +307,56 @@ test.describe('a run of quoted blocks', () => {
     ).toBeLessThan(1);
   });
 
+  test('keeps those edges when the run OPENS on a heading (A8b)', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('a plain line');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('a quoted heading');
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await expect(page.locator(QUOTED)).toHaveCount(1, { timeout: 10_000 });
+    await page.keyboard.press(`${MOD}+Alt+1`);
+    await expect(
+      page.locator(`${QUOTED}[data-content-type="heading"]`),
+    ).toHaveCount(1, { timeout: 10_000 });
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('quoted two');
+    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
+    await page.keyboard.press('Enter');
+    await page.keyboard.press(`${MOD}+Shift+B`);
+    await page.keyboard.type('a plain line below');
+    await expect(page.locator(QUOTED)).toHaveCount(2, { timeout: 10_000 });
+
+    const edges = await page.evaluate(
+      ({ editor, quoted }) => {
+        const all = [...document.querySelectorAll(`${editor} .bn-block-content`)];
+        const marks = [...document.querySelectorAll(quoted)];
+        const first = all.indexOf(marks[0] as Element);
+        const last = all.indexOf(marks[marks.length - 1] as Element);
+        const box = (element: Element | undefined): DOMRect | null =>
+          element === undefined ? null : element.getBoundingClientRect();
+        const above = box(all[first - 1]);
+        const below = box(all[last + 1]);
+        return {
+          opensOnHeading:
+            (all[first] as Element).getAttribute('data-content-type') ===
+            'heading',
+          above: above === null ? null : box(all[first])!.top - above.bottom,
+          below: below === null ? null : below.top - box(all[last])!.bottom,
+        };
+      },
+      { editor: EDITOR, quoted: QUOTED },
+    );
+
+    expect(edges.opensOnHeading, 'the run opens on a heading').toBe(true);
+    // The other half of the pair the case above measures. Written in bare `em`
+    // this edge resolved against the heading: 26.39px over the run against
+    // 16.5px under it.
+    expect(
+      Math.abs((edges.below as number) - (edges.above as number)),
+      `above ${String(edges.above)}px, below ${String(edges.below)}px`,
+    ).toBeLessThan(1);
+  });
+
   test('keeps those edges when the run ends inside an indent (A8b)', async () => {
     await openFreshDocument(page);
     // Built block by block: a select-all here swallows the document on the

@@ -138,23 +138,47 @@ describe('Enter at the end of a quoted line', () => {
   });
 
   it('opens an unticked to-do after a ticked one', () => {
-    // What the new block carries is the writer's next line, not a copy of the
-    // one they just finished: a to-do they have already ticked hands the next
-    // one its own empty state. BlockNote answers the same way — its list Enter
-    // asks to keep the type and not the props.
-    for (const at of ['end', 'start'] as const) {
-      const editor = open([
-        { type: 'checkListItem', props: { checked: true }, content: 'done' },
-      ]);
-      editor.setTextCursorPosition(blocksOf(editor)[0].id, at);
+    // The line the writer opens next is their next task, not a copy of the one
+    // they just finished. tiptap marks `checked` `keepOnSplit: false` and
+    // Lexical clears it in `resetOnCopyNodeFrom`, both singling this prop out
+    // from the ones a split carries along.
+    const editor = open([
+      { type: 'checkListItem', props: { checked: true }, content: 'done' },
+    ]);
+    editor.setTextCursorPosition(blocksOf(editor)[0].id, 'end');
+    pressEnter(editor);
+
+    const blocks = blocksOf(editor);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]?.props['checked'], 'the finished task').toBe(true);
+    expect(blocks[1]?.props['checked'], 'the line opened after it').toBe(false);
+  });
+
+  it('leaves the text with what described it, whatever path Enter takes', () => {
+    // Enter at the very start opens a line ABOVE: `tr.split` puts the text in
+    // the block below, so that block is the writer's own line and arrives as
+    // the line they had. A heading outside a quote — the one shape none of
+    // these handlers claim — is the measure: it comes through with its number.
+    // Measured before this, the three shapes these handlers do claim each
+    // dropped something the reader had set: the tick, the pinned number, the
+    // list's own start.
+    const CASES = [
+      { type: 'checkListItem', props: { checked: true }, prop: 'checked', want: true },
+      { type: 'checkListItem', props: { checked: true, quoted: true }, prop: 'checked', want: true },
+      { type: 'heading', props: { level: 2, numbered: true, number: 7, quoted: true }, prop: 'number', want: 7 },
+      { type: 'numberedListItem', props: { start: 5 }, prop: 'start', want: 5 },
+    ] as const;
+
+    for (const { type, props, prop, want } of CASES) {
+      const editor = open([{ type, props, content: 'text' }]);
+      editor.setTextCursorPosition(blocksOf(editor)[0].id, 'start');
       pressEnter(editor);
 
       const blocks = blocksOf(editor);
       expect(blocks).toHaveLength(2);
-      expect(
-        blocks[1]?.props['checked'],
-        `the block opened with the caret at the ${at}`,
-      ).toBe(false);
+      expect(blocks[1]?.props[prop], `${type}: the block holding the text`).toBe(
+        want,
+      );
     }
   });
 
