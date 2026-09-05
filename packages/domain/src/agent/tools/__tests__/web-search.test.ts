@@ -72,9 +72,9 @@ import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
  *
  * The tool answers with a structured object, which the panel and the model
  * read differently; every assertion in this file is about the model's half,
- * so the rendering happens here rather than in each test. A first search is
- * what one call on its own is, hence the offset of zero -- the numbering
- * across several searches is pinned in `web-search-two-consumers.test.ts`.
+ * so the rendering happens here rather than in each test. The numbers come
+ * with the sources, and how they are assigned is pinned in
+ * `web-search-two-consumers.test.ts`.
  * @param args - The tool's declared input.
  * @param abortSignal - Passed through when the test supplies one.
  * @returns The text a first search would hand the model.
@@ -96,7 +96,7 @@ async function run(
     toolCallId: "t1",
     messages: [],
   } as never)) as SearchAnswer;
-  return renderSearchForModel(answer, 0);
+  return renderSearchForModel(answer);
 }
 
 /**
