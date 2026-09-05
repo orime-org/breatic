@@ -51,12 +51,29 @@ export interface ListEditor {
 }
 
 /**
+ * The prop that pins a number to the item the user set it on.
+ *
+ * It is the one thing a split does not carry: the number belongs to that
+ * item, and the one after it counts along.
+ */
+const PINNED_NUMBER = 'number';
+
+/**
  * Splits the block at a position, carrying the quote into the new one.
  *
  * A rebuild of `splitBlockTr`, which `@blocknote/core` keeps to itself while
- * exporting everything it depends on. The new block starts clean apart from
- * the quote: a pinned number belongs to the item the user pinned it on, and
- * the one after it counts along.
+ * exporting everything it depends on.
+ *
+ * A split that keeps the type hands the new block everything the old one
+ * carried, less the pinned number. Enter at the very start of a block is that
+ * split, and it pushes the block's text down into the NEW one — so what the
+ * writer sees afterwards is whatever that block arrived as. Measured with the
+ * quote alone carried across: a level 2 quoted heading came back level 1 and
+ * stopped being numbered, while the same heading outside a quote, which never
+ * reaches this function, kept both.
+ *
+ * A split that does not keep the type opens a paragraph, and a paragraph
+ * holds none of those props, so it takes the quote alone.
  * @param tr - The transaction to split in.
  * @param posInBlock - Where to split.
  * @param keepType - Whether the new block keeps this one's type.
@@ -72,13 +89,13 @@ export function splitCarryingQuote(
     return false;
   }
   const schema = getPmSchema(tr);
-  const quoted = info.blockContent.node.attrs[QUOTED];
+  const content = info.blockContent.node;
+  const carried = { ...content.attrs, [PINNED_NUMBER]: undefined };
+  const openedType = keepType ? content.type : schema.nodes['paragraph'];
+  const openedAttrs = keepType ? carried : { [QUOTED]: content.attrs[QUOTED] };
   tr.split(posInBlock, 2, [
     { type: info.bnBlock.node.type, attrs: {} },
-    {
-      type: keepType ? info.blockContent.node.type : schema.nodes['paragraph'],
-      attrs: { [QUOTED]: quoted },
-    },
+    { type: openedType, attrs: openedAttrs },
   ]);
   return true;
 }

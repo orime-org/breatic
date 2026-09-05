@@ -136,6 +136,30 @@ describe('Enter at the end of a quoted line', () => {
     expect(blocks[1]?.type).toBe('paragraph');
     expect(blocks[1]?.props['quoted']).toBe(true);
   });
+
+  it('keeps a heading whole when Enter opens a line above it', () => {
+    // Enter at the very start pushes the heading down and leaves an empty one
+    // above, so the block carrying the text is the NEW one — and it has to
+    // arrive as the heading the writer had. Measured before this: a level 2
+    // quoted heading came back level 1 and stopped being numbered, while the
+    // same heading outside a quote kept both.
+    const editor = open([
+      {
+        type: 'heading',
+        props: { level: 2, quoted: true, numbered: true },
+        content: 'title',
+      },
+    ]);
+    editor.setTextCursorPosition(blocksOf(editor)[0]!.id, 'start');
+    pressEnter(editor);
+
+    const blocks = blocksOf(editor);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1]?.type).toBe('heading');
+    expect(blocks[1]?.props['level']).toBe(2);
+    expect(blocks[1]?.props['numbered']).toBe(true);
+    expect(blocks[1]?.props['quoted']).toBe(true);
+  });
 });
 
 describe('C11 — Enter over a selection spanning two list items', () => {
