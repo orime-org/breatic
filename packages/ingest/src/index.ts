@@ -24,12 +24,10 @@ import {
   type RecordedPart,
 } from "@ingest/stored-object.js";
 import {
+  signSessionToken,
   verifySessionToken,
   type SessionTokenPayload,
 } from "@ingest/session-token.js";
-
-export { UploadSession } from "@ingest/upload-session.js";
-export { TaskTimer } from "@ingest/task-timer.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -52,24 +50,23 @@ const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 /** What wrangler binds into the Worker. */
 export interface Env {
   BUCKET: R2Bucket;
-  UPLOAD_SESSION: DurableObjectNamespace;
-  /** One instance per task, addressed by task id. Judges it dead (#186). */
-  TASK_TIMER: DurableObjectNamespace;
-  /** Signs the ticket we verify, and authenticates the report we send back. */
+  /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
   /** Where an upload's outcome is reported. */
   SERVER_REPORT_URL: string;
+  /** Where the exclusive permission to finish a key is asked for. */
+  SERVER_CLAIM_URL: string;
   /** Comma-separated origins the browser may send parts from. */
   ALLOWED_ORIGINS: string;
 }
 
 /**
- * The settings this Worker cannot run without, each filled in by hand: the two
- * vars and the two bindings from `wrangler.toml` (copied from its template),
+ * The settings this Worker cannot run without, each filled in by hand: the
+ * vars and the bucket binding from `wrangler.toml` (copied from its template),
  * the secret from `.dev.vars` locally and `wrangler secret put` on a
  * deployment.
  *
- * The bindings are in here for the same reason the vars are: a binding whose
+ * The binding is in here for the same reason the vars are: a binding whose
  * name was typed differently in `wrangler.toml` than the code expects arrives
  * as nothing at all, and reading it throws somewhere far from the file that
  * has the typo.
@@ -77,10 +74,9 @@ export interface Env {
 const REQUIRED_SETTINGS = [
   "INGEST_SHARED_SECRET",
   "SERVER_REPORT_URL",
+  "SERVER_CLAIM_URL",
   "ALLOWED_ORIGINS",
   "BUCKET",
-  "UPLOAD_SESSION",
-  "TASK_TIMER",
 ] as const;
 
 /**
@@ -97,26 +93,54 @@ function missingSettings(env: Env): string[] {
 }
 
 /**
- * The instance holding one upload's bookkeeping.
+ * Issue the token the next request carries.
  *
- * Addressed by storage key rather than by R2's `uploadId`, because the first
- * request has no upload id yet — the whole point of that request is to get
- * one, and getting the same one back on a retry needs somewhere to have
- * remembered it.
- * @param env - The Worker's bindings.
- * @param storageKey - The key this upload writes to.
- * @returns A stub for that upload's Durable Object.
+ * Its window comes off the ticket rather than from a figure held here: the
+ * value lives in `config/storage.yaml`, which also checks it against the other
+ * windows, and a copy in this Worker would be a second place for it to drift
+ * out of that relation.
+ * @param ticket - The verified ticket.
+ * @param uploadId - R2's id for the multipart upload.
+ * @param secret - The shared secret.
+ * @returns The signed token.
  */
-function sessionFor(env: Env, storageKey: string): DurableObjectStub {
-  return env.UPLOAD_SESSION.get(env.UPLOAD_SESSION.idFromName(storageKey));
+async function issueToken(
+  grant: {
+    storageKey: string;
+    contentType: string;
+    partSize: number;
+    totalParts: number;
+    sessionTokenTtlSeconds: number;
+  },
+  uploadId: string,
+  secret: string,
+): Promise<string> {
+  return signSessionToken(
+    {
+      storageKey: grant.storageKey,
+      uploadId,
+      contentType: grant.contentType,
+      expiresAt: Date.now() + grant.sessionTokenTtlSeconds * 1000,
+      partSize: grant.partSize,
+      totalParts: grant.totalParts,
+    },
+    secret,
+  );
 }
 
 /**
- * Open an upload: verify the ticket, then let the Durable Object decide
- * whether this is a new upload or a retry of one already open.
+ * Open an upload: verify the ticket, ask R2 for a multipart upload, and hand
+ * back what the browser has to hold on to.
+ *
+ * Nothing is recorded on this side. What one upload needs remembered is its
+ * upload id and the parts that landed, and the browser carries both back with
+ * every request — which is how Cloudflare's own multipart example works:
+ * "the state of the multipart upload is tracked in the client application
+ * which sends requests to the Worker".
  * @param request - The browser's request, carrying the ticket in a header.
  * @param env - The Worker's bindings.
- * @returns The instance's answer, or 401 when the ticket does not verify.
+ * @returns The upload id and the first token, or 401 when the ticket does not
+ *   verify.
  */
 async function startUpload(request: Request, env: Env): Promise<Response> {
   const ticket = request.headers.get("x-upload-ticket");
@@ -129,15 +153,22 @@ async function startUpload(request: Request, env: Env): Promise<Response> {
   );
   if (!verified.ok) return new Response("Unauthorized", { status: 401 });
 
-  // Everything past here depends on what happened before — whether this upload
-  // is already open, already finishing, or already done — so the instance that
-  // remembers decides it.
-  return sessionFor(env, verified.payload.storageKey).fetch(
-    new Request("https://session/open", {
-      method: "POST",
-      body: JSON.stringify(verified.payload),
-    }),
+  const created = await env.BUCKET.createMultipartUpload(
+    verified.payload.storageKey,
+    // Set now rather than at completion: R2 takes the object's metadata from
+    // the upload it was created under, and without it a public read answers
+    // application/octet-stream whatever the file actually is.
+    { httpMetadata: { contentType: verified.payload.contentType } },
   );
+
+  return Response.json({
+    uploadId: created.uploadId,
+    token: await issueToken(
+      verified.payload,
+      created.uploadId,
+      env.INGEST_SHARED_SECRET,
+    ),
+  });
 }
 
 /**
@@ -167,17 +198,17 @@ async function authorizedSession(
 }
 
 /**
- * Write one part to R2 and tell the instance that owns this upload.
+ * Write one part to R2 and hand its receipt back.
  *
- * The layout is judged here, before the write: this is the last point at
- * which a part outside what the ticket signed can still be stopped from
- * costing anything. The instance is told about a part only once R2 has been
- * asked to take it.
+ * The layout is judged here, before the write: this is the last point at which
+ * a part outside what the ticket signed can still be stopped from costing
+ * anything. What comes back is the line the browser has to keep — the part
+ * number and R2's etag for it — because finishing needs the whole list and
+ * nothing here is holding one.
  * @param request - The browser's request, carrying the token and the bytes.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
- * @param partNumber - The part number from the path.
- * @returns A fresh token for the next part, or why the part was refused.
+ * @returns The part's receipt and a fresh token, or why the part was refused.
  */
 async function uploadPart(
   request: Request,
@@ -188,11 +219,6 @@ async function uploadPart(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  // Read from here rather than forwarded. A Durable Object is billed for
-  // wall-clock time against a fixed 128 MB, so a slow network waited on inside
-  // one is paid for at that rate; a Worker waiting on I/O is not billed for
-  // the wait at all (design §6.1). What goes to the instance is the one line
-  // that says this part landed.
   const body = await request.arrayBuffer();
 
   // Judged before the write, because this is the last moment it can stop one.
@@ -203,40 +229,100 @@ async function uploadPart(
   // bound here costs no lookup and the browser cannot widen it.
   const refusal = partLayoutRefusal(partNumber, body.byteLength, session);
   if (refusal !== null) return new Response(refusal, { status: 400 });
+
   // R2 throws for a part it will not take, and the reason is a fact about this
   // upload rather than about the request: it was already assembled, or it was
-  // never opened. The instance is what holds that, so a failed write is
-  // reported like any other and answered from there.
-  const etag = await env.BUCKET.resumeMultipartUpload(session.storageKey, uploadId)
+  // never opened. Either way there is nothing left for this part to join.
+  const written = await env.BUCKET.resumeMultipartUpload(
+    session.storageKey,
+    uploadId,
+  )
     .uploadPart(partNumber, body)
-    .then((written) => written.etag)
     .catch(() => null);
+  if (written === null) {
+    return new Response("This upload is no longer open", { status: 410 });
+  }
 
-  return sessionFor(env, session.storageKey).fetch(
-    new Request(`https://session/part/${partNumber}`, {
-      method: "PUT",
-      body: JSON.stringify({ etag, sizeBytes: body.byteLength }),
-    }),
-  );
+  return Response.json({
+    partNumber,
+    etag: written.etag,
+    token: await issueToken(
+      { ...session, sessionTokenTtlSeconds: tokenTtlSecondsOf(session) },
+      uploadId,
+      env.INGEST_SHARED_SECRET,
+    ),
+  });
 }
 
 /**
- * Finish the upload: assemble the object, hash it, and have the outcome told.
+ * How long the next token should last, taken from the one presented.
  *
- * The instance is asked twice. The first call answers 202 with the parts to
- * assemble, or with this upload's outcome when there is already one — 409
- * while parts are still owed, 410 for an upload it no longer holds, or what
- * the server registered. The second carries what assembling and hashing
- * produced, and its answer is the browser's.
+ * The window was decided when the ticket was signed and travels forward with
+ * every re-issue, so a long upload never needs a longer-lived credential and
+ * this Worker never holds a second copy of the figure.
+ * @param session - The token this request presented.
+ * @returns The window, in seconds.
+ */
+function tokenTtlSecondsOf(session: SessionTokenPayload): number {
+  return Math.max(1, Math.ceil((session.expiresAt - Date.now()) / 1000));
+}
+
+/** What the browser hands back to finish an upload. */
+interface FinishBody {
+  parts?: RecordedPart[];
+}
+
+/** What our server answers a claim with. */
+interface ClaimAnswer {
+  granted: boolean;
+  reason?: "no_grant" | "in_flight" | "already_registered";
+  result?: unknown;
+}
+
+/**
+ * Ask our server whether this upload may finish on this key (design §6.4).
+ * @param env - The Worker's bindings.
+ * @param storageKey - The key being finished.
+ * @param uploadId - The multipart upload this Worker holds.
+ * @returns The verdict, or null when the server could not be reached.
+ */
+async function claimFinalize(
+  env: Env,
+  storageKey: string,
+  uploadId: string,
+): Promise<ClaimAnswer | null> {
+  const response = await fetch(env.SERVER_CLAIM_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-ingest-secret": env.INGEST_SHARED_SECRET,
+    },
+    body: JSON.stringify({ storage_key: storageKey, upload_id: uploadId }),
+  }).catch(() => null);
+  if (response === null || !response.ok) return null;
+  const answer = await response
+    .json<{ data?: ClaimAnswer }>()
+    .catch(() => null);
+  return answer?.data ?? null;
+}
+
+/**
+ * Finish the upload: check the list, take the permission, assemble, hash and
+ * report.
  *
- * The two steps between them run here rather than in the instance. A Durable
- * Object is billed for wall-clock time against a fixed 128 MB, so reading a
- * multi-gigabyte object back inside one is paid for at that rate for as long
- * as the read takes (design §6.2).
- * @param request - The browser's request, carrying the session token.
+ * The list comes back from the browser, so it is judged against the layout
+ * this Worker's own token signed — every part inside the bound, and as many of
+ * them as the ticket said there would be. A short list is a refusal rather
+ * than an outcome: the upload is still open and sending the missing part
+ * finishes it.
+ *
+ * The permission is taken before R2 is touched, because what it stops is a
+ * write: a replayed ticket opening a second multipart upload over a key the
+ * ledger already describes.
+ * @param request - The browser's request, carrying the token and the parts.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
- * @returns The outcome, or 401 when the token does not verify.
+ * @returns The outcome, or why it was refused.
  */
 async function completeUpload(
   request: Request,
@@ -246,30 +332,112 @@ async function completeUpload(
   const session = await authorizedSession(request, env, uploadId);
   if (session === null) return new Response("Unauthorized", { status: 401 });
 
-  const instance = sessionFor(env, session.storageKey);
-  const plan = await instance.fetch(
-    new Request("https://session/finish", { method: "POST" }),
-  );
-  if (plan.status !== 202) return plan;
+  const body = (await request.json<FinishBody>().catch(() => null)) ?? {};
+  const parts = body.parts ?? [];
+  for (const part of parts) {
+    // A part's own size is not in the list, so the length the layout would
+    // judge is the one it signed for that position.
+    const isFinal = part.partNumber === session.totalParts;
+    const refusal = partLayoutRefusal(
+      part.partNumber,
+      isFinal ? 1 : session.partSize,
+      session,
+    );
+    if (refusal !== null) return new Response(refusal, { status: 400 });
+  }
+  if (parts.length !== session.totalParts) {
+    return new Response(
+      `Cannot finish with ${parts.length} of ${session.totalParts} parts`,
+      { status: 409 },
+    );
+  }
 
-  const { storageKey, parts } = await plan.json<{
-    storageKey: string;
-    parts: RecordedPart[];
-  }>();
-  const sizeBytes = await assembleObject(
+  const claim = await claimFinalize(env, session.storageKey, uploadId);
+  if (claim === null) {
+    return new Response("Could not reach the server", { status: 502 });
+  }
+  if (!claim.granted) {
+    if (claim.reason === "already_registered") {
+      // The bytes this would write are the ones already described, so writing
+      // them again is the overwrite the permission exists to stop. What the
+      // ledger holds is what the browser gets.
+      return Response.json({ data: claim.result ?? {} });
+    }
+    return new Response(
+      claim.reason === "no_grant"
+        ? "No grant for this key"
+        : "Another delivery is finishing this upload",
+      { status: claim.reason === "no_grant" ? 403 : 409 },
+    );
+  }
+
+  const assembled = await assembleObject(
     env.BUCKET,
-    storageKey,
+    session.storageKey,
     uploadId,
     parts,
-  );
-  const sha256 = await hashStoredObject(env.BUCKET, storageKey);
+  )
+    .then((sizeBytes) => ({ sizeBytes }))
+    .catch(() => null);
+  if (assembled === null) {
+    await reportOutcome(env, {
+      storage_key: session.storageKey,
+      outcome: "aborted",
+      reason: "assembly failed",
+    });
+    return new Response("Could not assemble the object", { status: 502 });
+  }
 
-  return instance.fetch(
-    new Request("https://session/finish", {
-      method: "POST",
-      body: JSON.stringify({ sizeBytes, sha256 }),
-    }),
+  const sha256 = await hashStoredObject(env.BUCKET, session.storageKey).catch(
+    () => null,
   );
+  if (sha256 === null) {
+    await reportOutcome(env, {
+      storage_key: session.storageKey,
+      outcome: "aborted",
+      reason: "hashing failed",
+    });
+    return new Response("Could not hash the object", { status: 502 });
+  }
+
+  const reported = await reportOutcome(env, {
+    storage_key: session.storageKey,
+    outcome: "completed",
+    sha256,
+    size_bytes: assembled.sizeBytes,
+    content_type: session.contentType,
+  });
+  if (reported === null) {
+    // The bytes are in R2 and nothing describes them. This delivery did not
+    // finish, and retrying it is the browser's to do (design §6.6).
+    return new Response("The server did not take the report", { status: 502 });
+  }
+  return Response.json({ data: reported });
+}
+
+/**
+ * Tell our server how an upload went.
+ * @param env - The Worker's bindings.
+ * @param body - The report.
+ * @returns What the server registered, or null when it did not take it.
+ */
+async function reportOutcome(
+  env: Env,
+  body: Record<string, unknown>,
+): Promise<unknown | null> {
+  const response = await fetch(env.SERVER_REPORT_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-ingest-secret": env.INGEST_SHARED_SECRET,
+    },
+    body: JSON.stringify(body),
+  }).catch(() => null);
+  if (response === null || !response.ok) return null;
+  const answer = await response
+    .json<{ data?: unknown }>()
+    .catch(() => null);
+  return answer?.data ?? {};
 }
 
 /**
@@ -389,41 +557,6 @@ async function answer(request: Request, env: Env): Promise<Response> {
 }
 
 /**
- * Arm the timer that will judge one task dead (#186, design §4.6.5).
- *
- * Our server is the only caller and proves it with the shared secret, the
- * same one the ingest report carries the other way. A browser has no business
- * here: what it holds says an upload may send bytes, and nothing it holds
- * should be able to say when a task stops counting as alive.
- *
- * The body is passed through to the Durable Object, which is what decides
- * whether it is well formed — one place holds that shape.
- * @param request - The arm request.
- * @param env - The bound resources and configuration.
- * @returns 204 once armed, 401 for a caller we cannot identify, and whatever
- *   the timer answered otherwise.
- */
-async function armTaskTimer(request: Request, env: Env): Promise<Response> {
-  if (request.headers.get("x-ingest-secret") !== env.INGEST_SHARED_SECRET) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
-  const body = (await request.json().catch(() => null)) as {
-    taskId?: unknown;
-  } | null;
-  const taskId = body?.taskId;
-  if (typeof taskId !== "string" || taskId === "") {
-    return new Response("Expected taskId", { status: 400 });
-  }
-
-  const timer = env.TASK_TIMER.get(env.TASK_TIMER.idFromName(taskId));
-  return timer.fetch("https://timer.invalid/arm", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-/**
  * Match one request to its endpoint.
  * @param request - The incoming request.
  * @param env - The bound resources and configuration.
@@ -444,10 +577,6 @@ async function route(request: Request, env: Env): Promise<Response> {
   const finish = COMPLETE_PATH.exec(pathname);
   if (request.method === "POST" && finish) {
     return completeUpload(request, env, finish[1] ?? "");
-  }
-
-  if (request.method === "POST" && pathname === "/task-timers/arm") {
-    return armTaskTimer(request, env);
   }
 
   return new Response("Not found", { status: 404 });

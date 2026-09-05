@@ -38,7 +38,6 @@ async function mintTicket(
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
       sessionTokenTtlSeconds: 900,
-      bookkeepingTtlSeconds: 4 * 60 * 60,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -96,16 +95,17 @@ describe("a ticket the Worker takes", () => {
   });
 
   // The browser's own retry sends this again on a 5xx or a dropped connection.
-  // A second createMultipartUpload would strand the first: parts already
-  // written would belong to an upload that never completes, and the object
-  // they were meant for would never appear.
-  it("gives the same upload back when the same ticket opens it again", async () => {
+  // Nothing on this side remembers an upload, so a ticket presented twice
+  // opens twice. The one nobody goes on to finish holds no object and is
+  // collected by the bucket's lifecycle rule (design §6.1); the browser keeps
+  // whichever upload id it was answered with last and finishes that one.
+  it("opens a fresh upload each time the same ticket is presented", async () => {
     const { ticket } = await mintTicket();
 
     const first = await (await open(ticket)).json<{ uploadId: string }>();
     const second = await (await open(ticket)).json<{ uploadId: string }>();
 
-    expect(second.uploadId).toBe(first.uploadId);
+    expect(second.uploadId).not.toBe(first.uploadId);
   });
 
   // The key's extension comes from the picked file's name, and our server

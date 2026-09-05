@@ -22,7 +22,6 @@ import { z } from "zod";
 import { signUploadTicket, t, canvasSpaceDocName } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
 import { nodeTaskService, emitNodeTaskCounts } from "@breatic/domain";
-import { armTaskTimer } from "@server/modules/asset/task-timer.client.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -38,7 +37,6 @@ import {
   env,
   logger,
   ValidationError,
-  AppError,
   getStreamRedis,
   getNodeTaskConfig,
 } from "@breatic/core";
@@ -284,36 +282,6 @@ assets.post(
         storageKey: key,
       });
 
-      const armed = await armTaskTimer({
-        taskId: opened.id,
-        deadlineAt: Date.now() + budgetMs,
-        callbackUrl: `${env.PUBLIC_API_BASE_URL}/api/v1/canvas/node-tasks/expired`,
-      });
-
-      if (!armed) {
-        // The row stays, as failed. The user did start something, and the
-        // node's counts are computed from these rows.
-        const settled = await nodeTaskService.settle({
-          taskId: opened.id,
-          outcome: "failed",
-          // A code, resolved into a sentence where the reader is: this row is
-          // read by anyone who opens the node's list, and a sentence resolved
-          // here freezes into whichever language THIS requester was in.
-          errorMessage: "not_started",
-        });
-        logger.error(
-          { taskId: opened.id, key, userId: user.id },
-          "upload_ticket_timer_unarmed",
-        );
-        await emitNodeTaskCounts(
-          getStreamRedis(),
-          canvasSpaceDocName(body.project_id, body.space_id),
-          body.node_id,
-          settled.counts,
-        );
-        throw new AppError(503, t("canvas.task.notStarted"));
-      }
-
       await emitNodeTaskCounts(
         getStreamRedis(),
         canvasSpaceDocName(body.project_id, body.space_id),
@@ -339,13 +307,6 @@ assets.post(
         contentType: body.content_type,
         expiresAt,
         sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
-        // Twice the task budget. An upload nobody finishes never reaches the
-        // step that lets its instance go, so the instance is told when to let
-        // go on its own — long after the task it belongs to was judged dead,
-        // which is what makes the moment safe to pick without asking anyone.
-        // A crop has no task and finishes in seconds; the same horizon holds.
-        bookkeepingTtlSeconds:
-          (getNodeTaskConfig().default_budget_ms * 2) / 1000,
       },
       env.INGEST_SHARED_SECRET,
     );

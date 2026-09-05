@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Finishing an upload (#173, design §4.4).
+ * Finishing an upload (#186, design §6.2 / §6.4).
  *
- * The instance counts the parts. All of them means the file is whole, and it
- * hands the Worker the list to assemble; fewer means it never finished, and
- * the browser is told what is still owed. The Worker assembles the object and
- * hashes it, and comes back with the two facts the report carries.
+ * The Worker keeps nothing between requests, so the list of parts comes back
+ * from whoever is uploading. It judges that list against the layout its own
+ * token signed, asks our server for the exclusive permission to finish this
+ * key, and only then has R2 assemble the object.
  *
- * The report is the only thing that ends this. Until the server answers 2xx
- * the alarm stays set, because the node the upload belongs to counts this task
- * as running until something tells it otherwise, and nothing else will.
+ * The permission is what stops a replayed ticket: opening a second multipart
+ * upload on a key already in the ledger and completing it overwrites the
+ * object, and the studio's dedup points other members at that same key.
  *
  * The hash is computed over the stored object rather than over what the
  * browser said. The ledger keys on it, and only bytes that actually landed
@@ -23,22 +23,29 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
   fetchMock,
-  runInDurableObject,
 } from "cloudflare:test";
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
-import {
-  signUploadTicket,
-  completeRetryBudgetMs,
-  type UploadTicketPayload,
-} from "@breatic/shared";
+import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
-/** The two halves of `SERVER_REPORT_URL` as vitest.config.ts binds it. */
-const REPORT_ORIGIN = "https://api.test.example";
+const FINAL_PART_SIZE = 1024;
+/** The two halves of each server URL as vitest.config.ts binds them. */
+const SERVER_ORIGIN = "https://api.test.example";
 const REPORT_PATH = "/api/v1/assets/ingest-report";
+const CLAIM_PATH = "/api/v1/assets/upload-grant/claim";
 
 let seq = 0;
+
+/** Every report body the Worker sent, in order. */
+const reports: Record<string, unknown>[] = [];
+/** Every claim body the Worker sent, in order. */
+const claims: Record<string, unknown>[] = [];
+
+/** What our server answers a completed report with. */
+const REGISTERED = {
+  data: { ok: true, fileUrl: "https://cdn.test.example/stored.mp4", kind: "video" },
+};
 
 beforeAll(() => {
   fetchMock.activate();
@@ -47,19 +54,31 @@ beforeAll(() => {
 
 beforeEach(() => {
   reports.length = 0;
+  claims.length = 0;
 });
 
 afterEach(() => {
   fetchMock.assertNoPendingInterceptors();
 });
 
-/** Every report body the Worker sent, in order. */
-const reports: Record<string, unknown>[] = [];
-
-/** What our server answers a completed report with. */
-const REGISTERED = {
-  data: { ok: true, fileUrl: "https://cdn.test.example/stored.mp4", kind: "video" },
-};
+/**
+ * Expect one claim and answer it.
+ * @param answer - The verdict our server gives.
+ * @param times - How many askings to answer.
+ */
+function expectClaim(
+  answer: unknown = { data: { granted: true } },
+  times = 1,
+): void {
+  fetchMock
+    .get(SERVER_ORIGIN)
+    .intercept({ path: CLAIM_PATH, method: "POST" })
+    .reply(200, (opts: { body?: string }) => {
+      claims.push(JSON.parse(opts.body ?? "{}") as Record<string, unknown>);
+      return answer;
+    })
+    .times(times);
+}
 
 /**
  * Expect one report and answer it with `status`.
@@ -68,7 +87,7 @@ const REGISTERED = {
  */
 function expectReport(status = 200, body: unknown = REGISTERED): void {
   fetchMock
-    .get(REPORT_ORIGIN)
+    .get(SERVER_ORIGIN)
     .intercept({ path: REPORT_PATH, method: "POST" })
     .reply(status, (opts: { body?: string }) => {
       reports.push(JSON.parse(opts.body ?? "{}") as Record<string, unknown>);
@@ -76,12 +95,32 @@ function expectReport(status = 200, body: unknown = REGISTERED): void {
     });
 }
 
-/** Open an upload and send `partCount` of its parts. */
+/** One part as the browser hands it back. */
+interface HeldPart {
+  partNumber: number;
+  etag: string;
+}
+
+/**
+ * Open an upload and send `partCount` of its parts.
+ *
+ * What comes back is everything the browser would be holding: the upload id,
+ * the token for the next request, and the part list it has to send back to
+ * finish. Nothing on the Worker's side remembers any of it.
+ * @param partCount - How many parts to send.
+ * @param over - Ticket fields to override.
+ * @returns What the browser holds after those parts.
+ */
 async function uploadedThrough(
   partCount: number,
   over: Partial<UploadTicketPayload> = {},
-): Promise<{ storageKey: string; uploadId: string; token: string }> {
-  const storageKey = `video/2026-08-30/${seq++}_done.mp4`;
+): Promise<{
+  storageKey: string;
+  uploadId: string;
+  token: string;
+  parts: HeldPart[];
+}> {
+  const storageKey = `video/2026-09-05/${seq++}_done.mp4`;
   const ticket = await signUploadTicket(
     {
       storageKey,
@@ -92,7 +131,6 @@ async function uploadedThrough(
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
       sessionTokenTtlSeconds: 900,
-      bookkeepingTtlSeconds: 4 * 60 * 60,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -110,6 +148,7 @@ async function uploadedThrough(
   const session = await opened.json<{ uploadId: string; token: string }>();
 
   let token = session.token;
+  const parts: HeldPart[] = [];
   const totalParts = over.totalParts ?? 2;
   for (let n = 1; n <= partCount; n += 1) {
     const isFinal = n === totalParts;
@@ -120,25 +159,42 @@ async function uploadedThrough(
         {
           method: "PUT",
           headers: { "x-upload-token": token },
-          body: new Uint8Array(isFinal ? 1024 : PART_SIZE),
+          body: new Uint8Array(isFinal ? FINAL_PART_SIZE : PART_SIZE),
         },
       ),
       env,
       ctx,
     );
     await waitOnExecutionContext(ctx);
-    token = (await response.json<{ token: string }>()).token;
+    const landed = await response.json<{
+      token: string;
+      partNumber: number;
+      etag: string;
+    }>();
+    token = landed.token;
+    parts.push({ partNumber: landed.partNumber, etag: landed.etag });
   }
-  return { storageKey, uploadId: session.uploadId, token };
+  return { storageKey, uploadId: session.uploadId, token, parts };
 }
 
-/** Ask the Worker to finish an upload. */
-async function complete(uploadId: string, token: string): Promise<Response> {
+/**
+ * Ask the Worker to finish an upload, handing back the parts.
+ * @param uploadId - The multipart upload.
+ * @param token - The session token.
+ * @param parts - The list the browser holds.
+ * @returns The Worker's answer.
+ */
+async function complete(
+  uploadId: string,
+  token: string,
+  parts: HeldPart[],
+): Promise<Response> {
   const ctx = createExecutionContext();
   const response = await worker.fetch(
     new Request(`https://ingest.example.com/uploads/${uploadId}/complete`, {
       method: "POST",
-      headers: { "x-upload-token": token },
+      headers: { "x-upload-token": token, "content-type": "application/json" },
+      body: JSON.stringify({ parts }),
     }),
     env,
     ctx,
@@ -149,162 +205,158 @@ async function complete(uploadId: string, token: string): Promise<Response> {
 
 describe("an upload whose parts all arrived", () => {
   it("makes the object readable at the key the ticket named", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim();
     expectReport();
-    const { storageKey, uploadId, token } = await uploadedThrough(2);
 
-    expect((await complete(uploadId, token)).status).toBe(200);
+    const response = await complete(uploadId, token, parts);
 
+    expect(response.status).toBe(200);
     const stored = await env.BUCKET.get(storageKey);
-    expect(stored).not.toBeNull();
-    expect(stored?.size).toBe(PART_SIZE + 1024);
+    expect(stored?.size).toBe(PART_SIZE + FINAL_PART_SIZE);
   });
 
   it("keeps the content type the ticket signed", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim();
     expectReport();
-    const { storageKey, uploadId, token } = await uploadedThrough(2);
 
-    await complete(uploadId, token);
+    await complete(uploadId, token, parts);
 
-    const stored = await env.BUCKET.get(storageKey);
+    const stored = await env.BUCKET.head(storageKey);
     expect(stored?.httpMetadata?.contentType).toBe("video/mp4");
   });
 
-  // The browser's claim opened the upload; this is what the ledger keys on,
-  // and it can only come from the bytes that actually landed.
   it("reports a hash of the stored bytes, not of what was claimed", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim();
     expectReport();
-    const { storageKey, uploadId, token } = await uploadedThrough(2);
 
-    await complete(uploadId, token);
+    await complete(uploadId, token, parts);
 
     const stored = await env.BUCKET.get(storageKey);
-    const expected = await crypto.subtle.digest(
+    const digest = await crypto.subtle.digest(
       "SHA-256",
       await stored!.arrayBuffer(),
     );
-    const hex = [...new Uint8Array(expected)]
+    const hex = [...new Uint8Array(digest)]
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
     expect(reports[0]).toMatchObject({
       storage_key: storageKey,
       outcome: "completed",
       sha256: hex,
-      size_bytes: PART_SIZE + 1024,
-      content_type: "video/mp4",
+      size_bytes: PART_SIZE + FINAL_PART_SIZE,
+    });
+  });
+
+  it("carries the URL the server registered back to the browser", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim();
+    expectReport();
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(await response.json()).toMatchObject({
+      data: { fileUrl: "https://cdn.test.example/stored.mp4" },
     });
   });
 });
 
-// An upload with no node behind it — a focus crop — has nowhere else to learn
-// how it went: the node path hears the outcome through Yjs, and a crop has no
-// node. This answer is that path's only channel (design §9).
-describe("what completing tells the browser", () => {
-  it("carries the URL the server registered", async () => {
-    expectReport();
-    const { uploadId, token } = await uploadedThrough(2);
+describe("the exclusive permission to finish", () => {
+  it("asks for it before R2 is told to assemble anything", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim({ data: { granted: false, reason: "in_flight" } });
 
-    const response = await complete(uploadId, token);
+    const response = await complete(uploadId, token, parts);
 
+    expect(claims[0]).toEqual({
+      storage_key: storageKey,
+      upload_id: uploadId,
+    });
+    // Refused, so the object was never assembled: the key holds nothing.
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
+    expect(response.status).toBe(409);
+  });
+
+  it("hands back what is already in the ledger when the key is registered", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim({
+      data: {
+        granted: false,
+        reason: "already_registered",
+        result: { fileUrl: "https://cdn.test.example/earlier.mp4" },
+      },
+    });
+
+    const response = await complete(uploadId, token, parts);
+
+    // The bytes it would have written are the ones already described, so
+    // writing them again is the overwrite this permission exists to stop.
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
     expect(response.status).toBe(200);
-    // Handed on as the server sent it, so a field added there reaches the
-    // browser without the Worker learning about it.
-    await expect(response.json()).resolves.toMatchObject({
-      fileUrl: "https://cdn.test.example/stored.mp4",
-      kind: "video",
+    expect(await response.json()).toMatchObject({
+      data: { fileUrl: "https://cdn.test.example/earlier.mp4" },
     });
   });
 
-  // Asking twice is ordinary: a browser that lost the first answer asks again.
-  it("carries it again without asking the server twice", async () => {
-    expectReport();
-    const { uploadId, token } = await uploadedThrough(2);
-    await complete(uploadId, token);
+  it("refuses when there is no grant for this key", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim({ data: { granted: false, reason: "no_grant" } });
 
-    const again = await complete(uploadId, token);
-
-    await expect(again.json()).resolves.toMatchObject({
-      fileUrl: "https://cdn.test.example/stored.mp4",
-      kind: "video",
-    });
-    expect(reports).toHaveLength(1);
+    expect((await complete(uploadId, token, parts)).status).toBe(403);
   });
 });
 
 describe("an upload missing parts", () => {
-  it("leaves no object behind, and says nothing to the server", async () => {
-    const { storageKey, uploadId, token } = await uploadedThrough(1);
+  it("refuses before it asks for anything, and says what is owed", async () => {
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(1);
 
-    // 409, not an outcome: this upload has not ended. The parts that have not
-    // arrived still can, and nothing here judges how long that takes.
-    expect((await complete(uploadId, token)).status).toBe(409);
+    // No interceptors are set: reaching either server URL would throw, which
+    // is the assertion that a short list costs nothing.
+    const response = await complete(uploadId, token, parts);
 
-    expect(await env.BUCKET.get(storageKey)).toBeNull();
-    // `fetchMock` has no interceptor for the report, so any report here throws.
-    expect(reports).toHaveLength(0);
+    expect(response.status).toBe(409);
+    expect(await response.text()).toContain("1 of 2");
+    expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 
-  it("says which parts are still owed", async () => {
-    const { uploadId, token } = await uploadedThrough(1);
+  it("still finishes once the missing part is sent", async () => {
+    // The refusal leaves the upload usable, which is what makes it a refusal
+    // rather than an outcome.
+    const { storageKey, uploadId, token, parts } = await uploadedThrough(2);
+    await complete(uploadId, token, parts.slice(0, 1));
 
-    const response = await complete(uploadId, token);
+    expectClaim();
+    expectReport();
+    const response = await complete(uploadId, token, parts);
 
-    await expect(response.text()).resolves.toBe(
-      "only 1 of 2 parts have arrived",
+    expect(response.status).toBe(200);
+    expect((await env.BUCKET.head(storageKey))?.size).toBe(
+      PART_SIZE + FINAL_PART_SIZE,
     );
+  });
+
+  it("refuses a part the layout never signed", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const forged = [...parts, { partNumber: 3, etag: "made-up" }];
+
+    const response = await complete(uploadId, token, forged);
+
+    expect(response.status).toBe(400);
   });
 });
 
 describe("a server that does not accept the report", () => {
-  // The node stays in handling until this report lands, so a failure here has
-  // to keep the retry alive rather than let the Worker call it done.
   it("answers with a failure of its own", async () => {
-    expectReport(503);
-    const { uploadId, token } = await uploadedThrough(2);
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim();
+    expectReport(503, "");
 
-    expect((await complete(uploadId, token)).status).toBe(502);
-  });
+    const response = await complete(uploadId, token, parts);
 
-  // The object is complete either way; what has not happened is the telling.
-  it("finishes on the retry without redoing the work", async () => {
-    expectReport(503);
-    const { storageKey, uploadId, token } = await uploadedThrough(2);
-    await complete(uploadId, token);
-
-    expectReport(200);
-    expect((await complete(uploadId, token)).status).toBe(200);
-
-    expect(reports).toHaveLength(2);
-    expect(reports[1]).toMatchObject({ storage_key: storageKey, outcome: "completed" });
-  });
-});
-
-describe("an upload already reported", () => {
-  it("says so again without touching R2 or the server", async () => {
-    expectReport();
-    const { uploadId, token } = await uploadedThrough(2);
-    await complete(uploadId, token);
-
-    expect((await complete(uploadId, token)).status).toBe(200);
-    expect(reports).toHaveLength(1);
-  });
-
-  // What the answer has to outlast is the browser asking, and a browser asks
-  // for as long as its transport keeps redelivering. The focus crop reads its
-  // whole result off this response, so an answer thrown away while a delivery
-  // is still coming costs that crop the object it already paid for.
-  it("keeps the answer for as long as a browser can still be asking", async () => {
-    expectReport();
-    const { storageKey, uploadId, token } = await uploadedThrough(2, {
-    });
-    await complete(uploadId, token);
-
-    const alarm = await runInDurableObject(
-      env.UPLOAD_SESSION.get(env.UPLOAD_SESSION.idFromName(storageKey)),
-      (_instance, state) => state.storage.getAlarm(),
-    );
-
-    expect(alarm).toBeGreaterThanOrEqual(
-      Date.now() + completeRetryBudgetMs() - 5_000,
-    );
+    // The bytes are in R2 but nothing describes them, so this delivery did not
+    // finish. Retrying is the browser's to do (design §6.6).
+    expect(response.status).toBe(502);
   });
 });

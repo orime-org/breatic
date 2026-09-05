@@ -119,7 +119,7 @@ describe("a Worker whose configuration is incomplete", () => {
   // name typed wrong there fails no differently than a var left empty — except
   // that reading a binding that is not there throws somewhere deep, and what
   // comes back is a 500 naming nothing.
-  it.each(["BUCKET", "UPLOAD_SESSION"])(
+  it.each(["BUCKET"])(
     "names the %s binding when the config does not bind it",
     async (binding) => {
       const partial: Record<string, unknown> = { ...env };

@@ -408,13 +408,6 @@ export {
   type UploadTicketRejection,
   type UploadTicketVerification,
 } from "@shared/upload/ticket.js";
-// The one field the expiry knock carries, for the same reason: the timer that
-// sends it and the route that reads it share no test.
-export {
-  taskExpiryKnock,
-  readTaskExpiryKnock,
-  type TaskExpiryKnock,
-} from "@shared/upload/task-expiry.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the reader is whoever opens the list, in their own language.
 export {

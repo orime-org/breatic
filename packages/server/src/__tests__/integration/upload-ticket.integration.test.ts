@@ -25,14 +25,9 @@
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 /**
- * The timer that will judge this upload dead lives in a Worker (#186 §4.6).
  * Mocked so this suite can drive both of its answers; whether the alarm was
  * really set is covered where that call is made.
  */
-vi.mock("@server/modules/asset/task-timer.client.js", () => ({
-  armTaskTimer: vi.fn(async () => true),
-}));
-
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -782,10 +777,10 @@ describe("POST /assets/upload-ticket", () => {
  * The task this ticket opens (#186, design §4.2 E1 and §4.6.5).
  *
  * A ticket is the moment an upload becomes a thing that can fail, so it is
- * also the moment the node gets a row for it. The order is fixed: the row,
- * then the deadline, then the ticket. An upload whose deadline nobody holds
- * has no one to judge it, so a timer that could not be armed stops the whole
- * request rather than letting the browser start sending.
+ * also the moment the node gets a row for it. What judges that row dead is a
+ * read of the node's task list (design §4.6), so nothing else has to happen
+ * here: the row carries its own budget and is measured against it whenever
+ * somebody looks.
  */
 describe("POST /assets/upload-ticket — the task it opens", () => {
   /** Every task row on one node, newest first. */
@@ -882,32 +877,6 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     expect((await tasksOn(large))[0]!.budget_ms).toBe(budget);
   });
 
-  it("arms the timer for that row, at that budget", async () => {
-    const { projectId, cookie } = await seedEditor();
-    const nodeId = crypto.randomUUID();
-    const { armTaskTimer } = await import(
-      "@server/modules/asset/task-timer.client.js"
-    );
-    vi.mocked(armTaskTimer).mockClear();
-
-    const before = Date.now();
-    await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        node_id: nodeId,
-        space_id: crypto.randomUUID(),
-      }),
-    );
-
-    const rows = await tasksOn(nodeId);
-    expect(armTaskTimer).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(armTaskTimer).mock.calls[0]![0];
-    expect(call.taskId).toBe(rows[0]!.id);
-    expect(call.deadlineAt).toBeGreaterThanOrEqual(before + rows[0]!.budget_ms);
-    expect(call.callbackUrl).toContain("/canvas/node-tasks/expired");
-  });
-
   it("publishes the node's counts so everyone sees one running", async () => {
     const { projectId, cookie } = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -925,66 +894,16 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     });
   });
 
-  it("mints no ticket and leaves no running row when the timer refuses", async () => {
-    // Nobody would judge this upload dead, and the row would sit running
-    // for good. The request stops here instead.
-    const { projectId, cookie } = await seedEditor();
-    const nodeId = crypto.randomUUID();
-    const { armTaskTimer } = await import(
-      "@server/modules/asset/task-timer.client.js"
-    );
-    vi.mocked(armTaskTimer).mockResolvedValueOnce(false);
-
-    const res = await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        node_id: nodeId,
-        space_id: crypto.randomUUID(),
-      }),
-    );
-
-    expect(res.status).toBe(503);
-    const rows = await tasksOn(nodeId);
-    expect(rows.map((r) => r.status)).not.toContain("running");
-  });
-
-  it("marks that row failed rather than deleting it", async () => {
-    // The row is what the node's counts are computed from, and the user did
-    // start something. It reads as a failure, which is what it was.
-    const { projectId, cookie } = await seedEditor();
-    const nodeId = crypto.randomUUID();
-    const { armTaskTimer } = await import(
-      "@server/modules/asset/task-timer.client.js"
-    );
-    vi.mocked(armTaskTimer).mockResolvedValueOnce(false);
-
-    await requestTicket(
-      cookie,
-      body({
-        project_id: projectId,
-        node_id: nodeId,
-        space_id: crypto.randomUUID(),
-      }),
-    );
-
-    const rows = await tasksOn(nodeId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.status).toBe("failed");
-  });
-
   it("opens nothing for an upload with no node behind it", async () => {
     // A focus crop has no node, so there is no corner to count it in.
     const { projectId, cookie } = await seedEditor();
-    const { armTaskTimer } = await import(
-      "@server/modules/asset/task-timer.client.js"
-    );
-    vi.mocked(armTaskTimer).mockClear();
-
     const res = await requestTicket(cookie, body({ project_id: projectId }));
 
     expect(res.status).toBe(201);
-    expect(armTaskTimer).not.toHaveBeenCalled();
+    const opened = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM node_tasks WHERE project_id = ${projectId}
+    `;
+    expect(Number(opened[0]!.n)).toBe(0);
   });
 
   it("opens a row already finished when the studio already holds the file", async () => {
@@ -995,11 +914,6 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     const hash = crypto.randomBytes(32).toString("hex");
     await registerAsset(studioId, userId, hash, 40 * 1024 * 1024);
     const nodeId = crypto.randomUUID();
-    const { armTaskTimer } = await import(
-      "@server/modules/asset/task-timer.client.js"
-    );
-    vi.mocked(armTaskTimer).mockClear();
-
     const res = await requestTicket(
       cookie,
       body({
@@ -1014,6 +928,5 @@ describe("POST /assets/upload-ticket — the task it opens", () => {
     const rows = await tasksOn(nodeId);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.status).toBe("done");
-    expect(armTaskTimer).not.toHaveBeenCalled();
   });
 });

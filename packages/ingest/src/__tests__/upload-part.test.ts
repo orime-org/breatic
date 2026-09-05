@@ -40,7 +40,6 @@ async function openUpload(
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
       sessionTokenTtlSeconds: 900,
-      bookkeepingTtlSeconds: 4 * 60 * 60,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -107,6 +106,7 @@ describe("a part the Worker will not take", () => {
       {
         storageKey,
         uploadId,
+        contentType: "video/mp4",
         expiresAt: Date.now() - 1,
         partSize: PART_SIZE,
         totalParts: 2,

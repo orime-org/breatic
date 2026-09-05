@@ -25,6 +25,14 @@ export interface SessionTokenPayload extends PartLayout {
   storageKey: string;
   /** R2's own id for the multipart upload. */
   uploadId: string;
+  /**
+   * What the ticket said these bytes are. It is written onto the R2 object
+   * when the upload opens and reported back when it finishes, and it rides
+   * here for the same reason the key does: the Worker holds nothing between
+   * requests, and everything it acts on has to be something the browser
+   * cannot alter.
+   */
+  contentType: string;
   /** Epoch ms after which it is refused. */
   expiresAt: number;
 }
