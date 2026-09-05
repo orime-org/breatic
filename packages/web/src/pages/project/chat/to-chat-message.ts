@@ -17,7 +17,7 @@
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import { isReaderLine } from '@breatic/shared';
-import type { ChatMessage, ToolCall } from '@web/pages/project/chat/types';
+import type { ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
 const INTERRUPTED = 'data-interrupted';
@@ -27,6 +27,36 @@ const FAILED = 'data-failed';
 
 /** The part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = 'data-truncated';
+
+/** The part type carrying a turn that stopped to wait for an answer. */
+const BLOCKED = 'data-blocked';
+
+/** The tool whose results the source row and the citation chips are built from. */
+const SEARCH_TOOL = 'web_search';
+
+/**
+ * The pages one finished search returned, or nothing.
+ *
+ * A result gets here in three shapes and only one of them holds sources: what
+ * the tool answers with today, the model's own text on a row stored before
+ * that, and nothing at all on a call that failed. Reading `sources` off the
+ * middle one yields undefined, and a row built from that is a row of blanks.
+ * @param output - Whatever the call answered with.
+ * @returns The sources, or an empty list when there are none to read.
+ */
+function sourcesOf(output: unknown): ChatSource[] {
+  if (output === null || typeof output !== 'object') return [];
+  const found = (output as { sources?: unknown }).sources;
+  if (!Array.isArray(found)) return [];
+  return found.flatMap((entry): ChatSource[] => {
+    if (entry === null || typeof entry !== 'object') return [];
+    const { url, title, publisher } = entry as Record<string, unknown>;
+    if (typeof url !== 'string' || typeof title !== 'string' || typeof publisher !== 'string') {
+      return [];
+    }
+    return [{ url, title, publisher }];
+  });
+}
 
 /**
  * How far a tool got, in the panel's words.
@@ -66,6 +96,14 @@ export function toChatMessage(
   let interrupted = false;
   let truncated = false;
   let failed = false;
+  let blocked = false;
+  // Two readings of the same searches. The row shows each page once; the
+  // markers in the prose resolve against the sequence the model was shown,
+  // which counts a page found twice as two.
+  const sources: ChatSource[] = [];
+  const seen = new Set<string>();
+  const citations: Record<number, ChatSource> = {};
+  let numbered = 0;
 
   // Read before the loop because a tool part can come before the mark. A call
   // this turn cut short has nothing on it saying so — the SDK client leaves it
@@ -105,6 +143,15 @@ export function toChatMessage(
           ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
+      if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
+        for (const source of sourcesOf(part.output)) {
+          numbered += 1;
+          citations[numbered] = source;
+          if (seen.has(source.url)) continue;
+          seen.add(source.url);
+          sources.push(source);
+        }
+      }
       continue;
     }
     if (part.type === 'text') content += part.text;
@@ -112,6 +159,7 @@ export function toChatMessage(
     else if (part.type === INTERRUPTED) interrupted = true;
     else if (part.type === FAILED) failed = true;
     else if (part.type === TRUNCATED) truncated = true;
+    else if (part.type === BLOCKED) blocked = true;
   }
 
   return {
@@ -125,6 +173,9 @@ export function toChatMessage(
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
     ...(truncated ? { truncated: true as const } : {}),
+    ...(blocked ? { blocked: true as const } : {}),
+    ...(sources.length > 0 ? { sources } : {}),
+    ...(numbered > 0 ? { citations } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),
   };

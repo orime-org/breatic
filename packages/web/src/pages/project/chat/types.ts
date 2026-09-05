@@ -45,6 +45,22 @@ export interface ToolCall {
   failureKey?: string;
 }
 
+/**
+ * One page a turn's search found.
+ *
+ * The page's own text is not here. It goes to the model, which is what reads
+ * it; the panel shows where a claim came from, and a wall of scraped prose
+ * under an answer is not that.
+ */
+export interface ChatSource {
+  /** Where the page is. Opened in a new tab when the chip is clicked. */
+  url: string;
+  /** What the page calls itself. Shown in the card that floats on hover. */
+  title: string;
+  /** Who published it. This is what the row shows, not the host. */
+  publisher: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -103,4 +119,37 @@ export interface ChatMessage {
    * Only ever `true`; its absence is the ordinary case.
    */
   failedJustNow?: true;
+  /**
+   * The model asked something and stopped to wait for the answer.
+   *
+   * Read off the mark the server writes, never off the tool names: which
+   * tools block is a list in `@breatic/domain`, which this package may not
+   * import. Without it this ending is an empty reply, which is also what a
+   * turn that produced nothing looks like -- and that one is drawn as a
+   * failure with a retry.
+   *
+   * Only ever `true`; its absence is the ordinary case.
+   */
+  blocked?: true;
+  /**
+   * Every page this turn's searches found, each one once.
+   *
+   * Pooled across the turn's searches rather than grouped by search: a reader
+   * scanning where an answer came from wants each publisher once, and only a
+   * pooled list can drop the pages two searches both returned. Ordered by
+   * first appearance.
+   *
+   * Absent, rather than empty, on a turn that searched for nothing.
+   */
+  sources?: ChatSource[];
+  /**
+   * What a `[N]` in the prose points at.
+   *
+   * Numbered the way the model was shown them -- one number per source per
+   * search, duplicates kept -- because the model wrote its markers against
+   * that sequence. {@link ChatMessage.sources} is the deduplicated list for
+   * the row, and renumbering to match it would move every marker after the
+   * first repeat.
+   */
+  citations?: Record<number, ChatSource>;
 }
