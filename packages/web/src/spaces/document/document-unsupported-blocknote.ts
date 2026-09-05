@@ -52,16 +52,6 @@ const ORIGINAL_NAME = 'originalName';
 /** The attribute the mark carries in addition: the value it arrived with. */
 const ORIGINAL_VALUE = 'originalValue';
 
-/**
- * How many nodes the binding wrapped this stand-in in to reach its slot.
- *
- * Read by `document-tab.ts` to know which of the wrappers around it stand for
- * nothing on the peer's side. Nothing here can be written into: the element
- * the stand-in speaks for has whatever content rule the build that wrote it
- * gave it, and this one cannot know it.
- */
-export const WRAP_DEPTH = 'wrapDepth';
-
 /** The block node's type name, which other files match against. */
 export const UNSUPPORTED_BLOCK = 'unsupportedBlock';
 
@@ -84,7 +74,7 @@ export const UnsupportedBlock = Node.create({
   selectable: true,
 
   addAttributes() {
-    return { [ORIGINAL_NAME]: { default: null }, [WRAP_DEPTH]: { default: 0 } };
+    return { [ORIGINAL_NAME]: { default: null } };
   },
 
   renderHTML({ HTMLAttributes }) {

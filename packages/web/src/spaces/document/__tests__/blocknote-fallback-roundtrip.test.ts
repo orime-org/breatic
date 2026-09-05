@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 S1 · S2 · S3：vocabulary this build does not know survives a visit.
+ * #904 验收 S1 · S2：vocabulary this build does not know survives a visit.
  *
  * A newer build of ours writes a node type or a mark this one has never heard
  * of. The binding rebuilds every node by calling `schema.node(...)`, which
@@ -15,6 +15,15 @@
  * Going through the editor would route the content through `blockToNode`,
  * which never reaches the binding code the patch lives in — the test would
  * pass while the path it exists to cover stays broken.
+ *
+ * A VISIT is the whole promise (S3, user 2026-09-05): the content is drawn and
+ * the shared document is left alone. What an edit does to it afterwards is not
+ * promised — the write-back matches children by name, and a stand-in's name is
+ * never the name of the element it stands for, so any edit that moves a block
+ * across one reaches `updateYFragment`'s delete-and-rebuild branch. The two
+ * ways a reader could meet one are held shut elsewhere: a release only adds
+ * vocabulary entries, and a version that disagrees with the server's is
+ * refused the editor outright (`use-document-schema-intercept.ts`).
  *
  * Five structural slots, because they fail differently and only one of them
  * takes the stand-in unwrapped:
@@ -30,7 +39,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -129,106 +137,6 @@ function visit(build: (fragment: Y.XmlFragment) => void): {
   return { before, after: fragment.toString(), standIns };
 }
 
-/**
- * The same visit, with one keystroke typed into a block that IS known.
- *
- * Mounting alone leaves the shared document untouched, so a stand-in that
- * cannot be written back looks identical to one that can. The write-back only
- * happens once something changes: from the first local edit, y-prosemirror
- * reconciles the whole fragment against the local document, and every stand-in
- * is then written back over the element it stood in for.
- * @param build - Fills the fragment with the shape under test.
- * @returns The shared document before mounting and after the keystroke.
- */
-function visitAndType(build: (fragment: Y.XmlFragment) => void): {
-  before: string;
-  after: string;
-} {
-  const remote = new Y.Doc();
-  build(documentBodyFragment(remote));
-
-  const local = new Y.Doc();
-  Y.applyUpdate(local, Y.encodeStateAsUpdate(remote));
-  const fragment = documentBodyFragment(local);
-  const before = fragment.toString();
-
-  const editor = buildDocumentEditor({
-    fragment,
-    extensions: [documentFallbackExtension()],
-  });
-  editor.mount(document.createElement('div'));
-
-  const view = editor.prosemirrorView!;
-  // Into the first paragraph the shape carries, which every case below has:
-  // an edit somewhere the editor understands, of the kind a reader makes
-  // without ever going near the element a peer sent.
-  let at = -1;
-  view.state.doc.descendants((node, pos) => {
-    if (at === -1 && node.type.name === 'paragraph') at = pos + 1;
-    return at === -1;
-  });
-  expect(at, 'the shape carries a paragraph to type into').toBeGreaterThan(-1);
-  view.dispatch(view.state.tr.insertText('!', at));
-
-  const after = fragment.toString();
-  editor.unmount();
-  return { before, after };
-}
-
-/**
- * The same visit, with one key pressed in a block that IS known.
- *
- * Typing and pressing a key reach the write-back by different routes: typing
- * changes a block's text and leaves every block where it was, while a key
- * bound to a structural command moves blocks between parents. The second
- * shape is the one that runs the children out of step.
- * @param build - Fills the fragment with the shape under test.
- * @param inText - Text of the node to put the caret in.
- * @param key - The key to press, in ProseMirror's chord notation.
- * @returns The shared document before mounting and after the key.
- */
-function visitAndPress(
-  build: (fragment: Y.XmlFragment) => void,
-  inText: string,
-  key: string,
-): { before: string; after: string } {
-  const remote = new Y.Doc();
-  build(documentBodyFragment(remote));
-
-  const local = new Y.Doc();
-  Y.applyUpdate(local, Y.encodeStateAsUpdate(remote));
-  const fragment = documentBodyFragment(local);
-  const before = fragment.toString();
-
-  const editor = buildDocumentEditor({
-    fragment,
-    extensions: [documentFallbackExtension()],
-  });
-  const root = document.createElement('div');
-  document.body.appendChild(root);
-  editor.mount(root);
-
-  const view = editor.prosemirrorView!;
-  let at = -1;
-  view.state.doc.descendants((node, pos) => {
-    if (at === -1 && node.isText && node.text === inText) at = pos + 1;
-    return at === -1;
-  });
-  expect(at, `the shape carries "${inText}"`).toBeGreaterThan(-1);
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
-
-  const [modifier, base] = key.includes('+') ? key.split('+') : [null, key];
-  const event = new KeyboardEvent('keydown', {
-    key: base as string,
-    shiftKey: modifier === 'Shift',
-    bubbles: true,
-  });
-  view.someProp('handleKeyDown', (handler) => handler(view, event));
-
-  const after = fragment.toString();
-  editor.unmount();
-  return { before, after };
-}
 
 describe('an element name this build does not know', () => {
   it('survives in the blockContent slot', () => {
@@ -301,156 +209,6 @@ describe('an element name this build does not know', () => {
     expect(after).toContain('futureinlinething');
     expect(after).toBe(before);
     expect(standIns).toEqual(['futureInlineThing']);
-  });
-});
-
-describe('an unknown element after this client edits something else', () => {
-  // The write-back is where a stand-in either carries the element home or
-  // replaces it. Everything above stops at mounting, which never reaches it.
-
-  /**
-   * An unknown element with an attribute and a child a peer can read.
-   * @param name - The element name this build does not know.
-   * @returns That element.
-   */
-  function furnished(name: string): Y.XmlElement {
-    const el = new Y.XmlElement(name);
-    el.setAttribute('colour', 'crimson');
-    el.insert(0, [paragraph('inner text a peer can read')]);
-    return el;
-  }
-
-  it('keeps a blockGroup child whole, attribute and children', () => {
-    const { before, after } = visitAndType((f) => {
-      f.insert(0, [
-        group([
-          container('a', [paragraph('keep me')]),
-          furnished('futureTopLevelContainer'),
-        ]),
-      ]);
-    });
-
-    expect(before).toContain('colour="crimson"');
-    expect(after).toContain('futuretoplevelcontainer');
-    expect(after).toContain('colour="crimson"');
-    expect(after).toContain('inner text a peer can read');
-  });
-
-  it('keeps a blockContent child whole, attribute and children', () => {
-    const { before, after } = visitAndType((f) => {
-      f.insert(0, [
-        group([
-          container('a', [paragraph('keep me')]),
-          container('b', [furnished('futureBlockType')]),
-        ]),
-      ]);
-    });
-
-    expect(before).toContain('colour="crimson"');
-    expect(after).toContain('futureblocktype');
-    expect(after).toContain('colour="crimson"');
-    expect(after).toContain('inner text a peer can read');
-  });
-
-  // A second element at the FRAGMENT ROOT is the one place a stand-in cannot
-  // reach, and this records what happens to it rather than asserting a
-  // guarantee the shape cannot give. The document's top node holds
-  // `content: "blockGroup"` — exactly one, measured in `@blocknote/core`'s doc
-  // spec — so a local document has nowhere to put a second root child. It
-  // survives mounting, which the case above this describe block covers; from
-  // the first edit the write-back has only the local document to go on, and
-  // there the element was never represented.
-  //
-  // Reaching this needs a newer build of OUR OWN code writing a second child
-  // to the fragment root, which would mean changing that top node's content
-  // rule. No build does, and this is the boundary of what the stand-in
-  // mechanism covers.
-  it('loses a second fragment-root element once this client edits', () => {
-    const { before, after } = visitAndType((f) => {
-      f.insert(0, [
-        group([container('a', [paragraph('keep me')])]),
-        furnished('futureRootThing'),
-      ]);
-    });
-
-    expect(before).toContain('futurerootthing');
-    expect(after).not.toContain('futurerootthing');
-    // What the reader was editing is untouched, which is what keeps this a
-    // boundary rather than a fault: the keystroke landed and the known blocks
-    // came through whole.
-    expect(after).toContain('!keep me');
-  });
-
-  // Typing leaves the block structure alone, so the write-back walks the
-  // children in step and `meta.mapping` answers for the stand-in's slot. An
-  // edit that MOVES blocks does not: the walk runs out of matching pairs and
-  // falls to `matchNodeName`, which compares an element's name against the
-  // stand-in's own — never equal, by construction. Tab is the shortest way
-  // there, and C1 puts it on every block.
-  it('keeps a blockGroup child whole when Tab moves the block after it', () => {
-    const { before, after } = visitAndPress(
-      (f) => {
-        f.insert(0, [
-          group([
-            container('a', [paragraph('first')]),
-            furnished('futureTopLevelContainer'),
-            container('c', [paragraph('third')]),
-          ]),
-        ]);
-      },
-      'third',
-      'Tab',
-    );
-
-    expect(before).toContain('colour="crimson"');
-    expect(after).toContain('futuretoplevelcontainer');
-    expect(after).toContain('colour="crimson"');
-    expect(after).toContain('inner text a peer can read');
-  });
-
-  it('keeps a blockContent child whole when Tab moves the block after it', () => {
-    const { before, after } = visitAndPress(
-      (f) => {
-        f.insert(0, [
-          group([
-            container('a', [paragraph('first'), furnished('futureNested')]),
-            container('c', [paragraph('third')]),
-          ]),
-        ]);
-      },
-      'third',
-      'Tab',
-    );
-
-    expect(before).toContain('colour="crimson"');
-    expect(after).toContain('futurenested');
-    expect(after).toContain('colour="crimson"');
-    expect(after).toContain('inner text a peer can read');
-  });
-
-  it('keeps it whole when Shift-Tab moves a block back out', () => {
-    const { before, after } = visitAndPress(
-      (f) => {
-        f.insert(0, [
-          group([
-            container('a', [
-              paragraph('first'),
-              group([
-                furnished('futureOutdent'),
-                container('c', [paragraph('third')]),
-              ]),
-            ]),
-          ]),
-        ]);
-      },
-      'third',
-      'Shift+Tab',
-    );
-
-    expect(before).toContain('colour="crimson"');
-    expect(after).toContain('futureoutdent');
-    expect(after).toContain('colour="crimson"');
-    expect(after).toContain('inner text a peer can read');
   });
 });
 
