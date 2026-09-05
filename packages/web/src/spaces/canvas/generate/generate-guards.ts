@@ -187,8 +187,9 @@ export function evaluateExecute(
   ) {
     return 'prompt-too-long';
   }
-  // The lyrics box sits directly under the prompt editor, so it is reported
-  // right after it — the panel's own order, top to bottom.
+  // Reported right after the style brief, because the two are one statement:
+  // a music model is handed a description and the words to sing, and a user
+  // told to fix one and then the other would fix the same submit twice.
   //
   // Judged on the text the vendor will receive, the same rule the prompt's
   // length check follows above: the worker cleans the lyrics through this

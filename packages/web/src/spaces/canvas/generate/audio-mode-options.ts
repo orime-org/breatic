@@ -108,16 +108,13 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
   },
 ];
 
-/** The empty list, so a mode this panel does not offer answers one reference. */
-const NO_SLOTS: readonly AudioSlot[] = [];
-
 /** What a mode this panel does not offer collects and asks for: nothing. */
 const NOT_OURS: AudioModeOption = {
   value: '',
   label: '',
   testId: 'generate-audio-mode-none',
   placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
-  slots: NO_SLOTS,
+  slots: [],
   lyrics: false,
 };
 

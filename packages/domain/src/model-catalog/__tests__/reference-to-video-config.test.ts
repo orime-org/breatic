@@ -26,21 +26,8 @@ import { getFullModelConfig } from "../model-catalog.js";
 import {
   computeSourcesByMode,
   violatesSourceRequirement,
-  SOURCE_TYPE_PARAM_FIELDS,
 } from "../source-requirement.js";
 
-
-/**
- * Every carrier field in the vocabulary, for the cases that are about the
- * RULE rather than about one model's declarations: the gate asks whether
- * the model declares a field, and a case exercising the shape of a value
- * answers yes to all of them.
- */
-const EVERY_FIELD: ReadonlySet<string> = new Set(
-  Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
-    fields.map(([field]) => field),
-  ),
-);
 
 /** The model that runs reference-to-video (config/models/video/kling.yaml). */
 const REF_MODEL = "kling-o3-pro-ref";
@@ -73,9 +60,17 @@ describe("reference-to-video config wiring (#1927)", () => {
 
   it("refuses a reference task carrying no images", () => {
     const sources = computeSourcesByMode("video", "ref");
-    expect(violatesSourceRequirement(sources, { prompt: "x" }, EVERY_FIELD)).toBe(true);
+    // The model's own declarations, because that is the second question the
+    // gate asks (#1960): a carrier field this model does not declare reaches
+    // the upstream as nothing, so it cannot satisfy the requirement. Handing
+    // it every field in the vocabulary would answer that question yes for all
+    // of them and check only the first half of the rule.
+    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
+    const declared = new Set(Object.keys(model!.params ?? {}));
+    expect(declared.has("images"), `${REF_MODEL} declares images`).toBe(true);
+    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
     expect(
-      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }, EVERY_FIELD),
+      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }, declared),
     ).toBe(false);
   });
 

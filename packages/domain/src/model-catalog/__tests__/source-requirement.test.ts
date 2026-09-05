@@ -111,10 +111,30 @@ describe("violatesSourceRequirement (#1675 server gate)", () => {
     expect(violatesSourceRequirement(sbm, { images: ["u"], audio: "u" }, EVERY_FIELD)).toBe(false);
   });
 
-  it("accepts audio source via any carrier field (audio / audio_url / ref_audio_url)", () => {
+  // The vocabulary spans every vendor's spelling, and each satisfies the audio
+  // requirement FOR A MODEL THAT DECLARES IT — which is the second question the
+  // gate asks (#1960). A model reading its reference as `audio` is not
+  // satisfied by a payload carrying `ref_audio_url`, and the case below that
+  // one says so with the real catalogue's own spelling.
+  it("takes any carrier field the model declares as its audio source", () => {
     const sbm = computeSourcesByMode("tts", "voice_clone");
-    expect(violatesSourceRequirement(sbm, { ref_audio_url: "u" }, EVERY_FIELD)).toBe(false);
+    for (const field of ["audio", "audio_url", "ref_audio_url"]) {
+      expect(
+        violatesSourceRequirement(sbm, { [field]: "u" }, new Set([field])),
+        field,
+      ).toBe(false);
+    }
     expect(violatesSourceRequirement(sbm, {}, EVERY_FIELD)).toBe(true);
+  });
+
+  it("refuses a carrier field the model does not declare", () => {
+    // The whole reason the third argument exists: the transport builds its
+    // request from the params the model declares, so a field it never named
+    // reaches the upstream as nothing.
+    const sbm = computeSourcesByMode("tts", "voice_clone");
+    expect(
+      violatesSourceRequirement(sbm, { ref_audio_url: "u" }, new Set(["audio"])),
+    ).toBe(true);
   });
 
   it("does NOT accept a malformed non-array `images` (a bare string) — the worker reads `images` as an array, so a string is not a usable source", () => {

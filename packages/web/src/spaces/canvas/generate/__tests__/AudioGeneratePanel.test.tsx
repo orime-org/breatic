@@ -24,7 +24,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import * as Y from 'yjs';
+
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
+import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import type { ModelEntry } from '@breatic/shared';
@@ -382,5 +385,54 @@ describe('AudioGeneratePanel — the style box across a mode switch', () => {
       </TooltipProvider>,
     );
     expect(screen.getByTestId('prompt-editor')).toBe(before);
+  });
+});
+
+/**
+ * The two starting heights (#1960).
+ *
+ * jsdom lays nothing out, so what can be pinned here is which classes each
+ * branch emits — and that is where the arithmetic lives: `half` is the
+ * ProseMirror floor plus the viewport's own 1rem of `py-2`, and it has to come
+ * to half of `full`'s 6.5rem. The only other check on these numbers is a
+ * Playwright spec that CI does not run.
+ */
+describe('PromptEditor — where each box starts', () => {
+  /**
+   * The viewport class list for one starting height.
+   * @param startingHeight - Which floor to render with.
+   * @returns The viewport element's class attribute.
+   */
+  function viewportClass(startingHeight: 'full' | 'half'): string {
+    const { container } = render(
+      <PromptEditor
+        fragment={new Y.Doc().getXmlFragment('p')}
+        startingHeight={startingHeight}
+        placeholder='p'
+        onTextChange={() => {}}
+        onAtMentionsChange={() => {}}
+        references={[]}
+        imageRefsDisabled
+        mentionEmptyLabel='e'
+        mentionNoMatchLabel='n'
+      />,
+    );
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+    return viewport?.getAttribute('class') ?? '';
+  }
+
+  it('opens full at 6.5rem, the floor every prompt box has had', () => {
+    const cls = viewportClass('full');
+    expect(cls).toContain('min-h-[6.5rem]');
+    expect(cls).toContain('[&_.ProseMirror]:min-h-[5.25rem]');
+  });
+
+  it('opens half at exactly half of that, counting the padding between them', () => {
+    // 2.25rem of content + the 1rem of py-2 on the same box = 3.25rem, which
+    // is half of 6.5rem. An outer floor is not stated: min-height measures the
+    // border box, so one below content + padding could never bind.
+    const cls = viewportClass('half');
+    expect(cls).toContain('[&_.ProseMirror]:min-h-[2.25rem]');
+    expect(cls).not.toContain('min-h-[6.5rem]');
   });
 });

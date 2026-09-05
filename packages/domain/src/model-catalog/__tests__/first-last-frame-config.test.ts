@@ -24,21 +24,8 @@ import { getFullModelConfig } from "../model-catalog.js";
 import {
   computeSourcesByMode,
   violatesSourceRequirement,
-  SOURCE_TYPE_PARAM_FIELDS,
 } from "../source-requirement.js";
 
-
-/**
- * Every carrier field in the vocabulary, for the cases that are about the
- * RULE rather than about one model's declarations: the gate asks whether
- * the model declares a field, and a case exercising the shape of a value
- * answers yes to all of them.
- */
-const EVERY_FIELD: ReadonlySet<string> = new Set(
-  Object.values(SOURCE_TYPE_PARAM_FIELDS).flatMap((fields) =>
-    fields.map(([field]) => field),
-  ),
-);
 
 const MODES_YAML = resolve(
   import.meta.dirname,
@@ -64,9 +51,17 @@ describe("first-last frame config wiring (#1904)", () => {
     // nothing", and one source-less mode lets the whole model through — the
     // image-to-video half would stop asking for a first frame too.
     const sources = computeSourcesByMode("video", ["i2v", "first_last"]);
-    expect(violatesSourceRequirement(sources, { prompt: "x" }, EVERY_FIELD)).toBe(true);
+    // The model's own declarations, because that is the second question the
+    // gate asks (#1960): a carrier field this model does not declare reaches
+    // the upstream as nothing. Handing it every field in the vocabulary would
+    // answer that question yes for all of them and check only half the rule.
+    const config = getFullModelConfig("video");
+    const model = config.models.find((m) => m.name === FIRST_LAST_MODELS[0]);
+    const declared = new Set(Object.keys(model?.params ?? {}));
+    expect(declared.has("image"), `${FIRST_LAST_MODELS[0]} declares image`).toBe(true);
+    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
     expect(
-      violatesSourceRequirement(sources, { prompt: "x", image: "https://cdn/a.png" }, EVERY_FIELD),
+      violatesSourceRequirement(sources, { prompt: "x", image: "https://cdn/a.png" }, declared),
     ).toBe(false);
   });
 

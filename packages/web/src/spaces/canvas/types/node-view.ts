@@ -340,7 +340,6 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     musicSong: data.musicSong,
     musicVoice: data.musicVoice,
     musicInstrumental: data.musicInstrumental,
-    lyrics: data.lyrics,
     focusImages: data.focusImages,
   };
   switch (type) {

@@ -69,8 +69,8 @@ interface PromptEditorProps {
   /**
    * How tall the box opens before anything is typed (#1960).
    *
-   * `full` is four lines of text-sm, the floor every prompt box has had since
-   * user 2026-07-12 P6. `half` is two, for a box that asks for a line or two
+   * `full` is 6.5rem, the floor every prompt box has had since user 2026-07-12
+   * P6. `half` is exactly half of it, for a box that asks for a line or two
    * rather than a passage — the music modes' style brief beside a lyrics box
    * holding a whole song. Both grow with what is typed and cap at the same
    * ceiling; this is where each starts.
@@ -476,9 +476,9 @@ export const PromptEditor = React.forwardRef<
         (readOnly ? ' opacity-50' : '')
       }
       viewportClassName={
-        // min height = 4 text-sm lines on `full` (user 2026-07-12 P6): the panel
-        // opened at ~2 lines which felt cramped for a prompt. `half` is two, for
-        // a box asking for a line or two beside one holding a whole song
+        // `full` opens at 6.5rem (user 2026-07-12 P6): the panel opened at ~2
+        // lines, which felt cramped for a prompt. `half` opens at half of that,
+        // for a box asking for a line or two beside one holding a whole song
         // (#1960). Both cap at max-h-40 and scroll past their floor.
         // ProseMirror's own min-h carries the floor so the empty editor renders
         // at its height, not just the placeholder line.

@@ -165,8 +165,11 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
             key={control.name}
             control={control}
             label={t(control.labelKey)}
-            value={shownValue(model, control.name, value[control.name])}
-            flag={audioFlagValue(model, control.name, value[control.name])}
+            value={
+              control.kind === 'toggle'
+                ? audioFlagValue(model, control.name, value[control.name])
+                : shownValue(model, control.name, value[control.name])
+            }
             onChange={onChange}
             last={index === controls.length - 1}
           />
@@ -177,11 +180,10 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 });
 
 interface ParamControlRowProps {
-  /** Whether a switch control is on. Read only when `control.kind` is toggle. */
-  flag?: boolean;
   control: AudioParamControl;
   label: string;
-  value: number | undefined;
+  /** What this param is currently set to: a boolean on a switch, else a number. */
+  value: number | boolean | undefined;
   onChange: (partial: AudioParamsValue) => void;
   /** The last row carries no bottom margin. */
   last: boolean;
@@ -199,7 +201,6 @@ interface ParamControlRowProps {
  * @param root0.control - The control this param calls for.
  * @param root0.label - The localized param name.
  * @param root0.value - The value to show.
- * @param root0.flag - Whether a switch control is on.
  * @param root0.onChange - Called with the changed param.
  * @param root0.last - Whether this is the last row.
  * @returns The row.
@@ -208,7 +209,6 @@ function ParamControlRow({
   control,
   label,
   value,
-  flag,
   onChange,
   last,
 }: ParamControlRowProps): React.JSX.Element {
@@ -220,12 +220,16 @@ function ParamControlRow({
       <ParamToggleRow
         control={control}
         label={label}
-        checked={flag === true}
+        checked={value === true}
         onChange={onChange}
         className={spacing}
       />
     );
   }
+
+  // Past the switch branch the value is a number or absent: a boolean reaches
+  // this row only on a toggle, and that branch has returned.
+  const shown = typeof value === 'number' ? value : undefined;
 
   if (control.kind === 'choice') {
     return (
@@ -235,7 +239,7 @@ function ParamControlRow({
           value: option,
           label: formatAudioParam(control.name, option, t),
         }))}
-        value={value}
+        value={shown}
         onSelect={(next) => onChange({ [control.name]: Number(next) })}
         testIdPrefix={`generate-audio-${control.name}-option`}
         className={spacing}
@@ -247,7 +251,7 @@ function ParamControlRow({
     <ParamSliderRow
       control={control}
       label={label}
-      value={value}
+      value={shown}
       onChange={onChange}
       className={spacing}
     />

@@ -38,17 +38,6 @@ import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-stat
 const SHELL =
   'flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
 
-/**
- * One word naming the box under it.
- * @param root0 - Component props.
- * @param root0.textKey - The i18n key for the word.
- * @returns The label.
- */
-function FieldLabel({ textKey }: { textKey: string }): React.JSX.Element {
-  const t = useTranslation();
-  return <span className='text-xs text-muted-foreground'>{t(textKey)}</span>;
-}
-
 interface AudioGeneratePanelProps {
   /** The tts models this panel offers. */
   models: ModelEntry[];
@@ -318,11 +307,15 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           one teardown instead of two, and the ground for that one to go. */}
       <div className='flex flex-col gap-2'>
         {lyricsSlot !== null && (
-          <FieldLabel textKey='canvas.generatePanel.musicStyleLabel' />
+          <span className='text-xs text-muted-foreground'>
+            {t('canvas.generatePanel.musicStyleLabel')}
+          </span>
         )}
         {promptSlot}
         {lyricsSlot !== null && (
-          <FieldLabel textKey='canvas.generatePanel.musicLyricsLabel' />
+          <span className='text-xs text-muted-foreground'>
+            {t('canvas.generatePanel.musicLyricsLabel')}
+          </span>
         )}
         {lyricsSlot}
       </div>

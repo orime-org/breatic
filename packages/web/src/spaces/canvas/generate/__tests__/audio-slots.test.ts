@@ -172,19 +172,24 @@ describe('the music reference slots', () => {
   // spec. A key added to one of those tables and to no catalog is invisible to
   // CI and shows up as the key itself on screen.
   it('answers every execute refusal in all five catalogs', () => {
-    const refusals: ExecuteRefusal[] = [
-      'node-gone',
-      'no-model',
-      'submitting',
-      'prompt-missing',
-      'prompt-too-long',
-      'voice-missing',
-      'ref-audio-missing',
-      'reference-missing',
-      'lyrics-missing',
-    ];
-    for (const refusal of refusals) {
+    // A record keyed on the union, so a refusal added without a line here
+    // fails typecheck. The array this replaced accepted a short list — the
+    // same hole its sibling case in `generate-guards.test.ts` was rewritten to
+    // close, reopened one file over.
+    const speaks: Record<ExecuteRefusal, boolean> = {
+      'node-gone': false,
+      'no-model': false,
+      submitting: false,
+      'prompt-missing': true,
+      'prompt-too-long': true,
+      'voice-missing': true,
+      'ref-audio-missing': true,
+      'reference-missing': true,
+      'lyrics-missing': true,
+    };
+    for (const refusal of Object.keys(speaks) as ExecuteRefusal[]) {
       const key = refusalToastKey(refusal);
+      expect(key !== null, refusal).toBe(speaks[refusal]);
       if (key === null) continue;
       for (const [locale, catalog] of LOCALE_CATALOGS) {
         expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf(

@@ -411,7 +411,7 @@ body {
    adjacent chips is a real text-insertion point, so the cursor must read as
    "click to insert here" (text), not the default arrow the panel surface would
    otherwise inherit. */
-.prompt-editor .ProseMirror {
+.prompt-editor .ProseMirror[contenteditable='true'] {
   cursor: text;
 }
 /* A reference chip is an ATOM selected as a unit, not editable text. `cursor`

@@ -681,6 +681,16 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
   await expect(
     page.getByTestId('generate-lyrics-editor').locator('.ProseMirror'),
   ).toHaveAttribute('contenteditable', 'false');
+  // And the pointer says so too: the I-beam invites typing, and a box that
+  // refuses it must not show one. The rule that paints it is scoped to the
+  // editable state.
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-testid="generate-lyrics-editor"] .ProseMirror')
+        .evaluate((el) => getComputedStyle(el).cursor),
+    )
+    .not.toBe('text');
   // Off again, so the case leaves the node the way it found it.
   await instrumental.click();
   await expect(instrumental).toHaveAttribute('aria-checked', 'false', {
