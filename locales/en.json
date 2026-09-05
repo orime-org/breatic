@@ -319,7 +319,7 @@
       "audioPromptPlaceholder": "Write the lines to speak, @ to add a reference",
       "sfxPromptPlaceholder": "Describe the sound, @ to add a reference",
       "audioLegacyNoPrompt": "This node is too old. Create a new audio node.",
-      "voiceParams": "Voice settings",
+      "audioParams": "Parameters",
       "voiceStability": "Stability",
       "voiceStabilityCreative": "Creative",
       "voiceStabilityNatural": "Natural",

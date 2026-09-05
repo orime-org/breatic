@@ -121,7 +121,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
           variant={null}
           size={null}
           data-testid='generate-audio-params-trigger'
-          aria-label={t('canvas.generatePanel.voiceParams')}
+          aria-label={t('canvas.generatePanel.audioParams')}
           className={triggerClass}
         >
           {/* truncate: a vendor could name a stop at any length, and the
@@ -139,7 +139,7 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
         // Freeze on open (user 2026-07-18): no collision flip/shift — clips at
         // the screen edge like the panel rather than jumping near a border.
         avoidCollisions={false}
-        aria-label={t('canvas.generatePanel.voiceParams')}
+        aria-label={t('canvas.generatePanel.audioParams')}
         // The same width as the image and video params popovers.
         className='w-64 p-3'
       >

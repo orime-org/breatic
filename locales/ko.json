@@ -310,7 +310,7 @@
       "audioPromptPlaceholder": "읽을 대사를 입력하세요. @ 로 참조 추가",
       "sfxPromptPlaceholder": "원하는 소리를 설명하세요. @ 로 참조 추가",
       "audioLegacyNoPrompt": "이 노드는 너무 오래되었습니다. 오디오 노드를 새로 만드세요.",
-      "voiceParams": "음성 설정",
+      "audioParams": "매개변수",
       "voiceStability": "안정성",
       "voiceStabilityCreative": "창의적",
       "voiceStabilityNatural": "자연스러움",

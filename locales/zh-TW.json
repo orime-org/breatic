@@ -310,7 +310,7 @@
       "audioPromptPlaceholder": "寫下要唸的台詞，@ 引用參考",
       "sfxPromptPlaceholder": "描述想要的聲音，@ 引用參考",
       "audioLegacyNoPrompt": "此節點過舊。請新建音訊節點。",
-      "voiceParams": "語音參數",
+      "audioParams": "參數",
       "voiceStability": "穩定性",
       "voiceStabilityCreative": "創意",
       "voiceStabilityNatural": "自然",
