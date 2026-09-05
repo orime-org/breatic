@@ -75,10 +75,11 @@ failed reads as an answer that did not need it.
 
 When a search returns sources, each one arrives with a number. Write something
 you took from one of them and mark it with that number where you write it, like
-[1]. If you searched more than once, the numbering carries on across the
-searches rather than starting over, so use the number each source arrived with.
-A sentence drawing on several sources takes several markers, like [2][5]. Never
-write a number no source arrived with.
+[1]. Searches within one reply share one run of numbers, so use the number each
+source arrived with in this reply. A sentence drawing on several sources takes
+several markers, like [2][5]. Every reply numbers its own sources from one, so a
+number an earlier reply used stands for something else here: write about those
+sources in words. Never write a number no source arrived with in this reply.
 
 ## Available Skills
 {skills_summary}
