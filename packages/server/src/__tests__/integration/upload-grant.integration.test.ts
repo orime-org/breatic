@@ -58,6 +58,7 @@ import {
   issueGrant,
   findLiveGrant,
   consumeGrant,
+  claimFinalize,
 } from "@server/modules/asset/upload-grant.repo.js";
 
 try {
@@ -246,6 +247,111 @@ describe("upload-grant repo — a voided grant is dead", () => {
 
     expect(await findLiveGrant({ storageKey, userId })).toBeNull();
     expect(await consumeGrant({ storageKey, userId })).toBe(false);
+  });
+});
+
+describe("upload-grant repo — the permission to finish an upload", () => {
+  // What this stops is a replay of a ticket still inside its window. Measured
+  // on real workerd (design §6.4): completing the same uploadId twice throws,
+  // but opening a NEW multipart upload on a key already registered and
+  // completing that one silently overwrites the object — and dedup means the
+  // bytes another member of the studio sees are the ones written over.
+  //
+  // The uploadId is what separates the two: a replay has to open its own
+  // upload and so brings a new one, while a retry of the same delivery brings
+  // the one the browser already holds.
+
+  it("lets the first asker through and records which upload it was", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: true,
+    });
+    const rows = await sql<{ finalizing_upload_id: string | null }[]>`
+      SELECT finalizing_upload_id FROM upload_grants WHERE storage_key = ${storageKey}
+    `;
+    expect(rows[0]!.finalizing_upload_id).toBe("upload-a");
+  });
+
+  it("lets the same upload ask again, so three deliveries all get through", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+        granted: true,
+      });
+    }
+  });
+
+  it("refuses a different upload on a key somebody is already finishing", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-a" });
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-b" })).toEqual({
+      granted: false,
+      reason: "in_flight",
+    });
+  });
+
+  it("tells a caller the key is already registered once the grant is consumed", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-a" });
+    await consumeGrant({ storageKey, userId });
+
+    // Even the upload that holds the permission gets this answer: the bytes
+    // it wrote are in the ledger, and writing them again is the overwrite.
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: false,
+      reason: "already_registered",
+    });
+  });
+
+  it("refuses on a voided grant", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await sql`
+      UPDATE upload_grants SET voided_at = now() WHERE storage_key = ${storageKey}
+    `;
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: false,
+      reason: "no_grant",
+    });
+  });
+
+  it("refuses a key that was never issued", async () => {
+    expect(
+      await claimFinalize({ storageKey: freshKey(), uploadId: "upload-a" }),
+    ).toEqual({ granted: false, reason: "no_grant" });
+  });
+
+  it("INVARIANT — concurrent claims by different uploads: EXACTLY ONE wins", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+
+    const RACERS = 16;
+    const results = await Promise.all(
+      Array.from({ length: RACERS }, (_, i) =>
+        claimFinalize({ storageKey, uploadId: `upload-${i}` }),
+      ),
+    );
+    expect(results.filter((r) => r.granted).length).toBe(1);
   });
 });
 

@@ -22,7 +22,7 @@
  * `@breatic/core` (the home of every table's schema).
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants } from "@breatic/core";
 
 /**
@@ -50,7 +50,7 @@ export interface UploadGrant {
   voidedAt: Date | null;
   /** How long the browser has to start the upload. */
   expiresAt: Date;
-  /** The node's fencing gen; an event without it is dropped by collab's CAS. */
+  /** Node these bytes land on. Null for a focus crop, which has no node. */
   nodeId: string | null;
   projectId: string | null;
   spaceId: string | null;
@@ -179,6 +179,77 @@ export async function findLiveGrant(params: {
     )
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/** Why a key may not be finished right now. */
+export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
+
+/** The answer to "may this upload finish on this key". */
+export type FinalizeClaim =
+  | { granted: true }
+  | { granted: false; reason: FinalizeRefusal };
+
+/**
+ * Claim the exclusive permission to finish one upload on a key (#186, §6.4).
+ *
+ * What it stops is a replay of a ticket still inside its window. Measured on
+ * real workerd: completing the same multipart upload twice throws, but opening
+ * a NEW upload on a key already registered and completing that one silently
+ * overwrites the object — and because dedup points other members of the studio
+ * at that same key, the bytes they see are the ones written over.
+ *
+ * The upload id is what separates the two. A replay has to open its own
+ * multipart upload, so it brings an id nobody recorded; a retry of the same
+ * delivery brings the id the browser already holds, which is why three
+ * deliveries of one report all get through.
+ *
+ * One atomic CAS decides it: the row is updated only while the grant is live
+ * and the key is either unclaimed or claimed by this very upload. Concurrent
+ * askers see exactly one winner, the same way {@link consumeGrant} does.
+ * @param params - The key and the upload asking to finish on it.
+ * @param params.storageKey - The key being finished.
+ * @param params.uploadId - The multipart upload the caller holds.
+ * @returns Granted, or the reason it was refused.
+ */
+export async function claimFinalize(params: {
+  storageKey: string;
+  uploadId: string;
+}): Promise<FinalizeClaim> {
+  const won = await db
+    .update(uploadGrants)
+    .set({ finalizingUploadId: params.uploadId })
+    .where(
+      and(
+        eq(uploadGrants.storageKey, params.storageKey),
+        isNull(uploadGrants.consumedAt),
+        isNull(uploadGrants.voidedAt),
+        or(
+          isNull(uploadGrants.finalizingUploadId),
+          eq(uploadGrants.finalizingUploadId, params.uploadId),
+        ),
+      ),
+    )
+    .returning({ id: uploadGrants.id });
+  if (won.length === 1) return { granted: true };
+
+  // Losing the CAS says only "not right now". Which of the four reasons it was
+  // decides what the Worker tells the browser, so the row is read back.
+  const rows = await db
+    .select({
+      consumedAt: uploadGrants.consumedAt,
+      voidedAt: uploadGrants.voidedAt,
+    })
+    .from(uploadGrants)
+    .where(eq(uploadGrants.storageKey, params.storageKey))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined || row.voidedAt !== null) {
+    return { granted: false, reason: "no_grant" };
+  }
+  if (row.consumedAt !== null) {
+    return { granted: false, reason: "already_registered" };
+  }
+  return { granted: false, reason: "in_flight" };
 }
 
 /**

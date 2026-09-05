@@ -2088,13 +2088,16 @@ export const uploadGrants = pgTable(
      */
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     /**
-     * The node's fencing gen at the moment handling opened. It never leaves the
-     * database: the ticket does not carry it and the Worker never sees it, so
-     * the report handler reads it off a row we wrote rather than off anything
-     * the caller supplies. An event published without the right gen is dropped
-     * by collab's CAS and the node hangs in handling until the lease sweeper
-     * reclaims it an hour later.
+     * The multipart upload currently allowed to finish on this key (#186,
+     * design §6.4). The ingest Worker takes this before it asks R2 to
+     * assemble the object; a second asker holding a different upload id is
+     * refused, and one holding the same id is the delivery being retried.
+     *
+     * Null means nobody has started finishing. It stays set after that —
+     * `consumed_at` is what says the bytes reached the ledger, and clearing
+     * this would reopen the key to the very write it exists to stop.
      */
+    finalizingUploadId: text("finalizing_upload_id"),
     /** Node these bytes land on. Absent for a focus crop, which has no node. */
     nodeId: uuid("node_id"),
     /** Project the node belongs to, checked against the user's access at ticket time. */
