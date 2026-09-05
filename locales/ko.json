@@ -235,6 +235,7 @@
     },
     "sources": {
       "title": "출처",
+      "label": "출처:",
       "more": "+{count, number}"
     },
     "code": {

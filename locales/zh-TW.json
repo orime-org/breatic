@@ -235,6 +235,7 @@
     },
     "sources": {
       "title": "來源",
+      "label": "來源：",
       "more": "+{count, number}"
     },
     "code": {

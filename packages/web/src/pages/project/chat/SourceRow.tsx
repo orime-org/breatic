@@ -55,23 +55,30 @@ export const SourceRow = React.memo(function SourceRow({
 
   return (
     <>
-      <div ref={room} data-testid='source-row' className='mt-[0.85em] flex gap-2 overflow-hidden'>
-        <div ref={items} className='flex gap-2'>
-          {sources.slice(0, shown).map((s) => (
-            <SourceChip key={s.url} source={s} label={s.publisher} testId='source-chip' />
-          ))}
+      <div data-testid='source-row' className='mt-[0.85em] flex items-center gap-2'>
+        {/* Outside the measured row, so the room the chips are counted
+            against is what is left beside it. */}
+        <span data-testid='source-row-label' className='shrink-0 text-xs text-muted-foreground'>
+          {t('chat.sources.label')}
+        </span>
+        <div ref={room} className='flex min-w-0 flex-1 gap-2 overflow-hidden'>
+          <div ref={items} className='flex gap-2'>
+            {sources.slice(0, shown).map((s) => (
+              <SourceChip key={s.url} source={s} label={s.publisher} testId='source-chip' />
+            ))}
+          </div>
+          {hidden > 0 ? (
+            <Button
+              data-testid='source-row-more'
+              variant='outline'
+              size='sm'
+              className='h-[var(--btn-compact)] shrink-0 px-3 text-2xs text-muted-foreground'
+              onClick={openBox}
+            >
+              {t('chat.sources.more', { count: hidden })}
+            </Button>
+          ) : null}
         </div>
-        {hidden > 0 ? (
-          <Button
-            data-testid='source-row-more'
-            variant='outline'
-            size='sm'
-            className='h-[var(--btn-compact)] shrink-0 px-3 text-2xs text-muted-foreground'
-            onClick={openBox}
-          >
-            {t('chat.sources.more', { count: hidden })}
-          </Button>
-        ) : null}
       </div>
       <SourceBox sources={sources} open={boxOpen} onOpenChange={setBoxOpen} />
     </>

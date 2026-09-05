@@ -235,6 +235,7 @@
     },
     "sources": {
       "title": "来源",
+      "label": "来源：",
       "more": "+{count, number}"
     },
     "code": {

@@ -235,6 +235,7 @@
     },
     "sources": {
       "title": "Sources",
+      "label": "Sources:",
       "more": "+{count, number}"
     },
     "code": {

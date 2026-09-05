@@ -235,6 +235,7 @@
     },
     "sources": {
       "title": "出典",
+      "label": "出典：",
       "more": "+{count, number}"
     },
     "code": {

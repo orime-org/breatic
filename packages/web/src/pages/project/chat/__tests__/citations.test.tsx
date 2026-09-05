@@ -139,6 +139,18 @@ describe('a marker in the prose', () => {
 });
 
 describe('the row at the foot of the reply', () => {
+  it('says what the row is before listing it', () => {
+    // Publisher names alone are a line of proper nouns with nothing saying
+    // what they have to do with the answer above them.
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'answer', sources: [source(1)] }}
+      />,
+    );
+
+    expect(screen.getByTestId('source-row-label')).toBeInTheDocument();
+  });
+
   it('names publishers rather than hosts', () => {
     render(
       <MessageBubble
