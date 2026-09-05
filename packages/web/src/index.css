@@ -508,6 +508,19 @@ body {
   outline-offset: 2px;
 }
 
+/* BlockNote draws a marker of its own over the same block — a `#64a0ff` wash
+   with a 4px inset ring of that hue, written as a fixed value that follows
+   neither theme nor our tokens. Measured, a selected block carried two
+   markers that disagreed: our purple outline outside it and that blue fill
+   within. The outline is the one every selected thing in the product wears,
+   and it stays outside the box, so a code block keeps its own dark panel. */
+.doc-body-editor .ProseMirror .ProseMirror-selectednode > *::after,
+.doc-body-editor .ProseMirror .ProseMirror-selectednode::after {
+  content: none;
+  background-color: transparent;
+  box-shadow: none;
+}
+
 /* The looks-empty hint ON the first invisible block (a document holding
    nothing but empty paragraphs and headings — `document-placeholders` marks
    the block). Painted the way tiptap's official Placeholder paints: a

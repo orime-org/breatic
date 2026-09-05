@@ -264,3 +264,57 @@ test('draws the body in our own font and the code block on our own panel', async
     seen.wantPanel,
   );
 });
+
+test('marks a node-selected block in our colour and no other (A15)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('a block to select');
+  // Ctrl/Cmd-click is what node-selects a block in ProseMirror.
+  await page
+    .locator(`${EDITOR} .bn-block-content`)
+    .first()
+    .click({ modifiers: ['ControlOrMeta'] });
+
+  const measured = await page.evaluate((sel) => {
+    const root = document.querySelector(sel);
+    const selected = root?.querySelector('.ProseMirror-selectednode') ?? null;
+    if (selected === null) return null;
+    const rootStyle = getComputedStyle(document.documentElement);
+    /** What a token value computes to once the browser has resolved it. */
+    const paint = (property: string, value: string): string => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, value);
+      document.body.appendChild(probe);
+      const painted = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return painted;
+    };
+    // The overlay ships on the ::after of whatever the block content holds,
+    // which is why it is read off the child rather than off the block.
+    const inner = selected.firstElementChild;
+    const overlay = inner === null ? null : getComputedStyle(inner, '::after');
+    return {
+      outlineColour: getComputedStyle(selected).outlineColor,
+      wantColour: paint(
+        'color',
+        rootStyle.getPropertyValue('--color-status-selected').trim(),
+      ),
+      overlayBackground: overlay?.backgroundColor ?? null,
+      overlayShadow: overlay?.boxShadow ?? null,
+    };
+  }, EDITOR);
+
+  expect(measured, 'the click node-selected a block').not.toBeNull();
+  const seen = measured as NonNullable<typeof measured>;
+  expect(seen.outlineColour, 'the block is marked in our selected colour').toBe(
+    seen.wantColour,
+  );
+  // BlockNote paints a second marker of its own over the same block: a
+  // `#64a0ff` wash with a 4px inset ring of the same hue, on a fixed value
+  // that follows neither theme nor our tokens (A15 ①). Measured against ours
+  // it is a different colour outright — purple outline, blue fill — so a
+  // selected block carried two markers that disagreed.
+  expect(seen.overlayBackground, 'no second wash over the block').toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+  expect(seen.overlayShadow, 'no second ring inside the block').toBe('none');
+});
