@@ -586,6 +586,7 @@ function AudioGeneratePanelBody({
       lyrics !== undefined && lyricsFragment ? (
         <PromptEditor
           ref={lyricsEditorRef}
+          testId='generate-lyrics-editor'
           fragment={lyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}

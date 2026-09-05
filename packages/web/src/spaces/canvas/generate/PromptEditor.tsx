@@ -57,6 +57,15 @@ export interface PromptEditorHandle {
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
+  /**
+   * What tests reach for this editor by (#1960).
+   *
+   * A prop because the music modes mount TWO of these — a style brief and a
+   * lyrics box — and one id on both makes every `getByTestId` on the panel
+   * ambiguous, which fails a strict-mode locator rather than picking one.
+   * Defaults to the prompt's own id, so the panels mounting one keep theirs.
+   */
+  testId?: string;
   /** Placeholder shown while the prompt is empty. */
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
@@ -128,6 +137,7 @@ export const PromptEditor = React.forwardRef<
     mentionEmptyLabel,
     mentionNoMatchLabel,
     caretProvider = null,
+    testId = 'generate-prompt-editor',
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -387,7 +397,7 @@ export const PromptEditor = React.forwardRef<
     // finds the Radix viewport itself (caret-render.ts), which is the element
     // that actually clips and works for every editor, not just this one.
     <ScrollArea
-      data-testid='generate-prompt-editor'
+      data-testid={testId}
       className='nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border'
       viewportClassName={
         // min height = 4 text-sm lines (user 2026-07-12 P6): the panel opened at

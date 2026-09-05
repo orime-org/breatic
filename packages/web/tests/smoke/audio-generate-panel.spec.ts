@@ -73,6 +73,11 @@ const seededIds: string[] = [];
  * @param kind - The node type to write.
  * @param content - The asset URL the node holds, if any.
  * @param atX - Where to put it, overriding the running row.
+ * @param atY - How far up to put it. The panel hangs BELOW its node
+ *   (`generate-panel-frame.tsx:196`, `Position.Bottom`, no flip), so a taller
+ *   panel runs further past the window bottom — the music modes carry a second
+ *   editor and reach 396px against this suite's 720px window. Raising the node
+ *   is what a person does by panning.
  */
 async function seedNode(
   p: Page,
@@ -80,18 +85,20 @@ async function seedNode(
   kind: 'audio' | 'video',
   content?: string,
   atX?: number,
+  atY = 0,
 ): Promise<void> {
   await expect(p.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const x = atX ?? seededSoFar * SEED_STEP;
   seededSoFar += 1;
   seededIds.push(nodeId);
   const seen = await p.evaluate(
-    async ([pid, sid, id, type, asset, left]: [
+    async ([pid, sid, id, type, asset, left, top]: [
       string,
       string,
       string,
       string,
       string,
+      number,
       number,
     ]) => {
       // Vite serves each module under a versioned URL; importing the bare path
@@ -113,7 +120,7 @@ async function seedNode(
       canvas.addNode(pid, sid, {
         id,
         type,
-        position: { x: left, y: 0 },
+        position: { x: left, y: top },
         data: {
           name: `${type}-e2e`,
           createdAt: Date.now(),
@@ -126,12 +133,13 @@ async function seedNode(
       });
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => n.id);
     },
-    [projectId, spaceId, nodeId, kind, content ?? '', x] as [
+    [projectId, spaceId, nodeId, kind, content ?? '', x, atY] as [
       string,
       string,
       string,
       string,
       string,
+      number,
       number,
     ],
   );
@@ -563,4 +571,151 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
   await expect(page.getByTestId('generate-audio-rate')).toHaveText('36', {
     timeout: 10_000,
   });
+});
+
+test('text to music: two boxes, a switch, and an empty lyrics box refuses the submit', async () => {
+  test.setTimeout(90_000);
+  const nodeId = crypto.randomUUID();
+  // Raised, because this panel carries two editors and stands 396px against
+  // the suite's 720px window — measured 2026-09-05, against 234px on the
+  // sound-effect mode. Left of the origin for the reason the other cases are:
+  // the minimap in the bottom-right corner takes clicks meant for the panel.
+  await seedNode(page, nodeId, 'audio', undefined, -50, -240);
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-t2m').click();
+
+  // The mode's own model, and its flat price. minimax/music-3.0 bills $0.15 a
+  // call whatever the brief says, so the figure holds at 15 while text is
+  // typed — the two speech models move with the prompt, and this one is the
+  // first on this panel that does not.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('15', {
+    timeout: 15_000,
+  });
+
+  // A style box and a lyrics box, each carrying a word saying which it is.
+  const style = page.getByTestId('generate-prompt-editor');
+  const lyrics = page.getByTestId('generate-lyrics-editor');
+  await expect(style).toBeVisible();
+  await expect(lyrics).toBeVisible();
+  await expect(
+    style.locator('[data-placeholder]').first(),
+  ).toHaveAttribute('data-placeholder', /genre|mood|instrument/i);
+  await expect(
+    lyrics.locator('[data-placeholder]').first(),
+  ).toHaveAttribute('data-placeholder', /lyric/i);
+
+  // Nothing here picks a voice, clones one, or collects a reference: the mode
+  // states its slots and this one states none.
+  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-tool-music-song')).toHaveCount(0);
+
+  // A brief alone leaves the button live and the click says what is missing —
+  // the gateway refuses this model without lyrics, so the panel says so first
+  // rather than letting the user watch a generation start and fail.
+  await style.click();
+  await page.keyboard.type('warm indie folk, fingerpicked guitar, 90 BPM');
+  await expect(page.getByTestId('generate-audio-execute')).toBeEnabled();
+  await page.getByTestId('generate-audio-execute').click();
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText(
+    'Write the lyrics first',
+    { timeout: 10_000 },
+  );
+
+  // The switch is the model's own boolean param, and it prints its name on the
+  // pill's face while it is on — a switch has no value to print.
+  await page.getByTestId('generate-audio-params-trigger').click();
+  const instrumental = page.getByTestId('generate-audio-is_instrumental-toggle');
+  await expect(instrumental).toBeVisible({ timeout: 10_000 });
+  await instrumental.click();
+  await expect(page.getByTestId('generate-audio-params-trigger')).toContainText(
+    'Instrumental only',
+    { timeout: 10_000 },
+  );
+  // Off again, so the case leaves the node the way it found it and the pill
+  // says nothing rather than saying "false".
+  await instrumental.click();
+  await page.keyboard.press('Escape');
+});
+
+test('reference to music: three slots, and any one of them satisfies the gate', async () => {
+  test.setTimeout(120_000);
+  // Seeded left of the origin: the minimap in the bottom-right corner sits
+  // above the panel and takes clicks meant for it (#2051).
+  const sourceId = crypto.randomUUID();
+  const nodeId = crypto.randomUUID();
+  await seedNode(
+    page,
+    sourceId,
+    'audio',
+    'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0U=',
+    -350,
+    -240,
+  );
+  await seedNode(page, nodeId, 'audio', undefined, -50, -240);
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-a2m').click();
+
+  // Three slots, not one. The rule that used to decide this asked the catalog
+  // "does this mode need an audio source", which reads true here as well and
+  // would have offered the voice sample instead.
+  await expect(page.getByTestId('generate-audio-tool-music-song')).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('generate-audio-tool-music-voice')).toBeVisible();
+  await expect(
+    page.getByTestId('generate-audio-tool-music-instrumental'),
+  ).toBeVisible();
+  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
+
+  // $0.35 a call, the price this model actually bills — it was declared as 10.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('35', {
+    timeout: 15_000,
+  });
+
+  // Empty, the click says a reference is missing. The wording is the one for a
+  // mode offering several, not the voice sample's own sentence.
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('same mood, slower');
+  await page.getByTestId('generate-audio-execute').click();
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText(
+    'Pick at least one reference',
+    { timeout: 10_000 },
+  );
+
+  // The middle slot alone is enough: the vendor takes whichever are given, and
+  // a gate demanding a particular one would grey the button out for a user who
+  // filled another.
+  await page.getByTestId('generate-audio-tool-music-voice').click();
+  await page.locator(`.react-flow__node[data-id="${sourceId}"]`).click();
+  await expect(
+    page.getByTestId('generate-audio-music-voice-clear'),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Stopping here rather than clicking submit again: with the gate satisfied
+  // the click sends a real task to the vendor and spends the 35 credits this
+  // model bills. Which of the three satisfies it is pinned by the unit case
+  // that walks all three (`generate-guards.test.ts`); what only a real run
+  // reaches is the wiring above — the slot renders, the pick lands on the node
+  // and the toolbar shows it.
+  //
+  // The pick is a value ON THE NODE, so a trip through another mode and back
+  // finds it still there, and the mode in between offers its own slots rather
+  // than these.
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-voice-clone').click();
+  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('generate-audio-tool-music-voice')).toHaveCount(0);
+
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-a2m').click();
+  await expect(
+    page.getByTestId('generate-audio-music-voice-clear'),
+  ).toBeVisible({ timeout: 15_000 });
 });
