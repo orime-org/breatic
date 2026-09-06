@@ -178,11 +178,23 @@ describe('VideoGeneratePanel', () => {
     expect(screen.getByTestId('generate-video-tool-end-frame')).toBeInTheDocument();
   });
 
+  it('divides the two entries from the slots, and only when there are slots', () => {
+    // Reference and Focus collect into the rail below the row; a slot collects
+    // onto itself. Same line the image and audio rows carry.
+    renderPanel({ slots: [] });
+    expect(screen.queryByTestId('generate-video-tool-sep')).toBeNull();
+    cleanup();
+
+    renderPanel({ slots: ['firstFrame', 'endFrame'] });
+    expect(screen.getByTestId('generate-video-tool-sep')).toBeInTheDocument();
+  });
+
   it('offers to clear a slot that is filled but has no picture to show (#1918)', () => {
     // A driving video whose node has no poster yet. The slot IS filled — it
     // holds the video and the payload will carry it — but there is nothing an
-    // `<img>` can paint, so the control covers itself with the video node's
-    // icon (#1946). What must not follow is losing the ✕: a pick the user
+    // `<img>` can paint, so the control covers itself with nothing and says it
+    // is full through its border instead (#1946, user 2026-09-06). What must
+    // not follow is losing the ✕: a pick the user
     // cannot take back is a dead end, and the only way out would be picking a
     // different video.
     renderPanel({

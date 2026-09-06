@@ -4,6 +4,7 @@
 import { Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
+import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   SlotTool,
@@ -108,6 +109,22 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
         onClick={onFocus}
         active={focusActive}
       />
+      {/* The two entries on the left collect into the rail below the row; a
+          slot collects onto itself, and the slots are the set this mode wants.
+          Same line the image and audio rows carry. Nothing to divide on a mode
+          that collects no slots. */}
+      {slots.length > 0 && (
+        <Separator
+          orientation='vertical'
+          // Not decorative: the two sides are meant to be announced apart,
+          // which is the case the component's own docstring names for this.
+          decorative={false}
+          data-testid='generate-video-tool-sep'
+          // Shorter than the buttons, so it reads as a divider between them
+          // rather than a further thing standing in the row.
+          className='mx-1 h-8'
+        />
+      )}
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];
         const url = slotUrls[slot];
