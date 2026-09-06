@@ -7,6 +7,7 @@ import {
   evaluateExecute,
   isExecuteButtonDisabled,
   refusalToastKey,
+  REFUSAL_TOAST_KEY,
   type ExecuteRefusal,
 } from '@web/spaces/canvas/generate/generate-guards';
 
@@ -173,7 +174,7 @@ describe('evaluateExecute — order: environment facts first, what the user can 
 });
 
 describe('isExecuteButtonDisabled — only what the user cannot act on greys the button', () => {
-  // Both panels ask this one function rather than each spelling the set out:
+  // Every panel asks this one function rather than each spelling the set out:
   // two copies of "which refusals grey the button" would drift, and that drift
   // is the shape #1949 set out to remove.
 
@@ -225,29 +226,11 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    // Every member of the union, and the compiler says so: the record's key
-    // type is the union itself, so a refusal added without a line here fails
-    // typecheck rather than quietly going unchecked. A plain array literal
-    // accepts a short list, and this case ran on seven of nine members for as
-    // long as it took two refusals to be added elsewhere.
-    const speaks: Record<ExecuteRefusal, boolean> = {
-      'node-gone': false,
-      'no-model': false,
-      submitting: false,
-      'prompt-missing': true,
-      'style-missing': true,
-      'prompt-too-long': true,
-      'voice-missing': true,
-      'ref-audio-missing': true,
-      'reference-missing': true,
-      'lyrics-missing': true,
-    };
-    const all = Object.keys(speaks) as ExecuteRefusal[];
-    for (const refusal of all) {
-      expect(refusalToastKey(refusal) != null, refusal).toBe(speaks[refusal]);
-    }
-    for (const refusal of all) {
-      expect(refusalToastKey(refusal) != null).toBe(
+    //
+    // 遍历那张表本身，而不是在这里手抄一份成员清单。成员齐不齐由那张表的键
+    // 类型管（漏一个当场 typecheck 红），这里只管配对。
+    for (const refusal of Object.keys(REFUSAL_TOAST_KEY) as ExecuteRefusal[]) {
+      expect(refusalToastKey(refusal) != null, refusal).toBe(
         !isExecuteButtonDisabled(refusal),
       );
     }

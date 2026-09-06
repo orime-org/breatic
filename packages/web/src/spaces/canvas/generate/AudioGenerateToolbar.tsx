@@ -46,9 +46,11 @@ interface AudioGenerateToolbarProps {
  * Reference is present in every mode, and that is what an audio node's edges
  * allow: `audio` takes only `text` (`lib/connection-rules.ts:30`), and a text
  * row IS prompt material (`ReferenceRail.tsx:66`). So the entry is here for the
- * same reason the edge is — a line already written on the canvas becomes the
- * lines to speak without being typed again — and that holds whichever model is
- * selected. Focus crops a region of an IMAGE and Style holds a picked image;
+ * same reason the edge is — a line already written on the canvas reaches the
+ * prompt box without being typed again — and that holds under every mode, even
+ * though what that box asks for differs: lines to speak under the speech modes,
+ * a style brief under the music ones. Focus crops a region of an IMAGE and
+ * Style holds a picked image;
  * both would collect something this panel can never send.
  *
  * The slots come from the mode, so text to speech shows none and voice cloning shows

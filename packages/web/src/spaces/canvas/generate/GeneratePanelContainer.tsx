@@ -709,11 +709,14 @@ function GeneratePanelBody({
   // The localized strings MUST be depended on by VALUE, not via `t`: `t`
   // (useTranslation) is a stable module-level function whose identity never
   // changes on an in-session locale switch (locale updates re-render via
-  // useSyncExternalStore), so depending on `t` alone would freeze the mention
-  // labels in the old language until the panel is reopened. Compute them here
-  // (cheap) and depend on the strings, so a locale switch re-creates the
-  // element and PromptEditor rebuilds with the new copy. The placeholder needs
-  // none of this — PromptEditor reads it live.
+  // useSyncExternalStore), so depending on `t` alone would freeze this copy in
+  // the old language until the panel is reopened. Compute them here (cheap) and
+  // depend on the strings, so a locale switch re-creates this element and the
+  // new copy reaches PromptEditor. The rule covers the whole group — a string
+  // added here goes in the dependency array too. What differs between them is
+  // only what the editor does on arrival: the mention labels are baked into its
+  // extensions and force a rebuild, while the placeholder is read live through
+  // a ref and republished in place.
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');

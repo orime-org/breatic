@@ -22,8 +22,11 @@ import { describe, it, expect } from 'vitest';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
-import { refusalToastKey } from '@web/spaces/canvas/generate/generate-guards';
-import type { ExecuteRefusal } from '@web/spaces/canvas/generate/generate-guards';
+import {
+  refusalToastKey,
+  REFUSAL_TOAST_KEY,
+  type ExecuteRefusal,
+} from '@web/spaces/canvas/generate/generate-guards';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { allSlotSpecs, slotForPurpose } from '@web/spaces/canvas/generate/slots';
@@ -172,25 +175,10 @@ describe('the music reference slots', () => {
   // spec. A key added to one of those tables and to no catalog is invisible to
   // CI and shows up as the key itself on screen.
   it('answers every execute refusal in all five catalogs', () => {
-    // A record keyed on the union, so a refusal added without a line here
-    // fails typecheck. The array this replaced accepted a short list — the
-    // same hole its sibling case in `generate-guards.test.ts` was rewritten to
-    // close, reopened one file over.
-    const speaks: Record<ExecuteRefusal, boolean> = {
-      'node-gone': false,
-      'no-model': false,
-      submitting: false,
-      'prompt-missing': true,
-      'style-missing': true,
-      'prompt-too-long': true,
-      'voice-missing': true,
-      'ref-audio-missing': true,
-      'reference-missing': true,
-      'lyrics-missing': true,
-    };
-    for (const refusal of Object.keys(speaks) as ExecuteRefusal[]) {
+    // 遍历那张表本身。哪些成员存在、哪些说话，都由它一处回答；在这里手抄
+    // 一份就是第二处，而这条用例的注释上一版正记着那个洞被重新打开过一次。
+    for (const refusal of Object.keys(REFUSAL_TOAST_KEY) as ExecuteRefusal[]) {
       const key = refusalToastKey(refusal);
-      expect(key !== null, refusal).toBe(speaks[refusal]);
       if (key === null) continue;
       for (const [locale, catalog] of LOCALE_CATALOGS) {
         expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf(

@@ -169,10 +169,10 @@ export function evaluateExecute(
   // button must not invite a double-submit.
   if (input.isSubmitting) return 'submitting';
   // Two refusals for one empty box, because the box has two names. A panel
-  // showing it alone calls it the prompt; a music mode puts a lyrics box under
-  // it and labels the pair Style and Lyrics, and a sentence saying "write a
-  // prompt" there names nothing on screen while the box that IS named is the
-  // one the user already filled.
+  // showing it alone calls it the prompt and labels nothing; a music mode puts
+  // a lyrics box under it and labels the pair Style and Lyrics, where a
+  // sentence saying "write a prompt" names neither of the two things on
+  // screen.
   if (input.promptRequired && input.promptText.trim().length === 0) {
     return input.lyricsRequired ? 'style-missing' : 'prompt-missing';
   }
@@ -235,7 +235,7 @@ export function evaluateExecute(
  * lists to extend, and a refusal added to one and not the other is either a
  * dead click or a message about a button nobody can press.
  *
- * Both panels ask this rather than each spelling the set out: two copies of
+ * Every panel asks this rather than each spelling the set out: two copies of
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
@@ -255,15 +255,22 @@ export function isExecuteButtonDisabled(
 }
 
 /**
- * The i18n key a refusal says out loud on click, or null when it says nothing.
+ * What each refusal says out loud on click, and null for the ones that say
+ * nothing.
  *
  * The other half of {@link isExecuteButtonDisabled}, and here for the same
  * reason: "which refusals speak" was written out twice, once per panel, in
  * blocks that were byte-for-byte identical. Two copies of a policy are two
  * chances to change one and forget the other.
  *
- * Silent is not the same as unhandled. Both silent refusals keep the button
- * disabled, so neither is reachable from a click in the same render. The
+ * A record keyed on the union rather than a chain of comparisons, so a refusal
+ * added without a sentence fails typecheck here. A chain ends in a fallback,
+ * and falling through it means both no toast and — since
+ * {@link isExecuteButtonDisabled} reads this — a button greyed with nothing
+ * said, which is the one outcome this whole mechanism exists to prevent.
+ *
+ * Silent is not the same as unhandled. A silent refusal keeps the button
+ * disabled, so none of them is reachable from a click in the same render. The
  * submit path re-derives from live Yjs, so each has one narrow window where it
  * arrives anyway, and they differ in what the user sees:
  *
@@ -272,36 +279,34 @@ export function isExecuteButtonDisabled(
  * panel vanishing already says it.
  *
  * `no-model` — unreachable since #1951, which is why it stays silent. This
- * function once carried a note that #1951 would give it a voice; the opposite
+ * table once carried a note that #1951 would give it a voice; the opposite
  * happened. Availability became the test at every layer that decides which
  * mode is current, so the mode a panel is on always has a model, and the
  * panel does not open at all for a modality that serves none. Writing copy
  * for it would have been describing a state instead of removing it (user
- * 2026-08-18). The branch stays as defence against a layer above breaking.
+ * 2026-08-18). The entry stays as defence against a layer above breaking.
+ *
+ * `submitting` — the button is a spinner while the POST is out, and the click
+ * that got past it dies on the latch a frame later.
+ */
+export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
+  'node-gone': null,
+  'no-model': null,
+  submitting: null,
+  'prompt-missing': 'canvas.generatePanel.refuseExecuteNoPrompt',
+  'style-missing': 'canvas.generatePanel.refuseExecuteNoStyle',
+  'prompt-too-long': 'canvas.generatePanel.refuseExecuteTooLong',
+  'voice-missing': 'canvas.generatePanel.refuseExecuteNoVoice',
+  'ref-audio-missing': 'canvas.generatePanel.errorNoRefAudio',
+  'reference-missing': 'canvas.generatePanel.refuseExecuteNoReference',
+  'lyrics-missing': 'canvas.generatePanel.lyricsMissing',
+};
+
+/**
+ * The i18n key a refusal says out loud on click, or null when it says nothing.
  * @param refusal - The failing condition from {@link evaluateExecute}.
  * @returns The i18n key to warn with, or null to refuse in silence.
  */
 export function refusalToastKey(refusal: ExecuteRefusal): string | null {
-  if (refusal === 'prompt-missing') {
-    return 'canvas.generatePanel.refuseExecuteNoPrompt';
-  }
-  if (refusal === 'style-missing') {
-    return 'canvas.generatePanel.refuseExecuteNoStyle';
-  }
-  if (refusal === 'prompt-too-long') {
-    return 'canvas.generatePanel.refuseExecuteTooLong';
-  }
-  if (refusal === 'voice-missing') {
-    return 'canvas.generatePanel.refuseExecuteNoVoice';
-  }
-  if (refusal === 'ref-audio-missing') {
-    return 'canvas.generatePanel.errorNoRefAudio';
-  }
-  if (refusal === 'reference-missing') {
-    return 'canvas.generatePanel.refuseExecuteNoReference';
-  }
-  if (refusal === 'lyrics-missing') {
-    return 'canvas.generatePanel.lyricsMissing';
-  }
-  return null;
+  return REFUSAL_TOAST_KEY[refusal];
 }

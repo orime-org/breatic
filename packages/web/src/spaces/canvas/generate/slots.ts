@@ -74,8 +74,8 @@ export interface SlotSpec {
    *
    * Only on a slot whose panel looks the sentence up here — the video
    * container does (`VideoGeneratePanelContainer`). The audio panel reaches
-   * every refusal sentence through `refusalToastKey`, the way it reaches the
-   * other eight, so its slots carry none and there is one place per panel
+   * every refusal sentence through `refusalToastKey`, the way it reaches every
+   * other one, so its slots carry none and there is one place per panel
    * where a refusal is worded.
    */
   errorKey?: string;

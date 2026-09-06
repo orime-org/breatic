@@ -712,7 +712,10 @@ function VideoGeneratePanelBody({
   // stable module-level function whose identity never changes on an in-session
   // locale switch, so depending on it alone would freeze this copy in the old
   // language until the panel is reopened. The rule covers the whole group — a
-  // string added here goes in the dependency array too.
+  // string added here goes in the dependency array too. What differs between
+  // them is only what the editor does on arrival: the mention labels are baked
+  // into its extensions and force a rebuild, while the placeholder is read live
+  // through a ref and republished in place.
   // One statement of "this mode cannot use a reference image", read by the
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.

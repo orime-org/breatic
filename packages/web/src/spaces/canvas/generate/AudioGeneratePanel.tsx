@@ -54,9 +54,10 @@ interface AudioGeneratePanelProps {
   /**
    * What one generation would cost, in credits.
    *
-   * A model stating a rate counts what it is handed and the number moves as
-   * the box is typed into; one stating none prints its cost per call and holds
-   * still. Undefined until a model is picked.
+   * A model stating a rate counts the unit it bills in — the text for a
+   * speech model, the picked clip length for a sound effect — so the number
+   * moves as that input changes; one stating none prints its cost per call
+   * and holds still. Undefined until a model is picked.
    */
   creditEstimate: number | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
@@ -127,7 +128,7 @@ interface AudioGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a row's @-mention into the prompt at the caret. */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** A speaking param changed. */
+  /** One of the model's params changed. */
   onChangeParams: (partial: AudioParamsValue) => void;
   /** The voice list opened or collapsed. */
   onVoiceOpenChange: (open: boolean) => void;
@@ -144,9 +145,9 @@ interface AudioGeneratePanelProps {
 }
 
 /**
- * The audio-node Generate panel: the injected collaborative prompt editor over
- * a footer carrying the mode picker, the model picker, the voice picker, the
- * speaking params, the credit figure and the submit button.
+ * The audio-node Generate panel: the injected collaborative editors over a
+ * footer carrying the mode picker, the model picker, the voice picker, the
+ * model's params, the credit figure and the submit button.
  *
  * The figure is one number beside a star, the shape VideoGeneratePanel uses.
  * There it is always the model's cost per call; here it is whichever of the
@@ -181,7 +182,7 @@ interface AudioGeneratePanelProps {
  * @param root0.onAddReference - Called to enter / exit the reference pick.
  * @param root0.onRemoveReference - Called to remove a row.
  * @param root0.onInsertReference - Called to insert a row into the prompt.
- * @param root0.onChangeParams - Called with the changed speaking param.
+ * @param root0.onChangeParams - Called with the changed param.
  * @param root0.onToggleMode - Called with the picked mode.
  * @param root0.onSelectModel - Called with the picked model id.
  * @param root0.onVoiceOpenChange - Called when the voice list opens or collapses.
