@@ -119,8 +119,16 @@ function selectTexts(
 
 /**
  * Selects one whole block, the way the select-node modifier does.
+ *
+ * On the CONTENT node, which is what the gesture produces. ProseMirror's
+ * `selectClickedNode` walks out from the clicked position and stops at the
+ * first selectable node it meets (`prosemirror-view/src/input.ts`), and a
+ * click on a block's text meets the content node first — measured in a real
+ * browser, `Cmd`-clicking a paragraph leaves `.ProseMirror-selectednode` on
+ * `div.bn-block-content`. The container it sits in also holds any indented
+ * blocks, so the two differ by exactly the case below.
  * @param editor - The editor to select in.
- * @param index - Which block container, in document order.
+ * @param index - Which block, in document order.
  */
 function selectBlock(
   editor: ReturnType<typeof buildDocumentEditor>,
@@ -129,7 +137,7 @@ function selectBlock(
   const view = editor.prosemirrorView!;
   const spots: number[] = [];
   view.state.doc.descendants((node, pos) => {
-    if (node.type.name === 'blockContainer') spots.push(pos);
+    if (node.type.name === 'blockContainer') spots.push(pos + 1);
     return true;
   });
   view.dispatch(
@@ -268,6 +276,31 @@ describe('Enter on a selection that spans blocks', () => {
       pressEnter(editor);
     }).not.toThrow();
     expect(textsOf(editor)).toEqual(['aa', '']);
+  });
+
+  it('leaves what is indented under the block selected whole where it was', () => {
+    // A block's container holds both the block and anything indented under
+    // it, so the position after the CONTENT node is inside that container.
+    // Opening a block there splits the container: measured in a real browser
+    // before this, two top-level blocks became four and the indented block
+    // moved out from under its parent onto one of the new empty ones.
+    const editor = open([
+      { type: 'paragraph', content: 'parent', children: [{ type: 'paragraph', content: 'kid' }] },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    selectBlock(editor, 0);
+
+    pressEnter(editor);
+
+    const top = editor.document as unknown as {
+      children: readonly unknown[];
+    }[];
+    expect(top).toHaveLength(3);
+    // `kid` still under `parent`, and the block Enter opened holds nothing.
+    expect(top[0]?.children).toHaveLength(1);
+    expect(top[1]?.children).toHaveLength(0);
+    expect(top[2]?.children).toHaveLength(0);
+    expect(editor.prosemirrorState.doc.textContent).toBe('parentkidtail');
   });
 
   it('opens a block at the end when the whole document is selected', () => {

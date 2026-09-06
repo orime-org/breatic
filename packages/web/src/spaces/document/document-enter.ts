@@ -22,7 +22,12 @@
  * — falls straight through.
  */
 
-import { createExtension, getBlockInfoAtNearest } from '@blocknote/core';
+import {
+  createExtension,
+  getBlockInfo,
+  getBlockInfoAtNearest,
+  getNearestBlockPos,
+} from '@blocknote/core';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
@@ -119,10 +124,8 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
 
     if (blockEmpty) {
-      // Every block that carries the quote is a textblock, so an empty one
-      // puts the caret at offset 0 and `atBlockStart` is already true here.
-      // The one atom in the schema, `unsupportedBlock`, declares no `quoted`
-      // and is turned away by the test above.
+      // Every node that declares `quoted` is a textblock, so an empty one
+      // puts the caret at offset 0. `blocknote-schema.test.ts` holds that.
       if (indented) {
         // BlockNote lifts this one out a level, which creates no block and so
         // loses no props.
@@ -191,12 +194,23 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  * `NodeSelectionKeyboard.ts:48` inserts a bare `paragraph`, which a
  * `blockGroup` does not accept, at `$to.after() + 1`, which for a document
  * whose only block is selected is one position past its end.
+ *
+ * The new block goes after the whole CONTAINER. The gesture selects the
+ * content node — measured in a browser, `Cmd`-clicking a paragraph leaves
+ * `.ProseMirror-selectednode` on `div.bn-block-content` — and a container
+ * holds `blockContent blockGroup?`, so the position after that node is
+ * inside the container whenever anything is indented under the block.
+ * Opening a block there splits the container and the indented blocks move
+ * out from under their parent.
  * @param editor - The editor Enter was pressed in.
  * @returns True, having handled the key.
  */
 function handleWholeBlockEnter(editor: ListEditor): boolean {
   editor.transact((tr) => {
-    openBlockAt(tr, tr.selection.to);
+    const { bnBlock } = getBlockInfo(
+      getNearestBlockPos(tr.doc, tr.selection.from),
+    );
+    openBlockAt(tr, bnBlock.afterPos);
   });
   return true;
 }
