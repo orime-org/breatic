@@ -3194,9 +3194,10 @@ function CanvasSpaceInner({
     },
     [readOnly, projectId, spaceId, t, buffer],
   );
-  // Error-state Retry (#1609 P4): re-run the upload from the session
-  // stash. The stash survives repeated failures (cleared only on success)
-  // and a refresh drops it — the button then no longer renders.
+  // Error-state Retry (#1609 P4): re-run the upload from the session stash.
+  // The stash survives repeated failures and is dropped when the reader
+  // clears that task off the list; a refresh drops it too, and the button
+  // then no longer renders.
   const retryNodeUpload = React.useCallback(
     (nodeId: string, taskId: string): void => {
       if (readOnly) return;
