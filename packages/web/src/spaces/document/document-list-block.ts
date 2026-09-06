@@ -31,7 +31,6 @@ import {
   defaultBlockSpecs,
   getBlockInfo,
   getBlockInfoAtNearest,
-  getBlockInfoFromSelection,
   getNearestBlockPos,
   getPmSchema,
   updateBlockTr,
@@ -181,41 +180,19 @@ type ListExtension = NonNullable<
 interface ListKind {
   /** The block type. */
   readonly type: string;
-  /** The markdown shorthands that open this kind, and what each sets. */
-  readonly inputRules: readonly {
-    readonly find: RegExp;
-    readonly props?: Readonly<Record<string, unknown>>;
-  }[];
-  /** Whether typing the shorthand inside a heading is ignored. */
-  readonly notInHeadings: boolean;
 }
 
 /**
- * The three list kinds, with what BlockNote gives each of them.
+ * The three list kinds this file gives an Enter handler to.
  *
- * The ordered kind's rule stores no starting number: where a list starts is
- * `#944`, and until then the digits a user types are the trigger and nothing
- * more.
+ * The markdown shorthands that open them are in `document-block-chords.ts`,
+ * beside the chords and going through the same table the menu rows do — §3.2
+ * is one answer per transition, whichever control asked.
  */
 const LIST_KINDS: readonly ListKind[] = [
-  {
-    type: ORDERED_LIST,
-    inputRules: [{ find: /^\s?(\d+)\.\s$/ }],
-    notInHeadings: true,
-  },
-  {
-    type: 'bulletListItem',
-    inputRules: [{ find: /^\s?[-+*]\s$/ }],
-    notInHeadings: true,
-  },
-  {
-    type: 'checkListItem',
-    inputRules: [
-      { find: /^\s?\[\s*\]\s$/, props: { checked: false } },
-      { find: /^\s?\[[Xx]\]\s$/, props: { checked: true } },
-    ],
-    notInHeadings: false,
-  },
+  { type: ORDERED_LIST },
+  { type: 'bulletListItem' },
+  { type: 'checkListItem' },
 ];
 
 /**
@@ -234,20 +211,7 @@ function buildListExtension(kind: ListKind): ListExtension {
       Enter: ({ editor }: { editor: ListEditor }) =>
         handleListEnter(editor, kind.type),
     },
-    inputRules: kind.inputRules.map((rule) => ({
-      find: rule.find,
-      replace({ editor }: { editor: ListEditor }) {
-        if (kind.notInHeadings) {
-          const info = getBlockInfoFromSelection(
-            editor.prosemirrorState as never,
-          );
-          if (info.blockNoteType === 'heading') {
-            return undefined;
-          }
-        }
-        return { type: kind.type, props: { ...(rule.props ?? {}) } };
-      },
-    })),
+
   } as never) as ListExtension;
 }
 

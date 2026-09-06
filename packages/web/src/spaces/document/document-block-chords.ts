@@ -28,8 +28,11 @@
 
 import { createExtension } from '@blocknote/core';
 
-import { runBlockType } from '@web/spaces/document/document-block-run';
+import { getBlockInfoFromSelection } from '@blocknote/core';
+
+import { runBlockType, updateFor } from '@web/spaces/document/document-block-run';
 import type { RunEditor } from '@web/spaces/document/document-block-run';
+import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import {
   BLOCK_TYPE_SHORTCUTS,
   shortcutChord,
@@ -45,12 +48,50 @@ import {
 const OVERRIDDEN = ['paragraph-shortcuts', 'heading-shortcuts'];
 
 /**
+ * The markdown shorthands, beside the row each stands for.
+ *
+ * §3.2 is one table over every control that writes a block type, and this is
+ * the third of them. The shorthands the blocks bring answer by type alone,
+ * which is a different question wherever the table's one coexisting pair is
+ * involved: an ordered item is `numberedListItem`, and the same thing on a
+ * heading is the `numbered` prop. Measured before these were routed here:
+ * `# ` on an ordered item dropped the number the menu row keeps, and `1. ` on
+ * a heading was refused outright, leaving the reader looking at the "1. " they
+ * typed.
+ *
+ * The three list shorthands come from `document-list-block.ts`, which reads
+ * them off the same specs; a check list carries `checked`, which the table has
+ * no row for, so its two forms both land on the one row and take the prop from
+ * the spec.
+ */
+const SHORTHANDS: { find: RegExp; row: BlockTypeId; props?: Record<string, unknown> }[] = [
+  { find: /^(#)\s$/, row: 'heading-1' },
+  { find: /^(##)\s$/, row: 'heading-2' },
+  { find: /^(###)\s$/, row: 'heading-3' },
+  { find: /^\s?(\d+)\.\s$/, row: 'ordered-list' },
+  { find: /^\s?[-+*]\s$/, row: 'bullet-list' },
+  { find: /^\s?\[\s*\]\s$/, row: 'task-list', props: { checked: false } },
+  { find: /^\s?\[[Xx]\]\s$/, row: 'task-list', props: { checked: true } },
+];
+
+/**
  * Builds the extension that binds all nine.
  * @returns The extension, for the assembly to register.
  */
 export const documentChordsExtension = createExtension(() => ({
   key: 'documentBlockTypeChords',
   runsBefore: OVERRIDDEN,
+  inputRules: SHORTHANDS.map(({ find, row, props }) => ({
+    find,
+    replace({ editor }: { editor: RunEditor }) {
+      const info = getBlockInfoFromSelection(
+        (editor as unknown as { prosemirrorState: unknown }).prosemirrorState as never,
+      );
+      if (!info.isBlockContainer) return undefined;
+      const update = updateFor(info.blockContent.node, row, false);
+      return { ...update, props: { ...update.props, ...(props ?? {}) } };
+    },
+  })),
   keyboardShortcuts: Object.fromEntries(
     BLOCK_TYPE_SHORTCUTS.map(({ id, spec }) => [
       shortcutChord(spec),

@@ -77,7 +77,7 @@ interface Update {
  * @param cancelling - Whether the selection already carries that row.
  * @returns The update.
  */
-function updateFor(
+export function updateFor(
   content: PMNode,
   id: BlockTypeId,
   cancelling: boolean,

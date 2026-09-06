@@ -28,6 +28,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentChordsExtension } from '@web/spaces/document/document-block-chords';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -58,6 +59,9 @@ function open(blocks: readonly BlockSpec[]): {
 } {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
+    // The markdown shorthands live with the chords, going through the same
+    // table the menu rows do.
+    extensions: [documentChordsExtension()],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -161,13 +165,17 @@ describe('typing an ordered list into being', () => {
     expect(block?.props['number']).toBeUndefined();
   });
 
-  it('leaves a heading alone', () => {
+  it('numbers a heading rather than replacing it', () => {
+    // The one pair §3.2 lets coexist. The menu row answers this way, and the
+    // shorthand is the same table asked by a different control.
     const { editor } = open([
       { type: 'heading', props: { level: 1 }, content: '1.' },
     ]);
     caretToEndOf(editor, 0);
     typeCharacter(editor, ' ');
-    expect(blocksOf(editor)[0]?.type).toBe('heading');
+    const [block] = blocksOf(editor);
+    expect(block?.type).toBe('heading');
+    expect(block?.props['numbered']).toBe(true);
   });
 });
 
