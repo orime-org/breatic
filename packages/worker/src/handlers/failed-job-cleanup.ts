@@ -32,7 +32,7 @@
  * task-listener; re-applying it to an already-idle node is harmless.
  */
 import type { getStreamRedis } from "@breatic/core";
-import { projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
   taskService,
   settleTaskForNode,
@@ -66,7 +66,7 @@ export interface FailedJobLike {
  *
  * Best-effort per node: a publish failure on one node is swallowed so the
  * remaining nodes still get their write-back (the caller logs; the collab
- * sweeper is the final backstop either way).
+ * budget is what ends the row either way).
  * @param streamRedis - Redis client for the stream DB.
  * @param job - The failed job (undefined when BullMQ lost the job reference).
  * @param reason - BullMQ failure reason, embedded in the node error message.
@@ -202,9 +202,13 @@ export async function cleanupFailedJobNodes(
       },
     });
     if (inserted) await publishActivityNew(projectId);
-  } catch {
-    // Best-effort: the node write-backs below are the critical part;
-    // the caller (application entry) logs stream-level failures.
+  } catch (err) {
+    // The node write-backs below are the critical part, so this moves on.
+    // Nothing above catches this, so the reason is written here or nowhere.
+    logger.warn(
+      { err, taskId: job.data.taskId, projectId },
+      "failed-job activity record failed",
+    );
   }
   if (!spaceId) return 0;
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
@@ -221,11 +225,16 @@ export async function cleanupFailedJobNodes(
         errorMessage: `Task failed: ${reason}`,
       });
       emitted++;
-    } catch {
-      // Best-effort: continue with the remaining nodes. The caller
-      // (application entry) logs the failure; a node this misses keeps its
-      // row counting until somebody opens its task list, which harvests the
-      // row against its budget and republishes the counts (#186 §4.6).
+    } catch (err) {
+      // Continue with the remaining nodes: a node this misses keeps its row
+      // counting until somebody opens its task list, which harvests the row
+      // against its budget and republishes the counts (#186 §4.6). This is
+      // the last thing that will touch these rows, so the reason is written
+      // here or nowhere.
+      logger.warn(
+        { err, taskId: job.data.taskId, nodeId },
+        "node_task settle (crash net) failed",
+      );
     }
   }
   return emitted;
