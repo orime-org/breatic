@@ -28,6 +28,8 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 
+import { textblocks } from './textblocks';
+
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
 afterEach(() => {
@@ -201,11 +203,7 @@ describe('Enter at the end of a quoted line', () => {
       for (const backwards of [false, true] as const) {
         const editor = open([{ type, props, content: 'abcd' }]);
         const view = editor.prosemirrorView;
-        let start = 0;
-        view.state.doc.descendants((node, pos) => {
-          if (node.isTextblock && start === 0) start = pos + 1;
-          return true;
-        });
+        const start = textblocks(view.state.doc)[0]?.start ?? 0;
         const stop = start + 2;
         editor.transact((tr) => {
           tr.setSelection(
@@ -246,13 +244,9 @@ describe('Enter at the end of a quoted line', () => {
           { type: 'paragraph', content: 'efgh' },
         ]);
         const view = editor.prosemirrorView;
-        const spots: number[] = [];
-        view.state.doc.descendants((node, pos) => {
-          if (node.isTextblock) spots.push(pos + 1);
-          return true;
-        });
-        const start = spots[0] + 2;
-        const stop = spots[1] + 2;
+        const spots = textblocks(view.state.doc);
+        const start = spots[0]!.start + 2;
+        const stop = spots[1]!.start + 2;
         editor.transact((tr) => {
           tr.setSelection(
             TextSelection.create(
@@ -390,12 +384,8 @@ describe('a code block inside a quote', () => {
     editor: ReturnType<typeof buildDocumentEditor>,
   ): void {
     const view = editor.prosemirrorView;
-    let at = 0;
-    view.state.doc.descendants((node, pos) => {
-      if (!node.isTextblock) return true;
-      at = pos + 3;
-      return false;
-    });
+    const first = textblocks(view.state.doc)[0];
+    const at = first === undefined ? 0 : first.before + 3;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, at)),
     );

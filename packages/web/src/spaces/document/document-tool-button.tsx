@@ -51,21 +51,19 @@ export interface ToolDef {
   Icon: typeof Bold;
   isActive: (e: ToolEditor) => boolean;
   /**
-   * Whether the command can run against the current selection.
+   * Whether the style can go on the current selection.
    *
-   * Asked of the command the button runs, never of where the caret is. R7 asks
-   * for one thing — no control that looks usable and does nothing when pressed
-   * — and a dry run of the command itself is the only answer that tracks the
-   * selection shapes as they actually are: caret-position heuristics answer
-   * wrongly for selections that start at the document rather than inside any
-   * block, and for blocks that refuse formatting (a code block takes no
-   * marks).
+   * Answered by a dry run against the schema, never by where the caret is. R7
+   * asks for one thing — no control that looks usable and does nothing when
+   * pressed — and only the command tracks the selection shapes as they
+   * actually are: caret-position heuristics answer wrongly for a selection
+   * that starts at the document rather than inside any block, and for a block
+   * that refuses formatting (a code block takes no marks).
    *
-   * The dry run is CONSERVATIVE for the two list commands over a body heading
-   * or code block — it says no where the command works. That is a body-editing
-   * shortcoming, it is out of this slice, and it is the safe direction: R7
-   * forbids a live button that does nothing, not a dark button that would have
-   * worked.
+   * Every tool here is one of the five styles, so the dry run is `toggleMark`
+   * over that style's mark while `run` reaches it through BlockNote's
+   * `toggleStyles`. Both go through the same mark on the same schema, so the
+   * dry run answers for the press.
    */
   canRun: (e: ToolEditor) => boolean;
   run: (e: ToolEditor) => void;

@@ -32,6 +32,8 @@ import {
 } from '@web/spaces/document/document-block-run';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 
+import { textblocks } from './textblocks';
+
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
 afterEach(() => {
@@ -378,15 +380,9 @@ describe('which rows the menu offers', () => {
     mounted.push(editor);
 
     const tr = editor.prosemirrorView!.state.tr;
-    let at = -1;
-    let size = 0;
-    tr.doc.descendants((node, pos) => {
-      if (at === -1 && node.isTextblock) {
-        at = pos;
-        size = node.nodeSize;
-      }
-      return at === -1;
-    });
+    const first = textblocks(tr.doc)[0]!;
+    const at = first.before;
+    const size = first.node.nodeSize;
     const fallback = tr.doc.type.schema.nodes['unsupportedBlock']!;
     tr.replaceWith(at, at + size, fallback.create({ originalName: 'x' }));
     tr.setSelection(NodeSelection.create(tr.doc, at));
@@ -596,15 +592,9 @@ describe('a selection no row reaches', () => {
 
     const view = editor.prosemirrorView!;
     const opening = view.state.tr;
-    let at = -1;
-    let size = 0;
-    opening.doc.descendants((node, pos) => {
-      if (at === -1 && node.isTextblock) {
-        at = pos;
-        size = node.nodeSize;
-      }
-      return at === -1;
-    });
+    const first = textblocks(opening.doc)[0]!;
+    const at = first.before;
+    const size = first.node.nodeSize;
     const fallback = opening.doc.type.schema.nodes['unsupportedBlock']!;
     view.dispatch(
       opening
@@ -672,15 +662,14 @@ describe('the selection a press hands back', () => {
       { type: 'paragraph', content: 'two' },
     ]);
     const view = editor.prosemirrorView!;
-    const spots: number[] = [];
-    view.state.doc.descendants((node, pos) => {
-      if (!node.isTextblock) return true;
-      spots.push(pos);
-      return false;
-    });
+    const spots = textblocks(view.state.doc);
     view.dispatch(
       view.state.tr.setSelection(
-        TextSelection.create(view.state.doc, spots[0]! + 1, spots[1]! + 4),
+        TextSelection.create(
+          view.state.doc,
+          spots[0]!.before + 1,
+          spots[1]!.before + 4,
+        ),
       ),
     );
 

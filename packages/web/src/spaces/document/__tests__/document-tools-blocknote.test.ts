@@ -27,6 +27,8 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+
+import { textblocks } from './textblocks';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
@@ -302,14 +304,9 @@ describe('a selection only half of which carries the style', () => {
   /** Selects the whole first block. */
   function selectBlock(editor: ReturnType<typeof buildDocumentEditor>): void {
     const view = editor.prosemirrorView!;
-    let from = 0;
-    let to = 0;
-    view.state.doc.descendants((node, pos) => {
-      if (!node.isTextblock) return true;
-      from = pos + 1;
-      to = pos + node.nodeSize - 1;
-      return false;
-    });
+    const first = textblocks(view.state.doc)[0];
+    const from = first?.start ?? 0;
+    const to = first?.end ?? 0;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
     );

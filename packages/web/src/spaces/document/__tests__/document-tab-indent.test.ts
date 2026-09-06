@@ -27,6 +27,8 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 
+import { textblocks } from './textblocks';
+
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
 afterEach(() => {
@@ -224,13 +226,7 @@ function selectInside(
   reversed = false,
 ): void {
   const view = editor.prosemirrorView!;
-  const spots: number[] = [];
-  view.state.doc.descendants((node, pos) => {
-    if (!node.isTextblock) return true;
-    spots.push(pos);
-    return false;
-  });
-  const at = spots[index]!;
+  const at = textblocks(view.state.doc)[index]!.before;
   view.dispatch(
     view.state.tr.setSelection(
       reversed
@@ -252,15 +248,14 @@ function selectAcross(
   last: number,
 ): void {
   const view = editor.prosemirrorView!;
-  const spots: number[] = [];
-  view.state.doc.descendants((node, pos) => {
-    if (!node.isTextblock) return true;
-    spots.push(pos);
-    return false;
-  });
+  const spots = textblocks(view.state.doc);
   view.dispatch(
     view.state.tr.setSelection(
-      TextSelection.create(view.state.doc, spots[first]! + 1, spots[last]! + 2),
+      TextSelection.create(
+        view.state.doc,
+        spots[first]!.before + 1,
+        spots[last]!.before + 2,
+      ),
     ),
   );
 }

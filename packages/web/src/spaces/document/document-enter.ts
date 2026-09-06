@@ -28,6 +28,7 @@ import {
   getBlockInfoAtNearest,
   getNearestBlockPos,
 } from '@blocknote/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
@@ -36,12 +37,6 @@ import {
   splitCarryingQuote,
   type ListEditor,
 } from '@web/spaces/document/document-list-block';
-
-/** What the editor object offers the Tab handler. */
-interface TabEditor {
-  nestBlock: () => void;
-  unnestBlock: () => void;
-}
 
 /**
  * The four block types that answer Enter with a handler of their own.
@@ -59,44 +54,6 @@ const OWN_ENTER_TYPES = [
   'checkListItem',
   'codeBlock',
 ] as const;
-
-/**
- * Opens a new quoted paragraph after an empty quoted block.
- *
- * Mirrors BlockNote's own "empty block, caret at start" case, which builds the
- * container with `createAndFill()` and so gives it no attributes.
- * @param tr - The transaction to write into.
- * @param afterPos - Where the current block ends.
- * @param childContainer - The current block's children, to carry over.
- * @returns Whether the block was opened.
- */
-function openQuotedBlockAfter(
-  tr: Transaction,
-  afterPos: number,
-  childContainer: { node: unknown; beforePos: number; afterPos: number } | undefined,
-): boolean {
-  const { schema } = tr.doc.type;
-  const paragraph = schema.nodes['paragraph']?.createAndFill({
-    [QUOTED]: true,
-  });
-  if (paragraph === undefined || paragraph === null) {
-    return false;
-  }
-  const container = schema.nodes['blockContainer']?.createAndFill(
-    undefined,
-    [paragraph, childContainer?.node].filter((node) => node !== undefined) as never,
-  );
-  if (container === undefined || container === null) {
-    return false;
-  }
-  tr.insert(afterPos, container)
-    .setSelection(new TextSelection(tr.doc.resolve(afterPos + 2)))
-    .scrollIntoView();
-  if (childContainer !== undefined) {
-    tr.delete(childContainer.beforePos, childContainer.afterPos);
-  }
-  return true;
-}
 
 /**
  * Enter, for a block that sits inside a quote.
@@ -145,7 +102,22 @@ function handleQuotedEnter(editor: ListEditor): boolean {
         // loses no props.
         return false;
       }
-      return openQuotedBlockAfter(tr, bnBlock.afterPos, childContainer);
+      if (
+        !openBlockAt(
+          tr,
+          bnBlock.afterPos,
+          { [QUOTED]: true },
+          childContainer?.node,
+        )
+      ) {
+        return false;
+      }
+      // The children went in beside the new paragraph rather than moving, so
+      // the originals go now. Mirrors what BlockNote does for this case.
+      if (childContainer !== undefined) {
+        tr.delete(childContainer.beforePos, childContainer.afterPos);
+      }
+      return true;
     }
 
     tr.deleteSelection();
@@ -157,7 +129,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
 /**
  * Opens an empty paragraph block at a position, with the caret inside it.
  *
- * The two selections below both want this and neither can ask BlockNote for
+ * All three paths into a new block want this and none can ask BlockNote for
  * it: what goes in is a `blockContainer`, which is the only thing a
  * `blockGroup` accepts, and the caret lands two positions in — past the
  * container and past the paragraph.
@@ -165,20 +137,30 @@ function handleQuotedEnter(editor: ListEditor): boolean {
  * @param at - Where the new block goes.
  * @param attrs - What to build the paragraph with. Left out, the schema's
  *   defaults apply, and `quoted` defaults to false.
+ * @param child - The block group to put under the new block, for the caller
+ *   that is moving one over. It is inserted alongside the paragraph rather
+ *   than moved, so that caller deletes the original itself.
+ * @returns Whether the block was opened. Only a schema without these two
+ *   nodes answers no, and the callers that can decline hand the key on.
  */
 function openBlockAt(
   tr: Transaction,
   at: number,
   attrs?: Record<string, unknown>,
-): void {
+  child?: PMNode,
+): boolean {
   const paragraph = tr.doc.type.schema.nodes['paragraph'];
   const container = tr.doc.type.schema.nodes['blockContainer'];
   if (!paragraph || !container) {
-    return;
+    return false;
   }
-  tr.insert(at, container.create(null, paragraph.create(attrs)));
+  const content = [paragraph.create(attrs), child].filter(
+    (node): node is PMNode => node !== undefined,
+  );
+  tr.insert(at, container.create(null, content));
   tr.setSelection(TextSelection.create(tr.doc, at + 2));
   tr.scrollIntoView();
+  return true;
 }
 
 /**
@@ -239,38 +221,6 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
   });
   return true;
 }
-
-/**
- * Tab and Shift-Tab, for every selection rather than for a caret alone.
- *
- * The move and the question of whether it is possible are the same call:
- * `nestBlock` reads `$from.blockRange($to)` and leaves the document alone when
- * the range has nowhere to go (`nestBlock.ts`, `startIndex === 0`). Asking a
- * separate question first is what put the two out of step — `canNestBlock`
- * resolves the block at `selection.anchor`, which is the end the drag started
- * from, so a backwards drag asked about one block and acted on another.
- *
- * The key is claimed either way. An unclaimed Tab is one the browser answers,
- * and the browser answers it by moving focus out of the editor: measured,
- * focus went from the editor to `BODY` and the next characters the reader
- * typed reached nothing. BlockNote's own source says the same —
- * `KeyboardShortcutsExtension.ts:958`, "Always returning true for tab key
- * presses ensures they're not captured by the browser. Otherwise, they blur
- * the editor".
- */
-export const documentTabExtension = createExtension(() => ({
-  key: 'document-tab',
-  keyboardShortcuts: {
-    Tab: ({ editor }: { editor: TabEditor }) => {
-      editor.nestBlock();
-      return true;
-    },
-    'Shift-Tab': ({ editor }: { editor: TabEditor }) => {
-      editor.unnestBlock();
-      return true;
-    },
-  },
-}) as never);
 
 /**
  * The extension that binds Enter for the whole document.

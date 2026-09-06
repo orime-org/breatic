@@ -33,6 +33,8 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { documentLocaleRedrawExtension } from '@web/spaces/document/document-locale-redraw';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 
+import { textblockReading } from './textblocks';
+
 /**
  * Builds the schema the way production does, fallbacks included.
  * @returns The assembled ProseMirror schema.
@@ -131,15 +133,9 @@ describe('the fallbacks in BlockNote’s own registry', () => {
     ] as never);
 
     const view = editor.prosemirrorView!;
-    let at = -1;
-    let size = 0;
-    view.state.doc.descendants((node, pos) => {
-      if (node.isTextblock && node.textContent === 'middle') {
-        at = pos;
-        size = node.nodeSize;
-      }
-      return at === -1;
-    });
+    const middle = textblockReading(view.state.doc, 'middle')!;
+    const at = middle.before;
+    const size = middle.node.nodeSize;
     const stand = view.state.schema.nodes['unsupportedBlock']!;
     view.dispatch(
       view.state.tr.replaceWith(
@@ -161,14 +157,7 @@ describe('the fallbacks in BlockNote’s own registry', () => {
     editor: ReturnType<typeof buildDocumentEditor>,
     text: string,
   ): number {
-    let at = -1;
-    editor.prosemirrorState.doc.descendants((node, pos) => {
-      if (at === -1 && node.isTextblock && node.textContent === text) {
-        at = pos + 1;
-      }
-      return at === -1;
-    });
-    return at;
+    return textblockReading(editor.prosemirrorState.doc, text)?.start ?? -1;
   }
 
   const held: ReturnType<typeof buildDocumentEditor>[] = [];
@@ -260,13 +249,7 @@ describe('the fallbacks in BlockNote’s own registry', () => {
     const editor = openAroundFallback();
     held.push(editor);
     const view = editor.prosemirrorView!;
-    let at = -1;
-    view.state.doc.descendants((node, pos) => {
-      if (at === -1 && node.isTextblock && node.textContent === 'before') {
-        at = pos + 1;
-      }
-      return at === -1;
-    });
+    const at = textblockReading(view.state.doc, 'before')!.start;
     view.dispatch(
       view.state.tr.insert(
         at,

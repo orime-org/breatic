@@ -71,12 +71,28 @@ function open(
   return editor;
 }
 
+/** What a US layout puts on `event.key` when the digit is pressed with Shift. */
+const SHIFTED_DIGIT: Record<string, string> = { '7': '&', '8': '*', '9': '(' };
+
 /**
- * Presses a chord through the keymap.
+ * The character a browser reports for this chord's base key.
  *
- * jsdom reports a platform that is not a Mac, so `Mod` binds to Ctrl — which
- * is why the event carries `ctrlKey` rather than `metaKey`.
- * @param editor - The editor to press it in.
+ * A browser reports what the press PRODUCED, never the key's label: Shift+b
+ * sends `B`, and Shift+8 on a US layout sends `*`. Sending the label instead
+ * takes a route no press in a browser ever takes.
+ * @param spec - The chord.
+ * @returns That character.
+ */
+function produced(spec: ShortcutSpec): string {
+  if (spec.shift !== true) {
+    return spec.key.toLowerCase();
+  }
+  return SHIFTED_DIGIT[spec.key] ?? spec.key.toUpperCase();
+}
+
+/**
+ * Presses a chord at the editor.
+ * @param editor - The editor.
  * @param spec - The chord.
  * @returns Whether a handler claimed the key.
  */
@@ -85,13 +101,18 @@ function press(
   spec: ShortcutSpec,
 ): boolean {
   const view = editor.prosemirrorView!;
+  const single = spec.key.length === 1;
   const event = new KeyboardEvent('keydown', {
-    key: spec.key.length === 1 ? spec.key.toLowerCase() : spec.key,
+    key: single ? produced(spec) : spec.key,
+    // The unshifted key, which is the only route the four shifted chords
+    // match by — `keydownHandler` looks the produced character up first,
+    // misses, and falls back to `base[event.keyCode]`.
+    keyCode: single ? spec.key.toUpperCase().charCodeAt(0) : 0,
     ctrlKey: spec.mod === true,
     altKey: spec.alt === true,
     shiftKey: spec.shift === true,
     bubbles: true,
-  });
+  } as never);
   return (
     view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false
   );

@@ -38,10 +38,8 @@ import { withCollaboration } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
-import {
-  documentEnterExtension,
-  documentTabExtension,
-} from '@web/spaces/document/document-enter';
+import { documentEnterExtension } from '@web/spaces/document/document-enter';
+import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentLinkClickExtension } from '@web/spaces/document/document-link-click';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
@@ -96,12 +94,6 @@ export function buildDocumentEditor(
       // exception it raises reaches the test runner from anywhere in the suite
       // that renders a document.
       'sideMenu',
-      // §14 keeps our own bubble bar, so BlockNote's is never drawn — and a
-      // toolbar that is never drawn still tracks the selection. Its store then
-      // answers its own Tab binding, which declines the key so a reader can tab
-      // INTO the toolbar: measured, every non-empty selection left Tab
-      // unclaimed and the block where it was.
-      'formattingToolbar',
     ],
   });
 
