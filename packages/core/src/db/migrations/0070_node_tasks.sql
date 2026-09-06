@@ -42,8 +42,8 @@ ALTER TABLE "node_tasks" ADD CONSTRAINT "node_tasks_task_id_tasks_id_fk" FOREIGN
 CREATE INDEX IF NOT EXISTS "node_tasks_node_idx"
   ON "node_tasks" ("project_id", "node_id");--> statement-breakpoint
 
--- The timer Durable Object is the one that judges expiry, so nothing here
--- scans by deadline. This index serves the list endpoint's live rows.
+-- Expiry is judged while listing one node's tasks, so nothing here scans by
+-- deadline. This index serves that endpoint's live rows.
 CREATE INDEX IF NOT EXISTS "node_tasks_live_idx"
   ON "node_tasks" ("node_id", "status")
   WHERE "deleted_at" IS NULL;

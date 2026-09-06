@@ -1,8 +1,8 @@
 # Node task budgets (#186).
 #
-# Every task on a canvas node carries a deadline. A timer Durable Object holds
-# it and knocks on the server when it passes, and that knock is the sole basis
-# on which a task is judged dead.
+# Every task on a canvas node carries a deadline. Nothing counts it down: the
+# server compares it against the clock when somebody reads that node's task
+# list, and that read is the sole occasion on which a task is judged dead.
 #
 # It is one flat ceiling for every kind of task, not an estimate of this
 # particular piece of work. What an upload takes depends on a link we cannot

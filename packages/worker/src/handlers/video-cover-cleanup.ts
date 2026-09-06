@@ -57,7 +57,7 @@ export interface CoverJobFetcher {
  * @param jobId - The failed job's id from the `QueueEvents` 'failed' event.
  * @returns Whether an announcement was published.
  * @throws {Error} When the write-back cannot be published; the caller logs it,
- *   and collab's handling-lease sweeper is the backstop past this point.
+ *   and past this point the row waits to be judged against its budget.
  */
 export async function reclaimFailedCoverJobById(
   queue: CoverJobFetcher,

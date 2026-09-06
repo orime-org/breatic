@@ -425,9 +425,7 @@
       "operationInProgress": "작업이 아직 진행 중입니다 — 이 Space를 닫기 전에 완료하세요."
     },
     "upload": {
-      "ownershipLost": "업로드 결과가 기록되지 않았습니다 — 노드가 삭제되었거나 다른 사용자가 이어받았습니다.",
       "typeMismatch": "파일 형식이 노드와 일치하지 않습니다.",
-      "retry": "다시 업로드",
       "tooLarge": "{filename}은(는) 업로드 크기 제한을 초과했습니다.",
       "empty": "{filename}은(는) 빈 파일이라 추가할 내용이 없습니다.",
       "hashUnavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요.",

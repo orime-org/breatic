@@ -557,9 +557,9 @@ function GeneratePanelBody({
     // render-time closure, which React batching + live collab make stale:
     //   - submittingRef: a synchronous re-entry latch (state lags a frame, so a
     //     rapid second click would slip past an isSubmitting-state guard).
-    //   - isNodeLocked / isNodeHandling: fresh Yjs reads, so a node a collaborator
-    //     locked or flipped to handling can't get a task submitted. Deletion is
-    //     NOT one of theirs — both answer false for a node that is gone; the
+    //   - isNodeLocked: a fresh Yjs read, so a node a collaborator locked
+    //     can't get a task submitted. Deletion is
+    //     NOT one of theirs — it answers false for a node that is gone; the
     //     execute gate below is what refuses that, with `node-gone`.
     //   - promptTextRef: the prompt at click time (a collaborator's batched
     //     keystroke may not have flushed into promptText state yet).

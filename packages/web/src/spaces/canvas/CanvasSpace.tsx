@@ -1988,10 +1988,10 @@ function CanvasSpaceInner({
   // No file is rejected. Created nodes are batch-selected once mirrored back.
   // Track an in-flight front-end operation (upload / extraction) in the
   // per-space operation registry (#1617): register on start, unregister once the
-  // work settles — which for these flows is AFTER the result is written back to
-  // Yjs (the .then / .catch that call complete/failNodeHandling resolve before
-  // this .finally). Closing the space tab is blocked while any operation is
-  // registered, so the local write-back gets a chance to sync before detach.
+  // work settles — which for these flows is once the browser's half is over:
+  // the bytes are delivered and whatever this side writes locally is written.
+  // Closing the space tab is blocked while any operation is registered, so that
+  // write gets a chance to sync before detach.
   const trackOperation = React.useCallback(
     (operationId: string, work: Promise<unknown>): void => {
       const ops = useSpaceOperationsStore.getState();

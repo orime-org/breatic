@@ -425,9 +425,7 @@
       "operationInProgress": "有操作正在進行 — 請先完成再關閉此 Space。"
     },
     "upload": {
-      "ownershipLost": "上傳結果未寫入 — 節點已被移除或被他人接管。",
       "typeMismatch": "檔案類型與節點不符。",
-      "retry": "重新上傳",
       "tooLarge": "{filename} 超過上傳大小限制。",
       "empty": "{filename} 是空檔案，沒有內容可以新增。",
       "hashUnavailable": "無法驗證此檔案，請重新整理頁面後再試。",

@@ -15,11 +15,6 @@ interface NodeContentProps {
   placeholder: React.ReactNode;
   content: React.ReactNode;
   /**
-   * Retry a failed upload (#1609 P4) — present only while the session
-   * still stashes the failed File; the error branch then renders a
-   * Retry button. Pre-bound to the node id by the canvas.
-   */
-  /**
    * Open this node's task list. Present when the failure is a task's, which
    * is where the reason for it lives; absent for text extracted in the
    * browser, which never reaches the task table (#186 §3.7.4).

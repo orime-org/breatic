@@ -2037,7 +2037,7 @@ export const studioAssets = pgTable(
 //
 // Everything the report's consequences are decided from is READ off this row
 // rather than off what the Worker says: the owner studio, the node the bytes
-// land on, and the fencing gen. The Worker knows only what the ticket told it
+// land on, and the space it lives in. The Worker knows only what the ticket told it
 // and can prove none of it (#173, design §3.3).
 //
 // No deleted_at: a short-lived anti-spoof credential, not a project-scoped

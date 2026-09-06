@@ -19,7 +19,6 @@ interface VideoNodeProps {
   onActivate?: () => void;
   /** Open this node's task list on its failures (#186 §3.7.2). */
   onViewTasks?: () => void;
-  /** Retry a failed upload (error state), pre-bound to this node (#1609 P4). */
   onRename?: (name: string) => void;
 }
 

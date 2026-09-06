@@ -104,12 +104,6 @@ export function checkFileAdmission(
 export interface UploadContext {
   /** Owning project, which gates the ticket. */
   projectId: string;
-  /**
-   * The node's fencing gen at the moment handling opened. It rides the ticket
-   * and comes back on the event that ends the node's handling, so a stale
-   * attempt's outcome cannot overwrite a newer one's. An upload with no node
-   * carries zero.
-   */
   /** The node the bytes land on, when this upload has one. */
   nodeId?: string;
   /** The space that node lives in. */
@@ -125,11 +119,10 @@ export interface UploadContext {
 /**
  * Why an upload ended in `onFailure` — the caller picks the message from this.
  *
- * Whichever one it is, the browser writes the node's failure once its own
- * retries are spent (design §5.6, §6.6). The server's own path runs on
- * independently, and the event it eventually sends carries a gen the node no
- * longer holds, so collab drops it — which is what the design asks for: what
- * stays on the node is the failure the browser wrote.
+ * Whichever one it is, the person who tried hears it in their own language.
+ * Which of them it is decides whether a File is worth keeping for a retry, and
+ * whether anything on the server is going to end this upload's task row — see
+ * {@link UploadFailure}.
  *
  * `hash` — the browser could not fingerprint the file (worker / WASM / read
  * failure), which no retry of the SAME page fixes: the fix is a reload.

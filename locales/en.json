@@ -425,9 +425,7 @@
       "operationInProgress": "An operation is still in progress — finish it before closing this Space."
     },
     "upload": {
-      "ownershipLost": "Upload result was not written — the node was removed or taken over.",
       "typeMismatch": "File type doesn’t match this node.",
-      "retry": "Retry upload",
       "tooLarge": "{filename} exceeds the upload size limit.",
       "empty": "{filename} is empty — there's nothing to add.",
       "hashUnavailable": "Couldn't verify this file. Reload the page and try again.",

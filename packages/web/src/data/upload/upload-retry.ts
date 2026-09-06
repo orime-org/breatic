@@ -167,9 +167,8 @@ export function computePutTimeoutMs(
   sizeBytes: number,
   cfg: UploadClientConfig,
 ): number {
-  // The same arithmetic the config reads when it checks that the Durable
-  // Object's idle window outlasts a part's whole delivery. A second copy here
-  // would let the browser's deadline and that check disagree.
+  // The same arithmetic the config's own window check reads. A second copy
+  // here would let the browser's deadline and that check disagree.
   return partDeadlineMs(sizeBytes, {
     requestTimeoutMs: cfg.clientRequestTimeoutMs,
     minBytesPerSec: cfg.clientPutMinBytesPerSec,

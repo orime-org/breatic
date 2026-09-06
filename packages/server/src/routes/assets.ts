@@ -117,11 +117,6 @@ const uploadTicketSchema = z.object({
    * bytes that really landed.
    */
   client_hash: z.string().regex(SHA256_HEX),
-  /**
-   * The node's fencing gen at the moment handling opened. Stored on the grant,
-   * which is where every consequence of this upload reads it from, so a
-   * sweep-authored failure event survives collab's CAS.
-   */
   /** Where the bytes land. Absent for a focus crop, which has no node. */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),

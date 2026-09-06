@@ -13,8 +13,8 @@
  *   - stalled death: the job exceeded `maxStalledCount` and BullMQ moved
  *     it straight to failed without re-running the handler.
  *
- * In both, the target nodes' Yjs `state: 'handling'` was never written
- * back. This net closes that.
+ * In both, the task rows those nodes opened were never settled. This net
+ * closes that.
  *
  * WHY CROSS-PROCESS (#1580 #6): the crashed-worker case CANNOT be handled
  * by that worker's own `worker.on('failed')` — a dead process runs no
@@ -24,7 +24,8 @@
  * BullMQ's own job: its stalled-checker — which needs at least one live
  * worker in the fleet to run `moveStalledJobsToWait` — moves a crashed
  * job to the failed set. If the WHOLE fleet is down nothing runs here, and
- * the collab handling-lease sweeper (1h budget) is the final backstop.)
+ * the rows sit until their budget is judged — which happens when somebody
+ * reads that node's task list, #186 design §4.6.)
  *
  * Idempotent by construction: the write-back is the standard failure
  * outcome (the row marked failed, its counts republished) applied by the collab
@@ -249,8 +250,8 @@ export interface JobFetcher {
  * terminal).
  *
  * Runs once per subscribed instance per failed job (QueueEvents broadcasts):
- * the write-back is idempotent, and the fencing gen (#1580 #7) makes any
- * stale write a no-op. That redundancy is the price of crash-resilience —
+ * the write-back is idempotent: `settle` moves a row only while it is still
+ * running. That redundancy is the price of crash-resilience —
  * the instance whose worker died runs no callback, but every OTHER live
  * instance still cleans the node up.
  * @param queue - Read-side fetcher (a BullMQ `Queue`) resolving the job id.
