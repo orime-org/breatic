@@ -48,12 +48,12 @@ describe("takes_prompt is declared by every model (#1966)", () => {
     expect(missing).toEqual([]);
   });
 
-  it("covers all 42 catalogued models across the six modalities", () => {
+  it("covers all 43 catalogued models across the six modalities", () => {
     const total = MODALITIES.reduce(
       (sum, m) => sum + getFullModelConfig(m).models.length,
       0,
     );
-    expect(total).toBe(42);
+    expect(total).toBe(43);
   });
 });
 

@@ -42,8 +42,29 @@ function ttsModel(name: string, mode: string): ModelEntry {
 }
 
 describe('AUDIO_MODE_OPTIONS (#1960)', () => {
-  it('offers text to speech and voice cloning, the two modes served so far', () => {
-    expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual(['tts', 'voice_clone']);
+  it('offers text to speech, voice cloning and sound effects', () => {
+    expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual([
+      'tts',
+      'voice_clone',
+      'sfx',
+    ]);
+  });
+
+  // One placeholder across all three would tell someone writing a sound effect
+  // to "write the lines to speak" (#2088 A3). The key travels with the mode
+  // rather than being chosen in the container, so a mode added later cannot
+  // reach the picker without one.
+  it('gives every mode a prompt placeholder, and sound effects its own', () => {
+    const keys = AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey);
+    expect(keys.every((k) => k.length > 0)).toBe(true);
+
+    // The two speech modes ask for the same thing — lines to be spoken — so
+    // they share one. Sound effects asks for a description of a sound.
+    const sfx = AUDIO_MODE_OPTIONS.find((o) => o.value === 'sfx')?.placeholderKey;
+    const others = AUDIO_MODE_OPTIONS.filter((o) => o.value !== 'sfx').map(
+      (o) => o.placeholderKey,
+    );
+    expect(others).not.toContain(sfx);
   });
 
   it('spells each mode the way the models in the catalog do', () => {
@@ -55,6 +76,22 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
       ttsModel('qwen3-tts-voice-clone', 'voice_clone'),
     ];
     expect(filterAvailableModes(AUDIO_MODE_OPTIONS, models)).toHaveLength(2);
+  });
+
+  it('drops sound effects when no model in the catalog serves it', () => {
+    // The sfx model lives in the `audio` bucket, and its provider is WaveSpeed.
+    // A deployment without that key serves the two speech modes alone.
+    const speechOnly = [ttsModel('elevenlabs-v3', 'tts')];
+    expect(
+      filterAvailableModes(AUDIO_MODE_OPTIONS, speechOnly).map((o) => o.value),
+    ).not.toContain('sfx');
+  });
+
+  it('offers sound effects once a model claims that mode', () => {
+    const withSfx = [ttsModel('sonilo-sfx-v1', 'sfx')];
+    expect(
+      filterAvailableModes(AUDIO_MODE_OPTIONS, withSfx).map((o) => o.value),
+    ).toEqual(['sfx']);
   });
 
   it('drops cloning when no model in the catalog serves it', () => {

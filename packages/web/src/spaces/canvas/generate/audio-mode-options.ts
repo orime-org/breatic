@@ -20,12 +20,38 @@
 
 import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 
+/** An audio mode, and the prompt placeholder that belongs to it. */
+export interface AudioModeOption extends ModeOption {
+  /**
+   * The i18n key for what the prompt box asks for under this mode.
+   *
+   * It rides on the mode rather than being chosen in the container so that a
+   * mode added later cannot reach the picker without one — a single panel-wide
+   * string told someone writing a sound effect to write lines to speak.
+   */
+  placeholderKey: string;
+}
+
 /** The audio modes offered so far. */
-export const AUDIO_MODE_OPTIONS: ReadonlyArray<ModeOption> = [
-  { value: 'tts', label: 'Text to Speech', testId: 'generate-audio-mode-tts' },
+export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
+  {
+    value: 'tts',
+    label: 'Text to Speech',
+    testId: 'generate-audio-mode-tts',
+    placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
+  },
   {
     value: 'voice_clone',
     label: 'Voice Cloning',
     testId: 'generate-audio-mode-voice-clone',
+    // The same words as text to speech: both ask for lines to be spoken, and
+    // the difference between them is whose voice speaks them.
+    placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
+  },
+  {
+    value: 'sfx',
+    label: 'Sound Effects',
+    testId: 'generate-audio-mode-sfx',
+    placeholderKey: 'canvas.generatePanel.sfxPromptPlaceholder',
   },
 ];

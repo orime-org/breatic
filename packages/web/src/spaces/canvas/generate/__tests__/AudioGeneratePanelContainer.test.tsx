@@ -118,15 +118,24 @@ const CLONE: ModelEntry = {
   rate: { credits: 5, per: 1000, unit: 'characters' },
 };
 
-/** A sound-effect model, as `config/models/audio/` holds one today. */
+/** The sound-effect model, as `config/models/audio/sonilo.yaml` declares it. */
 const SFX: ModelEntry = {
   ...ELEVEN,
-  name: 'elevenlabs-sfx-v2',
-  display_name: 'ElevenLabs SFX V2',
+  name: 'sonilo-sfx-v1',
+  display_name: 'Sonilo SFX',
   modality: 'audio',
   mode: 'sfx',
-  params: {},
+  params: {
+    duration: {
+      description: '',
+      values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180],
+      default: 5,
+    },
+    audio_format: { description: '', default: 'mp3' },
+  },
   sourcesByMode: { sfx: [] },
+  // $0.002 a second at 1 credit = 1 cent, so five seconds is one credit.
+  rate: { credits: 1, per: 5, unit: 'seconds' },
 };
 
 /**
@@ -287,7 +296,7 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     fireEvent.click(screen.getByTestId('generate-model-trigger'));
     expect(screen.getByTestId('generate-model-option-elevenlabs-v3')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-option-fish-s2-pro')).toBeInTheDocument();
-    expect(screen.queryByTestId('generate-model-option-elevenlabs-sfx-v2')).toBeNull();
+    expect(screen.queryByTestId('generate-model-option-sonilo-sfx-v1')).toBeNull();
   });
 
   it('opens a node with no prompt container on the sentence alone', async () => {
@@ -327,6 +336,38 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
       ?.getAttribute('data-placeholder');
     expect(placeholder).toBe(t('canvas.generatePanel.audioPromptPlaceholder'));
     expect(placeholder).not.toBe(t('canvas.generatePanel.promptPlaceholder'));
+  });
+
+  it('asks for a sound under the sound-effect mode, not for lines to speak', async () => {
+    // One placeholder across all three modes would tell someone writing a
+    // sound effect to write the lines a voice will read (#2088 A3).
+    await openPanel({ mode: 'sfx', model: 'sonilo-sfx-v1' });
+    const placeholder = screen
+      .getByTestId('generate-prompt-editor')
+      .querySelector('[data-placeholder]')
+      ?.getAttribute('data-placeholder');
+    expect(placeholder).toBe(t('canvas.generatePanel.sfxPromptPlaceholder'));
+    expect(placeholder).not.toBe(t('canvas.generatePanel.audioPromptPlaceholder'));
+  });
+
+  it('prices a sound effect by the length on the node, not by the description', async () => {
+    // The model bills per second, so the figure reads off the length the node
+    // holds rather than the prompt (#2088 A6). $0.002 a second at 1 credit =
+    // 1 cent: five seconds is one credit, thirty is six.
+    const { unmount } = await openPanel({
+      mode: 'sfx',
+      model: 'sonilo-sfx-v1',
+      paramsByModel: { 'sonilo-sfx-v1': { duration: 5 } },
+    });
+    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('1');
+    unmount();
+
+    await openPanel({
+      mode: 'sfx',
+      model: 'sonilo-sfx-v1',
+      paramsByModel: { 'sonilo-sfx-v1': { duration: 30 } },
+    });
+    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('6');
   });
 
   it('costs nothing on a panel whose prompt is still empty', async () => {

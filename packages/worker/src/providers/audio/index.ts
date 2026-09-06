@@ -26,6 +26,7 @@ import {
 
 import minimax from "@worker/providers/audio/models/minimax.js";
 import elevenlabs from "@worker/providers/audio/models/elevenlabs.js";
+import sonilo from "@worker/providers/audio/models/sonilo.js";
 import vocalRemover from "@worker/providers/audio/models/vocal-remover.js";
 
 // ── Transports ──────────────────────────────────────────────────────
@@ -37,9 +38,16 @@ import * as falTransport from "@worker/providers/audio/transports/fal.js";
 
 // ── Registry ────────────────────────────────────────────────────────
 
-const ALL_FAMILIES: readonly ModelFamily[] = [
+/**
+ * The families this dispatcher can build requests with.
+ *
+ * Exported so a test can assert against the same list `_MODEL_FAMILIES` is
+ * built from; the map itself stays private.
+ */
+export const ALL_FAMILIES: readonly ModelFamily[] = [
   minimax,
   elevenlabs,
+  sonilo,
   vocalRemover,
 ];
 

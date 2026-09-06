@@ -29,6 +29,7 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
       'nano-banana',
       'qwen',
       'seedream',
+      'sonilo',
     ]);
   });
 

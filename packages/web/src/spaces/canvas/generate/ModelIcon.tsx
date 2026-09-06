@@ -16,9 +16,13 @@ import * as React from 'react';
  *   - `qwen`        → a microphone: reproducing Alibaba Qwen's wordmark would
  *     be reproducing the trademark itself, so its mark names what the model
  *     does instead.
- * The picker shows generation models (t2i / i2i / tts); every one of their
- * config `icon` names is covered here — there is deliberately NO generic
- * "unknown model" fallback (user 2026-07-09).
+ *   - `sonilo`      → a sound spreading from a point, for the same reason.
+ * The picker shows generation models across every mode the panels offer —
+ * t2i / i2i on the image panel, tts / voice_clone / sfx on the audio one —
+ * and every `icon` name their configs state is covered here, since there is
+ * deliberately NO generic "unknown model" fallback (user 2026-07-09). A model
+ * that states no `icon` at all draws no mark; `elevenlabs-sfx-v2` is one
+ * today (todo #2060 puts a guard on the names that ARE stated).
  */
 const MARKS: Readonly<Record<string, React.JSX.Element>> = {
   // Two billowing sails above a hull.
@@ -61,6 +65,14 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
     <>
       <rect x='9' y='2.6' width='6' height='10.8' rx='3' />
       <path d='M5.6 11.2A1.1 1.1 0 0 0 3.4 11.2 8.7 8.7 0 0 0 10.9 19.8V21.2A1.1 1.1 0 0 0 13.1 21.2V19.8A8.7 8.7 0 0 0 20.6 11.2 1.1 1.1 0 0 0 18.4 11.2 6.5 6.5 0 0 1 5.6 11.2Z' />
+    </>
+  ),
+  // A sound spreading from a point: a dot with two arcs opening off it.
+  sonilo: (
+    <>
+      <circle cx='4.5' cy='12' r='2.2' />
+      <path d='M8.87 6.79A6.8 6.8 0 0 1 8.87 17.21L7.84 15.98A5.2 5.2 0 0 0 7.84 8.02Z' />
+      <path d='M11.19 4.03A10.4 10.4 0 0 1 11.19 19.97L10.16 18.74A8.8 8.8 0 0 0 10.16 5.26Z' />
     </>
   ),
 };

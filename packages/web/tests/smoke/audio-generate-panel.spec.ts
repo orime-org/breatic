@@ -517,3 +517,50 @@ test('the voice playing is marked by a ring drawn outside its button', async () 
   expect(boxAfter!.height).toBe(boxBefore!.height);
   expect(boxAfter!.width).toBe(boxBefore!.width);
 });
+
+test('sound effects: a length picker, and a credit figure that follows it', async () => {
+  const nodeId = crypto.randomUUID();
+  await seedNode(page, nodeId, 'audio', undefined, 250);
+  await openGenerate(page, nodeId);
+
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-sfx').click();
+
+  // The speech controls go with the mode: nothing here picks a voice, and
+  // nothing here clones one.
+  await expect(page.getByTestId('generate-audio-params-trigger')).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
+
+  // The box asks for a sound rather than for lines to speak. Tiptap's
+  // Placeholder extension puts the text on the empty paragraph inside the
+  // editor, and a css rule draws it from there.
+  await expect(
+    page.getByTestId('generate-prompt-editor').locator('[data-placeholder]').first(),
+  ).toHaveAttribute('data-placeholder', /sound/i);
+
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('glass shattering, then footsteps over the shards');
+
+  // Five seconds is what the model defaults to, and $0.002 a second at
+  // 1 credit = 1 cent puts that at one credit.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('1', {
+    timeout: 10_000,
+  });
+
+  // Thirty seconds costs six, and the figure follows the picker rather than
+  // the prompt — which has not changed.
+  await page.getByTestId('generate-audio-params-trigger').click();
+  await page.getByTestId('generate-audio-duration-option-30').click();
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('6', {
+    timeout: 10_000,
+  });
+
+  // The longest preset the gateway takes, at the price the rate states.
+  await page.getByTestId('generate-audio-duration-option-180').click();
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('36', {
+    timeout: 10_000,
+  });
+});

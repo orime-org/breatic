@@ -302,6 +302,19 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     });
   });
 
+  // A model billing by output length states `seconds` (#2088). The unit list
+  // here is a second, separate literal from the TypeScript one, and the rate
+  // object degrades to absent rather than throwing — so a unit missing from
+  // THIS list takes the whole rate with it, in silence, and the credit row
+  // simply never renders.
+  it("keeps a rate stated per second, which is how a sound effect is billed", () => {
+    const raw = catalog([
+      entry("sonilo-sfx-v1", { rate: { credits: 1, per: 5, unit: "seconds" } }),
+    ]);
+    const out = sanitizeModelCatalog(raw);
+    expect(out.image[0]?.rate).toEqual({ credits: 1, per: 5, unit: "seconds" });
+  });
+
   it("leaves rate undefined on a model that declares none", () => {
     const out = sanitizeModelCatalog(catalog([entry("flux")]));
     expect(out.image[0]?.rate).toBeUndefined();
