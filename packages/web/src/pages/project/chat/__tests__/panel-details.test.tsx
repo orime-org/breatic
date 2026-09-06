@@ -77,7 +77,11 @@ describe('a code block in a reply', () => {
     expect(screen.queryByTestId('copy-answer')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('code-copy'));
 
-    expect(await screen.findByTestId('copy-answer')).toBeInTheDocument();
+    const answer = await screen.findByTestId('copy-answer');
+    expect(answer).toBeInTheDocument();
+    // Above the button, where the other two put theirs.
+    expect(answer.className).toMatch(/\bbottom-full\b/);
+    expect(answer.className).not.toMatch(/\btop-full\b/);
   });
 
   it('leaves the tooltip to the browser no longer', async () => {

@@ -38,8 +38,6 @@ export function CodeBlock({
       <pre ref={block} {...rest}>
         {children}
       </pre>
-      {/* The answer hangs below: this button is against the block's top edge,
-          and above it the label would stand off the code entirely. */}
       <span className='absolute right-2 top-2 inline-flex'>
         <Button
           data-testid='code-copy'
@@ -58,7 +56,7 @@ export function CodeBlock({
             <Copy className='size-3.5' aria-hidden='true' />
           )}
         </Button>
-        {answered ? <CopyAnswerLabel side='right' below /> : null}
+        {answered ? <CopyAnswerLabel side='right' /> : null}
       </span>
     </div>
   );

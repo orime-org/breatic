@@ -83,8 +83,6 @@ interface CopyAnswerLabelProps {
    * that. Each caller names the edge its button is against.
    */
   side: 'left' | 'right';
-  /** Whether the label hangs below the button rather than above it. */
-  below?: boolean;
 }
 
 /**
@@ -94,20 +92,22 @@ interface CopyAnswerLabelProps {
  * rather than through the tooltip primitive: a tooltip is what hovering an
  * element tells you about it, and this is what pressing it did. Nothing in it
  * can be pointed at, so it needs none of what a real overlay is for.
+ *
+ * Above the button, wherever the button is: a reader who has pressed copy
+ * once knows where the word appears, and a second button that answered
+ * somewhere else would be a second thing to learn.
  * @param root0 - The component props.
  * @param root0.side - Which edge of the button the label hangs from.
- * @param root0.below - Whether it hangs below the button.
  * @returns The label.
  */
-export function CopyAnswerLabel({ side, below }: CopyAnswerLabelProps): React.JSX.Element {
+export function CopyAnswerLabel({ side }: CopyAnswerLabelProps): React.JSX.Element {
   const t = useTranslation();
   return (
     <span
       data-testid='copy-answer'
       role='status'
       className={cn(
-        'pointer-events-none absolute z-10 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground',
-        below === true ? 'top-full mt-1.5' : 'bottom-full mb-1.5',
+        'pointer-events-none absolute bottom-full z-10 mb-1.5 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground',
         side === 'right' ? 'right-0' : 'left-0',
       )}
     >
