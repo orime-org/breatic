@@ -54,7 +54,8 @@ export interface TaskStatusDotProps {
  * Render one task's state as a coloured dot carrying its name for readers.
  *
  * Every state draws the same box, so a row settling does not move the
- * filename beside it.
+ * filename beside it. 8px is what this repo gives a dot that carries state;
+ * at 6px two of the four colours were not tellable apart (user 2026-09-06).
  * @param props - The dot inputs.
  * @param props.status - Which state this task is in.
  * @returns The dot element.
@@ -65,7 +66,7 @@ export function TaskStatusDot({ status }: TaskStatusDotProps): JSX.Element {
     <span
       data-testid='task-status-dot'
       className={cn(
-        'relative size-1.5 flex-none rounded-full bg-current',
+        'relative size-2 flex-none rounded-full bg-current',
         TONE[status],
       )}
     >

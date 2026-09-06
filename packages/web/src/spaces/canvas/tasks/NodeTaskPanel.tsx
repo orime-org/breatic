@@ -23,6 +23,18 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
+/**
+ * The heading, one per state. The rows below carry their state as a colour and
+ * nothing else, so this is the one place on screen the word appears — without
+ * it colour is the only thing saying which list this is (WCAG 1.4.1).
+ */
+const TITLE_KEY: Readonly<Record<TaskStatus, string>> = {
+  running: 'canvas.task.status.running',
+  done: 'canvas.task.status.done',
+  failed: 'canvas.task.status.failed',
+  expired: 'canvas.task.status.expired',
+};
+
 /** What {@link NodeTaskPanel} renders and reports. */
 export interface NodeTaskPanelProps {
   /** The state whose count was clicked; only these rows show. */
@@ -95,8 +107,8 @@ export function NodeTaskPanel({
     <div className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'>
       <div className='flex items-center justify-between px-3 py-2.5'>
         <div className='flex items-baseline gap-2'>
-          <span className='text-sm font-semibold'>
-            {t('canvas.task.panelTitle')}
+          <span data-testid='node-task-panel-title' className='text-sm font-semibold'>
+            {t(TITLE_KEY[status])}
           </span>
           <span
             data-testid='node-task-panel-count'

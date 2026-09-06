@@ -139,6 +139,17 @@ describe('NodeTaskPanel', () => {
     expect(screen.getByTestId('node-task-panel-loading')).toBeInTheDocument();
   });
 
+  it('names the state it is showing in its own heading', () => {
+    // The rows carry their state as a colour and nothing else, so this heading
+    // is the one place the word appears on screen. Without it colour is the
+    // sole carrier, which WCAG 1.4.1 does not allow (user 2026-09-06).
+    renderPanel({ status: 'failed', entries: [] });
+
+    expect(screen.getByTestId('node-task-panel-title')).toHaveTextContent(
+      'Failed',
+    );
+  });
+
   it('says it is loading rather than miming the rows it will show', () => {
     // A placeholder shaped like the rows shifts the whole panel the moment the
     // real ones arrive, and it pulses on a canvas the user is working on. One

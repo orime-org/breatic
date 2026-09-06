@@ -19,7 +19,6 @@ import { asTaskFailureReason } from '@breatic/shared';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import {
   elapsedMs,
@@ -109,7 +108,7 @@ export const TaskRow = React.memo(function TaskRow({
   // A person who left the project is gone from the roster while their tasks
   // remain, so an unresolved id drops the name and keeps the row.
   const starter = names?.resolve(entry.startedByUserId) ?? null;
-  const status = entry.status as TaskStatus;
+  const status = entry.status;
 
   const actions = taskRowActions({
     status,
@@ -140,7 +139,7 @@ export const TaskRow = React.memo(function TaskRow({
   return (
     <div
       data-testid='node-task-row'
-      className='flex flex-col gap-1.5 rounded-content-sm px-2 py-2 hover:bg-accent'
+      className='flex flex-col gap-1.5 rounded-content-sm px-1.5 py-2 hover:bg-accent'
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />

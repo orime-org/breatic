@@ -157,16 +157,22 @@ function OpenNodeTaskPanel({
       void canvasApi
         .dismissNodeTask(taskId, { projectId, spaceId, nodeId })
         .then(() => {
-          queryClient.setQueryData<NodeTaskEntry[]>(queryKey, (rows) =>
-            (rows ?? []).filter((row) => row.id !== taskId),
-          );
+          const left = (
+            queryClient.getQueryData<NodeTaskEntry[]>(queryKey) ?? []
+          ).filter((row) => row.id !== taskId);
+          queryClient.setQueryData<NodeTaskEntry[]>(queryKey, left);
           clearRetryFile(projectId, spaceId, taskId);
+          // The count cell this panel opened from is drawn only while its
+          // state holds a task, so clearing the last one takes the cell with
+          // it. Left open, the panel would sit on a generic empty line with
+          // nothing on screen naming the state that emptied.
+          if (left.length === 0) closeActivePanel();
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
         });
     },
-    [projectId, spaceId, nodeId, queryClient, queryKey, t],
+    [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel],
   );
 
   return (

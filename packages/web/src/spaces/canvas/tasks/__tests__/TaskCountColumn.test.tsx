@@ -73,6 +73,40 @@ describe('TaskCountColumn', () => {
     }
   });
 
+  it('keeps the number readable and puts the state on the dot', () => {
+    // Light theme measured the state colours at 3.4–4.6 against the cell fills
+    // — under the 4.5 a 11px number needs (WCAG 1.4.3). The dot is a graphic
+    // and clears its own 3:1 floor at every one of them, so the state rides on
+    // the dot and the number takes the foreground (user 2026-09-06).
+    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
+
+    const cell = screen.getByTestId('task-count-running');
+    expect(cell.className).not.toContain('text-status-info-foreground');
+    const dot = cell.querySelector('span[aria-hidden]');
+    expect(dot?.className).toContain('bg-status-info-foreground');
+  });
+
+  it('holds its fill when the pointer crosses the open one', () => {
+    // `hover:bg-accent` and `bg-muted` merge into different groups, so both
+    // survive and the hover rule wins on specificity: the open cell would
+    // repaint as any hovered neighbour does and lose half of what says it is
+    // open.
+    render(<TaskCountColumn counts={COUNTS} openFor='done' onOpen={vi.fn()} />);
+
+    expect(screen.getByTestId('task-count-done').className).toContain(
+      'hover:bg-muted',
+    );
+  });
+
+  it('draws its dot at the size this repo gives a state dot', () => {
+    render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
+
+    const dot = screen
+      .getByTestId('task-count-running')
+      .querySelector('span[aria-hidden]');
+    expect(dot?.className).toContain('size-2');
+  });
+
   it('asks for the list of whichever state was clicked', () => {
     const onOpen = vi.fn();
     render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={onOpen} />);

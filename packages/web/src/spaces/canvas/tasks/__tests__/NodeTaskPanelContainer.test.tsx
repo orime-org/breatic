@@ -10,7 +10,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -107,7 +107,40 @@ describe('NodeTaskPanelContainer', () => {
     // A collaborator deleted the node this panel hangs on. Its three sibling
     // panels all close themselves here, and `resolvePanelSelectionAction`
     // leaves the case to them rather than acting on a host that is gone.
-    view.rerender(panel([] as unknown as Nodes));
+    view.rerender(panel([]));
+
+    await waitFor(() =>
+      expect(useCanvasStore.getState().panelHostId).toBeNull(),
+    );
+  });
+
+  it('closes when the reader clears the last row of the state it is showing', async () => {
+    // The count cell that opened this panel is drawn only while that state has
+    // a task in it, so clearing the last one takes the cell away. Left open,
+    // the panel would sit there saying the generic "nothing here right now"
+    // with nothing on screen naming which state emptied (user 2026-09-06).
+    vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([
+      {
+        id: 'task-1',
+        status: 'failed',
+        label: 'broken-take.mov',
+        startedByUserId: 'u1',
+        startedAt: '2026-09-06T10:00:00.000Z',
+        settledAt: '2026-09-06T10:01:00.000Z',
+        budgetMs: 7_200_000,
+        errorMessage: 'aborted',
+        content: null,
+      },
+    ] as unknown as Awaited<ReturnType<typeof canvasApi.listNodeTasks>>);
+    vi.mocked(canvasApi.dismissNodeTask).mockResolvedValue(
+      undefined as unknown as Awaited<
+        ReturnType<typeof canvasApi.dismissNodeTask>
+      >,
+    );
+
+    mount();
+    const row = await screen.findByTestId('task-action-clear');
+    fireEvent.click(row);
 
     await waitFor(() =>
       expect(useCanvasStore.getState().panelHostId).toBeNull(),

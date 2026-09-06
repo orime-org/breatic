@@ -60,7 +60,10 @@ describe('TaskStatusDot', () => {
         cleanup();
         render(<TaskStatusDot status={status} />);
         const dot = screen.getByTestId('task-status-dot');
-        return [dot.className.includes('size-1.5'), dot.className.includes('flex-none')];
+        // 8px is what this repo gives a dot that carries state — the unread
+        // badge, the conversation row, the activity row. At 6px two of the
+        // four colours were not tellable apart (user 2026-09-06).
+        return [dot.className.includes('size-2'), dot.className.includes('flex-none')];
       },
     );
 

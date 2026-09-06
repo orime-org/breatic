@@ -213,6 +213,15 @@ describe('TaskRow', () => {
     );
   });
 
+  it('starts its content on the same line as the panel heading', () => {
+    // The panel pads its heading by 12px and its viewport by 6px, so a row
+    // padded by 8px begins 2px right of the title above it. The history panel
+    // beside this one pads its rows by 6px and lines up.
+    renderRow({ status: 'done' });
+
+    expect(screen.getByTestId('node-task-row').className).toContain('px-1.5');
+  });
+
   it('says which instant it is showing', () => {
     // The same slot carries two different facts: a running row shows when the
     // task began, a settled one when it ended. Without the word the reader has

@@ -31,12 +31,27 @@ import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
  */
 const ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
 
-/** Text colour per state, from the same families the badge uses. */
-const TONE: Readonly<Record<TaskStatus, string>> = {
-  running: 'text-status-info-foreground',
-  done: 'text-status-success-foreground',
-  failed: 'text-status-error-foreground',
-  expired: 'text-status-warning-foreground',
+/**
+ * The dot's colour per state. The state rides on the dot rather than on the
+ * number: light theme measures these four against the cell's fills at 3.4 to
+ * 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3), while a dot is a
+ * graphic and clears its own 3:1 floor at every one of them. So the dot says
+ * which state and the number, in the foreground colour, says how many
+ * (user 2026-09-06).
+ */
+const DOT_TONE: Readonly<Record<TaskStatus, string>> = {
+  running: 'bg-status-info-foreground',
+  done: 'bg-status-success-foreground',
+  failed: 'bg-status-error-foreground',
+  expired: 'bg-status-warning-foreground',
+};
+
+/** The open cell's border, so which list is showing reads without the fill. */
+const OPEN_BORDER: Readonly<Record<TaskStatus, string>> = {
+  running: 'border-status-info-foreground',
+  done: 'border-status-success-foreground',
+  failed: 'border-status-error-foreground',
+  expired: 'border-status-warning-foreground',
 };
 
 /** i18n key for the button's accessible name, one per state. */
@@ -93,13 +108,19 @@ function TaskCount({
       onClick={handleClick}
       className={cn(
         // The shape the shared `outline` variant draws, minus its hover text
-        // colour, which would take the state's own colour off the number.
+        // colour, which this cell has no use for.
         'flex min-w-11 items-center justify-center gap-1.5 rounded-chrome border border-border bg-background px-2 py-1 text-2xs font-medium tabular-nums hover:bg-accent',
-        TONE[status],
-        isOpen && 'border-current bg-muted',
+        // The open cell repeats its own fill on hover. Both rules survive the
+        // merge — different modifier groups — and the hovered one wins on
+        // specificity, so without this the open cell repaints as any hovered
+        // neighbour does and loses half of what says it is open.
+        isOpen && cn(OPEN_BORDER[status], 'bg-muted hover:bg-muted'),
       )}
     >
-      <span aria-hidden='true' className='size-1.5 rounded-full bg-current' />
+      <span
+        aria-hidden='true'
+        className={cn('size-2 rounded-full', DOT_TONE[status])}
+      />
       {value}
     </Button>
   );
