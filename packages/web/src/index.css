@@ -876,11 +876,18 @@ body {
    The Radix component cannot go inside a ProseMirror NodeView, so the values
    are matched rather than the component reused.
 
+   THE HOLDER IS 24 WIDE, which is what a bullet and a number get from
+   BlockNote's own `min-width: 24px` — measured in a browser, a to-do's text
+   started 28px in against 24 for the other two kinds while the margins here
+   read 4 and 8. Its three parts are the margins and the box: 4 + 16 + 4.
+
    The tick is a mask on the holder rather than a background on the input: an
    `<input>` is a replaced element and takes no pseudo-element of its own, and
    a mask carries its colour from a token where a background SVG would have to
-   spell one out. The holder is 24 wide (4 + 16 + 4 after the margins below),
-   so a 12px tick centred on the box starts 6 in. */
+   spell one out. A 12px tick centred on a 16px box 4 in starts 6 in.
+
+   A viewer's copy is disabled, and `appearance: none` takes away the grey the
+   browser drew for that. */
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div {
   position: relative;
 }
@@ -890,14 +897,19 @@ body {
   width: 16px;
   height: 16px;
   margin-block: 4px;
-  margin-inline: 4px 8px;
+  margin-inline: 4px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-content-xs);
+  border-radius: var(--radius-chrome);
   background-color: var(--color-background);
 }
 
-.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:hover {
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:hover:not(:disabled) {
   border-color: var(--color-ring);
+}
+
+.doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'][data-checked='true'] > div > input {

@@ -1,0 +1,112 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * #904 验收 A3: the box a to-do carries is one we draw, sized to its row.
+ *
+ * BlockNote renders a bare `<input type="checkbox">` and styles only its
+ * geometry, so left alone the box is whatever the browser draws — measured,
+ * `appearance: auto`, 12 by 24, square corners, ticked in the operating
+ * system's accent colour. `packages/web/CLAUDE.md` rules a control whose look
+ * the browser or the OS paints out of this product.
+ *
+ * Two things are read off the stylesheet here rather than off a browser.
+ *
+ * The FIRST is that the rules exist at all and name our tokens. A browser
+ * would say the same and cost a run of the smoke suite.
+ *
+ * The SECOND is the arithmetic, and this is the one that has bitten: the
+ * holder has to come to 24, which is what BlockNote gives a bullet and a
+ * number through `min-width: 24px`, or the text of a to-do starts further in
+ * than the text of the list item above it. Measured in a browser at 16px wide
+ * with margins of 4 and 8, that was 28 against 24. The three numbers are in
+ * three declarations here, so the sum is what this reads.
+ */
+
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { describe, it, expect } from 'vitest';
+
+/** The stylesheet, as it ships. */
+const css = readFileSync(resolve('src/index.css'), 'utf8');
+
+/**
+ * The body of the one rule whose selector ends in the given text.
+ * @param endsWith - The tail of the selector.
+ * @returns That rule's declarations.
+ * @throws {Error} When no rule, or more than one, matches.
+ */
+function ruleBody(endsWith: string): string {
+  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
+    match[1].trim().endsWith(endsWith),
+  );
+  if (found.length !== 1) {
+    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
+  }
+  return found[0][2];
+}
+
+/**
+ * One length declared in a rule.
+ * @param body - The rule's declarations.
+ * @param property - Which one to read.
+ * @returns Its value in pixels.
+ * @throws {Error} When the rule does not declare it in pixels.
+ */
+function px(body: string, property: string): number {
+  const found = new RegExp(`${property}:\\s*(-?[\\d.]+)px`).exec(body);
+  if (found === null) {
+    throw new Error(`no ${property} in px`);
+  }
+  return Number(found[1]);
+}
+
+const TICK = '[data-content-type=\'checkListItem\'] > div > input';
+
+describe('the box a to-do carries', () => {
+  it('is drawn by us, not by the browser', () => {
+    expect(ruleBody(TICK)).toContain('appearance: none');
+  });
+
+  it('takes its colours and its corner from our tokens', () => {
+    const body = ruleBody(TICK);
+    expect(body).toContain('var(--color-border)');
+    expect(body).toContain('var(--color-background)');
+    // The corner `components/ui/checkbox.tsx` uses, through `rounded-chrome`.
+    expect(body).toContain('var(--radius-chrome)');
+    const checked = ruleBody(
+      '[data-content-type=\'checkListItem\'][data-checked=\'true\'] > div > input',
+    );
+    expect(checked).toContain('var(--color-primary)');
+  });
+
+  it('leaves the text where a bullet and a number leave theirs', () => {
+    const body = ruleBody(TICK);
+    // `margin-inline` is one value, so it is the same on both sides.
+    expect(body).toMatch(/margin-inline:\s*[\d.]+px;/);
+    const side = px(body, 'margin-inline');
+    // 24 is BlockNote's own `min-width` for a bullet's and a number's marker.
+    expect(side + px(body, 'width') + side).toBe(24);
+  });
+
+  it('centres the tick on the box', () => {
+    const box = ruleBody(TICK);
+    const mark = ruleBody(
+      '[data-content-type=\'checkListItem\'][data-checked=\'true\'] > div::after',
+    );
+    expect(px(mark, 'left')).toBe(
+      px(box, 'margin-inline') + (px(box, 'width') - px(mark, 'width')) / 2,
+    );
+  });
+
+  it('says a viewer cannot tick it', () => {
+    // `appearance: none` takes away the grey the browser drew for a disabled
+    // control, and BlockNote disables the input for a read-only editor.
+    const off = ruleBody(`${TICK}:disabled`);
+    expect(off).toContain('opacity');
+    expect(ruleBody(`${TICK}:hover:not(:disabled)`)).toContain(
+      'var(--color-ring)',
+    );
+  });
+});

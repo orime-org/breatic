@@ -180,30 +180,72 @@ test('draws a marker beside a bulleted item and a numbered one', async () => {
   expect(numbered?.marker, 'a numbered item draws its number').toContain('1');
 });
 
-test('sets a numbered heading number in that heading own size', async () => {
+// All three levels, because the rule that gives the number its size is the
+// one that declines to state one: a size written into it — even an absolute
+// one that happens to equal level 1's — flattens the other two onto it, and
+// a single level cannot tell those two worlds apart.
+for (const level of [1, 2, 3]) {
+  test(`sets a level ${String(level)} heading's number in that heading's own size`, async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('a numbered heading');
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Shift+7`);
+    await page.keyboard.press(`${MOD}+a`);
+    await page.keyboard.press(`${MOD}+Alt+${String(level)}`);
+
+    const measured = await page.evaluate((sel) => {
+      const element = document.querySelector(`${sel} .bn-block-content`)!;
+      const inner = element.querySelector('.bn-inline-content');
+      return {
+        type: element.getAttribute('data-content-type'),
+        level: element.getAttribute('data-level'),
+        number: element.getAttribute('data-doc-number'),
+        headingFont: inner === null ? null : getComputedStyle(inner).fontSize,
+        markerFont: getComputedStyle(element, '::before').fontSize,
+      };
+    }, EDITOR);
+
+    expect(measured.type).toBe('heading');
+    expect(measured.level ?? '1').toBe(String(level));
+    expect(measured.number).toBe(level === 1 ? '1' : `1${'.1'.repeat(level - 1)}`);
+    // The number belongs to the heading, not to the body around it (user
+    // 2026-09-02): a size of its own flattens all three levels onto one.
+    expect(measured.markerFont).toBe(measured.headingFont);
+  });
+}
+
+test('lines a heading number up with a list item number', async () => {
+  // Both markers come from the same rule (`index.css`'s `[data-doc-number]`),
+  // so the text after them starts at the same place whichever block carries
+  // the number — measured, a to-do's box once stood 4px further in than a
+  // bullet's for exactly this reason.
   await openFreshDocument(page);
-  await page.keyboard.type('a numbered heading');
+  await page.keyboard.type('an ordered item');
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+Shift+7`);
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('a heading');
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+Alt+1`);
 
-  const measured = await page.evaluate((sel) => {
-    const element = document.querySelector(`${sel} .bn-block-content`)!;
-    const inner = element.querySelector('.bn-inline-content');
-    return {
-      type: element.getAttribute('data-content-type'),
-      number: element.getAttribute('data-doc-number'),
-      headingFont: inner === null ? null : getComputedStyle(inner).fontSize,
-      markerFont: getComputedStyle(element, '::before').fontSize,
-    };
+  const rows = await page.evaluate((sel) => {
+    const root = document.querySelector(sel)!;
+    return [...root.querySelectorAll('.bn-block-content[data-doc-number]')].map(
+      (element) => {
+        const before = getComputedStyle(element, '::before');
+        return {
+          type: element.getAttribute('data-content-type'),
+          minWidth: before.minWidth,
+          paddingRight: before.paddingRight,
+        };
+      },
+    );
   }, EDITOR);
 
-  expect(measured.type).toBe('heading');
-  expect(measured.number).toBe('1');
-  // The number belongs to the heading, not to the body around it (user
-  // 2026-09-02): a size of its own flattens all three levels onto one.
-  expect(measured.markerFont).toBe(measured.headingFont);
+  expect(rows).toHaveLength(2);
+  expect(rows[0]!.minWidth).toBe(rows[1]!.minWidth);
+  expect(rows[0]!.paddingRight).toBe(rows[1]!.paddingRight);
 });
 
 test('draws the body in our own font and the code block on our own panel', async () => {
