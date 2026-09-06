@@ -60,7 +60,7 @@ export const SourceBox = React.memo(function SourceBox({
               href={s.url}
               target='_blank'
               rel='noreferrer noopener'
-              className='flex gap-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent'
+              className='flex gap-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               {/* Every number the turn handed this page, so a marker in the
                   prose can be found here whichever of them it carries. They

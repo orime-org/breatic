@@ -17,12 +17,12 @@ import type { ChatSource } from '@web/pages/project/chat/types';
  *
  * A marker in a sentence and a line in the list at the foot are the same
  * thing seen twice, so they are drawn from one string rather than two that
- * happen to match today. A ring for one digit and a short pill for two: the
- * number is what has to stay readable, so the width follows it and only the
- * height is fixed.
+ * happen to match today. One size whatever number it carries: in the box the
+ * rings stand in a column and the titles are read off their right edge, and
+ * a ring that grew with its number pushed that edge along with it.
  */
 export const CITATION_RING =
-  'inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-border px-1 text-2xs leading-none text-muted-foreground';
+  'inline-flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-2xs leading-none text-muted-foreground';
 
 interface CitationMarkProps {
   /** The page this stands for. */
@@ -56,7 +56,16 @@ export const CitationMark = React.memo(function CitationMark({
           href={source.url}
           target='_blank'
           rel='noreferrer noopener'
-          className={cn(CITATION_RING, 'bg-card align-[-3px] no-underline hover:border-muted-foreground hover:bg-accent hover:text-foreground')}
+          className={cn(
+            CITATION_RING,
+            // A gap on either side, so the ring is set in the sentence rather
+            // than pressed against the character before it and the full stop
+            // after it. It is substituted into the text in place, and nothing
+            // else puts space around it.
+            'ml-[2px] mr-px bg-card no-underline',
+            'hover:border-muted-foreground hover:bg-accent hover:text-foreground',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          )}
         >
           {index}
         </a>

@@ -58,6 +58,80 @@ describe('a marker in the prose', () => {
     expect(chip.querySelector('[aria-hidden]')).toBeNull();
   });
 
+  it('sits on the baseline of the line it is written in', () => {
+    // Held 3px below it, the ring's underside cleared the text's by 4px while
+    // the gap between two lines is 5.95px -- the marker took more than half of
+    // it and read as hanging between the lines rather than set in the sentence.
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'The silhouette comes from Victorian dress [1].',
+          citations: { 1: source(1) },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('citation-chip').className).not.toMatch(/\balign-\[/);
+  });
+
+  it('keeps a gap between itself and the words on either side', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'The silhouette comes from Victorian dress [1].',
+          citations: { 1: source(1) },
+        }}
+      />,
+    );
+
+    // Substituted in place, with nothing added around it, so the ring sits
+    // against the character before it and the full stop after it.
+    expect(screen.getByTestId('citation-chip').className).toMatch(/\bml-\[2px\]/);
+    expect(screen.getByTestId('citation-chip').className).toMatch(/\bmr-px\b/);
+  });
+
+  it('is one size whatever number it carries', () => {
+    // Widening with the number pushes whatever follows it: in the box the
+    // titles line up under each other, and the one row cited past nine sat
+    // 4.58px to the right of the other nine.
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'One [1]. Ten [10].',
+          citations: { 1: source(1), 10: source(10) },
+        }}
+      />,
+    );
+
+    const [one, ten] = screen.getAllByTestId('citation-chip');
+    expect(one?.className).toMatch(/\bsize-4\b/);
+    expect(one?.className).toBe(ten?.className);
+    expect(one?.className).not.toMatch(/min-w-|\bpx-/);
+  });
+
+  it('draws its own focus ring rather than leaving one to the browser', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'The silhouette comes from Victorian dress [1].',
+          citations: { 1: source(1) },
+        }}
+      />,
+    );
+
+    // The browser's is 2px and carries an offset; every hand-written control
+    // in this app draws a 1px ring against its own edge.
+    expect(screen.getByTestId('citation-chip').className).toMatch(/focus-visible:ring-1/);
+  });
+
   it('becomes a chip carrying the number it was written with', () => {
     render(
       <MessageBubble
@@ -181,6 +255,43 @@ describe('the line at the foot of the reply', () => {
     expect(rows[0]).toHaveTextContent('1');
     expect(rows[0]).toHaveTextContent('Page 1');
     expect(rows[0]).toHaveTextContent('https://s1.example/page');
+  });
+
+  it('draws its own focus ring on each row of the box', async () => {
+    // Every row is the only thing in that dialog a keyboard can reach.
+    const many = [1, 2].map(source);
+    render(
+      <MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer', sources: many }} />,
+    );
+
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    for (const row of screen.getAllByTestId('source-box-row')) {
+      expect(row.className).toMatch(/focus-visible:ring-1/);
+    }
+  });
+
+  it('lines the titles up under each other whatever numbers the rows carry', async () => {
+    // Nine rows aligned and the tenth 4.58px to the right of them is what a
+    // ring that widens with its number does to the column beside it.
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'answer',
+          sources: [source(9), source(10)],
+        }}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    for (const marks of screen.getAllByTestId('source-box-marks')) {
+      const ring = marks.firstElementChild;
+      expect(ring?.className).toMatch(/\bsize-4\b/);
+      expect(ring?.className).not.toMatch(/min-w-|\bpx-/);
+    }
   });
 
   it('draws no publisher and no mark of the site anywhere', () => {

@@ -111,6 +111,16 @@ describe('the copy on a reader\'s own message', () => {
     expect(stack?.querySelector('[data-testid="message-bubble-content"]')).not.toBeNull();
   });
 
+  it('stands off the message and spaces what it carries, as the demo has it', () => {
+    // Both figures are the demo's: gap `--space-4`, and `--space-5` between
+    // the line and the message above it.
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    const actions = screen.getByTestId('turn-actions');
+    expect(actions.className).toMatch(/\bgap-2\b/);
+    expect(actions.className).toMatch(/\bmt-3\b/);
+  });
+
   it('says when the message was sent, in the reader\'s own day', () => {
     render(
       <MessageBubble

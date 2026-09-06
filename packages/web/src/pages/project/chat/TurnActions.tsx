@@ -96,12 +96,12 @@ export const TurnActions = React.memo(function TurnActions({
     <div
       data-testid='turn-actions'
       className={cn(
-        'flex items-center gap-1',
+        'mt-3 flex items-center gap-2',
         // A line of its own under the reader's own message, and it keeps that
         // line whether or not anything on it is showing: a row that took no
         // space let the reply below come up under it, and the two were drawn
         // on top of each other.
-        own === true ? 'mt-1 h-[var(--btn-compact)] justify-end' : 'mt-[0.85em]',
+        own === true && 'h-[var(--btn-compact)] justify-end',
       )}
     >
       {sentAt === undefined ? null : (

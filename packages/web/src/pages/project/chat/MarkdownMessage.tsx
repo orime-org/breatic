@@ -64,8 +64,12 @@ interface MarkdownMessageProps {
  * composed, because Tailwind finds a class by reading the source.
  */
 const SIZE_CLASS = {
-  sm: 'chat-markdown text-sm',
-  '2xs': 'chat-markdown text-2xs',
+  // The line height rides with the size it was measured against. A font-size
+  // utility brings one of its own, and the scope's stylesheet is layered, so
+  // written there it would lose to the utility and the prose would set 3.45px
+  // tighter than it reads at.
+  sm: 'chat-markdown text-sm leading-[1.65]',
+  '2xs': 'chat-markdown text-2xs leading-[1.65]',
 } as const;
 
 /**
