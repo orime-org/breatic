@@ -47,7 +47,9 @@ import { t } from '@breatic/shared';
 
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import {
+  addEdge,
   addNode,
+  ensureTextBody,
   getLyricsFragment,
   getPromptFragment,
   nodeDataMap,
@@ -263,6 +265,70 @@ function typeLyrics(...lines: string[]): void {
 }
 
 /**
+ * Writes a paragraph into the lyrics fragment carrying a reference chip —
+ * what `@`-picking a text node from the lyrics box leaves behind.
+ * @param text - The words beside the chip.
+ * @param sourceIds - The nodes the chips point at.
+ */
+function typeLyricsMentioning(text: string, sourceIds: string[]): void {
+  const fragment = getLyricsFragment('p', 's', 'target');
+  if (!fragment) throw new Error('seedAudioNode must run first');
+  const paragraph = new Y.XmlElement('paragraph');
+  paragraph.insert(0, [new Y.XmlText(text)]);
+  for (const id of sourceIds) {
+    const chip = new Y.XmlElement('referenceMention');
+    chip.setAttribute('sourceNodeId', id);
+    chip.setAttribute('kind', 'text');
+    paragraph.insert(paragraph.length, [chip]);
+  }
+  fragment.insert(0, [paragraph]);
+}
+
+/** What else is on the board besides the audio node the panel opens on. */
+interface BoardExtras {
+  nodes?: Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'];
+  edges?: Parameters<typeof AudioGeneratePanelContainer>[0]['edges'];
+}
+
+/**
+ * Puts a text node on the board, wires it into the audio node, and gives it
+ * words — everything `deriveReferences` needs to produce one rail row.
+ * @param id - The source node's id.
+ * @param body - What the text node says.
+ * @returns The board extras to hand the container.
+ */
+function textSource(id: string, body: string): BoardExtras {
+  addNode('p', 's', {
+    id,
+    type: 'text',
+    position: { x: 0, y: 0 },
+    data: {
+      name: 'Lines',
+      createdAt: 1000,
+      createdBy: 'u1',
+      locked: false,
+      state: 'idle',
+      attachments: [],
+    },
+  } as Parameters<typeof addNode>[2]);
+  const fragment = ensureTextBody('p', 's', id);
+  if (!fragment) throw new Error(`no text body for ${id}`);
+  const paragraph = new Y.XmlElement('paragraph');
+  paragraph.insert(0, [new Y.XmlText(body)]);
+  fragment.insert(0, [paragraph]);
+  addEdge('p', 's', { id: `e-${id}`, source: id, target: 'target' });
+  return {
+    nodes: [
+      {
+        id,
+        data: { kind: 'text', status: 'idle', name: 'Lines' },
+      } as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'][number],
+    ],
+    edges: [{ id: `e-${id}`, source: id, target: 'target' }],
+  };
+}
+
+/**
  * The panel tree, with the canvas context and query client it needs.
  * @param nodeData - Extra fields on the target node's view data.
  * @returns The element to render.
@@ -271,6 +337,7 @@ function panelTree(
   nodeData: Record<string, unknown> = {},
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   lastWriteWasLocal: () => boolean = returnsTrue,
+  board: BoardExtras = {},
 ): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -292,7 +359,7 @@ function panelTree(
             projectId='p'
             spaceId='s'
             getLastWriteWasLocal={lastWriteWasLocal}
-            edges={[]}
+            edges={board.edges ?? []}
             nodes={[
               {
                 id: 'target',
@@ -300,6 +367,7 @@ function panelTree(
                   typeof AudioGeneratePanelContainer
                 >[0]['nodes'][number]['data'],
               },
+              ...(board.nodes ?? []),
             ]}
           />
         </CanvasContext.Provider>
@@ -317,10 +385,11 @@ function panelTree(
 async function openPanel(
   nodeData: Record<string, unknown> = {},
   lastWriteWasLocal: () => boolean = returnsTrue,
+  board: BoardExtras = {},
 ): Promise<ReturnType<typeof render>> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   seedAudioNode(nodeData);
-  const view = render(panelTree(nodeData, undefined, lastWriteWasLocal));
+  const view = render(panelTree(nodeData, undefined, lastWriteWasLocal, board));
   act(() => {
     useCanvasStore.getState().openGeneratePanel('target', 'audio');
   });
@@ -837,6 +906,61 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     // Still on the node: the fragment is untouched.
     expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
       'morning light',
+    );
+  });
+
+  // 歌词也能引用 text 节点（user 2026-09-06）：一首歌的词常常已经写在画布上
+  // 的某个文本节点里，而 @ 引用正是把那份内容接过来的入口。风格框一直可以，
+  // 歌词框此前拿到的是一个空参考池，弹层只能答「没有可引用的内容」。
+  it('substitutes a text chip in the lyrics with the source node’s words', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    typePrompt('dream pop, slow');
+    // Words beside the chip, so the execute gate lets this through and the one
+    // thing under test is what the chip turns into.
+    typeLyricsMentioning('sing: ', ['src']);
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.lyrics).toContain(
+      'let the river carry me home',
+    );
+  });
+
+  // The rail row's insert button puts the chip where the writer was last
+  // typing. Both boxes take references, so a button that always aims at the
+  // style box drops the chip into the wrong one whenever the writer is in the
+  // lyrics.
+  it('inserts a rail row into the lyrics box when that is where the caret was', async () => {
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    // A real focus move: ProseMirror reports focus off the DOM event that
+    // follows it, and a dispatched `focus` alone leaves the document's
+    // activeElement where it was.
+    act(() => {
+      (box.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+
+    // Yjs lower-cases element names when it serializes, so the chip reads as
+    // `referencemention` here; the source id is what says it is the right one.
+    await waitFor(() =>
+      expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+        'sourceNodeId="src"',
+      ),
+    );
+    expect(getPromptFragment('p', 's', 'target')?.toString()).not.toContain(
+      'sourceNodeId="src"',
     );
   });
 

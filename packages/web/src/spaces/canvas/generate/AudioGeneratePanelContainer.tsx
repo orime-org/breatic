@@ -89,9 +89,6 @@ import { useCanvasStore } from '@web/stores';
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */
 const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
-/** No references — one array so the lyrics editor's prop stays stable. */
-const NO_REFERENCES: ReferenceRailItem[] = [];
-
 
 interface AudioGeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -432,9 +429,26 @@ function AudioGeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  const onInsertReference = React.useCallback((item: ReferenceRailItem) => {
-    promptEditorRef.current?.insertReference(item);
-  }, [promptEditorRef]);
+  // Which box the caret was last in. The rail's insert button fires long after
+  // focus left the editor (the click moves it to the button), so the answer has
+  // to be remembered rather than read off the document at click time.
+  const lastFocusedBox = React.useRef<'prompt' | 'lyrics'>('prompt');
+  const onPromptFocus = React.useCallback(() => {
+    lastFocusedBox.current = 'prompt';
+  }, []);
+  const onLyricsFocus = React.useCallback(() => {
+    lastFocusedBox.current = 'lyrics';
+  }, []);
+  const onInsertReference = React.useCallback(
+    (item: ReferenceRailItem) => {
+      const target =
+        lastFocusedBox.current === 'lyrics' && lyricsEditorRef.current
+          ? lyricsEditorRef.current
+          : promptEditorRef.current;
+      target?.insertReference(item);
+    },
+    [promptEditorRef, lyricsEditorRef],
+  );
 
   const onExecute = React.useCallback(async () => {
     // Every execute-critical value is read synchronously here, never from a
@@ -587,6 +601,7 @@ function AudioGeneratePanelBody({
           // An audio node collects only text rows, and a text chip serializes
           // into the prompt itself — no id ever becomes a model input here.
           onAtMentionsChange={noop}
+          onFocus={onPromptFocus}
           references={references}
           // An image `@` chip is a model input on the other two panels; here
           // there is no path for one to travel, and an audio node takes no
@@ -631,10 +646,15 @@ function AudioGeneratePanelBody({
           fragment={lyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}
-          // Lyrics are words to sing, not a place to point at other nodes:
-          // no `@` mention travels to the vendor from here.
+          // The `@` chip carries no id to the vendor here; it substitutes the
+          // source node's words into the lyrics string, the way it does in the
+          // box above.
           onAtMentionsChange={noop}
-          references={NO_REFERENCES}
+          onFocus={onLyricsFocus}
+          // The same pool the style box reads: a song's words are often
+          // already written in a text node on the canvas, and `@` is how they
+          // get in (user 2026-09-06).
+          references={references}
           imageRefsDisabled
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}

@@ -77,6 +77,14 @@ interface PromptEditorProps {
    */
   startingHeight?: 'full' | 'half';
   /**
+   * Called when the caret enters this box (#1960).
+   *
+   * A panel with two of these has to know which one the writer was last in:
+   * the reference rail's insert button fires long after the caret left, and
+   * with no answer it can only ever aim at one of them.
+   */
+  onFocus?: () => void;
+  /**
    * What joins two blocks in the string this box hands to the model (#1960).
    *
    * The editor's schema has no hard break, so Enter is the only line the user
@@ -147,6 +155,7 @@ interface PromptEditorProps {
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param root0.testId - What tests reach for this editor by.
  * @param root0.startingHeight - How tall the box opens before anything is typed.
+ * @param root0.onFocus - Called when the caret enters this box.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
@@ -167,6 +176,7 @@ export const PromptEditor = React.forwardRef<
     caretProvider = null,
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
+    onFocus,
     blockSeparator,
   }: PromptEditorProps,
   ref,
@@ -184,6 +194,10 @@ export const PromptEditor = React.forwardRef<
   // editor on a mode toggle.
   const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
   imageRefsDisabledRef.current = imageRefsDisabled;
+  // Same pattern again: the editor is built once per fragment, and a callback
+  // baked in at creation would keep calling the caller's first render.
+  const onFocusRef = React.useRef(onFocus);
+  onFocusRef.current = onFocus;
   // Read through a ref for the same reason the pool is: the two `onUpdate`
   // handlers are baked into the editor at creation, and rebuilding it to change
   // a separator would tear down the collaborative binding.
@@ -273,6 +287,7 @@ export const PromptEditor = React.forwardRef<
         );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
+      onFocus: () => onFocusRef.current?.(),
     },
     // Recreate the editor when the fragment OR a captured translated string
     // changes. The two mention labels are baked into the extensions at creation
