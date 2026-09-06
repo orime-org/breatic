@@ -28,8 +28,7 @@ import { t } from "@breatic/shared";
  * cannot be opened (design §4.6.5). The row is the only path a result takes
  * back to its node: the worker settles it and that settle is what carries the
  * content, so a run whose row is missing bills the user for a result nothing
- * can deliver. Answered as the upload leg answers an unarmed timer — 503 and
- * the same sentence, because to the user it is the same thing.
+ * can deliver, so it is refused before anything is charged.
  * @param opts - Where the run writes, who started it, and what it is.
  * @param opts.projectId - Owning project.
  * @param opts.spaceId - The space, so an event can name the document.

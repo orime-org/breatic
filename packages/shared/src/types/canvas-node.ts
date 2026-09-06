@@ -5,10 +5,8 @@
  * Canvas node types shared between frontend, Collab, and server.
  *
  * Each project has one Yjs document containing nodesMap (Y.Map<nodeId, Y.Map>)
- * + edgesMap (Y.Map<edgeId, Y.Map>). Node state machine: 'idle' / 'handling'
- * (in Yjs); 'localPending' is local-only React state, never in Yjs.
- *
- * See the yjs-editor-redesign design spec (2026-04-26, 04-29 banner).
+ * + edgesMap (Y.Map<edgeId, Y.Map>). A node carries no state of its own: what
+ * it shows is derived from its four task counts and `errorMessage` (#186).
  */
 
 /**

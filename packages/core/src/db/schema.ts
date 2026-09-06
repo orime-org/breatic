@@ -699,6 +699,18 @@ export const nodeTasks = pgTable(
   },
   (table) => [
     index("node_tasks_node_idx").on(table.projectId, table.nodeId),
+    // The list endpoint's live rows.
+    index("node_tasks_live_idx")
+      .on(table.nodeId, table.status)
+      .where(sql`${table.deletedAt} IS NULL`),
+    // The two lookups a settle starts from: a report names a storage key, a
+    // generation names its job and the node it landed on.
+    index("node_tasks_storage_key_idx")
+      .on(table.storageKey)
+      .where(sql`${table.storageKey} IS NOT NULL`),
+    index("node_tasks_job_node_idx")
+      .on(table.taskId, table.nodeId)
+      .where(sql`${table.taskId} IS NOT NULL`),
   ],
 );
 

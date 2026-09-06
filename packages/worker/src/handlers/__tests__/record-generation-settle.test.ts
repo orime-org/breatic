@@ -107,7 +107,7 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
     ).rejects.toThrow("stream is gone");
   });
 
-  it("records the failure rather than swallowing it", async () => {
+  it("records the failure and carries on past the crash-net pass", async () => {
     mockSettleTaskForNode.mockRejectedValue(new Error("stream is gone"));
 
     await recordGenerationForNodes(
@@ -122,13 +122,5 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
       expect.objectContaining({ taskId: "task-1", nodeId: "node-1" }),
       expect.stringContaining("node_task settle"),
     );
-  });
-
-  it("carries on past the crash-net pass, where no delivery is left", async () => {
-    mockSettleTaskForNode.mockRejectedValue(new Error("stream is gone"));
-
-    await expect(
-      recordGenerationForNodes({} as never, "project-proj-1/canvas-space-1", CTX, OUTPUTS, {}),
-    ).resolves.toBeUndefined();
   });
 });

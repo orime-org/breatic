@@ -488,8 +488,6 @@ export const domainMock = () => ({
   VIDEO_COVER_QUEUE: "video-cover",
   VIDEO_COVER_JOB: "extract-cover",
   videoCoverJobId: (storageKey: string) => storageKey,
-  emitNodeStateDone: vi.fn(),
-  emitNodeStateFailed: vi.fn(),
   emitNodeTaskCounts: mocks.emitNodeTaskCounts,
   nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
