@@ -29,10 +29,10 @@ const resultItem = z.object({
     .string()
     .optional()
     .describe("Where the result was found (e.g. 'pinterest', 'unsplash')"),
-  // Printed in the corner of the thumbnail. A still frame cannot say how long
-  // a clip runs, and a square with no label is a video and an image alike.
-  // Optional because the model often has no figure to give, and a made-up one
-  // is worse than none.
+  // Read under the icon in the middle of the square a video or audio result
+  // becomes: the icon says which of the two it is, and nothing but this says
+  // how long it runs. Optional because the model often has no figure to give,
+  // and a made-up one is worse than none.
   duration: z
     .string()
     .optional()

@@ -42,7 +42,7 @@ export function ThinkingFold({
   const seconds = ms === undefined ? undefined : Math.max(1, Math.round(ms / 1000));
   // Three things this line can be saying, and which one is settled by the
   // turn rather than by whether a figure happens to have arrived. The figure
-  // is sent when the thinking stops, so a turn still going has none to say --
+  // is sent as the turn ends, so a turn still going has none to say --
   // and saying it thought for a while while it is still thinking is the line
   // reading back to front. A turn that has stopped and carries no figure is
   // the third: it did think for a while, and how long is what is missing.

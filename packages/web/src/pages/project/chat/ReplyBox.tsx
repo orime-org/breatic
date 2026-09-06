@@ -42,10 +42,12 @@ interface ReplyBoxProps {
  * One size whatever the agent column is doing: what the reader opened it from
  * is in that column, and the thing they opened it to look at is not -- a
  * picture at full size and a list of addresses each want the room they want.
- * That is the whole of the difference from the project's ordinary dialog, so
- * the size is all this passes; Escape, the backdrop, the focus trap and the
- * return of focus afterwards are the primitive's, and they are the reason a
- * box drawn by hand was wrong.
+ * That is the whole of the visual difference from the project's ordinary
+ * dialog. Escape, the backdrop and the focus trap are the primitive's, and
+ * they are the reason a box drawn by hand was wrong; handing focus back is
+ * the one part it cannot do here, since it restores focus by focusing its own
+ * `Trigger` and this box is opened from state instead -- `useReturnFocus` is
+ * that half, which is why the size is not the only thing passed down.
  * @param root0 - The component props.
  * @param root0.open - Whether the box is up.
  * @param root0.onOpenChange - Called when the reader shuts it.

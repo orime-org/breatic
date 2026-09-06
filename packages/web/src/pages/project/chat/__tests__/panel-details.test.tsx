@@ -8,7 +8,7 @@
  * conversation says. Each is pinned by what the reader sees rather than by
  * the classes behind it, except where the class is the measurement: a
  * skeleton bar has no text to assert on, and how tall it is was settled
- * against the rest of the app.
+ * against the drawing.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -22,9 +22,9 @@ afterEach(cleanup);
 
 describe('the skeleton shown while history loads', () => {
   it('draws bars a line of text tall', () => {
-    // 16px, which is the height every other placeholder for a line of text in
-    // the app uses. Measured rather than derived from the type: a bar stands
-    // for a line, and a line of this text is taller than its glyphs.
+    // 16px, settled against the drawing (#133) rather than derived from the
+    // type: a bar stands for a line, and a line of this text is taller than
+    // its glyphs. The app's other text placeholders are shorter than this.
     render(<MessageList messages={[]} skeleton />);
 
     const bars = document.querySelectorAll('[data-skeleton-bar]');

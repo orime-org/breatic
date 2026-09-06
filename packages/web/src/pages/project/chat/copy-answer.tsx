@@ -38,8 +38,9 @@ export function useCopyAnswer(source: string | (() => string)): CopyAnswer {
   const t = useTranslation();
   const [answered, setAnswered] = React.useState(false);
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // Read through a ref so the handler keeps one identity: it is passed to a
-  // memoised button, and a fresh one each render would defeat the memo.
+  // Read through a ref so the source stays out of the handler's dependencies:
+  // a source given as a function is a new one each render, and listing it
+  // would rebuild the handler on every render of the message it sits under.
   const latest = React.useRef(source);
   latest.current = source;
 
