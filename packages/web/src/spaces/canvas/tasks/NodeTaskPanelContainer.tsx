@@ -113,13 +113,23 @@ function OpenNodeTaskPanel({
   const query = useQuery<NodeTaskEntry[]>({
     queryKey,
     queryFn: () => canvasApi.listNodeTasks(nodeId, projectId, spaceId),
+    // The key is the counts themselves, and those come back around: a task
+    // finishes, the reader clears it, and the next upload puts the node back
+    // where it began. Cached, that repeat would show the task that was cleared
+    // — running, counting up, with no button to get rid of it — and the read
+    // that harvests (§4.6) would never reach the server.
+    staleTime: 0,
+    gcTime: 0,
   });
   const entries = React.useMemo(() => query.data ?? [], [query.data]);
-  const anyRunning = React.useMemo(
-    () => entries.some((task) => task.status === 'running'),
-    [entries],
+  // Only the running list reads the clock, and only while it has a row: the
+  // three settled states show fixed instants.
+  const counting = React.useMemo(
+    () =>
+      status === 'running' && entries.some((task) => task.status === 'running'),
+    [status, entries],
   );
-  const now = useTickingClock(anyRunning);
+  const now = useTickingClock(counting);
 
   const holdsFile = React.useCallback(
     (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId),
@@ -207,9 +217,7 @@ export function NodeTaskPanelContainer(
   const status = useCanvasStore((s) => s.taskPanelStatus);
   if (kind !== 'tasks' || host == null || status == null) return null;
   // key={host} remounts the panel when it switches nodes, so a second node
-  // never renders the first one's rows while its own fetch is in flight. The
-  // query cache is keyed by project and node, so a remount reuses what it
-  // already has.
+  // never renders the first one's rows while its own fetch is in flight.
   return (
     <OpenNodeTaskPanel
       key={host}

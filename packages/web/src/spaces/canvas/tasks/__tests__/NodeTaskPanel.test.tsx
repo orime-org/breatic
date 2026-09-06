@@ -17,7 +17,7 @@ import userEvent from '@testing-library/user-event';
 
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
-import { NodeTaskPanel, rowClock } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 
 afterEach(cleanup);
 
@@ -179,22 +179,5 @@ describe('NodeTaskPanel', () => {
 
     expect(screen.getAllByTestId('task-action-retry')).toHaveLength(1);
     expect(screen.getAllByTestId('task-action-clear')).toHaveLength(2);
-  });
-});
-
-describe('rowClock (a settled row must not re-render on every tick)', () => {
-  // The clock ticks once a second while any task on the node is running, and
-  // the list holds one state at a time — so on the failed tab every row would
-  // take a fresh `now` each second while reading none of it. React.memo can
-  // only bail when every prop holds still, so a settled row is handed a
-  // constant instead.
-  it('hands a running row the ticking value', () => {
-    expect(rowClock('running', NOW)).toBe(NOW);
-  });
-
-  it('hands every settled row the same value whatever the clock says', () => {
-    for (const status of ['done', 'failed', 'expired'] as const) {
-      expect(rowClock(status, NOW)).toBe(rowClock(status, NOW + 60_000));
-    }
   });
 });

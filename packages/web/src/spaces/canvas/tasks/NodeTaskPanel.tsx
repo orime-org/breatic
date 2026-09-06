@@ -53,21 +53,6 @@ export interface NodeTaskPanelProps {
 }
 
 /**
- * The clock one row gets.
- *
- * The tick is driven by whether any task on the node is running, and the list
- * holds one state at a time — so on the failed tab every row would take a
- * fresh `now` each second and read none of it. `TaskRow` is memoized, and a
- * memo only bails when every prop holds still.
- * @param status - The state that row is in.
- * @param now - The reader's ticking clock.
- * @returns The clock for a running row, a constant for a settled one.
- */
-export function rowClock(status: TaskStatus, now: number): number {
-  return status === 'running' ? now : 0;
-}
-
-/**
  * Render one node's tasks in a single state.
  * @param props - The panel inputs.
  * @param props.status - The state whose count was clicked.
@@ -180,7 +165,7 @@ export function NodeTaskPanel({
               <TaskRow
                 key={task.id}
                 entry={task}
-                now={rowClock(status, now)}
+                now={now}
                 hasRetryFile={hasRetryFile(task.id)}
                 readOnly={readOnly}
                 onReplace={onReplace}
