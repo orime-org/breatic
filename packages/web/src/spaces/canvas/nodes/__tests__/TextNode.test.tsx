@@ -201,10 +201,15 @@ describe('TextNode', () => {
       expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
     });
 
-    it('surfaces the loading skeleton while a task is writing', () => {
+    it('keeps its body readable while a task is writing', () => {
+      // The counts beside the node say something is working; covering the
+      // text took away the thing the reader came for (user 2026-09-06).
       seedNode('x');
       renderNode({ view: { status: 'handling' } });
-      expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('node-content-handling'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId('text-node-body')).toBeInTheDocument();
     });
 
     it('surfaces the error message', () => {
@@ -617,14 +622,20 @@ describe('TextNode', () => {
       expect(screen.getByTestId('text-node-body')).toHaveTextContent('typed so far');
     });
 
-    it('closes when a task starts writing the node mid-edit', () => {
+    it('stays open when a task starts writing the node mid-edit', () => {
+      // A task running freezes deletion and nothing else — the mandate has
+      // the second upload, the second generation and the reader's own typing
+      // all going through, last write winning. The editor used to close here
+      // because the content slot went to a skeleton and there would have been
+      // nothing under the caret; the node keeps showing its body now
+      // (user 2026-09-06).
       seedNode('typed so far');
       const { rerender } = renderNode();
       enterByDoubleClick();
       expect(editor()).not.toBeNull();
 
       rerender(tree({ view: { status: 'handling' } }));
-      expect(editor()).toBeNull();
+      expect(editor()).not.toBeNull();
     });
   });
 

@@ -262,20 +262,24 @@ function makeFlowNode(
                   // `nodrag` keeps a press on a count from starting a node
                   // drag: xyflow's threshold is one pixel, so opening the list
                   // would otherwise slide the node under the cursor and write
-                  // a new position into the shared document. With every count
-                  // at zero the column has nothing to open, and it stops
-                  // taking presses at all so the pane keeps its marquee.
-                  className='nodrag absolute left-full top-0 ml-2'
+                  // a new position into the shared document.
+                  className='nodrag absolute left-full top-0'
                   style={{
                     transform: `scale(${headerScale})`,
                     transformOrigin: 'top left',
                   }}
                 >
-                  <TaskCountColumn
-                    counts={taskCounts}
-                    openFor={taskPanelOpenHere}
-                    onOpen={onOpenTasks}
-                  />
+                  {/* The gap sits inside the counter-scaled box so it holds
+                      the same screen distance the column does. As a margin on
+                      the box it was a flow-unit measure against a screen-unit
+                      column, and zooming in pulled the two apart. */}
+                  <div className='pl-2'>
+                    <TaskCountColumn
+                      counts={taskCounts}
+                      openFor={taskPanelOpenHere}
+                      onOpen={onOpenTasks}
+                    />
+                  </div>
                 </div>
               ) : null}
             </div>

@@ -99,7 +99,10 @@ export function ContentNodeFrame({
   // moving nodes, not editing, so a corner-pinned badge matters more than the
   // overlap.
   const occupants = React.useContext(NodeOccupantsContext);
-  const mediaShown = status !== 'handling' && status !== 'error';
+  // A node with a task running keeps showing what it holds: the counts beside
+  // it already say something is working, and covering the content took away
+  // the thing the reader came for (user 2026-09-06).
+  const mediaShown = status !== 'error';
   return (
     <div className='relative'>
       <ZoomCounterScaled

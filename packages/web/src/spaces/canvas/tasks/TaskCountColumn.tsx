@@ -18,6 +18,7 @@
 
 import type { JSX } from 'react';
 import React from 'react';
+import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
 import type { NodeTaskCounts } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -32,18 +33,29 @@ import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 const ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
 
 /**
- * The dot's colour per state. The state rides on the dot rather than on the
+ * The mark's colour per state. The state rides on the mark rather than on the
  * number: light theme measures these four against the cell's fills at 3.4 to
- * 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3), while a dot is a
- * graphic and clears its own 3:1 floor at every one of them. So the dot says
- * which state and the number, in the foreground colour, says how many
- * (user 2026-09-06).
+ * 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3), while a graphic
+ * clears its own 3:1 floor at every one of them. So the mark says which state
+ * and the number, in the foreground colour, says how many (user 2026-09-06).
  */
-const DOT_TONE: Readonly<Record<TaskStatus, string>> = {
-  running: 'bg-status-info-foreground',
-  done: 'bg-status-success-foreground',
-  failed: 'bg-status-error-foreground',
-  expired: 'bg-status-warning-foreground',
+const MARK_TONE: Readonly<Record<TaskStatus, string>> = {
+  running: 'text-status-info-foreground',
+  done: 'text-status-success-foreground',
+  failed: 'text-status-error-foreground',
+  expired: 'text-status-warning-foreground',
+};
+
+/**
+ * The mark's shape per state, the same four the rows use. Two of the colours
+ * read as one thing at this size, so shape is what separates them
+ * (see `TaskStatusDot`).
+ */
+const MARK_SHAPE: Readonly<Record<TaskStatus, typeof Clock>> = {
+  running: Loader2,
+  done: CircleCheck,
+  failed: CircleX,
+  expired: Clock,
 };
 
 /** The open cell's border, so which list is showing reads without the fill. */
@@ -93,6 +105,7 @@ function TaskCount({
   onOpen: (status: TaskStatus | null) => void;
 }): JSX.Element {
   const t = useTranslation();
+  const Mark = MARK_SHAPE[status];
   const handleClick = React.useCallback(() => {
     onOpen(isOpen ? null : status);
   }, [isOpen, onOpen, status]);
@@ -117,9 +130,13 @@ function TaskCount({
         isOpen && cn(OPEN_BORDER[status], 'bg-muted hover:bg-muted'),
       )}
     >
-      <span
+      <Mark
         aria-hidden='true'
-        className={cn('size-2 rounded-full', DOT_TONE[status])}
+        className={cn(
+          'size-3 flex-none',
+          MARK_TONE[status],
+          status === 'running' && 'animate-spin',
+        )}
       />
       {value}
     </Button>

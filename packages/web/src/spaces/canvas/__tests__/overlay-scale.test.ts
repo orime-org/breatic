@@ -51,16 +51,19 @@ describe('overlayCounterScale (constant screen size down to a floor zoom)', () =
 });
 
 describe('countsColumnOffset', () => {
-  // The column is 8 flow px of margin plus a 44 screen px box. At zoom 1 both
-  // read the same, which is how a constant 60 passed for a fix.
+  // The column holds a constant 44 screen px, and the gap between it and the
+  // node holds a constant 8 — both counter-scale together, so the offset that
+  // clears them is one number at every zoom above the floor.
   it('clears the column at 100% zoom', () => {
     expect(countsColumnOffset(1)).toBe(60);
   });
 
-  // Past 200% the margin alone has outgrown the clearance a constant 60 left.
-  it('grows with the margin as the canvas zooms in', () => {
-    expect(countsColumnOffset(2)).toBe(68);
-    expect(countsColumnOffset(8)).toBe(116);
+  // The gap used to be measured in flow units while the box was measured in
+  // screen pixels, so zooming in pulled the column away from the node it
+  // belongs to (user 2026-09-06).
+  it('holds the same clearance however far the canvas zooms in', () => {
+    expect(countsColumnOffset(2)).toBe(60);
+    expect(countsColumnOffset(8)).toBe(60);
   });
 
   // Below the counter-scale floor the box shrinks with the canvas, so the

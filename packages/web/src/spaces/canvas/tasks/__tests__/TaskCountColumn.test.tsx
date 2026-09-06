@@ -82,8 +82,8 @@ describe('TaskCountColumn', () => {
 
     const cell = screen.getByTestId('task-count-running');
     expect(cell.className).not.toContain('text-status-info-foreground');
-    const dot = cell.querySelector('span[aria-hidden]');
-    expect(dot?.className).toContain('bg-status-info-foreground');
+    const mark = cell.querySelector('svg');
+    expect(mark?.getAttribute('class')).toContain('text-status-info-foreground');
   });
 
   it('holds its fill when the pointer crosses the open one', () => {
@@ -98,13 +98,23 @@ describe('TaskCountColumn', () => {
     );
   });
 
-  it('draws its dot at the size this repo gives a state dot', () => {
+  it('gives each state its own shape, the same four the rows use', () => {
+    // Two of the four colours read as one thing at this size, so the shape is
+    // what tells them apart (user 2026-09-06).
     render(<TaskCountColumn counts={COUNTS} openFor={null} onOpen={vi.fn()} />);
 
-    const dot = screen
-      .getByTestId('task-count-running')
-      .querySelector('span[aria-hidden]');
-    expect(dot?.className).toContain('size-2');
+    const drawings = ['running', 'done', 'expired'].map(
+      (status) =>
+        screen.getByTestId(`task-count-${status}`).querySelector('svg')
+          ?.innerHTML ?? '',
+    );
+    expect(new Set(drawings).size).toBe(3);
+    expect(
+      screen
+        .getByTestId('task-count-running')
+        .querySelector('svg')
+        ?.getAttribute('class'),
+    ).toContain('animate-spin');
   });
 
   it('asks for the list of whichever state was clicked', () => {

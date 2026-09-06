@@ -31,16 +31,18 @@ describe('NodeContent', () => {
     expect(screen.getByTestId('content')).toBeInTheDocument();
   });
 
-  it('renders skeleton when status=handling regardless of content', () => {
+  it('shows what the node holds while a task runs on it', () => {
+    // The counts beside the node say something is working. Covering the
+    // content took away the thing the reader came for (user 2026-09-06).
     render(
       <NodeContent
         status='handling'
         hasContent
         placeholder={<div>P</div>}
-        content={<div>C</div>}
+        content={<div data-testid='content'>C</div>}
       />,
     );
-    expect(screen.getByTestId('node-content-handling')).toBeInTheDocument();
+    expect(screen.getByTestId('content')).toBeInTheDocument();
   });
 
   it('renders the error message when status=error', () => {
@@ -142,23 +144,17 @@ describe('NodeContent', () => {
     expect(screen.getByTestId('node-content-empty').className).toContain('h-48');
   });
 
-  it('the handling skeleton fills the h-48 box to its edges, no inset padding (#2)', () => {
+  it('holds its empty box while a task runs on a node with nothing in it', () => {
+    // An empty node keeps the 288x192 footprint it had, so a task starting on
+    // it moves nothing on the board.
     render(
       <NodeContent
         status='handling'
-        hasContent
+        hasContent={false}
         placeholder={<div>P</div>}
         content={<div>C</div>}
       />,
     );
-    const box = screen.getByTestId('node-content-handling');
-    expect(box.className).toContain('h-48');
-    // The skeleton must reach the node body's edges — the old `p-2` left an 8px
-    // ring of empty card around it, which read as "skeleton doesn't fill the
-    // node" (#2). No inset padding on the box.
-    expect(box.className).not.toMatch(/\bp-2\b/);
-    expect(
-      box.querySelector('[data-testid="node-content-skeleton"]')?.className,
-    ).toContain('h-full');
+    expect(screen.getByTestId('node-content-empty').className).toContain('h-48');
   });
 });

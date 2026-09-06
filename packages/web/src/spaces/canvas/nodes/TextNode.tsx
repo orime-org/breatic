@@ -8,10 +8,7 @@ import { ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
-import {
-  evaluateNodeGate,
-  NODE_GATE_TOAST_KEY,
-} from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { TextNodeView } from '@web/spaces/canvas/types/node-view';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
@@ -142,26 +139,19 @@ export const TextNode = React.memo(function TextNode({
   // node's content slot to the error message, so no editor is mounted there
   // either way. The write is what actually went away.
   //
-  // Idle is required on top of the gate because the renderer says so: the
-  // content slot shows a skeleton while a task writes and the error message
-  // when one failed, so an editor opened in either state would be state with
-  // nothing on screen. The gate stays the source of the *reason* — it is what
-  // produces the toast — and this adds the one condition the gate has no
-  // vocabulary for.
+  // The error state is required on top of the gate because the renderer says
+  // so: a failed node gives its content slot to the error message, so an
+  // editor opened there would be state with nothing on screen. A task running
+  // no longer covers anything (user 2026-09-06) and the mandate freezes only
+  // deletion while one does, so typing goes through and the last write wins.
   //
   // Memoized for the ordinary reason: a blocked verdict is a fresh object on
   // every call, `startEdit` closes over it, and `startEdit` is handed to child
   // components. No effect reads this — they read the `canEdit` boolean below —
   // so the memo is about prop stability, not about re-running anything.
   const editBlock = React.useMemo(
-    () =>
-      data.status === 'handling'
-        ? {
-          reason: 'handling' as const,
-          toastKey: NODE_GATE_TOAST_KEY.handling,
-        }
-        : evaluateNodeGate({ locked: Boolean(locked) }),
-    [locked, data.status],
+    () => evaluateNodeGate({ locked: Boolean(locked) }),
+    [locked],
   );
   // `readOnly` is a third writability premise, IN the condition for the same
   // reason as the other two (round-5): the role is a live query, so an
@@ -169,7 +159,7 @@ export const TextNode = React.memo(function TextNode({
   // and when the first cut left it out, the exit below never closed on a
   // downgrade, leaving a viewer's ghost editor publishing their caret into
   // shared awareness.
-  const canEdit = !readOnly && editBlock === null && data.status === 'idle';
+  const canEdit = !readOnly && editBlock === null && data.status !== 'error';
 
   /**
    * Open the editor on this node's body, unless something says no.

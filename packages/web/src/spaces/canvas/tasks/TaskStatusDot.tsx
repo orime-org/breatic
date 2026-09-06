@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The dot marking which of the four states a task row is in (#186).
+ * The mark saying which of the four states a task is in (#186).
  *
- * The panel shows one state at a time and names it in its own heading, so
- * every row under that heading is in it. Spelling the word out again on each
- * row made the loudest thing in the panel the one thing all its rows agree
- * on, while the filename — the only thing telling them apart — came second
- * (user 2026-09-06).
+ * Each state gets its own shape as well as its own colour. Colour alone did
+ * not carry it: dark theme measures failed at rgb(255,149,146) against
+ * expired at rgb(255,160,87) — the same red channel, eleven apart on green,
+ * and the rest of the difference in blue, the channel the eye weighs least.
+ * At the size this mark is drawn the two read as one thing (user 2026-09-06).
+ * Shape separates them, and it is also what keeps colour from being the only
+ * carrier for a reader who does not see the four apart (WCAG 1.4.1).
  *
- * The word stays in the accessible tree so a reader who lands on a row rather
- * than on the heading still hears the state, which is also what keeps the
- * colour from being the only thing carrying it (WCAG 1.4.1).
+ * The state's name stays in the accessible tree, so a reader landing on a row
+ * rather than on the panel's heading still hears which list they are in.
  *
  * It lives here rather than in `components/ui/` because the twelve places
  * this product shows a state colour are different things on screen — a ring
@@ -22,6 +23,7 @@
  */
 
 import type { JSX } from 'react';
+import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -29,7 +31,19 @@ import { useTranslation } from '@web/i18n/use-translation';
 /** The four states a node task can be in. */
 export type TaskStatus = 'running' | 'done' | 'failed' | 'expired';
 
-/** Semantic colour per state; the dot is painted from the text colour. */
+/**
+ * The shape per state. All four are round outlines so a column of them reads
+ * as one kind of thing, and the running one turns — the way this product
+ * already says "working" everywhere else.
+ */
+const SHAPE: Readonly<Record<TaskStatus, typeof Clock>> = {
+  running: Loader2,
+  done: CircleCheck,
+  failed: CircleX,
+  expired: Clock,
+};
+
+/** Semantic colour per state. */
 const TONE: Readonly<Record<TaskStatus, string>> = {
   running: 'text-status-info-foreground',
   done: 'text-status-success-foreground',
@@ -51,25 +65,26 @@ export interface TaskStatusDotProps {
 }
 
 /**
- * Render one task's state as a coloured dot carrying its name for readers.
+ * Render one task's state as a coloured icon carrying its name for readers.
  *
  * Every state draws the same box, so a row settling does not move the
- * filename beside it. 8px is what this repo gives a dot that carries state;
- * at 6px two of the four colours were not tellable apart (user 2026-09-06).
- * @param props - The dot inputs.
+ * filename beside it.
+ * @param props - The mark's inputs.
  * @param props.status - Which state this task is in.
- * @returns The dot element.
+ * @returns The mark element.
  */
 export function TaskStatusDot({ status }: TaskStatusDotProps): JSX.Element {
   const t = useTranslation();
+  const Icon = SHAPE[status];
   return (
     <span
       data-testid='task-status-dot'
-      className={cn(
-        'relative size-2 flex-none rounded-full bg-current',
-        TONE[status],
-      )}
+      className={cn('relative flex-none', TONE[status])}
     >
+      <Icon
+        aria-hidden='true'
+        className={cn('size-3', status === 'running' && 'animate-spin')}
+      />
       <span className='sr-only'>{t(LABEL_KEY[status])}</span>
     </span>
   );

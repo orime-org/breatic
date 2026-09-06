@@ -28,6 +28,32 @@ describe('TaskStatusDot', () => {
     expect(screen.getByTestId('task-status-dot')).toHaveTextContent('Running');
   });
 
+  it('gives each state its own shape, not only its own colour', () => {
+    // Two of the four colours are a hue apart that reads as nothing at this
+    // size — dark theme measured failed at rgb(255,149,146) against expired
+    // at rgb(255,160,87), the same red channel and eleven apart on green.
+    // Shape is the channel that separates them (user 2026-09-06).
+    const shapes = (['running', 'done', 'failed', 'expired'] as const).map(
+      (status) => {
+        cleanup();
+        render(<TaskStatusDot status={status} />);
+        const icon = screen
+          .getByTestId('task-status-dot')
+          .querySelector('svg');
+        return {
+          // The drawing itself, so this compares shapes rather than the
+          // classes the component hands every one of them.
+          drawing: icon?.innerHTML ?? '',
+          className: icon?.getAttribute('class') ?? '',
+        };
+      },
+    );
+
+    expect(new Set(shapes.map((s) => s.drawing)).size).toBe(4);
+    // The running one turns, which is how this repo already says "working".
+    expect(shapes[0]?.className).toContain('animate-spin');
+  });
+
   it('does not draw the state name, only the dot', () => {
     render(<TaskStatusDot status='failed' />);
 
@@ -59,11 +85,14 @@ describe('TaskStatusDot', () => {
       (status) => {
         cleanup();
         render(<TaskStatusDot status={status} />);
-        const dot = screen.getByTestId('task-status-dot');
-        // 8px is what this repo gives a dot that carries state — the unread
-        // badge, the conversation row, the activity row. At 6px two of the
-        // four colours were not tellable apart (user 2026-09-06).
-        return [dot.className.includes('size-2'), dot.className.includes('flex-none')];
+        const mark = screen.getByTestId('task-status-dot');
+        const icon = mark.querySelector('svg');
+        // Every state draws at one size, so a row settling moves nothing
+        // beside it.
+        return [
+          icon?.getAttribute('class')?.includes('size-3') ?? false,
+          mark.className.includes('flex-none'),
+        ];
       },
     );
 

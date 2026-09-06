@@ -35,7 +35,12 @@ export function overlayCounterScale(
 /** Screen width the counts column holds at or above the counter-scale floor. */
 const COUNTS_COLUMN_WIDTH = 44;
 
-/** Gap between the node's edge and the column, in flow units (`ml-2`). */
+/**
+ * Screen gap between the node's edge and the column. It counter-scales with
+ * the column so the two read as one piece: measured in flow units it grew
+ * with the canvas and pulled the column away from the node it belongs to
+ * (user 2026-09-06).
+ */
 const COUNTS_COLUMN_GAP = 8;
 
 /** Gap the reader sees between the column and whatever is anchored past it. */
@@ -55,7 +60,8 @@ const CLEARANCE = 8;
  * @returns The offset in screen pixels.
  */
 export function countsColumnOffset(zoom: number): number {
-  const gap = COUNTS_COLUMN_GAP * Math.max(zoom, 0);
+  const gap =
+    COUNTS_COLUMN_GAP * overlayCounterScale(zoom) * Math.max(zoom, 0);
   const box = COUNTS_COLUMN_WIDTH * overlayCounterScale(zoom) * Math.max(zoom, 0);
   return gap + box + CLEARANCE;
 }

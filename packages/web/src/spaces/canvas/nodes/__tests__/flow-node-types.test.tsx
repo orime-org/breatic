@@ -136,8 +136,12 @@ describe('FLOW_NODE_TYPES', () => {
       taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
     });
 
-    const column = screen.getByTestId('task-count-running').closest('div');
-    expect(column?.parentElement).toHaveClass('nodrag');
+    // Asked for by the class rather than by counting levels: what matters is
+    // that a press on a count lands inside a `nodrag`, whatever the wrapping
+    // above it looks like.
+    expect(
+      screen.getByTestId('task-count-running').closest('.nodrag'),
+    ).not.toBeNull();
   });
 
   it('lets the pane have the strip back when a node carries no task', () => {

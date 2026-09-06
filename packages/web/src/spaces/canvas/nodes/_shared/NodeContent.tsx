@@ -4,7 +4,6 @@
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { DisplayStatus } from '@web/spaces/canvas/types/node-view';
 
@@ -45,19 +44,6 @@ export function NodeContent({
   onViewTasks,
 }: NodeContentProps): React.JSX.Element {
   const t = useTranslation();
-  if (status === 'handling') {
-    // The skeleton fills the fixed empty-state box (288 x 192) so a node that is
-    // generating keeps the footprint it had while empty, then grows to its real
-    // size once content arrives — no tiny centered bar, no collapse.
-    return (
-      <div data-testid='node-content-handling' className='h-48 w-full'>
-        <Skeleton
-          data-testid='node-content-skeleton'
-          className='h-full w-full rounded-none'
-        />
-      </div>
-    );
-  }
   if (status === 'error') {
     // Fixed h-48 box like the empty + handling branches (#1632): every node's
     // three "no displayable content" states (empty / generating / error) keep
