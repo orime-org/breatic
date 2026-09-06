@@ -3,6 +3,13 @@
 
 import type * as React from 'react';
 
+interface ChromeBarBox {
+  /** How far the contents are held off the left and right edges. */
+  sides: string;
+  /** The space between the things in the bar. */
+  gap: string;
+}
+
 /**
  * The band a 40px chrome bar occupies.
  *
@@ -13,10 +20,15 @@ import type * as React from 'react';
  * on top balances it. Two of these bars sit side by side on the same line, so
  * balancing one and not the others is what pulls them out of line with each
  * other -- which is why the box is stated here rather than at each bar.
- * @param sides - How far the contents are held off the left and right edges.
- * @param gap - The space between the things in the bar.
+ *
+ * The studio shell draws a fourth bar of the same height (`StudioTopBar`).
+ * It is never on screen beside these three, so nothing lines up against it
+ * and it is left as it is.
+ * @param root0 - What this bar wants of its own.
+ * @param root0.sides - How far the contents are held off the left and right edges.
+ * @param root0.gap - The space between the things in the bar.
  * @returns The style the bar carries.
  */
-export function chromeBarBox(sides: string, gap: string): React.CSSProperties {
-  return { height: 40, padding: `1px ${sides} 0`, gap };
+export function chromeBarBox({ sides, gap }: ChromeBarBox): React.CSSProperties {
+  return { height: 40, paddingTop: 1, paddingInline: sides, gap };
 }

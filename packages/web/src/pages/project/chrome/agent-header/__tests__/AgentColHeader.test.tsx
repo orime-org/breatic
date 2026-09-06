@@ -46,6 +46,11 @@ describe('AgentColHeader', () => {
     expect(screen.getByTestId('agent-col-header')).toBeInTheDocument();
   });
 
+  it('balances the rule along its bottom, as every 40px bar does', () => {
+    setup();
+    expect(screen.getByTestId('agent-col-header').style.paddingTop).toBe('1px');
+  });
+
   it('has no a11y violations', async () => {
     setup();
     await expectNoA11yViolations(document.body);

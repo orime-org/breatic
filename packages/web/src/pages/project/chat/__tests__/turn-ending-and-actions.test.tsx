@@ -46,7 +46,7 @@ describe('the line that says nothing came back', () => {
           role: 'assistant',
           content: '',
           sources: [
-            { url: 'https://a.example', title: 'A', publisher: 'A', index: 1, indexes: [1] },
+            { url: 'https://a.example', title: 'A', publisher: 'A', indexes: [1] },
           ],
         }}
       />,

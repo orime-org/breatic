@@ -6,6 +6,9 @@ import type * as React from 'react';
 import { Link } from 'react-router-dom';
 
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
+
+/** Held still so the bar is not handed a fresh object on every render. */
+const BAR_BOX = chromeBarBox({ sides: 'var(--space-5)', gap: 'var(--space-4)' });
 import { Logo28 } from '@web/pages/project/chrome/top-bar/Logo28';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 import { MembersModal } from '@web/pages/project/chrome/top-bar/MembersModal';
@@ -104,7 +107,7 @@ export function TopBar({
     <header
       data-testid='top-bar'
       role='banner'
-      style={chromeBarBox('var(--space-5)', 'var(--space-4)')}
+      style={BAR_BOX}
       className='flex shrink-0 items-center border-b border-border bg-background'
     >
       <div

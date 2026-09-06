@@ -76,6 +76,11 @@ describe('SpaceTabBar appearance', () => {
     }
   });
 
+  it('balances the rule along its bottom, as every 40px bar does', () => {
+    setup();
+    expect(screen.getByTestId('space-tab-bar').style.paddingTop).toBe('1px');
+  });
+
   it('leaves a readable gap between neighbouring tabs', () => {
     setup();
     const row = screen.getByRole('tablist');

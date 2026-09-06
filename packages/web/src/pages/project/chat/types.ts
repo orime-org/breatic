@@ -72,15 +72,10 @@ export interface ChatSource {
   /** Who published it. This is what the row shows, not the host. */
   publisher: string;
   /**
-   * The number the model was shown for this page.
-   *
-   * Decided when the search ran and carried on the source, so a `[N]` in the
-   * prose resolves to the page the model meant however many searches the turn
-   * made.
-   */
-  index: number;
-  /**
    * Every number this page was handed in the turn.
+   *
+   * Decided when the search ran, so a `[N]` in the prose resolves to the page
+   * the model meant however many searches the turn made.
    *
    * A turn that searches twice hands the same page a fresh number each time,
    * and the prose can carry either of them. The list at the foot is one line

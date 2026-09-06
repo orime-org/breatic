@@ -80,16 +80,16 @@ function assetsOf(output: unknown): ChatAsset[] {
  * @param output - Whatever the call answered with.
  * @returns The sources, or an empty list when there are none to read.
  */
-function sourcesOf(output: unknown): ChatSource[] {
+function sourcesOf(output: unknown): Array<[number, ChatSource]> {
   if (output === null || typeof output !== 'object') return [];
   const found = (output as { sources?: unknown }).sources;
   if (!Array.isArray(found)) return [];
-  return found.flatMap((entry): ChatSource[] => {
+  return found.flatMap((entry): Array<[number, ChatSource]> => {
     if (entry === null || typeof entry !== 'object') return [];
     const { url, title, publisher, index } = entry as Record<string, unknown>;
     if (typeof url !== 'string' || url === '' || typeof title !== 'string') return [];
     if (typeof publisher !== 'string' || typeof index !== 'number') return [];
-    return [{ url, title, publisher, index, indexes: [index] }];
+    return [[index, { url, title, publisher, indexes: [index] }]];
   });
 }
 
@@ -149,13 +149,12 @@ export function toChatMessage(
   let failed = false;
   let blocked = false;
   let thinkingMs: number | undefined;
-  // Two readings of the same searches. The row shows each page once; the
+  // Two readings of the same searches. The list shows each page once; the
   // markers in the prose resolve against the sequence the model was shown,
-  // which counts a page found twice as two.
-  const sources: ChatSource[] = [];
-  const seen = new Map<string, ChatSource>();
-  const citations: Record<number, ChatSource> = {};
-  let numbered = 0;
+  // which counts a page found twice as two. Both readings are worked out
+  // after the loop, from the numbers and pages collected here in the order
+  // the searches handed them over.
+  const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
   // The server writes it onto the stored message; a message this reader has
   // only just sent is not stored yet and carries none.
@@ -208,22 +207,7 @@ export function toChatMessage(
         assets.push(...assetsOf(part.output));
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
-        for (const source of sourcesOf(part.output)) {
-          // The number came with the source, decided when the search ran, so
-          // it is the same number the model was shown.
-          citations[source.index] = source;
-          numbered += 1;
-          const already = seen.get(source.url);
-          if (already !== undefined) {
-            // The same page found twice in one turn was handed two numbers,
-            // and the prose can carry either. One line at the foot answers to
-            // both.
-            already.indexes.push(source.index);
-            continue;
-          }
-          seen.set(source.url, source);
-          sources.push(source);
-        }
+        found.push(...sourcesOf(part.output));
       }
       continue;
     }
@@ -237,6 +221,25 @@ export function toChatMessage(
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) thinkingMs = ms;
     }
+  }
+
+  // A page found by two searches was handed two numbers, and the prose can
+  // carry either: one line answers to both, and both numbers resolve to that
+  // line. Rebuilt rather than pushed to as the loop goes, so no line is ever
+  // handed out before it knows every number it answers to.
+  const byUrl = new Map<string, ChatSource>();
+  for (const [index, source] of found) {
+    const kept = byUrl.get(source.url);
+    byUrl.set(
+      source.url,
+      kept === undefined ? source : { ...kept, indexes: [...kept.indexes, index] },
+    );
+  }
+  const sources = [...byUrl.values()];
+  const citations: Record<number, ChatSource> = {};
+  for (const [index, source] of found) {
+    const line = byUrl.get(source.url);
+    if (line !== undefined) citations[index] = line;
   }
 
   return {
@@ -254,7 +257,7 @@ export function toChatMessage(
     ...(truncated ? { truncated: true as const } : {}),
     ...(blocked ? { blocked: true as const } : {}),
     ...(sources.length > 0 ? { sources } : {}),
-    ...(numbered > 0 ? { citations } : {}),
+    ...(found.length > 0 ? { citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),

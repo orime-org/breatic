@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
@@ -31,7 +31,6 @@ const source = (n: number): ChatSource => ({
   url: `https://s${String(n)}.example/page`,
   title: `Page ${String(n)}`,
   publisher: `Publisher${String(n)}`,
-  index: n,
   indexes: [n],
 });
 
@@ -162,10 +161,10 @@ describe('the line at the foot of the reply', () => {
     );
 
     expect(screen.getByTestId('turn-sources')).toHaveTextContent('5');
-    // 断言的是「今天什么都没列出来」，不是「昨天那个组件不在了」：
-    // 拿已经删掉的 testid 当判据，改成默认展开也照样绿。
+    // 两条都查整个 body：框走 Dialog 的 Portal，挂在 turn-actions 外面，
+    // 只在这一行的子树里找等于什么都没查。
     expect(screen.queryByTestId('source-box')).not.toBeInTheDocument();
-    expect(within(screen.getByTestId('turn-actions')).queryAllByRole('link')).toHaveLength(0);
+    expect(screen.queryAllByTestId('source-box-row')).toHaveLength(0);
   });
 
   it('lists them once it is pressed, each with the number it was cited by', async () => {
@@ -250,7 +249,7 @@ describe('the line at the foot of the reply', () => {
   it('lists every number a page was cited by, so a marker can be found here', async () => {
     // 一轮里两次搜索命中同一个网址，那个网址领到两个号；正文里两个号都会
     // 渲染成圈，所以框里要两个都认。
-    const twice: ChatSource = { ...source(1), index: 5, indexes: [5] };
+    const twice: ChatSource = { ...source(1), indexes: [5] };
     render(
       <MessageBubble
         message={{
@@ -266,8 +265,11 @@ describe('the line at the foot of the reply', () => {
     await userEvent.click(screen.getByTestId('turn-sources'));
 
     const row = (await screen.findAllByTestId('source-box-row'))[0];
-    expect(row).toHaveTextContent('1');
-    expect(row).toHaveTextContent('5');
+    const marks = row?.querySelector('[data-testid="source-box-marks"]');
+    // 一页的几个号是一组，跟标题是另一件事：并排摊在行里，读者看到的是
+    // 三个平权的东西。
+    expect(marks?.textContent).toBe('15');
+    expect(row?.children.length).toBe(2);
   });
 
   it('offers no copy on a turn that wrote nothing', () => {

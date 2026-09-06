@@ -68,6 +68,11 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
 }
 
 describe('TopBar', () => {
+  it('balances the rule along its bottom, as every 40px bar does', () => {
+    setup();
+    expect(screen.getByTestId('top-bar').style.paddingTop).toBe('1px');
+  });
+
   it('does not compile without members, which is the whole point of the change', () => {
     // The bar is the third carrier of the same trap: it declared the roster
     // optional and forwarded it to both member components, so making only

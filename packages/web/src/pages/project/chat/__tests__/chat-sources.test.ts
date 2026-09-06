@@ -57,7 +57,7 @@ describe('the row at the foot of a reply', () => {
     );
 
     expect(message.sources).toEqual([
-      { url: 'https://vitest.dev/g', title: 'Guide', publisher: 'Vitest', index: 1, indexes: [1] },
+      { url: 'https://vitest.dev/g', title: 'Guide', publisher: 'Vitest', indexes: [1] },
     ]);
   });
 
@@ -79,7 +79,7 @@ describe('the row at the foot of a reply', () => {
     const message = toChatMessage(
       reply([
         searched('a', ['https://same.example|Same|Same']),
-        searched('b', ['https://same.example|Same|Same', 'https://other.example|Other|Other']),
+        searched('b', ['https://same.example|Same|Same', 'https://other.example|Other|Other'], 2),
       ]),
     );
 
@@ -87,6 +87,21 @@ describe('the row at the foot of a reply', () => {
       'https://same.example',
       'https://other.example',
     ]);
+    // The one line for that page answers to both numbers the turn handed it,
+    // so a marker carrying either can be found in the list.
+    expect(message.sources?.map((s) => s.indexes)).toEqual([[1, 2], [3]]);
+  });
+
+  it('resolves either number of a twice-found page to the line that carries both', () => {
+    const message = toChatMessage(
+      reply([
+        searched('a', ['https://same.example|Same|Same']),
+        searched('b', ['https://same.example|Same|Same'], 2),
+      ]),
+    );
+
+    expect(message.citations?.[1]).toBe(message.citations?.[2]);
+    expect(message.citations?.[2]?.indexes).toEqual([1, 2]);
   });
 
   it('leaves the row off a turn that searched for nothing', () => {

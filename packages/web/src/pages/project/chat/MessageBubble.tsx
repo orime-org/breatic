@@ -139,7 +139,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         {running || (message.content === '' && message.sources === undefined) ? null : (
           <TurnActions
             text={message.content}
-            {...(isUser ? { onHoverOnly: true } : {})}
+            {...(isUser ? { own: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
             {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}
           />

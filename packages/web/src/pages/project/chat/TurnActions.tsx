@@ -25,8 +25,13 @@ export const COPY_ANSWER_MS = 1600;
 interface TurnActionsProps {
   /** What copy puts on the clipboard. */
   text: string;
-  /** Shown only on hover, which is what the reader's own messages want. */
-  onHoverOnly?: boolean;
+  /**
+   * The reader's own message.
+   *
+   * Its line is right-aligned and waits for hover, and the answer to a press
+   * hugs the right edge because that is the edge its button sits against.
+   */
+  own?: boolean;
   /** When the message was written down, as an absolute instant. */
   sentAt?: string;
   /** Every page the turn found, when it searched. */
@@ -40,14 +45,14 @@ interface TurnActionsProps {
  * is typing another message, which the composer below is already for.
  * @param root0 - The component props.
  * @param root0.text - What copy puts on the clipboard.
- * @param root0.onHoverOnly - Keep the row hidden until the message is hovered.
+ * @param root0.own - Whether this is the reader's own message.
  * @param root0.sentAt - When the message was written down.
  * @param root0.sources - Every page the turn found.
  * @returns The row.
  */
 export const TurnActions = React.memo(function TurnActions({
   text,
-  onHoverOnly,
+  own,
   sentAt,
   sources,
 }: TurnActionsProps): React.JSX.Element {
@@ -92,7 +97,7 @@ export const TurnActions = React.memo(function TurnActions({
         // line whether or not anything on it is showing: a row that took no
         // space let the reply below come up under it, and the two were drawn
         // on top of each other.
-        onHoverOnly === true ? 'mt-1 h-[var(--btn-compact)] justify-end' : 'mt-[0.85em]',
+        own === true ? 'mt-1 h-[var(--btn-compact)] justify-end' : 'mt-[0.85em]',
       )}
     >
       {sentAt === undefined ? null : (
@@ -128,7 +133,7 @@ export const TurnActions = React.memo(function TurnActions({
               // Transparent alone is not enough: it would keep taking clicks
               // and keep its place in the tab order, so a blank would copy
               // when pressed with nothing visible there.
-              onHoverOnly === true &&
+              own === true &&
               'opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
               // A press answers with a mark, and the answer is worth seeing
               // even on a message whose line is otherwise waiting for hover.
@@ -153,7 +158,7 @@ export const TurnActions = React.memo(function TurnActions({
                 // it reaches half its width past the column, and the list is
                 // clipped: measured at 1315 wide, the Chinese words already lost
                 // 6px off the left, and the Japanese ones lose four times that.
-                onHoverOnly === true ? 'right-0' : 'left-0',
+                own === true ? 'right-0' : 'left-0',
               )}
             >
               {t('chat.action.copied')}

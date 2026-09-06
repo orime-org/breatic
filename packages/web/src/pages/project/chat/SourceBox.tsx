@@ -6,8 +6,6 @@ import * as React from 'react';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import { cn } from '@web/lib/utils';
-
 import { CITATION_RING } from '@web/pages/project/chat/CitationMark';
 import { ReplyBox } from '@web/pages/project/chat/ReplyBox';
 import type { ChatSource } from '@web/pages/project/chat/types';
@@ -65,12 +63,22 @@ export const SourceBox = React.memo(function SourceBox({
               className='flex gap-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent'
             >
               {/* Every number the turn handed this page, so a marker in the
-                  prose can be found here whichever of them it carries. */}
-              {s.indexes.map((n) => (
-                <span key={n} className={cn('mt-px', CITATION_RING)}>
-                  {n}
-                </span>
-              ))}
+                  prose can be found here whichever of them it carries. They
+                  are one thing about this page rather than several: kept in a
+                  group of their own, so the space between two of them reads
+                  differently from the space before the title, and a page with
+                  a great many of them wraps instead of squeezing the title
+                  out of the line. */}
+              <span
+                data-testid='source-box-marks'
+                className='mt-px flex max-w-[40%] shrink-0 flex-wrap gap-0.5'
+              >
+                {s.indexes.map((n) => (
+                  <span key={n} className={CITATION_RING}>
+                    {n}
+                  </span>
+                ))}
+              </span>
               <span className='flex min-w-0 flex-col gap-0.5'>
                 <span className='truncate text-xs text-foreground'>{s.title}</span>
                 <span className='truncate text-2xs text-muted-foreground'>{s.url}</span>

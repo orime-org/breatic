@@ -26,6 +26,9 @@ import {
 import type { ProjectRole } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
+
+/** Held still so the bar is not handed a fresh object on every render. */
+const BAR_BOX = chromeBarBox({ sides: 'var(--space-5)', gap: 'var(--space-2)' });
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Button } from '@web/components/ui/button';
 import {
@@ -480,7 +483,7 @@ export function SpaceTabBar({
       role='toolbar'
       aria-label={t('chrome.aria.spacesToolbar')}
       className='flex shrink-0 items-center border-b border-border bg-background'
-      style={chromeBarBox('var(--space-5)', 'var(--space-2)')}
+      style={BAR_BOX}
     >
       <div
         className='flex shrink-0 items-center border-r border-border'
