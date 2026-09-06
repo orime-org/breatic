@@ -162,17 +162,19 @@ function OpenNodeTaskPanel({
           ).filter((row) => row.id !== taskId);
           queryClient.setQueryData<NodeTaskEntry[]>(queryKey, left);
           clearRetryFile(projectId, spaceId, taskId);
-          // The count cell this panel opened from is drawn only while its
-          // state holds a task, so clearing the last one takes the cell with
-          // it. Left open, the panel would sit on a generic empty line with
-          // nothing on screen naming the state that emptied.
-          if (left.length === 0) closeActivePanel();
+          // The count cell this panel opened from is drawn only while its own
+          // state holds a task, so clearing the last one of THAT state takes
+          // the cell with it. This list holds every state the node has, so
+          // what remains in it says nothing about the one on screen; left
+          // open, the panel would sit on a generic empty line with nothing
+          // naming the state that emptied.
+          if (!left.some((row) => row.status === status)) closeActivePanel();
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
         });
     },
-    [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel],
+    [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
   );
 
   return (

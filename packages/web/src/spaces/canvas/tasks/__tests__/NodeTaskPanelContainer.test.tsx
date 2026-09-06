@@ -119,6 +119,9 @@ describe('NodeTaskPanelContainer', () => {
     // a task in it, so clearing the last one takes the cell away. Left open,
     // the panel would sit there saying the generic "nothing here right now"
     // with nothing on screen naming which state emptied (user 2026-09-06).
+    // The endpoint answers with every task on the node, whatever state it is
+    // in; the panel picks out the one state it shows. So a list that still
+    // holds rows says nothing about whether the open state emptied.
     vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([
       {
         id: 'task-1',
@@ -129,6 +132,17 @@ describe('NodeTaskPanelContainer', () => {
         settledAt: '2026-09-06T10:01:00.000Z',
         budgetMs: 7_200_000,
         errorMessage: 'aborted',
+        content: null,
+      },
+      {
+        id: 'task-2',
+        status: 'done',
+        label: 'poster-final-v3.png',
+        startedByUserId: 'u1',
+        startedAt: '2026-09-06T09:00:00.000Z',
+        settledAt: '2026-09-06T09:01:00.000Z',
+        budgetMs: 7_200_000,
+        errorMessage: null,
         content: null,
       },
     ] as unknown as Awaited<ReturnType<typeof canvasApi.listNodeTasks>>);
