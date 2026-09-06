@@ -24,7 +24,7 @@ import {
   waitOnExecutionContext,
   fetchMock,
 } from "cloudflare:test";
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker from "@ingest/index.js";
 
@@ -396,5 +396,43 @@ describe("a server that does not accept the report", () => {
     // The bytes are in R2 but nothing describes them, so this delivery did not
     // finish. Retrying is the browser's to do (design §6.6).
     expect(response.status).toBe(502);
+  });
+});
+
+describe("what an operator has to go on when a step fails", () => {
+  // Every one of these turns an exception or a refusal into an answer for the
+  // browser, which is what the person uploading needs. The reason it happened
+  // exists only inside this Worker, so if it is not written here nobody can
+  // tell a wrong URL from a refused claim from R2 turning the assembly down.
+  it("writes down a report the server would not take", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    expectClaim();
+    expectReport(503, "");
+
+    await complete(uploadId, token, parts);
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_report_refused",
+      expect.objectContaining({ status: 503 }),
+    );
+    logged.mockRestore();
+  });
+
+  it("writes down a claim the server would not answer", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    fetchMock
+      .get(SERVER_ORIGIN)
+      .intercept({ path: CLAIM_PATH, method: "POST" })
+      .reply(500, "");
+
+    await complete(uploadId, token, parts);
+
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_claim_refused",
+      expect.objectContaining({ status: 500 }),
+    );
+    logged.mockRestore();
   });
 });

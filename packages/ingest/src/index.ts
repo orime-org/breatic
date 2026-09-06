@@ -244,7 +244,11 @@ async function uploadPart(
     uploadId,
   )
     .uploadPart(partNumber, body)
-    .catch(() => null);
+    .catch(noted("ingest_part_write_failed", {
+      storageKey: session.storageKey,
+      uploadId,
+      partNumber,
+    }));
   if (written === null) {
     return new Response("This upload is no longer open", { status: 410 });
   }
@@ -259,6 +263,39 @@ async function uploadPart(
 /** What the browser hands back to finish an upload. */
 interface FinishBody {
   parts?: RecordedPart[];
+}
+
+/**
+ * Write down a failure this Worker turns into an answer of its own.
+ *
+ * The answer says what the browser can do about it; the reason it happened
+ * exists nowhere else. Without this an operator cannot tell a wrong URL from a
+ * refused claim from R2 turning an assembly down — every one of them reads as
+ * the same 502 in Cloudflare's logs.
+ * @param label - What failed, as one searchable token.
+ * @param ctx - The key, ids and status that name this attempt.
+ */
+function noteFailure(label: string, ctx: Record<string, unknown>): void {
+  console.error(label, ctx);
+}
+
+/**
+ * Turn a rejected promise into null, writing down what it was.
+ * @param label - What failed, as one searchable token.
+ * @param ctx - The key and ids that name this attempt.
+ * @returns A catch handler answering null.
+ */
+function noted(
+  label: string,
+  ctx: Record<string, unknown>,
+): (err: unknown) => null {
+  return (err: unknown): null => {
+    noteFailure(label, {
+      ...ctx,
+      err: err instanceof Error ? err.stack : String(err),
+    });
+    return null;
+  };
 }
 
 /** What our server answers a claim with. */
@@ -286,11 +323,19 @@ async function claimFinalize(
       "x-ingest-secret": env.INGEST_SHARED_SECRET,
     },
     body: JSON.stringify({ storage_key: storageKey, upload_id: uploadId }),
-  }).catch(() => null);
-  if (response === null || !response.ok) return null;
+  }).catch(noted("ingest_claim_unreachable", { storageKey, uploadId }));
+  if (response === null) return null;
+  if (!response.ok) {
+    noteFailure("ingest_claim_refused", {
+      storageKey,
+      uploadId,
+      status: response.status,
+    });
+    return null;
+  }
   const answer = await response
     .json<{ data?: ClaimAnswer }>()
-    .catch(() => null);
+    .catch(noted("ingest_claim_unreadable", { storageKey, uploadId }));
   return answer?.data ?? null;
 }
 
@@ -357,7 +402,11 @@ async function completeUpload(
     parts,
   )
     .then((sizeBytes) => ({ sizeBytes }))
-    .catch(() => null);
+    .catch(noted("ingest_assemble_failed", {
+      storageKey: session.storageKey,
+      uploadId,
+      parts: parts.length,
+    }));
   if (assembled === null) {
     await reportOutcome(env, {
       storage_key: session.storageKey,
@@ -368,7 +417,7 @@ async function completeUpload(
   }
 
   const sha256 = await hashStoredObject(env.BUCKET, session.storageKey).catch(
-    () => null,
+    noted("ingest_hash_failed", { storageKey: session.storageKey }),
   );
   if (sha256 === null) {
     await reportOutcome(env, {
@@ -415,11 +464,18 @@ async function reportOutcome(
       "x-ingest-secret": env.INGEST_SHARED_SECRET,
     },
     body: JSON.stringify(body),
-  }).catch(() => null);
-  if (response === null || !response.ok) return null;
+  }).catch(noted("ingest_report_unreachable", { report: body }));
+  if (response === null) return null;
+  if (!response.ok) {
+    noteFailure("ingest_report_refused", {
+      report: body,
+      status: response.status,
+    });
+    return null;
+  }
   const answer = await response
     .json<{ data?: unknown }>()
-    .catch(() => null);
+    .catch(noted("ingest_report_unreadable", { report: body }));
   return answer?.data ?? {};
 }
 
