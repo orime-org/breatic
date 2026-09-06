@@ -58,6 +58,10 @@ export const TurnActions = React.memo(function TurnActions({
 }: TurnActionsProps): React.JSX.Element {
   const t = useTranslation();
   const [answered, setAnswered] = React.useState(false);
+  // Everything on the reader's own line waits for the pointer together, and
+  // an answered press brings the whole line up: half a line -- a time showing
+  // beside a copy that is not -- reads as something having gone wrong.
+  const waiting = own === true && !answered;
   const [boxOpen, setBoxOpen] = React.useState(false);
   const openBox = React.useCallback(() => setBoxOpen(true), []);
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -101,11 +105,22 @@ export const TurnActions = React.memo(function TurnActions({
       )}
     >
       {sentAt === undefined ? null : (
+        // Said only once the server has written the message down, which is
+        // where this instant comes from. The clock on this machine is not
+        // asked to stand in for it in the stretch before that: two messages a
+        // moment apart would then be timed by two different clocks.
+        //
         // The reader's own day: an absolute instant arrives, and a Date reads
         // it in the zone the reader is in. `getLocale()` rather than the
         // runtime default, which is the browser's language and not the one
         // the language switch set.
-        <span data-testid='turn-sent-at' className='text-2xs text-muted-foreground'>
+        <span
+          data-testid='turn-sent-at'
+          className={cn(
+            'text-2xs text-muted-foreground',
+            waiting && 'opacity-0 transition-opacity group-hover:opacity-100',
+          )}
+        >
           {new Date(sentAt).toLocaleString(getLocale(), {
             dateStyle: 'short',
             timeStyle: 'short',
@@ -133,11 +148,9 @@ export const TurnActions = React.memo(function TurnActions({
               // Transparent alone is not enough: it would keep taking clicks
               // and keep its place in the tab order, so a blank would copy
               // when pressed with nothing visible there.
-              own === true &&
+              waiting &&
               'opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
-              // A press answers with a mark, and the answer is worth seeing
-              // even on a message whose line is otherwise waiting for hover.
-              answered && 'opacity-100 pointer-events-auto text-foreground',
+              answered && 'text-foreground',
             )}
             aria-label={t('chat.action.copy')}
             onClick={copy}

@@ -149,6 +149,55 @@ describe('the copy on a reader\'s own message', () => {
   });
 });
 
+describe('the time on a reader\'s own message', () => {
+  const own = {
+    id: 'm',
+    role: 'user',
+    content: '找参考图',
+    sentAt: '2026-09-05T02:30:00.000Z',
+  } as const;
+
+  it('waits for hover the way the copy beside it does', () => {
+    // 一条线上的两样东西同时出现、同时消失；时间一直亮着而复制要等悬停，
+    // 读者看到的是半条线。
+    render(<MessageBubble message={own} />);
+
+    const stamp = screen.getByTestId('turn-sent-at');
+    expect(stamp.className).toMatch(/\bopacity-0\b/);
+    expect(stamp.className).toMatch(/group-hover:opacity-100/);
+  });
+
+  it('comes up with the copy when a press is answered', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    render(<MessageBubble message={own} />);
+
+    await userEvent.click(screen.getByTestId('turn-copy'));
+
+    await screen.findByTestId('turn-copied');
+    expect(screen.getByTestId('turn-sent-at').className).not.toMatch(/\bopacity-0\b/);
+  });
+
+  it('is drawn to the left of the copy', () => {
+    render(<MessageBubble message={own} />);
+
+    const line = screen.getByTestId('turn-actions');
+    const stamp = screen.getByTestId('turn-sent-at');
+    const copy = screen.getByTestId('turn-copy');
+    expect(line.compareDocumentPosition(stamp) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
+    expect(stamp.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says nothing until the server has written it down', () => {
+    // 刚发出去的那条手里没有时间：客户端的钟不参与，服务器给了才显示。
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    expect(screen.queryByTestId('turn-sent-at')).toBeNull();
+  });
+});
+
 describe('what pressing copy says back', () => {
   /**
    * Press copy on the message that is on screen.
