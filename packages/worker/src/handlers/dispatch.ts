@@ -947,7 +947,8 @@ async function recordGenerationActivity(args: {
  *   failure is RE-THROWN (a billed generation MUST be recorded — the throw
  *   fails the job so BullMQ redelivers and the re-entry guard re-records
  *   idempotently). When false (terminal crash-net, no retry left), the
- *   failure is best-effort/swallowed. The emit is always best-effort.
+ *   failure is best-effort/swallowed. The settle that carries the result
+ *   follows the same rule, being the only path the result takes to the node.
  * @returns Resolves once every node has been recorded + emitted.
  */
 export async function recordGenerationForNodes(
@@ -1008,7 +1009,12 @@ export async function recordGenerationForNodes(
         },
       });
     } catch (err) {
-      logger.warn({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_task settle (success) failed");
+      // This call is the only way the result reaches the node, so on a live
+      // run it fails the job: BullMQ redelivers, and `settle` reports the
+      // result landed for a row already holding this outcome, so the second
+      // pass publishes it. The crash-net pass has no delivery left to make.
+      logger.error({ err, taskId: ctx.taskId, nodeId: o.nodeId }, "node_task settle (success) failed");
+      if (opts.rethrowOnRecordFailure) throw err;
     }
   }
 }
