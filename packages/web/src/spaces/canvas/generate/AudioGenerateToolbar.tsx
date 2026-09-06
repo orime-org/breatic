@@ -4,7 +4,6 @@
 import { Plus } from 'lucide-react';
 import * as React from 'react';
 
-import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type {
@@ -14,6 +13,7 @@ import type {
 import {
   SlotTool,
   ToggleTool,
+  ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
 
 interface AudioGenerateToolbarProps {
@@ -26,10 +26,10 @@ interface AudioGenerateToolbarProps {
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: AudioSlotUrls;
   /**
-   * What to PAINT for each pick. A slot missing from here is not empty: it
-   * covers itself with the asset node's icon instead (#1946), which is what
-   * every audio pick does — an audio node carries no poster. Fullness is
-   * `slotUrls`, never this.
+   * What to PAINT for each pick. A slot missing from here is not empty: with
+   * nothing to paint the button keeps its own icon and label and lights its
+   * border (#1946, user 2026-09-06), which is what every audio pick does — an
+   * audio node carries no poster. Fullness is `slotUrls`, never this.
    */
   slotThumbnails: AudioSlotUrls;
   /** The slot whose pick is running, if any — highlights that one control. */
@@ -97,24 +97,7 @@ export const AudioGenerateToolbar = React.memo(function AudioGenerateToolbar({
         onClick={onReference}
         active={referenceActive}
       />
-      {/* The row is one entry plus a group of slots, and four evenly spaced
-          buttons of the same shape read as four of a kind. What Reference
-          collects lands in the rail below the row; what a slot collects lands
-          on the slot itself, and the slots are the set this mode wants — the
-          line says where one ends and the other begins. Nothing to divide when
-          the mode collects no slots. */}
-      {slots.length > 0 && (
-        <Separator
-          orientation='vertical'
-          // Not decorative: the two sides are meant to be announced apart,
-          // which is the case the component's own docstring names for this.
-          decorative={false}
-          data-testid='generate-audio-tool-sep'
-          // Shorter than the buttons (48px) so it reads as a divider between
-          // them rather than a fifth thing standing in the row.
-          className='mx-1 h-8'
-        />
-      )}
+      {slots.length > 0 && <ToolRowDivider testId='generate-audio-tool-sep' />}
       {slots.map((slot) => {
         const spec = AUDIO_SLOTS[slot];
         const url = slotUrls[slot];

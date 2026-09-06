@@ -61,8 +61,9 @@ export interface AudioPanelViewModel {
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: AudioSlotUrls;
   /**
-   * What to PAINT for each pick. A slot missing from here is not empty — it
-   * covers itself with the asset node's icon instead (#1946). Fullness is
+   * What to PAINT for each pick. A slot missing from here is not empty — with
+   * nothing to paint the button keeps its own icon and label and lights its
+   * border instead (#1946, user 2026-09-06). Fullness is
    * {@link AudioPanelViewModel.slotUrls}, never this.
    */
   slotThumbnails: AudioSlotUrls;

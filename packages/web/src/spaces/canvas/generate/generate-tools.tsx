@@ -16,6 +16,7 @@ import { X, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { Separator } from '@web/components/ui/separator';
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +43,32 @@ const TOOL_INACTIVE =
 // because no variant is in play: `variant={null}` leaves this fill as the whole
 // appearance, so nothing can flip an active toggle to grey mid-hover.
 const TOOL_ACTIVE = ' bg-foreground text-background';
+
+/**
+ * The line between a tool row's entries and its slots.
+ *
+ * An entry collects into the reference rail below the row; a slot collects onto
+ * itself. Evenly spaced buttons of the same shape read as one set, so the row
+ * says where one group ends. All three rows draw it, from here, so the height
+ * and the margins cannot drift apart.
+ * @param root0 - Component props.
+ * @param root0.testId - Stable test id.
+ * @returns The divider.
+ */
+export function ToolRowDivider({ testId }: { testId: string }): React.JSX.Element {
+  return (
+    <Separator
+      orientation='vertical'
+      // Not decorative: the two sides are meant to be announced apart, which is
+      // the case the component's own docstring names for this flag.
+      decorative={false}
+      data-testid={testId}
+      // Shorter than the buttons, so it reads as a divider between them rather
+      // than a further thing standing in the row.
+      className='mx-1 h-8'
+    />
+  );
+}
 
 interface ToggleToolProps {
   testId: string;
@@ -243,14 +270,14 @@ export function SlotTool({
   label,
   tip,
 }: SlotToolProps): React.JSX.Element {
-  // A picture to paint over the button, or nothing to paint with. Audio never
-  // has one and a coverless video does not either, and what covers the button
-  // has to carry more than the label it covers: a stand-in icon for the node's
-  // form says only what the slot's own `accepts` already said, so three audio
-  // slots side by side all became the same note and lost the one word telling
-  // them apart (measured 2026-09-06). Unpainted, the button keeps its name and
-  // says it is full through its border.
-  const painted = pick?.thumbnail !== undefined;
+  // The picture to paint over the button, when the pick has one. Audio never
+  // does and a coverless video does not either, and what covers the button has
+  // to carry more than the label it covers: a stand-in icon for the node's form
+  // says only what the slot's own `accepts` already said, so three audio slots
+  // side by side all became the same note and lost the one word telling them
+  // apart (measured 2026-09-06). With none, the button keeps its name and says
+  // it is full through its border.
+  const painting = pick?.thumbnail;
   // A disabled button dispatches no pointerenter and takes no focus, so both of
   // the HoverCard's open paths are dead — declaring anything to show there
   // promises something the user can never get (the style slot after switching
@@ -281,25 +308,27 @@ export function SlotTool({
         (active ? TOOL_ACTIVE : TOOL_INACTIVE) +
         // Full but with nothing painted over it: the border is what says so,
         // the one the input boxes light up with.
-        (pick && !painted ? ' border-active-border' : '') +
+        (pick && painting === undefined ? ' border-active-border' : '') +
         (active && pick ? ' ring-1 ring-foreground' : '')
       }
     >
       {/* The icon + label always lay out (invisible when covered) so the
           button's intrinsic size never changes between states. */}
       <Icon
-        className={'h-4 w-4' + (painted ? ' invisible' : '')}
+        className={'h-4 w-4' + (painting === undefined ? '' : ' invisible')}
         aria-hidden='true'
       />
-      <span className={painted ? 'invisible' : undefined}>{label}</span>
-      {painted ? (
+      <span className={painting === undefined ? undefined : 'invisible'}>
+        {label}
+      </span>
+      {painting === undefined ? null : (
         <img
-          src={pick?.thumbnail}
+          src={painting}
           alt=''
           data-testid={thumbnailTestId}
           className='absolute inset-0 h-full w-full object-cover'
         />
-      ) : null}
+      )}
     </Button>
   );
   return (

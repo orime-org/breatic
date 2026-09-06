@@ -429,9 +429,12 @@ function AudioGeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  // Which box the caret was last in. The rail's insert button fires long after
-  // focus left the editor (the click moves it to the button), so the answer has
-  // to be remembered rather than read off the document at click time.
+  // Which box the caret was last in. Clicking a rail row keeps the caret where
+  // it is (`ReferenceRail` preventDefaults the mousedown, which is what lets
+  // the chip land at the caret rather than at the end), but plenty of other
+  // things take focus first: tabbing to the row, the model picker, the params
+  // popover. In every one of those neither editor is focused, so which box to
+  // insert into has to be remembered rather than read at click time.
   const lastFocusedBox = React.useRef<'prompt' | 'lyrics'>('prompt');
   const onPromptFocus = React.useCallback(() => {
     lastFocusedBox.current = 'prompt';

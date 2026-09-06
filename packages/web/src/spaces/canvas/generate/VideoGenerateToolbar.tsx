@@ -4,11 +4,11 @@
 import { Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
-import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   SlotTool,
   ToggleTool,
+  ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type {
@@ -32,8 +32,9 @@ interface VideoGenerateToolbarProps {
   /**
    * What to PAINT for each pick — the picked image itself for an image slot,
    * the copied poster for a slot holding something an `<img>` cannot paint.
-   * A slot missing from here is not empty: it covers itself with the asset
-   * node's icon instead (#1946). Fullness is `slotUrls`, never this.
+   * A slot missing from here is not empty: with nothing to paint the button
+   * keeps its own icon and label and lights its border (#1946,
+   * user 2026-09-06). Fullness is `slotUrls`, never this.
    */
   slotThumbnails: VideoSlotUrls;
   /** The slot whose pick is running, if any — highlights that one control. */
@@ -109,22 +110,7 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
         onClick={onFocus}
         active={focusActive}
       />
-      {/* The two entries on the left collect into the rail below the row; a
-          slot collects onto itself, and the slots are the set this mode wants.
-          Same line the image and audio rows carry. Nothing to divide on a mode
-          that collects no slots. */}
-      {slots.length > 0 && (
-        <Separator
-          orientation='vertical'
-          // Not decorative: the two sides are meant to be announced apart,
-          // which is the case the component's own docstring names for this.
-          decorative={false}
-          data-testid='generate-video-tool-sep'
-          // Shorter than the buttons, so it reads as a divider between them
-          // rather than a further thing standing in the row.
-          className='mx-1 h-8'
-        />
-      )}
+      {slots.length > 0 && <ToolRowDivider testId='generate-video-tool-sep' />}
       {slots.map((slot) => {
         const spec = VIDEO_SLOTS[slot];
         const url = slotUrls[slot];

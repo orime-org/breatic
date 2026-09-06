@@ -238,14 +238,11 @@ export const PromptEditor = React.forwardRef<
           caretProvider,
           resolveCollaboratorName: collaboratorNames?.resolve,
         }),
-        // `showOnlyWhenEditable` defaults to true, and the lyrics box goes
-        // read-only under an instrumental track (#1960) — leaving a dimmed box
-        // with nothing in it at all. An empty box's placeholder is the whole of
-        // what the screen says about it, so it stays visible and says what THIS
-        // state asks for, read live through the ref.
+        // A function rather than a string: the sentence changes with the mode
+        // and the extension is baked in at creation, so it reads the ref every
+        // time the view republishes (see the setEditable effect below).
         Placeholder.configure({
           placeholder: () => placeholderRef.current,
-          showOnlyWhenEditable: false,
         }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({

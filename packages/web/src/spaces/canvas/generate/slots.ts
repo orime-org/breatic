@@ -118,8 +118,8 @@ function usableUrl(value: unknown): string | undefined {
  * was accepted and billed.
  *
  * An empty string is a string and no URL. A poster that is missing or
- * malformed leaves the slot covering itself with the asset node's icon rather
- * than an empty frame, which at least names what it holds (#1946).
+ * malformed leaves the slot with nothing to paint, so the button keeps its own
+ * icon and label and lights its border (#1946, user 2026-09-06).
  * @param spec - The slot being read, which states its stored shape.
  * @param value - The raw node-data value for that slot's field.
  * @returns The asset URL and what to show for it, or null when there is no pick.

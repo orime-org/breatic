@@ -35,8 +35,8 @@ export const AUDIO_SLOTS = {
     field: 'refAudio',
     // `storesCover` because audio is not an image, which is the whole test
     // this flag applies. An audio node carries no poster of its own, so the
-    // stored value is `{url}` and the toolbar covers the button with the audio
-    // node's icon instead of a thumbnail (#1946).
+    // stored value is `{url}` and the button paints no thumbnail — it keeps its
+    // own icon and label and lights its border (#1946, user 2026-09-06).
     storesCover: true,
     // qwen3-tts/voice-clone reads the reference URL as `audio`.
     param: 'audio',

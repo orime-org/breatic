@@ -4,11 +4,11 @@
 import { Box, Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
-import { Separator } from '@web/components/ui/separator';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   SlotTool,
   ToggleTool,
+  ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
 
 interface GenerateToolbarProps {
@@ -94,20 +94,9 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         onClick={onFocus}
         active={focusActive}
       />
-      {/* Reference and Focus collect into the rail below the row; Style
-          collects onto itself. Same line the video and audio rows carry. It is
-          unconditional here because this row's one slot always renders — what
-          the model cannot take goes dark, it does not go away. */}
-      <Separator
-        orientation='vertical'
-        // Not decorative: the two sides are meant to be announced apart, which
-        // is the case the component's own docstring names for this.
-        decorative={false}
-        data-testid='generate-tool-sep'
-        // Shorter than the buttons, so it reads as a divider between them
-        // rather than a further thing standing in the row.
-        className='mx-1 h-8'
-      />
+      {/* Unconditional here: this row's one slot renders in both modes, going
+          dark rather than away when the model cannot take a style image. */}
+      <ToolRowDivider testId='generate-tool-sep' />
       <SlotTool
         testId='generate-tool-style'
         thumbnailTestId='generate-style-thumbnail'

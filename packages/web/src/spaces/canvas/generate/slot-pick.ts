@@ -71,8 +71,9 @@ export function pickedSlotUrl(
  * too, inside the slot's one field (`SlotSpec.storesCover`).
  *
  * Read as defensively as the asset itself: node data is a CRDT map any client
- * may write. A node with no poster yet gives null, and the slot falls back to
- * the asset node's icon rather than showing an empty frame (#1946).
+ * may write. A node with no poster yet gives null, and the slot then paints
+ * nothing over its own icon and label, lighting its border instead
+ * (#1946, user 2026-09-06).
  * @param node - The node the user clicked during a slot pick.
  * @returns The poster URL to copy, or null when the node has none.
  */

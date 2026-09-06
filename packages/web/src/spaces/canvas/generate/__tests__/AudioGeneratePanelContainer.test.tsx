@@ -857,6 +857,9 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     // rather than the panel not having rendered yet.
     await screen.findByTestId('generate-prompt-editor');
     expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+    // The box that stays keeps its name. Deciding this off the lyrics box
+    // being present would strip it at the moment the switch flips.
+    expect(screen.getByText('Style')).toBeInTheDocument();
     // Untouched on the node: the switch decides what the run uses, not what
     // the user wrote.
     expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
@@ -961,6 +964,69 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
     expect(getPromptFragment('p', 's', 'target')?.toString()).not.toContain(
       'sourceNodeId="src"',
+    );
+  });
+
+  it('inserts a rail row into the style box when that is where the caret was', async () => {
+    // The mirror of the case above. Both boxes take references, so the button
+    // has to follow the caret in both directions; aiming it at either box
+    // unconditionally is wrong half the time.
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    const lyrics = await screen.findByTestId('generate-lyrics-editor');
+    const style = screen.getByTestId('generate-prompt-editor');
+    act(() => {
+      (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+    act(() => {
+      (style.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+
+    await waitFor(() =>
+      expect(getPromptFragment('p', 's', 'target')?.toString()).toContain(
+        'sourceNodeId="src"',
+      ),
+    );
+    expect(getLyricsFragment('p', 's', 'target')?.toString()).not.toContain(
+      'sourceNodeId="src"',
+    );
+  });
+
+  it('still inserts once the box the caret was in goes away', async () => {
+    // The caret was in the lyrics box, and then the box left — the instrumental
+    // switch takes it away mid-mode, and a mode switch takes it away outright.
+    // The remembered box is gone; the button still has to land the chip.
+    const board = textSource('src', 'let the river carry me home');
+    const view = await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    const lyrics = await screen.findByTestId('generate-lyrics-editor');
+    act(() => {
+      (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+
+    // Re-render on a mode that collects no lyrics. Clicking the mode picker
+    // writes to Yjs, and this suite feeds the node in as a prop, so the panel
+    // sees the switch only when that prop changes (todo #2105).
+    view.rerender(
+      panelTree({ mode: 'tts', model: 'elevenlabs-v3' }, undefined, returnsTrue, board),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull(),
+    );
+
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+    await waitFor(() =>
+      expect(getPromptFragment('p', 's', 'target')?.toString()).toContain(
+        'sourceNodeId="src"',
+      ),
     );
   });
 
