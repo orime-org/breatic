@@ -766,10 +766,41 @@ body {
    does not (§14 keeps our own bubble bar and link panel). Both `var()` calls
    therefore fall through, and what the screen shows today it shows because a
    substitution failed. */
+
+/* BlockNote draws a 1px rule down the left of every indented block, coloured
+   from `--bn-colors-side-menu` — another variable that lives on `.bn-root`, so
+   the whole declaration is dropped and no rule is painted. Said here on
+   purpose instead: the delivered editor drew no such rule (its nested lists
+   carried `padding-inline-start` and a marker, nothing else), and among
+   document editors neither Notion nor Google Docs nor Obsidian draws one out
+   of the box. Outliners do — Logseq, Roam, Workflowy — and this is a document
+   editor. */
+.doc-body-editor .ProseMirror .bn-block-group .bn-block-outer::before {
+  border-left: none;
+}
 .doc-body-editor .bn-editor {
   padding-inline: 0;
   background-color: transparent;
   color: var(--color-foreground);
+  /* The fourth hop of the chain that reaches the bottom of the viewport, so
+     the affordance below the last block can be given the rest of it. Blocks
+     carry `margin-top` and no `margin-bottom`, so nothing here was relying on
+     margins collapsing. */
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+
+/* The last block can be one a caret cannot leave, so BlockNote draws an
+   affordance under it that opens a paragraph when pressed. Its own height is
+   30px, which is a strip rather than the space this Space clears: the three
+   flex hops above exist to carry the editable surface to the bottom of the
+   viewport, and a press anywhere in it used to open that paragraph. Growing
+   into the rest of the column is what BlockNote does with it inside a column
+   block (`.bn-block-column > .bn-trailing-block`). */
+.doc-body-editor .ProseMirror > .bn-trailing-block {
+  flex-grow: 1;
+  height: auto;
 }
 
 /* The body is set in our own stack at our own size. BlockNote's

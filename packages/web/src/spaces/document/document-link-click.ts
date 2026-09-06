@@ -39,7 +39,10 @@ function linkSpanAt(
   doc.descendants((node, at) => {
     if (found !== null) return false;
     if (!node.isText) return true;
-    if (at > pos || at + node.nodeSize < pos) return true;
+    // Open at the far end: a run ends where the next one opens, so accepting
+    // both ends makes the earlier of two touching links answer for a press on
+    // the later one.
+    if (at > pos || at + node.nodeSize <= pos) return true;
     if (!node.marks.some((mark) => mark.type === linkType)) return true;
     found = { from: at, to: at + node.nodeSize };
     return false;
