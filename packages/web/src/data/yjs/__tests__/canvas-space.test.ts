@@ -359,6 +359,31 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(readEdges(doc())).toHaveLength(1);
   });
 
+  it('hands back the same taskCounts object until the counts change (#186 E6)', () => {
+    // What keeps a task-carrying node out of every re-render: the merge stage
+    // reference-compares this object, so the mirror has to hold it still while
+    // the rest of the document moves. It does because the counts are stored as
+    // a plain value; store them as a nested Y.Map and toJSON would mint a new
+    // object each read, handing every such node a fresh reference per change.
+    /**
+     * The counts on the first node, as the mirror hands them out.
+     * @returns The counts object, or undefined on a node that holds none.
+     */
+    const counts = (): unknown => {
+      const view = readNodes(doc())[0];
+      if (view === undefined || !('taskCounts' in view.data)) return undefined;
+      return view.data.taskCounts;
+    };
+    addNode(PID, SID, sampleFields('image', {
+      taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+    }, { id: 'a' }));
+    const first = counts();
+    expect(first).toEqual({ running: 1, done: 0, failed: 0, expired: 0 });
+    addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));
+    setNodeName(PID, SID, 'a', 'renamed');
+    expect(counts()).toBe(first);
+  });
+
   it('readCanvasGraph reads live nodes + edges fresh', () => {
     addNode(PID, SID, sampleFields('image', {}, { id: 'a' }));
     addNode(PID, SID, sampleFields('image', {}, { id: 'b' }));

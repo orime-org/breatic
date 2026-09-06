@@ -709,3 +709,38 @@ describe('mergeCanvasNodes, a gesture entry that rode in on a Group', () => {
     expect(merged[0]?.position).toEqual({ x: 700, y: 700 });
   });
 });
+
+describe('mergeCanvasNodes, a node carrying task counts (#186 E6)', () => {
+  // The counts are the one field the server rewrites while the reader watches,
+  // and every node on the canvas carries them. The mirror stores them as a
+  // plain value, so an unchanged node hands back the same object — which is
+  // what `sameData` reference-compares. Rebuild that object per pass and every
+  // task-carrying node gets a fresh reference on every doc change.
+  const counts = { running: 1, done: 0, failed: 0, expired: 0 };
+
+  /**
+   * A node holding those counts.
+   * @param held - The counts object it carries.
+   * @returns The node.
+   */
+  const withCounts = (held: object): Node[] => [
+    {
+      id: 'a',
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: { content: 'x.png', status: 'handling', taskCounts: held },
+      selected: false,
+    } as Node,
+  ];
+
+  it('keeps its object across doc changes that leave the counts alone', () => {
+    const prev = withCounts(counts);
+    expect(mergeCanvasNodes(prev, withCounts(counts), QUIET)[0]).toBe(prev[0]);
+  });
+
+  it('gets a fresh object when a count moves', () => {
+    const prev = withCounts(counts);
+    const moved = withCounts({ running: 0, done: 1, failed: 0, expired: 0 });
+    expect(mergeCanvasNodes(prev, moved, QUIET)[0]).not.toBe(prev[0]);
+  });
+});
