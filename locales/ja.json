@@ -238,8 +238,7 @@
       "count": "出典 {count, number}"
     },
     "code": {
-      "copy": "コードをコピー",
-      "copied": "コピーしました"
+      "copy": "コードをコピー"
     },
     "backToLatest": {
       "plain": "最新に戻る",

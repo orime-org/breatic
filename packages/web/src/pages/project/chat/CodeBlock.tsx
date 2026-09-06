@@ -5,11 +5,9 @@ import * as React from 'react';
 import { Check, Copy } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
-import { toast } from '@web/lib/toast';
+import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
-
-/** How long the button says it worked before going back to offering. */
-const CONFIRMED_FOR_MS = 1500;
+import { CopyAnswerLabel, useCopyAnswer } from '@web/pages/project/chat/copy-answer';
 
 /**
  * A block of code in a reply, with a way to take it.
@@ -19,9 +17,9 @@ const CONFIRMED_FOR_MS = 1500;
  * sits over the block's top right corner and comes out on hover, so a block
  * being read is a block and nothing else.
  *
- * What it copies is read off the rendered element rather than kept alongside
- * it: the highlighting rebuilds these nodes, and a copy of the source held
- * here would be the version before whatever the last rebuild did.
+ * What it copies is read off the rendered element at the moment of the press:
+ * the highlighting rebuilds these nodes, and a copy of the source held here
+ * would be the version before whatever the last rebuild did.
  * @param root0 - Everything the markdown renderer passes a `pre`.
  * @param root0.children - The highlighted code.
  * @returns The block.
@@ -32,44 +30,36 @@ export function CodeBlock({
 }: React.ComponentPropsWithoutRef<'pre'>): React.JSX.Element {
   const t = useTranslation();
   const block = React.useRef<HTMLPreElement>(null);
-  const [copied, setCopied] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!copied) return undefined;
-    const timer = window.setTimeout(() => setCopied(false), CONFIRMED_FOR_MS);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
-  const copy = React.useCallback(() => {
-    const text = block.current?.innerText ?? '';
-    void navigator.clipboard
-      .writeText(text)
-      .then(() => setCopied(true))
-      .catch(() => {
-        toast.error(t('common.clipboardError'));
-      });
-  }, [t]);
+  const read = React.useCallback(() => block.current?.innerText ?? '', []);
+  const { answered, copy } = useCopyAnswer(read);
 
   return (
     <div className='group/code relative'>
       <pre ref={block} {...rest}>
         {children}
       </pre>
-      <Button
-        data-testid='code-copy'
-        variant='outline'
-        size='icon'
-        aria-label={copied ? t('chat.code.copied') : t('chat.code.copy')}
-        title={copied ? t('chat.code.copied') : t('chat.code.copy')}
-        onClick={copy}
-        className='absolute right-2 top-2 size-[var(--btn-compact)] bg-card text-muted-foreground opacity-0 transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100'
-      >
-        {copied ? (
-          <Check className='size-3.5' aria-hidden='true' />
-        ) : (
-          <Copy className='size-3.5' aria-hidden='true' />
-        )}
-      </Button>
+      {/* The answer hangs below: this button is against the block's top edge,
+          and above it the label would stand off the code entirely. */}
+      <span className='absolute right-2 top-2 inline-flex'>
+        <Button
+          data-testid='code-copy'
+          variant='outline'
+          size='icon'
+          aria-label={t('chat.code.copy')}
+          onClick={copy}
+          className={cn(
+            'size-[var(--btn-compact)] bg-card text-muted-foreground opacity-0 transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100',
+            answered && 'opacity-100 text-foreground',
+          )}
+        >
+          {answered ? (
+            <Check className='size-3.5' aria-hidden='true' />
+          ) : (
+            <Copy className='size-3.5' aria-hidden='true' />
+          )}
+        </Button>
+        {answered ? <CopyAnswerLabel side='right' below /> : null}
+      </span>
     </div>
   );
 }

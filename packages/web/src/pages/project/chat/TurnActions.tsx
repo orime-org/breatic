@@ -8,19 +8,11 @@ import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
-import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { CopyAnswerLabel, useCopyAnswer } from '@web/pages/project/chat/copy-answer';
 import { SourceBox } from '@web/pages/project/chat/SourceBox';
 import type { ChatSource } from '@web/pages/project/chat/types';
-
-/**
- * How long the answer to a press stays up.
- *
- * Long enough to be read after the eye has moved on, short enough that the
- * line is back to offering copy before the reader thinks to press it again.
- */
-export const COPY_ANSWER_MS = 1600;
 
 interface TurnActionsProps {
   /** What copy puts on the clipboard. */
@@ -57,40 +49,13 @@ export const TurnActions = React.memo(function TurnActions({
   sources,
 }: TurnActionsProps): React.JSX.Element {
   const t = useTranslation();
-  const [answered, setAnswered] = React.useState(false);
+  const { answered, copy } = useCopyAnswer(text);
   // Everything on the reader's own line waits for the pointer together, and
   // an answered press brings the whole line up: half a line -- a time showing
   // beside a copy that is not -- reads as something having gone wrong.
   const waiting = own === true && !answered;
   const [boxOpen, setBoxOpen] = React.useState(false);
   const openBox = React.useCallback(() => setBoxOpen(true), []);
-  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  React.useEffect(
-    () => () => {
-      if (timer.current !== undefined) clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  const copy = React.useCallback(() => {
-    void navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        // A second press while the answer is up leaves the first timer
-        // running, so the answer neither flickers nor outstays the press
-        // that put it there.
-        if (timer.current !== undefined) return;
-        setAnswered(true);
-        timer.current = setTimeout(() => {
-          timer.current = undefined;
-          setAnswered(false);
-        }, COPY_ANSWER_MS);
-      })
-      .catch(() => {
-        toast.error(t('common.clipboardError'));
-      });
-  }, [text, t]);
 
   return (
     <div
@@ -130,13 +95,7 @@ export const TurnActions = React.memo(function TurnActions({
       {/* Offered only when there is something to put on the clipboard: a turn
           that searched and wrote nothing still keeps this line for its
           sources, and copying it would replace whatever the reader had
-          copied with nothing at all.
-
-          The answer to a press is a status rather than a description of the
-          control, so it is said here rather than through the tooltip
-          primitive: a tooltip is what hovering an element tells you about it,
-          and this is what pressing it did. Nothing in it can be pointed at,
-          so it needs none of what a real overlay is for. */}
+          copied with nothing at all. */}
       {text === '' ? null : (
         <span className='relative inline-flex'>
           <Button
@@ -161,22 +120,7 @@ export const TurnActions = React.memo(function TurnActions({
               <Copy className='size-3.5' aria-hidden='true' />
             )}
           </Button>
-          {answered ? (
-            <span
-              data-testid='turn-copied'
-              role='status'
-              className={cn(
-                'pointer-events-none absolute bottom-full z-10 mb-1.5 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground',
-                // Against the edge the button is against. Centred on the button
-                // it reaches half its width past the column, and the list is
-                // clipped: measured at 1315 wide, the Chinese words already lost
-                // 6px off the left, and the Japanese ones lose four times that.
-                own === true ? 'right-0' : 'left-0',
-              )}
-            >
-              {t('chat.action.copied')}
-            </span>
-          ) : null}
+          {answered ? <CopyAnswerLabel side={own === true ? 'right' : 'left'} /> : null}
         </span>
       )}
       {sources === undefined || sources.length === 0 ? null : (

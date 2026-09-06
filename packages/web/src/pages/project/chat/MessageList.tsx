@@ -367,14 +367,19 @@ function MessageListInner({
         <Button
           data-testid='back-to-latest'
           variant='outline'
-          size='sm'
+          size='icon'
           onClick={backToEnd}
-          className='absolute inset-x-0 bottom-3 mx-auto flex h-[var(--btn-inline)] w-fit items-center gap-1.5 rounded-full bg-card px-3 text-xs shadow-md'
+          // What arrived while the reader was away is said in the name rather
+          // than beside the arrow: a reader who cannot see the arrow is the
+          // one the count is worth saying to.
+          aria-label={
+            missed > 0
+              ? t('chat.backToLatest.withNew', { count: missed })
+              : t('chat.backToLatest.plain')
+          }
+          className='absolute inset-x-0 bottom-3 mx-auto size-[var(--btn-inline)] rounded-full bg-card shadow-md'
         >
           <ArrowDown className='size-3.5' aria-hidden='true' />
-          <span>
-            {missed > 0 ? t('chat.backToLatest.withNew', { count: missed }) : t('chat.backToLatest.plain')}
-          </span>
         </Button>
       ) : null}
     </div>

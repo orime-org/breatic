@@ -17,7 +17,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
-import { COPY_ANSWER_MS } from '@web/pages/project/chat/TurnActions';
+import { COPY_ANSWER_MS } from '@web/pages/project/chat/copy-answer';
 
 afterEach(cleanup);
 
@@ -186,7 +186,7 @@ describe('the time on a reader\'s own message', () => {
 
     await userEvent.click(screen.getByTestId('turn-copy'));
 
-    await screen.findByTestId('turn-copied');
+    await screen.findByTestId('copy-answer');
     expect(screen.getByTestId('turn-sent-at').className).not.toMatch(/\bopacity-0\b/);
   });
 
@@ -227,7 +227,7 @@ describe('what pressing copy says back', () => {
   it('says nothing before it is pressed', () => {
     render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
 
-    expect(screen.queryByTestId('turn-copied')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('copy-answer')).not.toBeInTheDocument();
   });
 
   it('answers with a mark and a word once it is pressed', async () => {
@@ -235,7 +235,7 @@ describe('what pressing copy says back', () => {
 
     await press();
 
-    expect(await screen.findByTestId('turn-copied')).toBeInTheDocument();
+    expect(await screen.findByTestId('copy-answer')).toBeInTheDocument();
   });
 
   it('goes back to offering copy after a moment', async () => {
@@ -243,14 +243,14 @@ describe('what pressing copy says back', () => {
     try {
       render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
       await press();
-      expect(await screen.findByTestId('turn-copied')).toBeInTheDocument();
+      expect(await screen.findByTestId('copy-answer')).toBeInTheDocument();
 
       await act(async () => {
         vi.advanceTimersByTime(COPY_ANSWER_MS + 50);
         await Promise.resolve();
       });
 
-      await waitFor(() => expect(screen.queryByTestId('turn-copied')).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByTestId('copy-answer')).not.toBeInTheDocument());
     } finally {
       vi.useRealTimers();
     }
@@ -263,7 +263,7 @@ describe('what pressing copy says back', () => {
 
     await press();
 
-    const label = await screen.findByTestId('turn-copied');
+    const label = await screen.findByTestId('copy-answer');
     expect(label.className).toMatch(/\bleft-0\b/);
     expect(label.className).not.toMatch(/-translate-x-1\/2/);
   });
@@ -273,7 +273,7 @@ describe('what pressing copy says back', () => {
 
     await press();
 
-    const label = await screen.findByTestId('turn-copied');
+    const label = await screen.findByTestId('copy-answer');
     expect(label.className).toMatch(/\bright-0\b/);
   });
 
@@ -282,6 +282,6 @@ describe('what pressing copy says back', () => {
 
     await press();
 
-    expect(await screen.findByTestId('turn-copied')).toBeInTheDocument();
+    expect(await screen.findByTestId('copy-answer')).toBeInTheDocument();
   });
 });

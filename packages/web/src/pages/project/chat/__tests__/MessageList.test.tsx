@@ -534,7 +534,9 @@ describe('the way back to the newest message', () => {
     expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
   });
 
-  it('says how many messages arrived while they were away', () => {
+  it('says how many messages arrived while they were away, to a reader who cannot see it', () => {
+    // An arrow in a circle and nothing else, so the count is carried by the
+    // name the control answers to rather than by words beside the arrow.
     const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
     stateGeometry(geometry);
     const { rerender } = render(<MessageList ready messages={[bubble('a', 'hi')]} />);
@@ -544,7 +546,26 @@ describe('the way back to the newest message', () => {
     if (viewport) fireEvent.scroll(viewport);
     rerender(<MessageList ready messages={[bubble('a', 'hi'), bubble('b', 'and more')]} />);
 
-    expect(screen.getByTestId('back-to-latest')).toHaveTextContent('1');
+    const back = screen.getByTestId('back-to-latest');
+    expect(back.getAttribute('aria-label')).toContain('1');
+    expect(back.textContent).toBe('');
+  });
+
+  it('is a circle carrying an arrow, and nothing else', () => {
+    const geometry = { scrollHeight: 2000, clientHeight: 400, scrollTop: 1600 };
+    stateGeometry(geometry);
+    render(<MessageList ready messages={[bubble('a', 'hi')]} />);
+
+    const viewport = document.querySelector('[data-radix-scroll-area-viewport]');
+    geometry.scrollTop = 200;
+    if (viewport) fireEvent.scroll(viewport);
+
+    const back = screen.getByTestId('back-to-latest');
+    expect(back.className).toMatch(/rounded-full/);
+    expect(back.textContent).toBe('');
+    expect(back.querySelector('svg')).not.toBeNull();
+    // Square, so the circle is a circle.
+    expect(back.className).toMatch(/\bsize-\[var\(--btn-inline\)\]/);
   });
 
   it('goes away once the reader is back at the end', () => {

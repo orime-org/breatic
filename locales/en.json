@@ -238,8 +238,7 @@
       "count": "Sources {count, number}"
     },
     "code": {
-      "copy": "Copy code",
-      "copied": "Copied"
+      "copy": "Copy code"
     },
     "backToLatest": {
       "plain": "Back to latest",

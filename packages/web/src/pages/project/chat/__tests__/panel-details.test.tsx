@@ -11,8 +11,9 @@
  * against the rest of the app.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageList } from '@web/pages/project/chat/MessageList';
@@ -63,5 +64,26 @@ describe('a code block in a reply', () => {
     render(<MarkdownMessage content={'a `const` in a sentence'} />);
 
     expect(screen.queryByTestId('code-copy')).not.toBeInTheDocument();
+  });
+
+  it('answers a press the way every other copy in the panel does', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    const { MarkdownMessage } = await import('@web/pages/project/chat/MarkdownMessage');
+    render(<MarkdownMessage content={'```ts\nconst a = 1;\n```'} />);
+
+    expect(screen.queryByTestId('copy-answer')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('code-copy'));
+
+    expect(await screen.findByTestId('copy-answer')).toBeInTheDocument();
+  });
+
+  it('leaves the tooltip to the browser no longer', async () => {
+    const { MarkdownMessage } = await import('@web/pages/project/chat/MarkdownMessage');
+    render(<MarkdownMessage content={'```ts\nconst a = 1;\n```'} />);
+
+    expect(screen.getByTestId('code-copy')).not.toHaveAttribute('title');
   });
 });
