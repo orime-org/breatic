@@ -664,8 +664,6 @@ export const nodeTasks = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // The conservative allowance: within it the task certainly finishes, and
-    // past it something outside what we promise has gone wrong.
     /**
      * When this task reached one of its three end states (#186).
      *
@@ -678,6 +676,8 @@ export const nodeTasks = pgTable(
      */
     settledAt: timestamp("settled_at", { withTimezone: true }),
 
+    // The conservative allowance: within it the task certainly finishes, and
+    // past it something outside what we promise has gone wrong.
     budgetMs: integer("budget_ms").notNull(),
 
     // Filename or model name — what the user reads in the list.

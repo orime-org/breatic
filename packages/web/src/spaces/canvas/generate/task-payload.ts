@@ -45,7 +45,7 @@ export interface GenerateTaskInput {
 
 /**
  * Builds the overwrite-mode task payload for an image-node Generate.
- * @param input - The node, project/space, model, params, prompt, references, and lease gen.
+ * @param input - The node, project/space, model, params, prompt and references.
  * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildGenerateTaskPayload(

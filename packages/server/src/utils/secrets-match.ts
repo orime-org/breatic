@@ -4,10 +4,9 @@
 /**
  * Comparing a presented secret with the one we hold.
  *
- * Both endpoints our own Cloudflare Worker calls use this: the ingest report
- * an upload's outcome arrives on, and the knock a task timer sends when a
- * deadline passes. Neither carries a session, so this comparison is the whole
- * of what identifies the caller.
+ * Both endpoints our own Cloudflare Worker calls use this: the permission to
+ * finish a key, and the report an upload's outcome arrives on. Neither carries
+ * a session, so this comparison is the whole of what identifies the caller.
  */
 
 import { timingSafeEqual } from "node:crypto";
