@@ -44,6 +44,7 @@ import {
 } from '@web/spaces/document/document-enter';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentLinkClickExtension } from '@web/spaces/document/document-link-click';
+import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 
 /** What a caller has to supply to open a document. */
 export interface DocumentEditorOptions {
@@ -82,6 +83,7 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentTabExtension(),
       documentLinkClickExtension(),
+      documentTrailingPressExtension(),
       documentQuoteInputExtension(),
       ...(options.extensions ?? []),
     ],

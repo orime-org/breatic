@@ -124,3 +124,55 @@ describe('somewhere to write at the end of the document', () => {
     expect(trailing(container)).toBeNull();
   });
 });
+
+describe('the presses it acts on', () => {
+  /**
+   * Presses the affordance with the given mouse state.
+   * @param container - The mounted container.
+   * @param init - What the pointer carried.
+   */
+  function pressWidget(container: HTMLElement, init: MouseEventInit): void {
+    trailing(container)!.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, ...init }),
+    );
+  }
+
+  const IGNORED: [string, MouseEventInit][] = [
+    ['the right button', { button: 2 }],
+    ['the middle button', { button: 1 }],
+    ['Shift held', { button: 0, shiftKey: true }],
+    ['Meta held', { button: 0, metaKey: true }],
+    ['Ctrl held', { button: 0, ctrlKey: true }],
+    ['Alt held', { button: 0, altKey: true }],
+  ];
+
+  IGNORED.forEach(([label, init]) => {
+    it(`writes nothing for ${label}`, async () => {
+      // A modifier or a second button turns a press into a different gesture,
+      // and none of them says "start writing here" — the editor this Space
+      // replaced turned every one of them away for that reason.
+      const { editor, container } = await open([
+        { type: 'codeBlock', content: 'const a = 1' },
+      ]);
+      pressWidget(container, init);
+      await settle();
+
+      expect((editor.document as { type: string }[]).map((b) => b.type)).toEqual(
+        ['codeBlock'],
+      );
+    });
+  });
+
+  it('still opens one for a plain left press', async () => {
+    const { editor, container } = await open([
+      { type: 'codeBlock', content: 'const a = 1' },
+    ]);
+    pressWidget(container, { button: 0 });
+    await settle();
+
+    expect((editor.document as { type: string }[]).map((b) => b.type)).toEqual([
+      'codeBlock',
+      'paragraph',
+    ]);
+  });
+});

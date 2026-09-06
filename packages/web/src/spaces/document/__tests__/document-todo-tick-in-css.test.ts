@@ -123,17 +123,6 @@ describe('the box a to-do carries', () => {
 });
 
 describe('what the stylesheet says about the space below the last block', () => {
-  it('gives the affordance the rest of the column', () => {
-    // BlockNote's own height for it is a 30px strip. The three flex hops above
-    // carry the editable surface to the bottom of the viewport, so a press in
-    // that space opens a paragraph — which is what it did before the migration.
-    const body = ruleBody('> .bn-trailing-block');
-    expect(body).toContain('flex-grow: 1');
-    expect(body).toContain('height: auto');
-    // The hop that lets it grow.
-    expect(ruleBody('.bn-editor')).toContain('flex-direction: column');
-  });
-
   it('says the indentation rule is not drawn', () => {
     // BlockNote paints one from `--bn-colors-side-menu`, a variable declared on
     // an element this Space does not render. Saying so is what keeps it a

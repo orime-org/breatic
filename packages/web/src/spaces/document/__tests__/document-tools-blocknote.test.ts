@@ -335,3 +335,34 @@ describe('a selection only half of which carries the style', () => {
     expect(BOLD.isActive(editor)).toBe(true);
   });
 });
+
+describe('whitespace at the edges of a selection', () => {
+  /** The paragraph's runs, each with the marks it carries. */
+  function runsOf(editor: ReturnType<typeof buildDocumentEditor>): string[] {
+    const out: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (!node.isText) return true;
+      out.push(
+        `${node.text ?? ''}[${node.marks.map((mark) => mark.type.name).join(',')}]`,
+      );
+      return false;
+    });
+    return out;
+  }
+
+  ALL_TOOLS.forEach((tool) => {
+    it(`leaves a trailing space out of ${tool.id}`, () => {
+      // A reader dragging over a word picks up the space after it more often
+      // than not, and the style is meant for the word. Inline code shows it
+      // plainest: the tinted box runs one character past the word and sits
+      // flush against the next one.
+      const editor = open({ type: 'paragraph', content: 'foo bar' });
+      // "foo " — the word and the space after it.
+      select(editor, 3, 7);
+
+      tool.run(editor);
+
+      expect(runsOf(editor)).toEqual([`foo[${tool.id}]`, ' bar[]']);
+    });
+  });
+});

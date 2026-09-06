@@ -35,8 +35,41 @@ import {
 
 import { isMarkActive } from '@tiptap/core';
 import { toggleMark } from '@tiptap/pm/commands';
+import { TextSelection } from '@tiptap/pm/state';
 
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
+
+/**
+ * Pulls the selection in off the whitespace at its ends.
+ *
+ * A reader dragging over a word picks up the space after it more often than
+ * not, and the style is meant for the word: inline code shows it plainest,
+ * where the tinted box runs one character past the word and sits flush against
+ * the next one. `prosemirror-commands` reads the same two runs to decide this
+ * (`toggleMark`, `spaceStart` / `spaceEnd`), and the editor this Space replaced
+ * went through that command.
+ *
+ * Only for a press that ADDS the style. Taking one off covers exactly what the
+ * reader highlighted, which is what leaves a styled word and the space after
+ * it in one press.
+ * @param editor - The editor whose selection to pull in.
+ */
+function trimEdges(editor: ToolEditor): void {
+  editor.transact((tr) => {
+    const { $from, $to, empty } = tr.selection;
+    if (empty) return;
+    const opening = $from.nodeAfter;
+    const closing = $to.nodeBefore;
+    const lead =
+      opening?.isText === true ? /^\s*/.exec(opening.text ?? '')![0].length : 0;
+    const trail =
+      closing?.isText === true ? /\s*$/.exec(closing.text ?? '')![0].length : 0;
+    if ($from.pos + lead >= $to.pos) return;
+    tr.setSelection(
+      TextSelection.create(tr.doc, $from.pos + lead, $to.pos - trail),
+    );
+  });
+}
 
 /**
  * The five inline tools are named after the five styles the schema declares,
@@ -68,6 +101,9 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
     // selection the style does not cover, a press puts it on rather than
     // taking it off the part that had it.
     run: (editor) => {
+      if (!isMarkActive(editor.prosemirrorState, id)) {
+        trimEdges(editor);
+      }
       editor.toggleStyles({ [id]: true } as never);
     },
   };

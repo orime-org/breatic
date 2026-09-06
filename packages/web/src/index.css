@@ -799,8 +799,19 @@ body {
    flex hops above exist to carry the editable surface to the bottom of the
    viewport, and a press anywhere in it used to open that paragraph. Growing
    into the rest of the column is what BlockNote does with it inside a column
-   block (`.bn-block-column > .bn-trailing-block`). */
-.doc-body-editor .ProseMirror > .bn-trailing-block {
+   block (`.bn-block-column > .bn-trailing-block`).
+
+   The widget is drawn at `doc.content.size - 1` (`TrailingNode.ts`), which
+   puts it inside the root `blockGroup` rather than beside it — measured, its
+   parent element carries `bn-block-group`. So the column has to reach one
+   level further down before the widget can grow into what is left of it. */
+.doc-body-editor .ProseMirror > .bn-block-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+}
+
+.doc-body-editor .ProseMirror .bn-trailing-block {
   flex-grow: 1;
   height: auto;
 }

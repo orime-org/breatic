@@ -20,35 +20,9 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 
-/**
- * The span of the link covering a position, or null when none does.
- * @param doc - The document.
- * @param pos - A position inside a text node.
- * @returns That span.
- */
-function linkSpanAt(
-  doc: PMNode,
-  pos: number,
-): { from: number; to: number } | null {
-  const linkType = doc.type.schema.marks['link'];
-  if (!linkType) return null;
-  let found: { from: number; to: number } | null = null;
-  doc.descendants((node, at) => {
-    if (found !== null) return false;
-    if (!node.isText) return true;
-    // Open at the far end: a run ends where the next one opens, so accepting
-    // both ends makes the earlier of two touching links answer for a press on
-    // the later one.
-    if (at > pos || at + node.nodeSize <= pos) return true;
-    if (!node.marks.some((mark) => mark.type === linkType)) return true;
-    found = { from: at, to: at + node.nodeSize };
-    return false;
-  });
-  return found;
-}
+import { resolveLinkInSpan } from '@web/spaces/document/document-link';
 
 /**
  * The extension that gives a click on a link its meaning.
@@ -69,11 +43,16 @@ export const documentLinkClickExtension = createExtension(() => ({
           // Resolved from the anchor rather than from the position the event
           // carries: that one comes from the pointer's coordinates, and the
           // element the reader pressed is what this handler already has.
-          const span = linkSpanAt(view.state.doc, view.posAtDOM(anchor, 0));
-          if (span === null) return false;
+          // `resolveLinkInSpan` walks the mark out to both its ends, which is
+          // what makes the whole link the answer: ProseMirror splits a text
+          // node on its marks, so a link holding a styled word is two nodes,
+          // and the one under the pointer is a part of what was pressed.
+          const at = view.posAtDOM(anchor, 0);
+          const { range } = resolveLinkInSpan(view.state, at, at + 1);
+          if (range === null) return false;
           view.dispatch(
             view.state.tr.setSelection(
-              TextSelection.create(view.state.doc, span.from, span.to),
+              TextSelection.create(view.state.doc, range.from, range.to),
             ),
           );
           return true;

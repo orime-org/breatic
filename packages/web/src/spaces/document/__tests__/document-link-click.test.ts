@@ -95,3 +95,25 @@ describe('pressing a link', () => {
     expect(pressLink(editor, 1)).toBe('TWO');
   });
 });
+
+describe('a link whose text is not all one style', () => {
+  it('selects the whole link, not the run under the pointer', () => {
+    // ProseMirror splits a text node on its marks, so a link holding a bold
+    // word is two nodes carrying one link mark. The link is what the reader
+    // pressed, and the panel that opens edits the link.
+    const editor = open([
+      { type: 'text', text: 'go ', styles: {} },
+      {
+        type: 'link',
+        href: 'https://example.test',
+        content: [
+          { type: 'text', text: 'hello ', styles: {} },
+          { type: 'text', text: 'world', styles: { bold: true } },
+        ],
+      },
+      { type: 'text', text: ' now', styles: {} },
+    ]);
+
+    expect(pressLink(editor, 0)).toBe('hello world');
+  });
+});
