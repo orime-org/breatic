@@ -38,7 +38,10 @@ import { withCollaboration } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
-import { documentEnterExtension } from '@web/spaces/document/document-enter';
+import {
+  documentEnterExtension,
+  documentTabExtension,
+} from '@web/spaces/document/document-enter';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentLinkClickExtension } from '@web/spaces/document/document-link-click';
 
@@ -77,6 +80,7 @@ export function buildDocumentEditor(
     // with the blocks themselves.
     extensions: [
       documentEnterExtension(),
+      documentTabExtension(),
       documentLinkClickExtension(),
       documentQuoteInputExtension(),
       ...(options.extensions ?? []),

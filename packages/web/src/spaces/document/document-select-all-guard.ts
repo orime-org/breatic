@@ -256,6 +256,11 @@ export function documentSelectAllExtension(
 
   return createExtension(({ editor }: { editor: SelectAllEditor }) => ({
     key: 'documentSelectAll',
+    // Ahead of the code block's own deletion keys. Those ask whether the
+    // caret's block is empty and of their type, both of which a whole
+    // document selection satisfies when the one block is an empty code
+    // block — and answering there skips the confirmation this guard owes.
+    runsBefore: ['code-block-keyboard-shortcuts'],
     keyboardShortcuts: {
       'Mod-a': () => editor.transact(selectTier),
       ...Object.fromEntries(

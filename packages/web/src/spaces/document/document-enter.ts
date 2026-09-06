@@ -37,6 +37,12 @@ import {
   type ListEditor,
 } from '@web/spaces/document/document-list-block';
 
+/** What the editor object offers the Tab handler. */
+interface TabEditor {
+  canNestBlock: () => boolean;
+  canUnnestBlock: () => boolean;
+}
+
 /**
  * The three block types that answer Enter with a handler of their own.
  *
@@ -149,14 +155,20 @@ function handleQuotedEnter(editor: ListEditor): boolean {
  * container and past the paragraph.
  * @param tr - The transaction to write into.
  * @param at - Where the new block goes.
+ * @param attrs - What to build the paragraph with. Left out, the schema's
+ *   defaults apply, and `quoted` defaults to false.
  */
-function openBlockAt(tr: Transaction, at: number): void {
+function openBlockAt(
+  tr: Transaction,
+  at: number,
+  attrs?: Record<string, unknown>,
+): void {
   const paragraph = tr.doc.type.schema.nodes['paragraph'];
   const container = tr.doc.type.schema.nodes['blockContainer'];
   if (!paragraph || !container) {
     return;
   }
-  tr.insert(at, container.create(null, paragraph.create()));
+  tr.insert(at, container.create(null, paragraph.create(attrs)));
   tr.setSelection(TextSelection.create(tr.doc, at + 2));
   tr.scrollIntoView();
 }
@@ -191,9 +203,8 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  * does.
  *
  * Answered here because BlockNote's own answer raises:
- * `NodeSelectionKeyboard.ts:48` inserts a bare `paragraph`, which a
- * `blockGroup` does not accept, at `$to.after() + 1`, which for a document
- * whose only block is selected is one position past its end.
+ * `NodeSelectionKeyboard.ts:52` inserts a bare `paragraph`, which a
+ * `blockGroup` does not accept.
  *
  * The new block goes after the whole CONTAINER. The gesture selects the
  * content node — measured in a browser, `Cmd`-clicking a paragraph leaves
@@ -207,10 +218,16 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  */
 function handleWholeBlockEnter(editor: ListEditor): boolean {
   editor.transact((tr) => {
-    const { bnBlock } = getBlockInfo(
-      getNearestBlockPos(tr.doc, tr.selection.from),
-    );
-    openBlockAt(tr, bnBlock.afterPos);
+    const info = getBlockInfo(getNearestBlockPos(tr.doc, tr.selection.from));
+    if (!info.isBlockContainer) {
+      return;
+    }
+    // The quote rides across, the way it does on every other path into a new
+    // block (A7b). It is a prop on each block here, so a block built from the
+    // schema's defaults opens outside the quote and cuts the run in two.
+    openBlockAt(tr, info.bnBlock.afterPos, {
+      [QUOTED]: info.blockContent.node.attrs[QUOTED],
+    });
   });
   return true;
 }
@@ -223,8 +240,40 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
  * selection kinds that are not resolved inside any block, and the quote,
  * which is a prop rather than a block type.
  */
+/**
+ * Tab and Shift-Tab, for the block that has nowhere to go.
+ *
+ * BlockNote's own handler indents the block under the one above it and
+ * returns false when there is no block above it at that level. A Tab it
+ * declines is a Tab the browser answers, and the browser answers it by moving
+ * focus out of the editor: measured, focus went from the editor to `BODY` and
+ * the next characters the reader typed reached nothing. Its own source says
+ * this is what it means to avoid — `KeyboardShortcutsExtension.ts:958`,
+ * "Always returning true for tab key presses ensures they're not captured by
+ * the browser. Otherwise, they blur the editor" — and then returns what
+ * `nestBlock` gives it.
+ *
+ * Held here only where the move is impossible, which BlockNote answers with
+ * the same two questions its own handler asks: `canNestBlock` for Tab,
+ * `canUnnestBlock` for Shift-Tab. Where the move IS possible this declines
+ * and BlockNote's handler does the indenting.
+ */
+export const documentTabExtension = createExtension(() => ({
+  key: 'document-tab',
+  keyboardShortcuts: {
+    Tab: ({ editor }: { editor: TabEditor }) => !editor.canNestBlock(),
+    'Shift-Tab': ({ editor }: { editor: TabEditor }) =>
+      !editor.canUnnestBlock(),
+  },
+}) as never);
+
 export const documentEnterExtension = createExtension(() => ({
   key: 'document-enter',
+  // Ahead of the code block's own Enter, which asks only what type the
+  // caret's block is and answers with `insertText`. Over a node selection
+  // that replaces the whole block, so the two selection kinds this file
+  // answers for never reached it.
+  runsBefore: ['code-block-keyboard-shortcuts'],
   keyboardShortcuts: {
     Enter: ({ editor }: { editor: ListEditor }) => {
       const { selection } = editor.prosemirrorState;

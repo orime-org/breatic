@@ -14,10 +14,8 @@
  * - A whole-document selection reaches `splitBlock.ts:55`, which hands the
  *   selection straight to `tr.split`; a selection resolved outside every block
  *   makes `prosemirror-transform` read `copy` off an undefined parent.
- * - A node selection reaches `NodeSelectionKeyboard.ts:48`, which inserts a
- *   bare `paragraph` (not the `blockContainer` a `blockGroup` accepts) at
- *   `$to.after() + 1` — one past the end of a document whose only block is
- *   selected.
+ * - A node selection reaches `NodeSelectionKeyboard.ts:52`, which inserts a
+ *   bare `paragraph` — not the `blockContainer` a `blockGroup` accepts.
  *
  * Both are shapes a reader reaches with the mouse: `Cmd`-A, and the platform's
  * select-node modifier over a block.
@@ -276,6 +274,59 @@ describe('Enter on a selection that spans blocks', () => {
       pressEnter(editor);
     }).not.toThrow();
     expect(textsOf(editor)).toEqual(['aa', '']);
+  });
+
+  it('keeps the quote when the block selected whole is inside one', () => {
+    // The fourth way to reach a split inside a quote, alongside the three
+    // A7b names. The block Enter opens is built from the schema's defaults,
+    // and `quoted` defaults to false, so the run came back cut in two.
+    const editor = open([
+      { type: 'paragraph', props: { quoted: true }, content: 'q one' },
+      { type: 'paragraph', props: { quoted: true }, content: 'q two' },
+      { type: 'paragraph', props: { quoted: true }, content: 'q three' },
+    ]);
+    selectBlock(editor, 1);
+
+    pressEnter(editor);
+
+    const quoted = (
+      editor.document as unknown as { props: Record<string, unknown> }[]
+    ).map((block) => block.props['quoted']);
+    expect(quoted).toEqual([true, true, true, true]);
+  });
+
+  it('opens an unquoted block after an unquoted one selected whole', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'plain' },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    selectBlock(editor, 0);
+
+    pressEnter(editor);
+
+    const quoted = (
+      editor.document as unknown as { props: Record<string, unknown> }[]
+    ).map((block) => block.props['quoted']);
+    expect(quoted).toEqual([false, false, false]);
+  });
+
+  it('leaves a code block selected whole standing, and opens one after it', () => {
+    // The code block registers an Enter of its own, and that handler asks only
+    // what type the caret's block is — a node selection over the block reaches
+    // it and `insertText` replaces what is selected.
+    const editor = open([
+      { type: 'paragraph', content: 'para one' },
+      { type: 'codeBlock', content: 'answer = 42' },
+    ]);
+    selectBlock(editor, 1);
+
+    pressEnter(editor);
+
+    const types = (editor.document as unknown as { type: string }[]).map(
+      (block) => block.type,
+    );
+    expect(types).toEqual(['paragraph', 'codeBlock', 'paragraph']);
+    expect(editor.prosemirrorState.doc.textContent).toBe('para oneanswer = 42');
   });
 
   it('leaves what is indented under the block selected whole where it was', () => {

@@ -114,6 +114,26 @@ const EIGHT = [
   },
 ] as const;
 
+/**
+ * Opens an editor holding one block, with the caret in it.
+ * @param block - The block to put in it.
+ * @returns The editor.
+ */
+function openFirst(
+  block: Record<string, unknown>,
+): ReturnType<typeof buildDocumentEditor> {
+  const editor = buildDocumentEditor({
+    fragment: documentBodyFragment(new Y.Doc()),
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, [block] as never);
+  editor.setTextCursorPosition(blocksOf(editor)[0]!.id, 'end');
+  return editor;
+}
+
 describe('Tab indents the block the caret is in', () => {
   EIGHT.forEach(({ label, block }) => {
     it(`moves ${label} under the block above it`, () => {
@@ -126,6 +146,21 @@ describe('Tab indents the block the caret is in', () => {
       expect(top[0]?.children).toHaveLength(1);
       expect(top[0]?.children[0]?.type).toBe(block.type);
     });
+  });
+
+  it('holds the key even where there is nothing to indent under', () => {
+    // BlockNote's own handler returns false when the block is first at its
+    // level, and a Tab it does not claim is a Tab the browser answers:
+    // measured in a browser, focus moved from the editor to `BODY` and the
+    // next five characters the reader typed reached nothing.
+    const editor = openFirst({ type: 'paragraph', content: 'the only block' });
+
+    expect(pressTab(editor)).toBe(true);
+
+    // Still one block, still at the top level: refusing to indent is right,
+    // and holding the key is what keeps the caret where the reader left it.
+    expect(blocksOf(editor)).toHaveLength(1);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(0);
   });
 
   it('moves a code block under the block above it, rather than typing spaces', () => {

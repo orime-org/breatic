@@ -153,6 +153,32 @@ describe('A11 — the delete chords on a whole-document selection', () => {
     });
   });
 
+  it('asks over a document whose one block is an empty code block', () => {
+    // The code block registers a Backspace of its own, and that handler asks
+    // only whether the caret's block is empty and of its type — a whole
+    // document selection satisfies both, so the confirmation this Space owes
+    // the reader was skipped and the document went.
+    const ask = vi.fn();
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+      extensions: [documentSelectAllExtension(ask)],
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'codeBlock', content: '' },
+    ] as never);
+    selectAll(editor);
+
+    expect(press(editor, 'Delete')).toBe(true);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(
+      (editor.document as unknown as { type: string }[])[0]?.type,
+    ).toBe('codeBlock');
+  });
+
   it('swallows the key when the host wired no confirmation', () => {
     // Absence of a handler must not mean deletion.
     const editor = open(null);
