@@ -380,3 +380,49 @@ describe('Enter over a selection that opens in an empty quoted block', () => {
     expect(editor.prosemirrorState.doc.textContent).not.toContain('keep');
   });
 });
+
+describe('a code block inside a quote', () => {
+  /**
+   * Puts the caret in the middle of the first block's text.
+   * @param editor - The editor.
+   */
+  function caretMidway(
+    editor: ReturnType<typeof buildDocumentEditor>,
+  ): void {
+    const view = editor.prosemirrorView;
+    let at = 0;
+    view.state.doc.descendants((node, pos) => {
+      if (!node.isTextblock) return true;
+      at = pos + 3;
+      return false;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, at)),
+    );
+  }
+
+  it('takes a newline the way one outside a quote does', () => {
+    // Its own handler answers Enter with a newline. Quoting it is a prop on
+    // the block, so nothing about the block's type has changed.
+    const editor = open([
+      { type: 'codeBlock', props: { quoted: true }, content: 'abcd' },
+    ]);
+    caretMidway(editor);
+
+    expect(pressEnter(editor)).toBe(true);
+
+    const blocks = blocksOf(editor);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe('codeBlock');
+    expect(editor.prosemirrorState.doc.textContent).toBe('ab\ncd');
+  });
+
+  it('answers the same way outside a quote', () => {
+    const editor = open([{ type: 'codeBlock', content: 'abcd' }]);
+    caretMidway(editor);
+
+    expect(pressEnter(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(1);
+    expect(editor.prosemirrorState.doc.textContent).toBe('ab\ncd');
+  });
+});

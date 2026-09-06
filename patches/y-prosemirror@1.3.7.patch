@@ -77,7 +77,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
      } else {
        const anchor = relativePositionToAbsolutePosition(
          binding.doc,
-@@ -730,6 +760,150 @@ export const createNodeFromYElement = (
+@@ -730,6 +760,161 @@ export const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -199,12 +199,23 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
 +
 +    let fallbackNode
 +    if (parentIsFragment) {
-+      // The fragment root holds one `blockGroup`, so the stand-in is wrapped
-+      // all the way up to it. Reading the root's own content expression keeps
-+      // this correct if that shape ever changes.
-+      const docType = schema.topNodeType
-+      if (docType !== undefined) {
-+        fallbackNode = wrapUpTo(docType.contentMatch, el.nodeName)
++      // The root holds ONE `blockGroup`, and the real group needs it. So the
++      // stand-in is built unwrapped: the root does not accept an
++      // `unsupportedBlock`, ProseMirror drops it for want of a slot, and this
++      // client shows the document one element short while every peer that
++      // knows the name shows it whole.
++      //
++      // Building it at all is what keeps the bytes: reaching the end of this
++      // block without one hands the element to the untouched catch below,
++      // which DELETES it from the shared document and broadcasts that.
++      //
++      // Wrapping it up to a `blockGroup` is what the position seems to ask
++      // for, and it takes the position instead of missing it — measured, an
++      // unknown element written AHEAD of the real group left this client
++      // showing an empty document while every peer showed it whole. Order
++      // decided which of the two survived.
++      if (blockFallback !== undefined) {
++        fallbackNode = blockFallback.create({ originalName: el.nodeName })
 +      }
 +    } else {
 +      const match = matchAtElement()
@@ -228,7 +239,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
    const children = []
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -1109,7 +1283,25 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1109,7 +1294,25 @@ export const attributesToMarks = (attrs, schema) => {
    const marks = []
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -255,7 +266,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
    }
    return marks
  }
-@@ -1121,6 +1313,11 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1121,6 +1324,11 @@ export const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {}
    marks.forEach((mark) => {

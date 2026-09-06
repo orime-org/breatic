@@ -44,16 +44,20 @@ interface TabEditor {
 }
 
 /**
- * The three block types that answer Enter with a handler of their own.
+ * The four block types that answer Enter with a handler of their own.
  *
- * Each of them registers that handler with the block, and a block's keymap is
- * reached before the one this file adds — so by the time Enter arrives here
- * over a list item, that handler has already declined it.
+ * Each registers that handler with the block, and this file's binding runs
+ * FIRST — measured, `document-enter` sits at priority 111 against their 101,
+ * and tiptap runs the higher number first. So reaching them is what declining
+ * here is for: claim one of these and the block's own answer never happens.
+ * The three list items split and carry their kind across; a code block takes
+ * a newline inside itself.
  */
-const LIST_ITEM_TYPES = [
+const OWN_ENTER_TYPES = [
   'numberedListItem',
   'bulletListItem',
   'checkListItem',
+  'codeBlock',
 ] as const;
 
 /**
@@ -112,9 +116,13 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     const { blockContent, bnBlock, childContainer } = info;
     const type = blockContent.node.type.name;
 
-    if (LIST_ITEM_TYPES.some((listType) => listType === type)) {
-      // A list item's own handler has already had this key and declined it,
-      // and the quote is one of the things it carries across itself.
+    if (OWN_ENTER_TYPES.some((ownType) => ownType === type)) {
+      // These answer Enter themselves and this file runs first, so declining
+      // is what lets them. Measured priorities: `document-enter` 111, the
+      // three list extensions and `code-block-keyboard-shortcuts` 101, and
+      // tiptap runs the higher number first. The quote is a prop on the block,
+      // so it rides along whatever they do — a list item carries it across a
+      // split, and a code block takes a newline without splitting at all.
       return false;
     }
     if (blockContent.node.attrs[QUOTED] !== true) {

@@ -99,6 +99,7 @@ function visit(build: (fragment: Y.XmlFragment) => void): {
   before: string;
   after: string;
   standIns: readonly string[];
+  text: string;
 } {
   const remote = new Y.Doc();
   build(documentBodyFragment(remote));
@@ -130,11 +131,15 @@ function visit(build: (fragment: Y.XmlFragment) => void): {
     return true;
   });
 
+  // What the reader sees, which is the other half of the contract: a stand-in
+  // that never arrives is only correct while the content around it does.
+  const text = editor.prosemirrorState.doc.textContent;
+
   // The whole suite shares one process, so an editor left standing keeps its
   // listeners and observers alive for every file after this one.
   editor.unmount();
 
-  return { before, after: fragment.toString(), standIns };
+  return { before, after: fragment.toString(), standIns, text };
 }
 
 
@@ -168,7 +173,7 @@ describe('an element name this build does not know', () => {
   });
 
   it('survives at the fragment root, where nothing can stand in for it', () => {
-    const { before, after, standIns } = visit((f) => {
+    const { before, after, standIns, text } = visit((f) => {
       f.insert(0, [
         group([container('a', [paragraph('keep me')])]),
         new Y.XmlElement('futureRootThing'),
@@ -185,6 +190,29 @@ describe('an element name this build does not know', () => {
     // were never touched. Measured rather than assumed: the patch does produce
     // a wrapped stand-in here, and ProseMirror drops it for want of a slot.
     expect(standIns).toEqual([]);
+    // And the content around it is all there.
+    expect(text).toBe('keep me');
+  });
+
+  it('leaves the content whole when it arrives BEFORE the group', () => {
+    // Same two children, the other way round. The root holds one `blockGroup`,
+    // so a stand-in wrapped up to one takes the position the real group needs.
+    const { before, after, standIns, text } = visit((f) => {
+      f.insert(0, [
+        new Y.XmlElement('futureRootThing'),
+        group([container('a', [paragraph('keep me')])]),
+      ]);
+    });
+    expect(after).toContain('futurerootthing');
+    expect(after).toBe(before);
+    // The reader's content is what has to survive, and it does — whichever
+    // order the two arrived in. The stand-in reaches the local document here
+    // and not in the case above: the root takes one `blockGroup`, and where
+    // the real one has not claimed it yet ProseMirror carries the stand-in in
+    // with it. Either way it is one element the reader may not recognise
+    // beside content that is all there, rather than an empty document.
+    expect(standIns).toEqual(['futureRootThing']);
+    expect(text).toBe('keep me');
   });
 
   it('survives in a blockContainer\'s child-group slot', () => {
