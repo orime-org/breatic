@@ -141,7 +141,7 @@ export const TurnActions = React.memo(function TurnActions({
           <span
             data-testid='turn-copied'
             role='status'
-            className='pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground'
+            className='pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground'
           >
             {t('chat.action.copied')}
           </span>
