@@ -141,8 +141,8 @@ describe('FLOW_NODE_TYPES', () => {
   });
 
   it('lets the pane have the strip back when a node carries no task', () => {
-    // Four zeros open nothing, so the column stops taking presses and a
-    // marquee or a pane drag can begin inside it.
+    // A node nobody has uploaded to draws no column at all, so the strip
+    // beside it is bare canvas: a marquee or a pane drag can begin in it.
     renderImage({
       kind: 'image',
       status: 'idle',
@@ -150,8 +150,8 @@ describe('FLOW_NODE_TYPES', () => {
       content: 'https://cdn.invalid/a.png',
     });
 
-    const column = screen.getByTestId('task-count-running').closest('div');
-    expect(column?.parentElement).toHaveClass('pointer-events-none');
+    expect(screen.queryByTestId('node-task-counts')).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^task-count-/)).toHaveLength(0);
   });
 
   // Critical path (collaborative text edit): the flow wrapper is the only layer

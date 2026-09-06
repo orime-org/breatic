@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The four counts outside a node's top-right corner (#186 §7.1).
+ * The counts outside a node's top-right corner (#186 §7.1).
  *
  * They are the whole of what the shared document says about this node's
  * tasks: four numbers, no entries, no ids. The rows behind a number are
  * fetched only when the reader asks for them by clicking it.
  *
- * The column is always there, whatever the numbers are, so a node does not
- * change size the moment its first task opens.
+ * A state this node has nothing in draws nothing, and a node with no task at
+ * all draws no column: zero is not a value this column renders, it is the
+ * absence of that count (user 2026-09-06). Most nodes on a canvas have never
+ * been uploaded to, and four dimmed zeroes on each of them is the loudest
+ * thing on the board while saying nothing. The counts that are there keep
+ * their lifecycle order, so the column reads the same way every time.
  */
 
 import type { JSX } from 'react';
@@ -86,14 +90,12 @@ function TaskCount({
       data-testid={`task-count-${status}`}
       aria-pressed={isOpen}
       aria-label={t(LABEL_KEY[status])}
-      // A state with nothing in it opens a list that says no more than the
-      // zero beside it already does.
-      disabled={value === 0}
       onClick={handleClick}
       className={cn(
-        'flex min-w-11 items-center justify-center gap-1.5 rounded-chrome border border-border bg-background px-2 py-1 text-2xs font-medium tabular-nums',
+        // The shape the shared `outline` variant draws, minus its hover text
+        // colour, which would take the state's own colour off the number.
+        'flex min-w-11 items-center justify-center gap-1.5 rounded-chrome border border-border bg-background px-2 py-1 text-2xs font-medium tabular-nums hover:bg-accent',
         TONE[status],
-        value === 0 && 'opacity-40',
         isOpen && 'border-current bg-muted',
       )}
     >
@@ -106,21 +108,24 @@ function TaskCount({
 const TaskCountMemo = React.memo(TaskCount);
 
 /**
- * Render the node's four task counts as a column of buttons.
+ * Render the states this node has tasks in as a column of buttons.
  * @param props - The column inputs.
  * @param props.counts - The four numbers from the shared document.
  * @param props.openFor - Which state's list is open, `null` when none is.
  * @param props.onOpen - Called with the state to open, or `null` to close.
- * @returns The column element.
+ * @returns The column element, or null when this node carries no task.
  */
 export function TaskCountColumn({
   counts,
   openFor,
   onOpen,
-}: TaskCountColumnProps): JSX.Element {
+}: TaskCountColumnProps): JSX.Element | null {
+  const shown = ORDER.filter((status) => counts[status] > 0);
+  if (shown.length === 0) return null;
+
   return (
     <div className='flex flex-col gap-1' data-testid='node-task-counts'>
-      {ORDER.map((status) => (
+      {shown.map((status) => (
         <TaskCountMemo
           key={status}
           status={status}

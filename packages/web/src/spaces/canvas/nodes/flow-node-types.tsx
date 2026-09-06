@@ -21,27 +21,15 @@ import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
-import type { NodeTaskCounts } from '@breatic/shared';
-import { cn } from '@web/lib/utils';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';
 import { failedTaskListToOpen } from '@web/spaces/canvas/types/node-view';
 
-/** A node with no task rows yet reads as four zeros rather than nothing. */
-const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
-
 /**
- * Whether a node's counts are all zero, so its column has nothing to open.
- * @param counts - The node's four counts.
- * @returns True when every one of them is zero.
+ * What a node whose document carries no counts yet reads as. It is the four
+ * numbers being absent, not the node having no tasks, so it stands in for
+ * them here and every reader downstream sees the same shape.
  */
-function noTasksYet(counts: NodeTaskCounts): boolean {
-  return (
-    counts.running === 0 &&
-    counts.done === 0 &&
-    counts.failed === 0 &&
-    counts.expired === 0
-  );
-}
+const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
 
 /** Prop surface every node body accepts from the ReactFlow wrapper. */
 interface InnerNodeProps {
@@ -171,10 +159,10 @@ function makeFlowNode(
       },
       [],
     );
-    // The four task counts sit outside the node's top-right corner and are
-    // always there, so a node does not change size the moment its first task
-    // opens (#186 §7.1). Which one is pressed is the panel's own state, so a
-    // second node's column never lights up from the first node's list.
+    // The task counts sit outside the node's top-right corner, one per state
+    // this node has something in (#186 §7.1). Which one is pressed is the
+    // panel's own state, so a second node's column never lights up from the
+    // first node's list.
     const taskCounts =
       data.kind === 'group' || data.kind === 'annotation'
         ? null
@@ -277,10 +265,7 @@ function makeFlowNode(
                   // a new position into the shared document. With every count
                   // at zero the column has nothing to open, and it stops
                   // taking presses at all so the pane keeps its marquee.
-                  className={cn(
-                    'nodrag absolute left-full top-0 ml-2',
-                    noTasksYet(taskCounts) && 'pointer-events-none',
-                  )}
+                  className='nodrag absolute left-full top-0 ml-2'
                   style={{
                     transform: `scale(${headerScale})`,
                     transformOrigin: 'top left',
