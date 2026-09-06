@@ -139,6 +139,18 @@ describe('NodeTaskPanel', () => {
     expect(screen.getByTestId('node-task-panel-loading')).toBeInTheDocument();
   });
 
+  it('says it is loading rather than miming the rows it will show', () => {
+    // A placeholder shaped like the rows shifts the whole panel the moment the
+    // real ones arrive, and it pulses on a canvas the user is working on. One
+    // line of type on a fixed box says the same thing and never moves
+    // (user 2026-09-06).
+    renderPanel({ isLoading: true, entries: [] });
+
+    const loading = screen.getByTestId('node-task-panel-loading');
+    expect(loading).toHaveTextContent('Loading');
+    expect(loading.querySelectorAll('.skeleton-shimmer')).toHaveLength(0);
+  });
+
   it('offers another try when the list could not be fetched', async () => {
     const onReload = vi.fn();
     renderPanel({ isError: true, entries: [], onReload });

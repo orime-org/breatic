@@ -213,6 +213,22 @@ describe('TaskRow', () => {
     );
   });
 
+  it('says which instant it is showing', () => {
+    // The same slot carries two different facts: a running row shows when the
+    // task began, a settled one when it ended. Without the word the reader has
+    // no way to tell which one is in front of them (user 2026-09-06).
+    renderRow({
+      status: 'running',
+      startedAt: '2026-09-04T18:30:00.000Z',
+      settledAt: null,
+    });
+    expect(screen.getByTestId('task-instant')).toHaveTextContent('Started');
+
+    cleanup();
+    renderRow({ status: 'done', settledAt: '2026-09-04T18:30:00.000Z' });
+    expect(screen.getByTestId('task-instant')).toHaveTextContent('Ended');
+  });
+
   it('shows a settled task’s end instant in the reader’s own day', () => {
     // 2026-09-04T18:30Z is still the 4th in UTC+8 and the 4th in UTC-4, so
     // this asserts the date the reader is in rather than a fixed slice of the

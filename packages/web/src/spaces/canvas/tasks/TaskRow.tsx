@@ -19,8 +19,8 @@ import { asTaskFailureReason } from '@breatic/shared';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
-import { TaskStatusBadge } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import {
   elapsedMs,
   formatDuration,
@@ -130,8 +130,12 @@ export const TaskRow = React.memo(function TaskRow({
   const note = settledNote(entry, t);
   // Whichever instant this row has: a running task says when it began, a
   // settled one when it ended. §7.1 asks a running row for both its elapsed
-  // time and the moment it started.
+  // time and the moment it started. One slot carrying two different facts
+  // needs the word too, or the reader cannot tell which one they are looking
+  // at (user 2026-09-06).
   const instant = entry.settledAt ?? entry.startedAt;
+  const instantKey =
+    entry.settledAt !== null ? 'canvas.task.endedAt' : 'canvas.task.startedAt';
 
   return (
     <div
@@ -139,7 +143,7 @@ export const TaskRow = React.memo(function TaskRow({
       className='flex flex-col gap-1.5 rounded-content-sm px-2 py-2 hover:bg-accent'
     >
       <div className='flex items-center gap-2'>
-        <TaskStatusBadge status={status} />
+        <TaskStatusDot status={status} />
         <span className='min-w-0 flex-1 truncate text-xs font-medium'>
           {entry.label}
         </span>
@@ -186,11 +190,13 @@ export const TaskRow = React.memo(function TaskRow({
             data-testid='task-instant'
             className='flex-1 text-2xs tabular-nums text-muted-foreground'
           >
-            {new Date(instant).toLocaleString(getLocale(), {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
+            {t(instantKey, {
+              when: new Date(instant).toLocaleString(getLocale(), {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
             })}
           </span>
         ) : null}

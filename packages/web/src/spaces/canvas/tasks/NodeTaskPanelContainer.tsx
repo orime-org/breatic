@@ -18,7 +18,7 @@ import { canvasApi, type NodeTaskEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
   clearRetryFile,

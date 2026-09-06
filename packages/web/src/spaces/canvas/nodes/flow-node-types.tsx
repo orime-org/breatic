@@ -20,7 +20,7 @@ import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { NodeTaskCounts } from '@breatic/shared';
 import { cn } from '@web/lib/utils';
 import type { NodeView } from '@web/spaces/canvas/types/node-view';

@@ -10,7 +10,7 @@
  * elsewhere. Passing them in keeps the table readable as a table.
  */
 
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /**
  * A button a task row can carry.

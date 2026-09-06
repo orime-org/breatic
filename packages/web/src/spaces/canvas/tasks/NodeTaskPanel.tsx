@@ -14,15 +14,14 @@
 
 import type { JSX } from 'react';
 import * as React from 'react';
-import { RotateCw, X } from 'lucide-react';
+import { Loader2, RotateCw, X } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Skeleton } from '@web/components/ui/skeleton';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /** What {@link NodeTaskPanel} renders and reports. */
 export interface NodeTaskPanelProps {
@@ -122,14 +121,12 @@ export function NodeTaskPanel({
       {isLoading ? (
         <div
           data-testid='node-task-panel-loading'
-          className='flex flex-col gap-1.5 px-3 pb-3'
+          className='flex items-center justify-center gap-2 px-3 pb-4 pt-1 text-2xs text-muted-foreground'
           role='status'
           aria-busy='true'
-          aria-label={t('canvas.task.panelTitle')}
         >
-          {[0, 1].map((i) => (
-            <Skeleton key={i} className='h-12 w-full rounded-content-sm' />
-          ))}
+          <Loader2 className='h-3.5 w-3.5 animate-spin' aria-hidden='true' />
+          {t('canvas.task.panelLoading')}
         </div>
       ) : isError ? (
         <div

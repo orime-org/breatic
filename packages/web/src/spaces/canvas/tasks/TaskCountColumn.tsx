@@ -19,7 +19,7 @@ import type { NodeTaskCounts } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusBadge';
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /**
  * Top to bottom, and the colour each one carries. The order is the task's own
