@@ -275,7 +275,7 @@
     "task": {
       "stillRunning": "這個任務還在跑。",
       "expired": "這個任務逾時了。",
-      "notStarted": "這次上傳沒能開始，再試一次。",
+      "couldNotStart": "這個任務沒能開始，再試一次。",
       "status": {
         "running": "執行中",
         "done": "完成",
@@ -302,7 +302,6 @@
       "failure": {
         "aborted": "上傳還沒完成就中斷了。",
         "over_cap": "這個檔案超過了上傳大小上限。",
-        "not_started": "它沒有開始。",
         "expired": "它逾時了。"
       }
     },

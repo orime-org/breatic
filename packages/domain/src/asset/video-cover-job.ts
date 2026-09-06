@@ -15,7 +15,7 @@
  *
  * The payload carries everything the worker needs, because a worker holds no
  * request context: the studio that pays for the cover, where the node lives,
- * and the lease generation the write-back has to be fenced with.
+ * and where on the canvas the write-back lands.
  */
 
 /** The queue a video cover extraction is asked for on. */

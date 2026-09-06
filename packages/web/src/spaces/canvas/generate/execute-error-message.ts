@@ -5,14 +5,14 @@
  * What a failed Generate submit says to the user.
  *
  * The failures are the task-create service's, not any one modality's: credits,
- * an already-locked node, and an outage mean the same thing whether the user
- * was generating a picture or a video, so they read the same way.
+ * full storage and an outage mean the same thing whether the user was
+ * generating a picture or a video, so they read the same way.
  */
 
 /**
- * Maps a failed execute request to a user-facing message. Credits, a locked
- * node, full storage and an outage are the meaningful task-create failures
- * (server `AppError`s).
+ * Maps a failed execute request to a user-facing message. Credits, full
+ * storage and an outage are the meaningful task-create failures (server
+ * `AppError`s).
  * @param status - The HTTP status, or undefined for a non-API error.
  * @param translate - The i18n translate function.
  * @returns A localized error message.

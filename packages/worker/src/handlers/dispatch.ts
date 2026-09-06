@@ -106,16 +106,14 @@ export interface TaskJobData {
  * (#1580 adversarial fix: retryable close self-fences the retry). BullMQ
  * 5.30 semantics (source-verified): `attemptsStarted` increments when
  * processing starts, so attempt N observes attemptsStarted === N;
- * `opts.attempts` is the total allowance (absent = 1). A failure lease
- * A terminal outcome may only be settled on a terminal attempt — settling a
- * retryable failure marks the row failed while the retry is still to come, and
- * the
- * retry (same gen, from the fixed job payload) is then fenced by the
- * collab CAS forever: the user gets billed for the successful retry while
- * the node keeps the stale error. Defensive: a missing attemptsStarted
- * counts as terminal (emitting a possibly-early close is the safer failure
- * mode — the QueueEvents net + CAS dedup absorb it; suppressing the only
- * close would strand the node until the sweeper).
+ * `opts.attempts` is the total allowance (absent = 1). A terminal outcome may
+ * only be settled on a terminal attempt: settling a retryable failure marks
+ * the row failed while the retry is still to come, and the reader sees that
+ * failure sitting on a task the next attempt goes on to finish. Defensive: a
+ * missing attemptsStarted counts as terminal — settling a possibly-early
+ * failure is the safer failure mode, since a row this settles is one `settle`
+ * refuses to move again, while suppressing the only settle leaves the row
+ * running until its budget is judged.
  * @param job - The BullMQ job (attempt counters + retry allowance).
  * @returns true when no further retries will follow this attempt.
  */
@@ -131,9 +129,10 @@ export function isTerminalAttempt(
  * residual: BullMQ double-live). A worker whose event loop stalled past
  * `lockDuration` is judged dead — the job is re-queued (or terminally
  * failed, with the crash net reclaiming the node) — but the stalled
- * handler itself may REVIVE and keep running. It must never touch money:
- * its write-backs are gen-fenced anyway, so billing would charge the user
- * for a result that can never land.
+ * handler itself may REVIVE and keep running. It must never touch money: its
+ * settle only moves a row that is still running, so a row the crash net has
+ * already ended ignores it — while a second charge has nothing but `billed_at`
+ * standing in its way.
  *
  * BullMQ's per-attempt job lock IS the fencing token: `job.extendLock`
  * atomically re-asserts ownership (Lua: lock value === token → renew for
@@ -407,9 +406,9 @@ async function runTaskBody(
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored
-    // result — idempotent (Y.Map LWW) and gen-fenced (a node someone
-    // legitimately re-opened since just drops it), so the only effect is
-    // closing a lease that was never closed.
+    // result — idempotent (Y.Map LWW), and `settle` reports it landed for a
+    // row already holding this outcome, so the redelivery publishes the
+    // result that never reached the node.
     const storedResult = existing.result as {
       model?: string;
       cost?: number;
@@ -926,9 +925,11 @@ async function recordGenerationActivity(args: {
  * re-record. Recording is idempotent (createGenerationSuccessIfAbsent backed
  * by the migration-0036 partial unique), so calling this more than once for a
  * task — double-live concurrent executions, or a redelivery — yields exactly
- * one history row per (task, node). Each node is isolated: a failure on node K
- * neither skips K+1..N nor escapes into BullMQ's retry machinery (mirrors
- * settleFailedBestEffort). Outputs whose url is not a string are skipped.
+ * one history row per (task, node). On a live run a node that cannot be
+ * recorded or settled fails the job, so BullMQ redelivers and the remaining
+ * nodes are reached on that pass; on the crash-net pass, where no delivery is
+ * left, node K's failure neither skips K+1..N nor escapes. Outputs whose url
+ * is not a string are skipped.
  * @param streamRedis - Redis client for the cross-service stream DB.
  * @param docName - Canvas doc the target nodes live in.
  * @param ctx - Shared task context + generation metadata.

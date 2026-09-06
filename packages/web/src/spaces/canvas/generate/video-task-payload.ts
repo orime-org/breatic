@@ -108,7 +108,7 @@ function sourceParams(
 /**
  * Builds the overwrite-mode task payload for a video-node Generate.
  * @param input - The node, project/space, model, params, prompt, mode, picked slots, references and lease gen.
- * @returns The `POST /canvas/tasks` request body (overwrite, gen-fenced).
+ * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
   return buildOverwriteTaskPayload({

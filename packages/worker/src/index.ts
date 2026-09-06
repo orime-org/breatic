@@ -199,7 +199,7 @@ export function startWorker(): void {
   // cleaned up here. The event carries only { jobId, failedReason }; we
   // re-fetch the job (retained by `removeOnFail` age) via a read-side Queue
   // for its data + terminal `finishedOn`. Runs once per instance (idempotent
-  // + gen-fenced, #1580 #7); the collab lease sweeper is the final backstop.
+  // #1580 #7); past that, the row waits to be judged against its budget.
   const tasksQueue = createQueue("tasks");
   const queueEvents = createQueueEvents("tasks");
   queueEvents.on("failed", ({ jobId, failedReason }) => {

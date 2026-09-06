@@ -20,8 +20,6 @@ export const TASK_FAILURE_REASONS = [
   "aborted",
   /** What landed is larger than an upload is allowed to be. */
   "over_cap",
-  /** Nothing was ever started: the row exists, the work does not. */
-  "not_started",
   /** The deadline passed with no result. */
   "expired",
 ] as const;

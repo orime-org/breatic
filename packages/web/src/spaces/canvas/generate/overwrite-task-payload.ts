@@ -5,11 +5,11 @@
  * The envelope every canvas Generate shares, whatever it generates.
  *
  * Generate modifies the node itself, so the task runs in `overwrite` mode
- * against `target_node_id`. A node carries several tasks at once (#186), so
- * what stops a stale panel from overwriting a newer result, so it must read
- * identically for every modality — hence one implementation rather than one
- * per panel. What each modality puts in `params` is its own business and stays
- * in its own builder.
+ * against `target_node_id`. A node carries several tasks at once (#186), so an
+ * overwrite claims nothing: the later result wins on the node and every task
+ * keeps its own on its row. This envelope reads identically for every
+ * modality — hence one implementation rather than one per panel. What each
+ * modality puts in `params` is its own business and stays in its own builder.
  */
 
 import type { TaskCreateInput } from '@breatic/shared';
@@ -29,8 +29,8 @@ export interface OverwriteTaskInput {
 }
 
 /**
- * Wraps already-assembled params in the overwrite, gen-fenced task envelope.
- * @param input - Task type, node, project/space, model, params and lease gen.
+ * Wraps already-assembled params in the overwrite task envelope.
+ * @param input - Task type, node, project/space, model and params.
  * @returns The `POST /canvas/tasks` request body.
  */
 export function buildOverwriteTaskPayload(

@@ -275,7 +275,7 @@
     "task": {
       "stillRunning": "This task is still running.",
       "expired": "This task ran out of time.",
-      "notStarted": "This upload could not be started. Try again.",
+      "couldNotStart": "This task could not be started. Try again.",
       "status": {
         "running": "Running",
         "done": "Done",
@@ -302,7 +302,6 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
-        "not_started": "This never started.",
         "expired": "This ran out of time."
       }
     },

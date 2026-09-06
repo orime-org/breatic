@@ -68,7 +68,7 @@ export async function openGenerationTasks(opts: {
         { err, nodeId, taskId: opts.taskId, projectId: opts.projectId },
         "node_task_open_failed",
       );
-      throw new AppError(503, t("canvas.task.notStarted"));
+      throw new AppError(503, t("canvas.task.couldNotStart"));
     }
     await publishCountsQuietly(docName, nodeId, opened.counts);
   }

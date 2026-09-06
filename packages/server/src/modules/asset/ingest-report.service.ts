@@ -8,7 +8,7 @@
  * write to, what it computed over what landed, and whether the upload finished
  * — so those facts are all a report may carry. Everything that decides
  * consequences (which studio pays, which node updates, whose upload this was,
- * which generation its event is fenced on) is read off the grant row the ticket
+ * which space it lives in) is read off the grant row the ticket
  * endpoint wrote.
  *
  * What a report can be:

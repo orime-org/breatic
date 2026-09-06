@@ -275,7 +275,7 @@
     "task": {
       "stillRunning": "这个任务还在跑。",
       "expired": "这个任务超时了。",
-      "notStarted": "这次上传没能开始，再试一次。",
+      "couldNotStart": "这个任务没能开始，再试一次。",
       "status": {
         "running": "运行中",
         "done": "完成",
@@ -302,7 +302,6 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
-        "not_started": "它没有开始。",
         "expired": "它超时了。"
       }
     },
