@@ -522,7 +522,8 @@ body {
 }
 
 /* The looks-empty hint ON the first invisible block (a document holding
-   nothing but empty paragraphs and headings — `document-placeholders` marks
+   nothing but empty paragraphs and headings —
+   `document-placeholders-blocknote` marks
    the block). Painted the way tiptap's official Placeholder paints: a
    zero-height float inside the node, so the hint sits on the line where
    typing will land without taking part in layout. */
@@ -545,7 +546,8 @@ body {
    the fallback.
 
    The label text arrives as a `data-label` decoration
-   (document-unsupported.ts says why a decoration and not renderHTML text —
+   (document-unsupported-blocknote.ts says why a decoration and not
+   renderHTML text —
    in one word: locale) and is painted here, the same attr() pattern as the
    empty-document placeholder above. The dashed border is the placeholder
    convention; muted tokens keep the box inert in both themes. */
@@ -685,10 +687,10 @@ body {
 
   /* The document's top and bottom breathing room, on the editable element
      itself rather than on the scroll viewport around it. On the viewport it
-     sat OUTSIDE the editor, so the bottom strip of it answered no clicks —
-     `document-click-to-write` listens on this element, and a press in that
-     strip reports the viewport as its target. Here the same 16px is interior,
-     and the editable surface reaches the scroller's own edge. */
+     sat OUTSIDE the editor, so the bottom strip of it answered no clicks: the
+     affordance that opens a block lives inside the editable element, and a
+     press in that strip reports the viewport as its target. Here the same 16px
+     is interior, and the editable surface reaches the scroller's own edge. */
   padding-block: 1rem;
 }
 
@@ -967,82 +969,13 @@ body {
   pointer-events: none;
 }
 
-.doc-body-editor .ProseMirror ul,
-.doc-body-editor .ProseMirror ol {
-  margin: 0.85em 0;
-  padding-inline-start: 1.5em;
-}
-
-.doc-body-editor .ProseMirror ul {
-  list-style-type: disc;
-}
-
-.doc-body-editor .ProseMirror ol {
-  list-style-type: decimal;
-}
-
-/* A list item's children carry block margins that do not belong inside it.
-   `listItem`'s content is `paragraph block*`, and `block` here is seven node
-   types: paragraph, heading, blockquote, codeBlock, bulletList, orderedList
-   and unsupportedBlock. Left alone each spaces itself as though it stood in
-   the body — up to 1.9em — inside an item whose siblings sit 0.3em apart.
-   (Counted from the schema. This said seven before too, listing the divider
-   and omitting unsupportedBlock, which made eight the true figure.)
-
-   THE SELECTOR IS `*` ON PURPOSE. Naming the types instead is how this was
-   written twice and wrong twice: first only `p`, then `p, ul, ol`, each time
-   covering the children that came to mind. `*` is right for a reason, not out
-   of laziness — the item owns the spacing of everything it holds, whatever
-   that turns out to be, so a node type added to the schema later needs no edit
-   here. Reachability was not the deciding factor either, and it is worth
-   noting how little it settles: the divider used to be the example of a child
-   reachable in three keystrokes, and the divider is gone (#111). Paste brings
-   the rest, and the rule outlives any particular list of them.
-
-   NAMING THE LIST IS WHAT PUTS IT ABOVE THE ELEMENT RULES, not where it sits
-   in the file. `*` contributes no specificity, so
-   `.doc-body-editor .ProseMirror li > *` scores the same as
-   `.doc-body-editor .ProseMirror blockquote` and the later of the two takes
-   the margin — which is how a first attempt at this rule appeared to work on
-   the children declared above it and silently lost to the quote and the code
-   block declared below. `:is(ul, ol) >` adds the element that tie was
-   missing. A list item has no other parent, so the extra step is true as well
-   as useful.
-
-   THAT BUYS ONE ELEMENT, NOT IMMUNITY. This is (0,2,2), so it outranks every
-   single-element rule in this block wherever it is written — and nothing else.
-   Anything below it that scores as much wins on order, and anything scoring
-   more wins from anywhere; both shapes are already in this block, the quote's
-   two `:nth-child(of …)` rules being the higher of them. So the test for a
-   rule added here is its own score against this one, NOT whether the reset
-   happens to be written above it. */
-.doc-body-editor .ProseMirror :is(ul, ol) > li > * {
-  margin: 0;
-}
-
-/* An item holding more than one block still needs them apart. `em` here is the
-   BLOCK'S own size, as everywhere else in this file — a paragraph's 0.85em and
-   a heading's 1.9em are read the same way. It is a `margin-top`, so the block
-   BELOW the gap is the one whose size sets it, and the gap tracks that rather
-   than landing on one figure: measured 4.5px above a paragraph, a quote or a
-   nested list, 6px above a heading (20px text) and 4.05px above a code block
-   (13.5px text). Reachable by pasting an
-   item that holds two paragraphs, or a paragraph and a quote. */
-.doc-body-editor .ProseMirror :is(ul, ol) > li > * + * {
-  margin-top: 0.3em;
-}
-
-/* Items sit apart from EACH OTHER, which is why this is `+` and not every
-   item. Written unconditionally it also lands on the first one, whose margin
-   then has nothing above it inside the list and collapses out through the
-   list's own — invisible while the list has a margin of its own to collapse
-   into, and 4.5px of unasked-for inset the moment something zeroes it. The
-   quote below does exactly that to its first child. What separates the first
-   item from whatever precedes the list is the LIST's margin; that is the one
-   the quote means to zero, and with `+` it is the only one there. */
-.doc-body-editor .ProseMirror li + li {
-  margin-top: 0.3em;
-}
+/* The list rules the delivered editor carried are gone with the elements they
+   named. BlockNote renders every list item as a `p` with a `data-content-type`
+   and draws its marker with `::before` — measured on a document holding all
+   eight enabled types, the editable surface contains no `ul`, `ol` or `li` at
+   all. What used to be `margin`, `padding-inline-start` and `list-style-type`
+   here is now the marker's own `min-width` plus the block spacing every block
+   type shares. */
 
 /* A QUOTE IS A PROP ON EACH BLOCK, not a container around them. BlockNote
    renders that prop as `data-quoted` on the block's own content element, and
@@ -1129,80 +1062,22 @@ body {
   margin-top: 0;
 }
 
-/* A quote is the one block here that holds other blocks, so it is the one that
-   has to CONTAIN their margins. Its own decoration is all inline-direction —
-   a left border and left padding — which leaves the block direction open, and
-   an open block direction is what lets a child's margin collapse out and stand
-   in for the quote's own. What reaches the screen is then whichever is larger,
-   and the child usually wins: a quote holding a heading opened with the
-   heading's 1.9em (45.6px) instead of the quote's 1.1em, and a quote inside a
-   list item sat 12.75px from its neighbours where the item's rhythm is 4.5px.
-
-   `flow-root` closes the block direction at any depth — a list inside the quote
-   cannot leak its items' margins either. The first and last child then have
-   their outer margins zeroed so the text still meets the quote's top and bottom
-   edges, which is how it looked while the margins were escaping.
-
-   Measured: quote inside a list item 12.75px -> 4.5px above and below, the same
-   with a list inside the quote; in the body a quote opening with a heading
-   45.59px -> 16.5px. Its own edges then read 0 to the block at each end
-   whatever that block is: measured with the first one a list, a paragraph and
-   a heading, and with the last one a list, top and bottom each time. */
-.doc-body-editor .ProseMirror blockquote {
-  display: flow-root;
-  margin: 1.1em 0;
-  padding-inline-start: 1em;
-  border-inline-start: 2px solid var(--color-border);
-  color: var(--color-muted-foreground);
-}
-
-/* THE FIRST CHILD ELEMENT IS NOT ALWAYS THE FIRST BLOCK, which is why neither
-   of these says `:first-child`. ProseMirror draws a caret by inserting an
-   element, and one on a block boundary lands as a direct child of the quote:
-   a remote collaborator resting at the quote's opening boundary puts a
-   `div.ProseMirror-widget` ahead of the first block. Zero the first CHILD's
-   margin and you zero the widget's, which it has none of, while the block
-   keeps its own — measured in the browser with a caret actually resting there,
-   the quote springs open by 30px and closes again when the caret leaves.
-
-   THE ORIGINAL MEASUREMENT USED A GAP CURSOR beside a divider, and the
-   divider is gone (#111). Gap-cursor positions still exist beside the
-   unsupported stand-in blocks: those render in an editable document now that
-   the intercept answers to the published schema version alone. Rare, but
-   reachable — and a remote caret is the same widget by the same mechanism,
-   the one this rule sees daily.
-
-   `:nth-child(1 of S)` says the thing directly: among the children that match
-   S, take the first. Counting only what is not a widget makes the match the
-   first BLOCK, however many widgets sit in front of it and wherever else they
-   sit. That last part is the reason this replaced a pair of selectors that
-   read `.ProseMirror-widget:first-child + *` — reaching past exactly one
-   widget, which is a guess about position, and a wrong one as soon as there
-   are two. Two is ordinary in a shared document: y-tiptap gives every remote
-   client its own caret widget, so a collaborator resting in the same gap adds
-   a second. Verified in the BROWSER against zero, one and two widgets, and
-   with one BETWEEN two blocks (where the block after it is correctly not
-   matched — it is not the first). Not in jsdom, which cannot answer this:
-   `document-quote-contains-its-blocks` records what its selector engine does
-   with `:nth-child(N of S)` and why the unit tests hold the shape instead.
-
-   `.ProseMirror-widget` is prosemirror-view's class for the widgets it builds
-   the DOM for; one declared `spec.raw` brings its own element and gets no
-   class, and would be counted as a block here. Nothing in this editor renders
-   a raw widget. Naming the block types instead of excluding widgets would go
-   stale with the schema — which it since has: the divider was one of them and
-   is gone (#111). */
-.doc-body-editor .ProseMirror blockquote > :nth-child(1 of :not(.ProseMirror-widget)) {
-  margin-top: 0;
-}
-
-.doc-body-editor .ProseMirror blockquote > :nth-last-child(1 of :not(.ProseMirror-widget)) {
-  margin-bottom: 0;
-}
+/* The quote rules the delivered editor carried are gone with the element they
+   named. A quote is a prop on each block here, not a container around them, so
+   there is no `blockquote` to contain a child's margins or to zero the outer
+   margins of its first and last child — measured on a document holding a quote
+   run, the editable surface contains no `blockquote` at all. The rules above
+   draw the run instead, off `data-quoted` and the two decorations that mark
+   where it opens and closes. */
 
 /* `:not(pre)` keeps this off the code inside a code block: TipTap renders that
    as `pre > code`, and two nested 0.9em multiply to 0.81em. */
+/* The face is said here because BlockNote sets one of its own:
+   `.bn-inline-content code { font-family: monospace }` names the generic
+   family, which each browser resolves to its own default — measured, inline
+   code came out in a different face from the code block beside it. */
 .doc-body-editor .ProseMirror :not(pre) > code {
+  font-family: var(--font-mono);
   font-size: 0.9em;
   padding: 0.1em 0.35em;
   background: var(--color-muted);
@@ -1214,10 +1089,15 @@ body {
    rather than being clipped. Overriding that to scroll horizontally instead is
    a slice of its own — it needs a NodeView to hold a scroller and a per-block
    toggle. */
+/* No margin of its own: the block around it carries the space between blocks,
+   the same 12.75px every other block type gets, and a margin here is added to
+   that one — measured, 27.59px above a code block against 12.75px everywhere
+   else. The value it carried came from the editor this Space replaced, where
+   `pre` WAS the block. */
 .doc-body-editor .ProseMirror pre {
   font-size: 0.9em;
   line-height: 1.6;
-  margin: 1.1em 0;
+  margin: 0;
   padding: 0.75em 1em;
   background: var(--color-muted);
   border-radius: var(--radius-content-sm);
@@ -1258,10 +1138,10 @@ body {
 }
 
 /* ---- Room to click under the last block ----
-   A document Space is born with no blocks at all, so the editable surface
-   has to reach the bottom of the scroll viewport: below where it stops
-   there is nothing for `document-click-to-write` to receive, and a click there
-   does nothing at all.
+   The editable surface has to reach the bottom of the scroll viewport: the
+   affordance that opens a block at the end of the document grows into
+   whatever is left of it, and below where the surface stops there is nothing
+   to press at all.
 
    The chain is three flex hops rather than percentage heights. Only the
    FIRST hop can use a percentage: the viewport has a definite height

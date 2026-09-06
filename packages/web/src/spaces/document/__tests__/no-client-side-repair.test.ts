@@ -27,9 +27,10 @@
  * whose content rule demands a first child binds an empty fragment,
  * ProseMirror fills the missing child locally, and the `setEditable` flip on
  * the viewer and history-preview paths flushes that phantom into the shared
- * document. Under `content: 'block*'` the root demands nothing, so the fill
- * never happens — the group holds the empty document through a read-only
- * build and both flips and asserts not one byte leaves this client.
+ * document. `doc` still demands one (`content: "blockGroup"`) and the fill
+ * still happens locally — what these cases hold is the other half: the group
+ * carries the empty document through a read-only build and both flips, and
+ * asserts not one byte leaves this client.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

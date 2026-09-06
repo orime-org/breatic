@@ -8,11 +8,12 @@
  * the bindings and the menu read one table and neither can move without the
  * other.
  *
- * Six of the nine arrive bound: `Mod-Alt-0` from the paragraph block
- * (`Paragraph/block.ts:58-77`), `Mod-Alt-1` through `Mod-Alt-6` from the
- * heading block (`Heading/block.ts:166-174`), and `Mod-Shift-7/8/9` from the
- * three list blocks — those last three left with the extensions replaced when
- * the ordered item was rebuilt (`document-list-block.ts`). Each built-in sets
+ * Seven of the nine arrive bound: `Mod-Alt-0` from the paragraph block
+ * (`Paragraph/block.ts:58-77`), `Mod-Alt-1` through `Mod-Alt-3` from the
+ * heading block (`Heading/block.ts:166-174`, which binds up to six), and
+ * `Mod-Shift-7/8/9` from the three list blocks — those last three left with
+ * the extensions replaced when the ordered item was rebuilt
+ * (`document-list-block.ts`). Each built-in sets
  * the block to that type unconditionally, which §3.2 contradicts twice over:
  * pressing a row the block already has is a cancel, and an ordered item that
  * becomes a heading keeps its number.

@@ -140,7 +140,7 @@ export function DocumentSpace({
   const shown = hasEverSynced ? handle : null;
 
   // The guarded whole-document delete: the extension asks instead of deleting
-  // (see document-select-all.ts), and this mount answers with the dialog.
+  // (see document-select-all-guard.ts), and this mount answers with the dialog.
   const [clearAsked, setClearAsked] = React.useState(false);
   React.useEffect(() => {
     if (!handle) return undefined;

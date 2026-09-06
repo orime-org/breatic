@@ -22,7 +22,7 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
-import { ORDERED_LIST } from '@web/spaces/document/document-list-block';
+import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 
 /** The nine rows the menu offers. */
 export type BlockTypeId =
@@ -165,7 +165,7 @@ function contentAt(doc: PMNode, pos: number): PMNode | null {
  */
 function isRow(content: PMNode, id: BlockTypeId): boolean {
   if (id === 'quote') {
-    return content.attrs['quoted'] === true;
+    return content.attrs[QUOTED] === true;
   }
   const level = LEVEL_OF_ROW[id];
   if (level !== undefined) {

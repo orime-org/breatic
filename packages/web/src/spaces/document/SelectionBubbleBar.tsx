@@ -98,31 +98,12 @@ import {
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 import { DocumentLinkPopover } from '@web/spaces/document/DocumentLinkPopover';
+import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 
 /** The document editor, as far as the bar needs to know. */
 type BubbleEditor = ViewedEditor;
-
-/**
- * Calls back whenever anything the bar reads may have moved.
- *
- * The editor reports a document change and a selection change separately, and
- * the bar depends on both: what it offers follows the content, where it sits
- * follows the selection.
- * @param editor - The editor to watch.
- * @param react - What to run.
- * @returns Unsubscribe.
- */
-function onEditorSettled(editor: BubbleEditor, react: () => void): () => void {
-  const stopChange = editor.onChange(react);
-  const stopSelection = editor.onSelectionChange(react);
-  return () => {
-    stopChange?.();
-    stopSelection();
-  };
-}
-
 
 /** One run of controls, drawn between two separators. */
 interface BubbleGroup {

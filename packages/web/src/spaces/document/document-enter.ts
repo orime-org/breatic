@@ -241,14 +241,6 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
 }
 
 /**
- * The extension that binds Enter for the whole document.
- *
- * Reached after the block's own keymap, which the three list types register
- * their handler with. What this file answers is what no block can: the two
- * selection kinds that are not resolved inside any block, and the quote,
- * which is a prop rather than a block type.
- */
-/**
  * Tab and Shift-Tab, for every selection rather than for a caret alone.
  *
  * The move and the question of whether it is possible are the same call:
@@ -280,6 +272,14 @@ export const documentTabExtension = createExtension(() => ({
   },
 }) as never);
 
+/**
+ * The extension that binds Enter for the whole document.
+ *
+ * Runs BEFORE the handlers the blocks register, so what it declines is what
+ * reaches them. What it answers is what no block can: the two selection kinds
+ * that are not resolved inside any block, and the quote, which is a prop
+ * rather than a block type.
+ */
 export const documentEnterExtension = createExtension(() => ({
   key: 'document-enter',
   // Ahead of the code block's own Enter, which asks only what type the

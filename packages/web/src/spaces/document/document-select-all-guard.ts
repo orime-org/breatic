@@ -9,11 +9,18 @@
  * loses the stack the moment the tab closes — so on that one tier the key asks
  * instead of deleting. Every other selection keeps the stock behaviour.
  *
- * Two channels reach a deletion and both funnel into one guard: the chords
- * tiptap's keymap binds, which is still underneath BlockNote, and
- * `beforeinput`, which is how a browser's Edit menu deletes without ever
+ * Two channels reach a deletion and both funnel into one guard: the chords,
+ * and `beforeinput`, which is how a browser's Edit menu deletes without ever
  * firing a keydown — desktop `prosemirror-view` handles that event for Android
  * only.
+ *
+ * Nothing else in this editor binds those chords. Measured on a mounted
+ * editor: `Backspace`, `Mod-Backspace`, `Ctrl-h` and `Ctrl-d` all go unclaimed
+ * without this extension, so a plain deletion reaches the document as a DOM
+ * change ProseMirror reads back. What the list mirrors is `prosemirror-commands`'
+ * own base keymap — the set of chords ProseMirror itself treats as deleting —
+ * so a key it counts and this guard does not is a hole rather than a
+ * disagreement about who binds what.
  *
  * Clearing leaves ONE EMPTY PARAGRAPH. BlockNote's schema is
  * `doc > blockGroup > blockGroupChild+` (`BlockGroup.ts:11`), so a document

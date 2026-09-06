@@ -124,7 +124,9 @@ describe('chat prose stylesheet — scope and scrolling', () => {
   it('leaves the document body rules in place', () => {
     const css = read('index.css');
     expect(css).toContain('.doc-body-editor .ProseMirror p');
-    expect(css).toContain('.doc-body-editor .ProseMirror blockquote');
+    // A quote is a prop on each block there, so the rule that draws one reads
+    // that prop rather than naming an element.
+    expect(css).toContain('.doc-body-editor .ProseMirror [data-quoted=\'true\']');
     expect(css).toMatch(/\.doc-body-editor \.ProseMirror h1\s*\{/);
   });
 

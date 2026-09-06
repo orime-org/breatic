@@ -24,6 +24,28 @@ import type { BlockNoteEditor } from '@blocknote/core';
 export type SnapshotEditor = BlockNoteEditor<never, never, never>;
 
 /**
+ * Calls back whenever anything read off the editor may have moved.
+ *
+ * The editor reports a document change and a selection change separately, and
+ * every reader here depends on both: what a control offers follows the
+ * content, where it sits follows the selection.
+ * @param editor - The editor to watch.
+ * @param react - What to run.
+ * @returns Unsubscribe.
+ */
+export function onEditorSettled(
+  editor: SnapshotEditor,
+  react: () => void,
+): () => void {
+  const stopChange = editor.onChange(react);
+  const stopSelection = editor.onSelectionChange(react);
+  return () => {
+    stopChange?.();
+    stopSelection();
+  };
+}
+
+/**
  * Follows a value derived from the editor.
  * @param editor - The editor to watch.
  * @param read - Derives the value. Called on every render and on every change.
@@ -38,14 +60,7 @@ export function useEditorSnapshot<T>(
   isEqual: (a: T, b: T) => boolean = Object.is,
 ): T {
   const subscribe = React.useCallback(
-    (onStoreChange: () => void) => {
-      const stopChange = editor.onChange(onStoreChange);
-      const stopSelection = editor.onSelectionChange(onStoreChange);
-      return () => {
-        stopChange?.();
-        stopSelection();
-      };
-    },
+    (onStoreChange: () => void) => onEditorSettled(editor, onStoreChange),
     [editor],
   );
 

@@ -27,6 +27,7 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { QUOTED } from '@web/spaces/document/document-list-block';
 import type { QuoteRun } from '@web/spaces/document/document-quote-runs';
 
 
@@ -79,7 +80,7 @@ function describe(container: PMNode): Block {
     id: String(container.attrs['id']),
     type: content.type.name,
     numbered: content.attrs['numbered'] === true,
-    quoted: content.attrs['quoted'] === true,
+    quoted: content.attrs[QUOTED] === true,
     level: typeof level === 'number' ? level : 1,
     pinned: pinnedNumber(content.attrs['number']),
   };

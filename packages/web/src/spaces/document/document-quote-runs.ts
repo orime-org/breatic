@@ -19,8 +19,7 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-/** The prop that says a block sits inside a quote. */
-const QUOTED = 'quoted';
+import { QUOTED } from '@web/spaces/document/document-list-block';
 
 /**
  * Every block id in a document, in reading order, with whether it is quoted.
