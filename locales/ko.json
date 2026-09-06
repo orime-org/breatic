@@ -249,6 +249,7 @@
       "more": "+{count, number}"
     },
     "thinking": "잠시 생각했습니다",
+    "thinkingNow": "생각 중",
     "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다"
   },
   "canvas": {

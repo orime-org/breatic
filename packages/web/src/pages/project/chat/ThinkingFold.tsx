@@ -12,6 +12,8 @@ interface ThinkingFoldProps {
   thinking: string;
   /** How long the turn thought, in milliseconds. Absent on turns stored before it was measured. */
   ms?: number;
+  /** Whether the turn this belongs to is still going. */
+  running?: boolean;
 }
 
 /**
@@ -22,11 +24,13 @@ interface ThinkingFoldProps {
  * @param root0 - The component props.
  * @param root0.thinking - The assistant's thinking text to show when expanded.
  * @param root0.ms - How long the turn thought, in milliseconds.
+ * @param root0.running - Whether the turn this belongs to is still going.
  * @returns The collapsible thinking block.
  */
 export function ThinkingFold({
   thinking,
   ms,
+  running,
 }: ThinkingFoldProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -36,10 +40,16 @@ export function ThinkingFold({
   // half a second would round to none at all -- a line saying it thought for
   // no time is a line that contradicts itself.
   const seconds = ms === undefined ? undefined : Math.max(1, Math.round(ms / 1000));
-  const label =
-    seconds === undefined
-      ? t('chat.thinking')
-      : t('chat.thinkingFor', { m: Math.floor(seconds / 60), s: seconds % 60 });
+  // Three things this line can be saying, and which one is settled by the
+  // turn rather than by whether a figure happens to have arrived. The figure
+  // is sent when the thinking stops, so a turn still going has none to say --
+  // and saying it thought for a while while it is still thinking is the line
+  // reading back to front. A turn that has stopped and carries no figure is
+  // the third: it did think for a while, and how long is what is missing.
+  let label: string;
+  if (running === true) label = t('chat.thinkingNow');
+  else if (seconds === undefined) label = t('chat.thinking');
+  else label = t('chat.thinkingFor', { m: Math.floor(seconds / 60), s: seconds % 60 });
   return (
     <div
       data-testid='thinking-fold'

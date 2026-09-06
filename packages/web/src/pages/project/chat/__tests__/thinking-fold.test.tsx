@@ -14,6 +14,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import type { UIMessage } from 'ai';
@@ -59,6 +60,43 @@ describe('how long it thought', () => {
     render(<ThinkingFold thinking='x' />);
 
     expect(screen.getByTestId('thinking-fold-toggle').textContent).not.toBe('');
+  });
+});
+
+describe('what the line says while the thinking is still going', () => {
+  // 时长是思考停下来那一刻才发的，所以从第一个字到那一刻之间没有数可说。
+  // 那段时间里这条线说的必须是「还在想」，不是「想过了」。
+  it('says it is thinking, not that it thought', () => {
+    render(<ThinkingFold thinking='想到一半' running />);
+
+    const live = screen.getByTestId('thinking-fold-toggle').textContent;
+    cleanup();
+    render(<ThinkingFold thinking='想完了' />);
+    const settled = screen.getByTestId('thinking-fold-toggle').textContent;
+
+    expect(live).not.toBe(settled);
+  });
+
+  it('says how long only once the thinking has stopped', () => {
+    // 一轮还在跑的时候手里可能已经有一个中途的数，说出来就是在报一个
+    // 还会变的数字。
+    render(<ThinkingFold thinking='想到一半' ms={6200} running />);
+
+    expect(screen.getByTestId('thinking-fold-toggle').textContent ?? '').not.toContain('6');
+  });
+
+  it('is what a running turn hands it', () => {
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: '', thinking: '想到一半', streaming: true }}
+      />,
+    );
+    const live = screen.getByTestId('thinking-fold-toggle').textContent;
+    cleanup();
+
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'a', thinking: '想完了' }} />);
+
+    expect(live).not.toBe(screen.getByTestId('thinking-fold-toggle').textContent);
   });
 });
 

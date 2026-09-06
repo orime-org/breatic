@@ -249,6 +249,7 @@
       "more": "+{count, number}"
     },
     "thinking": "Thought for a moment",
+    "thinkingNow": "Thinking",
     "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s"
   },
   "canvas": {
