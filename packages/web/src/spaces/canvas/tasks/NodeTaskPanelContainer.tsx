@@ -10,7 +10,7 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { NodeToolbar, Position } from '@xyflow/react';
+import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -24,6 +24,7 @@ import {
   clearRetryFile,
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
+import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
 import { useCanvasStore } from '@web/stores/canvas';
 
 /** What this panel reads off its host: that it exists, and its four counts. */
@@ -75,6 +76,7 @@ function OpenNodeTaskPanel({
   onRetry,
 }: OpenNodeTaskPanelProps): React.JSX.Element {
   const t = useTranslation();
+  const zoom = useStore((s) => s.transform[2]);
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const queryClient = useQueryClient();
   // Close when the host disappears (a collaborator deletes it) — mirrors the
@@ -154,11 +156,17 @@ function OpenNodeTaskPanel({
   );
 
   return (
-    // Offset past the counts column, which sits at the node's right edge with
-    // an 8px margin and is 44px wide (`TaskCountColumn`, `min-w-11`). Without
-    // it the list paints over the very buttons that switch and close it, since
-    // the toolbar portals out at a z-index above the node's own layer.
-    <NodeToolbar nodeId={nodeId} isVisible position={Position.Right} offset={60}>
+    // Offset past the counts column. xyflow adds this after the zoom multiply,
+    // so it is screen pixels — and the column is not one measurement but two,
+    // only one of which is a screen constant. Without following the zoom the
+    // list paints over the very buttons that switch and close it, since the
+    // toolbar portals out at a z-index above the node's own layer.
+    <NodeToolbar
+      nodeId={nodeId}
+      isVisible
+      position={Position.Right}
+      offset={countsColumnOffset(zoom)}
+    >
       <NodeTaskPanel
         status={status}
         entries={entries}

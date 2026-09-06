@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   OVERLAY_SCALE_FLOOR_ZOOM,
+  countsColumnOffset,
   overlayCounterScale,
 } from '@web/spaces/canvas/overlay-scale';
 
@@ -46,5 +47,25 @@ describe('overlayCounterScale (constant screen size down to a floor zoom)', () =
 
   it('exposes the default floor as 50% zoom', () => {
     expect(OVERLAY_SCALE_FLOOR_ZOOM).toBe(0.5);
+  });
+});
+
+describe('countsColumnOffset', () => {
+  // The column is 8 flow px of margin plus a 44 screen px box. At zoom 1 both
+  // read the same, which is how a constant 60 passed for a fix.
+  it('clears the column at 100% zoom', () => {
+    expect(countsColumnOffset(1)).toBe(60);
+  });
+
+  // Past 200% the margin alone has outgrown the clearance a constant 60 left.
+  it('grows with the margin as the canvas zooms in', () => {
+    expect(countsColumnOffset(2)).toBe(68);
+    expect(countsColumnOffset(8)).toBe(116);
+  });
+
+  // Below the counter-scale floor the box shrinks with the canvas, so the
+  // offset follows it down rather than holding a gap wider than the node.
+  it('follows the column down below the counter-scale floor', () => {
+    expect(countsColumnOffset(0.25)).toBeLessThan(countsColumnOffset(1));
   });
 });

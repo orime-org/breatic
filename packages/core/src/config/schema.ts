@@ -312,16 +312,6 @@ export const coreConfigSchema = z.object({
   // through `wrangler secret put` (`.dev.vars` locally); both sides
   // read it from their own runtime's injection point.
   INGEST_SHARED_SECRET: z.string().default(""),
-  // Where the ingest Worker reaches us. A task timer is handed the address
-  // to knock on when a deadline passes, and it lives at Cloudflare's edge —
-  // so it needs the address the internet knows us by, not the one this
-  // process is listening on. Trailing slashes are stripped for the same
-  // reason as the base above: the paths appended here start with one.
-  PUBLIC_API_BASE_URL: z
-    .string()
-    .default("")
-    .transform((value) => value.replace(/\/+$/, "")),
-
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
   UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),

@@ -31,3 +31,31 @@ export function overlayCounterScale(
   if (zoom <= 0) return 1;
   return 1 / Math.max(zoom, floorZoom);
 }
+
+/** Screen width the counts column holds at or above the counter-scale floor. */
+const COUNTS_COLUMN_WIDTH = 44;
+
+/** Gap between the node's edge and the column, in flow units (`ml-2`). */
+const COUNTS_COLUMN_GAP = 8;
+
+/** Gap the reader sees between the column and whatever is anchored past it. */
+const CLEARANCE = 8;
+
+/**
+ * How far past a node's right edge something has to sit to clear its task
+ * counts column, in screen pixels.
+ *
+ * The column is two measurements in different units: its `ml-2` gap is laid
+ * out inside the node and so scales with the canvas, while its box is
+ * counter-scaled and holds a constant screen width (down to the scale floor).
+ * Anything positioned in screen pixels — an xyflow `NodeToolbar` offset, which
+ * is added after the zoom multiply — has to add them up at the current zoom or
+ * it only clears the column at the one zoom it was measured at.
+ * @param zoom - The current canvas zoom (ReactFlow `transform[2]`).
+ * @returns The offset in screen pixels.
+ */
+export function countsColumnOffset(zoom: number): number {
+  const gap = COUNTS_COLUMN_GAP * Math.max(zoom, 0);
+  const box = COUNTS_COLUMN_WIDTH * overlayCounterScale(zoom) * Math.max(zoom, 0);
+  return gap + box + CLEARANCE;
+}
