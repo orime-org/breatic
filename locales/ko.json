@@ -231,12 +231,11 @@
       "backToReference": "참조 {index}(으)로 돌아가기"
     },
     "action": {
-      "copy": "복사"
+      "copy": "복사",
+      "copied": "복사했습니다"
     },
     "sources": {
-      "title": "출처",
-      "label": "출처:",
-      "more": "+{count, number}"
+      "count": "출처 {count, number}"
     },
     "code": {
       "copy": "코드 복사",

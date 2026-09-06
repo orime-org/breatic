@@ -8,7 +8,6 @@ import { cn } from '@web/lib/utils';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { AssetRow } from '@web/pages/project/chat/AssetRow';
-import { SourceRow } from '@web/pages/project/chat/SourceRow';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
@@ -126,13 +125,6 @@ export const MessageBubble = React.memo(function MessageBubble({
           {running || message.assets === undefined ? null : (
             <AssetRow assets={message.assets} />
           )}
-          {/* Where the answer came from. Content rather than process, so unlike
-            the line above it stays once the turn has ended -- and it is drawn
-            only then, because a row that grows as searches come back would
-            move under the reader while they are still reading. */}
-          {running || message.sources === undefined ? null : (
-            <SourceRow sources={message.sources} />
-          )}
           {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
@@ -141,12 +133,14 @@ export const MessageBubble = React.memo(function MessageBubble({
         </div>
         {/* Offered on a settled message only. A reply still arriving has
             nothing to copy yet and asking for it again mid-flight would race
-            the turn that is running. */}
-        {running || message.content === '' ? null : (
+            the turn that is running. Where the answer came from is on this
+            line too, so a turn that searched and said nothing still has one. */}
+        {running || (message.content === '' && message.sources === undefined) ? null : (
           <TurnActions
             text={message.content}
             {...(isUser ? { onHoverOnly: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
+            {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}
           />
         )}
       </div>

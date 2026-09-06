@@ -231,12 +231,11 @@
       "backToReference": "回到引用 {index}"
     },
     "action": {
-      "copy": "复制"
+      "copy": "复制",
+      "copied": "复制成功"
     },
     "sources": {
-      "title": "来源",
-      "label": "来源：",
-      "more": "+{count, number}"
+      "count": "来源 {count, number}"
     },
     "code": {
       "copy": "复制代码",

@@ -18,6 +18,19 @@ import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
+/**
+ * The band the header occupies.
+ *
+ * The 1px rule along the bottom is inside these 40, so centring against what
+ * is left of them puts the icons and the name half a pixel above the middle
+ * of the band the reader sees. The 1px of padding on top balances it.
+ */
+const HEADER_BOX: React.CSSProperties = {
+  height: 40,
+  padding: '1px var(--space-4) 0',
+  gap: 'var(--space-2)',
+};
+
 interface AgentColHeaderProps {
   conversationName: string;
   conversationNamePlaceholder: string;
@@ -84,7 +97,7 @@ export function AgentColHeader({
         'flex shrink-0 items-center border-b border-border bg-background',
         active ? 'text-foreground' : 'text-muted-foreground',
       )}
-      style={{ height: 40, padding: '0 var(--space-4)', gap: 'var(--space-2)' }}
+      style={HEADER_BOX}
     >
       <Tooltip>
         <TooltipTrigger asChild>

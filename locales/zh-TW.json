@@ -231,12 +231,11 @@
       "backToReference": "回到引用 {index}"
     },
     "action": {
-      "copy": "複製"
+      "copy": "複製",
+      "copied": "複製成功"
     },
     "sources": {
-      "title": "來源",
-      "label": "來源：",
-      "more": "+{count, number}"
+      "count": "來源 {count, number}"
     },
     "code": {
       "copy": "複製程式碼",

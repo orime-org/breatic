@@ -231,12 +231,11 @@
       "backToReference": "Back to reference {index}"
     },
     "action": {
-      "copy": "Copy"
+      "copy": "Copy",
+      "copied": "Copied"
     },
     "sources": {
-      "title": "Sources",
-      "label": "Sources:",
-      "more": "+{count, number}"
+      "count": "Sources {count, number}"
     },
     "code": {
       "copy": "Copy code",

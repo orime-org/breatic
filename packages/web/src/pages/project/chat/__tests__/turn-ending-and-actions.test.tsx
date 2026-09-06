@@ -12,10 +12,12 @@
  * tabbed to with nothing visible there.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { COPY_ANSWER_MS } from '@web/pages/project/chat/TurnActions';
 
 afterEach(cleanup);
 
@@ -144,5 +146,62 @@ describe('the copy on a reader\'s own message', () => {
     render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
 
     expect(screen.getByTestId('turn-copy')).not.toHaveAttribute('title');
+  });
+});
+
+describe('what pressing copy says back', () => {
+  /**
+   * Press copy on the message that is on screen.
+   * @returns Nothing.
+   */
+  const press = async (): Promise<void> => {
+    await userEvent.click(screen.getByTestId('turn-copy'));
+  };
+
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+  });
+
+  it('says nothing before it is pressed', () => {
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
+
+    expect(screen.queryByTestId('turn-copied')).not.toBeInTheDocument();
+  });
+
+  it('answers with a mark and a word once it is pressed', async () => {
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
+
+    await press();
+
+    expect(await screen.findByTestId('turn-copied')).toBeInTheDocument();
+  });
+
+  it('goes back to offering copy after a moment', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
+      await press();
+      expect(await screen.findByTestId('turn-copied')).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(COPY_ANSWER_MS + 50);
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(screen.queryByTestId('turn-copied')).not.toBeInTheDocument());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers the same way under a reader\'s own message', async () => {
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    await press();
+
+    expect(await screen.findByTestId('turn-copied')).toBeInTheDocument();
   });
 });

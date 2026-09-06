@@ -34,7 +34,7 @@ import {
 import { citationPlugin } from '@web/pages/project/chat/citation-plugin';
 import { CodeBlock } from '@web/pages/project/chat/CodeBlock';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
-import { SourceChip } from '@web/pages/project/chat/SourceChip';
+import { CitationMark } from '@web/pages/project/chat/CitationMark';
 import type { ChatSource } from '@web/pages/project/chat/types';
 
 interface MarkdownMessageProps {
@@ -338,7 +338,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
       'citation-chip': ({ index }: { index?: string }): ReactElement | null => {
         const cited = citations?.[Number(index)];
         if (cited === undefined) return null;
-        return <SourceChip source={cited} label={String(Number(index))} testId='citation-chip' />;
+        return <CitationMark source={cited} index={Number(index)} />;
       },
     }),
     [citations],

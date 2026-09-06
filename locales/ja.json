@@ -231,12 +231,11 @@
       "backToReference": "参照 {index} に戻る"
     },
     "action": {
-      "copy": "コピー"
+      "copy": "コピー",
+      "copied": "コピーしました"
     },
     "sources": {
-      "title": "出典",
-      "label": "出典：",
-      "more": "+{count, number}"
+      "count": "出典 {count, number}"
     },
     "code": {
       "copy": "コードをコピー",

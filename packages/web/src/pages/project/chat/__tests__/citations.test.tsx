@@ -4,14 +4,14 @@
 /**
  * What the reader sees of where an answer came from.
  *
- * Two places. A marker sits where the claim it supports is written, and a row
- * at the foot of the reply lists every page the turn found -- including the
+ * Two places. A marker sits where the claim it supports is written, and the
+ * line under the reply says how many pages the turn found -- including the
  * ones the model never cited, which is what three of the products that ship
- * this say their end list is for.
+ * this say their end list is for. The list itself is behind that count.
  *
- * A marker only becomes a chip when there is a source behind it. The model
+ * A marker only becomes a ring when there is a source behind it. The model
  * writes these numbers itself, so `[7]` against three sources is a number it
- * invented; drawn as a chip it would be a chip that points nowhere, which is
+ * invented; drawn as a ring it would be a ring that points nowhere, which is
  * the exact thing a citation is supposed to rule out.
  */
 
@@ -39,23 +39,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/**
- * Give jsdom the layout it has none of, for a row that measures itself.
- * @param root0 - The sizes to report.
- * @param root0.row - How wide the row is.
- * @param root0.item - How wide each thing in it is.
- */
-function withLayout({ row, item }: { row: number; item: number }): void {
-  const real = Element.prototype.getBoundingClientRect;
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
-    this: Element,
-  ): DOMRect {
-    const width = this.getAttribute('data-testid') === 'source-chip' ? item : row;
-    return { ...real.call(this), width } as DOMRect;
-  });
-}
-
 describe('a marker in the prose', () => {
+  it('is a circle carrying the number it was written with, and nothing else', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'The silhouette comes from Victorian dress [1].',
+          citations: { 1: source(1) },
+        }}
+      />,
+    );
+
+    const chip = screen.getByTestId('citation-chip');
+    expect(chip.className).toMatch(/rounded-full/);
+    expect(chip.textContent).toBe('1');
+    expect(chip.querySelector('[aria-hidden]')).toBeNull();
+  });
+
   it('becomes a chip carrying the number it was written with', () => {
     render(
       <MessageBubble
@@ -138,76 +140,74 @@ describe('a marker in the prose', () => {
   });
 });
 
-describe('the row at the foot of the reply', () => {
-  it('says what the row is before listing it', () => {
-    // Publisher names alone are a line of proper nouns with nothing saying
-    // what they have to do with the answer above them.
+describe('the line at the foot of the reply', () => {
+  it('offers copy first and the sources after it', () => {
     render(
       <MessageBubble
         message={{ id: 'm', role: 'assistant', content: 'answer', sources: [source(1)] }}
       />,
     );
 
-    expect(screen.getByTestId('source-row-label')).toBeInTheDocument();
+    const copy = screen.getByTestId('turn-copy');
+    const sources = screen.getByTestId('turn-sources');
+    const after = copy.compareDocumentPosition(sources) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(after).toBeTruthy();
   });
 
-  it('names publishers rather than hosts', () => {
-    render(
-      <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: 'answer', sources: [source(1)] }}
-      />,
-    );
-
-    expect(screen.getByTestId('source-row')).toHaveTextContent('Publisher1');
-    expect(screen.getByTestId('source-row')).not.toHaveTextContent('s1.example');
-  });
-
-  it('opens a source in a tab of its own', () => {
-    render(
-      <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: 'answer', sources: [source(1)] }}
-      />,
-    );
-
-    const chip = screen.getByTestId('source-chip');
-    expect(chip).toHaveAttribute('href', 'https://s1.example/page');
-    expect(chip).toHaveAttribute('target', '_blank');
-  });
-
-  it('opens a box listing every source when the row runs out of room', async () => {
-    // 行放得下几个是量出来的，而 jsdom 没有布局：不喂宽度，每个元素都是 0 宽，
-    // 于是永远「都放得下」，「+N」不出现。喂一个 296 的行和 100 宽的 chip，
-    // 就是 Agent 列最窄时的样子。
-    const many = [1, 2, 3, 4, 5, 6, 7, 8].map(source);
-    withLayout({ row: 296, item: 100 });
+  it('says how many there are and lists none of them', () => {
+    const many = [1, 2, 3, 4, 5].map(source);
     render(
       <MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer', sources: many }} />,
     );
 
-    await userEvent.click(await screen.findByTestId('source-row-more'));
-
-    const box = screen.getByTestId('source-box');
-    expect(box).toBeInTheDocument();
-    // Every one of them, including the ones the row had room for.
-    expect(screen.getAllByTestId('source-box-row')).toHaveLength(8);
+    expect(screen.getByTestId('turn-sources')).toHaveTextContent('5');
+    expect(screen.queryByTestId('source-row')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('source-chip')).not.toBeInTheDocument();
   });
 
-  it('shows a title and a full address in the box, and no page text', () => {
-    const withText = { ...source(1) } as ChatSource & { excerpts?: string[] };
-    withText.excerpts = ['a passage of the page'];
+  it('lists them once it is pressed, each with the number it was cited by', async () => {
+    const many = [1, 2, 3, 4, 5].map(source);
+    render(
+      <MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer', sources: many }} />,
+    );
+
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    expect(screen.getByTestId('source-box')).toBeInTheDocument();
+    const rows = screen.getAllByTestId('source-box-row');
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toHaveTextContent('1');
+    expect(rows[0]).toHaveTextContent('Page 1');
+    expect(rows[0]).toHaveTextContent('https://s1.example/page');
+  });
+
+  it('draws no publisher and no mark of the site anywhere', () => {
+    // 一个站点图形要显示就得去第三方取图，那次请求把读者交给了第三方；
+    // 圆圈里只有数字，所以这条路整条不存在。
+    const many = [1, 2].map(source);
+    render(
+      <MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer', sources: many }} />,
+    );
+
+    expect(screen.getByTestId('turn-actions')).not.toHaveTextContent('Publisher1');
+    expect(document.querySelector('[class*="bg-palette"]')).toBeNull();
+  });
+
+  it('keeps the line on a turn that found sources and said nothing', () => {
     render(
       <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: 'answer', sources: [withText] }}
+        message={{ id: 'm', role: 'assistant', content: '', sources: [source(1)] }}
       />,
     );
 
-    expect(screen.getByTestId('source-row')).not.toHaveTextContent('a passage of the page');
+    expect(screen.getByTestId('turn-sources')).toBeInTheDocument();
   });
 
-  it('is absent on a turn that searched for nothing', () => {
+  it('offers no sources on a turn that searched for nothing', () => {
     render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
 
-    expect(screen.queryByTestId('source-row')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('turn-sources')).not.toBeInTheDocument();
+    expect(screen.getByTestId('turn-copy')).toBeInTheDocument();
   });
 
   it('is absent while the turn is still running', () => {
@@ -223,7 +223,19 @@ describe('the row at the foot of the reply', () => {
       />,
     );
 
-    expect(screen.queryByTestId('source-row')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('turn-sources')).not.toBeInTheDocument();
+  });
+
+  it('shows no page text in the box', () => {
+    const withText = { ...source(1) } as ChatSource & { excerpts?: string[] };
+    withText.excerpts = ['a passage of the page'];
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'answer', sources: [withText] }}
+      />,
+    );
+
+    expect(screen.getByTestId('turn-actions')).not.toHaveTextContent('a passage of the page');
   });
 });
 
