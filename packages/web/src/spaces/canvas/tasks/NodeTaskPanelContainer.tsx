@@ -42,6 +42,8 @@ export interface NodeTaskPanelContainerProps {
   projectId: string;
   /** Space the nodes live in, for addressing this session's retry stash. */
   spaceId: string;
+  /** Whether this reader may write; a read-only row carries no buttons. */
+  readOnly: boolean;
   /** Write one task's result onto its node (§7.4: a direct write, no lock). */
   onReplace: (nodeId: string, task: NodeTaskEntry) => void;
   /** Send one task's stashed File again as a new task. */
@@ -62,6 +64,7 @@ interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
  * @param props.status - Which state the reader asked for.
  * @param props.projectId - Project the node belongs to.
  * @param props.spaceId - Space the node lives in.
+ * @param props.readOnly - Whether this reader may write.
  * @param props.onReplace - Write one task's result onto the node.
  * @param props.onRetry - Send one task's stashed File again.
  * @returns The anchored panel.
@@ -72,6 +75,7 @@ function OpenNodeTaskPanel({
   nodes,
   projectId,
   spaceId,
+  readOnly,
   onReplace,
   onRetry,
 }: OpenNodeTaskPanelProps): React.JSX.Element {
@@ -170,6 +174,7 @@ function OpenNodeTaskPanel({
       <NodeTaskPanel
         status={status}
         entries={entries}
+        readOnly={readOnly}
         now={now}
         isLoading={query.isPending}
         isError={query.isLoadingError}
@@ -189,6 +194,7 @@ function OpenNodeTaskPanel({
  * @param props - The panel inputs.
  * @param props.projectId - Project the nodes belong to.
  * @param props.spaceId - Space the nodes live in.
+ * @param props.readOnly - Whether this reader may write.
  * @param props.onReplace - Write one task's result onto its node.
  * @param props.onRetry - Send one task's stashed File again.
  * @returns The open task list, or null when another panel or none is open.

@@ -68,6 +68,7 @@ function renderPanel(
         isLoading={false}
         isError={false}
         hasRetryFile={(): boolean => false}
+        readOnly={false}
         onReload={(): void => {}}
         onClose={(): void => {}}
         onReplace={(): void => {}}

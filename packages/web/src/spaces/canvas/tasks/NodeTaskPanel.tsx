@@ -38,6 +38,8 @@ export interface NodeTaskPanelProps {
   isError: boolean;
   /** Whether this session still holds one task's File. */
   hasRetryFile: (taskId: string) => boolean;
+  /** Whether this reader may write; a read-only row carries no buttons. */
+  readOnly: boolean;
   /** Fetch the list again. */
   onReload: () => void;
   /** Close the list. */
@@ -74,6 +76,7 @@ export function rowClock(status: TaskStatus, now: number): number {
  * @param props.isLoading - Whether the list is still being fetched.
  * @param props.isError - Whether the fetch failed.
  * @param props.hasRetryFile - Whether this session holds one task's File.
+ * @param props.readOnly - Whether this reader may write.
  * @param props.onReload - Fetch the list again.
  * @param props.onClose - Close the list.
  * @param props.onReplace - Write one task's result onto the node.
@@ -88,6 +91,7 @@ export function NodeTaskPanel({
   isLoading,
   isError,
   hasRetryFile,
+  readOnly,
   onReload,
   onClose,
   onReplace,
@@ -178,6 +182,7 @@ export function NodeTaskPanel({
                 entry={task}
                 now={rowClock(status, now)}
                 hasRetryFile={hasRetryFile(task.id)}
+                readOnly={readOnly}
                 onReplace={onReplace}
                 onRetry={onRetry}
                 onDismiss={onDismiss}

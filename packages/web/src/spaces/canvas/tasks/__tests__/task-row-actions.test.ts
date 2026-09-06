@@ -23,19 +23,30 @@ describe('taskRowActions', () => {
         status: 'running',
         hasResult: false,
         hasRetryFile: false,
+        readOnly: false,
       }),
     ).toEqual([]);
   });
 
   it('offers writing the result onto the node, then finishing, when it is done', () => {
     expect(
-      taskRowActions({ status: 'done', hasResult: true, hasRetryFile: false }),
+      taskRowActions({
+        status: 'done',
+        hasResult: true,
+        hasRetryFile: false,
+        readOnly: false,
+      }),
     ).toEqual(['replace', 'finish']);
   });
 
   it('drops the write when a done task left no result to write', () => {
     expect(
-      taskRowActions({ status: 'done', hasResult: false, hasRetryFile: false }),
+      taskRowActions({
+        status: 'done',
+        hasResult: false,
+        hasRetryFile: false,
+        readOnly: false,
+      }),
     ).toEqual(['finish']);
   });
 
@@ -45,6 +56,7 @@ describe('taskRowActions', () => {
         status: 'failed',
         hasResult: false,
         hasRetryFile: true,
+        readOnly: false,
       }),
     ).toEqual(['retry', 'clear']);
   });
@@ -57,6 +69,7 @@ describe('taskRowActions', () => {
         status: 'failed',
         hasResult: false,
         hasRetryFile: false,
+        readOnly: false,
       }),
     ).toEqual(['clear']);
   });
@@ -67,6 +80,7 @@ describe('taskRowActions', () => {
         status: 'expired',
         hasResult: false,
         hasRetryFile: false,
+        readOnly: false,
       }),
     ).toEqual(['clear']);
   });
@@ -79,6 +93,7 @@ describe('taskRowActions', () => {
         status: 'expired',
         hasResult: true,
         hasRetryFile: false,
+        readOnly: false,
       }),
     ).toEqual(['replace', 'clear']);
   });
@@ -88,14 +103,54 @@ describe('taskRowActions', () => {
     // stashed File must not turn into a button on a row that succeeded.
     for (const status of ['running', 'done', 'expired'] as const) {
       expect(
-        taskRowActions({ status, hasResult: true, hasRetryFile: true }),
+        taskRowActions({
+          status,
+          hasResult: true,
+          hasRetryFile: true,
+          readOnly: false,
+        }),
       ).not.toContain('retry');
     }
   });
 
   it('never offers a write on a failure, even one that somehow carries a result', () => {
     expect(
-      taskRowActions({ status: 'failed', hasResult: true, hasRetryFile: true }),
+      taskRowActions({
+        status: 'failed',
+        hasResult: true,
+        hasRetryFile: true,
+        readOnly: false,
+      }),
     ).toEqual(['retry', 'clear']);
+  });
+});
+
+describe('a reader who cannot write', () => {
+  // B4 lets a read-only member open the list: the tasks on a node are part of
+  // looking at it. Every button on a row is a write, and each one refuses in
+  // its own way — Replace returns a noop with nothing said, Clear reaches the
+  // server for a 403. A row offers them nothing instead.
+  it('offers no buttons on any settled row', () => {
+    for (const status of ['done', 'failed', 'expired'] as const) {
+      expect(
+        taskRowActions({
+          status,
+          hasResult: true,
+          hasRetryFile: true,
+          readOnly: true,
+        }),
+      ).toEqual([]);
+    }
+  });
+
+  it('still offers them to a member who can write', () => {
+    expect(
+      taskRowActions({
+        status: 'done',
+        hasResult: true,
+        hasRetryFile: false,
+        readOnly: false,
+      }),
+    ).toEqual(['replace', 'finish']);
   });
 });

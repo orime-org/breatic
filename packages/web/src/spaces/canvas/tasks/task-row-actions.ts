@@ -29,6 +29,12 @@ export interface TaskRowSituation {
   hasResult: boolean;
   /** Whether this session still holds the File this upload was carrying. */
   hasRetryFile: boolean;
+  /**
+   * Whether this reader may write. B4 admits a read-only member to the list,
+   * and every button here is a write — each refusing in its own way once
+   * pressed, one of them without saying anything.
+   */
+  readOnly: boolean;
 }
 
 /**
@@ -40,13 +46,17 @@ export interface TaskRowSituation {
  * @param situation.status - Which of the four states the task is in.
  * @param situation.hasResult - Whether it left content behind.
  * @param situation.hasRetryFile - Whether this session still holds its File.
- * @returns The row's buttons, empty while the task is still running.
+ * @param situation.readOnly - Whether this reader may write.
+ * @returns The row's buttons, empty while the task is still running and for a
+ *   reader who cannot write.
  */
 export function taskRowActions({
   status,
   hasResult,
   hasRetryFile,
+  readOnly,
 }: TaskRowSituation): TaskRowAction[] {
+  if (readOnly) return [];
   switch (status) {
     // Nothing about it is settled, so every button would act on a moving
     // target.

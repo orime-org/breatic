@@ -51,8 +51,10 @@ function nodes(failed = 1): Nodes {
  * @param hostNodes - What the canvas holds.
  * @returns The render result, so a case can rerender with other nodes.
  */
+let client: QueryClient;
+
 function mount(hostNodes: Nodes = nodes()): ReturnType<typeof render> {
-  const client = new QueryClient({
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
   });
   return render(
@@ -66,6 +68,7 @@ function mount(hostNodes: Nodes = nodes()): ReturnType<typeof render> {
             nodes={hostNodes}
             projectId='p'
             spaceId='s'
+            readOnly={false}
             onReplace={vi.fn()}
             onRetry={vi.fn()}
           />
@@ -92,15 +95,14 @@ describe('NodeTaskPanelContainer', () => {
     // panels all close themselves here, and `resolvePanelSelectionAction`
     // leaves the case to them rather than acting on a host that is gone.
     view.rerender(
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
+      <QueryClientProvider client={client}>
         <TooltipProvider>
           <ReactFlow nodes={[]} edges={[]}>
             <NodeTaskPanelContainer
               nodes={[] as unknown as Nodes}
               projectId='p'
               spaceId='s'
+              readOnly={false}
               onReplace={vi.fn()}
               onRetry={vi.fn()}
             />
@@ -125,9 +127,7 @@ describe('NodeTaskPanelContainer', () => {
     // describe the state before that, down to a countdown still ticking on a
     // task that has ended.
     view.rerender(
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
+      <QueryClientProvider client={client}>
         <TooltipProvider>
           <ReactFlow
             nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
@@ -137,6 +137,7 @@ describe('NodeTaskPanelContainer', () => {
               nodes={nodes(2)}
               projectId='p'
               spaceId='s'
+              readOnly={false}
               onReplace={vi.fn()}
               onRetry={vi.fn()}
             />

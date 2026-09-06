@@ -3800,6 +3800,7 @@ function CanvasSpaceInner({
             nodes={nodes}
             projectId={projectId}
             spaceId={spaceId}
+            readOnly={readOnly}
             onReplace={replaceNodeFromTask}
             onRetry={retryNodeUpload}
           />

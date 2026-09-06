@@ -55,6 +55,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * @param over - Entry overrides.
  * @param props - Row props beyond the entry.
  * @param props.hasRetryFile - Whether this session holds the File.
+ * @param props.readOnly - Whether this reader may write.
  * @param props.onReplace - Write the result onto the node.
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop the row.
@@ -64,6 +65,7 @@ function renderRow(
   over: Partial<NodeTaskEntry> = {},
   props: {
     hasRetryFile?: boolean;
+    readOnly?: boolean;
     onReplace?: (id: string) => void;
     onRetry?: (id: string) => void;
     onDismiss?: (id: string) => void;
@@ -78,6 +80,7 @@ function renderRow(
         entry={entry(over)}
         now={NOW}
         hasRetryFile={props.hasRetryFile ?? false}
+        readOnly={props.readOnly ?? false}
         onReplace={props.onReplace ?? ((): void => {})}
         onRetry={props.onRetry ?? ((): void => {})}
         onDismiss={props.onDismiss ?? ((): void => {})}

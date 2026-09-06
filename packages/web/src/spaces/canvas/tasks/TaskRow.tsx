@@ -50,6 +50,8 @@ export interface TaskRowProps {
   now: number;
   /** Whether this session still holds the File this upload was carrying. */
   hasRetryFile: boolean;
+  /** Whether this reader may write; a read-only row carries no buttons. */
+  readOnly: boolean;
   /** Write this task's result onto the node. */
   onReplace: (taskId: string) => void;
   /** Send the stashed File again as a new task. */
@@ -92,6 +94,7 @@ function settledNote(
  * @param props.entry - The task, as the server last described it.
  * @param props.now - The reader's clock.
  * @param props.hasRetryFile - Whether this session holds the File.
+ * @param props.readOnly - Whether this reader may write.
  * @param props.onReplace - Write the result onto the node.
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop this row.
@@ -101,6 +104,7 @@ export const TaskRow = React.memo(function TaskRow({
   entry,
   now,
   hasRetryFile,
+  readOnly,
   onReplace,
   onRetry,
   onDismiss,
@@ -116,6 +120,7 @@ export const TaskRow = React.memo(function TaskRow({
     status,
     hasResult: entry.content !== null,
     hasRetryFile,
+    readOnly,
   });
 
   const run = React.useCallback(
