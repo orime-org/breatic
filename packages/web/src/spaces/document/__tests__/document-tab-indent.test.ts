@@ -9,15 +9,19 @@
  * Shift-Tab moves it one level out, and changing a block's type leaves its
  * indentation where it was.
  *
- * Every case here dispatches the key rather than calling an API. `canNestBlock()`
- * answers true for a code block and `nestBlock()` succeeds on it, while the key
- * itself is claimed by the code block's own handler and inserts two spaces —
- * so a test written against the API would pass while the user's Tab did
- * something else entirely.
+ * Every case here dispatches the key rather than calling an API. `nestBlock()`
+ * succeeds on a code block, while the key itself is claimed by the code
+ * block's own handler and inserts two spaces — so a test written against the
+ * API would pass while the user's Tab did something else entirely.
+ *
+ * Both shapes a selection comes in are covered: a caret, and a range. A range
+ * is the one that was missing, and every path through Tab reached the browser
+ * under one.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -205,5 +209,117 @@ describe('a quote keeps its quote through indenting', () => {
 
     pressTab(editor, true);
     expect(blocksOf(editor)[1]?.props['quoted']).toBe(true);
+  });
+});
+
+/**
+ * Selects a range inside a block rather than putting a caret in it.
+ * @param editor - The editor.
+ * @param index - Which textblock, in document order.
+ * @param reversed - Whether the head sits before the anchor.
+ */
+function selectInside(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  index: number,
+  reversed = false,
+): void {
+  const view = editor.prosemirrorView!;
+  const spots: number[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    spots.push(pos);
+    return false;
+  });
+  const at = spots[index]!;
+  view.dispatch(
+    view.state.tr.setSelection(
+      reversed
+        ? TextSelection.create(view.state.doc, at + 2, at + 1)
+        : TextSelection.create(view.state.doc, at + 1, at + 2),
+    ),
+  );
+}
+
+/**
+ * Selects from inside one textblock to inside another.
+ * @param editor - The editor.
+ * @param first - The textblock the selection starts in, in document order.
+ * @param last - The textblock it ends in.
+ */
+function selectAcross(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  first: number,
+  last: number,
+): void {
+  const view = editor.prosemirrorView!;
+  const spots: number[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true;
+    spots.push(pos);
+    return false;
+  });
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, spots[first]! + 1, spots[last]! + 2),
+    ),
+  );
+}
+
+describe('C1 — Tab acts on a selection, not only on a caret', () => {
+  it('indents the block a range sits in', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectInside(editor, 1);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(1);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(1);
+  });
+
+  it('indents it the same way when the range runs backwards', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectInside(editor, 1, true);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(1);
+  });
+
+  it('takes the indent back off under a range', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectInside(editor, 1);
+    pressTab(editor);
+    selectInside(editor, 1);
+
+    expect(pressTab(editor, true)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+  });
+
+  it('indents every block a selection spans', () => {
+    const editor = openFirst({ type: 'paragraph', content: 'one' });
+    editor.insertBlocks(
+      [
+        { type: 'paragraph', content: 'two' },
+        { type: 'paragraph', content: 'three' },
+      ] as never,
+      blocksOf(editor)[0]!.id,
+      'after',
+    );
+    // From the second block to the third: the first block stays above them,
+    // so the range has somewhere to go.
+    selectAcross(editor, 1, 2);
+
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(1);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(2);
+  });
+
+  it('leaves a selection that starts at the first block where it is', () => {
+    const editor = open({ type: 'paragraph', content: 'second' });
+    selectAcross(editor, 0, 1);
+
+    // Nowhere to go — the first block has no block above it. The key is still
+    // claimed, because an unclaimed Tab takes focus out of the editor.
+    expect(pressTab(editor)).toBe(true);
+    expect(blocksOf(editor)).toHaveLength(2);
+    expect(blocksOf(editor)[0]?.children).toHaveLength(0);
   });
 });

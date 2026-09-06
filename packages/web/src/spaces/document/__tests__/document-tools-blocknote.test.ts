@@ -264,3 +264,74 @@ describe('and what actually happens when they are pressed', () => {
     });
   });
 });
+
+describe('a selection only half of which carries the style', () => {
+  /** A paragraph whose second half is bold. */
+  const HALF_BOLD = {
+    type: 'paragraph',
+    content: [
+      { type: 'text', text: 'plain', styles: {} },
+      { type: 'text', text: 'BOLD', styles: { bold: true } },
+    ],
+  };
+
+  /** A paragraph whose first half is bold. */
+  const BOLD_HALF = {
+    type: 'paragraph',
+    content: [
+      { type: 'text', text: 'BOLD', styles: { bold: true } },
+      { type: 'text', text: 'plain', styles: {} },
+    ],
+  };
+
+  const BOLD = ALL_TOOLS.find((tool) => tool.id === 'bold')!;
+
+  /** The paragraph's runs, each with the marks it carries. */
+  function runsOf(editor: ReturnType<typeof buildDocumentEditor>): string[] {
+    const out: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (!node.isText) return true;
+      out.push(
+        `${node.text ?? ''}[${node.marks.map((mark) => mark.type.name).join(',')}]`,
+      );
+      return false;
+    });
+    return out;
+  }
+
+  /** Selects the whole first block. */
+  function selectBlock(editor: ReturnType<typeof buildDocumentEditor>): void {
+    const view = editor.prosemirrorView!;
+    let from = 0;
+    let to = 0;
+    view.state.doc.descendants((node, pos) => {
+      if (!node.isTextblock) return true;
+      from = pos + 1;
+      to = pos + node.nodeSize - 1;
+      return false;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
+    );
+  }
+
+  it('reads as off, whichever half carries it', () => {
+    // `getActiveStyles()` reads the marks at `$to` alone, so the same half-bold
+    // paragraph answered differently depending on which way the reader dragged.
+    for (const block of [HALF_BOLD, BOLD_HALF]) {
+      const editor = open(block);
+      selectBlock(editor);
+      expect(BOLD.isActive(editor)).toBe(false);
+    }
+  });
+
+  it('puts the style on the whole selection when it is pressed', () => {
+    const editor = open(HALF_BOLD);
+    selectBlock(editor);
+
+    BOLD.run(editor);
+
+    expect(runsOf(editor)).toEqual(['plainBOLD[bold]']);
+    expect(BOLD.isActive(editor)).toBe(true);
+  });
+});

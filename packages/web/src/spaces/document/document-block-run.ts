@@ -124,12 +124,23 @@ function updateFor(
  * a transaction that was written into, which is what makes pressing a content
  * row the block already is cost nothing (A6).
  *
- * The reader's selection is put back at the end. `updateBlockTr` replaces the
- * node it changes, and a replacement collapses whatever selection sat inside
- * it — measured, a press over three selected paragraphs left the selection
- * empty, which takes the bar off screen (`SelectionBubbleBar`'s `isWarranted`
- * wants text in it) and leaves the reader selecting the same text again to
- * press a second row.
+ * A text selection is put back at the end. `updateBlockTr` replaces the node
+ * it changes, and a replacement collapses whatever selection sat inside it —
+ * measured, a press over three selected paragraphs left the selection empty,
+ * which takes the bar off screen (`SelectionBubbleBar`'s `isWarranted` wants
+ * text in it) and leaves the reader selecting the same text again to press a
+ * second row.
+ *
+ * The other selection kinds map themselves: an `AllSelection` maps to an
+ * `AllSelection` whatever the steps did, and A11 — the guard that asks before
+ * a keystroke empties the document — reads `selection instanceof
+ * AllSelection`. Handing back a text selection over the same range looks
+ * identical on screen and takes that guard off.
+ *
+ * Each end is mapped toward the inside of the selection. A block type that
+ * holds no marks replaces the inline content outright, and the default
+ * association walks the near end past that replacement and out of the
+ * selection — measured on a first block carrying a bold word or a link.
  * @param editor - The editor.
  * @param id - Which row.
  */
@@ -138,6 +149,7 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
     const covered = blocksUnder(tr.doc, tr.selection);
     const cancelling = tickedOver(tr.doc, tr.selection).has(id);
     const written = tr.mapping.maps.length;
+    const restoring = tr.selection instanceof TextSelection;
     const { anchor, head } = tr.selection;
     for (const { pos } of covered) {
       // `updateBlockTr` is given the position before a `blockContainer`, and a
@@ -149,7 +161,7 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
       }
       updateBlockTr(tr, at, updateFor(content, id, cancelling) as never);
     }
-    if (tr.mapping.maps.length === written) {
+    if (tr.mapping.maps.length === written || !restoring) {
       return;
     }
     // Only the steps this press added, so the two ends travel the same
@@ -157,8 +169,8 @@ export function runBlockType(editor: RunEditor, id: BlockTypeId): void {
     const carry = tr.mapping.slice(written);
     tr.setSelection(
       TextSelection.between(
-        tr.doc.resolve(carry.map(anchor)),
-        tr.doc.resolve(carry.map(head)),
+        tr.doc.resolve(carry.map(anchor, anchor <= head ? -1 : 1)),
+        tr.doc.resolve(carry.map(head, head <= anchor ? -1 : 1)),
       ),
     );
   });

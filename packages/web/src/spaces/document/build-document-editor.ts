@@ -94,6 +94,12 @@ export function buildDocumentEditor(
       // exception it raises reaches the test runner from anywhere in the suite
       // that renders a document.
       'sideMenu',
+      // §14 keeps our own bubble bar, so BlockNote's is never drawn — and a
+      // toolbar that is never drawn still tracks the selection. Its store then
+      // answers its own Tab binding, which declines the key so a reader can tab
+      // INTO the toolbar: measured, every non-empty selection left Tab
+      // unclaimed and the block where it was.
+      'formattingToolbar',
     ],
   });
 

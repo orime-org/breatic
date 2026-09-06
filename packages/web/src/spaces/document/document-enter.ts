@@ -39,8 +39,8 @@ import {
 
 /** What the editor object offers the Tab handler. */
 interface TabEditor {
-  canNestBlock: () => boolean;
-  canUnnestBlock: () => boolean;
+  nestBlock: () => void;
+  unnestBlock: () => void;
 }
 
 /**
@@ -241,29 +241,34 @@ function handleWholeBlockEnter(editor: ListEditor): boolean {
  * which is a prop rather than a block type.
  */
 /**
- * Tab and Shift-Tab, for the block that has nowhere to go.
+ * Tab and Shift-Tab, for every selection rather than for a caret alone.
  *
- * BlockNote's own handler indents the block under the one above it and
- * returns false when there is no block above it at that level. A Tab it
- * declines is a Tab the browser answers, and the browser answers it by moving
- * focus out of the editor: measured, focus went from the editor to `BODY` and
- * the next characters the reader typed reached nothing. Its own source says
- * this is what it means to avoid — `KeyboardShortcutsExtension.ts:958`,
- * "Always returning true for tab key presses ensures they're not captured by
- * the browser. Otherwise, they blur the editor" — and then returns what
- * `nestBlock` gives it.
+ * The move and the question of whether it is possible are the same call:
+ * `nestBlock` reads `$from.blockRange($to)` and leaves the document alone when
+ * the range has nowhere to go (`nestBlock.ts`, `startIndex === 0`). Asking a
+ * separate question first is what put the two out of step — `canNestBlock`
+ * resolves the block at `selection.anchor`, which is the end the drag started
+ * from, so a backwards drag asked about one block and acted on another.
  *
- * Held here only where the move is impossible, which BlockNote answers with
- * the same two questions its own handler asks: `canNestBlock` for Tab,
- * `canUnnestBlock` for Shift-Tab. Where the move IS possible this declines
- * and BlockNote's handler does the indenting.
+ * The key is claimed either way. An unclaimed Tab is one the browser answers,
+ * and the browser answers it by moving focus out of the editor: measured,
+ * focus went from the editor to `BODY` and the next characters the reader
+ * typed reached nothing. BlockNote's own source says the same —
+ * `KeyboardShortcutsExtension.ts:958`, "Always returning true for tab key
+ * presses ensures they're not captured by the browser. Otherwise, they blur
+ * the editor".
  */
 export const documentTabExtension = createExtension(() => ({
   key: 'document-tab',
   keyboardShortcuts: {
-    Tab: ({ editor }: { editor: TabEditor }) => !editor.canNestBlock(),
-    'Shift-Tab': ({ editor }: { editor: TabEditor }) =>
-      !editor.canUnnestBlock(),
+    Tab: ({ editor }: { editor: TabEditor }) => {
+      editor.nestBlock();
+      return true;
+    },
+    'Shift-Tab': ({ editor }: { editor: TabEditor }) => {
+      editor.unnestBlock();
+      return true;
+    },
   },
 }) as never);
 

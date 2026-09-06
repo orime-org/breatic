@@ -17,7 +17,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -620,5 +620,75 @@ describe('a selection no row reaches', () => {
     });
 
     expect(editor.prosemirrorState.doc.toString()).toBe(before);
+  });
+});
+
+/**
+ * Opens an editor over the given top-level blocks.
+ * @param blocks - The body, one entry per block.
+ * @returns The editor.
+ */
+function openFlat(
+  blocks: readonly Record<string, unknown>[],
+): ReturnType<typeof buildDocumentEditor> {
+  const editor = buildDocumentEditor({
+    fragment: documentBodyFragment(new Y.Doc()),
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  return editor;
+}
+
+describe('the selection a press hands back', () => {
+  it('leaves a whole-document selection whole', () => {
+    // A11 asks before a keystroke empties the document, and the question it
+    // asks is `selection instanceof AllSelection`. A press that hands back a
+    // text selection covering the same range looks identical on screen and
+    // takes the guard off.
+    const editor = openFlat([
+      { type: 'paragraph', content: 'first line' },
+      { type: 'paragraph', content: 'second line' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    runBlockType(editor, 'quote');
+
+    expect(editor.prosemirrorState.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('keeps both ends over the blocks the reader had selected', () => {
+    // A code block holds no marks, so the first block's inline content is
+    // replaced outright. Mapping the near end forward walks it past that
+    // replacement and out of the selection.
+    const editor = openFlat([
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'one', styles: { bold: true } }],
+      },
+      { type: 'paragraph', content: 'two' },
+    ]);
+    const view = editor.prosemirrorView!;
+    const spots: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (!node.isTextblock) return true;
+      spots.push(pos);
+      return false;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, spots[0]! + 1, spots[1]! + 4),
+      ),
+    );
+
+    runBlockType(editor, 'code-block');
+
+    const { from, to } = editor.prosemirrorState.selection;
+    expect(editor.prosemirrorState.doc.textBetween(from, to, '|')).toBe(
+      'one|two',
+    );
   });
 });

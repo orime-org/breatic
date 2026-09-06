@@ -33,6 +33,7 @@ import {
   Underline,
 } from 'lucide-react';
 
+import { isMarkActive } from '@tiptap/core';
 import { toggleMark } from '@tiptap/pm/commands';
 
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -54,17 +55,20 @@ function styleTool(id: string): Pick<ToolDef, 'isActive' | 'canRun' | 'run'> {
     return mark === undefined ? null : toggleMark(mark);
   };
   return {
-    // A style is a property of the selection rather than a mark the caller
-    // names, so this is the editor's own answer rather than a schema lookup.
-    isActive: (editor) =>
-      (editor.getActiveStyles() as Record<string, unknown>)[id] === true,
+    // Whether the WHOLE selection carries it, which is what the button's
+    // pressed state has meant since it shipped. `getActiveStyles()` reads the
+    // marks at `$to` alone, so a half-styled selection answered one way when
+    // the reader dragged left and the other way when they dragged right.
+    isActive: (editor) => isMarkActive(editor.prosemirrorState, id),
     canRun: (editor) => {
       const run = command(editor);
       return run !== null && editor.canExec(run);
     },
+    // Covering the whole selection is the other half of the same rule: over a
+    // selection the style does not cover, a press puts it on rather than
+    // taking it off the part that had it.
     run: (editor) => {
-      const run = command(editor);
-      if (run !== null) editor.exec(run);
+      editor.toggleStyles({ [id]: true } as never);
     },
   };
 }
