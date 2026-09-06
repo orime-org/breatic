@@ -79,6 +79,16 @@ export interface ChatSource {
    * made.
    */
   index: number;
+  /**
+   * Every number this page was handed in the turn.
+   *
+   * A turn that searches twice hands the same page a fresh number each time,
+   * and the prose can carry either of them. The list at the foot is one line
+   * per page, so that line has to answer to all of them -- a marker whose
+   * number is nowhere in the list is a marker the list cannot be used to
+   * follow up.
+   */
+  indexes: number[];
 }
 
 /**

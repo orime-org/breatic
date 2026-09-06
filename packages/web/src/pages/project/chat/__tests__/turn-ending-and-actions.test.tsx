@@ -46,7 +46,7 @@ describe('the line that says nothing came back', () => {
           role: 'assistant',
           content: '',
           sources: [
-            { url: 'https://a.example', title: 'A', publisher: 'A', index: 1 },
+            { url: 'https://a.example', title: 'A', publisher: 'A', index: 1, indexes: [1] },
           ],
         }}
       />,
@@ -195,6 +195,27 @@ describe('what pressing copy says back', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('hugs the edge the button sits against, so the words are not cut off', async () => {
+    // 复制按钮贴在列的边上，居中展开的标签有一半在列外面，而列表是
+    // overflow-hidden：中文就已经被裁掉一截，日文更多。
+    render(<MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer' }} />);
+
+    await press();
+
+    const label = await screen.findByTestId('turn-copied');
+    expect(label.className).toMatch(/\bleft-0\b/);
+    expect(label.className).not.toMatch(/-translate-x-1\/2/);
+  });
+
+  it('hugs the other edge under a reader\'s own message', async () => {
+    render(<MessageBubble message={{ id: 'm', role: 'user', content: '找参考图' }} />);
+
+    await press();
+
+    const label = await screen.findByTestId('turn-copied');
+    expect(label.className).toMatch(/\bright-0\b/);
   });
 
   it('answers the same way under a reader\'s own message', async () => {

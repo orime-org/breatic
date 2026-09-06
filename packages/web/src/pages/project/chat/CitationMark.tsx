@@ -9,7 +9,20 @@ import {
   HoverCardTrigger,
 } from '@web/components/ui/hover-card';
 
+import { cn } from '@web/lib/utils';
 import type { ChatSource } from '@web/pages/project/chat/types';
+
+/**
+ * The ring a number is drawn in.
+ *
+ * A marker in a sentence and a line in the list at the foot are the same
+ * thing seen twice, so they are drawn from one string rather than two that
+ * happen to match today. A ring for one digit and a short pill for two: the
+ * number is what has to stay readable, so the width follows it and only the
+ * height is fixed.
+ */
+export const CITATION_RING =
+  'inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-border px-1 text-2xs leading-none text-muted-foreground';
 
 interface CitationMarkProps {
   /** The page this stands for. */
@@ -43,10 +56,7 @@ export const CitationMark = React.memo(function CitationMark({
           href={source.url}
           target='_blank'
           rel='noreferrer noopener'
-          // A ring for one digit and a short pill for two: the number is what
-          // has to stay readable, so the width follows it and only the height
-          // is fixed.
-          className='inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-border bg-card px-1 align-[-3px] text-2xs leading-none text-muted-foreground no-underline hover:border-muted-foreground hover:bg-accent hover:text-foreground'
+          className={cn(CITATION_RING, 'bg-card align-[-3px] no-underline hover:border-muted-foreground hover:bg-accent hover:text-foreground')}
         >
           {index}
         </a>

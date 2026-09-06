@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
@@ -32,6 +32,7 @@ const source = (n: number): ChatSource => ({
   title: `Page ${String(n)}`,
   publisher: `Publisher${String(n)}`,
   index: n,
+  indexes: [n],
 });
 
 afterEach(() => {
@@ -161,8 +162,10 @@ describe('the line at the foot of the reply', () => {
     );
 
     expect(screen.getByTestId('turn-sources')).toHaveTextContent('5');
-    expect(screen.queryByTestId('source-row')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('source-chip')).not.toBeInTheDocument();
+    // 断言的是「今天什么都没列出来」，不是「昨天那个组件不在了」：
+    // 拿已经删掉的 testid 当判据，改成默认展开也照样绿。
+    expect(screen.queryByTestId('source-box')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('turn-actions')).queryAllByRole('link')).toHaveLength(0);
   });
 
   it('lists them once it is pressed, each with the number it was cited by', async () => {
@@ -226,7 +229,7 @@ describe('the line at the foot of the reply', () => {
     expect(screen.queryByTestId('turn-sources')).not.toBeInTheDocument();
   });
 
-  it('shows no page text in the box', () => {
+  it('shows no page text in the box', async () => {
     const withText = { ...source(1) } as ChatSource & { excerpts?: string[] };
     withText.excerpts = ['a passage of the page'];
     render(
@@ -235,7 +238,49 @@ describe('the line at the foot of the reply', () => {
       />,
     );
 
-    expect(screen.getByTestId('turn-actions')).not.toHaveTextContent('a passage of the page');
+    // 框走 Dialog 的 Portal 挂在 body 上，不在这一行的子树里，所以要先点开
+    // 再对框本身断言。
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    expect(await screen.findByTestId('source-box')).not.toHaveTextContent(
+      'a passage of the page',
+    );
+  });
+
+  it('lists every number a page was cited by, so a marker can be found here', async () => {
+    // 一轮里两次搜索命中同一个网址，那个网址领到两个号；正文里两个号都会
+    // 渲染成圈，所以框里要两个都认。
+    const twice: ChatSource = { ...source(1), index: 5, indexes: [5] };
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'A claim [1], and again [5].',
+          sources: [{ ...source(1), indexes: [1, 5] }],
+          citations: { 1: source(1), 5: twice },
+        }}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    const row = (await screen.findAllByTestId('source-box-row'))[0];
+    expect(row).toHaveTextContent('1');
+    expect(row).toHaveTextContent('5');
+  });
+
+  it('offers no copy on a turn that wrote nothing', () => {
+    // 那一行是为了留住「来源 N」才画的；把空字符串放进剪贴板会顶掉读者
+    // 原来复制的东西，而界面还说复制成功了。
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: '', sources: [source(1)] }}
+      />,
+    );
+
+    expect(screen.getByTestId('turn-sources')).toBeInTheDocument();
+    expect(screen.queryByTestId('turn-copy')).not.toBeInTheDocument();
   });
 });
 

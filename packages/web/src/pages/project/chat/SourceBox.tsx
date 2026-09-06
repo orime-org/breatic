@@ -6,6 +6,9 @@ import * as React from 'react';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { cn } from '@web/lib/utils';
+
+import { CITATION_RING } from '@web/pages/project/chat/CitationMark';
 import { ReplyBox } from '@web/pages/project/chat/ReplyBox';
 import type { ChatSource } from '@web/pages/project/chat/types';
 
@@ -61,11 +64,13 @@ export const SourceBox = React.memo(function SourceBox({
               rel='noreferrer noopener'
               className='flex gap-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent'
             >
-              {/* The same ring the prose uses, so a marker in a sentence and
-                  a line in here are read as the same thing. */}
-              <span className='mt-px inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-border px-1 text-2xs leading-none text-muted-foreground'>
-                {s.index}
-              </span>
+              {/* Every number the turn handed this page, so a marker in the
+                  prose can be found here whichever of them it carries. */}
+              {s.indexes.map((n) => (
+                <span key={n} className={cn('mt-px', CITATION_RING)}>
+                  {n}
+                </span>
+              ))}
               <span className='flex min-w-0 flex-col gap-0.5'>
                 <span className='truncate text-xs text-foreground'>{s.title}</span>
                 <span className='truncate text-2xs text-muted-foreground'>{s.url}</span>

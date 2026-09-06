@@ -107,46 +107,60 @@ export const TurnActions = React.memo(function TurnActions({
           })}
         </span>
       )}
-      {/* The answer to a press is a status rather than a description of the
+      {/* Offered only when there is something to put on the clipboard: a turn
+          that searched and wrote nothing still keeps this line for its
+          sources, and copying it would replace whatever the reader had
+          copied with nothing at all.
+
+          The answer to a press is a status rather than a description of the
           control, so it is said here rather than through the tooltip
           primitive: a tooltip is what hovering an element tells you about it,
           and this is what pressing it did. Nothing in it can be pointed at,
           so it needs none of what a real overlay is for. */}
-      <span className='relative inline-flex'>
-        <Button
-          data-testid='turn-copy'
-          variant='ghost'
-          size='icon'
-          className={cn(
-            'size-[var(--btn-compact)] text-muted-foreground',
-            // Transparent alone is not enough: it would keep taking clicks
-            // and keep its place in the tab order, so a blank would copy
-            // when pressed with nothing visible there.
-            onHoverOnly === true &&
+      {text === '' ? null : (
+        <span className='relative inline-flex'>
+          <Button
+            data-testid='turn-copy'
+            variant='ghost'
+            size='icon'
+            className={cn(
+              'size-[var(--btn-compact)] text-muted-foreground',
+              // Transparent alone is not enough: it would keep taking clicks
+              // and keep its place in the tab order, so a blank would copy
+              // when pressed with nothing visible there.
+              onHoverOnly === true &&
               'opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
-            // A press answers with a mark, and the answer is worth seeing
-            // even on a message whose line is otherwise waiting for hover.
-            answered && 'opacity-100 pointer-events-auto text-foreground',
-          )}
-          aria-label={t('chat.action.copy')}
-          onClick={copy}
-        >
-          {answered ? (
-            <Check className='size-3.5' aria-hidden='true' />
-          ) : (
-            <Copy className='size-3.5' aria-hidden='true' />
-          )}
-        </Button>
-        {answered ? (
-          <span
-            data-testid='turn-copied'
-            role='status'
-            className='pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground'
+              // A press answers with a mark, and the answer is worth seeing
+              // even on a message whose line is otherwise waiting for hover.
+              answered && 'opacity-100 pointer-events-auto text-foreground',
+            )}
+            aria-label={t('chat.action.copy')}
+            onClick={copy}
           >
-            {t('chat.action.copied')}
-          </span>
-        ) : null}
-      </span>
+            {answered ? (
+              <Check className='size-3.5' aria-hidden='true' />
+            ) : (
+              <Copy className='size-3.5' aria-hidden='true' />
+            )}
+          </Button>
+          {answered ? (
+            <span
+              data-testid='turn-copied'
+              role='status'
+              className={cn(
+                'pointer-events-none absolute bottom-full z-10 mb-1.5 whitespace-nowrap rounded-chrome bg-accent-strong px-2 py-1 text-2xs leading-none text-foreground',
+                // Against the edge the button is against. Centred on the button
+                // it reaches half its width past the column, and the list is
+                // clipped: measured at 1315 wide, the Chinese words already lost
+                // 6px off the left, and the Japanese ones lose four times that.
+                onHoverOnly === true ? 'right-0' : 'left-0',
+              )}
+            >
+              {t('chat.action.copied')}
+            </span>
+          ) : null}
+        </span>
+      )}
       {sources === undefined || sources.length === 0 ? null : (
         <>
           <Button

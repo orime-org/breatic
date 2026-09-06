@@ -88,7 +88,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             <ThinkingFold
               thinking={message.thinking}
               {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
-              {...(running ? { running: true } : {})}
+              running={running}
             />
           ) : null}
           {message.content || message.streaming ? (

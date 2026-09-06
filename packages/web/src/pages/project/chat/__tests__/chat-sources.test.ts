@@ -57,7 +57,7 @@ describe('the row at the foot of a reply', () => {
     );
 
     expect(message.sources).toEqual([
-      { url: 'https://vitest.dev/g', title: 'Guide', publisher: 'Vitest', index: 1 },
+      { url: 'https://vitest.dev/g', title: 'Guide', publisher: 'Vitest', index: 1, indexes: [1] },
     ]);
   });
 

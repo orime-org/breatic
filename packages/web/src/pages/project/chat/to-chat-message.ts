@@ -89,7 +89,7 @@ function sourcesOf(output: unknown): ChatSource[] {
     const { url, title, publisher, index } = entry as Record<string, unknown>;
     if (typeof url !== 'string' || url === '' || typeof title !== 'string') return [];
     if (typeof publisher !== 'string' || typeof index !== 'number') return [];
-    return [{ url, title, publisher, index }];
+    return [{ url, title, publisher, index, indexes: [index] }];
   });
 }
 
@@ -153,7 +153,7 @@ export function toChatMessage(
   // markers in the prose resolve against the sequence the model was shown,
   // which counts a page found twice as two.
   const sources: ChatSource[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, ChatSource>();
   const citations: Record<number, ChatSource> = {};
   let numbered = 0;
   const assets: ChatAsset[] = [];
@@ -213,8 +213,15 @@ export function toChatMessage(
           // it is the same number the model was shown.
           citations[source.index] = source;
           numbered += 1;
-          if (seen.has(source.url)) continue;
-          seen.add(source.url);
+          const already = seen.get(source.url);
+          if (already !== undefined) {
+            // The same page found twice in one turn was handed two numbers,
+            // and the prose can carry either. One line at the foot answers to
+            // both.
+            already.indexes.push(source.index);
+            continue;
+          }
+          seen.set(source.url, source);
           sources.push(source);
         }
       }
