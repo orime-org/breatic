@@ -274,7 +274,7 @@ interface ParamToggleRowProps {
  * the camera and video-audio switches print, and it is what says which way this
  * switch is thrown: the track alone carries no word, so an off switch and a
  * disabled control look alike (contrast measured 2026-09-06: track against the
- * popover ground is 1.05:1, under SC 1.4.11's 3:1).
+ * popover ground is 1.36:1, under SC 1.4.11's 3:1).
  * @param root0 - Component props.
  * @param root0.control - The toggle control.
  * @param root0.label - The translated param name.

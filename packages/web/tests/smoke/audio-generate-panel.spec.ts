@@ -588,8 +588,9 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
 
   // The mode's own model, and its flat price. minimax/music-3.0 bills $0.15 a
   // call whatever the brief says, so the figure holds at 15 while text is
-  // typed — the two speech models move with the prompt, and this one is the
-  // first on this panel that does not.
+  // typed. The three speech models move with the prompt and the sound-effect
+  // model moves with the length picker; this is the first on the panel that
+  // moves with neither.
   await expect(page.getByTestId('generate-audio-rate')).toHaveText('15', {
     timeout: 15_000,
   });
@@ -686,30 +687,19 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
     timeout: 10_000,
   });
   await expect(pill).toContainText('Instrumental only', { timeout: 10_000 });
-  // The lyrics box says so too: nothing to write while the track has no
-  // vocals, and what is already in it stays.
-  await expect(
-    page.getByTestId('generate-lyrics-editor').locator('.ProseMirror'),
-  ).toHaveAttribute('contenteditable', 'false');
-  // And the pointer says so too: the I-beam invites typing, and a box that
-  // refuses it must not show one. The rule that paints it is scoped to the
-  // editable state.
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-testid="generate-lyrics-editor"] .ProseMirror')
-        .evaluate((el) => getComputedStyle(el).cursor),
-    )
-    .not.toBe('text');
-  // The box is empty here — the execute above was refused for exactly that —
-  // so its placeholder is the whole of what the screen says about it, and one
-  // still asking for words would be the only thing contradicting the switch,
-  // the gate and the request. The switch is thrown while the editor is already
-  // up, which is the path the unit suite cannot walk: it is the running editor
-  // that has to reprint, not a fresh one built from the new state.
-  await expect(
-    page.getByTestId('generate-lyrics-editor').locator('[data-placeholder]'),
-  ).toHaveAttribute('data-placeholder', 'No lyrics needed', { timeout: 10_000 });
+  // The panel says so too: with no vocals there are no words to write, so the
+  // box is gone rather than standing there refusing typing (user 2026-09-06).
+  // The switch is thrown while the editor is already up, which is the path the
+  // unit suite cannot walk — it is a running editor that has to go, not a
+  // fresh render built from the new state.
+  await expect(page.getByTestId('generate-lyrics-editor')).toHaveCount(0, {
+    timeout: 10_000,
+  });
+  // The box that stays keeps its name: this mode still asks for a style brief,
+  // and losing the word at the moment the second box leaves would read as the
+  // panel going back to asking for one plain prompt.
+  await expect(page.getByText('Style', { exact: true })).toBeVisible();
+  await expect(page.getByText('Lyrics', { exact: true })).toHaveCount(0);
   // Off again, so the case leaves the node the way it found it.
   await instrumental.click();
   await expect(instrumental).toHaveAttribute('aria-checked', 'false', {

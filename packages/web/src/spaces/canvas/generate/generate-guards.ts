@@ -65,9 +65,12 @@ export interface ExecuteGateInput {
    * A set rather than the single `refAudioRequired` / `refAudioChosen` pair it
    * replaces: reference-to-music offers three references and takes any one, so
    * a boolean naming one slot greyed the button out for a user who had filled
-   * all three under different names. Empty or absent means this mode demands
-   * no source, which is the truth for image, video and the three audio modes
-   * that collect nothing.
+   * all three under different names. Empty or absent means this gate checks
+   * no slot — the truth for image and for the three audio modes that collect
+   * nothing (`tts`, `sfx`, `t2m`). The video panel leaves it absent for a
+   * different reason: its modes do demand slots, and it refuses them one by
+   * name in `VideoGeneratePanelContainer` so the message says which is
+   * missing.
    */
   requiredSlots?: readonly string[];
   /** Which slots currently hold a pick. Read only against `requiredSlots`. */

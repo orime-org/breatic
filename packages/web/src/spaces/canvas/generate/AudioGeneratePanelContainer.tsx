@@ -480,11 +480,11 @@ function AudioGeneratePanelBody({
       INSTRUMENTAL_PARAM,
       fresh.params[INSTRUMENTAL_PARAM],
     );
-    // Empty on a track the user marked vocal-free: the box says those words
-    // are not used and refuses typing, and the request says the same. That
-    // pair is also the one combination measured to complete without words
-    // (2026-09-05). What is written stays on the node, so turning the switch
-    // back off returns it.
+    // Empty on a track the user marked vocal-free: the box is off screen for
+    // that setting, so the request says what the panel says. That pair is also
+    // the one combination measured to complete without words (2026-09-05).
+    // What is written stays on the node, so turning the switch back off
+    // returns it.
     const freshLyrics = lyrics
       ? freshInstrumental
         ? ''
@@ -595,8 +595,10 @@ function AudioGeneratePanelBody({
       fragment ? (
         <PromptEditor
           ref={promptEditorRef}
-          // Half height beside a lyrics box: a style brief is a line or two,
-          // and the box grows with whatever is typed into it either way.
+          // Half height on a music mode: a style brief is a line or two, and
+          // the box grows with whatever is typed into it either way. Keyed on
+          // the mode rather than on the lyrics box being up, so marking a
+          // track instrumental does not resize the box that stays.
           startingHeight={lyrics ? 'half' : 'full'}
           fragment={fragment}
           placeholder={promptPlaceholder}

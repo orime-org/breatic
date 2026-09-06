@@ -89,7 +89,15 @@ type AudioParamSpec = {
 /** The param a music model states for "no vocals at all" (#1960). */
 export const INSTRUMENTAL_PARAM = 'is_instrumental';
 
-const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
+/**
+ * Every param this panel knows how to draw, by the name a model declares.
+ *
+ * Exported so the catalog test can walk it: each entry carries the
+ * translation keys the panel prints, and a hand-written list of them in the
+ * test would not grow with a param added here — the panel would print the raw
+ * key at whichever locale forgot it, with nothing failing to compile.
+ */
+export const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
     labelKey: 'canvas.generatePanel.voiceStability',
     format: (v) => v.toFixed(2),

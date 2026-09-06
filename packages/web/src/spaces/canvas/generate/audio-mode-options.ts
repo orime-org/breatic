@@ -44,12 +44,14 @@ export interface AudioModeOption extends ModeOption {
   /**
    * Whether this mode collects lyrics, which it then insists on (#1960).
    *
-   * One question rather than two, because the gateway answers it as one:
-   * measured 2026-09-05, an empty `lyrics` is refused by both — `invalid
-   * params, lyrics is required` from text-to-music, `2013 - invalid params`
-   * from reference-to-music, which answers the same to a body carrying no
-   * `lyrics` key at all. Every mode that shows the box demands what goes in
-   * it, and every other mode has no box. Stated per mode rather than derived
+   * One question rather than two, because an empty `lyrics` yields no song
+   * from either (measured 2026-09-05) — text-to-music refuses the submit
+   * outright (`invalid params, lyrics is required`), while reference-to-music
+   * accepts it and then fails the generation (`2013 - invalid params`),
+   * answering the same to a body carrying no `lyrics` key at all. Refusing
+   * here rather than letting the second one bill for that failure. Every mode
+   * that shows the box demands what goes in it, and every other mode has no
+   * box. Stated per mode rather than derived
    * from the model, so a mode added later cannot reach the picker without
    * saying which it is.
    *

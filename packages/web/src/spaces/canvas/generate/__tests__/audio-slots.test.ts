@@ -28,6 +28,7 @@ import {
   type ExecuteRefusal,
 } from '@web/spaces/canvas/generate/generate-guards';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import { allSlotSpecs, slotForPurpose } from '@web/spaces/canvas/generate/slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
@@ -111,8 +112,9 @@ describe('the music reference slots', () => {
   const MUSIC_SLOTS = ['musicSong', 'musicVoice', 'musicInstrumental'] as const;
 
   it('takes an audio node in each, under the name the vendor reads', () => {
-    // minimax/music-01 names them `song`, `voice` and `instrumental`
-    // (measured against the gateway 2026-09-05).
+    // minimax/music-01 names them `song`, `voice` and `instrumental`. Only
+    // `song` has been run against the gateway (2026-09-05); the other two
+    // names come from the vendor's parameter page.
     expect(AUDIO_SLOTS.musicSong.param).toBe('song');
     expect(AUDIO_SLOTS.musicVoice.param).toBe('voice');
     expect(AUDIO_SLOTS.musicInstrumental.param).toBe('instrumental');
@@ -189,13 +191,21 @@ describe('the music reference slots', () => {
   });
 
   it('answers every mode placeholder and every param label in all five catalogs', () => {
+    // Walked off the table rather than hand-listed: a param added later comes
+    // with a label key, and a list written out here would not know about it —
+    // the panel would print the raw key at whichever locale forgot it.
+    const paramKeys = Object.values(AUDIO_PARAMS).flatMap((spec) => [
+      spec.labelKey,
+      ...('stops' in spec && spec.stops ? spec.stops.map((s) => s.labelKey) : []),
+      ...('stateKeys' in spec ? [spec.stateKeys.on, spec.stateKeys.off] : []),
+    ]);
     const keys = [
       ...AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey),
+      ...paramKeys,
+      // The panel's own words for the two music boxes, which belong to no param.
       'canvas.generatePanel.musicStyleLabel',
       'canvas.generatePanel.musicLyricsLabel',
       'canvas.generatePanel.musicLyricsPlaceholder',
-      'canvas.generatePanel.musicInstrumentalOnly',
-      'canvas.generatePanel.musicWithVocals',
     ];
     for (const key of keys) {
       for (const [locale, catalog] of LOCALE_CATALOGS) {
