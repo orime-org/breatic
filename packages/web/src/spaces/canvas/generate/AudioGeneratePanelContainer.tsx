@@ -7,10 +7,10 @@
  *
  * Its own container rather than a branch in the video one, for the same reason
  * that one is not a branch of the image one: what a panel READS differs. This
- * one reads a live voice list off an endpoint, resolves the voice param under
- * whichever name the active vendor gave it, and states a rate instead of a
- * total. What the three do share — the task envelope, the execute gate, the
- * prompt editor, the reference rail — they share by calling the same code.
+ * one reads a live voice list off an endpoint and resolves the voice param
+ * under whichever name the active vendor gave it. What the three do share —
+ * the task envelope, the execute gate, the prompt editor, the reference rail —
+ * they share by calling the same code.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';

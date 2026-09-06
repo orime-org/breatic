@@ -433,6 +433,7 @@
       "musicStyleLabel": "스타일",
       "musicLyricsLabel": "가사",
       "lyricsMissing": "먼저 가사를 적으세요",
+      "refuseExecuteNoStyle": "먼저 스타일을 적으세요",
       "refuseExecuteNoReference": "전체 곡, 보컬, 반주 중 하나를 고르세요"
     },
     "nodeMenu": {

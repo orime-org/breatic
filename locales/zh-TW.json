@@ -433,6 +433,7 @@
       "musicStyleLabel": "風格",
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "先寫下歌詞",
+      "refuseExecuteNoStyle": "先寫下風格",
       "refuseExecuteNoReference": "挑一段整曲、人聲或伴奏"
     },
     "nodeMenu": {

@@ -833,9 +833,10 @@ function appendFocusImageCore(
 
 /**
  * Append a focus crop to a node's `focusImages` (#1782) — a `Y.Array` on
- * the data Y.Map (concurrent-add safe; see `appendFocusImageCore`,
- * the one exception to `buildDataMap`'s plain-values convention —
- * the backend never reads this field). Creates the array on first add.
+ * the data Y.Map (concurrent-add safe; see `appendFocusImageCore`, one of the
+ * exceptions to `buildDataMap`'s plain-values convention, and the only one
+ * that is a Y.Array — the backend never reads this field). Creates the array
+ * on first add.
  * CONTENT_WRITE origin, NOT undo-tracked (adversarial round-3): the append
  * lands asynchronously when the crop upload finishes — the same rule as
  * upload completion (#8), or a slow upload landing seconds later would

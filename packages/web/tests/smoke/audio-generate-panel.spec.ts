@@ -634,6 +634,16 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
   await expect(page.getByTestId('generate-audio-tool-music-song')).toHaveCount(0);
 
+  // Neither box filled: the click names the one on top, and it names it by
+  // what the screen calls it. Nothing on this panel is labelled "prompt", and
+  // the box that IS labelled is the other one.
+  await expect(page.getByTestId('generate-audio-execute')).toBeEnabled();
+  await page.getByTestId('generate-audio-execute').click();
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText(
+    'Write the style first',
+    { timeout: 10_000 },
+  );
+
   // A brief alone leaves the button live and the click says what is missing —
   // the gateway refuses this model without lyrics, so the panel says so first
   // rather than letting the user watch a generation start and fail.

@@ -235,6 +235,7 @@ describe('refusalToastKey — which refusal says something out loud', () => {
       'no-model': false,
       submitting: false,
       'prompt-missing': true,
+      'style-missing': true,
       'prompt-too-long': true,
       'voice-missing': true,
       'ref-audio-missing': true,
@@ -465,6 +466,22 @@ describe('evaluateExecute — the lyrics box', () => {
     expect(evaluateExecute({ ...t2m, lyricsText: '[Verse]\nmorning light' })).toBeNull();
   });
 
+  // 有歌词框时，上面那个框在屏幕上叫「风格」，不叫「提示词」——面板上没有任何
+  // 东西叫后者，而被命名的那个框正是用户已经填好的。所以这一档空掉上面那个框，
+  // 拒绝语要指得到它。
+  it('names the style box, which is what the screen calls it here', () => {
+    expect(evaluateExecute({ ...t2m, promptText: '', lyricsText: 'la' })).toBe(
+      'style-missing',
+    );
+    expect(refusalToastKey('style-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoStyle',
+    );
+  });
+
+  it('still names the prompt on the modes that show one box', () => {
+    expect(evaluateExecute({ ...ok, promptText: '' })).toBe('prompt-missing');
+  });
+
   // Judged on the text the vendor will actually receive, the same rule the
   // prompt's own length check follows: the worker cleans every AIGC prompt
   // through `extractPromptText` before the request goes out, and everything
@@ -485,10 +502,10 @@ describe('evaluateExecute — the lyrics box', () => {
     expect(evaluateExecute({ ...ok, lyricsRequired: false, lyricsText: '' })).toBeNull();
   });
 
-  it('reports the style prompt first, the panel order', () => {
+  it('reports the style box first, the panel order', () => {
     // The style box sits above the lyrics box, so an empty one is what the
     // user is told about first.
-    expect(evaluateExecute({ ...t2m, promptText: '' })).toBe('prompt-missing');
+    expect(evaluateExecute({ ...t2m, promptText: '' })).toBe('style-missing');
   });
 
   it('leaves the button live and speaks on click', () => {

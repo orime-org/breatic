@@ -52,10 +52,11 @@ interface AudioGeneratePanelProps {
    */
   currentModel: ModelEntry | undefined;
   /**
-   * What one generation off the current prompt would cost, in credits.
+   * What one generation would cost, in credits.
    *
-   * A number that moves as the prompt is typed: a tts model bills by how much
-   * text it is handed. Undefined where the model states no rate.
+   * A model stating a rate counts what it is handed and the number moves as
+   * the box is typed into; one stating none prints its cost per call and holds
+   * still. Undefined until a model is picked.
    */
   creditEstimate: number | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
@@ -148,8 +149,8 @@ interface AudioGeneratePanelProps {
  * speaking params, the credit figure and the submit button.
  *
  * The figure is one number beside a star, the shape VideoGeneratePanel uses.
- * There it is the model's cost per call; here it follows the prompt, since a
- * tts model bills by how much text it is handed (`estimateAudioCredits`).
+ * There it is always the model's cost per call; here it is whichever of the
+ * two the model states (`estimateAudioCredits`).
  *
  * Presentational throughout; every piece of node data and every Yjs write is
  * threaded in by the container.
@@ -302,7 +303,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           position, so a `promptSlot` sitting directly under the panel in one
           branch and under a div in the other is a different element each time
           and gets torn down — taking the editor's collaborative binding, its
-          caret and its undo stack with it on every mode switch. */}
+          caret and its undo stack with it on any switch that adds or removes
+          the lyrics box. */}
       <div className='flex flex-col gap-2'>
         {lyricsSlot !== null && (
           <span className='text-xs text-muted-foreground'>

@@ -717,10 +717,7 @@ function VideoGeneratePanelBody({
   // prompt editor's chips and its `@` popup. The rail reads the same table
   // inside the panel.
   const imageRefsDisabled = !modeTakesReferences(mode);
-  // One string for every mode, deliberately. Making it follow the mode would
-  // put it in `useEditor`'s dependency list (PromptEditor bakes it into the
-  // extensions at creation), and @tiptap/react rebuilds the whole editor when
-  // a dep changes — taking the prompt's undo history with it. The gap it was
+  // One string for every mode, deliberately. The gap a per-mode sentence was
   // written to close is real but lives elsewhere, and #1952 closed it there:
   // with only IMAGE references connected, typing `@` in a mode that cannot use
   // them used to open nothing at all — the popup hid itself at zero matches

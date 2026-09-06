@@ -11,8 +11,10 @@
 # on both until #1960, and its transport builds prompt / lyrics / is_instrumental
 # alone — on a deployment holding MINIMAX_API_KEY it would take music-01's three
 # reference URLs nowhere and hand back a song unrelated to what was picked.
-# Prices and the `params` blocks below were measured against the WaveSpeed
-# gateway on 2026-09-05.
+# Prices, and every param the panel sends today, were measured against the
+# WaveSpeed gateway on 2026-09-05. music-01's `voice` and `instrumental` are
+# the exception: their names come from the vendor's parameter page, and only
+# `song` has been run.
 
 models:
   - name: "minimax-music-3.0"

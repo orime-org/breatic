@@ -129,6 +129,7 @@ export type ExecuteRefusal =
   | 'no-model'
   | 'submitting'
   | 'prompt-missing'
+  | 'style-missing'
   | 'prompt-too-long'
   | 'voice-missing'
   | 'ref-audio-missing'
@@ -167,8 +168,13 @@ export function evaluateExecute(
   // Front-end idempotency. The backend lock is the airtight guard, but the
   // button must not invite a double-submit.
   if (input.isSubmitting) return 'submitting';
+  // Two refusals for one empty box, because the box has two names. A panel
+  // showing it alone calls it the prompt; a music mode puts a lyrics box under
+  // it and labels the pair Style and Lyrics, and a sentence saying "write a
+  // prompt" there names nothing on screen while the box that IS named is the
+  // one the user already filled.
   if (input.promptRequired && input.promptText.trim().length === 0) {
-    return 'prompt-missing';
+    return input.lyricsRequired ? 'style-missing' : 'prompt-missing';
   }
   // Counted on the text the vendor will actually receive. The worker cleans
   // every AIGC prompt through this same function before the request goes out
@@ -187,9 +193,7 @@ export function evaluateExecute(
   ) {
     return 'prompt-too-long';
   }
-  // Reported right after the style brief, because the two are one statement:
-  // a music model is handed a description and the words to sing, and a user
-  // told to fix one and then the other would fix the same submit twice.
+  // Right after the style brief, the order the two boxes sit in on screen.
   //
   // Judged on the text the vendor will receive, the same rule the prompt's
   // length check follows above: the worker cleans the lyrics through this
@@ -280,6 +284,9 @@ export function isExecuteButtonDisabled(
 export function refusalToastKey(refusal: ExecuteRefusal): string | null {
   if (refusal === 'prompt-missing') {
     return 'canvas.generatePanel.refuseExecuteNoPrompt';
+  }
+  if (refusal === 'style-missing') {
+    return 'canvas.generatePanel.refuseExecuteNoStyle';
   }
   if (refusal === 'prompt-too-long') {
     return 'canvas.generatePanel.refuseExecuteTooLong';

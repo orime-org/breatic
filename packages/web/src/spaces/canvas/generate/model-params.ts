@@ -22,13 +22,14 @@
  * from the records on every render, so there is no second copy to keep in step.
  *
  * Not every key a model declares under `params` is one of these. A declared
- * param whose value lives elsewhere on the node never gets a control, so no
- * record is ever written for it: the prompt and the lyrics are Yjs fragments,
- * the reference rail is the node's incoming edges, and every source slot
- * (`style_images`, the video frames, the voice sample, the three music
- * references) is a picked URL on the node. Each panel's payload builder spreads
- * the records first and writes those on top, so where one is being sent it is
- * the node's value that travels.
+ * param whose value lives elsewhere on the node gets no control: the prompt
+ * and the lyrics are Yjs fragments, the reference rail is the node's incoming
+ * edges, and every source slot (`style_images`, the video frames, the voice
+ * sample, the three music references) is a picked URL on the node. A record
+ * still holds a key for each of them — {@link resolveParamsForModel} writes
+ * every declared param it is not told to skip — and each panel's payload
+ * builder spreads the records first and writes the node's own values on top,
+ * so what travels is the node's.
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';

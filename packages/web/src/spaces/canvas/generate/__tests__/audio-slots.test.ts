@@ -181,6 +181,7 @@ describe('the music reference slots', () => {
       'no-model': false,
       submitting: false,
       'prompt-missing': true,
+      'style-missing': true,
       'prompt-too-long': true,
       'voice-missing': true,
       'ref-audio-missing': true,
