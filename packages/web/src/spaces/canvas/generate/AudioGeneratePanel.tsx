@@ -301,10 +301,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           labels are holes rather than a second branch: React reconciles by
           position, so a `promptSlot` sitting directly under the panel in one
           branch and under a div in the other is a different element each time
-          and gets torn down. The editor it holds is recreated on a mode switch
-          anyway, by a separate mechanism — its placeholder rides on the mode
-          and is a `useEditor` dependency (#2100) — so what this buys today is
-          one teardown instead of two, and the ground for that one to go. */}
+          and gets torn down — taking the editor's collaborative binding, its
+          caret and its undo stack with it on every mode switch. */}
       <div className='flex flex-col gap-2'>
         {lyricsSlot !== null && (
           <span className='text-xs text-muted-foreground'>

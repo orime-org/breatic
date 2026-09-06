@@ -691,12 +691,24 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
         .evaluate((el) => getComputedStyle(el).cursor),
     )
     .not.toBe('text');
+  // The box is empty here — the execute above was refused for exactly that —
+  // so its placeholder is the whole of what the screen says about it, and one
+  // still asking for words would be the only thing contradicting the switch,
+  // the gate and the request. The switch is thrown while the editor is already
+  // up, which is the path the unit suite cannot walk: it is the running editor
+  // that has to reprint, not a fresh one built from the new state.
+  await expect(
+    page.getByTestId('generate-lyrics-editor').locator('[data-placeholder]'),
+  ).toHaveAttribute('data-placeholder', 'No lyrics needed', { timeout: 10_000 });
   // Off again, so the case leaves the node the way it found it.
   await instrumental.click();
   await expect(instrumental).toHaveAttribute('aria-checked', 'false', {
     timeout: 10_000,
   });
   await expect(pill).toContainText('With vocals', { timeout: 10_000 });
+  await expect(
+    page.getByTestId('generate-lyrics-editor').locator('[data-placeholder]'),
+  ).toHaveAttribute('data-placeholder', 'Write the lyrics', { timeout: 10_000 });
   await page.keyboard.press('Escape');
 });
 

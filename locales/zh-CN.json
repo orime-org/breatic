@@ -429,6 +429,7 @@
       "musicWithVocals": "有人声",
       "musicPromptPlaceholder": "写下曲风、情绪、乐器和速度",
       "musicLyricsPlaceholder": "写下歌词",
+      "musicLyricsNotUsed": "不需要歌词",
       "musicStyleLabel": "风格",
       "musicLyricsLabel": "歌词",
       "lyricsMissing": "先写下歌词",

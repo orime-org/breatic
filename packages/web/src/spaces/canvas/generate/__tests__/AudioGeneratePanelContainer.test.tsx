@@ -794,10 +794,9 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(box.textContent).toContain('morning light');
   });
 
-  // The extension hides its placeholder on a read-only editor by default,
-  // which would leave a dimmed box with nothing in it at all — no words, no
-  // prompt, nothing saying what it is for.
-  it('keeps the lyrics box saying what it asks for while it is locked', async () => {
+  // 空的只读框里，占位符是屏幕上关于这个框的全部陈述。默认的「写下歌词」在
+  // 这一档是反话：开关、门、请求三处都说不要歌词，只有这个框在叫用户写。
+  it('says the locked lyrics box wants nothing rather than asking for words', async () => {
     await openPanel({
       mode: 't2m',
       model: 'minimax-music-3.0',
@@ -812,7 +811,18 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
     expect(box.querySelector('[data-placeholder]')).toHaveAttribute(
       'data-placeholder',
-      'Write the lyrics',
+      'No lyrics needed',
+    );
+  });
+
+  it('asks for words again once the track has vocals', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(box.querySelector('[data-placeholder]')).toHaveAttribute(
+        'data-placeholder',
+        'Write the lyrics',
+      ),
     );
   });
 

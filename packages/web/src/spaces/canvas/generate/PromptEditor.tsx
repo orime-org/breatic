@@ -80,10 +80,10 @@ interface PromptEditorProps {
    * Whether this box refuses typing while keeping what it holds (#1960).
    *
    * The lyrics box under an instrumental track: with no vocals there are no
-   * words to write, so the box says so rather than sitting there taking
-   * typing the run will not use. What is already in it stays, and comes back
-   * the moment the switch goes off — a Yjs fragment is the value, and nothing
-   * here writes to it.
+   * words to write, so the box refuses typing the run will not use. What is
+   * already in it stays, and comes back the moment the switch goes off — a Yjs
+   * fragment is the value, and nothing here writes to it. Saying so is the
+   * caller's half: it hands over the placeholder that fits the state.
    *
    * Applied through `setEditable` in an effect rather than through
    * `useEditor`'s options, which are baked in at creation: recreating the
@@ -100,7 +100,13 @@ interface PromptEditorProps {
    * a blank line between every pair is not what was typed.
    */
   blockSeparator?: string;
-  /** Placeholder shown while the prompt is empty. */
+  /**
+   * Placeholder shown while the box is empty.
+   *
+   * Read live rather than baked in at creation, so a box whose state changes
+   * what it asks for can hand over a different sentence without the editor
+   * being rebuilt under it.
+   */
   placeholder: string;
   /** Called with the current plain-text prompt (drives the execute gate). */
   onTextChange: (text: string) => void;
@@ -200,6 +206,13 @@ export const PromptEditor = React.forwardRef<
   // a separator would tear down the collaborative binding.
   const blockSeparatorRef = React.useRef(blockSeparator);
   blockSeparatorRef.current = blockSeparator;
+  // Live for the same reason, and for one more: what this box asks for is a
+  // property of the state it is in, not of the box. The lyrics box wants words
+  // on a vocal track and wants nothing on an instrumental one, and a string
+  // baked in at creation would go on asking for words after the switch says
+  // they are not used.
+  const placeholderRef = React.useRef(placeholder);
+  placeholderRef.current = placeholder;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
   // list would stay stale. The effect below calls it when `imageRefsDisabled` /
@@ -230,9 +243,13 @@ export const PromptEditor = React.forwardRef<
         }),
         // `showOnlyWhenEditable` defaults to true, and the lyrics box goes
         // read-only under an instrumental track (#1960) — leaving a dimmed box
-        // with nothing in it at all. What the box asks for is true whether or
-        // not it is taking typing right now.
-        Placeholder.configure({ placeholder, showOnlyWhenEditable: false }),
+        // with nothing in it at all. An empty box's placeholder is the whole of
+        // what the screen says about it, so it stays visible and says what THIS
+        // state asks for, read live through the ref.
+        Placeholder.configure({
+          placeholder: () => placeholderRef.current,
+          showOnlyWhenEditable: false,
+        }),
         ReferenceMention.configure({
           suggestion: makeReferenceSuggestion({
             getPool: () => poolRef.current,
@@ -275,10 +292,10 @@ export const PromptEditor = React.forwardRef<
       },
     },
     // Recreate the editor when the fragment OR a captured translated string
-    // changes. placeholder + mentionEmptyLabel are baked into the extensions at
-    // creation and never re-synced by useEditor (deps-gated), so an in-session
-    // locale switch would otherwise leave them in the old language until the
-    // panel reopened (adversarial round-2). Both change only on a locale switch
+    // changes. The two mention labels are baked into the extensions at creation
+    // and never re-synced by useEditor (deps-gated), so an in-session locale
+    // switch would otherwise leave them in the old language until the panel
+    // reopened (adversarial round-2). Both change only on a locale switch
     // (rare); the reference POOL stays a live ref (poolRef) so frequent edge
     // add/remove never triggers a recreate. caretProvider flips null→provider
     // once on first socket connect (mounting the caret extension). The name
@@ -289,7 +306,6 @@ export const PromptEditor = React.forwardRef<
     // that a resolver arriving after mount still reaches the extensions.
     [
       fragment,
-      placeholder,
       mentionEmptyLabel,
       mentionNoMatchLabel,
       caretProvider,
@@ -440,9 +456,15 @@ export const PromptEditor = React.forwardRef<
   // `emitUpdate` off: it defaults to true, and the handler it would fire
   // re-serializes the prompt and re-walks the document for `@` mentions — work
   // `onCreate` has already done, on every mount of every panel's editor.
+  //
+  // `placeholder` is a dependency because this call is also what republishes
+  // it: `setEditable` goes through `setOptions`, which ends in
+  // `view.updateState`, and that is when the extension re-reads the function
+  // behind the placeholder. Without it the box would keep the sentence it was
+  // created with until the next keystroke.
   React.useEffect(() => {
     editor?.setEditable(!readOnly, false);
-  }, [editor, readOnly]);
+  }, [editor, readOnly, placeholder]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their

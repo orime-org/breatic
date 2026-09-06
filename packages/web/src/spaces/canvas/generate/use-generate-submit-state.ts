@@ -4,15 +4,17 @@
 /**
  * What a Generate panel reads at the instant its execute button is clicked.
  *
- * Each of the three panels (image, video, audio) keeps the same six things,
- * and each one is here for a reason a click makes: the prompt and the
- * in-flight flag are mirrored into refs because React state lags a frame and
- * the handler reads them synchronously; the editor handle is what serializes
- * the prompt at that instant; and the mount flag is how a submit already on
- * its way tells that the panel it started from has gone.
+ * Each of the three panels (image, video, audio) keeps the same shape, and
+ * every part of it is here for a reason a click makes: a text box contributes
+ * a state value, a ref mirroring it, the setter that writes both, and the
+ * editor handle that serializes it at that instant — because React state lags
+ * a frame and the handler reads it synchronously. Beside the boxes sit the
+ * in-flight flag (mirrored for the same reason) and the mount flag, which is
+ * how a submit already on its way tells that the panel it started from has
+ * gone.
  *
  * Held together rather than declared per panel because they are one mechanism:
- * a fourth panel that copied five of the six would look right and drop a
+ * a fourth panel that copied all but one part would look right and drop a
  * guarantee.
  *
  * The state halves are not spare copies of the refs. Each panel's button runs
@@ -39,10 +41,10 @@ export interface GenerateSubmitState {
    * The lyrics as state, for the one panel that collects them (#1960).
    *
    * Here rather than in the audio panel alone for the reason the header gives:
-   * these six — now eight — are one mechanism, and a second panel growing a
-   * second text box would otherwise copy the mirror-plus-ref pattern and be
-   * one `useRef` away from a click that reads a stale value. Empty on the
-   * panels that show no lyrics box.
+   * these are one mechanism, and a second panel growing a second text box
+   * would otherwise copy the mirror-plus-ref pattern and be one `useRef` away
+   * from a click that reads a stale value. Empty on the panels that show no
+   * lyrics box.
    */
   lyricsText: string;
   /** The same lyrics, readable synchronously inside the click handler. */

@@ -56,7 +56,10 @@ export const AUDIO_SLOTS = {
   // The three below are what reference-to-music collects. They carry
   // `storesCover` for the same reason the voice sample does — audio paints no
   // thumbnail — and the vendor's own names for the params: minimax/music-01
-  // reads `song`, `voice` and `instrumental` (measured 2026-09-05).
+  // reads `song`, `voice` and `instrumental`. The names come from WaveSpeed's
+  // parameter page; `song` is the one that has been run against the gateway
+  // (2026-09-05), so a run carrying only `voice` or only `instrumental` is
+  // taken on the page's word.
   musicSong: {
     field: 'musicSong',
     storesCover: true,

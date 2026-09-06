@@ -429,6 +429,7 @@
       "musicWithVocals": "보컬 있음",
       "musicPromptPlaceholder": "장르, 분위기, 악기, 템포를 적으세요",
       "musicLyricsPlaceholder": "가사를 적으세요",
+      "musicLyricsNotUsed": "가사가 필요 없습니다",
       "musicStyleLabel": "스타일",
       "musicLyricsLabel": "가사",
       "lyricsMissing": "먼저 가사를 적으세요",

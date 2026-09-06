@@ -421,8 +421,8 @@ export function useCanvasSpace(
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `handlingBy` as a plain object). Undefined fields are omitted.
  *
- * Three keys are exceptions to the plain-values convention, and all three are
- * seeded here rather than on demand. A container created on demand is a
+ * Some keys are exceptions to the plain-values convention, and every one of
+ * them is seeded here rather than on demand. A container created on demand is a
  * whole-container race: two clients that both find it missing each mint their
  * own, map-level last-write-wins keeps one, and the loser's content disappears
  * with their container. Born inside the creating transaction the container is
@@ -439,9 +439,13 @@ export function useCanvasSpace(
  *
  * `prompt` — the Generate prompt fragment, on the modalities that offer
  * Generate (#1880). Seeded empty; {@link getPromptFragment} only reads.
+ *
+ * `lyrics` — the words to sing, a second fragment beside the style brief on
+ * audio nodes (#1960). Seeded empty; {@link getLyricsFragment} only reads.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
- *   seeded: `body` for text, `prompt` for generate-capable modalities.
+ *   seeded: `body` for text, `prompt` for generate-capable modalities, and
+ *   `lyrics` for audio.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -497,11 +501,9 @@ function buildDataMap(
   // modalities that offer Generate get one; on a group or a sticky it would be
   // a container nothing ever reads.
   if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
-  // The words to sing, a second fragment beside the style brief (#1960). Only
-  // audio nodes, since the two music modes are the only place one is asked
+  // Audio alone, since the two music modes are the only place words are asked
   // for — the same "no container nothing reads" rule the prompt follows, just
-  // with a narrower answer. Born with the node for the same reason as well:
-  // lazy creation is what lost content in #1880.
+  // with a narrower answer.
   if (type === 'audio') map.set('lyrics', new Y.XmlFragment());
   return map;
 }

@@ -9,9 +9,9 @@
 #
 # Both entries list WaveSpeed only. The direct MiniMax connection was priority 1
 # on both until #1960, and its transport builds prompt / lyrics / is_instrumental
-# alone — so on a deployment holding MINIMAX_API_KEY, music-01's three reference
-# URLs went nowhere and the user was charged for a song unrelated to what they
-# picked. Prices and parameters below were measured against the WaveSpeed
+# alone — on a deployment holding MINIMAX_API_KEY it would take music-01's three
+# reference URLs nowhere and hand back a song unrelated to what was picked.
+# Prices and the `params` blocks below were measured against the WaveSpeed
 # gateway on 2026-09-05.
 
 models:

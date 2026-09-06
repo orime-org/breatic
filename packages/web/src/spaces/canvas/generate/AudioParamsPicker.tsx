@@ -289,7 +289,14 @@ function ParamToggleRow({
   const id = `generate-audio-${control.name}-toggle`;
   return (
     <div className={cn('flex items-center justify-between gap-3', className)}>
-      <label htmlFor={id} className='cursor-pointer text-xs text-foreground'>
+      {/* The same weight and colour its two siblings in this popover use for a
+          param's name (`ParamSliderRow`, `ParamOptionGroup`) — a row reading
+          darker than the ones above and below it says a difference that is
+          not there. */}
+      <label
+        htmlFor={id}
+        className='cursor-pointer text-xs font-medium text-muted-foreground'
+      >
         {label}
       </label>
       <Switch

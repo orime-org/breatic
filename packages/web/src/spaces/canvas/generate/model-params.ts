@@ -21,12 +21,14 @@
  * has no separate "params in effect" field: what the panel renders is resolved
  * from the records on every render, so there is no second copy to keep in step.
  *
- * Not every key a model declares under `params` is one of these. `prompt`,
- * `images` (the reference rail), `style_images` (`data.styleImageUrl`) and
- * `lyrics` (its own Yjs fragment, #1960) are declared params whose values live
- * elsewhere on the node or on the prompt; the execute payload spreads the
- * records first and then overwrites them, so whatever a record holds for them
- * does not reach the request.
+ * Not every key a model declares under `params` is one of these. A declared
+ * param whose value lives elsewhere on the node never gets a control, so no
+ * record is ever written for it: the prompt and the lyrics are Yjs fragments,
+ * the reference rail is the node's incoming edges, and every source slot
+ * (`style_images`, the video frames, the voice sample, the three music
+ * references) is a picked URL on the node. Each panel's payload builder spreads
+ * the records first and writes those on top, so where one is being sent it is
+ * the node's value that travels.
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';

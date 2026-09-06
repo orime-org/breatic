@@ -610,7 +610,15 @@ function AudioGeneratePanelBody({
     ],
   );
 
-  const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
+  // What the empty box says is the whole of what the screen says about it, so
+  // it answers for the state the switch is in: an instrumental track wants no
+  // words, and a box still asking for them contradicts the switch, the execute
+  // gate and the request all three.
+  const lyricsPlaceholder = t(
+    instrumental
+      ? 'canvas.generatePanel.musicLyricsNotUsed'
+      : 'canvas.generatePanel.musicLyricsPlaceholder',
+  );
   const lyricsSlot = React.useMemo(
     () =>
       lyrics && lyricsFragment ? (
@@ -621,8 +629,7 @@ function AudioGeneratePanelBody({
           // blank line between blocks, which reads as prose; here the line
           // structure is the content and the vendor is handed it as typed.
           blockSeparator={'\n'}
-          // An instrumental track has no words to write, and the box saying so
-          // is what puts that switch's state on screen. What is already in it
+          // An instrumental track has no words to write. What is already in it
           // stays and comes back when the switch goes off.
           readOnly={instrumental}
           fragment={lyricsFragment}
