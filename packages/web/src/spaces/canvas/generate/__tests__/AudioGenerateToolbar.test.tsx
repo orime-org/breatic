@@ -58,9 +58,20 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     expect(screen.getByTestId('generate-audio-tool-ref-audio')).toBeInTheDocument();
   });
 
+  it('divides Reference from the slots, and only when there are slots', () => {
+    // Reference and a slot are two different things wearing the same button:
+    // what Reference collects lands in the rail below the row, what a slot
+    // collects lands on the slot. Four evenly spaced buttons say otherwise.
+    setup();
+    expect(screen.queryByTestId('generate-audio-tool-sep')).toBeNull();
+
+    setup({ slots: ['musicSong', 'musicVoice', 'musicInstrumental'] });
+    expect(screen.getByTestId('generate-audio-tool-sep')).toBeInTheDocument();
+  });
+
   it('shows a filled slot with its clear badge, and an empty one without', () => {
     // An audio pick paints no thumbnail — an audio node carries no poster — so
-    // the badge is the only thing that says the slot is holding something.
+    // the badge and the lit border are what say the slot is holding something.
     setup({ slots: ['refAudio'] });
     expect(screen.queryByTestId('generate-audio-ref-audio-clear')).toBeNull();
 

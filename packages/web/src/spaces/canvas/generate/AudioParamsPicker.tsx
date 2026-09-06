@@ -267,10 +267,14 @@ interface ParamToggleRowProps {
 }
 
 /**
- * One switch: its name on the left, the switch on the right.
+ * One switch: its name on the left, the state word and the switch on the right.
  *
  * The label is a `<label>` bound to the switch, so the words are part of the
- * hit target rather than something to aim past.
+ * hit target rather than something to aim past. The state word is the same one
+ * the camera and video-audio switches print, and it is what says which way this
+ * switch is thrown: the track alone carries no word, so an off switch and a
+ * disabled control look alike (contrast measured 2026-09-06: track against the
+ * popover ground is 1.05:1, under SC 1.4.11's 3:1).
  * @param root0 - Component props.
  * @param root0.control - The toggle control.
  * @param root0.label - The translated param name.
@@ -286,6 +290,7 @@ function ParamToggleRow({
   onChange,
   className,
 }: ParamToggleRowProps): React.JSX.Element {
+  const t = useTranslation();
   const id = `generate-audio-${control.name}-toggle`;
   return (
     <div className={cn('flex items-center justify-between gap-3', className)}>
@@ -299,12 +304,19 @@ function ParamToggleRow({
       >
         {label}
       </label>
-      <Switch
-        id={id}
-        checked={checked}
-        onCheckedChange={(next) => onChange({ [control.name]: next })}
-        data-testid={id}
-      />
+      <span className='flex items-center gap-2'>
+        <span className='text-xs text-muted-foreground'>
+          {checked
+            ? t('canvas.generatePanel.switchOn')
+            : t('canvas.generatePanel.switchOff')}
+        </span>
+        <Switch
+          id={id}
+          checked={checked}
+          onCheckedChange={(next) => onChange({ [control.name]: next })}
+          data-testid={id}
+        />
+      </span>
     </div>
   );
 }

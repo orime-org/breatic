@@ -610,18 +610,17 @@ function AudioGeneratePanelBody({
     ],
   );
 
-  // What the empty box says is the whole of what the screen says about it, so
-  // it answers for the state the switch is in: an instrumental track wants no
-  // words, and a box still asking for them contradicts the switch, the execute
-  // gate and the request all three.
-  const lyricsPlaceholder = t(
-    instrumental
-      ? 'canvas.generatePanel.musicLyricsNotUsed'
-      : 'canvas.generatePanel.musicLyricsPlaceholder',
-  );
+  const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
   const lyricsSlot = React.useMemo(
     () =>
-      lyrics && lyricsFragment ? (
+      // An instrumental track has no words to write, so the box is not there
+      // to write them in (user 2026-09-06). A box left standing has to say why
+      // it refuses typing, and the whole of that explanation is a sentence the
+      // reader has to go and read; nothing on the screen is a shorter way to
+      // say "not this run" than the box being gone. What was typed stays on the
+      // node — the fragment is untouched — and comes back with the box when the
+      // switch goes off.
+      lyrics && lyricsFragment && !instrumental ? (
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
@@ -629,9 +628,6 @@ function AudioGeneratePanelBody({
           // blank line between blocks, which reads as prose; here the line
           // structure is the content and the vendor is handed it as typed.
           blockSeparator={'\n'}
-          // An instrumental track has no words to write. What is already in it
-          // stays and comes back when the switch goes off.
-          readOnly={instrumental}
           fragment={lyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}
@@ -704,6 +700,9 @@ function AudioGeneratePanelBody({
       })}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
+      // The mode, not the lyrics box: a music mode goes on calling its first
+      // box the style after the instrumental switch takes the second one away.
+      labelBoxes={lyrics}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}

@@ -106,12 +106,22 @@ interface AudioGeneratePanelProps {
    */
   promptSlot: React.ReactNode;
   /**
-   * The injected lyrics editor, or null on a mode that collects none (#1960).
+   * The injected lyrics editor, or null on a mode that collects none (#1960)
+   * and on an instrumental track, which has no words to write.
    *
    * Its own slot rather than a flag: the editor is a live collaborative view
    * of a Yjs fragment, and the container is the layer that owns those.
    */
   lyricsSlot: React.ReactNode;
+  /**
+   * Whether the boxes carry their names.
+   *
+   * A music mode asks for two different things and names both, and it keeps
+   * naming the style box after the lyrics box goes away with the instrumental
+   * switch — otherwise the one remaining box loses its name at the moment the
+   * switch changes what the panel is asking for.
+   */
+  labelBoxes: boolean;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -170,6 +180,7 @@ interface AudioGeneratePanelProps {
  * @param root0.executeRefusal - Which execute precondition fails.
  * @param root0.promptSlot - The injected prompt editor, or null.
  * @param root0.lyricsSlot - The injected lyrics editor, or null.
+ * @param root0.labelBoxes - Whether the boxes carry their names.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -208,6 +219,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   executeRefusal,
   promptSlot,
   lyricsSlot,
+  labelBoxes,
   references,
   referencePicking = false,
   slots,
@@ -296,29 +308,39 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
       />
 
       {/* Two boxes look alike once the placeholders are typed over, so each
-          carries a word saying which is which. Only when there are two: a
-          single box needs no label to be told apart from nothing.
+          carries a word saying which is which. Only on a mode that asks for
+          two things: a single prompt box needs no label to be told apart from
+          nothing.
 
-          The wrapper is here whether or not there is a second box, and the
+          Both wrappers are here whether or not there is a second box, and the
           labels are holes rather than a second branch: React reconciles by
           position, so a `promptSlot` sitting directly under the panel in one
           branch and under a div in the other is a different element each time
           and gets torn down — taking the editor's collaborative binding, its
           caret and its undo stack with it on any switch that adds or removes
-          the lyrics box. */}
-      <div className='flex flex-col gap-2'>
+          the lyrics box.
+
+          A label sits 6px above the box it names and 10px below the group
+          before it, so the pairing is read off the spacing rather than off the
+          order — the weight and the gap the video params popover already gives
+          a control's name. */}
+      <div className='flex flex-col gap-2.5'>
+        <div className='flex flex-col gap-1.5'>
+          {labelBoxes && (
+            <span className='text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.musicStyleLabel')}
+            </span>
+          )}
+          {promptSlot}
+        </div>
         {lyricsSlot !== null && (
-          <span className='text-xs text-muted-foreground'>
-            {t('canvas.generatePanel.musicStyleLabel')}
-          </span>
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.musicLyricsLabel')}
+            </span>
+            {lyricsSlot}
+          </div>
         )}
-        {promptSlot}
-        {lyricsSlot !== null && (
-          <span className='text-xs text-muted-foreground'>
-            {t('canvas.generatePanel.musicLyricsLabel')}
-          </span>
-        )}
-        {lyricsSlot}
       </div>
 
       <div className='flex items-center gap-1.5'>

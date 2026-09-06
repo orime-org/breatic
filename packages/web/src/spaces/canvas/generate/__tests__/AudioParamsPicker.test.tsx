@@ -414,6 +414,22 @@ describe('AudioParamsPicker — a switch', () => {
     );
   });
 
+  // The track measures 1.05:1 against the popover behind it (2026-09-06), under
+  // SC 1.4.11's 3:1, so an off switch and a disabled control look the same. The
+  // word is what says which way it is thrown, and it is the word the camera and
+  // video-audio switches already print.
+  it('prints the state beside the switch while it is off', () => {
+    open(MUSIC, {});
+    expect(screen.getByText('Off')).toBeInTheDocument();
+    expect(screen.queryByText('On')).toBeNull();
+  });
+
+  it('prints the other state once it is on', () => {
+    open(MUSIC, { is_instrumental: true });
+    expect(screen.getByText('On')).toBeInTheDocument();
+    expect(screen.queryByText('Off')).toBeNull();
+  });
+
   // The pill is the only place this state shows without opening anything, and
   // it used to print the param's NAME either way round.
   it('names the state on the pill, whichever way it is set', () => {

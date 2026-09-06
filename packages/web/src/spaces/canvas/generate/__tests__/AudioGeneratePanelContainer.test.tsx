@@ -773,45 +773,25 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(create.mock.calls[0]?.[0]?.params.song).toBe('https://x/y.mp3');
   });
 
-  // The switch and the box are one statement: with no vocals there are no
-  // words to write, so the box says so by going read-only rather than sitting
-  // there taking typing the run will not use. What is already in it stays —
-  // turning the switch back off must return the user's own lyrics.
-  it('locks the lyrics box while the track is marked instrumental', async () => {
+  // The switch and the box are one statement: with no vocals there are no words
+  // to write, so the box is not there — rather than standing there explaining
+  // why it refuses typing (user 2026-09-06). What was written stays on the
+  // node, and comes back with the box when the switch goes off.
+  it('takes the lyrics box away while the track is marked instrumental', async () => {
     await openPanel({
       mode: 't2m',
       model: 'minimax-music-3.0',
       paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
     });
     typeLyrics('morning light');
-    const box = await screen.findByTestId('generate-lyrics-editor');
-    await waitFor(() =>
-      expect(box.querySelector('.ProseMirror')).toHaveAttribute(
-        'contenteditable',
-        'false',
-      ),
-    );
-    expect(box.textContent).toContain('morning light');
-  });
-
-  // 空的只读框里，占位符是屏幕上关于这个框的全部陈述。默认的「写下歌词」在
-  // 这一档是反话：开关、门、请求三处都说不要歌词，只有这个框在叫用户写。
-  it('says the locked lyrics box wants nothing rather than asking for words', async () => {
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    const box = await screen.findByTestId('generate-lyrics-editor');
-    await waitFor(() =>
-      expect(box.querySelector('.ProseMirror')).toHaveAttribute(
-        'contenteditable',
-        'false',
-      ),
-    );
-    expect(box.querySelector('[data-placeholder]')).toHaveAttribute(
-      'data-placeholder',
-      'No lyrics needed',
+    // The style box is still there, so this is the panel settling on the mode
+    // rather than the panel not having rendered yet.
+    await screen.findByTestId('generate-prompt-editor');
+    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+    // Untouched on the node: the switch decides what the run uses, not what
+    // the user wrote.
+    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+      'morning light',
     );
   });
 
@@ -837,11 +817,10 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  // The box says those words are not used and refuses typing; the request has
-  // to say the same. Measured 2026-09-05, `is_instrumental: true` with an
-  // empty `lyrics` is accepted and completes — that combination is the one
-  // this sends. The words stay on the node, so turning the switch back off
-  // returns them.
+  // The panel offers no box to write words in; the request has to agree.
+  // Measured 2026-09-05, `is_instrumental: true` with an empty `lyrics` is
+  // accepted and completes — that combination is the one this sends. The words
+  // stay on the node, so turning the switch back off returns them.
   it('sends no words for a track the user marked vocal-free', async () => {
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({

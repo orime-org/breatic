@@ -77,21 +77,6 @@ interface PromptEditorProps {
    */
   startingHeight?: 'full' | 'half';
   /**
-   * Whether this box refuses typing while keeping what it holds (#1960).
-   *
-   * The lyrics box under an instrumental track: with no vocals there are no
-   * words to write, so the box refuses typing the run will not use. What is
-   * already in it stays, and comes back the moment the switch goes off — a Yjs
-   * fragment is the value, and nothing here writes to it. Saying so is the
-   * caller's half: it hands over the placeholder that fits the state.
-   *
-   * Applied through `setEditable` in an effect rather than through
-   * `useEditor`'s options, which are baked in at creation: recreating the
-   * editor to flip a switch would tear down the collaborative binding and
-   * drop the caret mid-session.
-   */
-  readOnly?: boolean;
-  /**
    * What joins two blocks in the string this box hands to the model (#1960).
    *
    * The editor's schema has no hard break, so Enter is the only line the user
@@ -162,7 +147,6 @@ interface PromptEditorProps {
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
  * @param root0.testId - What tests reach for this editor by.
  * @param root0.startingHeight - How tall the box opens before anything is typed.
- * @param root0.readOnly - Whether the box refuses typing while keeping its content.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
@@ -183,7 +167,6 @@ export const PromptEditor = React.forwardRef<
     caretProvider = null,
     testId = 'generate-prompt-editor',
     startingHeight = 'full',
-    readOnly = false,
     blockSeparator,
   }: PromptEditorProps,
   ref,
@@ -457,14 +440,14 @@ export const PromptEditor = React.forwardRef<
   // re-serializes the prompt and re-walks the document for `@` mentions — work
   // `onCreate` has already done, on every mount of every panel's editor.
   //
-  // `placeholder` is a dependency because this call is also what republishes
-  // it: `setEditable` goes through `setOptions`, which ends in
-  // `view.updateState`, and that is when the extension re-reads the function
-  // behind the placeholder. Without it the box would keep the sentence it was
-  // created with until the next keystroke.
+  // `placeholder` is the dependency because this call is what republishes it:
+  // `setEditable` goes through `setOptions`, which ends in `view.updateState`,
+  // and that is when the extension re-reads the function behind the
+  // placeholder. Without it the box would keep the sentence it was created
+  // with until the next keystroke.
   React.useEffect(() => {
-    editor?.setEditable(!readOnly, false);
-  }, [editor, readOnly, placeholder]);
+    editor?.setEditable(true, false);
+  }, [editor, placeholder]);
   // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
   // switch visually pre-announces they will not take effect (execute forces
   // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
@@ -489,13 +472,10 @@ export const PromptEditor = React.forwardRef<
     <ScrollArea
       data-testid={testId}
       className={
-        // Dimmed while it refuses typing, so the state is on screen and not
-        // only in what the box does when clicked.
         // `prompt-editor` is what index.css reaches for: the test id is a prop
         // now (#1960), and a rule keyed on one instance's id leaves every other
         // instance without it.
-        'prompt-editor nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border' +
-        (readOnly ? ' opacity-50' : '')
+        'prompt-editor nowheel rounded-overlay border border-border bg-background text-sm text-foreground transition-colors focus-within:border-active-border'
       }
       viewportClassName={
         // `full` opens at 6.5rem (user 2026-07-12 P6): the panel opened at ~2

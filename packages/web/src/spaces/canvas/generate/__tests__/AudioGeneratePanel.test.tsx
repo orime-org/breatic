@@ -107,6 +107,7 @@ const BASE = {
   promptSlot: <div data-testid='prompt-editor' />,
   // Null on every mode but the two music ones, which is what BASE stands for.
   lyricsSlot: null,
+  labelBoxes: false,
   references: [],
   params: {},
   referencePicking: false,
@@ -385,6 +386,58 @@ describe('AudioGeneratePanel — the style box across a mode switch', () => {
       </TooltipProvider>,
     );
     expect(screen.getByTestId('prompt-editor')).toBe(before);
+  });
+});
+
+/**
+ * Which box carries which name (#1960).
+ *
+ * The names ride on the MODE, not on the second box being there: the
+ * instrumental switch takes the lyrics box away mid-mode, and the box left
+ * standing is still the style brief. Losing its name at that moment would say
+ * the panel had gone back to asking for one plain prompt.
+ */
+// `t` is stubbed to hand back the key, so these are what the labels render as.
+const STYLE_LABEL = 'canvas.generatePanel.musicStyleLabel';
+const LYRICS_LABEL = 'canvas.generatePanel.musicLyricsLabel';
+
+describe('AudioGeneratePanel — the box labels', () => {
+  it('names neither box on a mode that asks for one thing', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        promptSlot={<div data-testid='prompt-editor' />}
+      />,
+    );
+    expect(screen.queryByText(STYLE_LABEL)).toBeNull();
+    expect(screen.queryByText(LYRICS_LABEL)).toBeNull();
+  });
+
+  it('names both while both boxes are there', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        labelBoxes
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={<div data-testid='lyrics-editor' />}
+      />,
+    );
+    expect(screen.getByText(STYLE_LABEL)).toBeInTheDocument();
+    expect(screen.getByText(LYRICS_LABEL)).toBeInTheDocument();
+  });
+
+  it('goes on naming the style box after the lyrics box leaves', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        labelBoxes
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={null}
+      />,
+    );
+    expect(screen.getByText(STYLE_LABEL)).toBeInTheDocument();
+    // Nothing left to call the lyrics.
+    expect(screen.queryByText(LYRICS_LABEL)).toBeNull();
   });
 });
 

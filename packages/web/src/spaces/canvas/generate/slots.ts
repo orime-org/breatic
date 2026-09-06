@@ -175,7 +175,8 @@ export function readSlotUrls<K extends string>(
  * missing is absent from this map rather than falling back to the asset:
  * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
  * even a broken-image marker. Absent here does not mean the slot looks empty —
- * the toolbar covers it with the asset node's icon instead (#1946).
+ * with nothing to paint, the toolbar keeps the slot's own icon and label and
+ * lights its border instead (#1946, user 2026-09-06).
  * @param registry - The panel's slot registry.
  * @param content - The node's content view, if it has one.
  * @returns The URLs to display, by slot.

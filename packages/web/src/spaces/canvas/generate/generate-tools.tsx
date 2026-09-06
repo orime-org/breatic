@@ -22,7 +22,6 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
-import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { HoverPreviewKind } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
@@ -141,15 +140,11 @@ function ToolTip({
  *
  * One object rather than a `filled` flag beside a `thumbnail`: those two could
  * disagree (a thumbnail with nothing filled), and the filled state needs all
- * three facts together — the form decides the icon AND the preview, the asset
+ * three facts together — the form decides what the preview renders, the asset
  * is what the preview plays, and the thumbnail is what the button paints.
  */
 export interface SlotPick {
-  /**
-   * Which form of asset the slot holds. Picks the icon (via `getNodeIcon`, the
-   * same function the reference rail resolves its icon through) and the form
-   * the hover preview renders.
-   */
+  /** Which form of asset the slot holds — the form the hover preview renders. */
   kind: HoverPreviewKind;
   /** The asset itself — what the hover preview plays or shows. */
   url: string;
@@ -190,19 +185,19 @@ interface SlotToolProps {
 
 /**
  * A slot tool (#1664 style, #1896 first frame, #1918 driving video): an icon +
- * label button while empty (click enters the pick); once the slot holds a pick,
- * that pick COVERS the button as an absolute overlay while the original icon +
- * label keep laying out invisibly underneath — so the button footprint is
- * IDENTICAL in both states, in every locale, and picking never shifts the
- * toolbar (user 2026-07-16).
+ * label button while empty (click enters the pick); once the slot holds a pick
+ * WITH A PICTURE, that picture COVERS the button as an absolute overlay while
+ * the original icon + label keep laying out invisibly underneath — so the
+ * button footprint is IDENTICAL in both states, in every locale, and picking
+ * never shifts the toolbar (user 2026-07-16).
  *
- * The cover is the thumbnail when the pick has one, and otherwise the ASSET
- * NODE's own icon standing in for it (#1946). Never the slot's own icon plus
- * its label: that is the empty state, and audio (which has no picture by
- * nature) and a coverless video used to render it while holding a pick —
- * indistinguishable from empty but for the ✕. The stand-in icon comes from
- * `getNodeIcon`, the same function the reference rail resolves its own icon
- * through, so the two places cannot drift apart.
+ * A pick with no picture (audio by nature, a video before it has a cover)
+ * covers nothing: the button keeps its own icon and label and turns its border
+ * to the active colour. What was there before was the asset NODE's icon
+ * standing in for the missing picture (#1946), and it cost more than it paid —
+ * that icon follows the pick's form, the form is what the slot `accepts`, so
+ * every slot on a row accepting audio drew the same note over the one word
+ * that told them apart (user 2026-09-06).
  *
  * Clicking the filled slot re-enters the pick (the next selection REPLACES the
  * copy). A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
@@ -248,7 +243,14 @@ export function SlotTool({
   label,
   tip,
 }: SlotToolProps): React.JSX.Element {
-  const HeldIcon = pick ? getNodeIcon(pick.kind) : null;
+  // A picture to paint over the button, or nothing to paint with. Audio never
+  // has one and a coverless video does not either, and what covers the button
+  // has to carry more than the label it covers: a stand-in icon for the node's
+  // form says only what the slot's own `accepts` already said, so three audio
+  // slots side by side all became the same note and lost the one word telling
+  // them apart (measured 2026-09-06). Unpainted, the button keeps its name and
+  // says it is full through its border.
+  const painted = pick?.thumbnail !== undefined;
   // A disabled button dispatches no pointerenter and takes no focus, so both of
   // the HoverCard's open paths are dead — declaring anything to show there
   // promises something the user can never get (the style slot after switching
@@ -277,28 +279,26 @@ export function SlotTool({
         'relative overflow-hidden ' +
         TOOL_BASE +
         (active ? TOOL_ACTIVE : TOOL_INACTIVE) +
+        // Full but with nothing painted over it: the border is what says so,
+        // the one the input boxes light up with.
+        (pick && !painted ? ' border-active-border' : '') +
         (active && pick ? ' ring-1 ring-foreground' : '')
       }
     >
       {/* The icon + label always lay out (invisible when covered) so the
           button's intrinsic size never changes between states. */}
-      <Icon className={'h-4 w-4' + (pick ? ' invisible' : '')} aria-hidden='true' />
-      <span className={pick ? 'invisible' : undefined}>{label}</span>
-      {pick ? (
-        pick.thumbnail ? (
-          <img
-            src={pick.thumbnail}
-            alt=''
-            data-testid={thumbnailTestId}
-            className='absolute inset-0 h-full w-full object-cover'
-          />
-        ) : (
-          // No plate behind it (user 2026-08-14): the icon alone stands in for
-          // the picture, and the button's own border already bounds it.
-          <span className='absolute inset-0 flex h-full w-full items-center justify-center'>
-            {HeldIcon ? <HeldIcon className='h-5 w-5' aria-hidden='true' /> : null}
-          </span>
-        )
+      <Icon
+        className={'h-4 w-4' + (painted ? ' invisible' : '')}
+        aria-hidden='true'
+      />
+      <span className={painted ? 'invisible' : undefined}>{label}</span>
+      {painted ? (
+        <img
+          src={pick?.thumbnail}
+          alt=''
+          data-testid={thumbnailTestId}
+          className='absolute inset-0 h-full w-full object-cover'
+        />
       ) : null}
     </Button>
   );

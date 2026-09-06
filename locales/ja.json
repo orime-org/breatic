@@ -429,7 +429,6 @@
       "musicWithVocals": "ボーカルあり",
       "musicPromptPlaceholder": "ジャンル、雰囲気、楽器、テンポを書く",
       "musicLyricsPlaceholder": "歌詞を書く",
-      "musicLyricsNotUsed": "歌詞は不要です",
       "musicStyleLabel": "スタイル",
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
