@@ -37,7 +37,7 @@ import {
   updateBlockTr,
 } from '@blocknote/core';
 import { AllSelection, NodeSelection } from '@tiptap/pm/state';
-import type { Transaction } from '@tiptap/pm/state';
+import type { Selection, Transaction } from '@tiptap/pm/state';
 
 /** The block type this file rebuilds. */
 export const ORDERED_LIST = 'numberedListItem';
@@ -47,7 +47,7 @@ export const QUOTED = 'quoted';
 
 /** What the editor object offers the handlers below. */
 export interface ListEditor {
-  readonly prosemirrorState: { readonly selection: unknown };
+  readonly prosemirrorState: { readonly selection: Selection };
   transact: <T>(run: (tr: Transaction) => T) => T;
 }
 
@@ -125,21 +125,23 @@ export function handleListEnter(
   editor: ListEditor,
   listItemType: string,
 ): boolean {
+  // The selection kinds go first. `document-enter.ts` answers for both, and
+  // asking which block a whole-document selection is in reaches position 0,
+  // which is in no block — BlockNote warns, once per list extension, and this
+  // handler was about to hand the key back anyway.
+  const { selection } = editor.prosemirrorState as { selection: Selection };
+  if (selection instanceof AllSelection || selection instanceof NodeSelection) {
+    return false;
+  }
+
   // Read at `from`, the end of the selection the cut falls on. Asking the
   // selection instead reads its ANCHOR — the end the drag started at — so the
   // same highlight named a different block depending on which way it was
   // drawn, and this handler declined a key it should have claimed.
-  const { blockInfo, selection } = editor.transact((tr) => ({
-    blockInfo: getBlockInfoAtNearest(tr, tr.selection.from),
-    selection: {
-      ownedElsewhere:
-        tr.selection instanceof AllSelection ||
-        tr.selection instanceof NodeSelection,
-      caret: tr.selection.empty,
-    },
-  }));
-
-  if (!blockInfo.isBlockContainer || selection.ownedElsewhere) {
+  const blockInfo = editor.transact((tr) =>
+    getBlockInfoAtNearest(tr, tr.selection.from),
+  );
+  if (!blockInfo.isBlockContainer) {
     return false;
   }
   const { bnBlock, blockContent } = blockInfo;
@@ -151,7 +153,7 @@ export function handleListEnter(
   // merely STARTS in one has content of its own to replace, and taking this
   // branch would leave that content where it was while the item silently
   // stopped being one.
-  if (selection.caret && blockContent.node.childCount === 0) {
+  if (selection.empty && blockContent.node.childCount === 0) {
     editor.transact((tr) => {
       updateBlockTr(tr, bnBlock.beforePos, { type: 'paragraph', props: {} });
     });

@@ -15,7 +15,7 @@
  * rule, and the menu would then meet a block it cannot name.
  */
 
-import { readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 
@@ -86,6 +86,23 @@ describe('the document schema', () => {
     expect(props).toContain('number');
   });
 
+  it('gives every block that declares `quoted` somewhere to put a caret', () => {
+    // `handleQuotedEnter`'s empty branch reads the caret's offset off the
+    // block it is in, and reads it as 0 without asking. That holds while
+    // every carrier of `quoted` can hold a caret. A block with no content —
+    // the divider `#124` brings back is one, `content: 'none'` in BlockNote's
+    // own spec — would take the prop under this Space's "a quote sits on
+    // every block" rule and break it silently.
+    const schema = buildDocumentSchema();
+    const carriers = Object.entries(schema.blockSchema).filter(
+      ([, config]) => 'quoted' in config.propSchema,
+    );
+    expect(carriers.length).toBeGreaterThan(0);
+    carriers.forEach(([type, config]) => {
+      expect(config.content, type).not.toBe('none');
+    });
+  });
+
   it('gives a numbered list item the settable-number prop', () => {
     const schema = buildDocumentSchema();
     expect(
@@ -98,27 +115,24 @@ describe('the schema migrations BlockNote runs over a bound document', () => {
   it('holds the one rule this version was read against', () => {
     // `SchemaMigration` rewrites the SHARED document on bind, and the rules it
     // runs are internal — the extension exposes none of them, and the package
-    // exports no path that reaches the table. So the table is read off the
-    // types it ships, which is the one place a rule added upstream shows up
-    // without running anything.
+    // exports no path that reaches the table. It ships its `src`, so the table
+    // is read there, as the line that builds it.
     //
     // What this protects: today the single rule moves colour attributes,
     // which our documents cannot carry, so the migration is a no-op and the
     // bytes survive binding. A second rule arriving in an upgrade is a
-    // rewrite of everyone's document that nothing else here would notice.
+    // rewrite of everyone's document that nothing else here would notice —
+    // whether it arrives as a new file or as a name added to this line.
     const require_ = createRequire(resolve('package.json'));
     const packageRoot = dirname(dirname(require_.resolve('@blocknote/core')));
-    const rules = readdirSync(
+    const table = readFileSync(
       join(
         packageRoot,
-        'types/src/yjs/extensions/schemaMigration/migrationRules',
+        'src/yjs/extensions/schemaMigration/migrationRules/index.ts',
       ),
-    )
-      .filter((name) => name.endsWith('.d.ts'))
-      .filter((name) => !name.endsWith('.test.d.ts'))
-      .filter((name) => name !== 'index.d.ts' && name !== 'migrationRule.d.ts')
-      .sort();
+      'utf8',
+    );
 
-    expect(rules).toEqual(['moveColorAttributes.d.ts']);
+    expect(table).toContain('export default [moveColorAttributes]');
   });
 });

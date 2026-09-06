@@ -156,6 +156,16 @@ describe('opening a document does not write to it', () => {
 
     const rendered = mount(true);
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
+    // On the page: `UniqueID` is a plugin, and an unmounted editor carries
+    // none — its state is built without them and they arrive with the view.
+    // Measured, this case ran against zero plugins before the mount was
+    // added, so the one thing that could have written was not there.
+    const handle = rendered.result.current as DocumentEditorHandle;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    mountedContainers.push(container);
+    adoptDocumentEditor(handle, container);
+    expect(handle.editor.prosemirrorState.plugins.length).toBeGreaterThan(0);
     await new Promise((r) => setTimeout(r, 50));
     doc.off('update', record);
 

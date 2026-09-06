@@ -305,6 +305,16 @@ describe('the numbers a row press leaves behind', () => {
     return editor;
   }
 
+  /**
+   * Presses Enter through the keymap.
+   * @param editor - The editor to press Enter in.
+   */
+  function pressEnter(editor: ReturnType<typeof buildDocumentEditor>): void {
+    const view = editor.prosemirrorView;
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    view.someProp('handleKeyDown', (handler) => handler(view, event));
+  }
+
   /** Every block id in reading order, nested blocks included. */
   function idsInOrder(
     blocks: readonly { id: string; children?: readonly unknown[] }[],
@@ -351,6 +361,29 @@ describe('the numbers a row press leaves behind', () => {
     // rebuilt the blocks could hand back the same numbers over a different
     // document.
     expect(editor.prosemirrorState.doc.toString()).toBe(before);
+  });
+
+  it('C3 — an Enter inside the quote leaves both runs counting their own', () => {
+    // The other half of C3's criterion. The quoted run grows from one block to
+    // two, both starting over at 1, while the list outside it stays one run
+    // and closes over both of them.
+    const editor = openLive([
+      { type: 'numberedListItem', content: 'one' },
+      { type: 'numberedListItem', content: 'two' },
+      { type: 'numberedListItem', content: 'three' },
+      { type: 'numberedListItem', content: 'four' },
+    ]);
+    const second = (editor.document as unknown as { id: string }[])[1]!;
+
+    editor.setTextCursorPosition(second.id, 'end');
+    runBlockType(editor, 'quote');
+    pressEnter(editor);
+
+    expect(shown(editor)).toEqual(['1.', '1.', '2.', '2.', '3.']);
+    const quoted = (
+      editor.document as unknown as { props: Record<string, unknown> }[]
+    ).filter((block) => block.props['quoted'] === true);
+    expect(quoted).toHaveLength(2);
   });
 
   it('C9b ① — lets the items close over one turned into a heading', () => {

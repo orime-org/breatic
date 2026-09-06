@@ -87,8 +87,8 @@ function pressTab(
   );
 }
 
-/** The nine things the block-type menu offers, as blocks. */
-const NINE = [
+/** The eight things the block-type menu offers, as blocks. */
+const EIGHT = [
   { label: 'a paragraph', block: { type: 'paragraph', content: 'x' } },
   {
     label: 'a level-one heading',
@@ -115,7 +115,7 @@ const NINE = [
 ] as const;
 
 describe('Tab indents the block the caret is in', () => {
-  NINE.forEach(({ label, block }) => {
+  EIGHT.forEach(({ label, block }) => {
     it(`moves ${label} under the block above it`, () => {
       const editor = open(block);
       editor.setTextCursorPosition(blocksOf(editor)[1]!.id, 'end');
@@ -138,9 +138,10 @@ describe('Tab indents the block the caret is in', () => {
     const top = blocksOf(editor);
     expect(top).toHaveLength(1);
     expect(top[0]?.children[0]?.type).toBe('codeBlock');
-    // The text is untouched: no spaces were typed into it.
-    expect(JSON.stringify(top[0]?.children[0])).toContain('code');
-    expect(JSON.stringify(top[0]?.children[0])).not.toContain('  code');
+    // The text is untouched, read word for word: its own handler types two
+    // spaces AT THE CARET, which sits at the end here, so a case looking for
+    // them at the front would pass either way.
+    expect(JSON.stringify(top[0]?.children[0])).toContain('"text":"code"');
   });
 });
 
