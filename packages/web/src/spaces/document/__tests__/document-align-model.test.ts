@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 A21: which selections the alignment slot draws itself live for.
+ * 浮出条 spec（2026-08-19）的对齐槽位: which selections it draws itself live for.
  *
  * Alignment reaches the block types that carry a line of text the reader sets
  * the edge of, and nothing else. What the slot does when pressed is #905; what

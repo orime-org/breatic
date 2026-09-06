@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 A14: the "start writing" hint, on the flat model.
+ * #904 验收 A18 的占位符那半: the "start writing" hint, on the flat model.
  *
  * The hint shows while the document LOOKS empty — nothing a reader could see.
  * That judgement is what the reader sees rather than what the node count says

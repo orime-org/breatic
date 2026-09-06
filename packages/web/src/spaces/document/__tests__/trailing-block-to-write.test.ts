@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 A21: there is always somewhere to start writing at the end.
+ * There is always somewhere to start writing at the end of a document.
  *
  * The last block can be one a caret cannot leave — a code block swallows Enter
  * — so without this a user has no way past it.

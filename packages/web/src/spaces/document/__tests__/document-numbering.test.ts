@@ -256,6 +256,28 @@ describe('C9b — a numbered heading leaves its list’s numbering', () => {
   });
 });
 
+describe('two quote runs in one document', () => {
+  it('counts each run on its own', () => {
+    // The list key carries which run a block belongs to. With one run in the
+    // document that index is always 0, so a key dropping it reads the same —
+    // two runs are what tell the two apart.
+    const n = numbersFor([
+      li('before'),
+      li('run-a-1', { quoted: true }),
+      li('run-a-2', { quoted: true }),
+      li('between'),
+      li('run-b-1', { quoted: true }),
+      li('after'),
+    ]);
+    expect(n.get('before')).toBe('1.');
+    expect(n.get('run-a-1')).toBe('1.');
+    expect(n.get('run-a-2')).toBe('2.');
+    expect(n.get('between')).toBe('2.');
+    expect(n.get('run-b-1')).toBe('1.');
+    expect(n.get('after')).toBe('3.');
+  });
+});
+
 describe('blocks that carry no number', () => {
   it('leaves paragraphs, bullets and unnumbered headings out of the map', () => {
     const n = numbersFor([

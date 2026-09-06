@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 A14 的语言那半: the hint follows a language switch.
+ * #904 验收 A18 的语言那半: the hint follows a language switch.
  *
  * Decorations are recomputed only when something dispatches to the editor, and
  * switching the app language dispatches nothing — it is not an edit. Without a

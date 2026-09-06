@@ -29,7 +29,12 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 /** The stylesheet, as it ships. */
-const css = readFileSync(resolve('src/index.css'), 'utf8');
+const css = readFileSync(
+  resolve(import.meta.dirname, '../../../index.css'),
+  'utf8',
+  // Comments out: a rule commented out still matches the selector search
+  // below, so every case here would read a rule the browser never sees.
+).replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
  * The body of the one rule whose selector ends in the given text.
@@ -103,8 +108,14 @@ describe('the box a to-do carries', () => {
   it('says a viewer cannot tick it', () => {
     // `appearance: none` takes away the grey the browser drew for a disabled
     // control, and BlockNote disables the input for a read-only editor.
-    const off = ruleBody(`${TICK}:disabled`);
-    expect(off).toContain('opacity');
+    expect(ruleBody(`${TICK}:disabled`)).toContain('cursor: default');
+    // The box and its tick dim together: the tick is drawn on the holder, so
+    // fading only the input leaves a solid mark inside a faded box.
+    const dimmed = ruleBody(
+      '[data-content-type=\'checkListItem\'] > div:has(> input:disabled)',
+    );
+    // A fraction, so `opacity: 1` — which dims nothing — turns this red.
+    expect(dimmed).toMatch(/opacity:\s*0?\.\d+/);
     expect(ruleBody(`${TICK}:hover:not(:disabled)`)).toContain(
       'var(--color-ring)',
     );
