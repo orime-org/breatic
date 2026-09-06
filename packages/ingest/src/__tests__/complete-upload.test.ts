@@ -436,3 +436,21 @@ describe("what an operator has to go on when a step fails", () => {
     logged.mockRestore();
   });
 });
+
+describe("what an operator has to go on when a step throws", () => {
+  it("writes down a claim it could not send at all", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    // No interceptor for the claim, so the fetch itself throws under
+    // `disableNetConnect` — the same shape a wrong SERVER_CLAIM_URL has.
+
+    const response = await complete(uploadId, token, parts);
+
+    expect(response.status).toBe(502);
+    expect(logged).toHaveBeenCalledWith(
+      "ingest_claim_unreachable",
+      expect.objectContaining({ storageKey: expect.any(String), err: expect.any(String) }),
+    );
+    logged.mockRestore();
+  });
+});

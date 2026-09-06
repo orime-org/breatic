@@ -225,3 +225,16 @@ describe('TaskRow', () => {
     );
   });
 });
+
+describe('a reader who cannot write', () => {
+  // The flag makes four hops (canvas → container → panel → row → the rule),
+  // and any one of them can be hardcoded to false without a type error.
+  it('renders a settled row with no buttons at all', () => {
+    renderRow(
+      { status: 'done', content: 'https://cdn/x.png', settledAt: '2026-09-04T10:05:00.000Z' },
+      { readOnly: true },
+    );
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+});

@@ -71,6 +71,32 @@ beforeEach(() => {
 });
 
 describe("recordGenerationForNodes, the settle that carries the result", () => {
+  it("hands the row its history and the content the node will show", async () => {
+    mockSettleTaskForNode.mockResolvedValue(undefined);
+
+    await recordGenerationForNodes(
+      {} as never,
+      "project-proj-1/canvas-space-1",
+      CTX,
+      OUTPUTS,
+      {},
+    );
+
+    // `nodeHistoryId` is what the list left-joins to read a row's content, so
+    // without it every done row comes back empty and loses its Replace.
+    expect(mockSettleTaskForNode).toHaveBeenCalledWith(
+      {},
+      "project-proj-1/canvas-space-1",
+      expect.objectContaining({
+        taskId: "task-1",
+        nodeId: "node-1",
+        outcome: "done",
+        nodeHistoryId: "history-1",
+        result: expect.objectContaining({ content: OUTPUTS[0]!.url }),
+      }),
+    );
+  });
+
   it("fails the job on a live run so the delivery is made again", async () => {
     mockSettleTaskForNode.mockRejectedValue(new Error("stream is gone"));
 

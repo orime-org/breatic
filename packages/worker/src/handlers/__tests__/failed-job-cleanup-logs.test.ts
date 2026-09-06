@@ -19,16 +19,22 @@ const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockActivityInsert = vi.hoisted(() => vi.fn());
 const mockPublishActivity = vi.hoisted(() => vi.fn());
 const mockError = vi.hoisted(() => vi.fn());
+const mockGetTask = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   getStreamRedis: vi.fn(() => ({})),
-  projectActivitiesRepo: { insert: mockActivityInsert },
+  projectActivitiesRepo: {
+    insertGenerationFailedIfAbsent: mockActivityInsert,
+    upsertGenerationSucceeded: vi.fn(),
+  },
   publishActivityNew: mockPublishActivity,
   logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
-  taskService: {},
+  // The billed-then-crashed branch reads this first: a job that was already
+  // paid for must not be stamped failed over its result.
+  taskService: { getByIdInternal: mockGetTask },
   settleTaskForNode: mockSettleTaskForNode,
 }));
 vi.mock("@breatic/shared", () => ({
@@ -63,6 +69,7 @@ function job(): FailedJobLike {
 beforeEach(() => {
   vi.clearAllMocks();
   mockActivityInsert.mockResolvedValue(true);
+  mockGetTask.mockResolvedValue(null);
 });
 
 describe("cleanupFailedJobNodes, when settling a row fails", () => {
@@ -96,6 +103,9 @@ describe("cleanupFailedJobNodes, when settling a row fails", () => {
 
     await cleanupFailedJobNodes({} as never, job(), "provider said no");
 
+    // The row is written through the if-absent call, so that a crash net
+    // running after a success cannot stamp a failure over it.
+    expect(mockActivityInsert).toHaveBeenCalledTimes(1);
     expect(mockWarn).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "task-1", projectId: "proj-1" }),
       expect.stringContaining("activity"),
