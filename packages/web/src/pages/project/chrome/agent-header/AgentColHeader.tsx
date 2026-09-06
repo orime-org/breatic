@@ -17,10 +17,10 @@ import { useUIStore } from '@web/stores/ui';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
 import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
+import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 /** Held still so the bar is not handed a fresh object on every render. */
 const BAR_BOX = chromeBarBox({ sides: 'var(--space-4)', gap: 'var(--space-2)' });
-import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
 
 interface AgentColHeaderProps {
   conversationName: string;

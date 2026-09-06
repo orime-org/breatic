@@ -12,7 +12,7 @@
  * Inline HTML stays escaped: the pipeline carries no `rehype-raw`, which is
  * what react-markdown means by secure by default.
  */
-import { memo, useId, useMemo, type ReactElement, type ReactNode } from 'react';
+import { memo, useId, useMemo, useRef, type ReactElement, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components, Options } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -283,8 +283,10 @@ const COMPONENTS = {
  * Memoised on the way out: parsing is the expensive part of this component,
  * and a reply arriving piece by piece re-renders everything beside it every
  * 50ms. An expanded thinking block is the case that shows it — its text is
- * settled while the reply beside it grows. Every prop is a primitive, so the
- * comparison React does by default is the right one.
+ * settled while the reply beside it grows. The comparison React does by
+ * default is the right one: the props are primitives apart from `citations`,
+ * and a settled reply is held by identity upstream, so its object is the same
+ * one from render to render.
  * @param root0 - The component props.
  * @param root0.content - The assistant's prose, as markdown.
  * @param root0.streaming - Whether this turn is still receiving tokens.
@@ -314,9 +316,15 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   // The wrapping step reads what KaTeX left behind, so it follows it. The
   // footnote step runs before the colouring, which only rebuilds code
   // elements.
-  // Which numbers a source stands behind. Built once per set so the plugin
-  // below is rebuilt only when they change.
-  const numbers = useMemo(() => new Set(Object.keys(citations ?? {}).map(Number)), [citations]);
+  // Which numbers a source stands behind. A reply still arriving hands over a
+  // fresh `citations` object every few tokens, so the set is keyed on the
+  // numbers themselves: the plugin below is rebuilt when a new marker becomes
+  // resolvable, not on every token.
+  const numbered = Object.keys(citations ?? {}).join(',');
+  const numbers = useMemo(
+    () => new Set(numbered === '' ? [] : numbered.split(',').map(Number)),
+    [numbered],
+  );
   // The citation step runs before the colouring, which rebuilds code
   // elements. Markers inside a link, inline code or a code block are left
   // alone by the plugin itself.
@@ -330,18 +338,25 @@ export const MarkdownMessage = memo(function MarkdownMessage({
     ],
     [scope, numbers],
   );
+  // Read through a ref so this map keeps its identity for the life of the
+  // reply. The renderer treats a component as the element's type, so a fresh
+  // function every few tokens tears the whole tree down and builds it again:
+  // the hover card's open timer goes with it, and a selection being dragged
+  // across a marker collapses. Same reason `COMPONENTS` above is module level.
+  const latest = useRef(citations);
+  latest.current = citations;
   const components = useMemo<Components>(
     () => ({
       ...COMPONENTS,
       // The element the plugin above writes. It only writes one for a number
       // `citations` resolves, so a chip here always has a source behind it.
       'citation-chip': ({ index }: { index?: string }): ReactElement | null => {
-        const cited = citations?.[Number(index)];
+        const cited = latest.current?.[Number(index)];
         if (cited === undefined) return null;
         return <CitationMark source={cited} index={Number(index)} />;
       },
     }),
-    [citations],
+    [],
   );
   const remarkRehypeOptions = useMemo(
     () => ({

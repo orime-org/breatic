@@ -70,7 +70,12 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
 describe('TopBar', () => {
   it('balances the rule along its bottom, as every 40px bar does', () => {
     setup();
-    expect(screen.getByTestId('top-bar').style.paddingTop).toBe('1px');
+    const bar = screen.getByTestId('top-bar');
+    // 整个盒子，不只那一像素：高度和左右内边距同样是这条栏答应的东西。
+    expect(bar.style.height).toBe('40px');
+    expect(bar.style.paddingTop).toBe('1px');
+    expect(bar.style.paddingInline).toBe('var(--space-5)');
+    expect(bar.style.gap).toBe('var(--space-4)');
   });
 
   it('does not compile without members, which is the whole point of the change', () => {

@@ -48,7 +48,12 @@ describe('AgentColHeader', () => {
 
   it('balances the rule along its bottom, as every 40px bar does', () => {
     setup();
-    expect(screen.getByTestId('agent-col-header').style.paddingTop).toBe('1px');
+    const bar = screen.getByTestId('agent-col-header');
+    // 整个盒子，不只那一像素：高度和左右内边距同样是这条栏答应的东西。
+    expect(bar.style.height).toBe('40px');
+    expect(bar.style.paddingTop).toBe('1px');
+    expect(bar.style.paddingInline).toBe('var(--space-4)');
+    expect(bar.style.gap).toBe('var(--space-2)');
   });
 
   it('has no a11y violations', async () => {

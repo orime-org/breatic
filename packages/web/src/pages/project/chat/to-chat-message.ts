@@ -149,6 +149,7 @@ export function toChatMessage(
   let failed = false;
   let blocked = false;
   let thinkingMs: number | undefined;
+  let thinkingNow = false;
   // Two readings of the same searches. The list shows each page once; the
   // markers in the prose resolve against the sequence the model was shown,
   // which counts a page found twice as two. Both readings are worked out
@@ -212,7 +213,13 @@ export function toChatMessage(
       continue;
     }
     if (part.type === 'text') content += part.text;
-    else if (part.type === 'reasoning') thinking += part.text;
+    else if (part.type === 'reasoning') {
+      thinking += part.text;
+      // The thinking says whether it is still going; the turn does not. How
+      // long it took is only sent when the turn ends, so reading that instead
+      // leaves this line saying "thinking" through the whole answer.
+      thinkingNow = (part as { state?: unknown }).state === 'streaming';
+    }
     else if (part.type === INTERRUPTED) interrupted = true;
     else if (part.type === FAILED) failed = true;
     else if (part.type === TRUNCATED) truncated = true;
@@ -235,12 +242,13 @@ export function toChatMessage(
       kept === undefined ? source : { ...kept, indexes: [...kept.indexes, index] },
     );
   }
-  const sources = [...byUrl.values()];
+  // By number rather than by when the page turned up: two searches in one
+  // step take their numbers when their answers arrive, and the parts arrive
+  // in the order the model asked. Reading down the list follows the numbers
+  // in the prose.
+  const sources = [...byUrl.values()].sort((a, b) => (a.indexes[0] ?? 0) - (b.indexes[0] ?? 0));
   const citations: Record<number, ChatSource> = {};
-  for (const [index, source] of found) {
-    const line = byUrl.get(source.url);
-    if (line !== undefined) citations[index] = line;
-  }
+  for (const line of sources) for (const n of line.indexes) citations[n] = line;
 
   return {
     id: message.id,
@@ -251,13 +259,13 @@ export function toChatMessage(
     ...(sentAt === undefined ? {} : { sentAt }),
     ...(thinking !== '' ? { thinking } : {}),
     ...(thinkingMs === undefined ? {} : { thinkingMs }),
+    ...(thinkingNow ? { thinkingNow: true as const } : {}),
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
     ...(truncated ? { truncated: true as const } : {}),
     ...(blocked ? { blocked: true as const } : {}),
-    ...(sources.length > 0 ? { sources } : {}),
-    ...(found.length > 0 ? { citations } : {}),
+    ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),

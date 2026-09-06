@@ -286,6 +286,28 @@ describe('the line at the foot of the reply', () => {
   });
 });
 
+describe('a reply still arriving', () => {
+  it('keeps the same marker node when a fresh reply object comes in', () => {
+    // 流式期间每 50ms 都是一个新的 citations 对象。渲染器认组件身份，身份一变
+    // 整棵子树重建：悬停卡的开启计时器跟着没，划到一半的选区也塌掉。
+    const first = { 1: source(1) };
+    const { rerender } = render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'A claim [1].', citations: first, streaming: true }}
+      />,
+    );
+    const before = screen.getByTestId('citation-chip');
+
+    rerender(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'A claim [1] and more.', citations: { 1: source(1) }, streaming: true }}
+      />,
+    );
+
+    expect(screen.getByTestId('citation-chip')).toBe(before);
+  });
+});
+
 describe('what the marker rewriting leaves alone', () => {
   it('keeps out of a formula, whose brackets are its own source', () => {
     // rehype-katex 先跑（MarkdownMessage.tsx:325），output 是 htmlAndMathml，

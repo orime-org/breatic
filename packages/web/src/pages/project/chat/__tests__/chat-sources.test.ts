@@ -104,6 +104,19 @@ describe('the row at the foot of a reply', () => {
     expect(message.citations?.[2]?.indexes).toEqual([1, 2]);
   });
 
+  it('lists the pages in the order their numbers were handed out', () => {
+    // 一步里并发两次搜索时，号段是按答复到达的先后领的，而消息 parts 的顺序
+    // 是模型发出调用的顺序：两个顺序不是同一个，按插入序列出来就是 6 在 1 前面。
+    const message = toChatMessage(
+      reply([
+        searched('slow', ['https://slow.example|Slow|Slow'], 6),
+        searched('fast', ['https://fast.example|Fast|Fast'], 1),
+      ]),
+    );
+
+    expect(message.sources?.map((s) => s.indexes[0])).toEqual([1, 6]);
+  });
+
   it('leaves the row off a turn that searched for nothing', () => {
     const message = toChatMessage(reply([{ type: 'text', text: 'hello' } as never]));
 

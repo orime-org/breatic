@@ -67,9 +67,9 @@ export interface ToolCall {
 export interface ChatSource {
   /** Where the page is. Opened in a new tab when the chip is clicked. */
   url: string;
-  /** What the page calls itself. Shown in the card that floats on hover. */
+  /** What the page calls itself. The main line of a row in the box, and of the card. */
   title: string;
-  /** Who published it. This is what the row shows, not the host. */
+  /** Who published it. Shown in the card that floats on a marker, and nowhere else. */
   publisher: string;
   /**
    * Every number this page was handed in the turn.
@@ -134,6 +134,14 @@ export interface ChatMessage {
   thinking?: string;
   /** How long the turn thought, in milliseconds. Measured by the server. */
   thinkingMs?: number;
+  /**
+   * Whether the thinking itself is still going.
+   *
+   * Read off the reasoning rather than off the turn: how long it took is only
+   * sent when the turn ends, so a line that watches the turn goes on saying
+   * "thinking" through the whole answer.
+   */
+  thinkingNow?: boolean;
   toolCalls?: ToolCall[];
   /** Streaming = the bubble is still receiving tokens. */
   streaming?: boolean;

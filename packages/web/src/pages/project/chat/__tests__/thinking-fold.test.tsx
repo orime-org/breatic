@@ -85,10 +85,66 @@ describe('what the line says while the thinking is still going', () => {
     expect(screen.getByTestId('thinking-fold-toggle').textContent ?? '').not.toContain('6');
   });
 
-  it('is what a running turn hands it', () => {
+  it('stops saying it once the thinking has stopped, even mid-turn', () => {
+    // 时长要整轮结束才发，所以「有没有数字」等价于「这一轮结没结束」。
+    // 拿它当判据，模型早已在写答案、工具在跑的整段时间里这行还说「思考中」。
     render(
       <MessageBubble
-        message={{ id: 'm', role: 'assistant', content: '', thinking: '想到一半', streaming: true }}
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '答案写到一半',
+          thinking: '想完了',
+          streaming: true,
+        }}
+      />,
+    );
+    const settled = screen.getByTestId('thinking-fold-toggle').textContent;
+    cleanup();
+
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '',
+          thinking: '想到一半',
+          thinkingNow: true,
+          streaming: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('thinking-fold-toggle').textContent).not.toBe(settled);
+  });
+
+  it('reads the thinking\'s own state off the reply', () => {
+    const live = toChatMessage({
+      id: 'm',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: '想到一半', state: 'streaming' }],
+    } as unknown as UIMessage);
+    const done = toChatMessage({
+      id: 'm',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: '想完了', state: 'done' }],
+    } as unknown as UIMessage);
+
+    expect(live.thinkingNow).toBe(true);
+    expect(done.thinkingNow).toBeUndefined();
+  });
+
+  it('is what a turn still thinking hands it', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '',
+          thinking: '想到一半',
+          thinkingNow: true,
+          streaming: true,
+        }}
       />,
     );
     const live = screen.getByTestId('thinking-fold-toggle').textContent;
