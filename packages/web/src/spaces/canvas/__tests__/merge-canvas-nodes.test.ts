@@ -22,6 +22,7 @@ const QUIET: MergeInput = {
   occupants: new Map(),
   remoteGesture: new Map(),
   localGestureIds: new Set(),
+  locallyBusyIds: new Set(),
 };
 
 /**
@@ -742,5 +743,48 @@ describe('mergeCanvasNodes, a node carrying task counts (#186 E6)', () => {
     const prev = withCounts(counts);
     const moved = withCounts({ running: 0, done: 1, failed: 0, expired: 0 });
     expect(mergeCanvasNodes(prev, moved, QUIET)[0]).not.toBe(prev[0]);
+  });
+});
+
+describe('mergeCanvasNodes, a node this browser is already working on', () => {
+  // A dropped file gets its node before the server knows anything: the hash
+  // runs here and the ticket has not been asked for, so the document carries
+  // no counts yet. Left alone the node renders as an empty one inviting
+  // another upload, and the delete gate — which reads this same status — lets
+  // it go while the bytes are on their way.
+  const busy = (ids: string[]): MergeInput => ({
+    ...QUIET,
+    locallyBusyIds: new Set(ids),
+  });
+
+  it('shows it as handling while the document still has nothing', () => {
+    const fresh = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+    ] as Node[];
+
+    const [merged] = mergeCanvasNodes([], fresh, busy(['a']));
+
+    expect((merged?.data as { status?: string }).status).toBe('handling');
+  });
+
+  it('leaves a node nobody is working on as the document has it', () => {
+    const fresh = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+    ] as Node[];
+
+    const [merged] = mergeCanvasNodes([], fresh, busy(['other']));
+
+    expect((merged?.data as { status?: string }).status).toBe('idle');
+  });
+
+  it('stops saying so once the work is over', () => {
+    const fresh = [
+      { id: 'a', type: 'image', position: { x: 0, y: 0 }, data: { status: 'idle' } },
+    ] as Node[];
+    const held = mergeCanvasNodes([], fresh, busy(['a']));
+
+    const [after] = mergeCanvasNodes(held, fresh, QUIET);
+
+    expect((after?.data as { status?: string }).status).toBe('idle');
   });
 });

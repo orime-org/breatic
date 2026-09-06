@@ -55,20 +55,6 @@ export interface CanvasActions {
    * write at all, and that decision then stands for the whole gesture.
    */
   beginGroupResize: (groupId: string) => void;
-  /**
-   * Re-run one failed upload from the File stashed under its task (#186
-   * §3.7.2). A no-op when nothing is stashed — a refresh drops every
-   * reference, since the browser cannot re-read a picked file.
-   *
-   * It opens a new task; the failed row stays where it is, because removing
-   * that record is the user's call.
-   */
-  retryNodeUpload: (nodeId: string, taskId: string) => void;
-  /**
-   * Whether one failed task still has its File stashed this session — what
-   * decides if its row offers Retry.
-   */
-  hasUploadRetryFile: (taskId: string) => boolean;
 }
 
 /**
@@ -83,8 +69,6 @@ const NOOP_ACTIONS: CanvasActions = {
   commitGroupResize: () => undefined,
   reportGroupResize: () => undefined,
   beginGroupResize: () => undefined,
-  retryNodeUpload: () => undefined,
-  hasUploadRetryFile: () => false,
 };
 
 export const CanvasActionsContext =

@@ -287,7 +287,7 @@
       "action": {
         "replace": "바꾸기",
         "retry": "다시 시도",
-        "finish": "완료",
+        "finish": "정리",
         "clear": "지우기"
       },
       "elapsed": "실행 {duration}",

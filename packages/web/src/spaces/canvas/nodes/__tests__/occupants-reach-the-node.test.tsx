@@ -36,8 +36,6 @@ const ACTIONS = {
   commitGroupResize: () => undefined,
   reportGroupResize: () => undefined,
   beginGroupResize: () => undefined,
-  retryNodeUpload: vi.fn(),
-  hasUploadRetryFile: () => false,
 };
 
 /**

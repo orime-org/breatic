@@ -112,7 +112,6 @@ import { sendFileToIngest } from '@web/data/upload/ingest-upload';
 import {
   stashRetryFile,
   getRetryFile,
-  hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import {
@@ -1232,15 +1231,39 @@ function CanvasSpaceInner({
   const [localGestureIds, setLocalGestureIds] = React.useState<
     ReadonlySet<string>
   >(() => new Set());
+  // The nodes this browser is working on before the server has heard of it —
+  // the same registry the tab-close guard reads, so the set is exactly the
+  // uploads and extractions `trackOperation` registered.
+  // The store's inner record is the stable thing to select — building the set
+  // inside the selector would hand `useSyncExternalStore` a fresh value every
+  // read and never settle.
+  const busyRecord = useSpaceOperationsStore(
+    React.useCallback(
+      (state): Record<string, number> | undefined => state.operations[spaceId],
+      [spaceId],
+    ),
+  );
+  const locallyBusyIds = React.useMemo<ReadonlySet<string>>(
+    () => new Set(Object.keys(busyRecord ?? {})),
+    [busyRecord],
+  );
   React.useEffect(() => {
     setFlowNodes((prev) =>
       mergeCanvasNodes(prev, docPlaces, {
         occupants,
         remoteGesture,
         localGestureIds,
+        locallyBusyIds,
       }),
     );
-  }, [docPlaces, occupants, remoteGesture, localGestureIds, setFlowNodes]);
+  }, [
+    docPlaces,
+    occupants,
+    remoteGesture,
+    localGestureIds,
+    locallyBusyIds,
+    setFlowNodes,
+  ]);
 
 
   // Mirror the Yjs-observed edges into ReactFlow's render buffer the same way
@@ -3358,16 +3381,12 @@ function CanvasSpaceInner({
         else writeDocument();
       },
       activateNodeUpload,
-      retryNodeUpload,
-      hasUploadRetryFile: (taskId: string): boolean =>
-        hasRetryFile(projectId, spaceId, taskId),
     }),
     [
       projectId,
       spaceId,
       readOnly,
       activateNodeUpload,
-      retryNodeUpload,
       buffer,
       gesture,
       t,

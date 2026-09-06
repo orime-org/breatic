@@ -37,11 +37,6 @@ const ACTION_KEY: Readonly<Record<TaskRowAction, string>> = {
   clear: 'canvas.task.action.clear',
 };
 
-/** The one button on a row that ends something the reader may still want. */
-const DESTRUCTIVE: ReadonlySet<TaskRowAction> = new Set<TaskRowAction>([
-  'clear',
-]);
-
 /** What {@link TaskRow} renders and reports. */
 export interface TaskRowProps {
   /** The task, as the server last described it. */
@@ -203,7 +198,7 @@ export const TaskRow = React.memo(function TaskRow({
           <Button
             key={action}
             type='button'
-            variant={DESTRUCTIVE.has(action) ? 'ghost' : 'outline'}
+            variant='outline'
             size='sm'
             data-testid={`task-action-${action}`}
             onClick={(): void => run(action)}

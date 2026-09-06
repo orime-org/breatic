@@ -287,7 +287,7 @@
       "action": {
         "replace": "Replace",
         "retry": "Retry",
-        "finish": "Finish",
+        "finish": "Dismiss",
         "clear": "Clear"
       },
       "elapsed": "Running {duration}",

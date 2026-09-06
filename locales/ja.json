@@ -287,7 +287,7 @@
       "action": {
         "replace": "置き換える",
         "retry": "再試行",
-        "finish": "完了",
+        "finish": "片付ける",
         "clear": "削除"
       },
       "elapsed": "実行時間 {duration}",
