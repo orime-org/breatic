@@ -8,39 +8,36 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /**
- * One line of prose, as CommonMark will read it.
+ * One line, counting every character a line can end on.
  *
- * Two things it may not be. It may not run past a line ending -- a carriage
- * return counts, and an option carrying one renders as two numbered items, so
- * the numbers the reader answers with stop matching the ones the call carried.
- * And it may not open a block of its own: the numbering, the paragraphs and the
- * list are drawn for the model, so an option that numbers itself renders as a
- * list inside a list and a question opening with a hash as a heading in the
- * middle of the reply. A hash or a dash further along the line is a character.
+ * A carriage return ends a line the way a newline does, so a value carrying one
+ * is two lines wherever it is read. One option is one line and one question is
+ * one line, which is what keeps a list of five from arriving as a wall of text.
+ * What a line renders as is settled where the paragraph is drawn, by a
+ * serialiser that owns the whole of CommonMark.
  */
-const PROSE_LINE = /^(?![#>|]|[-*+][ \t]|\d+[.)][ \t]|```|~~~)[^\n\r\u2028\u2029]+$/;
+const ONE_LINE = /^[^\n\r\u2028\u2029]+$/;
 
 /**
- * One line of what the reader will read: not blank, and prose.
+ * One line of what the reader will read: not blank, and one line.
  * @param max - How many characters this line may run to.
  * @returns A schema accepting one such line no longer than that.
  */
-const line = (max: number): z.ZodString =>
-  z.string().trim().min(1).max(max).regex(PROSE_LINE);
+const line = (max: number): z.ZodString => z.string().trim().min(1).max(max).regex(ONE_LINE);
 
 const inputSchema = z
   .object({
     question: line(200).describe("The question to ask the user, in one line"),
     options: z
       .array(line(60))
+      // A ceiling and nothing else, because a ceiling is what the model is
+      // shown: `zodSchema` renders this array as `maxItems` and drops a
+      // `.refine` on the way, so a floor enforced here would refuse calls over
+      // a rule that never reached the model. Empty is an open question, and one
+      // is drawn as a list of one.
       .max(5)
-      // Empty is what an open question has always looked like here. Fewer than
-      // two is a reason to draw no list rather than a reason to refuse.
-      .refine((given) => given.length === 0 || given.length >= 2, {
-        message: "Give two to five options, or none at all",
-      })
       .optional()
-      .describe("Two to five answers to choose from, one line each"),
+      .describe("Up to five answers to choose from, one line each"),
     howToAnswer: line(120)
       .optional()
       .describe(

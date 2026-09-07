@@ -48,8 +48,8 @@ describe("the system prompt", () => {
     expect(wording()).toMatch(/unless a tool actually returned it on this turn/i);
   });
 
-  it("says that some tools end the turn", () => {
-    expect(wording()).toMatch(/end your turn/i);
+  it("says that a tool ends the turn", () => {
+    expect(wording()).toMatch(/ends your turn/i);
   });
 
   it("says to read a tool error before doing anything with it", () => {

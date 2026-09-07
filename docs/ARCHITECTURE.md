@@ -198,7 +198,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 `propose_canvas_action` 和 `show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(`tool-propose_canvas_action` 这类类型),前端按类型认,画成组件。
 
-**`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/blocking-tools.ts` 写一次,注册表和这份名单都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
+**`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 
 工具返回什么,SDK 的 tool part 就原样带什么到前端。
 

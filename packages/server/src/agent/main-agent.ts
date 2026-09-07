@@ -409,31 +409,25 @@ export class MainAgent {
         },
         onStepFinish: ({ usage, content }) => {
           tokensUsed += usage?.totalTokens ?? 0;
-          // The other way a call can fail, and the only place its reason is
-          // readable. A call whose arguments the model shaped wrongly is
-          // refused at the door -- the SDK never runs it, so the callback
-          // below never fires. What arrives here for that one is a string:
-          // the SDK renders the error with `toString()` before putting it on
-          // the part, so it reads as `AI_InvalidToolInputError: ...` with the
-          // schema complaint after it. Which field failed which rule is in
-          // there, and that is what the model needs to send the call again.
-          //
-          // Both writers keep the first account of a call and neither
-          // overwrites, so which of them ran first stops mattering. For a call
-          // that did run, it is the one below: a tool ending is reported as it
-          // happens, and a step ends after everything in it has.
-          //
-          // The second branch is a question the model asked. It reaches the
-          // reader as words rather than as a payload on a tool part, and here
-          // rather than inside the tool because the stream is on this side of
-          // it. One call, one paragraph, in the order the calls came back -- a
-          // model may ask twice in a step, and drawing one of them leaves the
-          // reader answering a question that is not on screen.
           for (const part of content) {
+            // A call whose arguments the model shaped wrongly is refused at the
+            // door: the SDK never runs it, so `onToolExecutionEnd` never fires
+            // and this is the only place its reason is readable. What arrives
+            // is a string -- the SDK renders the error with `toString()` before
+            // putting it on the part -- so it reads as `AI_InvalidToolInputError:
+            // ...` with the schema complaint after it, which is what the model
+            // needs to send the call again. First account of a call wins, here
+            // and below, so which of the two ran first stops mattering.
             if (part.type === "tool-error") {
               if (!howToolEnded.has(part.toolCallId)) {
                 howToolEnded.set(part.toolCallId, endingOf(part.error));
               }
+              // A question, reaching the reader as words rather than as a
+              // payload on a tool part, and written here rather than inside the
+              // tool because the stream is on this side of it. One call, one
+              // paragraph, in the order the calls came back -- a model may ask
+              // twice in a step, and drawing one of them leaves the reader
+              // answering a question that is not on screen.
             } else if (part.type === "tool-result" && part.toolName === ASK_USER) {
               writeAskUserText(writer, part.toolCallId, part.output as AskUserPayload);
             }

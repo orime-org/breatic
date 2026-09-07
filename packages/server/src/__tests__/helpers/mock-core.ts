@@ -19,7 +19,7 @@ import { vi } from "vitest";
 // The real names, read from the one file that holds them. A relative path
 // because this stub must not pull the domain barrel (and the `ai` SDK behind
 // it); test code is exempt from the alias rule.
-import { ASK_USER as REAL_ASK_USER } from "../../../../domain/src/agent/tools/blocking-tools.js";
+import { ASK_USER as REAL_ASK_USER } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 
 const mockPipeline = {
@@ -480,10 +480,10 @@ export const domainMock = () => ({
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with
-  // these names is match them against the names the model was offered, so a
-  // stub that spells them itself is a second copy of the very thing being
-  // matched -- and one written-out copy of them said `ask_user`, a tool that
-  // does not exist, which is how a turn that should have stopped ran on.
+  // this name is match it against the name the model was offered, so a stub
+  // that spells it itself is a second copy of the very thing being matched,
+  // and a copy that drifts throws nothing: the match simply never happens and
+  // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.

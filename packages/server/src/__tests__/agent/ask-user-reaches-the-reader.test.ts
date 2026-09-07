@@ -16,7 +16,6 @@
  * tool twice at once, and both have to be there.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ToolSet } from "ai";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -53,21 +52,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const base = await domainMock();
   const actual = await importOriginal<Record<string, unknown>>();
   const { MockLanguageModelV4 } = await import("ai/test");
-  const { tool: makeTool } = await import("ai");
-  const { z: zod } = await import("zod");
 
-  /** The one tool under test, handing back what it was given. */
-  const asking: ToolSet[string] = makeTool({
-    description: "Ask the user a question",
-    inputSchema: zod.object({
-      question: zod.string(),
-      options: zod.array(zod.string()).optional(),
-    }),
-    execute: async (input: { question: string; options?: string[] }) => ({
-      question: input.question,
-      options: input.options ?? [],
-    }),
-  });
+  // The real tool, not a stand-in for it. A hand-written double declares its
+  // own fields, and a field the real one grows arrives here as an unknown key
+  // that zod strips in silence -- so the turn under test would draw a payload
+  // production cannot produce, and go on passing.
+  const { askUser: asking } = await import("../../../../domain/src/agent/tools/ask-user.js");
 
   return {
     ...base,
@@ -77,7 +67,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       instructions: "system",
       tools: { ask_user: asking },
     }),
-    finalizeTurn: async () => [],
+    // Runs the one step this file is about. The real one runs them all in
+    // order; what matters here is that storage is reached at all, because the
+    // question travels back to the reader as stored text and nothing else.
+    finalizeTurn: async (request: { steps: { persist?: () => Promise<void> } }) => {
+      await request.steps.persist?.();
+      return [];
+    },
     getModel: () =>
       new MockLanguageModelV4({
         doStream: async () => {
@@ -175,6 +171,52 @@ describe("a question with nothing to choose from", () => {
     const text = await replyText(asks([{ question: "这段片子给谁看？" }]));
 
     expect(text).toBe("\n\n这段片子给谁看？\n\n");
+  });
+});
+
+describe("what the model said about answering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("travels the whole way and lands under the list", async () => {
+    // Every other assertion here would hold with this field dropped somewhere
+    // between the model and the reply, and it is the one part of the paragraph
+    // the model owns outright.
+    const text = await replyText(
+      asks([
+        {
+          question: "哪一种？",
+          options: ["快", "慢"],
+          howToAnswer: "回一个数字就行，也可以直接说你的想法。",
+        },
+      ]),
+    );
+
+    expect(text).toBe("\n\n哪一种？\n\n1. 快\n2. 慢\n\n回一个数字就行，也可以直接说你的想法。\n\n");
+  });
+});
+
+describe("what is left in storage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("holds the question as the reply's own text", async () => {
+    // The tool part is dropped on the way back to the model because the
+    // question is in the body. That is only true while the body really carries
+    // it: on a reload this text is the whole of what the reader gets back.
+    await replyText(asks([{ question: "哪一种？", options: ["快", "慢"] }]));
+
+    const stored = addMessage.mock.calls.at(-1)?.[1] as
+      | { parts?: Array<{ type: string; text?: string }> }
+      | undefined;
+    const text = (stored?.parts ?? [])
+      .filter((part) => part.type === "text")
+      .map((part) => part.text ?? "")
+      .join("");
+
+    expect(text).toBe("\n\n哪一种？\n\n1. 快\n2. 慢\n\n");
   });
 });
 

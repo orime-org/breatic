@@ -4,16 +4,16 @@
 /**
  * Drawing a question the model asked as the markdown the reader sees.
  *
- * The tool's arguments are the format: a question, and between two and five
- * options. What they look like is decided here rather than asked of the
- * model, which is the whole reason the tool exists.
+ * The tool's arguments are the format: a question, and up to five options. What
+ * they look like is decided here rather than asked of the model, which is the
+ * whole reason the tool exists.
  *
- * Written as a list because the chat body folds single newlines into spaces —
- * three options on three lines would arrive as one run-on sentence. Fenced by
- * blank lines because the panel joins every text part of a reply into one
- * string and renders that once: without them this paragraph runs into whatever
- * the model wrote before it, and a second question lands inside the first
- * one's last option.
+ * Built as a document and serialised rather than joined as strings. A rule of
+ * ours about which characters are dangerous would have to enumerate CommonMark
+ * and would be wrong in both directions -- refusing a hex colour, which is
+ * prose, while letting through three dashes, which are a rule that swallows the
+ * question above the list. The serialiser owns that knowledge, so a value
+ * arrives as the characters it is.
  *
  * Every word of it is the model's own, and that is what keeps the paragraph in
  * the language the conversation is being held in. Which language that is, is
@@ -26,25 +26,54 @@
  */
 
 import type { UIMessageStreamWriter } from "ai";
+import { toMarkdown } from "mdast-util-to-markdown";
+import type { List, Paragraph, RootContent } from "mdast";
+
 import type { AskUserPayload } from "@breatic/domain";
+
+/**
+ * One line of the model's words, as a paragraph of its own.
+ * @param value - What the model wrote.
+ * @returns That line as a document node.
+ */
+function paragraph(value: string): Paragraph {
+  return { type: "paragraph", children: [{ type: "text", value }] };
+}
+
+/**
+ * The answers on offer, numbered from one.
+ * @param options - What the model is offering, in the order it offered them.
+ * @returns Those answers as an ordered list.
+ */
+function numbered(options: readonly string[]): List {
+  return {
+    type: "list",
+    ordered: true,
+    start: 1,
+    spread: false,
+    children: options.map((option) => ({
+      type: "listItem",
+      spread: false,
+      children: [paragraph(option)],
+    })),
+  };
+}
 
 /**
  * Draw one question as the paragraph it appears as in the reply.
  * @param payload - What the tool returned.
  * @returns Markdown: the question, the options numbered from one, and what the
- *   model said about answering, each a paragraph apart and the whole fenced.
+ *   model said about answering, each a paragraph apart.
  */
 export function askUserMarkdown(payload: AskUserPayload): string {
-  const blocks = [payload.question];
+  const blocks: RootContent[] = [paragraph(payload.question)];
 
   if (payload.options !== undefined && payload.options.length > 0) {
-    blocks.push(
-      payload.options.map((option, index) => `${String(index + 1)}. ${option}`).join("\n"),
-    );
+    blocks.push(numbered(payload.options));
   }
-  if (payload.howToAnswer !== undefined) blocks.push(payload.howToAnswer);
+  if (payload.howToAnswer !== undefined) blocks.push(paragraph(payload.howToAnswer));
 
-  return `\n\n${blocks.join("\n\n")}\n\n`;
+  return toMarkdown({ type: "root", children: blocks }).trimEnd();
 }
 
 /**
@@ -53,6 +82,11 @@ export function askUserMarkdown(payload: AskUserPayload): string {
  * A payload on a tool part reaches nobody: the panel draws the reply's text.
  * So the turn writes it, and what it writes is the reply -- copyable, stored,
  * and rebuilt on a reload the way every other line of an answer is.
+ *
+ * Fenced by blank lines because the panel joins every text part of a reply into
+ * one string and renders that once: without them this paragraph runs into
+ * whatever the model wrote before it, and a second question lands inside the
+ * first one's last option.
  * @param writer - The stream this turn is being written to.
  * @param toolCallId - Which call this is, so the part has an id of its own.
  * @param payload - What the tool returned.
@@ -64,6 +98,6 @@ export function writeAskUserText(
 ): void {
   const id = `ask-${toolCallId}`;
   writer.write({ type: "text-start", id });
-  writer.write({ type: "text-delta", id, delta: askUserMarkdown(payload) });
+  writer.write({ type: "text-delta", id, delta: `\n\n${askUserMarkdown(payload)}\n\n` });
   writer.write({ type: "text-end", id });
 }

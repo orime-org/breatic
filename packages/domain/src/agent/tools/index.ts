@@ -8,7 +8,7 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
-import { ASK_USER } from "@domain/agent/tools/blocking-tools.js";
+import { ASK_USER } from "@domain/agent/tools/tool-names.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
@@ -28,9 +28,9 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
   web_search: () => makeSearchTools().web_search,
-  // The name a tool answers to is this key. Three more lists below repeat it,
-  // and the one deciding whether a turn waits for an answer fails in silence
-  // when they disagree -- the turn simply never stops for the answer.
+  // The name a tool answers to is this key. Two more lists below repeat it,
+  // and so does the turn's own test for whether to wait for an answer, which
+  // fails in silence when they disagree -- the turn simply never stops.
   [ASK_USER]: () => askUser,
   // Interaction tools. The model calls these to hand back a payload rather
   // than to have something done: `ask_user`'s is drawn into the reply by the
@@ -72,7 +72,7 @@ export const INTERACTION_TOOLS: readonly string[] = [
   "show_search_results",
 ];
 
-export { ASK_USER } from "@domain/agent/tools/blocking-tools.js";
+export { ASK_USER } from "@domain/agent/tools/tool-names.js";
 
 /**
  * What each tool needs configured before it can do anything.

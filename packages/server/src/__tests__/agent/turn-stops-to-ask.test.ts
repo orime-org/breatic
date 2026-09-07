@@ -21,7 +21,6 @@
  * those would make the first card a turn draws the last thing it says.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ToolSet } from "ai";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -67,20 +66,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const base = await domainMock();
   const actual = await importOriginal<Record<string, unknown>>();
   const { MockLanguageModelV4 } = await import("ai/test");
-  const { tool: makeTool } = await import("ai");
-  const { z: zod } = await import("zod");
 
-  /**
-   * One of the tools this file registers, all of which answer at once.
-   * @param description - What it is for.
-   * @returns A tool the turn can call.
-   */
-  const answering = (description: string): ToolSet[string] =>
-    makeTool({
-      description,
-      inputSchema: zod.object({ text: zod.string() }),
-      execute: async () => "答复",
-    });
+  // The real tools. What this file is about is which of them ends the turn,
+  // and a stand-in answering with a bare string drives the drawing path with a
+  // shape production cannot produce -- silently, since a reply's text is not
+  // what these assertions read.
+  const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
+  const { showSearchResults } = await import(
+    "../../../../domain/src/agent/tools/show-search-results.js"
+  );
+  const { proposeCanvasAction } = await import(
+    "../../../../domain/src/agent/tools/propose-canvas-action.js"
+  );
 
   return {
     ...base,
@@ -89,9 +86,9 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        ask_user: answering("问用户一个问题"),
-        show_search_results: answering("把搜索结果摆出来"),
-        propose_canvas_action: answering("提一个画布操作"),
+        ask_user: askUser,
+        show_search_results: showSearchResults,
+        propose_canvas_action: proposeCanvasAction,
       },
     }),
     finalizeTurn: async () => [],
@@ -129,6 +126,18 @@ const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
 /**
+ * A call each real tool accepts, so that every one of them answers.
+ *
+ * The turn stops on a `tool-result`, so a call the schema refuses proves
+ * nothing about which tool ends a turn -- it proves the arguments were wrong.
+ */
+const VALID_INPUT: Record<string, Record<string, unknown>> = {
+  ask_user: { question: "要什么风格?", options: ["冷淡", "热闹"] },
+  show_search_results: { links: [{ url: "https://example.com", title: "一条" }] },
+  propose_canvas_action: { action: "delete_node", rationale: "空出位置" },
+};
+
+/**
  * The model asking for one tool by name.
  * @param toolName - Which tool.
  * @returns The parts of one model call that ends in that request.
@@ -139,7 +148,7 @@ function asksFor(toolName: string): ModelStreamPart[] {
       type: "tool-call",
       toolCallId: `call-${toolName}`,
       toolName,
-      input: JSON.stringify({ text: "…" }),
+      input: JSON.stringify(VALID_INPUT[toolName]),
     },
     FINISHED_ASKING_FOR_A_TOOL,
   ];

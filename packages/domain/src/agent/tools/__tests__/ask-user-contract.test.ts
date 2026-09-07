@@ -10,8 +10,8 @@
  * through is something a reader will see.
  *
  * The name is checked alongside the shape because the name is not written in
- * this file -- it is a key in the registry, copied into three more lists, and
- * the copy that decides whether the turn waits for an answer fails silently
+ * this file -- it is a key in the registry, copied into two more lists, and
+ * the test that decides whether the turn waits for an answer fails silently
  * when it is missed.
  */
 import { describe, it, expect } from "vitest";
@@ -41,8 +41,8 @@ describe("the one name this tool has", () => {
   });
 
   it("reads the same in every list that copies it", () => {
-    // Three lists hold this name beyond the registry key itself, and the
-    // turn only waits for an answer because the name it matches is the same.
+    // Two lists hold this name beyond the registry key itself, and the turn
+    // only waits for an answer because the name it matches is the same.
     expect(BASELINE_TOOLS).toContain("ask_user");
     expect(INTERACTION_TOOLS).toContain("ask_user");
   });
@@ -82,8 +82,11 @@ describe("the options", () => {
     expect(accepts({ question: "Who is it for?", options: [] })).toBe(true);
   });
 
-  it("are two to five when there are any", () => {
-    expect(accepts({ question: "Which?", options: ["one"] })).toBe(false);
+  it("are at most five, and one is drawn rather than refused", () => {
+    // The floor cannot reach the model: `zodSchema` renders this array as
+    // `maxItems: 5` and drops a `.refine` on the way, so refusing a call for
+    // having one option enforces a rule the model was never shown.
+    expect(accepts({ question: "Which?", options: ["one"] })).toBe(true);
     expect(accepts({ question: "Which?", options: ["one", "two"] })).toBe(true);
     expect(accepts({ question: "Which?", options: ["1", "2", "3", "4", "5"] })).toBe(true);
     expect(accepts({ question: "Which?", options: ["1", "2", "3", "4", "5", "6"] })).toBe(false);
@@ -112,28 +115,27 @@ describe("what the model says about answering", () => {
   });
 });
 
-describe("what a line may not hold, because the reader sees it as markdown", () => {
+describe("what a line may not hold", () => {
   it("refuses every line ending, not just the newline", () => {
-    // A carriage return is a line ending to CommonMark: an option carrying one
-    // renders as two numbered items, so the numbers the reader answers with
-    // stop matching the ones the call carried.
+    // One option is one line, so a value carrying a line ending is two.
     expect(accepts({ question: "Which?", options: ["keep it\r3. wipe all", "b"] })).toBe(false);
     expect(accepts({ question: "a\rb" })).toBe(false);
     expect(accepts({ question: "a\u2028b" })).toBe(false);
   });
 
-  it("refuses a line that opens a markdown block of its own", () => {
-    // The numbering is drawn for the model. An option that numbers itself
-    // renders as a list inside a list; a question opening with a hash renders
-    // as a heading in the middle of the reply.
-    expect(accepts({ question: "Which?", options: ["1. 快切", "b"] })).toBe(false);
-    expect(accepts({ question: "Which?", options: ["- 快切", "b"] })).toBe(false);
-    expect(accepts({ question: "# 用哪个标签？" })).toBe(false);
-    expect(accepts({ question: "> 引用" })).toBe(false);
-    expect(accepts({ question: "Which?", howToAnswer: "1) 回一个数字" })).toBe(false);
-    // A hash or a dash inside the line is just a character.
-    expect(accepts({ question: "用 #tag 还是 @mention？" })).toBe(true);
-    expect(accepts({ question: "Which?", options: ["16:9 横屏", "9-16 竖屏"] })).toBe(true);
+  it("takes text that happens to start with markdown punctuation", () => {
+    // What a line renders as is settled where it is drawn: the paragraph is
+    // built as a document and serialised, so a value that would have opened a
+    // block of its own arrives as the characters it is. Refusing these costs
+    // the reader a round trip and buys nothing, and a hex colour or a `#1` is
+    // ordinary text in a product about making things.
+    expect(accepts({ question: "#FF0000 正红还是 #1 方案？" })).toBe(true);
+    expect(accepts({ question: "# 用哪个标签？" })).toBe(true);
+    expect(accepts({ question: "> 引用" })).toBe(true);
+    expect(accepts({ question: "---" })).toBe(true);
+    expect(accepts({ question: "Which?", options: ["1. 快切", "- 慢"] })).toBe(true);
+    expect(accepts({ question: "Which?", options: ["|竖屏|", "16:9 横屏"] })).toBe(true);
+    expect(accepts({ question: "Which?", howToAnswer: "1) 回一个数字" })).toBe(true);
   });
 });
 
