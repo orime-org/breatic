@@ -102,15 +102,24 @@ models:
     takes_prompt: true
     tier: recommended
     description: "Kling O3 reference-to-video"
-    guide: "Generate a video from reference images using Kling O3 Pro. Maintains character/style consistency. Duration 3-15s. Provide 1-7 reference images."
+    guide: "Generate a video from reference images using Kling O3 Pro. Maintains character/style consistency. Duration 3-15s. Provide 1-7 reference images, or 1-4 alongside an optional reference video whose motion the result follows."
     cost_per_call: 56
     generation_time: 120
     params:
       images:
-        description: "Reference image URLs (1-7)"
+        description: "Reference image URLs (1-7, or 1-4 with a reference video)"
         type: "list"
         max_items: 7
+        max_items_when_present:
+          video: 4
         default: null
+      video:
+        description: "Reference video URL whose motion the result follows (optional)"
+        default: null
+      keep_original_sound:
+        description: "Keep the reference video's own audio in the result"
+        values: [true, false]
+        default: true
       aspect_ratio:
         description: "Output aspect ratio"
         values: ["16:9", "9:16", "1:1"]
