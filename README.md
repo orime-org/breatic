@@ -24,7 +24,7 @@ The AI-native operating system for content creators — a unified workspace wher
 | Auth | Email+Password (bcrypt) / Google OAuth |
 | Payment | Stripe (optional) |
 | Storage | Local / S3 / Aliyun OSS |
-| Realtime Collaboration | Hocuspocus 4.5.0 (Yjs) |
+| Realtime Collaboration | Hocuspocus 4.6.0 (Yjs) |
 | Monorepo | Turborepo + pnpm |
 | Testing | Vitest |
 | Documentation | TypeDoc (TSDoc) |
