@@ -14,6 +14,7 @@ import {
 } from '@web/components/ui/popover';
 import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
+import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
@@ -28,6 +29,8 @@ export interface VideoParamsValue {
   /** Seconds — a number in every catalog family that declares it. */
   duration?: number;
   generate_audio?: boolean;
+  /** Whether the reference clip's own audio survives into the result (#1928). */
+  keep_original_sound?: boolean;
 }
 
 interface VideoParamsPickerProps {
@@ -35,6 +38,14 @@ interface VideoParamsPickerProps {
   model: ModelEntry;
   /** The current selection. */
   value: VideoParamsValue;
+  /**
+   * What the node's slots hold (#1928).
+   *
+   * `keep_original_sound` describes the reference clip's audio, so it means
+   * nothing until one is picked — the only param here whose offer depends on
+   * something outside the model's own declaration.
+   */
+  slotUrls: VideoSlotUrls;
   /** Called with the changed field only. */
   onChange: (partial: VideoParamsValue) => void;
 }
@@ -51,6 +62,7 @@ const EDITED_PARAMS = [
   'resolution',
   'duration',
   'generate_audio',
+  'keep_original_sound',
 ] as const;
 
 /**
@@ -86,6 +98,7 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   value,
+  slotUrls,
   onChange,
 }: VideoParamsPickerProps): React.JSX.Element {
   const t = useTranslation();
@@ -112,6 +125,12 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
       label: t('canvas.generatePanel.durationSeconds', { n: v }),
     }));
   const audioSupported = model.params?.generate_audio != null;
+  // Two conditions, and the second is what makes this switch different from
+  // the one above it: the model has to declare the param AND a clip has to be
+  // picked, because the setting describes that clip's audio (#1928).
+  const keepSoundOffered =
+    model.params?.keep_original_sound != null &&
+    Boolean(slotUrls.referenceVideo);
 
   // The trigger states only what this model actually has: a fixed
   // `ratio · resolution · duration` shape would show gaps for the several
@@ -210,6 +229,27 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
                 checked={value.generate_audio === true}
                 onCheckedChange={(checked) =>
                   onChange({ generate_audio: checked })
+                }
+              />
+            </label>
+          </div>
+        ) : null}
+        {keepSoundOffered ? (
+          <div className={audioSupported ? 'mt-3' : undefined}>
+            <p className='mb-1.5 text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.keepOriginalSound')}
+            </p>
+            <label className='flex w-fit cursor-pointer items-center gap-2'>
+              <span className='text-xs text-muted-foreground'>
+                {value.keep_original_sound
+                  ? t('canvas.generatePanel.switchOn')
+                  : t('canvas.generatePanel.switchOff')}
+              </span>
+              <Switch
+                data-testid='generate-video-keep-original-sound-toggle'
+                checked={value.keep_original_sound === true}
+                onCheckedChange={(checked) =>
+                  onChange({ keep_original_sound: checked })
                 }
               />
             </label>

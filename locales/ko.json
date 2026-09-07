@@ -407,6 +407,7 @@
       "duration": "길이",
       "durationSeconds": "{n}초",
       "generateAudio": "오디오 생성",
+      "keepOriginalSound": "원본 소리 유지",
       "videoParams": "매개변수",
       "videoPromptPlaceholder": "생성할 영상을 설명하세요. @ 로 참조 추가",
       "errorNoReferenceMention": "이 모드에는 참고 이미지가 필요합니다 —— 이 노드에 이미지를 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",

@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { VideoParamsPicker } from '@web/spaces/canvas/generate/VideoParamsPicker';
@@ -63,6 +64,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
+        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -80,6 +82,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={noResolution}
         value={{ aspect_ratio: '9:16', resolution: '720p', duration: 4 }}
+        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -93,6 +96,7 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
+        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -113,7 +117,7 @@ describe('VideoParamsPicker', () => {
     // than offering a switch the model will ignore.
     const silent = model({ aspect_ratio: RATIO, duration: DURATION_LIST });
     render(
-      <VideoParamsPicker model={silent} value={{}} onChange={() => {}} />,
+      <VideoParamsPicker model={silent} value={{}} slotUrls={{}} onChange={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.queryByTestId('generate-video-audio-toggle')).toBeNull();
@@ -126,7 +130,7 @@ describe('VideoParamsPicker', () => {
   it('picking a ratio reports the aspect_ratio', () => {
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} value={{}} onChange={onChange} />,
+      <VideoParamsPicker model={FULL} value={{}} slotUrls={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-ratio-option-1:1'));
@@ -138,7 +142,7 @@ describe('VideoParamsPicker', () => {
     // string in the payload where the provider expects 6.
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} value={{}} onChange={onChange} />,
+      <VideoParamsPicker model={FULL} value={{}} slotUrls={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-duration-option-6'));
@@ -155,7 +159,7 @@ describe('VideoParamsPicker', () => {
     });
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={ranged} value={{}} onChange={onChange} />,
+      <VideoParamsPicker model={ranged} value={{}} slotUrls={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.getByTestId('generate-video-duration-option-4')).toBeVisible();
@@ -171,11 +175,99 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         value={{ generate_audio: true }}
+        slotUrls={{}}
         onChange={onChange}
       />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-audio-toggle'));
     expect(onChange).toHaveBeenCalledWith({ generate_audio: false });
+  });
+});
+
+/**
+ * The reference video's own audio (#1928).
+ *
+ * Upstream keeps it by default, so a run with a clip carries that clip's
+ * sound into the result unless the user says otherwise — the switch is how
+ * they say it. It describes the clip, so it only means anything while one is
+ * picked; without a clip there is nothing whose sound to keep.
+ */
+describe('VideoParamsPicker and the reference clip\'s own sound', () => {
+  const KEEP: ParamDescriptor = {
+    description: '',
+    values: [true, false],
+    default: true,
+  };
+  const WITH_KEEP = model({
+    aspect_ratio: RATIO,
+    duration: DURATION_LIST,
+    keep_original_sound: KEEP,
+  });
+
+  it('offers the switch while a reference clip is picked', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={WITH_KEEP}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.getByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves it out while no clip is picked', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={WITH_KEEP}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slotUrls={{}}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+
+  it('leaves it out for a model that never reads a clip', async () => {
+    const user = userEvent.setup();
+    render(
+      <VideoParamsPicker
+        model={FULL}
+        value={{ aspect_ratio: '16:9', duration: 6 }}
+        slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
+        onChange={() => {}}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(
+      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
+    ).toBeNull();
+  });
+
+  it('reports the flip to the caller', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <VideoParamsPicker
+        model={WITH_KEEP}
+        value={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
+        slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
+        onChange={onChange}
+      />,
+    );
+    await user.click(screen.getByTestId('generate-video-params-trigger'));
+    await user.click(
+      screen.getByTestId('generate-video-keep-original-sound-toggle'),
+    );
+    expect(onChange).toHaveBeenCalledWith({ keep_original_sound: false });
   });
 });

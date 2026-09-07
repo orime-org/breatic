@@ -416,6 +416,7 @@
       "duration": "Duration",
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",
+      "keepOriginalSound": "Keep original sound",
       "videoParams": "Parameters",
       "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
       "errorNoReferenceMention": "This mode needs a reference image — connect one to this node and type @ in the prompt to use it",

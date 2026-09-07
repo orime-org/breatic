@@ -407,6 +407,7 @@
       "duration": "長さ",
       "durationSeconds": "{n}秒",
       "generateAudio": "音声を生成",
+      "keepOriginalSound": "元の音声を残す",
       "videoParams": "パラメータ",
       "videoPromptPlaceholder": "生成したい動画を説明してください。@ で参照を追加",
       "errorNoReferenceMention": "このモードには参考画像が必要です —— このノードに画像をつないでから、プロンプトで @ を入力して指定してください。",
