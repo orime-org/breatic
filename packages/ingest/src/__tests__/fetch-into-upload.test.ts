@@ -89,11 +89,25 @@ function expectReport(status = 200, body: unknown = REGISTERED): void {
 }
 
 /**
+ * Bytes no two positions of which are alike.
+ *
+ * The parts are cut on fixed boundaries out of reads that arrive in whatever
+ * size they arrive in, so the object is assembled from slices this Worker
+ * chose. A uniform fill would land byte-for-byte correct however those slices
+ * were mixed up; a walking pattern does not.
+ * @param length - How many bytes.
+ * @returns The pattern.
+ */
+function pattern(length: number): Uint8Array {
+  return Uint8Array.from({ length }, (_, i) => (i * 31 + 7) & 0xff);
+}
+
+/**
  * Expect one fetch of the source and answer it with these bytes.
  * @param status - What the provider answers.
  * @param bytes - What it serves.
  */
-function expectSource(status = 200, bytes = new Uint8Array(1024)): void {
+function expectSource(status = 200, bytes = pattern(1024)): void {
   fetchMock
     .get(SOURCE_ORIGIN)
     .intercept({ path: SOURCE_PATH, method: "GET" })
@@ -184,7 +198,8 @@ describe("POST /fetch — who may ask for it", () => {
 
 describe("POST /fetch — the transfer", () => {
   it("stores what the source served and reports the hash of it", async () => {
-    expectSource(200, new Uint8Array(1024).fill(7));
+    const served = pattern(1024);
+    expectSource(200, served);
     expectClaim();
     expectReport();
 
@@ -205,6 +220,7 @@ describe("POST /fetch — the transfer", () => {
     const stored = await env.BUCKET.get(storageKey);
     expect(stored).not.toBeNull();
     expect(stored!.size).toBe(1024);
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(served);
     // Set when the upload is opened, so a public read answers with the type
     // the ticket signed rather than application/octet-stream.
     expect(stored!.httpMetadata?.contentType).toBe("image/png");
@@ -227,7 +243,8 @@ describe("POST /fetch — the transfer", () => {
     // A read hands back whatever arrived, so the part boundary falls inside a
     // chunk. R2 refuses any part but the last under its 5 MiB floor, which is
     // what a boundary handled wrongly would produce.
-    expectSource(200, new Uint8Array(PART_SIZE + 4096).fill(3));
+    const served = pattern(PART_SIZE + 4096);
+    expectSource(200, served);
     expectClaim();
     expectReport();
 
@@ -236,12 +253,15 @@ describe("POST /fetch — the transfer", () => {
     expect(response.status).toBe(200);
     const stored = await env.BUCKET.get(storageKey);
     expect(stored!.size).toBe(PART_SIZE + 4096);
+    // Every byte, in order: the boundary falls inside one of the reads, and
+    // what the second part starts with is the remainder of that read.
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(served);
   });
 
   it("refuses a source past what the ticket allows, reporting it aborted", async () => {
     // A URL announces nothing about its size, so this ceiling is all that
     // stands between a source that never ends and a full bucket.
-    expectSource(200, new Uint8Array(PART_SIZE * 2 + 16).fill(1));
+    expectSource(200, pattern(PART_SIZE * 2 + 16));
     expectReport();
 
     const { response, storageKey } = await pull({ totalParts: 2 });
@@ -259,7 +279,7 @@ describe("POST /fetch — the transfer", () => {
     // A source whose length is a whole number of parts leaves nothing over at
     // the end, so the ceiling has to hold while the parts are being written
     // rather than only once the stream runs out.
-    expectSource(200, new Uint8Array(PART_SIZE * 3).fill(1));
+    expectSource(200, pattern(PART_SIZE * 3));
     expectReport();
 
     const { response, storageKey } = await pull({ totalParts: 2 });

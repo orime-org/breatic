@@ -160,10 +160,11 @@ describe("resolveVideoCovers — the frame's trip to R2 (#1826 §4.5 / §0 rule 
     expect(mockUploadBytes).not.toHaveBeenCalled();
   });
 
-  it("a throw from the setup NEVER propagates — the whole body is best-effort (#1824)", async () => {
-    // Gate-2 R4 H4 regression guard: a setup step that throws outside any
-    // per-output handler used to escape and fail the whole video task, which
-    // #1824 forbids.
+  it("a synchronous throw from the extractor NEVER propagates (#1824)", async () => {
+    // Thrown rather than rejected: a synchronous throw from an awaited call is
+    // caught by the same handler, and this is the shape a broken native
+    // dependency takes once the module has loaded. The load itself failing is
+    // the outer guard's job, in `resolve-video-covers-setup.test.ts`.
     mockExtract.mockImplementation(() => {
       throw new Error("sharp is broken");
     });

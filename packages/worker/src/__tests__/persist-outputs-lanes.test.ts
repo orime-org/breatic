@@ -115,7 +115,21 @@ describe("persistOutputs — the lane an output takes", () => {
   it("hands a provider's link over without reading it here", async () => {
     const out = await persistOutputs([{ url: PROVIDER_URL }], {}, baseOpts);
 
-    expect(mockTransferUrl).toHaveBeenCalledWith(PROVIDER_URL, expect.anything());
+    expect(mockTransferUrl).toHaveBeenCalledTimes(1);
+    expect(mockTransferUrl.mock.calls[0]?.[0]).toBe(PROVIDER_URL);
+    // The grant is the only thing the report handler learns this asset's
+    // identity from — the Worker fetched a link and knows nothing else about
+    // it — so lane ③ has to declare as much as lane ② does. A link carries no
+    // type either, so the extension and the content type come off the task.
+    expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({
+      projectId: "p1",
+      actingUserId: "u1",
+      assetSource: "ai",
+      generationTaskId: "t1",
+      taskType: "image",
+      ext: ".png",
+      contentType: "image/png",
+    });
     // The whole point of lane ③: those bytes never pass through this process.
     expect(mockUploadBytes).not.toHaveBeenCalled();
     expect(mockAdapterUpload).not.toHaveBeenCalled();
