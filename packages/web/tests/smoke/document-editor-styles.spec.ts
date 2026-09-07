@@ -523,3 +523,67 @@ test.describe('the values the visual review settled (user 2026-09-07)', () => {
     );
   });
 });
+
+test('leaves a to-do box the gutter its markers keep (user 2026-09-07)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('- bulleted');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('[] a to-do');
+  await page.waitForTimeout(400);
+
+  const rows = await page.evaluate((sel) => {
+    const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+    return all.map((element) => {
+      const text = element.querySelector('.bn-inline-content');
+      const box = element.querySelector('input');
+      return {
+        kind: element.getAttribute('data-content-type'),
+        blockLeft: element.getBoundingClientRect().left,
+        textLeft: text ? text.getBoundingClientRect().left : null,
+        boxRight: box ? box.getBoundingClientRect().right : null,
+      };
+    });
+  }, EDITOR);
+
+  const [bullet, todo] = rows as {
+    kind: string | null;
+    blockLeft: number;
+    textLeft: number | null;
+    boxRight: number | null;
+  }[];
+  // The text starts at the same place for both kinds, and the box clears it
+  // by more than the 4px it had. Measured before: the bulleted item's glyph
+  // ended 12px from its text while the box ended 4px from its own, because
+  // the box's own margins were what pushed that text out (user 2026-09-07).
+  expect(todo!.textLeft, 'both kinds start their text at one x').toBe(
+    bullet!.textLeft,
+  );
+  expect(todo!.textLeft! - todo!.boxRight!, 'the box clears its text').toBeGreaterThan(6);
+});
+
+test('centres the tick on the box it ticks (user 2026-09-07)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('[] a to-do');
+  await page.waitForTimeout(300);
+  await page.locator(`${EDITOR} input[type="checkbox"]`).click();
+  await page.waitForTimeout(300);
+
+  const centres = await page.evaluate((sel) => {
+    const block = document.querySelector(
+      `${sel} .bn-block-content[data-content-type="checkListItem"]`,
+    )!;
+    const box = block.querySelector('input')!.getBoundingClientRect();
+    const holder = block.querySelector('div')!;
+    const after = getComputedStyle(holder, '::after');
+    const left = parseFloat(after.left);
+    const width = parseFloat(after.width);
+    return {
+      boxCentre: box.left + box.width / 2 - holder.getBoundingClientRect().left,
+      tickCentre: left + width / 2,
+    };
+  }, EDITOR);
+  // The tick is a mask on the holder, positioned from the holder's own edge,
+  // so moving the box inside the holder moves it away from its tick.
+  expect(Math.abs(centres.tickCentre - centres.boxCentre)).toBeLessThan(0.6);
+});

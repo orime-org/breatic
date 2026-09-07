@@ -982,12 +982,21 @@ body {
    The tick is a mask on the holder rather than a background on the input: an
    `<input>` is a replaced element and takes no pseudo-element of its own, and
    a mask carries its colour from a token where a background SVG would have to
-   spell one out. A 12px tick centred on a 16px box 4 in starts 6 in.
+   spell one out. It is placed from the HOLDER's edge, so it tracks where the
+   box sits inside the gutter: a 12px tick on a 16px box flush left starts 2
+   in.
 
    A viewer's copy is disabled, and `appearance: none` takes away the grey the
    browser drew for that. */
+/* THE HOLDER OWNS THE GUTTER, so the box can move inside it. Without a width
+   of its own the holder measured whatever the box's margins made it — 4 + 16
+   + 4 — and the text started wherever that landed. A number or a bullet is a
+   glyph centred in BlockNote's own 24px, and a glyph is narrower than its
+   gutter, so those two clear their text by 10 to 12px while the box, which
+   fills what it is given, cleared its own by 4 (user 2026-09-07). */
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div {
   position: relative;
+  min-width: 24px;
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='checkListItem'] > div > input {
@@ -995,7 +1004,7 @@ body {
   width: 16px;
   height: 16px;
   margin-block: 4px;
-  margin-inline: 4px;
+  margin-inline: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-chrome);
   background-color: var(--color-background);
@@ -1022,7 +1031,7 @@ body {
   content: '';
   position: absolute;
   top: 50%;
-  left: 6px;
+  left: 2px;
   width: 12px;
   height: 12px;
   transform: translateY(-50%);

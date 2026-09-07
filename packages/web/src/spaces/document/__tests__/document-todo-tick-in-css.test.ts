@@ -60,7 +60,8 @@ function ruleBody(endsWith: string): string {
  * @throws {Error} When the rule does not declare it in pixels.
  */
 function px(body: string, property: string): number {
-  const found = new RegExp(`${property}:\\s*(-?[\\d.]+)px`).exec(body);
+  // A zero length carries no unit in CSS, so the suffix is optional.
+  const found = new RegExp(`${property}:\\s*(-?[\\d.]+)(px)?[;\\s]`).exec(body);
   if (found === null) {
     throw new Error(`no ${property} in px`);
   }
@@ -87,12 +88,16 @@ describe('the box a to-do carries', () => {
   });
 
   it('leaves the text where a bullet and a number leave theirs', () => {
-    const body = ruleBody(TICK);
-    // `margin-inline` is one value, so it is the same on both sides.
-    expect(body).toMatch(/margin-inline:\s*[\d.]+px;/);
-    const side = px(body, 'margin-inline');
+    // The gutter belongs to the holder, so the text starts at 24 whatever the
+    // box does inside it. It used to be the box's own margins that pushed the
+    // text out, which left the box 4px from its own text where a bullet keeps
+    // 12 (user 2026-09-07).
+    const holder = ruleBody(
+      '[data-content-type=\'checkListItem\'] > div',
+    );
     // 24 is BlockNote's own `min-width` for a bullet's and a number's marker.
-    expect(side + px(body, 'width') + side).toBe(24);
+    expect(px(holder, 'min-width')).toBe(24);
+    expect(ruleBody(TICK)).toMatch(/margin-inline:\s*0;/);
   });
 
   it('centres the tick on the box', () => {
@@ -100,6 +105,8 @@ describe('the box a to-do carries', () => {
     const mark = ruleBody(
       '[data-content-type=\'checkListItem\'][data-checked=\'true\'] > div::after',
     );
+    // The tick is placed from the HOLDER's edge while the box sits at its own
+    // start margin inside it, so moving one moves the two apart.
     expect(px(mark, 'left')).toBe(
       px(box, 'margin-inline') + (px(box, 'width') - px(mark, 'width')) / 2,
     );
