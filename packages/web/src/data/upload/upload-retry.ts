@@ -20,39 +20,11 @@
  * The transport would also honour `Retry-After`, and the Worker never sends
  * one, so it falls back to its own backoff — the same three deliveries either
  * way.
+ *
+ * What talks to the Worker is not here: it moved to `@breatic/shared` when the
+ * backend started uploading its own output through the same three endpoints
+ * (#181), and the knobs and the failure it raises went with it.
  */
-
-import { partDeadlineMs } from '@breatic/shared';
-
-/** The upload knobs served by `GET /assets/upload-config` (camelCase wire). */
-export interface UploadClientConfig {
-  /** Hard upload cap in bytes (pre-checked on selection; server 413s). */
-  maxUploadBytes: number;
-  /** Ticket attempts including the first; a part's count lives in the transport. */
-  clientMaxAttempts: number;
-  /** Base backoff (ms) between ticket attempts; full jitter on base * 2^attemptIndex. */
-  clientRetryBaseDelayMs: number;
-  /** Floor for the part stall guard. It times no API request — the ticket goes through the axios client. */
-  clientRequestTimeoutMs: number;
-  /** PUT stall guard rate: timeout = max(floor, size / rate). */
-  clientPutMinBytesPerSec: number;
-}
-
-/** An HTTP failure from the storage PUT, carrying the response status. */
-export class UploadHttpError extends Error {
-  /** The HTTP response status. */
-  readonly status: number;
-
-  /**
-   * Build the error from the PUT response status.
-   * @param status - The non-2xx HTTP status the PUT target responded with.
-   */
-  constructor(status: number) {
-    super(`Asset upload failed (HTTP ${status})`);
-    this.name = 'UploadHttpError';
-    this.status = status;
-  }
-}
 
 /** The account is out of storage (RFC 4918 §11.5) — nothing a retry can fix. */
 export const STORAGE_FULL_STATUS = 507;
@@ -153,24 +125,4 @@ export async function retryTransient<T>(
   }
   // Unreachable: the loop always returns or throws. Kept for TS narrowing.
   throw lastError;
-}
-
-/**
- * Per-attempt PUT timeout: a stall guard, not a UX deadline. Scales with
- * file size at the minimum acceptable transfer rate so a legitimately
- * slow big upload never trips it, floored at the value below, whose name says API request but times none.
- * @param sizeBytes - The file size about to be PUT.
- * @param cfg - The upload knobs.
- * @returns The per-attempt timeout in milliseconds.
- */
-export function computePutTimeoutMs(
-  sizeBytes: number,
-  cfg: UploadClientConfig,
-): number {
-  // The same arithmetic the config's own window check reads. A second copy
-  // here would let the browser's deadline and that check disagree.
-  return partDeadlineMs(sizeBytes, {
-    requestTimeoutMs: cfg.clientRequestTimeoutMs,
-    minBytesPerSec: cfg.clientPutMinBytesPerSec,
-  });
 }

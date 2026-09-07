@@ -2,28 +2,28 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Sending bytes to the ingest Worker (#173, design §4.2).
+ * Sending bytes to the ingest Worker (#173 design §4.2, #181 lane ②).
  *
  * Three steps: open the upload for a session token, PUT each part and take the
  * fresh token it answers with, then complete. Since the token rotates per
  * part, what has to be shown here is that part n carries the token part n-1
  * handed back.
+ *
+ * A browser's `File` and a buffer our own backend produced go through the same
+ * function, which is what keeps "every asset reaches R2 through the ingest
+ * Worker" one implementation.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { httpRequest } from '@breatic/shared';
-import type * as shared from '@breatic/shared';
-import { sendFileToIngest } from '@web/data/upload/ingest-upload';
-import type { UploadTicket } from '@web/data/upload/ingest-upload';
+import { httpRequest } from '@shared/http/request.js';
 import {
+  sendBytesToIngest,
   computePutTimeoutMs,
+  type IngestTarget,
   type UploadClientConfig,
-} from '@web/data/upload/upload-retry';
+} from '@shared/upload/ingest-client.js';
 
-vi.mock('@breatic/shared', async (importOriginal) => ({
-  ...(await importOriginal<typeof shared>()),
-  httpRequest: vi.fn(),
-}));
+vi.mock('@shared/http/request.js', () => ({ httpRequest: vi.fn() }));
 
 const mockedRequest = vi.mocked(httpRequest);
 
@@ -38,12 +38,10 @@ const cfg: UploadClientConfig = {
 };
 
 /** A ticket for a file of `totalParts` parts. */
-function ticketFor(totalParts: number): UploadTicket {
+function ticketFor(totalParts: number): IngestTarget {
   return {
     ticket: 'signed-ticket',
-    storageKey: 'image/2026-08-31/abc.png',
     uploadUrl: 'https://ingest.example.com',
-    kind: 'image',
     partSize: PART_SIZE,
     totalParts,
   };
@@ -70,7 +68,7 @@ function urlOf(nth: number): string {
 
 /** The headers of the nth call. */
 function headersOf(nth: number): Record<string, string> {
-  const init = mockedRequest.mock.calls[nth]?.[1] as RequestInit | undefined;
+  const init = mockedRequest.mock.calls[nth]?.[1];
   return (init?.headers ?? {}) as Record<string, string>;
 }
 
@@ -91,11 +89,11 @@ function wireHappyPath(parts: number, outcome: unknown): void {
   mockedRequest.mockResolvedValueOnce(answers(200, outcome));
 }
 
-describe('sending a file to the ingest Worker', () => {
+describe('sending bytes to the ingest Worker', () => {
   it('opens the upload with the ticket our server signed', async () => {
     wireHappyPath(1, { fileUrl: 'https://cdn/x.png', kind: 'image' });
 
-    await sendFileToIngest(fileOf(1024), ticketFor(1), cfg);
+    await sendBytesToIngest(fileOf(1024), ticketFor(1), cfg);
 
     expect(urlOf(0)).toBe('https://ingest.example.com/uploads');
     expect(headersOf(0)['x-upload-ticket']).toBe('signed-ticket');
@@ -104,7 +102,7 @@ describe('sending a file to the ingest Worker', () => {
   it('cuts at the signed part size, and only the last part may be short', async () => {
     wireHappyPath(3, {});
 
-    await sendFileToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
 
     const sizes = [1, 2, 3].map((n) => {
       const init = mockedRequest.mock.calls[n]?.[1];
@@ -116,7 +114,7 @@ describe('sending a file to the ingest Worker', () => {
   it('sends each part to the address for its own part number', async () => {
     wireHappyPath(2, {});
 
-    await sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
     expect(urlOf(1)).toBe('https://ingest.example.com/uploads/upload-1/parts/1');
     expect(urlOf(2)).toBe('https://ingest.example.com/uploads/upload-1/parts/2');
@@ -127,7 +125,7 @@ describe('sending a file to the ingest Worker', () => {
   it('carries the token the previous part handed back', async () => {
     wireHappyPath(2, {});
 
-    await sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
     expect(headersOf(1)['x-upload-token']).toBe('token-0');
     expect(headersOf(2)['x-upload-token']).toBe('token-1');
@@ -136,7 +134,7 @@ describe('sending a file to the ingest Worker', () => {
   it('completes with the newest token and hands the answer back', async () => {
     wireHappyPath(1, { fileUrl: 'https://cdn/x.png', kind: 'image' });
 
-    const outcome = await sendFileToIngest(fileOf(1024), ticketFor(1), cfg);
+    const outcome = await sendBytesToIngest(fileOf(1024), ticketFor(1), cfg);
 
     expect(urlOf(2)).toBe(
       'https://ingest.example.com/uploads/upload-1/complete',
@@ -150,7 +148,7 @@ describe('sending a file to the ingest Worker', () => {
   it('hands back every part receipt when it asks to finish', async () => {
     wireHappyPath(3, {});
 
-    await sendFileToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
 
     // Call 0 opens, 1..3 are the parts, so 4 is the one that finishes.
     const body = mockedRequest.mock.calls[4]?.[1]?.body;
@@ -166,7 +164,7 @@ describe('sending a file to the ingest Worker', () => {
   it('says the body is JSON, so the Worker parses rather than guesses', async () => {
     wireHappyPath(1, {});
 
-    await sendFileToIngest(fileOf(1024), ticketFor(1), cfg);
+    await sendBytesToIngest(fileOf(1024), ticketFor(1), cfg);
 
     expect(headersOf(2)['content-type']).toBe('application/json');
   });
@@ -189,7 +187,7 @@ describe('what the shared transport is told', () => {
   it('declares every step replay-safe', async () => {
     wireHappyPath(2, {});
 
-    await sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
     expect(optionsOf(0).replaySafe).toBe(true);
     expect(optionsOf(1).replaySafe).toBe(true);
@@ -202,7 +200,7 @@ describe('what the shared transport is told', () => {
   it('gives each part a deadline its own size earns', async () => {
     wireHappyPath(2, {});
 
-    await sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
     expect(optionsOf(1).timeoutMs).toBe(computePutTimeoutMs(PART_SIZE, cfg));
     expect(optionsOf(2).timeoutMs).toBe(computePutTimeoutMs(10, cfg));
@@ -217,7 +215,7 @@ describe('what the shared transport is told', () => {
     wireHappyPath(3, {});
     const file = fileOf(PART_SIZE * 2 + 700);
 
-    await sendFileToIngest(file, ticketFor(3), cfg);
+    await sendBytesToIngest(file, ticketFor(3), cfg);
 
     expect(optionsOf(4).replaySafe).toBe(true);
     expect(optionsOf(4).timeoutMs).toBeUndefined();
@@ -234,7 +232,7 @@ describe('when the Worker refuses', () => {
     mockedRequest.mockResolvedValueOnce(answers(401, {}));
 
     await expect(
-      sendFileToIngest(fileOf(1024), ticketFor(1), cfg),
+      sendBytesToIngest(fileOf(1024), ticketFor(1), cfg),
     ).rejects.toThrow();
 
     expect(mockedRequest).toHaveBeenCalledTimes(1);
@@ -247,7 +245,7 @@ describe('when the Worker refuses', () => {
     mockedRequest.mockResolvedValueOnce(answers(400, {}));
 
     await expect(
-      sendFileToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg),
+      sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg),
     ).rejects.toThrow();
 
     expect(mockedRequest).toHaveBeenCalledTimes(2);
@@ -267,7 +265,7 @@ describe('when the Worker refuses', () => {
     );
 
     await expect(
-      sendFileToIngest(fileOf(1024), ticketFor(1), cfg),
+      sendBytesToIngest(fileOf(1024), ticketFor(1), cfg),
     ).rejects.toThrow();
   });
 });

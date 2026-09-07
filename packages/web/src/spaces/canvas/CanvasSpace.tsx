@@ -29,7 +29,7 @@ import * as React from 'react';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/lib/keyboard-scope';
-import { canGenerate, newId } from '@breatic/shared';
+import { canGenerate, newId, sendBytesToIngest } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { assetsApi, canvasApi } from '@web/data/api';
@@ -108,7 +108,6 @@ import {
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
 import { hashFile } from '@web/data/upload/hash';
-import { sendFileToIngest } from '@web/data/upload/ingest-upload';
 import {
   stashRetryFile,
   getRetryFile,
@@ -946,7 +945,7 @@ function CanvasSpaceInner({
                   getUploadConfig: assetsApi.fetchUploadConfig,
                   hashFile,
                   requestTicket: assetsApi.requestUploadTicket,
-                  sendToIngest: sendFileToIngest,
+                  sendToIngest: sendBytesToIngest,
                   onSuccess: (fileUrl) => {
                     if (fileUrl === undefined) {
                       reject(new Error('upload'));
@@ -2130,7 +2129,7 @@ function CanvasSpaceInner({
                   getUploadConfig: assetsApi.fetchUploadConfig,
                   hashFile,
                   requestTicket: assetsApi.requestUploadTicket,
-                  sendToIngest: sendFileToIngest,
+                  sendToIngest: sendBytesToIngest,
                   // The bytes are delivered; the node's content arrives from
                   // the server through Yjs. All that is left here is to stop
                   // holding the file for a Retry that is no longer offered.
@@ -3061,7 +3060,7 @@ function CanvasSpaceInner({
           getUploadConfig: assetsApi.fetchUploadConfig,
           hashFile,
           requestTicket: assetsApi.requestUploadTicket,
-          sendToIngest: sendFileToIngest,
+          sendToIngest: sendBytesToIngest,
           spaceId,
           extractText,
           // Type gate: the picker's accept is advisory (macOS lets audio/*

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { apiGet, apiPost } from '@web/data/api/request';
-import type { UploadClientConfig } from '@web/data/upload/upload-retry';
+import type { UploadClientConfig } from '@breatic/shared';
 import type { UploadTicketResponse } from '@web/data/upload/ingest-upload';
 
 /** Session cache for the upload knobs (one fetch per session). */

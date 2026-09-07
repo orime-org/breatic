@@ -5,10 +5,12 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
 import {
-  retryTransient,
-  isTransientUploadError,
   computePutTimeoutMs,
   type UploadClientConfig,
+} from '@breatic/shared';
+import {
+  retryTransient,
+  isTransientUploadError,
 } from '@web/data/upload/upload-retry';
 
 const CFG: UploadClientConfig = {

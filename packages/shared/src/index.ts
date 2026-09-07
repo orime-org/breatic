@@ -429,6 +429,19 @@ export {
   type PartDeadlineConfig,
   type UploadWindows,
 } from "@shared/upload/windows.js";
+// Sending bytes to the ingest Worker. Whoever holds them sends them: the
+// browser for a file a person picked, our own backend for what it produced
+// itself -- one implementation, so "every asset reaches R2 through the ingest
+// Worker" is not a rule each caller is trusted to follow.
+export {
+  sendBytesToIngest,
+  fetchUrlToIngest,
+  computePutTimeoutMs,
+  UploadHttpError,
+  type UploadClientConfig,
+  type IngestTarget,
+  type IngestOutcome,
+} from "@shared/upload/ingest-client.js";
 export {
   encodeBase64Utf8,
   decodeBase64Utf8,

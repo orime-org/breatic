@@ -4,15 +4,14 @@
 import { validFocusImages } from '@web/data/focus-images';
 import {
   isAlreadyStored,
-  type IngestOutcome,
   type UploadTicket,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
+import type { IngestOutcome, UploadClientConfig } from '@breatic/shared';
 import {
   errorStatus,
   retryTransient,
   STORAGE_FULL_STATUS,
-  type UploadClientConfig,
 } from '@web/data/upload/upload-retry';
 import {
   VIDEO_SLOTS,
