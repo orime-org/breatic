@@ -61,10 +61,11 @@ export const BASELINE_TOOLS: readonly string[] = [
 /**
  * The tools that put something in front of the user rather than doing work.
  *
- * They do not do anything on their own — each returns a payload the frontend
- * draws as a component. A caller with no way to draw one must not be offered
- * them, or the model will ask a question nobody can see and read its own
- * request back as the answer.
+ * They do not do anything on their own — each returns a payload something
+ * else draws: `ask_user`'s becomes markdown in the reply's own text, and the
+ * other two become components in the panel. A caller with no reader must not
+ * be offered them, or the model will put something in front of nobody — and
+ * with `ask_user` it will then wait for an answer that cannot arrive.
  */
 export const INTERACTION_TOOLS: readonly string[] = [
   ASK_USER,
