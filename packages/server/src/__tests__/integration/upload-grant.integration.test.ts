@@ -54,12 +54,10 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import {
-  issueGrant,
-  findLiveGrant,
-  consumeGrant,
-  claimFinalize,
-} from "@server/modules/asset/upload-grant.repo.js";
+import { uploadGrantRepo } from "@breatic/domain";
+
+const { issueGrant, findLiveGrant, consumeGrant, claimFinalize } =
+  uploadGrantRepo;
 
 try {
   initCore(process.env);

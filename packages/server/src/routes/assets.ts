@@ -20,8 +20,11 @@ import { validate } from "@server/middleware/validate.js";
 import { secretsMatch } from "@server/utils/secrets-match.js";
 import { z } from "zod";
 import { signUploadTicket, t, canvasSpaceDocName } from "@breatic/shared";
-import { assetService } from "@breatic/domain";
-import { nodeTaskService } from "@breatic/domain";
+import {
+  assetService,
+  nodeTaskService,
+  uploadGrantService,
+} from "@breatic/domain";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -231,7 +234,7 @@ assets.post(
 
     const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
 
-    const { key, studioId } = await assetUploadService.issueUploadGrant({
+    const { key, studioId } = await uploadGrantService.issueUploadGrant({
       projectId: body.project_id,
       actingUserId: user.id,
       declaredSize: body.size,

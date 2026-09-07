@@ -51,13 +51,17 @@ import type { NodeTaskResult } from "@breatic/shared";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import {
+  uploadGrantRepo,
+  type UploadGrant,
+  type FinalizeClaim,
+} from "@breatic/domain";
+
+const {
   findGrantByKey,
   consumeGrant,
   voidGrant,
-  claimFinalize as claimFinalizeGrant,
-  type UploadGrant,
-  type FinalizeClaim,
-} from "@server/modules/asset/upload-grant.repo.js";
+  claimFinalize: claimFinalizeGrant,
+} = uploadGrantRepo;
 
 /**
  * The queue the worker takes cover extractions off.

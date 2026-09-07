@@ -23,13 +23,10 @@ import {
   emitNodeTaskCounts,
   nodeHistoryService,
   nodeTaskService,
+  uploadGrantRepo,
 } from "@breatic/domain";
-import { storageKey, getStreamRedis, logger } from "@breatic/core";
+import { getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
-import {
-  issueGrant,
-  findLiveGrant,
-} from "@server/modules/asset/upload-grant.repo.js";
 
 /** A dedup hit: the canonical asset the client should reuse. */
 export interface DedupHit {
@@ -186,64 +183,6 @@ export async function settleDedupHit(params: {
 }
 
 /**
- * Mint a tenant-neutral storage key for an upload that missed dedup and record
- * its upload grant (#1826, design §2.2). Called by the ticket endpoint AFTER
- * the dedup check misses: resolves the owner studio (#1839 — the PROJECT's),
- * mints K,
- * and writes the grant row the ingest Worker's report is later checked
- * against. The dedup-hit path never calls this (no key, no grant).
- *
- * The context travels onto the grant rather than being asked of the report,
- * because the report comes from the Worker, which knows only what the ticket
- * told it. Checking it here — while we hold the user's session and their
- * access to the project — is what makes it ours rather than the client's.
- * @param params - The upload claim + key components.
- * @param params.projectId - Project the upload targets.
- * @param params.actingUserId - Authenticated uploader.
- * @param params.declaredSize - Client-declared byte size (UX pre-check only).
- * @param params.taskType - The detected kind, used as the key's task segment.
- * @param params.ext - The dotted file extension for the key.
- * @param params.expiresAt - When the ticket stops being usable.
- * @param params.context - Node, space, and provenance for the report to use.
- * @param params.context.nodeId - Node the bytes land on, when there is one.
- * @param params.context.spaceId - Canvas space holding that node.
- * @param params.context.source - What started this upload.
- * @param params.context.toolName - Mini-tool that produced the bytes, if any.
- * @param params.context.derived - True when the bytes came out of another asset.
- * @param params.context.filename - Original file name, shown in history.
- * @returns The minted storage key K and the owner studio it was attributed to.
- * @throws {NotFoundError} When the project does not exist or is soft-deleted.
- */
-export async function issueUploadGrant(params: {
-  projectId: string;
-  actingUserId: string;
-  declaredSize: number;
-  taskType: string;
-  ext: string;
-  expiresAt: Date;
-  context: {
-    nodeId?: string | null;
-    spaceId?: string | null;
-    source?: string | null;
-    toolName?: string | null;
-    derived?: boolean | null;
-    filename?: string | null;
-  };
-}): Promise<{ key: string; studioId: string }> {
-  const studioId = await assetService.resolveOwnerStudioId(params.projectId);
-  const key = storageKey({ taskType: params.taskType, ext: params.ext });
-  await issueGrant({
-    userId: params.actingUserId,
-    studioId,
-    storageKey: key,
-    declaredSize: params.declaredSize,
-    expiresAt: params.expiresAt,
-    context: { ...params.context, projectId: params.projectId },
-  });
-  return { key, studioId };
-}
-
-/**
  * `PUT /assets/local-upload/*` write-time gate: is this key issued to this
  * user and not yet consumed? Ownership is user-only; the studio is recorded on
  * the grant rather than being a query condition.
@@ -256,7 +195,7 @@ export async function authorizeUploadWrite(params: {
   storageKey: string;
   actingUserId: string;
 }): Promise<boolean> {
-  const grant = await findLiveGrant({
+  const grant = await uploadGrantRepo.findLiveGrant({
     storageKey: params.storageKey,
     userId: params.actingUserId,
   });

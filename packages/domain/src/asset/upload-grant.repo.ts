@@ -16,10 +16,11 @@
  *     ownership check, then a single-shot CAS that marks the grant consumed
  *     (anti-replay), run AFTER the studio_assets INSERT.
  *
- * Only the server upload path uses this table (the worker holds bytes and
- * registers directly, never issuing a grant), so the repo lives in `@server`,
- * not `@domain` — the `upload_grants` schema itself is defined centrally in
- * `@breatic/core` (the home of every table's schema).
+ * Both server and worker issue grants now (#181: the worker's own bytes reach
+ * R2 through the same ingest Worker, so they need the same ledger row), which
+ * is why this lives in `@domain` — collab never touches it. The `upload_grants`
+ * schema itself is defined centrally in `@breatic/core` (the home of every
+ * table's schema), and this is still the only place that reads or writes it.
  */
 
 import { and, eq, isNull, or, sql } from "drizzle-orm";

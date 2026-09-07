@@ -268,9 +268,9 @@ export const mocks = {
   assertStorageAllowance: vi.fn(async () => undefined),
   assetUploadService: {
     checkUploadDedup: vi.fn(),
-    // #1826 upload-grant anti-spoof: presign issues a grant, the upload
-    // endpoints authorise (write-time) + consume (registration terminal).
-    issueUploadGrant: vi.fn(),
+    // #1826 upload-grant anti-spoof: the write-time gate. Minting the key and
+    // its grant moved to @breatic/domain in #181, where the worker reaches it
+    // too -- see `uploadGrantService` in the domain mock.
     authorizeUploadWrite: vi.fn(),
     // Reads the AUTHORITATIVE owner studio off the grant (#1826 §2.2 v15) —
     // /uploaded attributes the asset to it instead of re-deriving one from the
@@ -281,6 +281,19 @@ export const mocks = {
   // register() to write the studio_assets row; route tests that exercise
   // node-bound fail-closed / canonical-pin (#1826 §0 rule 3 / 铁律 2) set its
   // resolve / reject per-test.
+  // Minting a key + its grant row (@breatic/domain, #181). Server and worker
+  // both open uploads through it, so it lives with the ledger it writes.
+  uploadGrantService: {
+    issueUploadGrant: vi.fn(),
+  },
+  uploadGrantRepo: {
+    issueGrant: vi.fn(),
+    findLiveGrant: vi.fn().mockResolvedValue(null),
+    findGrantByKey: vi.fn().mockResolvedValue(null),
+    consumeGrant: vi.fn().mockResolvedValue(true),
+    voidGrant: vi.fn().mockResolvedValue(true),
+    claimFinalize: vi.fn().mockResolvedValue({ granted: true }),
+  },
   assetService: {
     register: vi.fn(),
     // The DEDUP path has no grant to read the owner studio off (nothing was
@@ -477,6 +490,8 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  */
 export const domainMock = () => ({
   assetService: mocks.assetService,
+  uploadGrantService: mocks.uploadGrantService,
+  uploadGrantRepo: mocks.uploadGrantRepo,
   assetRepo: {
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
     findCoverOf: vi.fn().mockResolvedValue(null),

@@ -39,6 +39,13 @@ export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 // ── Asset (physical asset registry: within-studio dedup + attribution + usage) ──
 export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
+export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export type {
+  UploadGrant,
+  FinalizeClaim,
+  FinalizeRefusal,
+} from "@domain/asset/upload-grant.repo.js";
 export {
   VIDEO_COVER_QUEUE,
   VIDEO_COVER_JOB,
