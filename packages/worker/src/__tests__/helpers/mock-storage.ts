@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Test helpers for the `@breatic/core` storage adapter.
+ * Test helpers for where a local handler's output goes.
  *
  * Vitest's `vi.mock()` must be called at the top of a test file
  * (it's hoisted above imports). Each handler test does this:
@@ -12,10 +12,11 @@
  *
  *   const storageState = installCoreStorageMock();
  *
- * The helper uses `vi.hoisted` + `vi.mock` to intercept the
- * `@breatic/core` import and wire adapter calls into a shared mock
- * state. The state is returned so tests can read uploads[] and
- * register fetch-able sources.
+ * The helper uses `vi.hoisted` + `vi.mock` to intercept both the storage
+ * adapter (`@breatic/core`, which handlers read their inputs through) and the
+ * upload service (`@breatic/domain`, which is where their outputs go since
+ * #181), wiring both into a shared mock state. The state is returned so tests
+ * can read uploads[] and register fetch-able sources.
  */
 
 import { createHash } from "node:crypto";
@@ -39,7 +40,7 @@ export interface StorageMockState {
 }
 
 /**
- * Install the `@breatic/core` mock and a `global.fetch` stub.
+ * Install the storage mocks and a `global.fetch` stub.
  *
  * IMPORTANT — must be called at module top-level, before any handler
  * import. Call once per test file; call `state.reset()` in `beforeEach`
@@ -75,6 +76,22 @@ export function installCoreStorageMock(): StorageMockState {
       isOwnUrl: (url: string) => url.startsWith("mock://storage/"),
     }),
     storageKey: () => state.getNextKey(),
+  }));
+
+  // Where a local handler's output goes since #181: through the ingest Worker
+  // rather than straight at the adapter. The key is minted on the way, by the
+  // grant, so the one recorded here stands in for it.
+  vi.mock("@breatic/domain", () => ({
+    backendUploadService: {
+      uploadBytesToStorage: async (
+        buffer: Buffer,
+        ctx: { contentType: string },
+      ) => {
+        const key = state.getNextKey();
+        state.uploads.push({ key, buffer, contentType: ctx.contentType });
+        return { assetId: `asset-${key}`, fileUrl: `mock://storage/${key}` };
+      },
+    },
   }));
 
   const realFetch = global.fetch;

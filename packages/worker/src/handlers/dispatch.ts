@@ -1331,6 +1331,14 @@ export async function runMiniTool(
   delete cleanParams.project_id;
 
   if (entry.kind === "local") {
+    // A local handler stores what it produces, and storing it needs a studio
+    // to file it against — which comes from the project. Every canvas
+    // mini-tool carries one (`project_id` is required on each of their request
+    // schemas), so this says the job data was built wrong rather than that a
+    // user did something unusual.
+    if (projectId === undefined) {
+      throw new Error(`mini-tool ${toolName} ran with no project to store its output against`);
+    }
     const result = await runLocalHandler({
       handler: entry.handler,
       taskType,
