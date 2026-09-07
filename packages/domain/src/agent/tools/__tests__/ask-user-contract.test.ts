@@ -147,6 +147,10 @@ describe("what the model is shown of all this", () => {
     // the trip is the SDK's business -- a `.refine` is dropped on the way,
     // which is why there is no floor on `options` -- so what it emits is
     // pinned here rather than assumed.
+    //
+    // `.trim()` is a transform rather than a check, so it leaves no trace
+    // here and cannot: the only input it turns away is one that is nothing
+    // but whitespace, which `minLength` counts as a character.
     const { zodSchema } = await import("ai");
     const emitted = (await zodSchema(askUser.inputSchema as never)).jsonSchema as {
       properties?: Record<string, Record<string, unknown>>;

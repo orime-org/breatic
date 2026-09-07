@@ -79,17 +79,20 @@ describe("a line that would have opened a block of its own", () => {
 describe("a value the panel would read as syntax of its own", () => {
   it("survives the grammars the panel adds on top of CommonMark", () => {
     // The panel parses CommonMark plus GFM plus math (`MarkdownMessage.tsx`
-    // runs `remarkGfm` and `remarkMath`). Escaping for CommonMark alone leaves
-    // whatever those two add to be re-read as syntax: rendered through the
-    // real `MarkdownMessage`, a CommonMark-only drawing of the first case here
-    // comes out `时长 20<del>25 秒还是 30</del>35 秒？`, with the middle of the
-    // question deleted.
+    // runs `remarkGfm` and `remarkMath`), on its own settings. Escaping for
+    // CommonMark alone leaves whatever those two add to be re-read as syntax:
+    // rendered through the real `MarkdownMessage`, a CommonMark-only drawing
+    // of the first case here comes out `时长 20<del>25 秒还是 30</del>35 秒？`,
+    // with the middle of the question deleted.
     expect(
       askUserMarkdown({ question: "时长 20~25 秒还是 30~35 秒？", options: ["短", "长"] }),
     ).toBe("时长 20\\~25 秒还是 30\\~35 秒？\n\n1. 短\n2. 长");
 
+    // One escape, not two: the panel reads `$` as a formula only in pairs
+    // (`singleDollarTextMath: false`), so breaking the pair is the whole of
+    // what this needs. Rendered back, it is `$$100` again.
     expect(askUserMarkdown({ question: "预算是 $$100 还是 $$500？" })).toBe(
-      "预算是 \\$\\$100 还是 \\$\\$500？",
+      "预算是 \\$$100 还是 \\$$500？",
     );
   });
 

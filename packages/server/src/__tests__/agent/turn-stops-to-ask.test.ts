@@ -166,20 +166,30 @@ const carriesOn: ModelStreamPart[] = [
  * Run one turn on a given script and report what it did.
  * @param perCall - What the model produces, one entry per call.
  * @returns How many times the model was asked, how the line said it ended, and
- *   whether any tool answered -- a call the schema refused produces no result
- *   either, so a turn that carried on proves nothing until this is true.
+ *   which tools answered -- a call the schema refused produces no result
+ *   either, so a turn that carried on proves nothing about the tool it named
+ *   until that tool is in this set. Named rather than counted, because a
+ *   script running two tools is satisfied by either one of them.
+ *
+ *   The name comes off the call id, which `asksFor` builds as `call-<tool>`:
+ *   the chunk itself carries only that id and the output.
  */
 async function runTurn(
   perCall: ModelStreamPart[][],
-): Promise<{ modelCalls: number; exit: unknown; sent: string[]; toolAnswered: boolean }> {
+): Promise<{ modelCalls: number; exit: unknown; sent: string[]; answered: Set<string> }> {
   modelSays.perCall = perCall;
   modelSays.calls = 0;
   const sent: string[] = [];
+  const answered = new Set<string>();
 
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     const turn = await new MainAgent().chat("帮我看看");
     for await (const chunk of turn) {
-      sent.push((chunk as { type: string }).type);
+      const part = chunk as { type: string; toolCallId?: string };
+      sent.push(part.type);
+      if (part.type === "tool-output-available" && part.toolCallId !== undefined) {
+        answered.add(part.toolCallId.replace(/^call-/, ""));
+      }
     }
   });
 
@@ -188,7 +198,7 @@ async function runTurn(
     modelCalls: modelSays.calls,
     exit: (line?.[0] as Record<string, unknown> | undefined)?.exit,
     sent,
-    toolAnswered: sent.includes("tool-output-available"),
+    answered,
   };
 }
 
@@ -198,8 +208,8 @@ describe("a turn that asked the user something", () => {
   });
 
   it("stops after the question instead of talking past it", async () => {
-    const { modelCalls, toolAnswered } = await runTurn([asksFor("ask_user"), carriesOn]);
-    expect(toolAnswered).toBe(true);
+    const { modelCalls, answered } = await runTurn([asksFor("ask_user"), carriesOn]);
+    expect(answered).toEqual(new Set(["ask_user"]));
 
     // One call, not two. The second entry in the script is what the model
     // would have said next, and the point is that it never gets asked.
@@ -210,7 +220,7 @@ describe("a turn that asked the user something", () => {
     // 问题很少出现在第一步:模型往往先查点什么,拿到结果才知道该问什么。判断
     // 「问过没有」要是读错了步 —— 比如一直读第一步 —— 这一轮就不会停,而这个
     // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
-    const { modelCalls, exit, toolAnswered } = await runTurn([
+    const { modelCalls, exit, answered } = await runTurn([
       asksFor("show_search_results"),
       asksFor("ask_user"),
       carriesOn,
@@ -218,7 +228,7 @@ describe("a turn that asked the user something", () => {
 
     // 两次:第一次画了张卡片继续写,第二次问了问题就停在那儿。第三段是模型
     // 拿到第三次机会才会说的话,而它不该拿到。
-    expect(toolAnswered).toBe(true);
+    expect(answered).toEqual(new Set(["show_search_results", "ask_user"]));
     expect(modelCalls).toBe(2);
     expect(exit).toBe("blocked");
   });
@@ -254,20 +264,20 @@ describe("a turn that asked the user something", () => {
     // 这一条跟下面那条是两个不同的工具，各钉一次：能挡住这一轮的只有
     // 名单，只钉住「名单里的会停」证明不了「名单外的不停」——把这个工具误加
     // 进名单，画布建议一出现这一轮就结束，用户得再说一句才拿得到后面的话。
-    const { modelCalls, toolAnswered } = await runTurn([
+    const { modelCalls, answered } = await runTurn([
       asksFor("propose_canvas_action"),
       carriesOn,
     ]);
-    expect(toolAnswered).toBe(true);
+    expect(answered).toEqual(new Set(["propose_canvas_action"]));
     expect(modelCalls).toBe(2);
   });
 
   it("keeps going after a tool that only shows the user something", async () => {
-    const { modelCalls, exit, toolAnswered } = await runTurn([
+    const { modelCalls, exit, answered } = await runTurn([
       asksFor("show_search_results"),
       carriesOn,
     ]);
-    expect(toolAnswered).toBe(true);
+    expect(answered).toEqual(new Set(["show_search_results"]));
 
     // Two calls: the model drew a card and then carried on writing around it,
     // which is what those tools are for.

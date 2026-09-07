@@ -17,11 +17,18 @@
  *
  * Which grammar it owns is a setting, and it has to be the one the panel reads
  * back: `MarkdownMessage` parses CommonMark plus GFM plus math, so the same two
- * extensions go in here. Left to CommonMark alone, everything those two add is
- * escaped by neither side and re-read as syntax -- a question offering a range
- * of `20~25` against one of `30~35` arrives with its middle struck through and
- * deleted, and a URL carrying an underscore arrives as a link to an address
- * with a backslash in it.
+ * extensions go in here, on the panel's settings. Left to CommonMark alone,
+ * everything those two add is escaped by neither side and re-read as syntax --
+ * a question offering a range of `20~25` against one of `30~35` arrives with
+ * its middle struck through and deleted, and a URL carrying an underscore
+ * arrives as a link to an address with a backslash in it.
+ *
+ * One shape survives that: a bare host beginning `www.` whose next character is
+ * not an ASCII word character. GFM's own escape table guards that dot only when
+ * what follows is `[-.\w]`, while its parser starts a link on far more, so an
+ * escape further along the address is read as part of the address. Measured on
+ * `www.` plus a CJK label; every other autolink shape -- `http://`, `https://`,
+ * and an email -- is escaped correctly.
  *
  * Every word of it is the model's own, and that is what keeps the paragraph in
  * the language the conversation is being held in. Which language that is, is
@@ -41,8 +48,20 @@ import type { List, Paragraph, RootContent } from "mdast";
 
 import type { AskUserPayload } from "@breatic/domain";
 
-/** What the panel reads on top of CommonMark, so that the escaping matches. */
-const PANEL_GRAMMAR = [gfmToMarkdown(), mathToMarkdown()];
+/**
+ * What the panel reads on top of CommonMark, so that the escaping matches.
+ *
+ * `singleDollarTextMath` is the panel's setting, not the library's default: a
+ * lone `$` is a price far more often than it is a formula, and the panel says
+ * so at `MarkdownMessage.tsx` (user 2026-08-25). Left on the default, a price
+ * would be escaped for a rule the reader's side does not apply.
+ *
+ * One marker reaches the reader that neither of these covers: a `[1]` is drawn
+ * as a citation chip by the panel's own plugin, which runs after parsing and
+ * so cannot be escaped from here. That is what the prompt asks the model to
+ * write, so it is the same behaviour as anywhere else in a reply.
+ */
+const PANEL_GRAMMAR = [gfmToMarkdown(), mathToMarkdown({ singleDollarTextMath: false })];
 
 /**
  * One line of the model's words, as a paragraph of its own.
