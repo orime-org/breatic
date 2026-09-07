@@ -502,6 +502,28 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     ).toBe('https://cdn/l.png');
   });
 
+  it('keeps the two video slots apart across a mode switch (#1928)', () => {
+    // The reference clip and the driving video are both video picks storing
+    // `{url, cover}`, and each mode shows only its own — so a shared field
+    // would look correct until the user switched modes and found the other
+    // mode's clip in this one's slot. Read under BOTH modes: one direction
+    // alone would pass with a registry that maps them onto one field.
+    const nodes = [
+      node(
+        'n1',
+        videoView({
+          referenceVideo: { url: 'https://cdn/clip.mp4' },
+          drivingVideo: { url: 'https://cdn/driving.mp4' },
+        }),
+      ),
+    ];
+    for (const mode of ['ref', 'animate'] as const) {
+      const { slotUrls } = buildVm({ nodeId: 'n1', nodes, models, mode });
+      expect(slotUrls.referenceVideo).toBe('https://cdn/clip.mp4');
+      expect(slotUrls.drivingVideo).toBe('https://cdn/driving.mp4');
+    }
+  });
+
   it('drops a slot value that is not a usable URL', () => {
     // Slot values are collaborative Yjs data — untrusted. A malformed one
     // reaching the payload sends a source param the provider rejects AFTER the

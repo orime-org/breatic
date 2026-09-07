@@ -374,6 +374,7 @@
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "errorTooManyReferences": "このモデルは参考画像を最大 {limit} 枚まで受け付けます —— いくつか削除してから生成してください。",
+      "refusePickTooManyReferences": "参考動画を使う場合、参考画像は {limit} 枚までです。減らしてから動画を選んでください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
       "referencePoolFull": "参照プールが上限({cap})に達しました——先に参照またはフォーカス画像を削除してください。",
       "modelUnavailable": "そのモデルは利用できなくなりました——別のモデルを選んでください。",

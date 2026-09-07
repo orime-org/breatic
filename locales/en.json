@@ -383,6 +383,7 @@
       "errorFailed": "Couldn't start generation. Please try again.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference images — remove some to generate.",
+      "refusePickTooManyReferences": "A reference clip allows {limit} reference images — remove some, then pick the clip.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",

@@ -159,7 +159,18 @@ const REF: ModelEntry = {
   sourcesByMode: { ref: ['image'] },
   params: {
     ...T2V.params,
-    images: { description: '', type: 'list', max_items: 2, default: null },
+    // Two on its own, one alongside a reference clip — the same SHAPE the
+    // real entry declares (7 and 4), scaled down so a case needs two images
+    // rather than five. The conditional cap is what makes filling the clip
+    // able to put an untouched set of images over the line (#1928).
+    images: {
+      description: '',
+      type: 'list',
+      max_items: 2,
+      max_items_when_present: { video: 1 },
+      default: null,
+    },
+    video: { description: '', default: null },
   },
 };
 
@@ -1274,14 +1285,43 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(execute).not.toBeDisabled());
     }
 
-    it('offers no source slot — the sources come from the rail', async () => {
+    it('offers the reference clip and no other slot — the images come from the rail', async () => {
+      // The images this mode generates from arrive through the rail, so none
+      // of the image slots belong here. The clip is the one thing the rail
+      // cannot carry (#1928): it is motion guidance, not a reference image.
       await openRefPanel(['ref-a']);
+      expect(
+        screen.getByTestId('generate-video-tool-reference-video'),
+      ).toBeVisible();
       expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
       expect(
         screen.queryByTestId('generate-video-tool-character-image'),
       ).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-driving-video')).toBeNull();
+    });
+
+    it('starts the clip pick while the images are within the cap it would bring', async () => {
+      await openRefPanel(['ref-a']);
+      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
+      expect(useCanvasStore.getState().pickSession).toEqual({
+        nodeId: 'target',
+        purpose: 'referenceVideo',
+      });
+      expect(toast.warning).not.toHaveBeenCalled();
+    });
+
+    it('refuses to start the clip pick when it would drop the cap under the picked images', async () => {
+      // A6: the clip lowers the image cap, so reaching for it with two images
+      // already mentioned would put the node over a cap it was within. The
+      // images are the user's work — they stay, and the refusal names the
+      // number to get down to. Refused before the pick starts, so the user is
+      // not walked into a session whose every candidate would be rejected.
+      await openRefPanel(['ref-a', 'ref-b']);
+      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
+      expect(useCanvasStore.getState().pickSession).toBeNull();
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toContain('1');
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {

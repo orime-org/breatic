@@ -16,7 +16,10 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
+import {
+  modelReferenceCap,
+  slotFillLowersCapBelowPicks,
+} from '@web/spaces/canvas/generate/model-reference-cap';
 
 /** A catalog entry declaring `images` the way `kling-o3-pro-ref` does. */
 function refModel(over: Partial<ModelEntry> = {}): ModelEntry {
@@ -87,5 +90,64 @@ describe('the reference-image cap the model is holding right now', () => {
       params: { images: { description: '', type: 'list', default: null } },
     });
     expect(modelReferenceCap(uncapped, 'ref', {})).toBeUndefined();
+  });
+});
+
+/**
+ * Filling a slot can lower the cap under what is already picked (#1928, A6).
+ *
+ * `kling-o3-pro-ref` takes 7 reference images alone and 4 alongside a clip, so
+ * picking the clip with 5 already chosen would put the node over a cap it was
+ * within a moment ago. The pick is what gets refused: the images stay, and the
+ * user is told which number to get down to.
+ */
+describe('whether filling a slot would drop the cap below what is picked', () => {
+  const CLIP = 'https://cdn/clip.mp4';
+
+  it('refuses the pick, naming the cap it would fall to', () => {
+    expect(
+      slotFillLowersCapBelowPicks(refModel(), 'ref', {}, 'referenceVideo', 5),
+    ).toEqual({ limit: 4 });
+  });
+
+  it('allows it once the picked images are down to the new cap', () => {
+    expect(
+      slotFillLowersCapBelowPicks(refModel(), 'ref', {}, 'referenceVideo', 4),
+    ).toBeNull();
+  });
+
+  it('allows a slot that moves no cap', () => {
+    // Four of the five existing slots appear in no `max_items_when_present`,
+    // so this must be a no-op for them however many images are picked.
+    expect(
+      slotFillLowersCapBelowPicks(refModel(), 'ref', {}, 'firstFrame', 7),
+    ).toBeNull();
+  });
+
+  it('allows a re-pick of a slot already filled', () => {
+    // The cap already dropped when it was first filled; swapping the clip
+    // makes nothing worse, so refusing here would only trap a user who got
+    // over the cap some other way (a collaborator's edit) with no way to swap.
+    expect(
+      slotFillLowersCapBelowPicks(
+        refModel(),
+        'ref',
+        { referenceVideo: CLIP },
+        'referenceVideo',
+        5,
+      ),
+    ).toBeNull();
+  });
+
+  it('allows it under a mode that never sends the slot', () => {
+    expect(
+      slotFillLowersCapBelowPicks(refModel(), 't2v', {}, 'referenceVideo', 7),
+    ).toBeNull();
+  });
+
+  it('allows it while the catalog has not answered', () => {
+    expect(
+      slotFillLowersCapBelowPicks(undefined, 'ref', {}, 'referenceVideo', 7),
+    ).toBeNull();
   });
 });
