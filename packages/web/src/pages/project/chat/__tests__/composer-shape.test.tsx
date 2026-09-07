@@ -77,4 +77,32 @@ describe('the box the reader types in', () => {
     // Radix marks its own viewport, which only exists inside a ScrollArea.
     expect(box.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
   });
+
+  it('puts the scroll position back after measuring what is written', () => {
+    const { rerender } = render(<ChatComposer {...BASICS} draft='one line' />);
+
+    const box = screen.getByTestId('chat-composer-textarea');
+    const viewport = box.closest('[data-radix-scroll-area-viewport]');
+    if (viewport === null) throw new Error('the composer has no scrolling viewport');
+
+    // Stand in for a scroller that has been scrolled down. Measuring means
+    // letting the box shrink to its `rows` height first, and in a browser
+    // that shrink clamps this to 0 -- the caret the browser had just
+    // scrolled to goes off screen and stays there. Nothing here clamps
+    // anything, so what is asserted is the write that puts it back.
+    const written: number[] = [];
+    let held = 120;
+    Object.defineProperty(viewport, 'scrollTop', {
+      configurable: true,
+      get: () => held,
+      set: (next: number) => {
+        written.push(next);
+        held = next;
+      },
+    });
+
+    rerender(<ChatComposer {...BASICS} draft={'one line\ntwo lines\nthree'} />);
+
+    expect(written).toContain(120);
+  });
 });
