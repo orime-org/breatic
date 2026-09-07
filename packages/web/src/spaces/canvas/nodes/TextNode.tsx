@@ -166,10 +166,8 @@ export const TextNode = React.memo(function TextNode({
    *
    * A viewer may not write at all, and a locked node is frozen by its owner —
    * both say why, because a double-click that silently does nothing reads as a
-   * bug. A node with a task running refuses for a different reason: its body
-   * slot is showing a skeleton, so an editor opened there would be state with
-   * nothing on screen. A failed node is the one refusal with nothing to say:
-   * it is already showing the user its error where the body would be.
+   * bug. A failed node is the one refusal with nothing to say: it is already
+   * showing the user its error where the body would be.
    *
    * A node with no body is repaired here rather than at render: repair is a
    * write, so it happens when somebody actually intends to write, and never

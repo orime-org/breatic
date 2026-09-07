@@ -189,7 +189,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 **两条铁律**:① 被拦的**命令式**入口(键盘/菜单删除 · 上传 picker · 面板执行 · 双击进编辑)一律 `toast.warning`(走 `NODE_GATE_TOAST_KEY` → `canvas.gate.locked` / `canvas.gate.handling`),**禁静默 no-op**(用户点了没反应还不知道为啥);**拖动锁定节点/组**虽 `draggable:false`(ReactFlow 不发拖拽事件),也经画布层**拖动手势探测**(pointerdown 命中 frozen 节点 + 移动超阈值)弹 `canvas.gate.locked`(A.1,user 2026-07-18;单击无位移不弹、区分选中 vs 拖动);只有**纯被动、无手势可探**的 render 门(菜单项隐藏)才静默。② 生成面板对 locked 节点**照常打开、prompt 照常可编辑**,只有**执行提交**被拦 —— 锁冻的是节点内容与结果,不是生成配方 prompt。判定题:**这是不是一个会改节点内容 / 位置 / 存在性的操作?是 → 经 `evaluateNodeGate` 判定,别自己手写状态检查**。策略函数 + 矩阵是本条的实现真相源(`node-gate.ts` 顶部 TSDoc)。
 
-**文本节点的内联编辑另有一道自己的闸**(`TextNode.tsx` 的 `canEdit`):它额外要求 `status === 'idle'`,理由不是怕覆盖,是有任务在跑时那个位置显示的是骨架屏,编辑器开在那儿屏幕上什么都没有。
+**文本节点的内联编辑另有一道自己的闸**(`TextNode.tsx` 的 `canEdit`):它额外要求 `status !== 'error'`,理由不是怕覆盖,是失败的节点把正文那个位置让给了错误信息,编辑器开在那儿屏幕上什么都没有。
 
 **锁有两种作用域,别混为一谈(MANDATORY,user 2026-07-20)**:
 

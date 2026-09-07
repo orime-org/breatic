@@ -330,8 +330,8 @@ const FOCUS_EXIT_TOAST_KEY: Record<
  * the other into "looks selectable, click does nothing".
  *
  * `idle` is load-bearing rather than tidiness: the crop overlay anchors its
- * marquee to a RENDERED element, and a handling / error node renders a
- * skeleton or an error box instead.
+ * marquee to a RENDERED element, and an error node renders its message box
+ * where the media would be.
  * @param node - The node being judged.
  * @param targetId - The node whose panel started the pick (never a source).
  * @returns Whether a focus pick accepts this node.

@@ -22,12 +22,14 @@ interface NodeContentProps {
 }
 
 /**
- * Switches between placeholder / handling skeleton / error / content
- * based on the node's `status` and whether a content payload exists.
+ * Switches between placeholder / error / content based on the node's
+ * `status` and whether a content payload exists. A node with a task running
+ * keeps showing whatever it already holds — the counts beside it are what
+ * says something is running (user 2026-09-06).
  * Type-node bodies pass their modality-specific renderers; this atom
  * owns the state-machine wiring.
  * @param root0 - Node content props.
- * @param root0.status - Node status that selects the branch (handling skeleton / error / content).
+ * @param root0.status - Node status that selects the branch (error / content).
  * @param root0.errorMessage - Message shown in the error branch when status is `error`.
  * @param root0.hasContent - Whether a content payload exists, choosing content vs placeholder when idle.
  * @param root0.placeholder - Empty-state node rendered when idle with no content.
@@ -45,9 +47,9 @@ export function NodeContent({
 }: NodeContentProps): React.JSX.Element {
   const t = useTranslation();
   if (status === 'error') {
-    // Fixed h-48 box like the empty + handling branches (#1632): every node's
-    // three "no displayable content" states (empty / generating / error) keep
-    // the same 288×192 footprint. h-full would let the height collapse to a
+    // Fixed h-48 box like the empty branch (#1632): both of a node's "nothing
+    // displayable" states (empty / error) keep the same 288×192 footprint.
+    // h-full would let the height collapse to a
     // single line of error text, making the node a flat wide bar. Shared by
     // all 6 content modalities (image/video/audio/text/3d/web).
     return (

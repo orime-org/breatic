@@ -44,8 +44,8 @@ export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
 export type NodeKind = Modality | 'annotation' | 'group';
 
 /**
- * Derived body status that drives the placeholder / skeleton / error /
- * content branch. Collapsed from `taskCounts` + `errorMessage` by
+ * Derived body status that drives the placeholder / error / content
+ * branch. Collapsed from `taskCounts` + `errorMessage` by
  * {@link deriveStatus} — it is NOT a wire field.
  */
 export type DisplayStatus = 'idle' | 'handling' | 'error';
