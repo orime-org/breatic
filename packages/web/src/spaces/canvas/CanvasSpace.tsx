@@ -296,9 +296,9 @@ const STATUS_VERDICT: Record<
  * undo, a redo and a plain delete all land here — so it states what happened
  * and stops (user 2026-08-23).
  *
- * `busy` / `failed` say "processing" rather than "generating": `handling` is
- * also what an upload sets (`canvas-upload.ts` calls `setHandling` before it
- * starts), so naming the cause would be wrong half the time.
+ * `busy` / `failed` say "processing" rather than "generating": an upload
+ * opens a task row on the node just as a generation does, so naming the cause
+ * would be wrong half the time.
  *
  * A failure has no author to name — the upload or the generation failed on
  * its own — so both columns share one line for it.
@@ -3106,7 +3106,7 @@ function CanvasSpaceInner({
         return;
       }
       // Rasterise (~1ms), then reuse the upload path — fillUpload re-gates fresh
-      // before setHandling (H1: a lock landing during the raster is caught),
+      // before handing the file off (H1: a lock landing during the raster is caught),
       // and reportUploaded records the history row so the old image stays
       // recoverable (D4). An unconditional toast on raster failure (silent-fail
       // mandate) — the node is untouched.
@@ -3119,7 +3119,7 @@ function CanvasSpaceInner({
   // Node menu "reset to empty image": opens the blank-image panel GATE-FREE,
   // like Generate + History — configuring a reset is not a mutation. The gate
   // lives at EXECUTE (resetNodeToEmptyImage re-reads fresh Yjs, and fillUpload
-  // re-gates before setHandling), so a node a collaborator locked / a task
+  // re-gates before handing the file off), so a node a collaborator locked / a task
   // started on refuses the WRITE, never the panel (user 2026-07-22: unify with
   // History — right-click never gates on node state, only execution does).
   const resetImageFromMenu = React.useCallback((): void => {

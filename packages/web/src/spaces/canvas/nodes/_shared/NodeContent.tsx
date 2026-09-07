@@ -31,9 +31,9 @@ interface NodeContentProps {
  * @param root0 - Node content props.
  * @param root0.status - Node status that selects the branch (error / content).
  * @param root0.errorMessage - Message shown in the error branch when status is `error`.
- * @param root0.hasContent - Whether a content payload exists, choosing content vs placeholder when idle.
- * @param root0.placeholder - Empty-state node rendered when idle with no content.
- * @param root0.content - Modality-specific body rendered when idle with content.
+ * @param root0.hasContent - Whether a content payload exists, choosing content vs placeholder outside the error branch.
+ * @param root0.placeholder - Empty-state node rendered when the node is not in error and holds nothing.
+ * @param root0.content - Modality-specific body rendered when the node is not in error and holds something.
  * @param root0.onViewTasks - Open this node's task list; when present the error branch offers it.
  * @returns The branch element for the current node state.
  */

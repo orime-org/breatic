@@ -38,7 +38,7 @@ packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
-│              db/(schema.ts 34 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
+│              db/(schema.ts 40 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
 ├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(节点任务表,各域 *.repo/*.service 功能文件夹)
 ├── server/   # HTTP 壳 (Hono): routes/(auth/chat/canvas/mini-tools/projects/members/project-invitations/notifications/skills/tasks/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code〕/conversation/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/recent/role-upgrade-request/skill/studio/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d/understand) + 根(index 入口 / mini-tool-registry / bootstrap-config)
@@ -63,7 +63,7 @@ config/ skills/ locales/ (git-tracked); uploads/ (git-ignored)
 
 ### Canvas collaboration
 
-- 节点 create/delete + position 由**前端独占**;后端只能改 `data` 字段(state/content 等)
+- 节点 create/delete + position 由**前端独占**;后端只能改 `data` 字段(taskCounts/content 等)
 - 画布走 Yjs,Agent 聊天走 SSE。无锁:每次 mini-tool 操作产生新兄弟节点(edge 连接),不覆盖源节点
 - 事件总线:Redis Streams,key 由 core 的 `taskEventsStreamKey()` 单一来源给出(`${env}:stream:task-events`);载荷是一次一个节点的四个计数,走到 done 那次另带内容字段,Collab 消费后写 Yjs
 - 文档命名 v10 multi-doc:`project-{id}/meta`(含 spaces 列表)+ `project-{id}/canvas-{spaceId}`(每个 Canvas Space 一个)
@@ -224,7 +224,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位的月费 + test/live Stripe Price ID + 订阅状态过期判据 + 问 Stripe 现状的超时。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
 | `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。加载器 `packages/core/src/config/membership.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)`;**key 维度(IP 还是 user)按 action 写死在代码里**,只有次数进 yaml |
-| `config/storage.yaml` | 浏览器上传与头像:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与三个窗口(票据有效期 / 闹钟空闲窗 / 会话令牌 TTL)、头像大小上限。**三个窗口的相对宽窄在加载时就校验**(`assertUploadWindows`),填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
+| `config/storage.yaml` | 浏览器上传与头像:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、头像大小上限。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |

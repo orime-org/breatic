@@ -9,9 +9,10 @@
  * The first is A1: a picked file's bytes travel to the Worker, the server
  * registers them, and the URL that lands on the node survives a reload. The
  * second is what happens when the transfer dies partway. Where it dies decides
- * everything (#186 §3.7.3): after the ticket a row, a grant and a timer all
- * exist and will end the task without the browser; before it nothing exists,
- * so the empty node the drop made has to go. `failUploadNode` holds both
+ * everything (#186 §3.7.3): after the ticket a row and a grant exist, and the
+ * row reaches an end without the browser — the server judges it against its
+ * budget the next time somebody reads that node's task list. Before the ticket
+ * nothing exists, so the empty node the drop made has to go. `failUploadNode` holds both
  * halves and lives inside a `useCallback` no unit test can call.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:

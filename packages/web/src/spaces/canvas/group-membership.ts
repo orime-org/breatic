@@ -11,9 +11,9 @@
  * own-locked ∪ locked-group members) is wired ONLY into the move-freeze
  * (`renderNodes` draggable) and the node side of the delete guard; content
  * gates read each node's OWN `data.locked`, and EDGES (relations) are never
- * lock-gated. HANDLING freezes a node with a running task against deletion (and
- * the other content-affecting ops) but not against move / rename. The per-op
- * decision lives in {@link ./node-gate}.
+ * lock-gated. A RUNNING TASK freezes a node against deletion and nothing else
+ * (#186) — not content, not move, not rename. The per-op decision lives in
+ * {@link ./node-gate}.
  */
 
 import type { NodeGateReason } from '@web/spaces/canvas/node-gate';

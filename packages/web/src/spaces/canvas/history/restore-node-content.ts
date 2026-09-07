@@ -27,9 +27,9 @@ export type RestoreDecision =
  * fresh gate state + performs the write. Invariants:
  * - INV-9: `readOnly` → noop (an editor→viewer downgrade cannot write).
  * - INV-4: a failed / content-less entry → noop (never restorable).
- * - INV-1 / INV-2: a locked node, or one with a task still running, → blocked
- *   with the gate's toast key (the caller passes `handling` read off the
- *   node's own task counts).
+ * - INV-1: a locked node → blocked with the gate's toast key. A task running
+ *   on the node does not block: a node takes several tasks at once now, and
+ *   the last write wins (#186).
  * - INV-8: video restores carry the cover (`thumbnailUrl`, `null` clears a
  *   stale poster); image / audio pass `undefined` so `coverUrl` is untouched
  *   (writing it would leak an asset-GC phantom reference).
@@ -38,8 +38,7 @@ export type RestoreDecision =
  * @param opts.readOnly - Whether the viewer is read-only.
  * @param opts.entry - The chosen history row.
  * @param opts.modality - The host node's modality.
- * @param opts.gateState - The node's fresh locked / handling state (handling
- *   already OR'd with the live-lease read by the caller).
+ * @param opts.gateState - The node's fresh lock state.
  * @returns The restore decision.
  */
 export function resolveRestore(opts: {

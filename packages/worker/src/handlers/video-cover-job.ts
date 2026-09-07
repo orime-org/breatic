@@ -10,8 +10,8 @@
  * not been told yet: the cover, the history row, the feed row, and the one
  * event that puts the URLs into the Yjs document.
  *
- * The node is in `handling` throughout, and only this event takes it out. That
- * is why a publish failure is thrown rather than logged — BullMQ retries the
+ * The upload's task row stays `running` throughout, and this is where it
+ * settles. That is why a publish failure is thrown rather than logged — BullMQ retries the
  * job, and the queue's own failure net catches the case where the retries run
  * out. Everything upstream of the event is best-effort by comparison: the
  * video is already in the ledger, so a cover that cannot be extracted or

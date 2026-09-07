@@ -4,7 +4,7 @@
 /**
  * The cover queue's failure net (#173, design §6.4.1).
  *
- * A node enters `handling` before the first byte moves and leaves it only when
+ * A task row opens before the first byte moves and reaches an end only when
  * something says so. The cover job's own event is what normally says so; this
  * covers the deaths that skip it — a worker that crashed mid-job, and a stall
  * BullMQ moved straight to failed without re-running the handler.

@@ -13,8 +13,8 @@
  *     row is refused dedup and falls through to a real upload (spec §8:
  *     never trust the client's content claim alone);
  *   - what a hit means for the node: its history row, and the event that
- *     ends its handling — no Worker reports on an upload that never
- *     happened, so nothing else would.
+ *     settles the task row this request opens — no Worker reports on an
+ *     upload that never happened, so nothing else would.
  */
 
 import {
@@ -81,9 +81,9 @@ export async function checkUploadDedup(params: {
  * Carry out what a dedup hit means: nothing uploads, and the node now holds
  * content it did not hold before (design §7).
  *
- * The node opened handling before this request was made, and no Worker will
- * report on an upload that never happened — so this is the only thing that can
- * bring it back out. A failure to publish therefore fails the request: the
+ * This request opens the task row and settles it in one pass, and no Worker
+ * will report on an upload that never happened — so nothing else would
+ * announce it. A failure to publish therefore fails the request: the
  * browser is still the one holding this attempt, and it writes the node's
  * failure itself (design §5.5).
  *

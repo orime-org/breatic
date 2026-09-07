@@ -113,9 +113,6 @@ describe('filling an existing node hands the failure to the one exit', () => {
       sendToIngest: async () => ({}),
       extractText: async () => '',
       onTypeMismatch: () => {},
-      // Shaped after `UploadLease` itself: a double whose return type differs
-      // from the function it stands in for measures only the double.
-      setHandling: () => ({ gen: 1, clientId: 7, userId: 'u1' }),
       setContent: () => true,
       setError: () => true,
       onUploadFailure: () => {},

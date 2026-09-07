@@ -357,11 +357,8 @@ export async function resolveVideoCovers(
 }
 
 /**
- * Internal task execution body. Same logic as the original `runTask`, but
- * extracted so the public {@link runTask} wrapper can manage the canvas-node
- * lock lifecycle without indenting this body inside a `try`.
- * @param job - BullMQ job carrying the TaskJobData payload to execute
- *   and should verify ownership before publishing the success event.
+ * Internal task execution body, called through the public {@link runTask}.
+ * @param job - BullMQ job carrying the TaskJobData payload to execute.
  * @param token - This attempt's BullMQ lock token, for the zombie fence.
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
