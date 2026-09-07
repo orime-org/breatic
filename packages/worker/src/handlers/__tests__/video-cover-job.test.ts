@@ -28,7 +28,7 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 const mockPublicUrl = vi.hoisted(() => vi.fn((key: string) => `https://cdn/${key}`));
 const mockGetStorageAdapter = vi.hoisted(() => vi.fn());
 const mockExtract = vi.hoisted(() => vi.fn());
-const mockRegister = vi.hoisted(() => vi.fn());
+const mockUploadBytes = vi.hoisted(() => vi.fn());
 const mockSetCover = vi.hoisted(() => vi.fn());
 const mockRecordUpload = vi.hoisted(() => vi.fn());
 const mockFindTask = vi.hoisted(() => vi.fn());
@@ -46,7 +46,7 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: mockWarn, error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
-  assetService: { register: mockRegister },
+  backendUploadService: { uploadBytesToStorage: mockUploadBytes },
   assetRepo: { setCoverAsset: mockSetCover },
   nodeHistoryService: { recordUpload: mockRecordUpload },
   // The task row a video upload settles on (#186): its cover is the last
@@ -67,21 +67,14 @@ vi.mock("@worker/providers/video-cover.js", () => ({
 import { runVideoCover } from "@worker/handlers/video-cover-job.js";
 import type { VideoCoverJobData } from "@breatic/domain";
 
-/** What the extractor uploads: `key` is the object it just stored. */
-const EXTRACTED = {
-  url: "https://cdn/image/fresh_cover.png",
-  key: "image/fresh_cover.png",
-  sha256: "c".repeat(64),
-  sizeBytes: 2048,
-  mimeType: "image/png",
-};
+/** What the extractor hands back: the frame, and the type it is served as. */
+const EXTRACTED = { png: Buffer.from("png-bytes"), mimeType: "image/png" };
 
-/** The registered row a dedup hit resolves to — a DIFFERENT stored object. */
-const REGISTERED_COVER = {
-  id: "cover-row-1",
-  storageKey: "image/existing_cover.png",
+/** What the store answered with — on a dedup hit, an existing row. */
+const STORED = {
+  assetId: "cover-row-1",
   fileUrl: "https://cdn/image/existing_cover.png",
-  kind: "image" as const,
+  kind: "image",
 };
 
 const DATA: VideoCoverJobData = {
@@ -109,7 +102,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetStorageAdapter.mockResolvedValue({ publicUrl: mockPublicUrl });
   mockExtract.mockResolvedValue(EXTRACTED);
-  mockRegister.mockResolvedValue({ asset: REGISTERED_COVER, deduped: true });
+  mockUploadBytes.mockResolvedValue(STORED);
   mockRecordUpload.mockResolvedValue({ entry: { id: "hist-1" }, inserted: true });
   mockEmitCounts.mockResolvedValue(undefined);
   mockFindTask.mockResolvedValue({ id: "row-1" });
@@ -121,20 +114,18 @@ beforeEach(() => {
 });
 
 describe("a cover that comes out", () => {
-  it("registers it as the video's studio's own image asset", async () => {
+  it("sends the frame to be filed as the studio's own image asset", async () => {
     await runVideoCover(job());
 
-    expect(mockRegister).toHaveBeenCalledTimes(1);
-    expect(mockRegister.mock.calls[0]![0]).toMatchObject({
-      ownerStudioId: "studio-1",
+    expect(mockUploadBytes).toHaveBeenCalledTimes(1);
+    expect(mockUploadBytes.mock.calls[0]![0]).toBe(EXTRACTED.png);
+    expect(mockUploadBytes.mock.calls[0]![1]).toMatchObject({
       projectId: "proj-1",
       actingUserId: "user-1",
-      contentHash: EXTRACTED.sha256,
-      storageKey: EXTRACTED.key,
-      sizeBytes: EXTRACTED.sizeBytes,
-      mimeType: EXTRACTED.mimeType,
-      kind: "image",
-      source: "cover",
+      // What this is travels on the grant: the Worker's report knows only what
+      // the ticket told it, so `cover` cannot be inferred there.
+      assetSource: "cover",
+      contentType: EXTRACTED.mimeType,
     });
   });
 
@@ -144,12 +135,14 @@ describe("a cover that comes out", () => {
     expect(mockSetCover).toHaveBeenCalledWith("video-row-1", "cover-row-1");
   });
 
-  it("pins the registered canonical, not the object just uploaded", async () => {
+  it("pins the url the store answered with, not one minted on this side", async () => {
+    // Within one studio the same frame files to a single row, so a second
+    // video with an identical first frame resolves to a row holding a
+    // different key -- and the key just written is queued for reclaim.
     await runVideoCover(job());
 
     const emitted = mockEmitCounts.mock.calls[0]!;
-    expect(emitted[4].coverUrl).toBe(`https://cdn/${REGISTERED_COVER.storageKey}`);
-    expect(emitted[4].coverUrl).not.toContain(EXTRACTED.key);
+    expect(emitted[4].coverUrl).toBe(STORED.fileUrl);
   });
 
   it("tells the node about the video and its cover in one event", async () => {
@@ -160,7 +153,7 @@ describe("a cover that comes out", () => {
     expect(docName).toBe("project-proj-1/canvas-space-1");
     expect(nodeId).toBe("node-1");
     expect(fields.content).toBe(DATA.videoUrl);
-    expect(fields.coverUrl).toBe(`https://cdn/${REGISTERED_COVER.storageKey}`);
+    expect(fields.coverUrl).toBe(STORED.fileUrl);
   });
 
   it("records the upload under the granted key, carrying the cover", async () => {
@@ -171,7 +164,7 @@ describe("a cover that comes out", () => {
       nodeId: "node-1",
       userId: "user-1",
       content: DATA.videoUrl,
-      thumbnailUrl: `https://cdn/${REGISTERED_COVER.storageKey}`,
+      thumbnailUrl: STORED.fileUrl,
       storageKey: "uploads/abc.mp4",
       metadata: { filename: "clip.mp4", size: 999, mimeType: "video/mp4" },
     });
@@ -190,7 +183,7 @@ describe("a cover that comes out", () => {
       payload: {
         fileUrl: DATA.videoUrl,
         kind: "video",
-        thumbnailUrl: `https://cdn/${REGISTERED_COVER.storageKey}`,
+        thumbnailUrl: STORED.fileUrl,
       },
     });
     expect(mockPublishActivity).toHaveBeenCalledWith("proj-1");
@@ -235,7 +228,7 @@ describe("no cover comes out", () => {
   it("registers nothing and links nothing", async () => {
     await runVideoCover(job());
 
-    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockUploadBytes).not.toHaveBeenCalled();
     expect(mockSetCover).not.toHaveBeenCalled();
   });
 
@@ -263,7 +256,7 @@ describe("the cover cannot be registered", () => {
   // The video is already in the ledger. Failing the job over its cover would
   // hold the node in handling for something the user can live without.
   it("falls back to no cover rather than failing the job", async () => {
-    mockRegister.mockRejectedValue(new Error("ledger down"));
+    mockUploadBytes.mockRejectedValue(new Error("ledger down"));
 
     await expect(runVideoCover(job())).resolves.toBeUndefined();
 
@@ -286,19 +279,17 @@ describe("the cover cannot be registered", () => {
     expect(mockEmitCounts).not.toHaveBeenCalled();
   });
 
-  it("warns when the redundant object could not be queued for reclaim", async () => {
-    mockRegister.mockResolvedValue({
-      asset: REGISTERED_COVER,
-      deduped: true,
-      reclaimQueueFailed: true,
-    });
+  // Filing it is what produces the row and its url, so an answer carrying
+  // neither means the cover exists as an object and as nothing else. There is
+  // no id to point the video at and no url to show.
+  it("falls back to no cover when the store filed nothing", async () => {
+    mockUploadBytes.mockResolvedValue({ assetId: null });
 
-    await runVideoCover(job());
+    await expect(runVideoCover(job())).resolves.toBeUndefined();
 
+    expect(mockSetCover).not.toHaveBeenCalled();
+    expect(mockEmitCounts.mock.calls[0]![4].coverUrl).toBeNull();
     expect(mockWarn).toHaveBeenCalled();
-    expect(mockEmitCounts.mock.calls[0]![4].coverUrl).toBe(
-      `https://cdn/${REGISTERED_COVER.storageKey}`,
-    );
   });
 });
 

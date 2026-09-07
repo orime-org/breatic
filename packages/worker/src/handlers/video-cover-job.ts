@@ -27,8 +27,8 @@ import {
   publishActivityNew,
 } from "@breatic/core";
 import {
-  assetService,
   assetRepo,
+  backendUploadService,
   nodeHistoryService,
   nodeTaskService,
   emitNodeTaskCounts,
@@ -147,19 +147,17 @@ async function resolveCover(
     return undefined;
   }
 
-  let registered;
+  // Lane ②: the frame is a buffer we are holding, so it goes to R2 the way
+  // every other asset does, and the report that lands it is what files it.
+  let stored;
   try {
-    registered = await assetService.register({
+    stored = await backendUploadService.uploadBytesToStorage(cover.png, {
       projectId: data.projectId,
       actingUserId: data.userId,
-      ownerStudioId: data.ownerStudioId,
-      contentHash: cover.sha256,
-      storageKey: cover.key,
-      fileUrl: cover.url,
-      sizeBytes: cover.sizeBytes,
-      mimeType: cover.mimeType,
-      kind: "image",
-      source: "cover",
+      assetSource: "cover",
+      taskType: "video",
+      ext: "_cover.png",
+      contentType: cover.mimeType,
     });
   } catch (err) {
     // No row means no cover anyone may serve. The video keeps its own
@@ -171,15 +169,12 @@ async function resolveCover(
     return undefined;
   }
 
-  if (registered.reclaimQueueFailed === true) {
-    // The registration succeeded and only the bookkeeping insert that hands
-    // the now-redundant object to the offline reclaim job failed. The library
-    // layer may not log, so it returns a flag; swallowing it would leave the
-    // object silently absent from that job's work list.
+  if (stored.assetId == null || stored.fileUrl === undefined) {
     logger.warn(
-      { storageKey: data.storageKey, key: cover.key, hash: cover.sha256 },
-      "asset_reclaim_queue_failed",
+      { storageKey: data.storageKey },
+      "video_cover_register_failed_non_fatal",
     );
+    return undefined;
   }
 
   // Thrown rather than degraded, which is what separates it from the failure
@@ -187,8 +182,8 @@ async function resolveCover(
   // finds it by dedup and has only the pointer left to write; going on without
   // it would leave that row with nothing pointing at it and a node that never
   // gets a cover.
-  await assetRepo.setCoverAsset(data.videoAssetId, registered.asset.id);
-  return registered.asset.fileUrl;
+  await assetRepo.setCoverAsset(data.videoAssetId, stored.assetId);
+  return stored.fileUrl;
 }
 
 /**

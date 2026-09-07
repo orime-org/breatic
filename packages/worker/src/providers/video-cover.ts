@@ -14,7 +14,9 @@
  * cover from one side never dedups against a cover from the other.
  *
  * ffmpeg only has to decode the video and emit that MJPEG frame; Sharp brings
- * the PNG encoder. The cover is then uploaded to the same storage as the video.
+ * the PNG encoder. Storing it is the caller's: the cover goes to R2 the way
+ * every other asset does, through the ingest Worker (#181), which is also
+ * where its hash is computed.
  *
  * Note the MJPEG step is lossy: the PNG wraps pixels that already carry JPEG
  * artefacts. It is what the WebP-era code did too, so this is not a regression,
@@ -24,12 +26,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import sharp from "sharp";
-import { getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
 
 const execFileAsync = promisify(execFile);
 
 /**
- * Extract first frame from a video URL and upload as cover image.
+ * Extract a video's first frame as a PNG.
  *
  * Cover extraction is best-effort, so this returns `undefined` for
  * any non-fatal failure path (ffmpeg missing, no output, exec error)
@@ -37,17 +38,14 @@ const execFileAsync = promisify(execFile);
  * video job handler) owns the warn/audit decision on `undefined`,
  * keeping the logging in one application-boundary place.
  * @param videoUrl - Permanent video URL (OSS/S3/local)
- * @returns The cover's URL + storage identity (key / sha256 / byte size / mime,
- *   over the PNG bytes) so the caller can register it as a first-class
- *   studio_assets row (#1826 §4.5) WITHOUT re-declaring the format (the cover
- *   owns its own mime, so the register can't drift). `undefined` if extraction
- *   / encoding fails (caller logs the decision).
+ * @returns The PNG bytes and the type they are served as, so the caller stores
+ *   them without re-declaring the format — the cover owns its own mime, which
+ *   is what keeps the stored object and the ledger row from drifting apart.
+ *   `undefined` if extraction / encoding fails (caller logs the decision).
  */
 export async function extractVideoCover(
   videoUrl: string,
-): Promise<
-  { url: string; key: string; sha256: string; sizeBytes: number; mimeType: string } | undefined
-> {
+): Promise<{ png: Buffer; mimeType: string } | undefined> {
   try {
     // ffmpeg reads the remote URL directly, outputs a single frame to stdout
     const { stdout } = await execFileAsync(
@@ -68,24 +66,9 @@ export async function extractVideoCover(
     }
 
     // Re-encode the frame to PNG (§8 format convention). Sharp bundles its own
-    // PNG codec — ffmpeg above only has to emit MJPEG — so the identity below
-    // is over the PNG bytes that actually get stored.
+    // PNG codec — ffmpeg above only has to emit MJPEG.
     const png = await sharp(stdout).png().toBuffer();
-
-    const key = storageKey({
-      taskType: "video",
-      ext: "_cover.png",
-    });
-
-    const adapter = await getStorageAdapter();
-    const url = await adapter.upload(key, png, "image/png");
-    return {
-      url,
-      key,
-      sha256: sha256Hex(png),
-      sizeBytes: png.length,
-      mimeType: "image/png",
-    };
+    return { png, mimeType: "image/png" };
   } catch {
     // ffmpeg missing, extraction failed, or PNG encoding failed — all
     // non-fatal; returns undefined so the worker handler can decide to log

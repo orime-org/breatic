@@ -26,7 +26,6 @@ import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { getStorageAdapter } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { assetService } from "@breatic/domain";
 import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
@@ -259,24 +258,23 @@ export async function runTask(
 }
 
 /**
- * Resolve + register first-frame covers for a task's VIDEO outputs (#1824 /
- * #1826 §4.5). For each video output that lacks a cover, extract the first
- * frame, upload it, and register it as a first-class `studio_assets` row
- * (`source='cover'`, counts toward storage). Mutates `outputs` in place, setting
- * `cover_url`.
+ * Resolve first-frame covers for a task's VIDEO outputs (#1824 / #1826 §4.5).
+ * For each video output that lacks a cover, extract the first frame and send it
+ * through the ingest Worker, which files it as a first-class `studio_assets`
+ * row (`asset_source='cover'`, counts toward storage). Mutates `outputs` in
+ * place, setting `cover_url`.
  *
  * BEST-EFFORT (#1824 invariant): a cover failure NEVER fails the video. The
  * whole body is wrapped so even a broken Sharp native binary (statically
  * imported by video-cover.js, so it fails at import time) degrades to a
  * cover-less video rather than throwing.
  *
- * `cover_url` is pinned ONLY from the REGISTERED canonical
- * (`adapter.publicUrl(asset.storageKey)`) — NEVER the just-uploaded `cover.key`
- * (§0 rule 2). A dedup hit returns a DIFFERENT existing row's key, and a
- * register failure commits no row at all; pinning `cover.key` in either case
- * leaves an orphan the offline GC (§7) reclaims → 404. When the cover cannot
- * become a live `studio_assets` row (register failed, or the task has no
- * project), `cover_url` stays unset → the node shows Film (§4.5).
+ * `cover_url` is pinned ONLY from the canonical url the store answered with
+ * (§0 rule 2). A dedup hit resolves to a DIFFERENT existing row, and a failed
+ * store commits no row at all; pinning the key just written would leave an
+ * orphan the offline reclaim job removes → 404. When the cover cannot become a
+ * live `studio_assets` row (the store failed, or the task has no project),
+ * `cover_url` stays unset → the node shows Film (§4.5).
  * @param outputs - The task's persisted outputs, mutated in place (`cover_url`).
  * @param ctx - Task identity for cover registration + structured logging.
  * @param ctx.taskId - The task whose covers are being resolved. Not just log
@@ -289,16 +287,12 @@ export async function resolveVideoCovers(
   outputs: Array<{ url?: string; cover_url?: string }>,
   ctx: { taskId: string; userId: string; projectId: string | undefined },
 ): Promise<void> {
-  // The ENTIRE body sits inside this try: BOTH setup steps can throw outside
-  // any per-output handler — the dynamic import (video-cover.js statically
-  // imports Sharp, so a broken native binary fails at import time) and the
-  // adapter lookup (storage misconfig / init failure). Either escaping would
-  // fail the whole video task, which #1824 forbids. Do NOT narrow this to the
-  // import alone (Gate-2 R4 H4: an earlier refactor did exactly that and let
-  // getStorageAdapter's rejection through).
+  // The ENTIRE body sits inside this try. The dynamic import can throw outside
+  // any per-output handler (video-cover.js statically imports Sharp, so a
+  // broken native binary fails at import time), and an escaping throw would
+  // fail the whole video task, which #1824 forbids.
   try {
     const { extractVideoCover } = await import("@worker/providers/video-cover.js");
-    const adapter = await getStorageAdapter();
     for (const out of outputs) {
       if (typeof out.url !== "string" || out.cover_url) continue;
       try {
@@ -311,42 +305,37 @@ export async function resolveVideoCovers(
           continue;
         }
         if (!ctx.projectId) {
-          // No project → the cover can't be registered / counted → degrade to
+          // No project → no owner studio to store it against → degrade to
           // Film (leave cover_url unset), never pin an untracked orphan key.
           logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
           continue;
         }
         try {
-          // The mime comes FROM the cover itself (it owns its format, §8 PNG)
-          // so it can't drift. Pin the REGISTERED canonical, never cover.key
-          // (§0 rule 2): a dedup hit resolves to an existing row and a register
-          // failure commits nothing — cover.key would orphan in both.
-          const { asset, reclaimQueueFailed } = await assetService.register({
+          // Lane ②: the frame is a buffer we are holding, so it goes to R2 the
+          // way every other asset does. What comes back is the registered
+          // row's canonical url — on a dedup hit that is an existing row whose
+          // key differs from the one just written, and pinning the fresh key
+          // would point the node at an object the reclaim job is about to
+          // remove (storage rule ②).
+          const stored = await backendUploadService.uploadBytesToStorage(cover.png, {
             projectId: ctx.projectId,
             actingUserId: ctx.userId,
-            contentHash: cover.sha256,
-            storageKey: cover.key,
-            fileUrl: cover.url,
-            sizeBytes: cover.sizeBytes,
-            mimeType: cover.mimeType,
-            kind: "image",
-            source: "cover",
+            assetSource: "cover",
             generationTaskId: ctx.taskId,
+            taskType: "video",
+            ext: "_cover.png",
+            // The mime comes from the cover itself (it owns its format, §8
+            // PNG) so the stored object and the ledger row cannot drift.
+            contentType: cover.mimeType,
           });
-          if (reclaimQueueFailed === true) {
-            // Registration SUCCEEDED (this cover deduped against an existing
-            // row); only the bookkeeping insert handing the now-redundant
-            // object to the offline reclaim job failed. The library layer may
-            // not log, so it returns a sentinel — swallowing it would leave the
-            // object silently absent from the offline work list.
-            logger.warn(
-              { taskId: ctx.taskId, key: cover.key, hash: cover.sha256 },
-              "asset_reclaim_queue_failed",
-            );
+          if (stored.fileUrl === undefined) {
+            logger.warn({ taskId: ctx.taskId }, "video_cover_register_failed_non_fatal");
+            continue;
           }
-          out.cover_url = adapter.publicUrl(asset.storageKey);
+          out.cover_url = stored.fileUrl;
         } catch (err) {
-          // Register failed → no live row → degrade to Film (cover_url unset).
+          // Nothing to show → degrade to Film (cover_url unset). A cover
+          // failure never fails the video (#1824).
           logger.warn({ taskId: ctx.taskId, err }, "video_cover_register_failed_non_fatal");
         }
       } catch (err) {
