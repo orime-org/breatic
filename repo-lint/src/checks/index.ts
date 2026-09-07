@@ -14,6 +14,7 @@ import { noAuthBypassResidue } from "#repo-lint/checks/no-auth-bypass-residue";
 import { noBrandUsage } from "#repo-lint/checks/no-brand-usage";
 import { noCjk } from "#repo-lint/checks/no-cjk";
 import { noDisabledInvariant } from "#repo-lint/checks/no-disabled-invariant";
+import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
@@ -48,6 +49,7 @@ export const CHECKS: readonly Check[] = [
   noBrandUsage,
   noCjk,
   noDisabledInvariant,
+  noGplBlocknoteAddons,
   noHardcodedSecrets,
   noPrivateRepoPath,
   noSilentSkip,

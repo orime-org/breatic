@@ -21,6 +21,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
 import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutdated';
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
+import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -116,8 +117,10 @@ export function DocumentSpace({
     // holds, and one already built is destroyed.
     //
     // `hasEverSynced` is part of the same gate, and has to be: building an
-    // editor first and letting the content arrive into it means y-tiptap
-    // converts the Yjs document to a ProseMirror one, and that conversion
+    // editor first and letting the content arrive into it means the Yjs
+    // binding converts the shared document to a ProseMirror one — here
+    // y-prosemirror, reached through `@blocknote/core/yjs` — and that
+    // conversion
     // DELETES from the shared document whatever it cannot represent. The
     // deletion happens inside Yjs's type observers, which run before
     // `doc.on('update')` — so the intercept, which counts unresolvable names in
@@ -136,17 +139,17 @@ export function DocumentSpace({
   // honest reading of the situation — nothing typed then would have been
   // saved — and `ConnectionBanner` at the project level says why (user
   // 2026-07-29 weighed this against the alternative and chose it).
-  const editor = hasEverSynced ? (handle?.editor ?? null) : null;
+  const shown = hasEverSynced ? handle : null;
 
   // The guarded whole-document delete: the extension asks instead of deleting
-  // (see document-select-all.ts), and this mount answers with the dialog.
+  // (see document-select-all-guard.ts), and this mount answers with the dialog.
   const [clearAsked, setClearAsked] = React.useState(false);
   React.useEffect(() => {
     if (!handle) return undefined;
     return handle.onClearDocumentRequest(() => setClearAsked(true));
   }, [handle]);
   const onClearConfirm = React.useCallback(() => {
-    handle?.editor.commands.clearDocument();
+    if (handle) clearDocument(handle.editor);
   }, [handle]);
   // Focus is handed back HERE, on every way out of the dialog — confirm,
   // cancel, Escape. There is no trigger element to return to (a keystroke
@@ -156,11 +159,13 @@ export function DocumentSpace({
     (event: Event) => {
       event.preventDefault();
       // The dialog's unmount can outlive the editor: closing a tab while the
-      // dialog is up destroys the editor first, and a destroyed editor's
-      // `commands` getter throws rather than answering.
-      const editor = handle?.editor;
-      if (!editor || editor.isDestroyed) return;
-      editor.commands.focus();
+      // dialog is up unmounts the editor first, and every route to the view of
+      // an unmounted editor raises rather than answering nothing.
+      try {
+        handle?.editor.focus();
+      } catch {
+        // The editor is gone; there is nowhere to put the focus back.
+      }
     },
     [handle],
   );
@@ -199,8 +204,8 @@ export function DocumentSpace({
             {t('spaces.document.unavailable.action')}
           </Button>
         </div>
-      ) : editor ? (
-        <DocumentEditor editor={editor} readOnly={readOnly} />
+      ) : shown ? (
+        <DocumentEditor handle={shown} readOnly={readOnly} />
       ) : (
         <div
           data-testid='document-space-loading'

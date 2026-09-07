@@ -87,7 +87,8 @@ describe('拦截成立时', () => {
 
     const built = result.current?.editor;
     expect(built).toBeDefined();
-    expect(built?.isDestroyed).toBe(false);
+    // 读得出内容才算真建成了：schema 和状态都在。
+    expect(built?.document).toHaveLength(1);
 
     rerender({ enabled: false });
 
@@ -118,7 +119,7 @@ describe('拦截不成立时', () => {
     );
 
     expect(result.current?.editor).toBeDefined();
-    expect(result.current?.editor.isDestroyed).toBe(false);
+    expect(result.current?.editor.document).toHaveLength(1);
   });
 
   it('不传这个参数就是照常创建——既有调用方一个字都不用改', () => {

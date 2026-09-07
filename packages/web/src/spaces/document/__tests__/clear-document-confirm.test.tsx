@@ -21,7 +21,11 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@breatic/shared';
+import {
+  blockCount,
+  blockTexts,
+  seedParagraphs,
+} from '@web/spaces/document/__tests__/document-body-fixtures';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 const socketAwareness = new Awareness(new Y.Doc());
@@ -68,16 +72,9 @@ describe('the whole-document delete asks first', () => {
   async function mountWith(
     spaceId: string,
     texts: string[],
-  ): Promise<{ fragment: Y.XmlFragment; pm: HTMLElement }> {
+  ): Promise<{ doc: Y.Doc; pm: HTMLElement }> {
     const doc = getDoc(docName.documentSpace('p1', spaceId));
-    const fragment = documentBodyFragment(doc);
-    doc.transact(() => {
-      texts.forEach((text) => {
-        const p = new Y.XmlElement('paragraph');
-        p.insert(0, [new Y.XmlText(text)]);
-        fragment.push([p]);
-      });
-    });
+    seedParagraphs(doc, texts);
     // 包一层 provider 模拟 App：全站只有一个 `TooltipProvider`、挂在 `App.tsx`，
     // 而浮出条上那两个未开放的入口用 tooltip 说明自己为什么不能用。
     render(
@@ -89,7 +86,7 @@ describe('the whole-document delete asks first', () => {
       expect(document.querySelector('.ProseMirror')).not.toBeNull(),
     );
     const pm = document.querySelector('.ProseMirror') as HTMLElement;
-    return { fragment, pm };
+    return { doc, pm };
   }
 
   /** 两档 Ctrl+A 到全文档，再按删除。 */
@@ -100,17 +97,17 @@ describe('the whole-document delete asks first', () => {
   }
 
   it('按下删除只弹确认框，文档一个字不动', async () => {
-    const { fragment, pm } = await mountWith('doc-ask', ['alpha', 'beta']);
+    const { doc, pm } = await mountWith('doc-ask', ['alpha', 'beta']);
     selectAllThenDelete(pm);
 
     expect(
       await screen.findByText(t('spaces.document.clearConfirm.title')),
     ).toBeInTheDocument();
-    expect(fragment.length).toBe(2);
+    expect(blockTexts(doc)).toEqual(['alpha', 'beta']);
   });
 
   it('取消：对话框关掉，内容原样', async () => {
-    const { fragment, pm } = await mountWith('doc-cancel', ['alpha', 'beta']);
+    const { doc, pm } = await mountWith('doc-cancel', ['alpha', 'beta']);
     selectAllThenDelete(pm);
     const cancel = await screen.findByText(
       t('spaces.document.clearConfirm.cancel'),
@@ -122,25 +119,29 @@ describe('the whole-document delete asks first', () => {
         screen.queryByText(t('spaces.document.clearConfirm.title')),
       ).not.toBeInTheDocument(),
     );
-    expect(fragment.length).toBe(2);
+    expect(blockTexts(doc)).toEqual(['alpha', 'beta']);
   });
 
   it('确认：清空到零块', async () => {
-    const { fragment, pm } = await mountWith('doc-confirm', ['alpha', 'beta']);
+    const { doc, pm } = await mountWith('doc-confirm', ['alpha', 'beta']);
     selectAllThenDelete(pm);
     const confirm = await screen.findByText(
       t('spaces.document.clearConfirm.confirm'),
     );
     fireEvent.click(confirm);
 
-    await waitFor(() => expect(fragment.length).toBe(0));
+    // One empty block is what an empty document is here: the schema's top-level
+    // group holds `blockGroupChild+`, so a body with nothing in it cannot be
+    // represented, and a client that tried would be writing repairs of its own.
+    await waitFor(() => expect(blockCount(doc)).toBe(1));
+    expect(blockTexts(doc)).toEqual(['']);
   });
 
   it('Escape 取消：对话框关掉，焦点回到编辑器', async () => {
     // 这个对话框没有触发器元素（是按键打开的），Radix 找不到归还焦点的
     // 地方会把它丢在 body 上——键盘用户从此按什么都没反应。真浏览器逮出，
     // 出口统一在 onCloseAutoFocus 把焦点还给编辑器。
-    const { fragment, pm } = await mountWith('doc-esc', ['alpha', 'beta']);
+    const { doc, pm } = await mountWith('doc-esc', ['alpha', 'beta']);
     selectAllThenDelete(pm);
     await screen.findByText(t('spaces.document.clearConfirm.title'));
     fireEvent.keyDown(document.activeElement ?? document.body, {
@@ -152,7 +153,7 @@ describe('the whole-document delete asks first', () => {
         screen.queryByText(t('spaces.document.clearConfirm.title')),
       ).not.toBeInTheDocument(),
     );
-    expect(fragment.length).toBe(2);
+    expect(blockTexts(doc)).toEqual(['alpha', 'beta']);
     await waitFor(() => expect(pm.contains(document.activeElement)).toBe(true));
   });
 });

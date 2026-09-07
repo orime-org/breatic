@@ -23,14 +23,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
-import { Editor } from '@tiptap/react';
+import { screen, act, waitFor } from '@testing-library/react';
+
 import * as Y from 'yjs';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
-import { TooltipProvider } from '@web/components/ui/tooltip';
-import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { documentBodyFragment } from '@breatic/shared';
+import { viewOf } from '@web/spaces/document/document-editor-view';
+import {
+  openSharedBody,
+  mountDocumentEditor,
+  closeShared,
+  focusBody,
+  selectTextRange,
+  selectEverything,
+  sharedBodyMarkup,
+  sharedDoc,
+  type HarnessEditor,
+} from './bubble-bar-harness';
 import {
   bubbleAnchorRect,
   pinnedScreenPoint,
@@ -40,19 +49,8 @@ import {
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
 
-const editors: Editor[] = [];
-let doc: Y.Doc;
-
-beforeEach(() => {
-  doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-});
-
 afterEach(() => {
-  editors.splice(0).forEach((e) => {
-    e.destroy();
-  });
-  doc.destroy();
+  closeShared();
   // Restore the stub `pinSelectionBox` puts on `Range.prototype`. Left in
   // place it leaks into every file that runs after it in the same jsdom
   // (`singleFork` builds the environment once).
@@ -64,13 +62,8 @@ afterEach(() => {
  * @param bodyHtml - The body's HTML.
  * @returns The editor.
  */
-function open(bodyHtml: string): Editor {
-  const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
-  });
-  editors.push(editor);
-  if (bodyHtml) editor.commands.setContent(bodyHtml);
-  return editor;
+function open(bodyHtml: string): HarnessEditor {
+  return openSharedBody(bodyHtml);
 }
 
 /**
@@ -80,17 +73,17 @@ function open(bodyHtml: string): Editor {
  * editor holds it, and without it the bar never enters the document at all, so
  * every query comes back empty.
  * @param editor - The editor.
- * @param from - Where the selection starts.
- * @param to - Where it ends.
+ * @param from - The first character of the span.
+ * @param to - One past its last character.
  */
 async function selectWithFocus(
-  editor: Editor,
+  editor: HarnessEditor,
   from: number,
   to: number,
 ): Promise<void> {
   act(() => {
-    editor.view.dom.focus();
-    editor.commands.setTextSelection({ from, to });
+    focusBody(editor);
+    selectTextRange(editor, from, to);
   });
   // The bar reaches the document one render after the selection changes, so a
   // synchronous assertion would run ahead of it and find nothing.
@@ -110,15 +103,8 @@ async function selectWithFocus(
  * @param editor - An editor with its body already in place.
  * @param readOnly - Whether the editor is read-only.
  */
-function mount(editor: Editor, readOnly = false): void {
-  // Wrapped in a provider to stand in for App: the whole product has one
-  // `TooltipProvider`, mounted in `App.tsx`, and the bar's two entries that
-  // are not open yet explain themselves through a tooltip.
-  render(
-    <TooltipProvider>
-      <DocumentEditor editor={editor} readOnly={readOnly} />
-    </TooltipProvider>,
-  );
+function mount(editor: HarnessEditor, readOnly = false): void {
+  mountDocumentEditor(editor, readOnly);
 }
 
 
@@ -162,7 +148,7 @@ function pinViewport(box: DOMRect): void {
  * @returns The rectangle, or null while the selection is empty.
  */
 function anchorRectOf(
-  editor: Editor,
+  editor: HarnessEditor,
   pinned: { x: number; y: number } | null = null,
 ): DOMRect | null {
   const viewport = document.querySelector<HTMLElement>(
@@ -170,7 +156,7 @@ function anchorRectOf(
   );
   expect(viewport).not.toBeNull();
   return bubbleAnchorRect(
-    editor.view,
+    viewOf(editor)!,
     (viewport as HTMLElement).getBoundingClientRect(),
     pinned,
   );
@@ -234,19 +220,31 @@ function pinSelectionBox(box: DOMRect): void {
   vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(box);
 }
 
+/**
+ * The first text node in a shared body.
+ * @param node - Where to look.
+ * @returns That node.
+ * @throws {Error} When the body holds none.
+ */
+function firstText(node: Y.XmlFragment | Y.XmlElement): Y.XmlText {
+  for (let i = 0; i < node.length; i += 1) {
+    const child: unknown = node.get(i);
+    if (child instanceof Y.XmlText) return child;
+    if (child instanceof Y.XmlElement) return firstText(child);
+  }
+  throw new Error('no text node in the body');
+}
+
 /** The body with its markup, for telling whether a command really ran. */
 function markupOf(): string {
-  return documentBodyFragment(doc)
-    .toArray()
-    .map((n) => n.toString())
-    .join('');
+  return sharedBodyMarkup();
 }
 
 describe('the selection bubble bar', () => {
   it('appears on a selection, carrying those eight commands and the link', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const ids = Array.from(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
@@ -272,7 +270,7 @@ describe('the selection bubble bar', () => {
   it('lays the controls out in the order the demo draws', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const rendered = Array.from(bar.querySelectorAll('[data-testid^="doc-bubble-"]'))
@@ -308,7 +306,7 @@ describe('the selection bubble bar', () => {
   it('separates the groups with a real separator element', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]')!;
     const seps = bar.querySelectorAll('[role="separator"]');
@@ -330,7 +328,7 @@ describe('the selection bubble bar', () => {
   ])('shows %s as an entry that is not open yet', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
     expect(entry).toHaveAttribute('aria-disabled', 'true');
@@ -344,7 +342,7 @@ describe('the selection bubble bar', () => {
   ])('does nothing when %s is clicked', async (id) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
     const before = markupOf();
 
     act(() => {
@@ -362,7 +360,7 @@ describe('the selection bubble bar', () => {
   it('keeps comment out of the tab order, the way the bar does', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const entry = screen.getByTestId('doc-bubble-coming-comment');
     expect(entry.getAttribute('tabindex')).toBe('-1');
@@ -375,17 +373,17 @@ describe('the selection bubble bar', () => {
   it('lights underline when the mark is on, whoever turned it on', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
     const button = screen.getByTestId('doc-bubble-tool-underline');
     expect(button).toHaveAttribute('aria-pressed', 'false');
 
     act(() => {
-      editor.commands.toggleUnderline();
+      editor.toggleStyles({ underline: true } as never);
     });
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
 
     act(() => {
-      editor.commands.toggleUnderline();
+      editor.toggleStyles({ underline: true } as never);
     });
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
   });
@@ -393,17 +391,17 @@ describe('the selection bubble bar', () => {
   it('lights inline code when the mark is on, whoever turned it on', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
     const button = screen.getByTestId('doc-bubble-tool-code');
     expect(button).toHaveAttribute('aria-pressed', 'false');
 
     act(() => {
-      editor.commands.toggleCode();
+      editor.toggleStyles({ code: true } as never);
     });
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
 
     act(() => {
-      editor.commands.toggleCode();
+      editor.toggleStyles({ code: true } as never);
     });
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'false'));
   });
@@ -415,7 +413,7 @@ describe('the selection bubble bar', () => {
   it('draws the AI entry the way the demo draws a menu opener', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const ai = screen.getByTestId('doc-bubble-ai');
     const comment = screen.getByTestId('doc-bubble-coming-comment');
@@ -446,7 +444,7 @@ describe('the selection bubble bar', () => {
   ])('gives %s a name that can be read out', async (id, key) => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const label = screen.getByTestId(`doc-bubble-${id}`).getAttribute('aria-label');
     expect(label).toBeTruthy();
@@ -486,7 +484,7 @@ describe('the selection bubble bar', () => {
   it('prefixes the command test ids with the carrier', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     expect(
       document.querySelectorAll('[data-testid="doc-bubble-tool-bold"]'),
@@ -515,13 +513,31 @@ describe('the selection bubble bar', () => {
     });
 
     /**
-     * Make every document position answer with a known line.
+     * Put every position inside the named text on a known line.
+     *
+     * Keyed by the text rather than by positions. The anchor asks about the
+     * selection's two ends, and in the flat model those land two nodes deeper
+     * than they used to — a number here would say nothing about which line it
+     * belongs to. Measured: over `hello` selected in `<p>hello</p><p>world</p>`
+     * the anchor asks for 8 and then 3, both inside that one text node.
      * @param editor - The editor.
-     * @param lines - Position to line top; anything unlisted answers 0.
+     * @param lines - Block text to line top; anything outside answers 0.
      */
-    function pinLines(editor: Editor, lines: Record<number, number>): void {
-      editor.view.coordsAtPos = (pos: number) => {
-        const top = lines[pos] ?? 0;
+    function pinLines(
+      editor: HarnessEditor,
+      lines: Record<string, number>,
+    ): void {
+      const spans: { from: number; to: number; top: number }[] = [];
+      editor.prosemirrorState.doc.descendants((node, pos) => {
+        if (!node.isText) return true;
+        const top = lines[node.text ?? ''];
+        if (top !== undefined) {
+          spans.push({ from: pos, to: pos + node.nodeSize, top });
+        }
+        return true;
+      });
+      viewOf(editor)!.coordsAtPos = (pos: number) => {
+        const top = spans.find((s) => pos >= s.from && pos <= s.to)?.top ?? 0;
         return { top, bottom: top + 20, left: 40 + pos, right: 60 + pos };
       };
     }
@@ -529,13 +545,12 @@ describe('the selection bubble bar', () => {
     it('really moves above the new line when the selection changes', async () => {
       const editor = open('<p>hello</p><p>world</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 6);
+      // Both stubs go in before the first selection: that selection is what
+      // puts the bar up and positions it, and a second one over the same
+      // characters is not a change the bar reacts to.
       pinViewport(new DOMRect(0, 100, 800, 400));
-
-      pinLines(editor, { 1: 300, 6: 300, 8: 200, 12: 200 });
-      act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 6 });
-      });
+      pinLines(editor, { hello: 300, world: 200 });
+      await selectWithFocus(editor, 0, 5);
       await expectBarTop(292);
 
       // Select in the second paragraph. The anchor is computed live, but the
@@ -545,7 +560,7 @@ describe('the selection bubble bar', () => {
       // elements changing size). Without that wake-up the bar stays above the
       // first paragraph.
       act(() => {
-        editor.commands.setTextSelection({ from: 8, to: 12 });
+        selectTextRange(editor, 5, 10);
       });
 
       await expectBarTop(192);
@@ -554,16 +569,11 @@ describe('the selection bubble bar', () => {
     it('anchors a dragged selection to the line it was released on, its head', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 6);
       pinViewport(new DOMRect(0, 100, 800, 400));
-
-      // Dragged from 1 down to 6: the head is 6 and both ends are in view.
       // Each end gets its own line, which is what tells "the released end"
       // apart from "where the selection started".
-      act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 6 });
-      });
-      pinLines(editor, { 1: 300, 6: 200 });
+      pinLines(editor, { 'hello world': 200 });
+      await selectWithFocus(editor, 0, 5);
 
       const rect = anchorRectOf(editor);
 
@@ -578,15 +588,15 @@ describe('the selection bubble bar', () => {
     it('anchors to the line the selection started on when the head is out of view', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(new DOMRect(0, 100, 800, 400));
 
       act(() => {
-        editor.commands.setTextSelection({ from: 2, to: 12 });
+        selectTextRange(editor, 1, 11);
       });
       // Dragged off the bottom: the released end (12) has scrolled past the
       // visible area while the start (2) is still on screen.
-      pinLines(editor, { 2: 200, 12: 900 });
+      pinLines(editor, { one: 200, three: 900 });
 
       const rect = anchorRectOf(editor);
 
@@ -598,11 +608,11 @@ describe('the selection bubble bar', () => {
     it('still anchors to the starting line when neither end is in view', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(new DOMRect(0, 100, 800, 400));
 
       act(() => {
-        editor.commands.setTextSelection({ from: 2, to: 12 });
+        selectTextRange(editor, 1, 11);
       });
       // The selection spans the visible area entirely: its start above, its
       // released end below. No third "line the reader can see right now" is
@@ -610,7 +620,7 @@ describe('the selection bubble bar', () => {
       // findings across the first six adversarial rounds. The anchor is handed
       // over as computed, and the scroller's own overflow clips whatever falls
       // outside the body.
-      pinLines(editor, { 2: -300, 12: 900 });
+      pinLines(editor, { one: -300, three: 900 });
 
       const rect = anchorRectOf(editor);
 
@@ -629,15 +639,15 @@ describe('the selection bubble bar', () => {
     it('hands over a line above the visible area uncapped, leaving flip to decide', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 6);
+      await selectWithFocus(editor, 0, 5);
       pinViewport(new DOMRect(0, 100, 800, 400));
 
       act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 6 });
+        selectTextRange(editor, 0, 5);
       });
       // The line straddles the top edge: its top at 90 has scrolled away while
       // its bottom at 110 is still showing.
-      pinLines(editor, { 1: 90, 6: 90 });
+      pinLines(editor, { 'hello world': 90 });
 
       const rect = anchorRectOf(editor);
 
@@ -652,11 +662,11 @@ describe('the selection bubble bar', () => {
     it('gives no anchor while the selection is empty', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 6);
+      await selectWithFocus(editor, 0, 5);
       pinViewport(new DOMRect(0, 100, 800, 400));
 
       act(() => {
-        editor.commands.setTextSelection(3);
+        selectTextRange(editor, 2, 2);
       });
 
       expect(
@@ -717,11 +727,11 @@ describe('the selection bubble bar', () => {
     it('anchors to the pointer, not to any line, while the pointer is inside the body', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
       // Every line gets an unmistakable coordinate: were the anchor still
       // computed from a line, the assertions would read it back.
-      editor.view.coordsAtPos = () => ({
+      viewOf(editor)!.coordsAtPos = () => ({
         top: 300,
         bottom: 320,
         left: 40,
@@ -730,7 +740,7 @@ describe('the selection bubble bar', () => {
 
       moveMouseTo(420, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
 
       const rect = anchorRectOf(editor, { x: 420, y: 250 });
@@ -750,13 +760,13 @@ describe('the selection bubble bar', () => {
     it('stays away while the pointer is outside the body', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       // The body's visible area runs from y 100 to 500; 50 is above it.
       moveMouseTo(420, 50);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
 
       expect(shouldShowNow()).toBe(false);
@@ -765,11 +775,11 @@ describe('the selection bubble bar', () => {
     it('stays away when there has never been a pointer position', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
 
       expect(shouldShowNow()).toBe(false);
@@ -778,12 +788,12 @@ describe('the selection bubble bar', () => {
     it('does not follow the pointer out of the body once it is up', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(true);
 
@@ -798,14 +808,14 @@ describe('the selection bubble bar', () => {
     it('comes up when the pointer enters the body, with no scroll to wait for', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       // The pointer was outside the body when the selection became a
       // select-all, so nothing showed.
       moveMouseTo(420, 50);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
 
@@ -824,12 +834,12 @@ describe('the selection bubble bar', () => {
     it('does not budge as the pointer leaves and re-enters once it is up', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       await expectBarTop(242);
 
@@ -844,16 +854,13 @@ describe('the selection bubble bar', () => {
     it('does nothing when the pointer enters and the selection is not a select-all', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
       pinViewport(VIEWPORT);
+      viewOf(editor)!.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
 
       // The selection is a short run and the pointer comes in from outside:
       // this tier follows the selection and never looks at the pointer.
       moveMouseTo(420, 50);
-      editor.view.coordsAtPos = () => ({ top: 200, bottom: 220, left: 40, right: 60 });
-      act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 4 });
-      });
+      await selectWithFocus(editor, 0, 3);
       moveMouseTo(420, 250);
 
       // Anchored to the line (200 less 8), not to the pointer (which would
@@ -864,19 +871,19 @@ describe('the selection bubble bar', () => {
     it('does not let the pointer path skip the conditions: no focus, no bar', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       // Pointer outside the body, select-all: no bar, and nothing pinned.
       moveMouseTo(420, 50);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
 
       // The editor loses focus — the reader is typing somewhere else.
       act(() => {
-        editor.view.dom.blur();
+        viewOf(editor)!.dom.blur();
       });
 
       // The pointer comes back into the body. This path has to ask "does the
@@ -894,13 +901,13 @@ describe('the selection bubble bar', () => {
       // An empty document has no selection to make and the bar never appears,
       // so `selectWithFocus` cannot be used here.
       act(() => {
-        editor.view.dom.focus();
+        viewOf(editor)!.dom.focus();
       });
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
 
       // None of the eight commands can run, and a carrier of dead buttons is
@@ -912,12 +919,12 @@ describe('the selection bubble bar', () => {
     it('does not re-pin on a later local transaction once it is a select-all', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       await expectBarTop(242);
 
@@ -934,7 +941,7 @@ describe('the selection bubble bar', () => {
       // rule's implementation.
       moveMouseTo(700, 300);
       act(() => {
-        editor.view.dispatch(editor.state.tr.insertText('x', 1, 1));
+        viewOf(editor)!.dispatch(editor.prosemirrorState.tr.insertText('x', 1, 1));
       });
 
       // The transaction makes the bar recompute its place, so this number
@@ -945,12 +952,12 @@ describe('the selection bubble bar', () => {
     it('is not moved to the current pointer by a co-editor typing after it is pinned', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       await expectBarTop(242);
 
@@ -960,15 +967,14 @@ describe('the selection bubble bar', () => {
       // whole document, and the selection along that path is not the one a
       // local transaction carries.
       const remote = new Y.Doc();
-      Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
-      const paragraph = documentBodyFragment(remote).get(0) as Y.XmlElement;
-      (paragraph.get(0) as Y.XmlText).insert(0, 'x');
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(sharedDoc()));
+      firstText(documentBodyFragment(remote)).insert(0, 'x');
 
       moveMouseTo(700, 300);
       act(() => {
         Y.applyUpdate(
-          doc,
-          Y.encodeStateAsUpdate(remote, Y.encodeStateVector(doc)),
+          sharedDoc(),
+          Y.encodeStateAsUpdate(remote, Y.encodeStateVector(sharedDoc())),
         );
       });
       remote.destroy();
@@ -979,14 +985,14 @@ describe('the selection bubble bar', () => {
     it('comes up on the next mouse event when the body grows around a pointer that never moved', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
 
       // The body starts narrow, with the pointer resting outside its right
       // edge.
       pinViewport(new DOMRect(0, 100, 400, 400));
       moveMouseTo(600, 250);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
 
@@ -1006,13 +1012,13 @@ describe('the selection bubble bar', () => {
     it('comes up on a wheel gesture when the pointer has not moved since the page loaded', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       // Not one `mousemove` has been dispatched: the position is unknown, and
       // a keyboard select-all raises no bar.
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
 
@@ -1032,17 +1038,17 @@ describe('the selection bubble bar', () => {
     it('pins nothing for a select-all made without focus, and raises nothing when focus returns', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       // The pointer is inside the body, but the reader is elsewhere and the
       // editor holds no focus.
       moveMouseTo(420, 250);
       act(() => {
-        editor.view.dom.blur();
+        viewOf(editor)!.dom.blur();
       });
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
 
@@ -1052,7 +1058,7 @@ describe('the selection bubble bar', () => {
       // `isWarranted` and this goes red — the pin is made at the select-all
       // and the bar springs up the moment focus comes back.
       act(() => {
-        editor.view.dom.focus();
+        viewOf(editor)!.dom.focus();
       });
       expect(shouldShowNow()).toBe(false);
     });
@@ -1060,20 +1066,20 @@ describe('the selection bubble bar', () => {
     it('does not let a co-editor transaction pin a position on the pointer behalf while focus is away', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       // Select-all with the pointer outside the body: no bar, nothing pinned.
       moveMouseTo(420, 50);
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
 
       // The reader switches away and the editor loses focus while the pointer
       // crosses the body. `isWarranted` stops `remember` from pinning.
       act(() => {
-        editor.view.dom.blur();
+        viewOf(editor)!.dom.blur();
       });
       moveMouseTo(420, 250);
       expect(shouldShowNow()).toBe(false);
@@ -1082,13 +1088,12 @@ describe('the selection bubble bar', () => {
       // `follow` runs — and if it did not ask about focus it would pin
       // wherever the pointer last passed through.
       const remote = new Y.Doc();
-      Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
-      const paragraph = documentBodyFragment(remote).get(0) as Y.XmlElement;
-      (paragraph.get(0) as Y.XmlText).insert(0, 'x');
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(sharedDoc()));
+      firstText(documentBodyFragment(remote)).insert(0, 'x');
       act(() => {
         Y.applyUpdate(
-          doc,
-          Y.encodeStateAsUpdate(remote, Y.encodeStateVector(doc)),
+          sharedDoc(),
+          Y.encodeStateAsUpdate(remote, Y.encodeStateVector(sharedDoc())),
         );
       });
       remote.destroy();
@@ -1098,7 +1103,7 @@ describe('the selection bubble bar', () => {
       // stale point.
       moveMouseTo(700, 380);
       act(() => {
-        editor.view.dom.focus();
+        viewOf(editor)!.dom.focus();
       });
 
       expect(shouldShowNow()).toBe(false);
@@ -1107,7 +1112,7 @@ describe('the selection bubble bar', () => {
     it('forgets the pointer once it leaves the page, so a keyboard select-all raises nothing', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
@@ -1122,7 +1127,7 @@ describe('the selection bubble bar', () => {
       });
 
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(false);
     });
@@ -1130,7 +1135,7 @@ describe('the selection bubble bar', () => {
     it('does not count a mouseout inside the page as leaving it', async () => {
       const editor = open('<p>one</p><p>two</p><p>three</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 4);
+      await selectWithFocus(editor, 0, 3);
       pinViewport(VIEWPORT);
 
       moveMouseTo(420, 250);
@@ -1148,7 +1153,7 @@ describe('the selection bubble bar', () => {
       });
 
       act(() => {
-        editor.commands.selectAll();
+        selectEverything(editor);
       });
       expect(shouldShowNow()).toBe(true);
     });
@@ -1156,20 +1161,20 @@ describe('the selection bubble bar', () => {
     it('ignores where the pointer is for a partial selection: that tier follows the selection', async () => {
       const editor = open('<p>hello world</p>');
       mount(editor);
-      await selectWithFocus(editor, 1, 6);
+      await selectWithFocus(editor, 0, 5);
       pinViewport(VIEWPORT);
 
       // The pointer rests outside the body while the selection is a short
       // run: this tier shows as usual, anchored to a line.
       moveMouseTo(420, 50);
-      editor.view.coordsAtPos = () => ({
+      viewOf(editor)!.coordsAtPos = () => ({
         top: 200,
         bottom: 220,
         left: 40,
         right: 60,
       });
       act(() => {
-        editor.commands.setTextSelection({ from: 1, to: 4 });
+        selectTextRange(editor, 0, 3);
       });
 
       expect(shouldShowNow()).toBe(true);
@@ -1185,7 +1190,7 @@ describe('the selection bubble bar', () => {
   it('takes no focus, not even from a press on its padding', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const bar = document.querySelector<HTMLElement>(
       '[data-testid="doc-selection-bubble-bar"]',
@@ -1329,7 +1334,7 @@ describe('the selection bubble bar', () => {
   it('refuses the default action of a press on it', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const bar = document.querySelector<HTMLElement>(
       '[data-testid="doc-selection-bubble-bar"]',
@@ -1360,13 +1365,13 @@ describe('the selection bubble bar', () => {
   it('builds none of the buttons while there is no selection', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
     expect(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
     ).toHaveLength(6);
 
     act(() => {
-      editor.commands.setTextSelection(3);
+      selectTextRange(editor, 2, 2);
     });
 
     // Queried across the document rather than inside the bar element caught
@@ -1400,7 +1405,7 @@ describe('the selection bubble bar', () => {
   it('mounts inside the scroller, where the link panel mounts', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const bar = document.querySelector('[data-testid="doc-selection-bubble-bar"]');
     const viewport = document.querySelector(
@@ -1435,7 +1440,7 @@ describe('the selection bubble bar', () => {
   it('keeps its six buttons out of the tab order', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
-    await selectWithFocus(editor, 1, 6);
+    await selectWithFocus(editor, 0, 5);
 
     const buttons = Array.from(
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
@@ -1461,8 +1466,8 @@ describe('the selection bubble bar', () => {
   // reach whether that answer arrives at the DOM's `disabled`. So it compares
   // those two directly.
   it.each([
-    ['a run of plain text, everything available', '<p>hello world</p>', 1, 6, false],
-    ['inside a code block, the mark commands cannot run', '<pre><code>hello</code></pre>', 1, 6, true],
+    ['a run of plain text, everything available', '<p>hello world</p>', 0, 5, false],
+    ['inside a code block, the mark commands cannot run', '<pre><code>hello</code></pre>', 0, 5, true],
   ])('%s: the buttons agree with canRun', async (_name, body, from, to, hasDark) => {
     const editor = open(body);
     mount(editor);
@@ -1498,8 +1503,8 @@ describe('the selection bubble bar', () => {
     // which is what this test has to disprove. The selection is made and given
     // time, then the absence is asserted.
     act(() => {
-      editor.view.dom.focus();
-      editor.commands.setTextSelection({ from: 1, to: 6 });
+      viewOf(editor)!.dom.focus();
+      selectTextRange(editor, 0, 5);
     });
     await new Promise((resolve) => {
       setTimeout(resolve, 400);

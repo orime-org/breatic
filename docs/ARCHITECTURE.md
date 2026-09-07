@@ -324,7 +324,7 @@ pnpm test / typecheck / lint
 | 状态 | Zustand 5 + immer(需要撤销的 store 用 zundo) |
 | 协作 | Yjs 13 + @hocuspocus/provider 4(同步优先,无离线模式) |
 | 画布 | @xyflow/react 12 |
-| 富文本编辑器 | TipTap 3 |
+| 富文本编辑器 | **BlockNote**(document space 的正文)+ **TipTap 3**(画布上的文本节点正文和生成 prompt)。两者共底:BlockNote 建在 ProseMirror 上,块不互相嵌套 —— 文档是 `blockGroup > blockContainer > blockContent` 三层,缩进另开一个组。document 正文在这个形状上把引用和标题序号做成了块的属性(库自带的是一个 `quote` 块类型,我们剔掉它、改挂 `quoted`;`numbered` / `number` 同样是我们加的) |
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库) |
 | 3D | Three.js + @react-three/fiber |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |

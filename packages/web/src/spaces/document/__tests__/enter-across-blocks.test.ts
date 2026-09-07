@@ -2,257 +2,479 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 跨块选区上按回车，不许抛异常（#111 时代的验收项 A10，无标题世界照钉）。
+ * #904 验收 A10: Enter on a selection that spans blocks does not raise.
  *
- * 根因和做法在设计文档 2026-08-15-document-selection-design 的 §3.8 和 §5.7。
- * 一句话：`@tiptap/core@3.29.2` 的 `splitBlock` 用**删之前**的文档回答「这里能不能
- * 分块」，然后在**删之后**的文档上真的分——两个列表项的内容被删光之后结构塌了，
- * 那个「能」不再成立，`tr.split` 就抛 `TransformError`。官方
- * `prosemirror-commands` 的 `splitBlockAs` 顺序是反的，删完再重算整条深度链。
+ * The selection a writer makes by dragging is not confined to one block, and
+ * every one of those shapes reaches the same split. This file walks the shapes
+ * and says what each leaves behind.
  *
- * 上游 issue ueberdosis/tiptap#7734 开着，修复 PR #7990 没合、维护者在质疑它的
- * 做法（它只挪 `canSplit`，我实测过那样产出跟浏览器不一致）。
+ * Two of them are answered by `document-enter.ts` rather than by BlockNote,
+ * because BlockNote's own handlers raise on them:
  *
- * 按键走 `handleKeyDown`，不走 `keyboardShortcut`（设计文档 §3.6）。
+ * - A whole-document selection reaches `splitBlock.ts:55`, which hands the
+ *   selection straight to `tr.split`; a selection resolved outside every block
+ *   makes `prosemirror-transform` read `copy` off an undefined parent.
+ * - A node selection reaches `NodeSelectionKeyboard.ts:52`, which inserts a
+ *   bare `paragraph` — not the `blockContainer` a `blockGroup` accepts.
+ *
+ * Both are shapes a reader reaches with the mouse: `Cmd`-A, and the platform's
+ * select-node modifier over a block.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { Editor } from '@tiptap/core';
-import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
-import { buildDocumentExtensions } from '@web/spaces/document/document-extensions';
+import { documentBodyFragment } from '@breatic/shared';
 
-const editors: Editor[] = [];
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
+
+import { textblocks } from './textblocks';
+
+const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
 afterEach(() => {
-  editors.splice(0).forEach((e) => {
-    e.destroy();
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
   });
 });
 
 /**
- * 一份给定内容的文档。
- * @param bodyHtml - 文档 HTML。
- * @returns 绑好的编辑器。
+ * Opens an editor holding the given blocks.
+ * @param blocks - What to put in the document.
+ * @returns The editor.
  */
-function open(bodyHtml: string): Editor {
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-  const editor = new Editor({
-    extensions: buildDocumentExtensions({ fragment: documentBodyFragment(doc) }),
+function open(
+  blocks: readonly Readonly<Record<string, unknown>>[],
+  extensions: readonly unknown[] = [],
+): ReturnType<typeof buildDocumentEditor> {
+  const editor = buildDocumentEditor({
+    fragment: documentBodyFragment(new Y.Doc()),
+    extensions: extensions as never,
   });
-  editors.push(editor);
-  editor.commands.setContent(bodyHtml);
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
   return editor;
 }
 
-/** 文档的 HTML。 */
-function body(e: Editor): string {
-  return e.getHTML();
+/**
+ * Presses Enter through the keymap, the way a keyboard reaches it.
+ * @param editor - The editor to press Enter in.
+ * @returns Whether a handler claimed the key.
+ */
+function pressEnter(editor: ReturnType<typeof buildDocumentEditor>): boolean {
+  const view = editor.prosemirrorView!;
+  const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+  return (
+    view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false
+  );
 }
 
-/** 选中给定的两个位置之间。 */
-function selectBetween(e: Editor, from: number, to: number): void {
-  e.view.dispatch(
-    e.state.tr.setSelection(
-      TextSelection.between(e.state.doc.resolve(from), e.state.doc.resolve(to)),
+/** The type of every top-level block, in order. */
+function typesOf(editor: ReturnType<typeof buildDocumentEditor>): string[] {
+  return (editor.document as { type: string }[]).map((block) => block.type);
+}
+
+/** The text of every block container, in document order. */
+function textsOf(editor: ReturnType<typeof buildDocumentEditor>): string[] {
+  const out: string[] = [];
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.name === 'blockContainer') {
+      out.push(node.textContent);
+    }
+    return true;
+  });
+  return out;
+}
+
+/**
+ * Selects from the start of one text node to the end of another.
+ * @param editor - The editor to select in.
+ * @param first - Index of the text node the selection opens on.
+ * @param last - Index of the text node it closes on.
+ */
+function selectTexts(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  first: number,
+  last: number,
+): void {
+  const view = editor.prosemirrorView!;
+  const spots: { pos: number; size: number }[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.isText) spots.push({ pos, size: node.nodeSize });
+    return true;
+  });
+  const a = spots[first]!;
+  const b = spots[last]!;
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.between(
+        view.state.doc.resolve(a.pos),
+        view.state.doc.resolve(b.pos + b.size),
+      ),
     ),
   );
 }
 
-/** 按下一个键，走真实按键路径。 */
-function press(e: Editor, key: string): void {
-  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
-  e.view.someProp('handleKeyDown', (f) => f(e.view, event));
+/**
+ * Selects one whole block, the way the select-node modifier does.
+ *
+ * On the CONTENT node, which is what the gesture produces. ProseMirror's
+ * `selectClickedNode` walks out from the clicked position and stops at the
+ * first selectable node it meets (`prosemirror-view/src/input.ts`), and a
+ * click on a block's text meets the content node first — measured in a real
+ * browser, `Cmd`-clicking a paragraph leaves `.ProseMirror-selectednode` on
+ * `div.bn-block-content`. The container it sits in also holds any indented
+ * blocks, so the two differ by exactly the case below.
+ * @param editor - The editor to select in.
+ * @param index - Which block, in document order.
+ */
+function selectBlock(
+  editor: ReturnType<typeof buildDocumentEditor>,
+  index: number,
+): void {
+  const view = editor.prosemirrorView!;
+  const spots: number[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name === 'blockContainer') spots.push(pos + 1);
+    return true;
+  });
+  view.dispatch(
+    view.state.tr.setSelection(
+      NodeSelection.create(view.state.doc, spots[index]!),
+    ),
+  );
 }
 
-/** 选中文档里第 first 到第 last 个文本节点之间那一段（含两端）。 */
-function selectAllText(e: Editor, first: number, last: number): void {
-  const positions: Array<{ pos: number; size: number }> = [];
-  e.state.doc.descendants((node, pos) => {
-    if (node.isText) positions.push({ pos, size: node.nodeSize });
-  });
-  const a = positions[first];
-  const b = positions[last];
-  selectBetween(e, a.pos, b.pos + b.size);
-}
+describe('Enter on a selection that spans blocks', () => {
+  it('empties two list items dragged over whole, leaving the list', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'x' },
+      { type: 'bulletListItem', content: 'aa' },
+      { type: 'bulletListItem', content: 'bb' },
+      { type: 'paragraph', content: 'y' },
+    ]);
+    selectTexts(editor, 1, 2);
 
-describe('跨块选区上按回车（A10）', () => {
-  it('拖过两个列表项的全部文字，前后还有段落：不抛，中间留一个空段落', () => {
-    const e = open('<p>x</p><ul><li><p>aa</p></li><li><p>bb</p></li></ul><p>y</p>');
-    selectAllText(e, 1, 2);
     expect(() => {
-      press(e, 'Enter');
+      pressEnter(editor);
     }).not.toThrow();
-    expect(body(e)).toBe('<p>x</p><p></p><p>y</p>');
+    expect(typesOf(editor)).toEqual([
+      'paragraph',
+      'bulletListItem',
+      'bulletListItem',
+      'paragraph',
+    ]);
+    expect(textsOf(editor)).toEqual(['x', '', '', 'y']);
   });
 
-  it('有序列表同样', () => {
-    const e = open('<p>x</p><ol><li><p>aa</p></li><li><p>bb</p></li></ol><p>y</p>');
-    selectAllText(e, 1, 2);
+  it('does the same for an ordered list', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'x' },
+      { type: 'numberedListItem', content: 'aa' },
+      { type: 'numberedListItem', content: 'bb' },
+      { type: 'paragraph', content: 'y' },
+    ]);
+    selectTexts(editor, 1, 2);
+
     expect(() => {
-      press(e, 'Enter');
+      pressEnter(editor);
     }).not.toThrow();
-    expect(body(e)).toBe('<p>x</p><p></p><p>y</p>');
+    expect(typesOf(editor)).toEqual([
+      'paragraph',
+      'numberedListItem',
+      'numberedListItem',
+      'paragraph',
+    ]);
+    expect(textsOf(editor)).toEqual(['x', '', '', 'y']);
   });
 
-  it('两个列表项各选一半：不抛，行为跟今天一样', () => {
-    const e = open('<ul><li><p>abcd</p></li><li><p>efgh</p></li></ul>');
-    selectBetween(e, 5, 11);
-    expect(() => {
-      press(e, 'Enter');
-    }).not.toThrow();
-    expect(body(e)).toBe(
-      '<ul><li><p>ab</p><p>efgh</p></li></ul>',
-    );
-  });
-
-  /**
-   * 设计 §3.7 第二张表的第五、六种：改实现之前就正常的两种跨块形状。
-   * 换掉分块命令之后「不抛」不再是唯一风险，产出形状也可能变，所以钉产出。
-   */
-  it('从段落拖到列表项、选区盖住全部文字：不抛，删除生效、分块在零块上是空操作', () => {
-    // `block*` 下这类删除把文档删空（旧世界有标题垫着、删完还剩一个空段）。
-    // 按 #121 定稿 §10：删除选区照做，零块上的分块是空操作。
-    const e = open('<p>aa</p><ul><li><p>bb</p></li></ul>');
-    selectAllText(e, 0, 1);
-    expect(() => {
-      press(e, 'Enter');
-    }).not.toThrow();
-    expect(e.state.doc.childCount).toBe(0);
-  });
-
-  it('从引用块拖到段落、选区盖住全部文字：不抛，删除生效、分块在零块上是空操作', () => {
-    const e = open('<blockquote><p>aa</p></blockquote><p>bb</p>');
-    selectAllText(e, 0, 1);
-    expect(() => {
-      press(e, 'Enter');
-    }).not.toThrow();
-    expect(e.state.doc.childCount).toBe(0);
-  });
-
-  it('splitBlock({ keepMarks: false })：不保留格式——公开契约的选项不许被吞', () => {
-    const e = open('<p><strong>aa</strong></p>');
-    const at = e.state.doc.content.size - 1;
-    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, at)));
-    e.commands.splitBlock({ keepMarks: false });
-    expect(e.state.storedMarks?.map((m) => m.type.name) ?? []).not.toContain('bold');
-  });
-
-  it('在一行加粗文字末尾按回车，接着打的字还是粗的', () => {
-    const e = open('<p><strong>aa</strong></p>');
-    const at = e.state.doc.content.size - 1;
-    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, at)));
-    press(e, 'Enter');
-    expect(e.state.storedMarks?.map((m) => m.type.name) ?? []).toContain('bold');
-  });
-
-  describe('光标回车的行为一个都不许变', () => {
-    const cases: Array<[string, string, (e: Editor) => number]> = [
-      ['段落中间', '<p>abcd</p>', () => 3],
-      ['段落末尾', '<p>abcd</p>', (e) => e.state.doc.content.size - 1],
-      ['段落开头', '<p>abcd</p>', () => 1],
-      ['正文标题中间', '<h2>abcd</h2>', () => 3],
-      ['正文标题末尾', '<h2>abcd</h2>', (e) => e.state.doc.content.size - 1],
-      ['列表项中间', '<ul><li><p>abcd</p></li></ul>', () => 5],
-      ['引用块中间', '<blockquote><p>abcd</p></blockquote>', () => 4],
-      ['代码块中间', '<pre><code>abcd</code></pre>', () => 3],
-      ['列表项末尾', '<ul><li><p>abcd</p></li></ul>', (e) => Selection.atEnd(e.state.doc).from],
-      ['引用块末尾', '<blockquote><p>abcd</p></blockquote>', (e) => Selection.atEnd(e.state.doc).from],
-      ['代码块末尾', '<pre><code>abcd</code></pre>', (e) => Selection.atEnd(e.state.doc).from],
-      ['有序列表 start=5 中间', '<ol start="5"><li><p>abcd</p></li></ol>', () => 5],
-    ];
-    const expected: Record<string, string> = {
-      段落中间: '<p>ab</p><p>cd</p>',
-      段落末尾: '<p>abcd</p><p></p>',
-      段落开头: '<p></p><p>abcd</p>',
-      正文标题中间: '<h2>ab</h2><h2>cd</h2>',
-      正文标题末尾: '<h2>abcd</h2><p></p>',
-      列表项中间: '<ul><li><p>ab</p></li><li><p>cd</p></li></ul>',
-      引用块中间: '<blockquote><p>ab</p><p>cd</p></blockquote>',
-      代码块中间: '<pre><code>ab\ncd</code></pre>',
-      列表项末尾: '<ul><li><p>abcd</p></li><li><p></p></li></ul>',
-      引用块末尾: '<blockquote><p>abcd</p><p></p></blockquote>',
-      代码块末尾: '<pre><code>abcd\n</code></pre>',
-      '有序列表 start=5 中间': '<ol start="5"><li><p>ab</p></li><li><p>cd</p></li></ol>',
-    };
-    it.each(cases)('%s', (name, html, at) => {
-      const e = open(html);
-      e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, at(e))));
-      press(e, 'Enter');
-      expect(body(e)).toBe(expected[name]);
-    });
-  });
-});
-
-describe('splitBlock 的删空探针照上游契约答（实现对抗第 1、3 轮）', () => {
-  // 探针存在的唯一理由：上游 splitBlockAs 先删选区、再按删后的文档走深度
-  // 链，删空之后 `$from.node(-1)` 在深度 0 上抛 TypeError。它只该覆盖真能
-  // 走到那一步的形态。AllSelection 和零块都走不到：上游自己的
-  // `if (!state.selection.$from.depth) return false` 在删除行之前就把它们
-  // 拦回 false 了（深度 0），照抄那个答案才是「照上游契约」。
-  it('链内先删空再 splitBlock：不抛，文档留在零块', () => {
-    // 链内 splitBlock 看到的是链内文档（前一步已删空），探针必须读它而不是
-    // 链外快照——读错就把删空当没发生，落进上游的深度 0 TypeError。
-    const e = open('<p>aa</p>');
-    expect(() => {
-      e.chain()
-        .command(({ tr }) => {
-          tr.delete(0, tr.doc.content.size);
-          return true;
-        })
-        .splitBlock()
-        .run();
-    }).not.toThrow();
-    expect(e.state.doc.childCount).toBe(0);
-  });
-
-  it('零块文档上直接 splitBlock：返回 false、不抛', () => {
-    const e = open('');
-    expect(e.state.doc.childCount).toBe(0);
-    let ran: boolean | undefined;
-    expect(() => {
-      ran = e.commands.splitBlock();
-    }).not.toThrow();
-    expect(ran).toBe(false);
-    expect(e.state.doc.childCount).toBe(0);
-  });
-
-  it('全文档选区上直接 splitBlock：照上游答 false，内容不动', () => {
-    const e = open('<p>aa</p><p>bb</p>');
-    e.view.dispatch(e.state.tr.setSelection(new AllSelection(e.state.doc)));
-    expect(e.commands.splitBlock()).toBe(false);
-    expect(e.state.doc.childCount).toBe(2);
-    expect(e.state.doc.textContent).toBe('aabb');
-  });
-
-  it('唯一块的 TextSelection 全覆盖：删空后不抛（探针真正要防的那条）', () => {
-    const e = open('<p>aa</p>');
-    const { doc } = e.state;
-    e.view.dispatch(
-      e.state.tr.setSelection(
-        TextSelection.between(doc.resolve(1), doc.resolve(doc.content.size - 1)),
+  it('joins what is left when half of each of two items is taken', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'abcd' },
+      { type: 'bulletListItem', content: 'efgh' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.between(
+          view.state.doc.resolve(5),
+          view.state.doc.resolve(11),
+        ),
       ),
     );
+
     expect(() => {
-      press(e, 'Enter');
+      pressEnter(editor);
     }).not.toThrow();
+    // Both halves are items, the way they are when the caret does the same
+    // split with nothing selected. This used to leave a paragraph below the
+    // split: the list's own Enter declined the key over a selection, and what
+    // ran in its place opens the block type a schema opens by default.
+    expect(typesOf(editor)).toEqual(['bulletListItem', 'bulletListItem']);
+    expect(textsOf(editor)).toEqual(['ab', 'efgh']);
+  });
+
+  it('leaves two empty blocks when a paragraph and a list item are taken', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'aa' },
+      { type: 'bulletListItem', content: 'bb' },
+    ]);
+    selectTexts(editor, 0, 1);
+
+    expect(() => {
+      pressEnter(editor);
+    }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['', '']);
+  });
+
+  it('leaves two empty blocks when a quoted block and a paragraph are taken', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'aa', props: { quoted: true } },
+      { type: 'paragraph', content: 'bb' },
+    ]);
+    selectTexts(editor, 0, 1);
+
+    expect(() => {
+      pressEnter(editor);
+    }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['', '']);
+  });
+
+  it('splits the only block when all of its text is taken', () => {
+    const editor = open([{ type: 'paragraph', content: 'aa' }]);
+    selectTexts(editor, 0, 0);
+
+    expect(() => {
+      pressEnter(editor);
+    }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['', '']);
+  });
+
+  it('opens a block after the one selected whole, with the caret in it', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'aa' },
+      { type: 'paragraph', content: 'bb' },
+    ]);
+    selectBlock(editor, 0);
+
+    expect(() => {
+      pressEnter(editor);
+    }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['aa', '', 'bb']);
+    const { selection } = editor.prosemirrorState;
+    expect(selection.empty).toBe(true);
+    expect(selection.$from.parent.textContent).toBe('');
+  });
+
+  it('opens one after the only block, when that is what is selected', () => {
+    const editor = open([{ type: 'paragraph', content: 'aa' }]);
+    selectBlock(editor, 0);
+
+    expect(() => {
+      pressEnter(editor);
+    }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['aa', '']);
+  });
+
+  it('keeps the quote when the block selected whole is inside one', () => {
+    // The fourth way to reach a split inside a quote, alongside the three
+    // A7b names. The block Enter opens is built from the schema's defaults,
+    // and `quoted` defaults to false, so the run came back cut in two.
+    const editor = open([
+      { type: 'paragraph', props: { quoted: true }, content: 'q one' },
+      { type: 'paragraph', props: { quoted: true }, content: 'q two' },
+      { type: 'paragraph', props: { quoted: true }, content: 'q three' },
+    ]);
+    selectBlock(editor, 1);
+
+    pressEnter(editor);
+
+    const quoted = (
+      editor.document as unknown as { props: Record<string, unknown> }[]
+    ).map((block) => block.props['quoted']);
+    expect(quoted).toEqual([true, true, true, true]);
+  });
+
+  it('opens an unquoted block after an unquoted one selected whole', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'plain' },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    selectBlock(editor, 0);
+
+    pressEnter(editor);
+
+    const quoted = (
+      editor.document as unknown as { props: Record<string, unknown> }[]
+    ).map((block) => block.props['quoted']);
+    expect(quoted).toEqual([false, false, false]);
+  });
+
+  it('leaves a code block selected whole standing, and opens one after it', () => {
+    // The code block registers an Enter of its own, and that handler asks only
+    // what type the caret's block is — a node selection over the block reaches
+    // it and `insertText` replaces what is selected.
+    const editor = open([
+      { type: 'paragraph', content: 'para one' },
+      { type: 'codeBlock', content: 'answer = 42' },
+    ]);
+    selectBlock(editor, 1);
+
+    pressEnter(editor);
+
+    const types = (editor.document as unknown as { type: string }[]).map(
+      (block) => block.type,
+    );
+    expect(types).toEqual(['paragraph', 'codeBlock', 'paragraph']);
+    expect(editor.prosemirrorState.doc.textContent).toBe('para oneanswer = 42');
+  });
+
+  it('leaves what is indented under the block selected whole where it was', () => {
+    // A block's container holds both the block and anything indented under
+    // it, so the position after the CONTENT node is inside that container.
+    // Opening a block there splits the container: measured in a real browser
+    // before this, two top-level blocks became four and the indented block
+    // moved out from under its parent onto one of the new empty ones.
+    const editor = open([
+      { type: 'paragraph', content: 'parent', children: [{ type: 'paragraph', content: 'kid' }] },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    selectBlock(editor, 0);
+
+    pressEnter(editor);
+
+    const top = editor.document as unknown as {
+      children: readonly unknown[];
+    }[];
+    expect(top).toHaveLength(3);
+    // `kid` still under `parent`, and the block Enter opened holds nothing.
+    expect(top[0]?.children).toHaveLength(1);
+    expect(top[1]?.children).toHaveLength(0);
+    expect(top[2]?.children).toHaveLength(0);
+    expect(editor.prosemirrorState.doc.textContent).toBe('parentkidtail');
+  });
+
+  it('opens a block at the end when the whole document is selected', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'aa' },
+      { type: 'paragraph', content: 'bb' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(new AllSelection(view.state.doc)),
+    );
+
+    expect(() => {
+      pressEnter(editor);
+    }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['aa', 'bb', '']);
   });
 });
 
-describe('splitBlock 的删空探针只探上游自己会删的选区形态（实现对抗第 2 轮 #4）', () => {
-  it('唯一块的 NodeSelection：照上游契约返回 false、不删', () => {
-    // splitBlockAs 的删除行明写只删 TextSelection/AllSelection；对块级
-    // NodeSelection 它走独立分支（parentOffset 为 0 时返回 false）。探针
-    // 比上游删得宽，就会把上游的 no-op 变成整块删除。
-    const e = open('<p>only</p>');
-    e.view.dispatch(
-      e.state.tr.setSelection(NodeSelection.create(e.state.doc, 0)),
+describe('Enter on a selection the caret did not make', () => {
+  // Round 2 of the implementation adversary, reported by five reviewers
+  // independently. Dropping the `!selectionEmpty` guard let the list's Enter
+  // claim the key on selection kinds `document-enter.ts` answers for: a
+  // whole-document selection and a node selection each have their own handler
+  // there, and neither is reached once the block under the anchor is a list
+  // item.
+
+  it('appends a block on a whole-document selection, leaving the text', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'shopping list' },
+      { type: 'bulletListItem', content: 'milk' },
+      { type: 'paragraph', content: 'note' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(() => { pressEnter(editor); }).not.toThrow();
+    expect(textsOf(editor)).toEqual(['shopping list', 'milk', 'note', '']);
+  });
+
+  it('opens a block after a node-selected list item, leaving that item whole', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'aa' },
+      { type: 'paragraph', content: 'bb' },
+    ]);
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at === -1 && node.type.name === 'blockContainer') at = pos;
+      return at === -1;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+
+    expect(() => { pressEnter(editor); }).not.toThrow();
+    expect(typesOf(editor)).toEqual(['bulletListItem', 'paragraph', 'paragraph']);
+    expect(textsOf(editor)).toEqual(['aa', '', 'bb']);
+  });
+
+  it('replaces what is selected when the selection opens in an empty item', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: '' },
+      { type: 'paragraph', content: 'keep me' },
+    ]);
+    const view = editor.prosemirrorView!;
+    // From inside the empty item to the middle of the paragraph, the way a
+    // drag downwards makes it.
+    let from = -1;
+    let to = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'bulletListItem') from = pos + 1;
+      if (node.type.name === 'paragraph' && node.textContent === 'keep me') to = pos + 5;
+      return true;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.between(view.state.doc.resolve(from), view.state.doc.resolve(to)),
+      ),
     );
-    expect(e.commands.splitBlock()).toBe(false);
-    expect(e.state.doc.childCount).toBe(1);
-    expect(e.state.doc.textContent).toBe('only');
+
+    expect(() => { pressEnter(editor); }).not.toThrow();
+    // The run that was highlighted is gone, which is what Enter over a
+    // selection does everywhere else.
+    expect(textsOf(editor).join('|')).not.toContain('keep');
+  });
+});
+
+describe('Enter over a selected inline stand-in', () => {
+  it('leaves the line as it was and opens nothing after it', () => {
+    // Content another build wrote renders as a stand-in the reader can click,
+    // and a click on an inline atom selects it. That is a selection inside a
+    // line, so Enter means what it means inside a line — the branch that
+    // opens a block after the whole container answers a selected BLOCK.
+    const editor = open([{ type: 'paragraph', content: 'one two' }], [
+      documentFallbackExtension(),
+    ]);
+    const view = editor.prosemirrorView!;
+    const inline = view.state.schema.nodes['unsupportedInline']!;
+    const at = textblocks(view.state.doc)[0]!.start + 3;
+    view.dispatch(
+      view.state.tr.insert(at, inline.create({ originalName: 'newerInline' })),
+    );
+    view.dispatch(
+      view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)),
+    );
+
+    pressEnter(editor);
+
+    // Measured: nothing moves. The line keeps its text and its stand-in, and
+    // no block is opened after it — which is what the branch below was doing
+    // for every node selection, stray block and all.
+    const blocks = editor.document as unknown as { type: string }[];
+    expect(blocks).toHaveLength(1);
+    expect(editor.prosemirrorState.doc.textContent).toBe('one two');
+    let standIns = 0;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'unsupportedInline') standIns += 1;
+      return true;
+    });
+    expect(standIns, 'the stand-in is still there').toBe(1);
   });
 });

@@ -88,10 +88,10 @@ export function useDocumentEditor({
   // This hook used to seed an empty body with the one paragraph ProseMirror
   // insists on, behind two guards: only after the content had arrived, and
   // only from a client whose role allows writing. Both are gone with the seed
-  // itself — the document schema allows zero blocks (`content: 'block*'`), so
-  // an empty fragment is a legal resting state, not damage to repair.
-  // `@breatic/shared`'s `document-body` carries the invariant and why it
-  // belongs there.
+  // itself — a document Space is born carrying one block, written once by the
+  // server as the Space is created, and a create that cannot write it fails
+  // and cleans up. `@breatic/shared`'s `document-body` builds that block, so
+  // every writer of it agrees on the shape.
 
   // Get-or-create, so the repeat calls a re-render causes are free and a
   // StrictMode double-invoke cannot produce a second editor.
@@ -121,14 +121,14 @@ export function useDocumentEditor({
 
   // Editability flips without a rebuild — a role change or entering a history
   // preview must not discard the editor, its undo stack or its selection.
-  // The flip writes nothing to the shared document: the y-sync flush it used
-  // to trigger carried the phantom child ProseMirror fills in under a doc
-  // content rule with a mandatory first child, and `block*` demands nothing
-  // (#108; pinned in no-client-side-repair.test.ts).
+  // The flip writes nothing to the shared document. `doc` does demand a child
+  // (`content: "blockGroup"`), and over an empty fragment ProseMirror fills
+  // one in locally — what changed is that the flip no longer flushes it out
+  // (#108; pinned in no-client-side-repair.test.ts, which measures the bytes).
   React.useEffect(() => {
     const editor = handle?.editor;
-    if (!editor || editor.isDestroyed) return;
-    if (editor.isEditable !== editable) editor.setEditable(editable);
+    if (!editor) return;
+    if (editor.isEditable !== editable) editor.isEditable = editable;
   }, [handle, editable]);
 
   // Dim collaborators who have switched away, and tell them when we do.
