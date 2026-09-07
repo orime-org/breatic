@@ -24,17 +24,18 @@ import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
-import { downloadAndStore, getStorageAdapter, storageKey, sha256Hex } from "@breatic/core";
+import { getStorageAdapter } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { assetService } from "@breatic/domain";
 import { creditLotService, resolveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { settleTaskForNode } from "@breatic/domain";
+import { backendUploadService } from "@breatic/domain";
+import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { NotFoundError } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 
@@ -640,10 +641,6 @@ async function runTaskBody(
       userId,
       projectId,
       taskId,
-      // Node-bound (#1826 §0 rule 3): when the task targets canvas nodes, a
-      // PRIMARY output's register failure is fail-closed (→ Stage 2 markFailed),
-      // so a node is never pinned to an unregistered key.
-      nodeBound: nodeIds.length > 0,
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -1143,266 +1140,160 @@ export function mediaKindForActivity(
     : undefined;
 }
 
-/**
- * Register a just-persisted AI-generated asset into studio_assets
- * (within-studio dedup + cost link). Failure handling depends on
- * `opts.nodeBound` (#1826 §0 rule 3): a NODE-BOUND primary output re-throws
- * so the caller can fail the task (never pin a node to an unregistered key →
- * offline GC → 404); a non-node-bound / auxiliary register stays best-effort
- * (logs instead of failing, mirroring the activity-feed contract). No-op
- * without a project (e.g. agent attachments have no project scope).
- * @param opts - Persistence context.
- * @param opts.taskType - Generation task type (mapped to the asset kind).
- * @param opts.userId - Acting user, recorded as the asset's
- *   `produced_by_user_id`. Since #1839 it is NOT an attribution input — the
- *   owner studio is resolved from the project alone.
- * @param opts.projectId - Project scope; the call is a no-op when absent.
- * @param opts.taskId - Producing task id (asset cost link).
- * @param opts.nodeBound - Whether this output is pinned to a canvas node; when
- *   true a register failure re-throws (fail-closed), else it is swallowed.
- * @param key - Storage key of the stored object.
- * @param url - Public URL of the stored object.
- * @param contentHash - sha256 of the content (dedup key).
- * @param sizeBytes - Byte size (from the transfer / buffer).
- * @param mimeType - Content type.
- * @returns The REGISTERED row's canonical URL (`publicUrl(asset.storageKey)`)
- *   for the caller to pin, or `undefined` when nothing was registered (no
- *   project, or a swallowed non-node-bound failure) — in which case no node
- *   is pinned to it either.
- * @throws {Error} when `opts.nodeBound` is true and the registry write fails.
- */
-async function registerGeneratedAsset(
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string; nodeBound: boolean },
-  key: string,
-  url: string,
-  contentHash: string,
-  sizeBytes: number,
-  mimeType: string,
-): Promise<string | undefined> {
-  if (!opts.projectId) return undefined;
-  try {
-    const { asset, reclaimQueueFailed } = await assetService.register({
-      projectId: opts.projectId,
-      actingUserId: opts.userId,
-      contentHash,
-      storageKey: key,
-      fileUrl: url,
-      sizeBytes,
-      mimeType,
-      kind: taskTypeToAssetKind(opts.taskType),
-      source: "ai",
-      generationTaskId: opts.taskId,
-    });
-    if (reclaimQueueFailed === true) {
-      // Registration SUCCEEDED (this output deduped against an existing row);
-      // only the bookkeeping insert handing the now-redundant object to the
-      // offline reclaim job failed. The library layer may not log, so it
-      // returns a sentinel — swallowing it would leave the object silently
-      // absent from the offline work list.
-      logger.warn(
-        { taskId: opts.taskId, key, hash: contentHash },
-        "asset_reclaim_queue_failed",
-      );
-    }
-    // §0 rule 2 / §4.4: return the REGISTERED row's canonical. A within-studio
-    // dedup hit resolves to the WINNER's row, whose storage key differs from
-    // the one we just uploaded — that one then has no live row and no grant,
-    // i.e. an orphan the offline GC (§7) reclaims. Pinning it would 404.
-    const adapter = await getStorageAdapter();
-    return adapter.publicUrl(asset.storageKey);
-  } catch (err) {
-    // Node-bound fail-closed (#1826 §0 rule 3): a node's PRIMARY output must
-    // never be pinned to an UNREGISTERED key — re-throw so Stage 2 marks the
-    // task failed (NO charge, NO node emit), the same terminal path as a
-    // persist failure. Non-node-bound registers (auxiliary extras / no target
-    // node) stay best-effort — a warn keeps a billed-yet-untracked asset
-    // observable without failing the job.
-    if (opts.nodeBound) throw err;
-    if (err instanceof NotFoundError) {
-      // #2/#6 (adversarial): the owner studio could not be resolved. Since
-      // #1839 attribution reads the project alone, this has exactly one cause:
-      // the project is gone or soft-deleted (a legitimate race).
-      // Bytes are already stored + the task bills regardless (best-effort),
-      // so this must NOT fail the job. Emit a distinct, greppable event so a
-      // billed-yet-untracked asset stays observable — at WARN, not ERROR: a
-      // soft-delete race is expected, not a crash, so error level would only
-      // add alert noise. projectId rides in the context so reconciliation can
-      // find which project it was.
-      logger.warn(
-        { err, key, taskId: opts.taskId, userId: opts.userId, projectId: opts.projectId },
-        "asset_register_untracked (billed but not registered — no owner studio)",
-      );
-    } else {
-      logger.warn(
-        { err, key, taskId: opts.taskId },
-        "asset_register_failed (generation)",
-      );
-    }
-    // Swallowed (non-node-bound only): nothing registered → no canonical to
-    // pin. The caller keeps the upload URL; no node references it either.
-    return undefined;
-  }
-}
+/** The extension each task type's output is stored under. */
+const OUTPUT_EXTENSIONS: Record<string, string> = {
+  image: ".png",
+  video: ".mp4",
+  audio: ".mp3",
+  tts: ".mp3",
+  three_d: ".glb",
+  understand: ".json",
+};
 
 /**
- * Persist each output's URL / buffer to permanent storage, registering
- * each stored AI asset into studio_assets (within-studio dedup + cost
- * link). Mirrors the pre-refactor `persistResultUrls` but iterates
- * outputs.
- * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer
- * @param extras - Non-output result fields that may also carry re-hostable URLs
- * @param opts - Persistence context
- * @param opts.taskType - Task type, used to pick the storage extension and key prefix
- * @param opts.userId - User who owns / triggered the persisted assets
- * @param opts.projectId - Project the assets belong to, if any
- * @param opts.taskId - Producing task id (asset cost link)
- * @param opts.nodeBound - Whether the primary output is pinned to a canvas node;
- *   when true its register failure re-throws (fail-closed, #1826 §0 rule 3)
- * @returns The outputs with temp URLs / buffers replaced by permanent storage URLs
- * @throws {Error} when `opts.nodeBound` is true and a primary output fails to register
+ * What each task type's output is served as.
+ *
+ * The ticket has to declare this before a byte moves, so it comes off the task
+ * type rather than off whatever a provider's response happened to say — the
+ * same place the extension above comes from, which keeps the two agreeing.
+ */
+const OUTPUT_CONTENT_TYPES: Record<string, string> = {
+  image: "image/png",
+  video: "video/mp4",
+  audio: "audio/mpeg",
+  tts: "audio/mpeg",
+  three_d: "model/gltf-binary",
+  understand: "application/json",
+};
+
+/** Provider-level result fields that may carry a URL consumers read. */
+const EXTRA_URL_FIELDS = [
+  "result_url",
+  "audio_url",
+  "video_url",
+  "image_url",
+  "output_url",
+];
+
+/**
+ * Put every output of a generation into R2, through the ingest Worker.
+ *
+ * Which lane an output takes is decided by where its bytes are (#181 §2):
+ * a buffer a synchronous transport answered with is ours to send, while a
+ * provider's temporary link is handed to the Worker to pull — the bytes behind
+ * it never enter this process, because downloading and re-uploading them would
+ * move every one of them twice.
+ *
+ * A URL that is already ours takes neither lane: a local mini-tool's output
+ * has been through this once, and pulling our own object would store a second
+ * copy of it.
+ *
+ * What comes back on each lane is the registered row's canonical URL. On a
+ * within-studio dedup hit the ledger keeps an existing row whose key differs
+ * from the one just written, and that one is queued for offline reclaim —
+ * pinning it would 404 (storage rule ②).
+ * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer.
+ * @param extras - Non-output result fields that may also carry re-hostable URLs.
+ * @param opts - Persistence context.
+ * @param opts.taskType - Task type, which decides the key's segment and extension.
+ * @param opts.userId - User the stored assets are attributed to.
+ * @param opts.projectId - Project the assets belong to, if any.
+ * @param opts.taskId - Producing task id (asset cost link).
+ * @returns The outputs with temp URLs / buffers replaced by canonical storage URLs.
+ * @throws {Error} When an output could not be stored or registered. Registering
+ *   is not separable here: the report the Worker sends is what registers, so a
+ *   refusal comes back as the upload having failed (storage rule ③).
  */
 export async function persistOutputs(
   outputs: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>,
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string; nodeBound: boolean },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string },
 ): Promise<Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }>> {
-  const extMap: Record<string, string> = {
-    image: ".png",
-    video: ".mp4",
-    audio: ".mp3",
-    tts: ".mp3",
-    three_d: ".glb",
-    understand: ".json",
-  };
-  const ext = extMap[opts.taskType] ?? ".bin";
-  /**
-   * Build a fresh storage key for one persisted asset.
-   * @returns A unique tenant-neutral storage key (#1826, no user/project prefix)
-   */
-  const makeKey = (): string => storageKey({
-    taskType: opts.taskType,
-    ext,
-  });
-
   const persisted: Array<{ url?: string; cover_url?: string; extra?: Record<string, unknown> }> = [];
   const adapter = await getStorageAdapter();
+  const projectId = opts.projectId;
+
+  /**
+   * What this task's outputs are stored as.
+   * @param contentType - The type the producer declared, when it declared one.
+   * @returns The upload context for one of this task's outputs.
+   */
+  const uploadContext = (contentType?: string): BackendUploadContext => ({
+    projectId: projectId ?? "",
+    actingUserId: opts.userId,
+    assetSource: "ai",
+    generationTaskId: opts.taskId,
+    taskType: opts.taskType,
+    ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
+    contentType:
+      contentType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
+  });
 
   for (const out of outputs) {
     const next: { url?: string; cover_url?: string; extra?: Record<string, unknown> } = { ...out };
-
-    // Case 1: raw bytes from sync transports (sync provider calls).
-    // These live in extra.buffer / extra.contentType (normalized by
-    // toUnifiedOutputs) rather than a top-level field.
     const extra = next.extra ?? {};
-    if (Buffer.isBuffer((extra).buffer)) {
+
+    // Lane ②: raw bytes from a sync transport. They live in extra.buffer /
+    // extra.contentType, where `toUnifiedOutputs` put them.
+    if (Buffer.isBuffer(extra.buffer)) {
       try {
-        const key = makeKey();
-        const contentType = ((extra).contentType as string) ?? "application/octet-stream";
-        const buf = (extra).buffer;
-        const url = await adapter.upload(key, buf, contentType);
-        next.url = url;
-        logger.info({ key, size: buf.length }, "Persisted sync transport result");
-        // Reconcile to the REGISTERED canonical (§0 rule 2 / §4.4): on a
-        // within-studio dedup hit the registry keeps an EXISTING row whose key
-        // differs, leaving the key we just uploaded an orphan for the offline
-        // GC — pinning it would 404 once reclaimed.
-        const canonical = await registerGeneratedAsset(
-          opts,
-          key,
-          url,
-          sha256Hex(buf),
-          buf.length,
-          contentType,
+        const buf = extra.buffer;
+        const stored = await backendUploadService.uploadBytesToStorage(
+          buf,
+          uploadContext(extra.contentType as string | undefined),
         );
-        if (canonical !== undefined) next.url = canonical;
-      } catch (err) {
-        // #1580 adversarial fix: swallowing this left `next.url` undefined —
-        // Stage 3 then BILLED the task while Stage 4 silently skipped the
-        // url-less output (node stuck handling, no write-back, user charged
-        // for nothing). Rethrow so Stage 2's persist-failure path enforces
-        // the billing policy: persist failed = markFailed + NO charge +
-        // failure write-back. Unlike Case 2 below there is no usable
-        // fallback URL — the bytes only exist in this buffer.
-        delete (extra).buffer;
-        delete (extra).contentType;
-        throw err;
+        // No fallback: these bytes exist nowhere but this buffer, so an upload
+        // that produced no URL leaves nothing to pin. Stage 2 turns the throw
+        // into markFailed with no charge.
+        if (stored.fileUrl === undefined) {
+          throw new Error(`stored bytes for task ${opts.taskId} came back with no url`);
+        }
+        next.url = stored.fileUrl;
+        logger.info({ size: buf.length, url: stored.fileUrl }, "Persisted sync transport result");
+      } finally {
+        delete extra.buffer;
+        delete extra.contentType;
       }
-      delete (extra).buffer;
-      delete (extra).contentType;
     }
 
-    // Case 2: temporary EXTERNAL provider URL — re-host it to our storage.
-    // SKIPPED for any URL we already own (adapter.isOwnUrl): a Case-1 buffer
-    // output AND a local mini-tool handler both upload to our own bucket and
-    // return our own URL — re-downloading our own object would double-store
-    // and, post-#4 (no swallow), could fail the task on a transient read blip
-    // and discard an already-persisted deliverable (adversarial round-2 #A
-    // buffer path + round-3 local-handler URL path; the old `/uploads/`
-    // substring only recognized the local adapter, so S3/OSS URLs fell
-    // through). NOTE: local mini-tool outputs are our-own URLs, so they are
-    // no longer registered here — registering those cost-0 transformations
-    // needs the producer to thread the hash/size and is a deferred v1 gap
-    // (todo #1615); the pre-fix Case-2 path double-stored them anyway.
+    // Lane ③: a provider's temporary link. Anything already in our own bucket
+    // skips it — a local mini-tool's output is ours already, and pulling it
+    // would store a second copy (todo #1615 covers registering those).
     if (
       typeof next.url === "string" &&
       next.url.startsWith("http") &&
       !adapter.isOwnUrl(next.url)
     ) {
-      // #4 (adversarial): a PRIMARY-output re-host failure must fail the
-      // task (Stage 2 markFailed + NO charge), never swallow-and-keep the
-      // expiring provider URL while still billing. downloadAndStore
-      // throwing propagates to runTask's Stage-2 persist-failure path.
-      // registerGeneratedAsset itself re-throws for a NODE-BOUND output
-      // (#1826 §0 rule 3 fail-closed) and stays best-effort otherwise.
-      const key = makeKey();
-      const { url: permanentUrl, sha256, sizeBytes, contentType } =
-        await downloadAndStore(next.url, key);
+      const stored = await backendUploadService.transferUrlToStorage(next.url, uploadContext());
+      if (stored.fileUrl === undefined) {
+        throw new Error(`transfer for task ${opts.taskId} came back with no url`);
+      }
       if (!next.extra) next.extra = {};
       (next.extra).url_original = next.url;
-      next.url = permanentUrl;
-      // Reconcile to the REGISTERED canonical (§0 rule 2 / §4.4). This used to
-      // be deferred, justified by "reconciling to a sibling asset's fileUrl
-      // leaks cross-project identifiers" — that rationale died with the
-      // TENANT-NEUTRAL key ({taskType}/{date}/{ts}_{uuid}{ext} carries no user
-      // or project id, §2), and dedup is within-studio, i.e. inside the single
-      // ownership boundary. Not reconciling leaves the node pinned to an
-      // orphan the offline GC reclaims → 404.
-      const canonical = await registerGeneratedAsset(
-        opts,
-        key,
-        permanentUrl,
-        sha256,
-        sizeBytes,
-        contentType,
-      );
-      if (canonical !== undefined) next.url = canonical;
+      next.url = stored.fileUrl;
     }
 
     persisted.push(next);
   }
 
-  // Provider-level extras (non-output fields) may also carry URL
-  // fields used by consumers — re-host them the same way. Kept for
-  // parity with the pre-refactor behaviour that persisted e.g.
-  // `audio_url` / `image_url` on the result dict.
-  const urlFields = ["result_url", "audio_url", "video_url", "image_url", "output_url"];
-  for (const field of urlFields) {
+  // Provider-level extras (non-output fields) may also carry URLs consumers
+  // read. They take lane ③ too, and stay best-effort: none of them is what the
+  // node shows, so a failure keeps the provider's own link rather than failing
+  // a generation that produced its deliverable.
+  for (const field of EXTRA_URL_FIELDS) {
     const value = extras[field];
     if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.isOwnUrl(value)) continue; // already ours — don't re-host
+    if (adapter.isOwnUrl(value)) continue;
     try {
-      const key = makeKey();
-      const { url: permanentUrl, sha256, sizeBytes, contentType } =
-        await downloadAndStore(value, key);
-      extras[field] = permanentUrl;
-      extras[`${field}_original`] = value;
-      // Auxiliary extras stay best-effort (never node-bound) — a register error
-      // here warns, it does NOT fail the task (#1826 §0 rule 3).
-      await registerGeneratedAsset({ ...opts, nodeBound: false }, key, permanentUrl, sha256, sizeBytes, contentType);
+      const stored = await backendUploadService.transferUrlToStorage(value, uploadContext());
+      // The canonical, not the key just written: on a dedup hit that key lost
+      // and is queued for reclaim, so this field would name a 404 (storage
+      // rule ②).
+      if (stored.fileUrl !== undefined) {
+        extras[field] = stored.fileUrl;
+        extras[`${field}_original`] = value;
+      }
     } catch (err) {
-      // Extras are auxiliary (not the billed deliverable) — keep best-effort:
-      // a failed re-host of a secondary field falls back to the original URL
-      // and does NOT fail the task (unlike a primary output, hole #4).
       logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
     }
   }
