@@ -4,11 +4,13 @@
 import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
-import { useTranslation } from '@web/i18n/use-translation';
 
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
-import { ToolCallCard } from '@web/pages/project/chat/ToolCallCard';
+import { AssetRow } from '@web/pages/project/chat/AssetRow';
+import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
+import { TurnActions } from '@web/pages/project/chat/TurnActions';
+import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -41,8 +43,15 @@ export const MessageBubble = React.memo(function MessageBubble({
   message,
   consolidating,
 }: MessageBubbleProps): React.JSX.Element {
-  const t = useTranslation();
   const isUser = message.role === 'user';
+  // The newest call still running, which is the one the line names. Several
+  // can run at once -- nothing disables parallel tool calls -- and one line
+  // for the turn is what was settled; a stack of them is a log.
+  const runningCall = React.useMemo(
+    () => message.toolCalls?.filter((c) => c.status === 'pending').at(-1),
+    [message.toolCalls],
+  );
+  const running = message.streaming === true;
   return (
     <div
       data-testid='message-bubble'
@@ -54,7 +63,12 @@ export const MessageBubble = React.memo(function MessageBubble({
     >
       <div
         className={cn(
-          'text-sm',
+          // `group` covers the bubble and the line under it together: the
+          // pointer travelling from one to the other never leaves the thing
+          // that reveals the copy, so the copy does not go away as it is
+          // reached. It is as wide as the words in it, so hovering the blank
+          // beside a short message is not hovering the message.
+          'group flex flex-col text-sm',
           // Only what a person says gets a container. The agent is not one
           // side of a conversation -- it is the panel talking -- so its words
           // sit directly on the surface, with nothing drawn around them.
@@ -64,85 +78,72 @@ export const MessageBubble = React.memo(function MessageBubble({
           // `bg-accent` because it has to lift off the surface in both
           // themes, and it is the only neutral fill that does -- `bg-muted`
           // is a recess and goes darker than the surface in dark mode.
-          isUser
-            ? 'max-w-[80%] rounded-lg bg-accent px-3 py-2 text-foreground'
-            : 'w-full text-foreground',
+          isUser ? 'max-w-[80%] items-end text-foreground' : 'w-full text-foreground',
         )}
       >
-        {message.thinking ? (
-          <ThinkingFold thinking={message.thinking} />
-        ) : null}
-        {message.content || message.streaming ? (
-          <div data-testid='message-bubble-content'>
-            {/* What the reader typed means the characters they typed: markdown
+        {/* The reader's own words keep their container; the line under it is
+            outside that container, on the surface. */}
+        <div className={cn(isUser && 'rounded-lg bg-accent px-3 py-2')}>
+          {message.thinking ? (
+            <ThinkingFold
+              thinking={message.thinking}
+              {...(message.thinkingMs === undefined ? {} : { ms: message.thinkingMs })}
+              running={message.thinkingNow === true}
+            />
+          ) : null}
+          {message.content || message.streaming ? (
+            <div data-testid='message-bubble-content'>
+              {/* What the reader typed means the characters they typed: markdown
                 is what the model writes in, not what the composer accepts. */}
-            {isUser ? (
-              <span className='whitespace-pre-wrap'>{message.content}</span>
-            ) : null}
-            {!isUser && message.content ? (
-              <MarkdownMessage
-                content={message.content}
-                streaming={message.streaming === true}
-              />
-            ) : null}
-            {/* One mark for the whole turn, after everything said so far. It
+              {isUser ? (
+                <span className='whitespace-pre-wrap'>{message.content}</span>
+              ) : null}
+              {!isUser && message.content ? (
+                <MarkdownMessage
+                  content={message.content}
+                  streaming={message.streaming === true}
+                  {...(message.citations ? { citations: message.citations } : {})}
+                />
+              ) : null}
+              {/* One mark for the whole turn, after everything said so far. It
                 says the answer is still coming, which makes it this turn's
                 state rather than part of the answer — so it goes after the
                 rendering, and what the reply is made of never enters into it
                 (user 2026-08-25). The space between the two is in the
                 stylesheet, beside the mark's own figures. */}
-            {message.streaming ? <WaitingDot consolidating={consolidating} /> : null}
-          </div>
-        ) : null}
-        {message.toolCalls?.map((tc) => (
-          <ToolCallCard key={tc.id} toolCall={tc} />
-        ))}
-        {/* How the turn ended goes last, after everything it produced: this
+              {running && runningCall === undefined ? (
+                <WaitingDot consolidating={consolidating} />
+              ) : null}
+            </div>
+          ) : null}
+          {/* What the turn is doing, at the end of whatever it has said so far.
+            It is gone the moment the turn ends and nothing about it is
+            stored, so a reload shows the answer and no trace of how it was
+            assembled (A5). */}
+          {running && runningCall !== undefined ? <ToolRunLine call={runningCall} /> : null}
+          {/* What the turn found, before where it came from: these are the
+            thing itself, and the sources are the account of it. */}
+          {running || message.assets === undefined ? null : (
+            <AssetRow assets={message.assets} />
+          )}
+          {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
             separates any two blocks in this scope. */}
-        {message.interrupted ? (
-          // The backend stores this mark so a cut-off answer can be told apart
-          // from a complete one; without drawing it the whole chain is wasted.
-          <div
-            data-testid='message-bubble-interrupted'
-            className='mt-[0.85em] text-xs text-muted-foreground'
-          >
-            {t('chat.message.interrupted')}
-          </div>
-        ) : null}
-        {message.truncated ? (
-          // Its own line rather than the stop mark's: nobody stopped this
-          // reply and nothing about it failed. What ran out is the room one
-          // model call gets, and the reader's next move is to ask it to go on.
-          <div
-            data-testid='message-bubble-truncated'
-            className='mt-[0.85em] text-xs text-muted-foreground'
-          >
-            {t('chat.message.truncated')}
-          </div>
-        ) : null}
-        {message.failed ? (
-          // On the turn it belongs to rather than as a banner: what failed is
-          // this reply, and a bar at the top of the panel would say the whole
-          // conversation had. The wording is ours — what the server sends on
-          // this path is a hardcoded English sentence.
-          //
-          // Announced only when it just happened. Someone waiting on an answer
-          // has nothing else to go on: the reply stops growing and the stop
-          // button turns back into send, both of which can only be seen. But
-          // failure is also stored and comes back with the history, and an
-          // assertive region on those would read out every past failure in
-          // the conversation the moment the panel opens — so the mark that
-          // separates the two is what decides whether this one speaks.
-          <div
-            data-testid='message-bubble-error'
-            {...(message.failedJustNow ? { role: 'alert' } : {})}
-            className='mt-[0.85em] rounded-content-sm border border-status-error-border bg-status-error-bg px-2 py-1 text-xs text-status-error-foreground'
-          >
-            {t('chat.error.turnFailed')}
-          </div>
-        ) : null}
+          {isUser ? null : <TurnEnding message={message} />}
+        </div>
+        {/* Offered on a settled message only. A reply still arriving has
+            nothing to copy yet and asking for it again mid-flight would race
+            the turn that is running. Where the answer came from is on this
+            line too, so a turn that searched and said nothing still has one. */}
+        {running || (message.content === '' && message.sources === undefined) ? null : (
+          <TurnActions
+            text={message.content}
+            {...(isUser ? { own: true } : {})}
+            {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
+            {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}
+          />
+        )}
       </div>
     </div>
   );

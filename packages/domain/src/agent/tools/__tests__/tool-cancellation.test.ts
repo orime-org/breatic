@@ -44,9 +44,9 @@ type ExecuteFn = (...args: unknown[]) => unknown;
  * @returns Each registered tool's name and its `execute`.
  */
 function registeredTools(): Array<[string, ExecuteFn]> {
-  return Object.entries(TOOL_MAP).map(([name, tool]) => [
+  return Object.entries(TOOL_MAP).map(([name, build]) => [
     name,
-    (tool as { execute?: unknown }).execute as ExecuteFn,
+    (build() as { execute?: unknown }).execute as ExecuteFn,
   ]);
 }
 

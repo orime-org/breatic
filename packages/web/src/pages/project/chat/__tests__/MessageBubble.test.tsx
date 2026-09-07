@@ -82,7 +82,10 @@ describe('MessageBubble', () => {
     expect(screen.getByTestId('thinking-fold')).toBeInTheDocument();
   });
 
-  it('renders tool call cards', () => {
+  it('leaves a finished tool call off the reply entirely', () => {
+    // What a reader wants once a turn has ended is the answer, not a record
+    // of how it was assembled. The line that says what is running lives only
+    // while it runs, and it is pinned in turn-lines.test.tsx.
     setup({
       id: 'm1',
       role: 'assistant',
@@ -91,7 +94,8 @@ describe('MessageBubble', () => {
         { id: 't1', name: 'web_search', args: {}, status: 'success' },
       ],
     });
-    expect(screen.getByTestId('tool-call-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('tool-call-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tool-run-line')).not.toBeInTheDocument();
   });
 
   it('says so when the turn was stopped before it finished', () => {

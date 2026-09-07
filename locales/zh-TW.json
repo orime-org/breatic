@@ -191,7 +191,9 @@
       "interrupted": "已停止",
       "truncated": "已達長度上限",
       "waiting": "正在回覆",
-      "consolidating": "正在整理這則對話的記憶…"
+      "consolidating": "正在整理這則對話的記憶…",
+      "blocked": "等你回答",
+      "empty": "這一輪沒有回覆"
     },
     "tool": {
       "unfinished": "已停止",
@@ -199,7 +201,9 @@
         "upstream": "執行錯誤",
         "unreachable": "執行錯誤",
         "generic": "執行錯誤"
-      }
+      },
+      "searching": "正在搜尋「{query}」",
+      "running": "正在呼叫 {tool}"
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {
@@ -225,7 +229,27 @@
       "taskTodo": "未完成",
       "footnotes": "腳註",
       "backToReference": "回到引用 {index}"
-    }
+    },
+    "action": {
+      "copy": "複製",
+      "copied": "複製成功"
+    },
+    "sources": {
+      "count": "來源 {count, number}"
+    },
+    "code": {
+      "copy": "複製程式碼"
+    },
+    "backToLatest": {
+      "plain": "回到最新",
+      "withNew": "{count, plural, other {# 則新訊息}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "思考了一會兒",
+    "thinkingNow": "思考中",
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
   },
   "canvas": {
     "group": {
@@ -661,7 +685,8 @@
   },
   "common": {
     "cancel": "取消",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "clipboardError": "複製失敗"
   },
   "members": {
     "popover": {

@@ -5,6 +5,7 @@ import { ArrowUp, Loader2, Square, SquareMousePointer, Wand2 } from 'lucide-reac
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 
@@ -119,6 +120,27 @@ function ChatComposerInner({
   const t = useTranslation();
   const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating;
   const box = React.useRef<HTMLTextAreaElement>(null);
+
+  // The box takes exactly the height of what is written in it, and the
+  // wrapper below caps how much of that is on screen. Reset to `auto` first
+  // because `scrollHeight` on an element already given a height reports that
+  // height, so a box that has grown never shrinks again.
+  React.useLayoutEffect(() => {
+    const el = box.current;
+    if (el === null) return undefined;
+    /** Take the height of what is written, at the width there is. */
+    const fit = (): void => {
+      el.style.height = 'auto';
+      el.style.height = `${String(el.scrollHeight)}px`;
+    };
+    fit();
+    // The same words take a different number of lines at a different width,
+    // and the Agent column is draggable, so a height fixed at the old width
+    // leaves the reader's own sentence half hidden.
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [draft]);
   const atLimit = useAtLimitNotice(draft.length, CHAT_MESSAGE_MAX_CHARS);
 
   /**
@@ -169,59 +191,48 @@ function ChatComposerInner({
       data-testid='chat-composer'
       className='m-2.5 flex flex-col overflow-hidden rounded-md border border-border bg-card transition-colors focus-within:border-active-border'
     >
-      <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          aria-label={t('chat.composer.selectMode.label')}
-          title={t('chat.composer.selectMode.title')}
-          onClick={onToggleSelectMode}
-          data-testid='chat-composer-select-mode'
-          aria-pressed={selectMode}
-          className={`inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
-            selectMode
-              ? 'bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-          }`}
-        >
-          <SquareMousePointer className='h-4 w-4' />
-        </Button>
-        <div
-          className='flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5'
-          data-testid='chat-composer-chips'
-          role='list'
-          aria-label={t('chat.composer.chipsAria')}
-        >
-          {chips.map((chip) => (
-            <span
-              key={chip.id}
-              role='listitem'
-              className='inline-flex h-6 items-center gap-1 rounded-chrome border border-border bg-muted pl-2 pr-1 text-xs text-foreground'
-              data-testid={`chat-chip-${chip.id}`}
-            >
-              {chip.type ? (
-                <span className='text-2xs text-muted-foreground'>
-                  {chip.type}
-                </span>
-              ) : null}
-              <span className='truncate'>{chip.label}</span>
-              {onRemoveChip ? (
-                <Button
-                  type='button'
-                  variant={null}
-                  size={null}
-                  aria-label={`Remove ${chip.label}`}
-                  onClick={() => onRemoveChip(chip.id)}
-                  className='inline-flex h-4 w-4 items-center justify-center rounded-chrome text-xs leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
-                >
+      {/* Only what is being referenced, and only when something is. Holding a
+          control here is what made this a row that could never go away, and
+          an empty row at the top of the composer is a row of the
+          conversation the reader does not get. */}
+      {chips.length > 0 ? (
+        <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
+          <div
+            className='flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5'
+            data-testid='chat-composer-chips'
+            role='list'
+            aria-label={t('chat.composer.chipsAria')}
+          >
+            {chips.map((chip) => (
+              <span
+                key={chip.id}
+                role='listitem'
+                className='inline-flex h-6 items-center gap-1 rounded-chrome border border-border bg-muted pl-2 pr-1 text-xs text-foreground'
+                data-testid={`chat-chip-${chip.id}`}
+              >
+                {chip.type ? (
+                  <span className='text-2xs text-muted-foreground'>
+                    {chip.type}
+                  </span>
+                ) : null}
+                <span className='truncate'>{chip.label}</span>
+                {onRemoveChip ? (
+                  <Button
+                    type='button'
+                    variant={null}
+                    size={null}
+                    aria-label={`Remove ${chip.label}`}
+                    onClick={() => onRemoveChip(chip.id)}
+                    className='inline-flex h-4 w-4 items-center justify-center rounded-chrome text-xs leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
+                  >
                   ×
-                </Button>
-              ) : null}
-            </span>
-          ))}
+                  </Button>
+                ) : null}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       {atLimit.showing ? (
         // On the box's own top edge, where this panel puts everything it has
         // to say about the box below.
@@ -233,85 +244,118 @@ function ChatComposerInner({
           {t('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS })}
         </p>
       ) : null}
-      <textarea
-        ref={box}
-        value={draft}
-        // Nothing goes in between the press and the server answering. The box
-        // still shows what was sent, because this end cannot say it arrived --
-        // and a letter typed now would join that sentence with nothing to tell
-        // the two apart afterwards, which is the whole of why emptying it
-        // later ever needed a rule. Read-only rather than disabled: it keeps
-        // the keyboard the press handed it, and a disabled control loses that.
-        readOnly={turnPhase === 'sending' || navigating}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          // Typing Chinese, Japanese or Korean means pressing Enter to accept
-          // what the IME is offering, several times per sentence. The browser
-          // marks that keystroke as part of the composition, and that mark is
-          // the only thing separating it from the Enter that means "send" —
-          // both arrive as `key === 'Enter'` with no modifier. Without this
-          // check the first message a CJK reader ever sends is the raw
-          // keystrokes they were still choosing between.
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            submit();
-            return;
-          }
-          // A full box turns a letter away in silence: no `input` event, no
-          // change to show. Only a key that would have added one counts --
-          // `key.length === 1` is that key, a composition is still being
-          // chosen, a shortcut is not text, and a selection is about to be
-          // replaced rather than grown.
-          const b = box.current;
-          if (
-            draft.length >= CHAT_MESSAGE_MAX_CHARS &&
-            e.key.length === 1 &&
-            !e.nativeEvent.isComposing &&
-            !e.metaKey &&
-            !e.ctrlKey &&
-            !e.altKey &&
-            b !== null &&
-            b.selectionStart === b.selectionEnd
-          ) {
-            atLimit.sayAgain();
-          }
-        }}
-        // A paste into a full box is turned away the same way, and the browser
-        // cuts an oversized one down to the ceiling without a word either.
-        onPaste={() => {
-          if (draft.length >= CHAT_MESSAGE_MAX_CHARS) atLimit.sayAgain();
-        }}
-        placeholder={t('chat.composer.placeholder')}
-        // The browser owns the ceiling: it refuses the keystroke past it and
-        // cuts a paste down to it. The line on this box's top edge says the
-        // ceiling was reached, which is the part a reader cannot see for
-        // themselves — a box that has quietly stopped accepting text looks
-        // like one that is working.
-        maxLength={CHAT_MESSAGE_MAX_CHARS}
-        rows={3}
-        className='block max-h-[200px] min-h-[72px] w-full resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
-        aria-label={t('chat.composer.inputAria')}
-        {...(atLimit.showing ? { 'aria-describedby': CHAT_LIMIT_NOTICE_ID } : {})}
-        data-testid='chat-composer-textarea'
-      />
+      {/* Ten lines of writing, then it scrolls -- past that the conversation
+          would be the smaller half of the column. The scrolling is the
+          panel's own: a textarea left to scroll itself draws the browser's
+          scrollbar, which is a different shape in every engine. */}
+      <ScrollArea className='max-h-[210px]' viewportClassName='max-h-[210px]'>
+        <textarea
+          ref={box}
+          value={draft}
+          // Nothing goes in between the press and the server answering. The box
+          // still shows what was sent, because this end cannot say it arrived --
+          // and a letter typed now would join that sentence with nothing to tell
+          // the two apart afterwards, which is the whole of why emptying it
+          // later ever needed a rule. Read-only rather than disabled: it keeps
+          // the keyboard the press handed it, and a disabled control loses that.
+          readOnly={turnPhase === 'sending' || navigating}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            // Typing Chinese, Japanese or Korean means pressing Enter to accept
+            // what the IME is offering, several times per sentence. The browser
+            // marks that keystroke as part of the composition, and that mark is
+            // the only thing separating it from the Enter that means "send" —
+            // both arrive as `key === 'Enter'` with no modifier. Without this
+            // check the first message a CJK reader ever sends is the raw
+            // keystrokes they were still choosing between.
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              submit();
+              return;
+            }
+            // A full box turns a letter away in silence: no `input` event, no
+            // change to show. Only a key that would have added one counts --
+            // `key.length === 1` is that key, a composition is still being
+            // chosen, a shortcut is not text, and a selection is about to be
+            // replaced rather than grown.
+            const b = box.current;
+            if (
+              draft.length >= CHAT_MESSAGE_MAX_CHARS &&
+              e.key.length === 1 &&
+              !e.nativeEvent.isComposing &&
+              !e.metaKey &&
+              !e.ctrlKey &&
+              !e.altKey &&
+              b !== null &&
+              b.selectionStart === b.selectionEnd
+            ) {
+              atLimit.sayAgain();
+            }
+          }}
+          // A paste into a full box is turned away the same way, and the browser
+          // cuts an oversized one down to the ceiling without a word either.
+          onPaste={() => {
+            if (draft.length >= CHAT_MESSAGE_MAX_CHARS) atLimit.sayAgain();
+          }}
+          placeholder={t('chat.composer.placeholder')}
+          // The browser owns the ceiling: it refuses the keystroke past it and
+          // cuts a paste down to it. The line on this box's top edge says the
+          // ceiling was reached, which is the part a reader cannot see for
+          // themselves — a box that has quietly stopped accepting text looks
+          // like one that is working.
+          maxLength={CHAT_MESSAGE_MAX_CHARS}
+          rows={1}
+          // Starts on the one line it needs and grows with what is written, to
+          // ten. Past that the conversation would be the smaller half of the
+          // column, so the box scrolls instead -- the height is set from the
+          // content by the effect above, and the ceiling is the only figure
+          // the stylesheet decides.
+          className='block w-full resize-none overflow-hidden border-0 bg-transparent px-3 pb-1 pt-2.5 text-sm leading-normal text-foreground outline-none placeholder:text-muted-foreground'
+          aria-label={t('chat.composer.inputAria')}
+          {...(atLimit.showing ? { 'aria-describedby': CHAT_LIMIT_NOTICE_ID } : {})}
+          data-testid='chat-composer-textarea'
+        />
+      </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          aria-label={t('chat.composer.skill.label')}
-          title={t('chat.composer.skill.title')}
-          onClick={onPickSkill}
-          data-testid='chat-composer-skill'
-          className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-xs font-medium transition-colors ${
+        <div className='flex items-center gap-1.5'>
+          {/* Down here with the other controls rather than in the row above:
+            that row carries what is being referenced, and a control living in
+            it is what kept it on screen with nothing in it. */}
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            aria-label={t('chat.composer.selectMode.label')}
+            title={t('chat.composer.selectMode.title')}
+            onClick={onToggleSelectMode}
+            data-testid='chat-composer-select-mode'
+            aria-pressed={selectMode}
+            className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
+            selectMode
+              ? 'bg-foreground text-background'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          }`}
+          >
+            <SquareMousePointer className='h-4 w-4' />
+          </Button>
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            aria-label={t('chat.composer.skill.label')}
+            title={t('chat.composer.skill.title')}
+            onClick={onPickSkill}
+            data-testid='chat-composer-skill'
+            className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-xs font-medium transition-colors ${
             activeSkillLabel
               ? 'border-foreground bg-foreground text-background'
               : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
           }`}
-        >
-          <Wand2 className='h-4 w-4' />
-          <span>{activeSkillLabel ?? 'Skill'}</span>
-        </Button>
+          >
+            <Wand2 className='h-4 w-4' />
+            <span>{activeSkillLabel ?? 'Skill'}</span>
+          </Button>
+        </div>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
           // to stand here or the press reads as having done nothing -- but it

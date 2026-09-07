@@ -191,7 +191,9 @@
       "interrupted": "停止しました",
       "truncated": "長さの上限に達しました",
       "waiting": "応答中",
-      "consolidating": "この会話の記憶を整理しています…"
+      "consolidating": "この会話の記憶を整理しています…",
+      "blocked": "回答をお待ちしています",
+      "empty": "このターンの返信はありません"
     },
     "tool": {
       "unfinished": "停止しました",
@@ -199,7 +201,9 @@
         "upstream": "実行エラー",
         "unreachable": "実行エラー",
         "generic": "実行エラー"
-      }
+      },
+      "searching": "「{query}」を検索中",
+      "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -225,7 +229,27 @@
       "taskTodo": "未完了",
       "footnotes": "脚注",
       "backToReference": "参照 {index} に戻る"
-    }
+    },
+    "action": {
+      "copy": "コピー",
+      "copied": "コピーしました"
+    },
+    "sources": {
+      "count": "出典 {count, number}"
+    },
+    "code": {
+      "copy": "コードをコピー"
+    },
+    "backToLatest": {
+      "plain": "最新に戻る",
+      "withNew": "{count, plural, other {新着 # 件}}"
+    },
+    "assets": {
+      "more": "+{count, number}"
+    },
+    "thinking": "少し考えました",
+    "thinkingNow": "考え中",
+    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました"
   },
   "canvas": {
     "group": {
@@ -661,7 +685,8 @@
   },
   "common": {
     "cancel": "キャンセル",
-    "loading": "読み込み中..."
+    "loading": "読み込み中...",
+    "clipboardError": "コピーできませんでした"
   },
   "members": {
     "popover": {

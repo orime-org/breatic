@@ -16,7 +16,11 @@ import { useUIStore } from '@web/stores/ui';
 
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { OPEN_CONVERSATION_HISTORY_TESTID } from '@web/pages/project/chat/ConversationHistorySheet';
+import { chromeBarBox } from '@web/pages/project/chrome/bar-box';
 import { TitleEditable } from '@web/pages/project/chrome/top-bar/TitleEditable';
+
+/** Held still so the bar is not handed a fresh object on every render. */
+const BAR_BOX = chromeBarBox({ sides: 'var(--space-4)', gap: 'var(--space-2)' });
 
 interface AgentColHeaderProps {
   conversationName: string;
@@ -84,7 +88,7 @@ export function AgentColHeader({
         'flex shrink-0 items-center border-b border-border bg-background',
         active ? 'text-foreground' : 'text-muted-foreground',
       )}
-      style={{ height: 40, padding: '0 var(--space-4)', gap: 'var(--space-2)' }}
+      style={BAR_BOX}
     >
       <Tooltip>
         <TooltipTrigger asChild>

@@ -43,8 +43,17 @@ export * as assetRepo from "@domain/asset/asset.repo.js";
 // ── Agent (AIGC execution kernel: model / tools / skill loading / prompt extraction) ──
 export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
-export { buildToolSet, BASELINE_TOOLS, TOOLS_THAT_BLOCK } from "@domain/agent/tools/index.js";
+export {
+  buildToolSet,
+  BASELINE_TOOLS,
+  TOOLS_THAT_BLOCK,
+} from "@domain/agent/tools/index.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
+// The model's half of what `web_search` answers with. The panel reads the
+// structured object; the request assembler renders it, and only it knows how
+// many sources the turn has already numbered.
+export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
+export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { assertSkillUsable } from "@domain/agent/skill-gate.js";
 export {

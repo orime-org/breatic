@@ -20,10 +20,29 @@ import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY } from "@breatic/shared";
+import { renderSearchForModel } from "@breatic/domain";
+import type { SearchAnswer } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
+
+/**
+ * Tools whose answer is one thing to the panel and another to the model.
+ *
+ * A tool that answers with a structured object says here how that object
+ * reads as text. The knowledge belongs to the tool -- what keeps page text
+ * from writing markup of the tool's own is the tool's business -- and the
+ * count belongs here, because only something walking the whole history knows
+ * how many sources a turn has already shown.
+ *
+ * The SDK declares the same conversion on the tool itself, and both reach the
+ * same function. A source carries the number it was given when the search
+ * ran, so a replayed history reads exactly as the running turn did.
+ */
+const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
+  web_search: (output) => renderSearchForModel(output as SearchAnswer),
+};
 
 /**
  * Whether this use of a tool is one the model is shown.
@@ -49,12 +68,14 @@ export function reachesTheModel(part: ToolPart): boolean {
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
- * Which arm depends on what the tool answered with, and both arms are real:
- * a search tool answers with prose, and the four interaction tools answer
- * with the object the panel needs to draw the question. Putting an object in
- * the `text` arm fails validation, and it fails inside the stream -- nothing
- * reaches the screen and nothing says why, so a conversation goes quiet from
- * its first interaction tool onward.
+ * Which arm depends on what the tool answered with, and every arm is real.
+ * The interaction tools answer with the object the panel needs to draw the
+ * question, and it goes on whole. `web_search` answers with an object too,
+ * but the model is given a rendering of it -- putting the sources in front of
+ * it as JSON would leave it reading a field name where a page's text should
+ * be. Putting an object in the `text` arm fails validation, and it fails
+ * inside the stream -- nothing reaches the screen and nothing says why, so a
+ * conversation goes quiet from its first interaction tool onward.
  *
  * Only called for parts that ended. What goes is the model's half of the
  * detail, never the key the panel translates, and a sentence saying as much
@@ -70,7 +91,16 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
     // decided by this sentence.
     return { type: "error-text", value: part.failure?.forModel ?? NOTHING_SAID_WHY.forModel };
   }
+  // Ahead of the tool table, and that order is the whole point. `output` gets
+  // here in three shapes and only the first is what a tool just produced: a
+  // row stored before the structured output existed is a string, and so is
+  // the placeholder compaction leaves behind when a result no longer fits the
+  // window. A renderer reading `output.sources` off either of those throws
+  // while the request is being assembled -- so the turn never starts, which is
+  // what every long conversation would meet.
   if (typeof part.output === "string") return { type: "text", value: part.output };
+  const render = RENDER_FOR_MODEL[part.toolName];
+  if (render !== undefined) return { type: "text", value: render(part.output) };
   // Whatever the tool answered with, as it was stored. It came out of a
   // `JSON.stringify` on the way into the table, so it is JSON by
   // construction -- the cast says that rather than re-deriving it.

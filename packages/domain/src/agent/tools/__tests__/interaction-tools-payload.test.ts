@@ -17,6 +17,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { TOOL_MAP } from "@domain/agent/tools/index.js";
+import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import type { Tool } from "ai";
 
 /** What a tool's `execute` looks like once we stop caring about its types. */
@@ -84,7 +85,7 @@ const SENTINELS = [
  * @throws {Error} If the tool is not registered or has no `execute`.
  */
 async function run(name: string, input: Record<string, unknown>): Promise<unknown> {
-  const tool: Tool | undefined = TOOL_MAP[name];
+  const tool: Tool | undefined = TOOL_MAP[name]?.();
   const execute = (tool as { execute?: unknown } | undefined)?.execute as
     | ExecuteFn
     | undefined;
@@ -125,5 +126,35 @@ describe("the sentinel mechanism", () => {
     const tools = await import("@domain/agent/tools/index.js");
     const exported = Object.keys(tools).filter((key) => key.endsWith("_SENTINEL"));
     expect(exported).toEqual([]);
+  });
+});
+
+describe("what a video or audio result may carry beyond a thumbnail", () => {
+  it("takes a duration and hands it back", async () => {
+    // The panel prints it in the corner of the thumbnail. Without it a video
+    // and an image are the same square, and how long a clip runs is the one
+    // thing a still frame cannot show.
+    const execute = showSearchResults.execute;
+    if (execute === undefined) throw new Error("show_search_results has no execute");
+    const input = {
+      videos: [{ url: "https://v.example/1.mp4", title: "A clip", duration: "1:24" }],
+    };
+
+    const out = await execute(
+      (showSearchResults.inputSchema as unknown as { parse: (v: unknown) => unknown }).parse(
+        input,
+      ) as never,
+      { toolCallId: "t1", messages: [] } as never,
+    );
+
+    expect(out).toEqual(input);
+  });
+
+  it("takes a result with no duration, because the model often has none", async () => {
+    const parsed = (
+      showSearchResults.inputSchema as unknown as { parse: (v: unknown) => unknown }
+    ).parse({ images: [{ url: "https://i.example/1.png", title: "A picture" }] });
+
+    expect(parsed).toEqual({ images: [{ url: "https://i.example/1.png", title: "A picture" }] });
   });
 });

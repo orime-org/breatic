@@ -13,7 +13,11 @@ import { streamTextRetry } from "@breatic/domain";
 import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
-import { buildAgentConfig, finalizeTurn, TOOLS_THAT_BLOCK } from "@breatic/domain";
+import {
+  buildAgentConfig,
+  finalizeTurn,
+  TOOLS_THAT_BLOCK,
+} from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
@@ -202,6 +206,16 @@ export class MainAgent {
     // for either -- so a turn waiting on an answer and a turn that hit its
     // ceiling are indistinguishable from the outside.
     let askedTheUser = false;
+    /** Where the stretch of thinking now open began, if one is. */
+    let thinkingOpenedAt: number | undefined;
+    /** How long the turn has thought so far, summed over closed stretches. */
+    let thoughtForMs = 0;
+    /** Count the stretch now open, if one is, and leave none open. */
+    const closeThinking = (): void => {
+      if (thinkingOpenedAt === undefined) return;
+      thoughtForMs += Date.now() - thinkingOpenedAt;
+      thinkingOpenedAt = undefined;
+    };
 
     /**
      * Stop after a step that asked the reader something, and record that it
@@ -379,6 +393,18 @@ export class MainAgent {
         // stream within milliseconds, makes no further model call, and is
         // passed on to every tool the turn invokes.
         abortSignal: signal,
+        // How long the model thought, summed across the stretches it thought
+        // in. The provider says when each one opens and closes, so this is
+        // measured rather than inferred from what came after it -- the gap
+        // between a stretch ending and the next part starting is a tool call
+        // and a round trip, which is not thinking.
+        onChunk: ({ chunk }) => {
+          if (chunk.type === "reasoning-start") thinkingOpenedAt = Date.now();
+          else if (chunk.type === "reasoning-end" && thinkingOpenedAt !== undefined) {
+            thoughtForMs += Date.now() - thinkingOpenedAt;
+            thinkingOpenedAt = undefined;
+          }
+        },
         onStepFinish: ({ usage, content }) => {
           tokensUsed += usage?.totalTokens ?? 0;
           // The other way a call can fail, and the only place its reason is
@@ -431,6 +457,25 @@ export class MainAgent {
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
+          // Said here for the same reason: the panel draws a neutral line and
+          // no retry for a turn waiting on an answer, and it cannot work out
+          // that this is what happened. Which tools block is a list in
+          // `@breatic/domain`, and the web build may not import that package
+          // -- a copy of the list on the other side is a second thing that
+          // has to stay true as tools are added. The SDK turns the frame into
+          // a part of the reply, so storage and a reload get it too.
+          if (askedTheUser) {
+            writer.write({ type: "data-blocked", data: {} });
+          }
+          // Said on the wire for the same reason as the two above: the SDK
+          // turns the frame into a part of the reply, so the figure reaches
+          // the reader as the turn ends. A turn that never gets here -- one
+          // stopped mid-answer -- has the same figure written into its
+          // stored parts at the exit below, which runs however it ended.
+          closeThinking();
+          if (thoughtForMs > 0) {
+            writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
+          }
         },
       });
 
@@ -474,7 +519,21 @@ export class MainAgent {
               ? "blocked"
               : "completed";
 
+        // A stretch still open is one the turn broke off inside, and what it
+        // had thought so far is still how long it thought. Closed here rather
+        // than in the model stream's own end callback: `ai@7.0.68` closes an
+        // aborted stream from the reader's abort path
+        // (`dist/index.js:9355-9372`) and the callback that would have run
+        // instead fires from a flush that returns early with no steps
+        // recorded (`:9269-9277`), so a turn stopped during its first step --
+        // the stop button pressed while the first answer streams -- never
+        // reaches it. This exit runs however the turn ended.
+        closeThinking();
+
         const replyParts = toStoredParts(responseMessage.parts);
+        if (thoughtForMs > 0 && !replyParts.some((p) => p.type === "thinking-time")) {
+          replyParts.push({ type: "thinking-time", ms: thoughtForMs });
+        }
 
         // Both marks are recorded rather than left to be inferred: without
         // them a stopped turn and a failed one read back as a turn that

@@ -161,14 +161,15 @@ const carriesOn: ModelStreamPart[] = [
  */
 async function runTurn(
   perCall: ModelStreamPart[][],
-): Promise<{ modelCalls: number; exit: unknown }> {
+): Promise<{ modelCalls: number; exit: unknown; sent: string[] }> {
   modelSays.perCall = perCall;
   modelSays.calls = 0;
+  const sent: string[] = [];
 
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     const turn = await new MainAgent().chat("帮我看看");
-    for await (const _chunk of turn) {
-      // drained
+    for await (const chunk of turn) {
+      sent.push((chunk as { type: string }).type);
     }
   });
 
@@ -176,6 +177,7 @@ async function runTurn(
   return {
     modelCalls: modelSays.calls,
     exit: (line?.[0] as Record<string, unknown> | undefined)?.exit,
+    sent,
   };
 }
 
@@ -211,6 +213,22 @@ describe("a turn that asked the user something", () => {
     // 拿到第三次机会才会说的话,而它不该拿到。
     expect(modelCalls).toBe(2);
     expect(exit).toBe("blocked");
+  });
+
+  it("says on the wire that it is waiting, so the panel need not read the tool list", async () => {
+    // The panel draws a neutral line for this ending and no retry: it is not
+    // a fault. Which tools block is `TOOLS_THAT_BLOCK`, which lives in
+    // `@breatic/domain` -- a package the web build may not import. Telling it
+    // here is what keeps the list in one place instead of two.
+    const { sent } = await runTurn([asksFor("ask_user_question"), carriesOn]);
+
+    expect(sent).toContain("data-blocked");
+  });
+
+  it("says nothing of the sort on a turn that answered and stopped", async () => {
+    const { sent } = await runTurn([carriesOn]);
+
+    expect(sent).not.toContain("data-blocked");
   });
 
   it("says in the log that this is why it stopped", async () => {

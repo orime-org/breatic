@@ -31,17 +31,29 @@ import {
 
 describe("what a finished turn writes down", () => {
   it("carries a turn's ending back out the way it came in", () => {
-    // The three marks make the round trip on their own: a reload reads them
+    // The four marks make the round trip on their own: a reload reads them
     // out of storage and the panel draws from what `toUiParts` hands back,
     // so a mark that survives storage and not the way back is invisible.
     for (const [stored, wire] of [
       ["interrupted", "data-interrupted"],
       ["failed", "data-failed"],
       ["truncated", "data-truncated"],
+      ["blocked", "data-blocked"],
     ] as const) {
       expect(toUiParts([{ type: stored }])).toEqual([{ type: wire, data: {} }]);
       expect(toStoredParts([{ type: wire, data: {} }] as never)).toEqual([{ type: stored }]);
     }
+  });
+
+  it("carries how long the turn thought, both ways", () => {
+    // 时长跟那四个标记同一条通道：它是我们知道的关于这一轮的事，模型没有流过
+    // 它。走 data part 才能一次同时到实时流和存储，刷新之后读到的是同一个数。
+    expect(toUiParts([{ type: "thinking-time", ms: 6200 }])).toEqual([
+      { type: "data-thinking-time", data: { ms: 6200 } },
+    ]);
+    expect(toStoredParts([{ type: "data-thinking-time", data: { ms: 6200 } }] as never)).toEqual([
+      { type: "thinking-time", ms: 6200 },
+    ]);
   });
 
   it("keeps prose and reasoning as they came", () => {

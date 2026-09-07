@@ -43,6 +43,70 @@ export interface ToolCall {
    * acts on it, and the user learns what happened from the reply.
    */
   failureKey?: string;
+  /**
+   * The translation key for the sentence shown while this call runs.
+   *
+   * Declared by the tool, in the SDK's `metadata`, and carried here on the
+   * part. A table of tool names in this package instead would be a second
+   * list to keep true as tools are added, and the one they are declared in
+   * belongs to a package the web build may not import.
+   *
+   * Absent on a tool that declares none, and on every replayed call: the
+   * sentence only ever shows while a turn runs.
+   */
+  runningLine?: string;
+}
+
+/**
+ * One page a turn's search found.
+ *
+ * The page's own text is not here. It goes to the model, which is what reads
+ * it; the panel shows where a claim came from, and a wall of scraped prose
+ * under an answer is not that.
+ */
+export interface ChatSource {
+  /** Where the page is. Opened in a new tab when the chip is clicked. */
+  url: string;
+  /** What the page calls itself. The main line of a row in the box, and of the card. */
+  title: string;
+  /** Who published it. Shown in the card that floats on a marker, and nowhere else. */
+  publisher: string;
+  /**
+   * Every number this page was handed in the turn.
+   *
+   * Decided when the search ran, so a `[N]` in the prose resolves to the page
+   * the model meant however many searches the turn made.
+   *
+   * A turn that searches twice hands the same page a fresh number each time,
+   * and the prose can carry either of them. The list at the foot is one line
+   * per page, so that line has to answer to all of them -- a marker whose
+   * number is nowhere in the list is a marker the list cannot be used to
+   * follow up.
+   */
+  indexes: number[];
+}
+
+/**
+ * One thing a turn found that has a face: a picture, a clip, or a track.
+ *
+ * Plain links are not among them. They belong in a row of squares only if
+ * there is something to put in the square, and a web page has nothing.
+ */
+export interface ChatAsset {
+  /** Which of the three it is, which decides what the square holds. */
+  kind: 'image' | 'video' | 'audio';
+  /** Where it is. */
+  url: string;
+  /** What to call it. */
+  title: string;
+  /**
+   * How long it runs, as it should read.
+   *
+   * Only a clip or a track has one, and only when the model gave it. A still
+   * frame cannot say how long a video is, so without this a clip and a
+   * picture are the same square.
+   */
+  duration?: string;
 }
 
 export interface ChatMessage {
@@ -58,8 +122,26 @@ export interface ChatMessage {
    * to a markdown renderer with raw HTML enabled counts.
    */
   content: string;
+  /**
+   * When the message was written down, as an absolute instant.
+   *
+   * The server's own clock, ISO-formatted, so the panel can say it in the
+   * reader's day. A message this reader has only just sent has none until the
+   * conversation comes back with it.
+   */
+  sentAt?: string;
   /** Optional hidden chain-of-thought, foldable in the UI. */
   thinking?: string;
+  /** How long the turn thought, in milliseconds. Measured by the server. */
+  thinkingMs?: number;
+  /**
+   * Whether the thinking itself is still going.
+   *
+   * Read off the reasoning rather than off the turn: how long it took is only
+   * sent when the turn ends, so a line that watches the turn goes on saying
+   * "thinking" through the whole answer.
+   */
+  thinkingNow?: boolean;
   toolCalls?: ToolCall[];
   /** Streaming = the bubble is still receiving tokens. */
   streaming?: boolean;
@@ -103,4 +185,43 @@ export interface ChatMessage {
    * Only ever `true`; its absence is the ordinary case.
    */
   failedJustNow?: true;
+  /**
+   * The model asked something and stopped to wait for the answer.
+   *
+   * Read off the mark the server writes, never off the tool names: which
+   * tools block is a list in `@breatic/domain`, which this package may not
+   * import. Without it this ending is an empty reply, which is also what a
+   * turn that produced nothing looks like -- and that one is drawn as a
+   * failure with a retry.
+   *
+   * Only ever `true`; its absence is the ordinary case.
+   */
+  blocked?: true;
+  /**
+   * Every page this turn's searches found, each one once.
+   *
+   * Pooled across the turn's searches rather than grouped by search: a reader
+   * scanning where an answer came from wants each publisher once, and only a
+   * pooled list can drop the pages two searches both returned. Ordered by
+   * first appearance.
+   *
+   * Absent, rather than empty, on a turn that searched for nothing.
+   */
+  sources?: ChatSource[];
+  /**
+   * What a `[N]` in the prose points at.
+   *
+   * Numbered the way the model was shown them -- one number per source per
+   * search, duplicates kept -- because the model wrote its markers against
+   * that sequence. {@link ChatMessage.sources} is the deduplicated list for
+   * the row, and renumbering to match it would move every marker after the
+   * first repeat.
+   */
+  citations?: Record<number, ChatSource>;
+  /**
+   * The pictures, clips and tracks this turn put in front of the reader.
+   *
+   * Absent, rather than empty, on a turn that found none.
+   */
+  assets?: ChatAsset[];
 }

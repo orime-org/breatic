@@ -89,6 +89,15 @@ export type MessagePart =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   /**
+   * How long this turn spent thinking, in milliseconds.
+   *
+   * A fact about the turn rather than something the model streamed, so it
+   * travels the way the four marks below do. One figure for the turn: the
+   * reader is shown one fold, and the model may think in several stretches
+   * with tool calls between them, which is the sum this holds.
+   */
+  | { type: "thinking-time"; ms: number }
+  /**
    * One use of one tool, from the call to whatever came back.
    *
    * A call and its result are one thing that happened, so they are one part
@@ -182,7 +191,17 @@ export type MessagePart =
    *
    * A part for the same reason the other two are.
    */
-  | { type: "truncated" };
+  | { type: "truncated" }
+  /**
+   * The model asked the reader something and stopped to wait for the answer.
+   *
+   * Not a way a turn goes wrong -- it is a turn doing what it was asked to,
+   * and a reader offered a retry would be offered a way out of nothing. It is
+   * a part rather than something read back off the tool names because the
+   * list of tools that block lives in `@breatic/domain`, which the panel may
+   * not import; a second copy of that list is a second thing to keep true.
+   */
+  | { type: "blocked" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.
@@ -216,6 +235,8 @@ export interface MessageData {
   turnIndex: number;
   /** The `reasoning` parts joined. Never sent back to the model. */
   thinking?: string;
+  /** How long the turn spent thinking, in milliseconds. Absent when it did not. */
+  thinkingMs?: number;
   /**
    * The turn was stopped before it finished, so `content` is as far as it got.
    *

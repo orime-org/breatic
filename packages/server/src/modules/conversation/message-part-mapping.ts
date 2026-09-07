@@ -36,6 +36,12 @@ const FAILED = "data-failed";
 /** The data part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = "data-truncated";
 
+/** The data part type carrying a turn that stopped to wait for an answer. */
+const BLOCKED = "data-blocked";
+
+/** How long the turn thought, as the wire names it. */
+const THINKING_TIME = "data-thinking-time";
+
 /**
  * How far a tool got, from the state the SDK last reported.
  * @param state - The tool part's state.
@@ -120,6 +126,13 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
     else if (part.type === FAILED) stored.push({ type: "failed" });
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
+    else if (part.type === BLOCKED) stored.push({ type: "blocked" });
+    else if (part.type === THINKING_TIME) {
+      const ms = (part as { data?: { ms?: unknown } }).data?.ms;
+      if (typeof ms === "number" && Number.isFinite(ms) && ms >= 0) {
+        stored.push({ type: "thinking-time", ms });
+      }
+    }
     // Anything else the protocol carries -- step boundaries, sources, the
     // beat -- is about the exchange rather than the message, and the message
     // is what this stores.
@@ -139,6 +152,8 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     if (part.type === "interrupted") return { type: INTERRUPTED, data: {} };
     if (part.type === "failed") return { type: FAILED, data: {} };
     if (part.type === "truncated") return { type: TRUNCATED, data: {} };
+    if (part.type === "blocked") return { type: BLOCKED, data: {} };
+    if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
 
 
     const base = {
