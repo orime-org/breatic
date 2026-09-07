@@ -185,37 +185,50 @@ export async function fetchUrlToIngest(
   target: IngestTarget,
   secret: string,
 ): Promise<IngestOutcome> {
-  return askWorker<IngestOutcome>(`${target.uploadUrl}/fetch`, {
-    method: "POST",
-    headers: {
-      "x-upload-ticket": target.ticket,
-      "x-ingest-secret": secret,
-      "content-type": "application/json",
+  return askWorker<IngestOutcome>(
+    `${target.uploadUrl}/fetch`,
+    {
+      method: "POST",
+      headers: {
+        "x-upload-ticket": target.ticket,
+        "x-ingest-secret": secret,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ url: sourceUrl }),
     },
-    body: JSON.stringify({ url: sourceUrl }),
-  });
+    // Sending this again is a second full transfer: the Worker opens its own
+    // multipart upload each time it runs, so a repeat re-fetches the source,
+    // writes R2 a second time, and brings an upload id the permission to
+    // finish this key was not granted to.
+    { replaySafe: false },
+  );
 }
 
 /**
  * Send one request to the Worker and read what it answered.
  *
- * The endpoints differ only in where they point, what they carry and how
- * long one delivery may take; everything else — replaying is safe, and a
- * non-2xx is the Worker's refusal rather than weather — is the same for all
- * of them. They all answer flat, so what comes back is read directly.
+ * The endpoints differ in where they point, what they carry, how long one
+ * delivery may take, and whether sending it again costs anything; a non-2xx
+ * being the Worker's refusal rather than weather is the same for all of them.
+ * They all answer flat, so what comes back is read directly.
  * @param url - The endpoint.
  * @param init - Method, headers and body.
- * @param timeoutMs - One delivery's deadline; the transport's default when absent.
+ * @param options - What only the caller knows about this delivery.
+ * @param options.timeoutMs - One delivery's deadline; the transport's default when absent.
+ * @param options.replaySafe - Whether sending this again produces no second
+ *   side effect. True for the three endpoints the browser drives: they carry
+ *   the upload id it already holds, so a repeat writes the same part under the
+ *   same number or is refused by R2 rather than written twice.
  * @returns The parsed answer.
  * @throws {UploadHttpError} When the Worker refuses.
  */
 async function askWorker<T>(
   url: string,
   init: RequestInit,
-  timeoutMs?: number,
+  { timeoutMs, replaySafe = true }: { timeoutMs?: number; replaySafe?: boolean } = {},
 ): Promise<T> {
   const res = await httpRequest(url, init, {
-    replaySafe: true,
+    replaySafe,
     ...(timeoutMs !== undefined && { timeoutMs }),
   });
   if (!res.ok) throw new UploadHttpError(res.status);
@@ -236,7 +249,7 @@ async function openUpload(
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,
     { method: "POST", headers: { "x-upload-ticket": target.ticket } },
-    cfg.clientRequestTimeoutMs,
+    { timeoutMs: cfg.clientRequestTimeoutMs },
   );
 }
 
@@ -265,7 +278,7 @@ async function sendPart(
     // The deadline is a stall guard sized to this part, not to the file: a
     // part that is transferring at all must not be cut off, and a part that
     // has stopped should not hold the upload for the whole file's budget.
-    computePutTimeoutMs(bytes.size, cfg),
+    { timeoutMs: computePutTimeoutMs(bytes.size, cfg) },
   );
 }
 
