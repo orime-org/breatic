@@ -45,6 +45,16 @@ export type AudioParamControl =
      * the vendor describes exactly three points on that scale.
      */
     stops?: readonly { value: number; labelKey: string }[];
+  }
+  | {
+    name: string;
+    labelKey: string;
+    /**
+     * On or off — the model states a boolean default and nothing to move
+     * through. A list of stops and a range both describe a quantity; this one
+     * describes a decision, and the two existing kinds cannot carry it.
+     */
+    kind: 'toggle';
   };
 
 /** The app's translator, as `useTranslation` hands it over. */
@@ -53,16 +63,41 @@ type Translate = (
   params?: Record<string, string | number | Date>,
 ) => string;
 
-/** How one parameter is named and read, for the params this panel shows. */
-interface AudioParamSpec {
+/**
+ * How one parameter is named and read, for the params this panel shows.
+ *
+ * Two shapes, because a value is either a quantity or a state. A quantity
+ * renders in its own unit; a state renders as its own name, since a switch has
+ * no value beside itself — the switch IS the value. Splitting them is what
+ * lets each entry state exactly one of the two.
+ */
+type AudioParamSpec = {
   labelKey: string;
-  /** Renders a value for display — the unit belongs to the number. */
-  format: (value: number, t: Translate) => string;
-  /** Named positions on this param's scale, ascending. */
-  stops?: readonly { value: number; labelKey: string }[];
-}
+} & (
+  | {
+      /** Renders a value for display — the unit belongs to the number. */
+      format: (value: number, t: Translate) => string;
+      /** Named positions on this param's scale, ascending. */
+      stops?: readonly { value: number; labelKey: string }[];
+    }
+  | {
+      /** What each state of a switch is called. */
+      stateKeys: { readonly on: string; readonly off: string };
+    }
+);
 
-const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
+/** The param a music model states for "no vocals at all" (#1960). */
+export const INSTRUMENTAL_PARAM = 'is_instrumental';
+
+/**
+ * Every param this panel knows how to draw, by the name a model declares.
+ *
+ * Exported so the catalog test can walk it: each entry carries the
+ * translation keys the panel prints, and a hand-written list of them in the
+ * test would not grow with a param added here — the panel would print the raw
+ * key at whichever locale forgot it, with nothing failing to compile.
+ */
+export const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   stability: {
     labelKey: 'canvas.generatePanel.voiceStability',
     format: (v) => v.toFixed(2),
@@ -89,6 +124,20 @@ const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
     labelKey: 'canvas.generatePanel.voiceVolume',
     // Decibels — a unit symbol, not a word to translate.
     format: (v) => `${v > 0 ? '+' : ''}${v} dB`,
+  },
+  [INSTRUMENTAL_PARAM]: {
+    // Not `musicInstrumental` — that key names the backing-track slot. This
+    // switch says "no vocals at all", which is a different sentence.
+    labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
+    // Both states named, because the pill prints this the way it prints every
+    // other param: the current value. The one model declaring this param
+    // declares nothing else the panel can show, so this string is the whole
+    // pill face — and a face reading "Instrumental only" while the switch is
+    // off states the opposite of the truth.
+    stateKeys: {
+      on: 'canvas.generatePanel.musicInstrumentalOnly',
+      off: 'canvas.generatePanel.musicWithVocals',
+    },
   },
   duration: {
     labelKey: 'canvas.generatePanel.sfxDuration',
@@ -128,6 +177,12 @@ function controlFor(
       ? { name, labelKey: spec.labelKey, kind: 'choice', options }
       : null;
   }
+  // A boolean default with nothing to move through is a switch. Asked after
+  // `values`, which keeps the precedence the whole table follows: a model
+  // stating a list means the list, whatever its default happens to be.
+  if (typeof descriptor.default === 'boolean') {
+    return { name, labelKey: spec.labelKey, kind: 'toggle' };
+  }
   const { min, max, step } = descriptor;
   if (typeof min !== 'number' || typeof max !== 'number' || typeof step !== 'number') {
     return null;
@@ -145,7 +200,7 @@ function controlFor(
     min,
     max,
     step,
-    ...(spec.stops ? { stops: spec.stops } : {}),
+    ...('stops' in spec && spec.stops ? { stops: spec.stops } : {}),
   };
 }
 
@@ -169,16 +224,43 @@ export function audioParamControls(model: ModelEntry): AudioParamControl[] {
 }
 
 /**
+ * Whether a switch is on: what the node holds, else the model's own default.
+ *
+ * Two readers since #1960 — the params popover draws the switch from it, and
+ * the execute gate asks whether the track is marked instrumental, because the
+ * gateway lifts its lyrics requirement when it is. One copy, so the switch on
+ * screen and the condition the gate judges can never disagree.
+ * @param model - The active model.
+ * @param name - The param name.
+ * @param held - What the node holds for it, if anything.
+ * @returns True when the switch is on; false when it is off or unstated.
+ */
+export function audioFlagValue(
+  model: ModelEntry | undefined,
+  name: string,
+  held: unknown,
+): boolean {
+  if (typeof held === 'boolean') return held;
+  return model?.params?.[name]?.default === true;
+}
+
+/**
  * A value as the user reads it, in that parameter's own unit.
  * @param name - The catalog param name.
- * @param value - The current value.
+ * @param value - The current value; a boolean for a switch.
  * @param t - The app's translator, for units that are words in some locale.
- * @returns The display string; the bare number when the param is unknown.
+ * @returns The display string; the bare value when the param is unknown.
  */
 export function formatAudioParam(
   name: string,
-  value: number,
+  value: number | boolean,
   t: Translate,
 ): string {
-  return PARAMS[name]?.format(value, t) ?? String(value);
+  const spec = PARAMS[name];
+  if (typeof value === 'boolean') {
+    return spec && 'stateKeys' in spec
+      ? t(value ? spec.stateKeys.on : spec.stateKeys.off)
+      : String(value);
+  }
+  return spec && 'format' in spec ? spec.format(value, t) : String(value);
 }

@@ -13,6 +13,7 @@ import type {
 import {
   SlotTool,
   ToggleTool,
+  ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
 
 interface AudioGenerateToolbarProps {
@@ -25,10 +26,10 @@ interface AudioGenerateToolbarProps {
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: AudioSlotUrls;
   /**
-   * What to PAINT for each pick. A slot missing from here is not empty: it
-   * covers itself with the asset node's icon instead (#1946), which is what
-   * every audio pick does — an audio node carries no poster. Fullness is
-   * `slotUrls`, never this.
+   * What to PAINT for each pick. A slot missing from here is not empty: with
+   * nothing to paint the button keeps its own icon and label and lights its
+   * border (#1946, user 2026-09-06), which is what every audio pick does — an
+   * audio node carries no poster. Fullness is `slotUrls`, never this.
    */
   slotThumbnails: AudioSlotUrls;
   /** The slot whose pick is running, if any — highlights that one control. */
@@ -46,15 +47,18 @@ interface AudioGenerateToolbarProps {
  * Reference is present in every mode, and that is what an audio node's edges
  * allow: `audio` takes only `text` (`lib/connection-rules.ts:30`), and a text
  * row IS prompt material (`ReferenceRail.tsx:66`). So the entry is here for the
- * same reason the edge is — a line already written on the canvas becomes the
- * lines to speak without being typed again — and that holds whichever model is
- * selected. Focus crops a region of an IMAGE and Style holds a picked image;
+ * same reason the edge is — a line already written on the canvas reaches the
+ * prompt box without being typed again — and that holds under every mode, even
+ * though what that box asks for differs: lines to speak under the speech modes,
+ * a style brief under the music ones. Focus crops a region of an IMAGE and
+ * Style holds a picked image;
  * both would collect something this panel can never send.
  *
  * The slots come from the mode, so text to speech shows none and voice cloning shows
- * the recording to clone (#1960 PR2). Which modes collect what is not decided
- * here: the container reads it off the catalog's `sourcesByMode`, the same
- * field the server's own gate reads before enqueueing.
+ * the recording to clone (#1960 PR2). Which modes collect what is stated on the
+ * mode itself (`audio-mode-options.ts`), not derived from the model:
+ * reference-to-music offers three, and the catalogue's per-mode source flag
+ * says only that the mode needs audio — it cannot tell the three apart.
  *
  * Built from the same {@link ToggleTool} and {@link SlotTool} the image and
  * video rows are, so the three rows cannot drift in look or in behaviour.
@@ -93,6 +97,7 @@ export const AudioGenerateToolbar = React.memo(function AudioGenerateToolbar({
         onClick={onReference}
         active={referenceActive}
       />
+      {slots.length > 0 && <ToolRowDivider testId='generate-audio-tool-sep' />}
       {slots.map((slot) => {
         const spec = AUDIO_SLOTS[slot];
         const url = slotUrls[slot];

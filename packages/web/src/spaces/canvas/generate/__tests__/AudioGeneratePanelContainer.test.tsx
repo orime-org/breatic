@@ -47,7 +47,10 @@ import { t } from '@breatic/shared';
 
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import {
+  addEdge,
   addNode,
+  ensureTextBody,
+  getLyricsFragment,
   getPromptFragment,
   nodeDataMap,
   readCanvasGraph,
@@ -138,6 +141,38 @@ const SFX: ModelEntry = {
   rate: { credits: 1, per: 5, unit: 'seconds' },
 };
 
+/** Text to music, as `config/models/audio/minimax.yaml` declares it (#1960). */
+const T2M: ModelEntry = {
+  ...ELEVEN,
+  name: 'minimax-music-3.0',
+  display_name: 'MiniMax Music 3.0',
+  modality: 'audio',
+  mode: 't2m',
+  params: {
+    lyrics: { description: '', default: null },
+    is_instrumental: { description: '', default: false },
+  },
+  sourcesByMode: { t2m: [] },
+  cost_per_call: 15,
+  rate: undefined,
+};
+
+/** Reference to music: three audio slots, and lyrics the gateway insists on. */
+const A2M: ModelEntry = {
+  ...T2M,
+  name: 'minimax-music-01',
+  display_name: 'MiniMax Music 01',
+  mode: 'a2m',
+  params: {
+    lyrics: { description: '', default: null },
+    song: { description: '', default: null },
+    voice: { description: '', default: null },
+    instrumental: { description: '', default: null },
+  },
+  sourcesByMode: { a2m: ['audio'] },
+  cost_per_call: 35,
+};
+
 /**
  * A catalog holding both tts models — the two buckets this panel reads.
  * @returns A model catalog.
@@ -148,7 +183,7 @@ function catalog(): ModelCatalog {
     video: [],
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
-    audio: [SFX],
+    audio: [SFX, T2M, A2M],
     tts: [ELEVEN, FISH, CLONE],
     three_d: [],
     understand: [],
@@ -191,15 +226,106 @@ function seedAudioNode(over: Record<string, unknown> = {}): void {
 }
 
 /**
- * Writes a prompt into the seeded node's fragment — what typing produces.
- * @param text - The lines to speak.
+ * Writes lines into one of the node's fragments — what typing produces.
+ *
+ * One paragraph per line, because that is the only document the editor can
+ * make: its schema is Document / Paragraph / Text with no hard break, so Enter
+ * splits a block and nothing else creates a line. A single paragraph holding a
+ * raw newline reads back through `getText` verbatim, which would make an
+ * assertion about line shape pass against any serializer at all.
+ * @param fragment - The fragment to write into.
+ * @param lines - The lines, in order.
  */
-function typePrompt(text: string): void {
-  const fragment = getPromptFragment('p', 's', 'target');
+function typeInto(fragment: Y.XmlFragment | null, lines: string[]): void {
+  if (!fragment) throw new Error('seedAudioNode must run first');
+  fragment.insert(
+    0,
+    lines.map((line) => {
+      const paragraph = new Y.XmlElement('paragraph');
+      paragraph.insert(0, [new Y.XmlText(line)]);
+      return paragraph;
+    }),
+  );
+}
+
+/**
+ * Writes a prompt into the seeded node's fragment — what typing produces.
+ * @param lines - The lines to speak.
+ */
+function typePrompt(...lines: string[]): void {
+  typeInto(getPromptFragment('p', 's', 'target'), lines);
+}
+
+/**
+ * Writes words into the seeded node's lyrics fragment (#1960).
+ * @param lines - The words to sing, one line per paragraph.
+ */
+function typeLyrics(...lines: string[]): void {
+  typeInto(getLyricsFragment('p', 's', 'target'), lines);
+}
+
+/**
+ * Writes a paragraph into the lyrics fragment carrying a reference chip —
+ * what `@`-picking a text node from the lyrics box leaves behind.
+ * @param text - The words beside the chip.
+ * @param sourceIds - The nodes the chips point at.
+ */
+function typeLyricsMentioning(text: string, sourceIds: string[]): void {
+  const fragment = getLyricsFragment('p', 's', 'target');
   if (!fragment) throw new Error('seedAudioNode must run first');
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
+  for (const id of sourceIds) {
+    const chip = new Y.XmlElement('referenceMention');
+    chip.setAttribute('sourceNodeId', id);
+    chip.setAttribute('kind', 'text');
+    paragraph.insert(paragraph.length, [chip]);
+  }
   fragment.insert(0, [paragraph]);
+}
+
+/** What else is on the board besides the audio node the panel opens on. */
+interface BoardExtras {
+  nodes?: Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'];
+  edges?: Parameters<typeof AudioGeneratePanelContainer>[0]['edges'];
+}
+
+/**
+ * Puts a text node on the board, wires it into the audio node, and gives it
+ * words — everything `deriveReferences` needs to produce one rail row.
+ * @param id - The source node's id.
+ * @param body - What the text node says.
+ * @returns The board extras to hand the container.
+ */
+function textSource(id: string, body: string): BoardExtras {
+  addNode('p', 's', {
+    id,
+    type: 'text',
+    position: { x: 0, y: 0 },
+    data: {
+      name: 'Lines',
+      createdAt: 1000,
+      createdBy: 'u1',
+      locked: false,
+      state: 'idle',
+      attachments: [],
+    },
+  } as Parameters<typeof addNode>[2]);
+  const fragment = ensureTextBody('p', 's', id);
+  if (!fragment) throw new Error(`no text body for ${id}`);
+  const paragraph = new Y.XmlElement('paragraph');
+  paragraph.insert(0, [new Y.XmlText(body)]);
+  fragment.insert(0, [paragraph]);
+  addEdge('p', 's', { id: `e-${id}`, source: id, target: 'target' });
+  return {
+    nodes: [
+      {
+        id,
+        data: { kind: 'text', status: 'idle', name: 'Lines' },
+      } as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'][number],
+    ],
+    edges: [{ id: `e-${id}`, source: id, target: 'target' }],
+  };
 }
 
 /**
@@ -211,6 +337,7 @@ function panelTree(
   nodeData: Record<string, unknown> = {},
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   lastWriteWasLocal: () => boolean = returnsTrue,
+  board: BoardExtras = {},
 ): React.ReactElement {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -232,7 +359,7 @@ function panelTree(
             projectId='p'
             spaceId='s'
             getLastWriteWasLocal={lastWriteWasLocal}
-            edges={[]}
+            edges={board.edges ?? []}
             nodes={[
               {
                 id: 'target',
@@ -240,6 +367,7 @@ function panelTree(
                   typeof AudioGeneratePanelContainer
                 >[0]['nodes'][number]['data'],
               },
+              ...(board.nodes ?? []),
             ]}
           />
         </CanvasContext.Provider>
@@ -257,10 +385,11 @@ function panelTree(
 async function openPanel(
   nodeData: Record<string, unknown> = {},
   lastWriteWasLocal: () => boolean = returnsTrue,
+  board: BoardExtras = {},
 ): Promise<ReturnType<typeof render>> {
   vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
   seedAudioNode(nodeData);
-  const view = render(panelTree(nodeData, undefined, lastWriteWasLocal));
+  const view = render(panelTree(nodeData, undefined, lastWriteWasLocal, board));
   act(() => {
     useCanvasStore.getState().openGeneratePanel('target', 'audio');
   });
@@ -621,5 +750,296 @@ describe('AudioGeneratePanelContainer — a mode switch that takes the slot away
     expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
       en.canvas.generatePanel.pickEndedByPeer,
     );
+  });
+});
+
+/**
+ * The two music modes (#1960).
+ *
+ * The surface they add is a second editor: a style brief above, the words to
+ * sing below. Both boxes are live views of their own Yjs fragment, which is
+ * why the container owns them and the panel takes them as slots.
+ *
+ * Measured against the WaveSpeed gateway on 2026-09-05: both models refuse a
+ * run without lyrics — music-3.0 unless the track is marked instrumental,
+ * music-01 unconditionally, since it declares no such switch.
+ */
+describe('AudioGeneratePanelContainer — the music modes', () => {
+  it('opens a second box for the words to sing', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeInTheDocument();
+  });
+
+  it('opens one box on a mode that collects no lyrics', async () => {
+    await openPanel({ mode: 'sfx', model: 'sonilo-sfx-v1' });
+    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+  });
+
+  it('refuses text to music while the lyrics box is empty, and says which', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    typePrompt('warm indie folk, 90 BPM');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'Write the lyrics first',
+        expect.anything(),
+      ),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('refuses reference to music on the same empty box', async () => {
+    // It has no instrumental switch, so nothing lifts the requirement here.
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'minimax-music-01',
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    typePrompt('same mood, slower');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'Write the lyrics first',
+        expect.anything(),
+      ),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('sends the style and the words as two separate fields', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    typePrompt('warm indie folk, 90 BPM');
+    typeLyrics('[Verse]', 'morning light');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const payload = create.mock.calls[0]?.[0];
+    expect(payload?.task_type).toBe('audio');
+    expect(payload?.model).toBe('minimax-music-3.0');
+    expect(payload?.params.prompt).toBe('warm indie folk, 90 BPM');
+    // One newline per line the user pressed Enter on. The style box keeps
+    // the prompt default (a blank line between blocks); lyrics are the field
+    // whose line structure IS the content.
+    expect(payload?.params.lyrics).toBe('[Verse]\nmorning light');
+  });
+
+  it('carries a picked reference under the name its vendor reads', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'minimax-music-01',
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    typePrompt('same mood, slower');
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.song).toBe('https://x/y.mp3');
+  });
+
+  // The switch and the box are one statement: with no vocals there are no words
+  // to write, so the box is not there — rather than standing there explaining
+  // why it refuses typing (user 2026-09-06). What was written stays on the
+  // node, and comes back with the box when the switch goes off.
+  it('takes the lyrics box away while the track is marked instrumental', async () => {
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    typeLyrics('morning light');
+    // The style box is still there, so this is the panel settling on the mode
+    // rather than the panel not having rendered yet.
+    await screen.findByTestId('generate-prompt-editor');
+    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+    // The box that stays keeps its name. Deciding this off the lyrics box
+    // being present would strip it at the moment the switch flips.
+    expect(screen.getByText('Style')).toBeInTheDocument();
+    // Untouched on the node: the switch decides what the run uses, not what
+    // the user wrote.
+    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+      'morning light',
+    );
+  });
+
+  it('asks for words again once the track has vocals', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(box.querySelector('[data-placeholder]')).toHaveAttribute(
+        'data-placeholder',
+        'Write the lyrics',
+      ),
+    );
+  });
+
+  it('leaves it writable while the track has vocals', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(box.querySelector('.ProseMirror')).toHaveAttribute(
+        'contenteditable',
+        'true',
+      ),
+    );
+  });
+
+  // The panel offers no box to write words in; the request has to agree.
+  // Measured 2026-09-05, `is_instrumental: true` with an empty `lyrics` is
+  // accepted and completes — that combination is the one this sends. The words
+  // stay on the node, so turning the switch back off returns them.
+  it('sends no words for a track the user marked vocal-free', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    typePrompt('rain on a tin roof');
+    typeLyrics('morning light');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.lyrics).toBe('');
+    // Still on the node: the fragment is untouched.
+    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+      'morning light',
+    );
+  });
+
+  // 歌词也能引用 text 节点（user 2026-09-06）：一首歌的词常常已经写在画布上
+  // 的某个文本节点里，而 @ 引用正是把那份内容接过来的入口。风格框一直可以，
+  // 歌词框此前拿到的是一个空参考池，弹层只能答「没有可引用的内容」。
+  it('substitutes a text chip in the lyrics with the source node’s words', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    typePrompt('dream pop, slow');
+    // Words beside the chip, so the execute gate lets this through and the one
+    // thing under test is what the chip turns into.
+    typeLyricsMentioning('sing: ', ['src']);
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.lyrics).toContain(
+      'let the river carry me home',
+    );
+  });
+
+  // The rail row's insert button puts the chip where the writer was last
+  // typing. Both boxes take references, so a button that always aims at the
+  // style box drops the chip into the wrong one whenever the writer is in the
+  // lyrics.
+  it('inserts a rail row into the lyrics box when that is where the caret was', async () => {
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    const box = await screen.findByTestId('generate-lyrics-editor');
+    // A real focus move: ProseMirror reports focus off the DOM event that
+    // follows it, and a dispatched `focus` alone leaves the document's
+    // activeElement where it was.
+    act(() => {
+      (box.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+
+    // Yjs lower-cases element names when it serializes, so the chip reads as
+    // `referencemention` here; the source id is what says it is the right one.
+    await waitFor(() =>
+      expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+        'sourceNodeId="src"',
+      ),
+    );
+    expect(getPromptFragment('p', 's', 'target')?.toString()).not.toContain(
+      'sourceNodeId="src"',
+    );
+  });
+
+  it('inserts a rail row into the style box when that is where the caret was', async () => {
+    // The mirror of the case above. Both boxes take references, so the button
+    // has to follow the caret in both directions; aiming it at either box
+    // unconditionally is wrong half the time.
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    const lyrics = await screen.findByTestId('generate-lyrics-editor');
+    const style = screen.getByTestId('generate-prompt-editor');
+    act(() => {
+      (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+    act(() => {
+      (style.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+
+    await waitFor(() =>
+      expect(getPromptFragment('p', 's', 'target')?.toString()).toContain(
+        'sourceNodeId="src"',
+      ),
+    );
+    expect(getLyricsFragment('p', 's', 'target')?.toString()).not.toContain(
+      'sourceNodeId="src"',
+    );
+  });
+
+  it('still inserts once the box the caret was in goes away', async () => {
+    // The caret was in the lyrics box, and then the box left — the instrumental
+    // switch takes it away mid-mode, and a mode switch takes it away outright.
+    // The remembered box is gone; the button still has to land the chip.
+    const board = textSource('src', 'let the river carry me home');
+    const view = await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    const lyrics = await screen.findByTestId('generate-lyrics-editor');
+    act(() => {
+      (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
+    });
+
+    // Re-render on a mode that collects no lyrics. Clicking the mode picker
+    // writes to Yjs, and this suite feeds the node in as a prop, so the panel
+    // sees the switch only when that prop changes (todo #2105).
+    view.rerender(
+      panelTree({ mode: 'tts', model: 'elevenlabs-v3' }, undefined, returnsTrue, board),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull(),
+    );
+
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+    await waitFor(() =>
+      expect(getPromptFragment('p', 's', 'target')?.toString()).toContain(
+        'sourceNodeId="src"',
+      ),
+    );
+  });
+
+  it('runs an instrumental track with the lyrics box empty', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 't2m',
+      model: 'minimax-music-3.0',
+      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
+    });
+    typePrompt('rain on a tin roof');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.is_instrumental).toBe(true);
   });
 });

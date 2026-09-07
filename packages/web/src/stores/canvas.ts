@@ -70,6 +70,11 @@ export type HistoryCommand = 'undo' | 'redo';
  *     rather than `drivingAudio`'s, though both travel as `audio`, because
  *     the two are picked on different panels for different jobs and a pick
  *     survives a mode switch.
+ *   - `musicSong` / `musicVoice` / `musicInstrumental` — three more of the
+ *     same into their own slots (#1960), all from AUDIO nodes: the track a
+ *     new song is written after, a vocal line to follow, a backing track to
+ *     play over. Three rather than one because the vendor reads each under
+ *     its own name and a user may give any combination of them.
  */
 export type PickPurpose =
   | 'reference'
@@ -80,7 +85,10 @@ export type PickPurpose =
   | 'characterImage'
   | 'drivingVideo'
   | 'drivingAudio'
-  | 'refAudio';
+  | 'refAudio'
+  | 'musicSong'
+  | 'musicVoice'
+  | 'musicInstrumental';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -239,6 +247,12 @@ interface CanvasState {
   startDrivingAudioPick: (nodeId: string) => void;
   /** Enter the reference-audio pick for an audio node (#1960 PR2). */
   startRefAudioPick: (nodeId: string) => void;
+  /** Enter the whole-song reference pick for an audio node (#1960). */
+  startMusicSongPick: (nodeId: string) => void;
+  /** Enter the vocal-line reference pick for an audio node (#1960). */
+  startMusicVoicePick: (nodeId: string) => void;
+  /** Enter the backing-track reference pick for an audio node (#1960). */
+  startMusicInstrumentalPick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -457,6 +471,18 @@ export const useCanvasStore = create<CanvasState>()(
     startRefAudioPick: (nodeId) =>
       set((s) => {
         s.pickSession = { nodeId, purpose: 'refAudio' };
+      }),
+    startMusicSongPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'musicSong' };
+      }),
+    startMusicVoicePick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'musicVoice' };
+      }),
+    startMusicInstrumentalPick: (nodeId) =>
+      set((s) => {
+        s.pickSession = { nodeId, purpose: 'musicInstrumental' };
       }),
     startFocusPick: (nodeId) =>
       set((s) => {

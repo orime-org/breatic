@@ -552,49 +552,55 @@ describe('collaboration caret CSS contract (index.css)', () => {
 });
 
 // The editor is rebuilt whenever one of its dependencies changes — a locale
-// switch changes the placeholder baked into the extensions, and reopening a
-// node changes the fragment. Rebuilding destroys the old instance, and a
-// DESTROYED editor is not null: its `schema` is. So a guard that only asks
-// `if (!editor) return` lets every effect run against a corpse, and the first
-// one to touch the schema throws.
+// switch changes the two mention labels baked into the extensions, and
+// reopening a node changes the fragment. Rebuilding destroys the old instance,
+// and a DESTROYED editor is not null: its `schema` is. So a guard that only
+// asks `if (!editor) return` lets every effect run against a corpse, and the
+// first one to touch the schema throws.
 describe('PromptEditor — effects after the editor is rebuilt', () => {
-  it('does not touch the destroyed instance when the placeholder changes', async () => {
+  it('does not touch the destroyed instance when a locale switch rebuilds it', async () => {
     const doc = new Y.Doc();
     const fragment = doc.getXmlFragment('prompt');
     const paragraph = new Y.XmlElement('paragraph');
     paragraph.insert(0, [new Y.XmlText('hello')]);
     fragment.insert(0, [paragraph]);
 
-    /** Render at a given placeholder; changing it rebuilds the editor. */
-    const view = (placeholder: string): React.JSX.Element => (
+    /** Render at a given mention empty label; changing it rebuilds the editor. */
+    const view = (mentionEmptyLabel: string): React.JSX.Element => (
       <PromptEditor
         fragment={fragment}
-        placeholder={placeholder}
+        placeholder='Describe the image'
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}
         references={[]}
         imageRefsDisabled
-        mentionEmptyLabel='none'
+        mentionEmptyLabel={mentionEmptyLabel}
         mentionNoMatchLabel='No matches'
       />
     );
 
-    const { rerender } = render(view('Describe the image'));
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('generate-prompt-editor').querySelector('.ProseMirror'),
-      ).not.toBeNull(),
-    );
+    const { rerender } = render(view('none'));
+    let before: Element | null = null;
+    await waitFor(() => {
+      before = screen
+        .getByTestId('generate-prompt-editor')
+        .querySelector('.ProseMirror');
+      expect(before).not.toBeNull();
+    });
 
     // A locale switch. The old editor is destroyed here; anything still
     // holding it must notice.
-    rerender(view('Décrivez l’image'));
+    rerender(view('aucune'));
 
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('generate-prompt-editor').querySelector('.ProseMirror'),
-      ).not.toBeNull(),
-    );
+    // 换成新元素才证明真的重建过。只断言 `.ProseMirror` 还在，等于这条用例
+    // 在扳机失效之后照样绿 —— 而扳机正是会被改动挪走的那个东西。
+    await waitFor(() => {
+      const after = screen
+        .getByTestId('generate-prompt-editor')
+        .querySelector('.ProseMirror');
+      expect(after).not.toBeNull();
+      expect(after).not.toBe(before);
+    });
   });
 });
 

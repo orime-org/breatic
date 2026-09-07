@@ -34,11 +34,11 @@ interface PickPurposeUi {
   /**
    * Test id of the tool that starts this pick, per panel. Focus returns there
    * when the banner unmounts. Partial on purpose: most purposes belong to one
-   * panel — style is the image panel's; five of the six source slots (both
-   * frames, the character image, the driving video and the driving audio) are
-   * the video panel's, and the sixth (the voice sample) is the audio panel's.
-   * Focus is the image and video panels'; reference is every panel's, the
-   * audio one included.
+   * panel — style is the image panel's; the source slots split by panel, with
+   * both frames, the character image, the driving video and the driving audio
+   * on the video panel and the voice sample and the three music references on
+   * the audio one. Focus is the image and video panels'; reference is every
+   * panel's, the audio one included.
    */
   trigger: Partial<Record<PickingPanelKind, string>>;
 }
@@ -87,5 +87,17 @@ export const PICK_PURPOSE_UI = {
   refAudio: {
     banner: 'canvas.generatePanel.selectRefAudioFromCanvas',
     trigger: { generateAudio: AUDIO_SLOTS.refAudio.testId },
+  },
+  musicSong: {
+    banner: 'canvas.generatePanel.selectMusicSongFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.musicSong.testId },
+  },
+  musicVoice: {
+    banner: 'canvas.generatePanel.selectMusicVoiceFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.musicVoice.testId },
+  },
+  musicInstrumental: {
+    banner: 'canvas.generatePanel.selectMusicInstrumentalFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.musicInstrumental.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

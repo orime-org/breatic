@@ -46,6 +46,14 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
       <rect x='18' y='6.5' width='2.6' height='13.5' rx='1' />
     </>
   ),
+  // A wave: three rising bars, the shape a music model's output takes.
+  minimax: (
+    <>
+      <rect x='3.6' y='10' width='3.2' height='10' rx='1.2' />
+      <rect x='10.4' y='4' width='3.2' height='16' rx='1.2' />
+      <rect x='17.2' y='7.5' width='3.2' height='12.5' rx='1.2' />
+    </>
+  ),
   // Two upright bars, reading as the "11" the vendor is named for.
   elevenlabs: (
     <>

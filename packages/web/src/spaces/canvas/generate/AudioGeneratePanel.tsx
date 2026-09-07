@@ -52,10 +52,12 @@ interface AudioGeneratePanelProps {
    */
   currentModel: ModelEntry | undefined;
   /**
-   * What one generation off the current prompt would cost, in credits.
+   * What one generation would cost, in credits.
    *
-   * A number that moves as the prompt is typed: a tts model bills by how much
-   * text it is handed. Undefined where the model states no rate.
+   * A model stating a rate counts the unit it bills in — the text for a
+   * speech model, the picked clip length for a sound effect — so the number
+   * moves as that input changes; one stating none prints its cost per call
+   * and holds still. Undefined until a model is picked.
    */
   creditEstimate: number | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
@@ -103,6 +105,23 @@ interface AudioGeneratePanelProps {
    * the document, so an editor here would take typing and store none of it.
    */
   promptSlot: React.ReactNode;
+  /**
+   * The injected lyrics editor, or null on a mode that collects none (#1960)
+   * and on an instrumental track, which has no words to write.
+   *
+   * Its own slot rather than a flag: the editor is a live collaborative view
+   * of a Yjs fragment, and the container is the layer that owns those.
+   */
+  lyricsSlot: React.ReactNode;
+  /**
+   * Whether the boxes carry their names.
+   *
+   * A music mode asks for two different things and names both, and it keeps
+   * naming the style box after the lyrics box goes away with the instrumental
+   * switch — otherwise the one remaining box loses its name at the moment the
+   * switch changes what the panel is asking for.
+   */
+  labelBoxes: boolean;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -119,7 +138,7 @@ interface AudioGeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a row's @-mention into the prompt at the caret. */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** A speaking param changed. */
+  /** One of the model's params changed. */
   onChangeParams: (partial: AudioParamsValue) => void;
   /** The voice list opened or collapsed. */
   onVoiceOpenChange: (open: boolean) => void;
@@ -136,13 +155,13 @@ interface AudioGeneratePanelProps {
 }
 
 /**
- * The audio-node Generate panel: the injected collaborative prompt editor over
- * a footer carrying the mode picker, the model picker, the voice picker, the
- * speaking params, the credit figure and the submit button.
+ * The audio-node Generate panel: the injected collaborative editors over a
+ * footer carrying the mode picker, the model picker, the voice picker, the
+ * model's params, the credit figure and the submit button.
  *
  * The figure is one number beside a star, the shape VideoGeneratePanel uses.
- * There it is the model's cost per call; here it follows the prompt, since a
- * tts model bills by how much text it is handed (`estimateAudioCredits`).
+ * There it is always the model's cost per call; here it is whichever of the
+ * two the model states (`estimateAudioCredits`).
  *
  * Presentational throughout; every piece of node data and every Yjs write is
  * threaded in by the container.
@@ -160,6 +179,8 @@ interface AudioGeneratePanelProps {
  * @param root0.voiceSelectedName - That voice's name, once known.
  * @param root0.executeRefusal - Which execute precondition fails.
  * @param root0.promptSlot - The injected prompt editor, or null.
+ * @param root0.lyricsSlot - The injected lyrics editor, or null.
+ * @param root0.labelBoxes - Whether the boxes carry their names.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -172,7 +193,7 @@ interface AudioGeneratePanelProps {
  * @param root0.onAddReference - Called to enter / exit the reference pick.
  * @param root0.onRemoveReference - Called to remove a row.
  * @param root0.onInsertReference - Called to insert a row into the prompt.
- * @param root0.onChangeParams - Called with the changed speaking param.
+ * @param root0.onChangeParams - Called with the changed param.
  * @param root0.onToggleMode - Called with the picked mode.
  * @param root0.onSelectModel - Called with the picked model id.
  * @param root0.onVoiceOpenChange - Called when the voice list opens or collapses.
@@ -197,6 +218,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   voiceSelectedName,
   executeRefusal,
   promptSlot,
+  lyricsSlot,
+  labelBoxes,
   references,
   referencePicking = false,
   slots,
@@ -284,7 +307,41 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         modelTakesPrompt={modelTakesPrompt}
       />
 
-      {promptSlot}
+      {/* Two boxes look alike once the placeholders are typed over, so each
+          carries a word saying which is which. Only on a mode that asks for
+          two things: a single prompt box needs no label to be told apart from
+          nothing.
+
+          Both wrappers are here whether or not there is a second box, and the
+          labels are holes rather than a second branch: React reconciles by
+          position, so a `promptSlot` sitting directly under the panel in one
+          branch and under a div in the other is a different element each time
+          and gets torn down — taking the editor's collaborative binding, its
+          caret and its undo stack with it on any switch that adds or removes
+          the lyrics box.
+
+          A label sits 6px above the box it names and 10px below the group
+          before it, so the pairing is read off the spacing rather than off the
+          order — the weight and the gap the video params popover already gives
+          a control's name. */}
+      <div className='flex flex-col gap-2.5'>
+        <div className='flex flex-col gap-1.5'>
+          {labelBoxes && (
+            <span className='text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.musicStyleLabel')}
+            </span>
+          )}
+          {promptSlot}
+        </div>
+        {lyricsSlot !== null && (
+          <div className='flex flex-col gap-1.5'>
+            <span className='text-xs font-medium text-muted-foreground'>
+              {t('canvas.generatePanel.musicLyricsLabel')}
+            </span>
+            {lyricsSlot}
+          </div>
+        )}
+      </div>
 
       <div className='flex items-center gap-1.5'>
         <ModeToggle

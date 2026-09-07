@@ -58,26 +58,12 @@ export interface AudioPanelViewModel {
   voiceChosen: boolean;
   /** The held voice id, or null when none is held (or none is taken). */
   voiceSelectedId: string | null;
-  /**
-   * Whether this mode needs an audio source — the reference recording voice
-   * cloning speaks in (#1960 PR2).
-   *
-   * Read off the catalog's own `sourcesByMode` rather than a table here: the
-   * server computes the same field from the same config and refuses a task
-   * that arrives without the source (`violatesSourceRequirement`), so the slot
-   * the toolbar shows and the condition the backend enforces come from one
-   * rule. A second table would be a second answer.
-   *
-   * Kept apart from {@link AudioPanelViewModel.voiceRequired}, which asks a
-   * different question — whether the model picks a voice from a preset
-   * catalog. A cloning model answers no to that and yes to this.
-   */
-  refAudioRequired: boolean;
   /** What is picked, by slot; a slot missing from here renders empty. */
   slotUrls: AudioSlotUrls;
   /**
-   * What to PAINT for each pick. A slot missing from here is not empty — it
-   * covers itself with the asset node's icon instead (#1946). Fullness is
+   * What to PAINT for each pick. A slot missing from here is not empty — with
+   * nothing to paint the button keeps its own icon and label and lights its
+   * border instead (#1946, user 2026-09-06). Fullness is
    * {@link AudioPanelViewModel.slotUrls}, never this.
    */
   slotThumbnails: AudioSlotUrls;
@@ -131,7 +117,6 @@ export function buildAudioPanelViewModel(input: {
     voiceSelectedId: voiceChosen
       ? (storedRecord?.[voiceParam as string] as string)
       : null,
-    refAudioRequired: current?.sourcesByMode[mode]?.includes('audio') ?? false,
     slotUrls: readSlotUrls(AUDIO_SLOTS, content),
     slotThumbnails: readSlotThumbnails(AUDIO_SLOTS, content),
   };

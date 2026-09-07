@@ -155,6 +155,15 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   refAudio?: { url: string; cover?: string };
   /**
+   * The three references reference-to-music collects (#1960, wire
+   * `data.musicSong` / `musicVoice` / `musicInstrumental`) — sent as
+   * `params.song` / `voice` / `instrumental`. `cover` is always absent, as
+   * with `refAudio`.
+   */
+  musicSong?: { url: string; cover?: string };
+  musicVoice?: { url: string; cover?: string };
+  musicInstrumental?: { url: string; cover?: string };
+  /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
    * as the reference rail's focus entries and offers them in the @ mention
@@ -322,6 +331,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     drivingVideo: data.drivingVideo,
     drivingAudio: data.drivingAudio,
     refAudio: data.refAudio,
+    musicSong: data.musicSong,
+    musicVoice: data.musicVoice,
+    musicInstrumental: data.musicInstrumental,
     focusImages: data.focusImages,
   };
   switch (type) {

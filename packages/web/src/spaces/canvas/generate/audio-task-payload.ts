@@ -31,10 +31,12 @@ import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite
  * selected, and walking the whole registry would send it under a mode that
  * never asked for one.
  *
- * A slot with nothing picked contributes no key at all, so the model's own
- * declared `default: null` stays the value the payload carries — which is
- * what the panel gate, the server's source gate and the mini-tool schema
- * each refuse first.
+ * A slot with nothing picked contributes no key here, so the value the payload
+ * carries for it is the `null` the model's own record holds. With every slot
+ * the mode collects left empty, that null is what the panel gate, the
+ * server's source gate and the mini-tool schema each refuse first; on a mode
+ * taking any one of several, the nulls beside the picked one ride along and
+ * the WaveSpeed transport strips them before the request.
  * @param slots - The slots the active mode collects.
  * @param slotUrls - What each slot currently holds.
  * @returns The source params, empty when nothing is picked.
@@ -72,6 +74,17 @@ export interface AudioTaskInput {
   slotUrls?: AudioSlotUrls;
   /** The slots the active mode collects; absent means it collects none. */
   slots?: readonly AudioSlot[];
+  /**
+   * The words to sing, on a mode that collects them (#1960).
+   *
+   * Absent means this mode has no lyrics box at all, and the field is then
+   * left out of the request entirely rather than sent empty. An empty STRING
+   * is a different statement: the track was marked instrumental, which is the
+   * one case the gateway accepts without words (measured 2026-09-05 — with
+   * `is_instrumental: true` it completes, and both music models refuse an
+   * empty lyrics on any vocal run).
+   */
+  lyricsText?: string;
 }
 
 /**
@@ -91,6 +104,10 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
     params: {
       ...input.params,
       prompt: input.promptText,
+      // Only when the mode collects them; see `lyricsText`. After the params
+      // spread for the same reason the prompt is: what the user wrote wins
+      // over a same-named key the catalog carries.
+      ...(input.lyricsText !== undefined ? { lyrics: input.lyricsText } : {}),
       // After the params spread on purpose: what the user picked in the slot
       // wins over a same-named key the catalog carries.
       ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),

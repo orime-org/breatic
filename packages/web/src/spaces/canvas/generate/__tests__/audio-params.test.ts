@@ -198,6 +198,20 @@ const t = (
     : key;
 
 describe('formatAudioParam — a value reads in its own unit', () => {
+  // A switch's value IS its state, so it reads as the state's own name. The
+  // pill printing the param's NAME instead said "Instrumental only" whether
+  // the switch was on or off, on the one model that declares this param and
+  // nothing else — the whole pill face asserting the opposite half the time.
+  it('reads a switch as the state it is in', () => {
+    // The stub translator answers with the key, so these are the two keys.
+    expect(formatAudioParam('is_instrumental', true, t)).toBe(
+      'canvas.generatePanel.musicInstrumentalOnly',
+    );
+    expect(formatAudioParam('is_instrumental', false, t)).toBe(
+      'canvas.generatePanel.musicWithVocals',
+    );
+  });
+
   it('reads the two 0-1 params to two decimals', () => {
     expect(formatAudioParam('stability', 0.5, t)).toBe('0.50');
     expect(formatAudioParam('similarity', 0.75, t)).toBe('0.75');
@@ -270,5 +284,45 @@ describe('the sound-effect model gets a length picker (#2088 A4)', () => {
 
   it('leaves out the output format, which the user does not choose', () => {
     expect(audioParamControls(SONILO).map((c) => c.name)).not.toContain('audio_format');
+  });
+});
+
+// The music model's `is_instrumental` says "no vocals, backing track only".
+// It is neither a list of stops nor a range — it is on or off — and the two
+// existing kinds cannot carry it: given no `values` and no bounds, `controlFor`
+// answers null today and the switch never reaches the screen while the value
+// still travels to the vendor (#1960 A4).
+const MUSIC = model({
+  is_instrumental: { description: '', default: false },
+  audio_setting: { description: '', default: null },
+});
+
+describe('a boolean param gets a switch (#1960 A4)', () => {
+  it('reads a boolean default as a toggle, with no numbers to carry', () => {
+    expect(audioParamControls(MUSIC)).toEqual([
+      {
+        name: 'is_instrumental',
+        // Not `musicInstrumental` — that key names the backing-track SLOT.
+        // This switch says "no vocals at all", which is a different sentence.
+        labelKey: 'canvas.generatePanel.musicInstrumentalOnly',
+        kind: 'toggle',
+      },
+    ]);
+  });
+
+  it('leaves out a param this panel has no label for', () => {
+    expect(audioParamControls(MUSIC).map((c) => c.name)).not.toContain('audio_setting');
+  });
+
+  it('still reads a boolean stated as a two-item list as a choice, not a toggle', () => {
+    // `values` wins over the default's type, the same precedence the two
+    // existing kinds already follow. Nothing declares this today; the rule
+    // exists so a model that does gets one answer rather than two.
+    const listed = model({
+      is_instrumental: { description: '', values: [true, false], default: false },
+    });
+    // Neither of those two is a finite number, so the list drives no choice
+    // and this param renders nothing rather than a switch that ignores it.
+    expect(audioParamControls(listed)).toEqual([]);
   });
 });

@@ -4,15 +4,17 @@
 /**
  * What a Generate panel reads at the instant its execute button is clicked.
  *
- * Each of the three panels (image, video, audio) keeps the same six things,
- * and each one is here for a reason a click makes: the prompt and the
- * in-flight flag are mirrored into refs because React state lags a frame and
- * the handler reads them synchronously; the editor handle is what serializes
- * the prompt at that instant; and the mount flag is how a submit already on
- * its way tells that the panel it started from has gone.
+ * Each of the three panels (image, video, audio) keeps the same shape, and
+ * every part of it is here for a reason a click makes: a text box contributes
+ * a state value, a ref mirroring it, the setter that writes both, and the
+ * editor handle that serializes it at that instant — because React state lags
+ * a frame and the handler reads it synchronously. Beside the boxes sit the
+ * in-flight flag (mirrored for the same reason) and the mount flag, which is
+ * how a submit already on its way tells that the panel it started from has
+ * gone.
  *
  * Held together rather than declared per panel because they are one mechanism:
- * a fourth panel that copied five of the six would look right and drop a
+ * a fourth panel that copied all but one part would look right and drop a
  * guarantee.
  *
  * The state halves are not spare copies of the refs. Each panel's button runs
@@ -35,6 +37,22 @@ export interface GenerateSubmitState {
   onPromptChange: (text: string) => void;
   /** The mounted prompt editor, which serializes the prompt at click time. */
   promptEditorRef: React.RefObject<PromptEditorHandle | null>;
+  /**
+   * The lyrics as state, for the one panel that collects them (#1960).
+   *
+   * Here rather than in the audio panel alone for the reason the header gives:
+   * these are one mechanism, and a second panel growing a second text box
+   * would otherwise copy the mirror-plus-ref pattern and be one `useRef` away
+   * from a click that reads a stale value. Empty on the panels that show no
+   * lyrics box.
+   */
+  lyricsText: string;
+  /** The same lyrics, readable synchronously inside the click handler. */
+  lyricsTextRef: React.RefObject<string>;
+  /** Records a lyrics change in both. Stable across renders. */
+  onLyricsChange: (text: string) => void;
+  /** The mounted lyrics editor, which serializes them at click time. */
+  lyricsEditorRef: React.RefObject<PromptEditorHandle | null>;
   /** Whether a submit is out — what the button draws a spinner from. */
   isSubmitting: boolean;
   /** Sets the flag above; the ref below is the one a click reads. */
@@ -59,6 +77,14 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   }, []);
   const promptEditorRef = React.useRef<PromptEditorHandle>(null);
 
+  const [lyricsText, setLyricsText] = React.useState('');
+  const lyricsTextRef = React.useRef('');
+  const onLyricsChange = React.useCallback((text: string) => {
+    lyricsTextRef.current = text;
+    setLyricsText(text);
+  }, []);
+  const lyricsEditorRef = React.useRef<PromptEditorHandle>(null);
+
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const submittingRef = React.useRef(false);
 
@@ -76,6 +102,10 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   }, []);
 
   return {
+    lyricsText,
+    lyricsTextRef,
+    onLyricsChange,
+    lyricsEditorRef,
     promptText,
     promptTextRef,
     onPromptChange,

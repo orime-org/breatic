@@ -7,6 +7,7 @@ import {
   evaluateExecute,
   isExecuteButtonDisabled,
   refusalToastKey,
+  REFUSAL_TOAST_KEY,
   type ExecuteRefusal,
 } from '@web/spaces/canvas/generate/generate-guards';
 
@@ -173,7 +174,7 @@ describe('evaluateExecute — order: environment facts first, what the user can 
 });
 
 describe('isExecuteButtonDisabled — only what the user cannot act on greys the button', () => {
-  // Both panels ask this one function rather than each spelling the set out:
+  // Every panel asks this one function rather than each spelling the set out:
   // two copies of "which refusals grey the button" would drift, and that drift
   // is the shape #1949 set out to remove.
 
@@ -225,20 +226,11 @@ describe('refusalToastKey — which refusal says something out loud', () => {
     // something must be one a click can reach, and one that stays silent must
     // be one the button already refuses. Drift either way and a user gets
     // either a dead click or a message about a button they cannot press.
-    // Every member of the union, kept by hand — a plain array literal accepts
-    // a short list, so a new refusal reaches this case only if whoever adds it
-    // writes it in. The compiler will not say so.
-    const all: ExecuteRefusal[] = [
-      'node-gone',
-      'no-model',
-      'submitting',
-      'prompt-missing',
-      'prompt-too-long',
-      'voice-missing',
-      'ref-audio-missing',
-    ];
-    for (const refusal of all) {
-      expect(refusalToastKey(refusal) != null).toBe(
+    //
+    // 遍历那张表本身，而不是在这里手抄一份成员清单。成员齐不齐由那张表的键
+    // 类型管（漏一个当场 typecheck 红），这里只管配对。
+    for (const refusal of Object.keys(REFUSAL_TOAST_KEY) as ExecuteRefusal[]) {
+      expect(refusalToastKey(refusal) != null, refusal).toBe(
         !isExecuteButtonDisabled(refusal),
       );
     }
@@ -334,8 +326,8 @@ describe('evaluateExecute — the reference-audio slot', () => {
   /** A cloning model with nothing picked yet. */
   const cloning = {
     ...ok,
-    refAudioRequired: true,
-    refAudioChosen: false,
+    requiredSlots: ['refAudio'],
+    filledSlots: [] as readonly string[],
   };
 
   it('names the empty slot when the mode needs an audio source', () => {
@@ -343,14 +335,14 @@ describe('evaluateExecute — the reference-audio slot', () => {
   });
 
   it('passes once something is picked', () => {
-    expect(evaluateExecute({ ...cloning, refAudioChosen: true })).toBeNull();
+    expect(evaluateExecute({ ...cloning, filledSlots: ['refAudio'] })).toBeNull();
   });
 
   it('says nothing about it on a mode that needs no audio source', () => {
     // Text to speech declares no audio source, so an unfilled slot it never shows
     // must not refuse anything.
     expect(
-      evaluateExecute({ ...ok, refAudioRequired: false, refAudioChosen: false }),
+      evaluateExecute({ ...ok, requiredSlots: [], filledSlots: [] }),
     ).toBeNull();
   });
 
@@ -375,10 +367,153 @@ describe('evaluateExecute — the reference-audio slot', () => {
       'prompt-too-long',
       'voice-missing',
       'ref-audio-missing',
+      'reference-missing',
+      'lyrics-missing',
     ];
     for (const refusal of actionable) {
       expect(isExecuteButtonDisabled(refusal), refusal).toBe(false);
       expect(refusalToastKey(refusal), refusal).not.toBeNull();
     }
+  });
+});
+
+/**
+ * A mode that offers several slots and needs any one of them (#1960 A6).
+ *
+ * Reference to music collects a whole song, a vocal line and a backing track,
+ * and one is enough — the vendor takes whichever are given. The gate weighed a
+ * single `refAudioRequired` / `refAudioChosen` pair before, so a user who
+ * filled all three of these still faced a greyed-out button: none of them is
+ * named `refAudio`.
+ */
+describe('evaluateExecute — a mode with several slots takes any one', () => {
+  const MUSIC_SLOTS = ['musicSong', 'musicVoice', 'musicInstrumental'];
+  /** Reference to music with all three slots empty. */
+  const a2m = { ...ok, requiredSlots: MUSIC_SLOTS, filledSlots: [] as readonly string[] };
+
+  it('asks for a reference while every slot is empty', () => {
+    expect(evaluateExecute(a2m)).toBe('reference-missing');
+  });
+
+  it('passes on any one of the three, not just the first', () => {
+    for (const slot of MUSIC_SLOTS) {
+      expect(evaluateExecute({ ...a2m, filledSlots: [slot] }), slot).toBeNull();
+    }
+  });
+
+  it('passes with several filled', () => {
+    expect(evaluateExecute({ ...a2m, filledSlots: MUSIC_SLOTS })).toBeNull();
+  });
+
+  it('ignores a pick that is not one of this mode\'s slots', () => {
+    // A voice sample picked on the cloning mode stays on the node when the
+    // user switches to music. It is not one of the three this mode collects,
+    // so it must not stand in for one.
+    expect(evaluateExecute({ ...a2m, filledSlots: ['refAudio'] })).toBe(
+      'reference-missing',
+    );
+  });
+
+  it('says "any one of these" rather than naming the voice sample', () => {
+    expect(isExecuteButtonDisabled('reference-missing')).toBe(false);
+    expect(refusalToastKey('reference-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoReference',
+    );
+  });
+});
+
+/**
+ * Lyrics on text to music (#1960 A12).
+ *
+ * The upstream refuses a request without them — measured on 2026-09-05, the
+ * gateway answers `invalid params, lyrics is required` — so the user would
+ * otherwise watch a generation start, spin, and fail. The vendor page's "leave
+ * empty for auto-generated lyrics" is not what the gateway does.
+ *
+ * Both music modes demand them (measured 2026-09-05), and no other mode shows
+ * the box at all, so this is asked of the mode rather than of the panel.
+ */
+describe('evaluateExecute — the lyrics box', () => {
+  /** Text to music with a style written and the lyrics box still empty. */
+  const t2m = { ...ok, lyricsRequired: true, lyricsText: '' };
+
+  it('names the lyrics when the box is empty', () => {
+    expect(evaluateExecute(t2m)).toBe('lyrics-missing');
+  });
+
+  it('treats whitespace as empty, the way it treats the prompt', () => {
+    expect(evaluateExecute({ ...t2m, lyricsText: '  \n\t ' })).toBe('lyrics-missing');
+  });
+
+  it('passes once something is written', () => {
+    expect(evaluateExecute({ ...t2m, lyricsText: '[Verse]\nmorning light' })).toBeNull();
+  });
+
+  // 有歌词框时，上面那个框在屏幕上叫「风格」，不叫「提示词」——面板上没有任何
+  // 东西叫后者，而被命名的那个框正是用户已经填好的。所以这一档空掉上面那个框，
+  // 拒绝语要指得到它。
+  it('names the style box, which is what the screen calls it here', () => {
+    expect(evaluateExecute({ ...t2m, promptText: '', lyricsText: 'la' })).toBe(
+      'style-missing',
+    );
+    expect(refusalToastKey('style-missing')).toBe(
+      'canvas.generatePanel.refuseExecuteNoStyle',
+    );
+  });
+
+  it('still names the prompt on the modes that show one box', () => {
+    expect(evaluateExecute({ ...ok, promptText: '' })).toBe('prompt-missing');
+  });
+
+  // Judged on the text the vendor will actually receive, the same rule the
+  // prompt's own length check follows: the worker cleans every AIGC prompt
+  // through `extractPromptText` before the request goes out, and everything
+  // that function does shortens. A box holding only characters it strips is a
+  // box the vendor reads as empty, and `2013 - invalid params` is what the
+  // user would watch the generation fail with.
+  it('sees through characters the vendor never receives', () => {
+    // A zero-width space survives `.trim()` and is stripped on the way out.
+    expect(evaluateExecute({ ...t2m, lyricsText: '\u200B' })).toBe(
+      'lyrics-missing',
+    );
+    expect(evaluateExecute({ ...t2m, lyricsText: '<!-- a note -->' })).toBe(
+      'lyrics-missing',
+    );
+  });
+
+  it('says nothing about lyrics on a mode that does not ask for them', () => {
+    expect(evaluateExecute({ ...ok, lyricsRequired: false, lyricsText: '' })).toBeNull();
+  });
+
+  it('reports the style box first, the panel order', () => {
+    // The style box sits above the lyrics box, so an empty one is what the
+    // user is told about first.
+    expect(evaluateExecute({ ...t2m, promptText: '' })).toBe('style-missing');
+  });
+
+  it('leaves the button live and speaks on click', () => {
+    expect(isExecuteButtonDisabled('lyrics-missing')).toBe(false);
+    expect(refusalToastKey('lyrics-missing')).toBe(
+      'canvas.generatePanel.lyricsMissing',
+    );
+  });
+
+  // Measured against the gateway on 2026-09-05: `is_instrumental: true` with
+  // an empty `lyrics` is accepted and completes. Demanding words to sing for a
+  // track the user marked vocal-free is our own rule, not the vendor's.
+  it('asks for no lyrics once the track is marked instrumental', () => {
+    expect(evaluateExecute({ ...t2m, instrumental: true })).toBeNull();
+  });
+
+  it('asks for them again the moment that switch goes back off', () => {
+    expect(evaluateExecute({ ...t2m, instrumental: false })).toBe('lyrics-missing');
+  });
+
+  it('says nothing about the switch on a mode that collects no lyrics', () => {
+    // Text to speech declares no lyrics box, so the switch it never shows
+    // must not turn into a condition here.
+    expect(
+      evaluateExecute({ ...ok, lyricsRequired: false, instrumental: true }),
+    ).toBeNull();
   });
 });

@@ -460,7 +460,13 @@ export function violatesSourceRequirementForModel(
   const catalog = getModelCatalog();
   for (const modality of MODALITIES) {
     const entry = catalog[modality].find((m) => m.name === model);
-    if (entry) return violatesSourceRequirement(entry.sourcesByMode, params);
+    if (entry) {
+      return violatesSourceRequirement(
+        entry.sourcesByMode,
+        params,
+        new Set(Object.keys(entry.params ?? {})),
+      );
+    }
   }
   return false; // unknown model — existence is not this gate's job
 }

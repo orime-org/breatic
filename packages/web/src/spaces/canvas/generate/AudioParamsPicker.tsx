@@ -13,9 +13,11 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { Slider } from '@web/components/ui/slider';
+import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import {
+  audioFlagValue,
   audioParamControls,
   formatAudioParam,
   type AudioParamControl,
@@ -23,8 +25,13 @@ import {
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/** What this picker edits, by the catalog's own param names. */
-export type AudioParamsValue = Record<string, number>;
+/**
+ * What this picker edits, by the catalog's own param names.
+ *
+ * Booleans as well as numbers since #1960: the music models take a switch
+ * ("no vocals at all"), which is a decision rather than a quantity.
+ */
+export type AudioParamsValue = Record<string, number | boolean>;
 
 interface AudioParamsPickerProps {
   /** The current model, whose declarations decide what is offered. */
@@ -99,6 +106,16 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 
   const label = controls
     .map((control) => {
+      // A switch reads as the state it is in, which is how every other pill
+      // here reads: the current value. Its value is a boolean rather than a
+      // number, and that is the only difference.
+      if (control.kind === 'toggle') {
+        return formatAudioParam(
+          control.name,
+          audioFlagValue(model, control.name, value[control.name]),
+          t,
+        );
+      }
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
       return formatAudioParam(control.name, shown, t);
@@ -148,7 +165,11 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
             key={control.name}
             control={control}
             label={t(control.labelKey)}
-            value={shownValue(model, control.name, value[control.name])}
+            value={
+              control.kind === 'toggle'
+                ? audioFlagValue(model, control.name, value[control.name])
+                : shownValue(model, control.name, value[control.name])
+            }
             onChange={onChange}
             last={index === controls.length - 1}
           />
@@ -161,7 +182,8 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 interface ParamControlRowProps {
   control: AudioParamControl;
   label: string;
-  value: number | undefined;
+  /** What this param is currently set to: a boolean on a switch, else a number. */
+  value: number | boolean | undefined;
   onChange: (partial: AudioParamsValue) => void;
   /** The last row carries no bottom margin. */
   last: boolean;
@@ -193,6 +215,22 @@ function ParamControlRow({
   const t = useTranslation();
   const spacing = last ? undefined : 'mb-3';
 
+  if (control.kind === 'toggle') {
+    return (
+      <ParamToggleRow
+        control={control}
+        label={label}
+        checked={value === true}
+        onChange={onChange}
+        className={spacing}
+      />
+    );
+  }
+
+  // Past the switch branch the value is a number or absent: a boolean reaches
+  // this row only on a toggle, and that branch has returned.
+  const shown = typeof value === 'number' ? value : undefined;
+
   if (control.kind === 'choice') {
     return (
       <ParamOptionGroup
@@ -201,7 +239,7 @@ function ParamControlRow({
           value: option,
           label: formatAudioParam(control.name, option, t),
         }))}
-        value={value}
+        value={shown}
         onSelect={(next) => onChange({ [control.name]: Number(next) })}
         testIdPrefix={`generate-audio-${control.name}-option`}
         className={spacing}
@@ -213,10 +251,73 @@ function ParamControlRow({
     <ParamSliderRow
       control={control}
       label={label}
-      value={value}
+      value={shown}
       onChange={onChange}
       className={spacing}
     />
+  );
+}
+
+interface ParamToggleRowProps {
+  control: Extract<AudioParamControl, { kind: 'toggle' }>;
+  label: string;
+  checked: boolean;
+  onChange: (next: AudioParamsValue) => void;
+  className?: string;
+}
+
+/**
+ * One switch: its name on the left, the state word and the switch on the right.
+ *
+ * The label is a `<label>` bound to the switch, so the words are part of the
+ * hit target rather than something to aim past. The state word is the same one
+ * the camera and video-audio switches print, and it is what says which way this
+ * switch is thrown: the track alone carries no word, so an off switch and a
+ * disabled control look alike (contrast measured 2026-09-06: track against the
+ * popover ground is 1.36:1, under SC 1.4.11's 3:1).
+ * @param root0 - Component props.
+ * @param root0.control - The toggle control.
+ * @param root0.label - The translated param name.
+ * @param root0.checked - Whether it is on.
+ * @param root0.onChange - Called with the changed param.
+ * @param root0.className - Row spacing from the parent.
+ * @returns The switch row.
+ */
+function ParamToggleRow({
+  control,
+  label,
+  checked,
+  onChange,
+  className,
+}: ParamToggleRowProps): React.JSX.Element {
+  const t = useTranslation();
+  const id = `generate-audio-${control.name}-toggle`;
+  return (
+    <div className={cn('flex items-center justify-between gap-3', className)}>
+      {/* The same weight and colour its two siblings in this popover use for a
+          param's name (`ParamSliderRow`, `ParamOptionGroup`) — a row reading
+          darker than the ones above and below it says a difference that is
+          not there. */}
+      <label
+        htmlFor={id}
+        className='cursor-pointer text-xs font-medium text-muted-foreground'
+      >
+        {label}
+      </label>
+      <span className='flex items-center gap-2'>
+        <span className='text-xs text-muted-foreground'>
+          {checked
+            ? t('canvas.generatePanel.switchOn')
+            : t('canvas.generatePanel.switchOff')}
+        </span>
+        <Switch
+          id={id}
+          checked={checked}
+          onCheckedChange={(next) => onChange({ [control.name]: next })}
+          data-testid={id}
+        />
+      </span>
+    </div>
   );
 }
 

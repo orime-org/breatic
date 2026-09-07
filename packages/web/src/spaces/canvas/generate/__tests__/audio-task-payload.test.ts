@@ -172,3 +172,105 @@ describe('buildAudioTaskPayload — the picked reference audio', () => {
     expect(payload.params).toEqual({ voice_id: 'Alice', prompt: 'Good evening.' });
   });
 });
+
+/**
+ * The two music models' contracts, measured against the gateway on 2026-09-05
+ * (#1960 A10).
+ *
+ * `minimax/music-3.0` takes a style brief as `prompt` and words as `lyrics`,
+ * and refuses the request outright without the latter — the gateway answered
+ * `invalid params, lyrics is required` for an empty one. `minimax/music-01`
+ * takes up to three reference tracks and accepts a `prompt` alongside them.
+ */
+describe('buildAudioTaskPayload — the music models (#1960)', () => {
+  it('sends the style brief and the lyrics as two separate fields', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-3.0', 'audio'),
+      promptText: 'warm indie folk, fingerpicked guitar, 90 BPM',
+      lyricsText: '[Verse]\nMorning light across the kitchen floor',
+    });
+    expect(payload.params).toMatchObject({
+      prompt: 'warm indie folk, fingerpicked guitar, 90 BPM',
+      lyrics: '[Verse]\nMorning light across the kitchen floor',
+    });
+  });
+
+  it('lets the written lyrics win over a same-named catalog param', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-3.0', 'audio'),
+      params: { lyrics: 'from the catalog' },
+      lyricsText: 'what the user wrote',
+    });
+    expect(payload.params.lyrics).toBe('what the user wrote');
+  });
+
+  it('sends no lyrics key on a mode that has no lyrics box', () => {
+    // Text to speech and sound effects never collect them, so the field must
+    // not appear at all rather than appear empty.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+    });
+    expect(payload.params).not.toHaveProperty('lyrics');
+  });
+
+  it('sends an empty lyrics through on an instrumental track', () => {
+    // Measured 2026-09-05: `is_instrumental: true` with an empty `lyrics` is
+    // accepted and completes, and it is the only empty case the panel can
+    // build — both music models refuse an empty one on a vocal run. Empty
+    // stays empty rather than being dropped or filled with the style brief;
+    // the user would hear their own "warm indie folk, 90 BPM" sung back.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-3.0', 'audio'),
+      params: { is_instrumental: true },
+      lyricsText: '',
+    });
+    expect(payload.params.lyrics).toBe('');
+    expect(payload.params.is_instrumental).toBe(true);
+  });
+
+  it('puts each of the three reference tracks under its own vendor name', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-01', 'audio'),
+      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
+      slotUrls: {
+        musicSong: 'https://cdn/song.mp3',
+        musicVoice: 'https://cdn/voice.mp3',
+        musicInstrumental: 'https://cdn/backing.mp3',
+      },
+    });
+    expect(payload.params).toMatchObject({
+      song: 'https://cdn/song.mp3',
+      voice: 'https://cdn/voice.mp3',
+      instrumental: 'https://cdn/backing.mp3',
+    });
+  });
+
+  it('sends only what was picked, on a mode where one is enough', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-01', 'audio'),
+      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
+      slotUrls: { musicVoice: 'https://cdn/voice.mp3' },
+    });
+    expect(payload.params).toMatchObject({ voice: 'https://cdn/voice.mp3' });
+    expect(payload.params).not.toHaveProperty('song');
+    expect(payload.params).not.toHaveProperty('instrumental');
+  });
+
+  it('leaves a voice sample behind, which music never asked for', () => {
+    // The cloning pick survives a mode switch by design. It is not one of the
+    // three this mode collects, so it must not travel as one.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-01', 'audio'),
+      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
+      slotUrls: { refAudio: 'https://cdn/sample.mp3' },
+    });
+    expect(payload.params).not.toHaveProperty('audio');
+  });
+});

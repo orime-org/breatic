@@ -421,8 +421,8 @@ export function useCanvasSpace(
  * numbers, booleans, plain arrays / objects — matching how the backend
  * reads `handlingBy` as a plain object). Undefined fields are omitted.
  *
- * Three keys are exceptions to the plain-values convention, and all three are
- * seeded here rather than on demand. A container created on demand is a
+ * Some keys are exceptions to the plain-values convention, and every one of
+ * them is seeded here rather than on demand. A container created on demand is a
  * whole-container race: two clients that both find it missing each mint their
  * own, map-level last-write-wins keeps one, and the loser's content disappears
  * with their container. Born inside the creating transaction the container is
@@ -439,9 +439,13 @@ export function useCanvasSpace(
  *
  * `prompt` — the Generate prompt fragment, on the modalities that offer
  * Generate (#1880). Seeded empty; {@link getPromptFragment} only reads.
+ *
+ * `lyrics` — the words to sing, a second fragment beside the style brief on
+ * audio nodes (#1960). Seeded empty; {@link getLyricsFragment} only reads.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
- *   seeded: `body` for text, `prompt` for generate-capable modalities.
+ *   seeded: `body` for text, `prompt` for generate-capable modalities, and
+ *   `lyrics` for audio.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -497,6 +501,10 @@ function buildDataMap(
   // modalities that offer Generate get one; on a group or a sticky it would be
   // a container nothing ever reads.
   if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
+  // Audio alone, since the two music modes are the only place words are asked
+  // for — the same "no container nothing reads" rule the prompt follows, just
+  // with a narrower answer.
+  if (type === 'audio') map.set('lyrics', new Y.XmlFragment());
   return map;
 }
 
@@ -825,9 +833,10 @@ function appendFocusImageCore(
 
 /**
  * Append a focus crop to a node's `focusImages` (#1782) — a `Y.Array` on
- * the data Y.Map (concurrent-add safe; see `appendFocusImageCore`,
- * the one exception to `buildDataMap`'s plain-values convention —
- * the backend never reads this field). Creates the array on first add.
+ * the data Y.Map (concurrent-add safe; see `appendFocusImageCore`, one of the
+ * exceptions to `buildDataMap`'s plain-values convention, and the only one
+ * that is a Y.Array — the backend never reads this field). Creates the array
+ * on first add.
  * CONTENT_WRITE origin, NOT undo-tracked (adversarial round-3): the append
  * lands asynchronously when the crop upload finishes — the same rule as
  * upload completion (#8), or a slow upload landing seconds later would
@@ -1173,6 +1182,31 @@ export function getPromptFragment(
   const data = nodeDataMap(doc, nodeId);
   if (!data) return null;
   const existing = data.get('prompt');
+  return existing instanceof Y.XmlFragment ? existing : null;
+}
+
+/**
+ * Reads a node's lyrics fragment (#1960), the collaborative text behind the
+ * music modes' second editor.
+ *
+ * Seeded with the node the way `prompt` is, and read-only here for the same
+ * reason: minting one on demand is what let two clients each create their own
+ * and lose one outright (#1880). Null for a node that is missing, one that is
+ * not an audio node, or one older than this field.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node whose lyrics fragment to read.
+ * @returns The lyrics Y.XmlFragment, or null when there is none.
+ */
+export function getLyricsFragment(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Y.XmlFragment | null {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return null;
+  const existing = data.get('lyrics');
   return existing instanceof Y.XmlFragment ? existing : null;
 }
 

@@ -411,7 +411,7 @@ body {
    adjacent chips is a real text-insertion point, so the cursor must read as
    "click to insert here" (text), not the default arrow the panel surface would
    otherwise inherit. */
-[data-testid='generate-prompt-editor'] .ProseMirror {
+.prompt-editor .ProseMirror[contenteditable='true'] {
   cursor: text;
 }
 /* A reference chip is an ATOM selected as a unit, not editable text. `cursor`
@@ -419,8 +419,8 @@ body {
    cursor (only `auto` resolution), so the I-beam above would leak onto the chip
    and its thumbnail, falsely signalling an insertion point (batch-4 adversarial).
    Reset the chip + its children to the default arrow. */
-[data-testid='generate-prompt-editor'] .reference-mention,
-[data-testid='generate-prompt-editor'] .reference-mention * {
+.prompt-editor .reference-mention,
+.prompt-editor .reference-mention * {
   cursor: default;
 }
 /* A chip caught inside a text range selection (I2, user 2026-07-12): the atom's

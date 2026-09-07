@@ -42,12 +42,32 @@ function ttsModel(name: string, mode: string): ModelEntry {
 }
 
 describe('AUDIO_MODE_OPTIONS (#1960)', () => {
-  it('offers text to speech, voice cloning and sound effects', () => {
+  it('offers speech, cloning, sound effects and the two music modes', () => {
     expect(AUDIO_MODE_OPTIONS.map((o) => o.value)).toEqual([
       'tts',
       'voice_clone',
       'sfx',
+      't2m',
+      'a2m',
     ]);
+  });
+
+  // The slots ride on the mode, the way the video panel already states them
+  // (`video-mode-options.ts` puts `slots` on its option and reads it through
+  // `slotsForMode`). Its comment gives the reason: a list means adding a mode
+  // cannot forget to say what that mode collects. Stating them here also
+  // retires the catalogue-driven `refAudioRequired` rule, which reads true for
+  // `a2m` as well and would have shown the voice-sample slot on a music mode.
+  it('states on every mode which slots it collects', () => {
+    expect(
+      Object.fromEntries(AUDIO_MODE_OPTIONS.map((o) => [o.value, o.slots])),
+    ).toEqual({
+      tts: [],
+      voice_clone: ['refAudio'],
+      sfx: [],
+      t2m: [],
+      a2m: ['musicSong', 'musicVoice', 'musicInstrumental'],
+    });
   });
 
   // One placeholder across all three would tell someone writing a sound effect
@@ -101,6 +121,27 @@ describe('AUDIO_MODE_OPTIONS (#1960)', () => {
     expect(filterAvailableModes(AUDIO_MODE_OPTIONS, ttsOnly).map((o) => o.value)).toEqual([
       'tts',
     ]);
+  });
+
+  // Measured against the WaveSpeed gateway on 2026-09-05
+  // (`engineering/demo/2026-09-05-music01-empty-lyrics-probe.mjs` in the
+  // private repo): minimax/music-01 answers `2013 - invalid params` BOTH to
+  // `lyrics: ""` and to a body carrying no `lyrics` key at all. So the words
+  // are not optional there — they are the same requirement text-to-music has,
+  // and this mode declares no instrumental switch to lift it.
+  it('insists on lyrics under both music modes', () => {
+    const byValue = new Map(AUDIO_MODE_OPTIONS.map((o) => [o.value, o]));
+    expect(byValue.get('t2m')?.lyrics).toBe(true);
+    expect(byValue.get('a2m')?.lyrics).toBe(true);
+  });
+
+  it('asks for no lyrics under speech or sound effects', () => {
+    for (const value of ['tts', 'voice_clone', 'sfx']) {
+      expect(
+        AUDIO_MODE_OPTIONS.find((o) => o.value === value)?.lyrics,
+        value,
+      ).toBe(false);
+    }
   });
 
   it('gives every option a label and a test id, like the other two panels', () => {

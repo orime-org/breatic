@@ -24,7 +24,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type * as React from 'react';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import * as Y from 'yjs';
+
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
+import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import type { ModelEntry } from '@breatic/shared';
@@ -102,6 +105,9 @@ const BASE = {
   creditEstimate: 10,
   executeRefusal: null,
   promptSlot: <div data-testid='prompt-editor' />,
+  // Null on every mode but the two music ones, which is what BASE stands for.
+  lyricsSlot: null,
+  labelBoxes: false,
   references: [],
   params: {},
   referencePicking: false,
@@ -349,5 +355,137 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
     ]) {
       expect(screen.queryByTestId(gone)).toBeNull();
     }
+  });
+});
+
+/**
+ * The two boxes share one wrapper (#1960).
+ *
+ * React reconciles by position, and the prompt editor is a live ProseMirror
+ * view bound to a Yjs fragment: moving it between two branches of a ternary
+ * tears down that view, the collaborative binding and the undo stack on every
+ * switch into or out of a music mode, silently and while the text survives.
+ */
+describe('AudioGeneratePanel — the style box across a mode switch', () => {
+  it('keeps the same editor alive when the lyrics box arrives and leaves', () => {
+    const props = { ...BASE, promptSlot: <div data-testid='prompt-editor' /> };
+    const { rerender } = renderPanel(<AudioGeneratePanel {...props} />);
+    const before = screen.getByTestId('prompt-editor');
+    rerender(
+      <TooltipProvider>
+        <AudioGeneratePanel
+          {...props}
+          lyricsSlot={<div data-testid='lyrics-editor' />}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByTestId('prompt-editor')).toBe(before);
+    rerender(
+      <TooltipProvider>
+        <AudioGeneratePanel {...props} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByTestId('prompt-editor')).toBe(before);
+  });
+});
+
+/**
+ * Which box carries which name (#1960).
+ *
+ * The names ride on the MODE, not on the second box being there: the
+ * instrumental switch takes the lyrics box away mid-mode, and the box left
+ * standing is still the style brief. Losing its name at that moment would say
+ * the panel had gone back to asking for one plain prompt.
+ */
+// `t` is stubbed to hand back the key, so these are what the labels render as.
+const STYLE_LABEL = 'canvas.generatePanel.musicStyleLabel';
+const LYRICS_LABEL = 'canvas.generatePanel.musicLyricsLabel';
+
+describe('AudioGeneratePanel — the box labels', () => {
+  it('names neither box on a mode that asks for one thing', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        promptSlot={<div data-testid='prompt-editor' />}
+      />,
+    );
+    expect(screen.queryByText(STYLE_LABEL)).toBeNull();
+    expect(screen.queryByText(LYRICS_LABEL)).toBeNull();
+  });
+
+  it('names both while both boxes are there', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        labelBoxes
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={<div data-testid='lyrics-editor' />}
+      />,
+    );
+    expect(screen.getByText(STYLE_LABEL)).toBeInTheDocument();
+    expect(screen.getByText(LYRICS_LABEL)).toBeInTheDocument();
+  });
+
+  it('goes on naming the style box after the lyrics box leaves', () => {
+    renderPanel(
+      <AudioGeneratePanel
+        {...BASE}
+        labelBoxes
+        promptSlot={<div data-testid='prompt-editor' />}
+        lyricsSlot={null}
+      />,
+    );
+    expect(screen.getByText(STYLE_LABEL)).toBeInTheDocument();
+    // Nothing left to call the lyrics.
+    expect(screen.queryByText(LYRICS_LABEL)).toBeNull();
+  });
+});
+
+/**
+ * The two starting heights (#1960).
+ *
+ * jsdom lays nothing out, so what can be pinned here is which classes each
+ * branch emits — and that is where the arithmetic lives: `half` is the
+ * ProseMirror floor plus the viewport's own 1rem of `py-2`, and it has to come
+ * to half of `full`'s 6.5rem. The only other check on these numbers is a
+ * Playwright spec that CI does not run.
+ */
+describe('PromptEditor — where each box starts', () => {
+  /**
+   * The viewport class list for one starting height.
+   * @param startingHeight - Which floor to render with.
+   * @returns The viewport element's class attribute.
+   */
+  function viewportClass(startingHeight: 'full' | 'half'): string {
+    const { container } = render(
+      <PromptEditor
+        fragment={new Y.Doc().getXmlFragment('p')}
+        startingHeight={startingHeight}
+        placeholder='p'
+        onTextChange={() => {}}
+        onAtMentionsChange={() => {}}
+        references={[]}
+        imageRefsDisabled
+        mentionEmptyLabel='e'
+        mentionNoMatchLabel='n'
+      />,
+    );
+    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
+    return viewport?.getAttribute('class') ?? '';
+  }
+
+  it('opens full at 6.5rem, the floor every prompt box has had', () => {
+    const cls = viewportClass('full');
+    expect(cls).toContain('min-h-[6.5rem]');
+    expect(cls).toContain('[&_.ProseMirror]:min-h-[5.25rem]');
+  });
+
+  it('opens half at exactly half of that, counting the padding between them', () => {
+    // 2.25rem of content + the 1rem of py-2 on the same box = 3.25rem, which
+    // is half of 6.5rem. An outer floor is not stated: min-height measures the
+    // border box, so one below content + padding could never bind.
+    const cls = viewportClass('half');
+    expect(cls).toContain('[&_.ProseMirror]:min-h-[2.25rem]');
+    expect(cls).not.toContain('min-h-[6.5rem]');
   });
 });

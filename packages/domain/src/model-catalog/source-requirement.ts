@@ -80,12 +80,27 @@ type SourceFieldShape = "list" | "single";
  * config source params + worker transports (image: `images` is a list, `image` /
  * `end_image` single; video / audio fields all single).
  */
-const SOURCE_TYPE_PARAM_FIELDS: Readonly<
+export const SOURCE_TYPE_PARAM_FIELDS: Readonly<
   Record<SourceType, ReadonlyArray<readonly [field: string, shape: SourceFieldShape]>>
 > = {
   image: [["images", "list"], ["image", "single"], ["end_image", "single"]],
   video: [["video", "single"], ["video_url", "single"]],
-  audio: [["audio", "single"], ["audio_url", "single"], ["ref_audio_url", "single"]],
+  // Six names for one thing, because vendors do not share one. The three
+  // music names arrived with #1960: minimax/music-01 reads its references as
+  // `song` / `voice` / `instrumental`. Adding them here is safe only because
+  // the check below also asks whether the MODEL declares the field — this row
+  // is read by four modes (`video.talking_head`, `audio.a2m`,
+  // `audio.separate`, `tts.voice_clone`), and without that second question a
+  // payload carrying `song` alone would satisfy the talking-head gate for a
+  // transport that never reads `song`.
+  audio: [
+    ["audio", "single"],
+    ["audio_url", "single"],
+    ["ref_audio_url", "single"],
+    ["song", "single"],
+    ["voice", "single"],
+    ["instrumental", "single"],
+  ],
 };
 
 /**
@@ -125,12 +140,23 @@ export function computeSourcesByMode(
  * guards against a crafted request putting the wrong shape in a source field:
  * a `"list"` field counts only as a non-empty array with at least one non-empty
  * string URL; a `"single"` field counts only as a non-empty string.
+ *
+ * A field counts only when the model DECLARES it (#1960). The vocabulary above
+ * spans every vendor's spelling, and one model reading another's spelling is
+ * not a source it can use: the transport builds its request from the params
+ * the model declares, so an undeclared field reaches the upstream as nothing.
  * @param type - The source type to look for.
  * @param params - The submitted task params.
+ * @param declared - The param names the model declares.
  * @returns True when the params carry at least one usable source of that type.
  */
-function hasSource(type: SourceType, params: Record<string, unknown>): boolean {
+function hasSource(
+  type: SourceType,
+  params: Record<string, unknown>,
+  declared: ReadonlySet<string>,
+): boolean {
   for (const [field, shape] of SOURCE_TYPE_PARAM_FIELDS[type]) {
+    if (!declared.has(field)) continue;
     const value = params[field];
     const present =
       shape === "list"
@@ -158,11 +184,14 @@ function hasSource(type: SourceType, params: Record<string, unknown>): boolean {
  * against params.
  * @param sourcesByMode - The model's per-mode source requirements ({@link computeSourcesByMode}); the catalog carries it precomputed.
  * @param params - The submitted task params (`params.images` / `video_url` / … are the source carriers).
+ * @param declared - The param names the model declares, so a field belonging to
+ *   another vendor's spelling cannot satisfy this model's requirement (#1960).
  * @returns True when a required source type is missing → reject before enqueue.
  */
 export function violatesSourceRequirement(
   sourcesByMode: Record<string, SourceType[]>,
   params: Record<string, unknown>,
+  declared: ReadonlySet<string>,
 ): boolean {
   const modes = Object.values(sourcesByMode);
   if (modes.length === 0) return false; // unknown model — existence is not this gate's job
@@ -172,7 +201,7 @@ export function violatesSourceRequirement(
   // Every mode needs a source → require each source type any mode demands.
   const required = new Set<SourceType>(modes.flat());
   for (const type of required) {
-    if (!hasSource(type, params)) return true;
+    if (!hasSource(type, params, declared)) return true;
   }
   return false;
 }

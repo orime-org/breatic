@@ -60,13 +60,46 @@ export interface ExecuteGateInput {
    */
   voiceRequired?: boolean;
   /**
-   * Whether the active mode needs a reference audio, from the model's own
-   * `sourcesByMode`. Optional for the same reason as `voiceRequired`: a panel
-   * with no such mode leaves it out rather than passing false everywhere.
+   * The slots the active mode collects and needs at least one of (#1960).
+   *
+   * A set rather than the single `refAudioRequired` / `refAudioChosen` pair it
+   * replaces: reference-to-music offers three references and takes any one, so
+   * a boolean naming one slot greyed the button out for a user who had filled
+   * all three under different names. Empty or absent means this gate checks
+   * no slot — the truth for image and for the three audio modes that collect
+   * nothing (`tts`, `sfx`, `t2m`). The video panel leaves it absent for a
+   * different reason: its modes do demand slots, and it refuses them one by
+   * name in `VideoGeneratePanelContainer` so the message says which is
+   * missing.
    */
-  refAudioRequired?: boolean;
-  /** Whether the reference-audio slot holds a pick. Read only when required. */
-  refAudioChosen?: boolean;
+  requiredSlots?: readonly string[];
+  /** Which slots currently hold a pick. Read only against `requiredSlots`. */
+  filledSlots?: readonly string[];
+  /**
+   * Whether the active mode insists on lyrics (#1960).
+   *
+   * Both music modes do: the gateway refuses a vocal run without them
+   * (`invalid params, lyrics is required` from music-3.0, `2013 - invalid
+   * params` from music-01, measured 2026-09-05), so the user would otherwise
+   * watch a generation start, spin and fail. Optional because every other mode
+   * has no lyrics box at all.
+   */
+  lyricsRequired?: boolean;
+  /** What the lyrics box holds. Read only when `lyricsRequired`. */
+  lyricsText?: string;
+  /**
+   * Whether the track is marked instrumental — no vocals at all (#1960).
+   *
+   * It lifts the lyrics requirement, because the gateway lifts it: measured
+   * 2026-09-05, `lyrics: ""` with `is_instrumental: true` is accepted and
+   * completes. Demanding words to sing for a track the user marked vocal-free
+   * is a rule we would be inventing.
+   *
+   * Only text-to-music can answer yes — it is the one model declaring the
+   * switch. Reference-to-music declares none, so nothing lifts its own
+   * requirement.
+   */
+  instrumental?: boolean;
   /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
@@ -88,18 +121,23 @@ export interface ExecuteGateInput {
  *
  * A boolean could say "no" but not "why", so every one of these collapsed into
  * the same greyed-out button that explained nothing (#1949). Naming the reason
- * lets the button and the submit path treat them differently: only
- * `prompt-missing` is something the user can act on, and only it leaves the
- * button clickable so the click can say what is missing.
+ * lets the button and the submit path treat them differently: the ones the
+ * user can act on leave the button clickable, so the click can say what is
+ * missing. Which ones those are is answered in one place —
+ * {@link refusalToastKey} — and read from there by
+ * {@link isExecuteButtonDisabled}.
  */
 export type ExecuteRefusal =
   | 'node-gone'
   | 'no-model'
   | 'submitting'
   | 'prompt-missing'
+  | 'style-missing'
   | 'prompt-too-long'
   | 'voice-missing'
-  | 'ref-audio-missing';
+  | 'ref-audio-missing'
+  | 'reference-missing'
+  | 'lyrics-missing';
 
 /**
  * Which execute precondition fails, or null when Generate may proceed.
@@ -133,8 +171,13 @@ export function evaluateExecute(
   // Front-end idempotency. The backend lock is the airtight guard, but the
   // button must not invite a double-submit.
   if (input.isSubmitting) return 'submitting';
+  // Two refusals for one empty box, because the box has two names. A panel
+  // showing it alone calls it the prompt and labels nothing; a music mode puts
+  // a lyrics box under it and labels the pair Style and Lyrics, where a
+  // sentence saying "write a prompt" names neither of the two things on
+  // screen.
   if (input.promptRequired && input.promptText.trim().length === 0) {
-    return 'prompt-missing';
+    return input.lyricsRequired ? 'style-missing' : 'prompt-missing';
   }
   // Counted on the text the vendor will actually receive. The worker cleans
   // every AIGC prompt through this same function before the request goes out
@@ -153,56 +196,84 @@ export function evaluateExecute(
   ) {
     return 'prompt-too-long';
   }
-  // Both remaining refusals name a control the user has to go and fill. Only
-  // one of them can be live at a time: `voiceRequired` says the model picks
-  // from a preset catalog, `refAudioRequired` says the mode needs a recording,
-  // and a model answering yes to both would be one whose panel shows a picker
-  // and a slot for the same voice.
+  // Right after the style brief, the order the two boxes sit in on screen.
+  //
+  // Judged on the text the vendor will receive, the same rule the prompt's
+  // length check follows above: the worker cleans the lyrics through this
+  // function before the request goes out (`prompt-params.ts`), and everything
+  // it does shortens. A box holding a zero-width space or an HTML comment
+  // survives `.trim()` and reaches the gateway empty, which is the
+  // `invalid params` the refusal exists to spare the user.
+  if (
+    input.lyricsRequired &&
+    input.instrumental !== true &&
+    extractPromptText(input.lyricsText).length === 0
+  ) {
+    return 'lyrics-missing';
+  }
+  // The remaining refusals name a control the user has to go and fill. Only
+  // one can be live at a time: `voiceRequired` says the model picks from a
+  // preset catalog, `requiredSlots` says the mode needs a source picked off
+  // the canvas, and a model answering yes to both would be one whose panel
+  // shows a picker and a slot for the same voice.
   if (input.voiceRequired && !input.voiceChosen) return 'voice-missing';
-  if (input.refAudioRequired && !input.refAudioChosen) return 'ref-audio-missing';
+  const required = input.requiredSlots ?? [];
+  const filled = input.filledSlots ?? [];
+  if (required.length > 0 && !required.some((slot) => filled.includes(slot))) {
+    // A mode demanding ONE slot names it; a mode offering several and taking
+    // any one of them refuses with a sentence about the set, because naming
+    // any single member of it would be the wrong sentence. Both sentences are
+    // reached through `refusalToastKey`, the way every other refusal here is.
+    return required.length === 1 ? 'ref-audio-missing' : 'reference-missing';
+  }
   return null;
 }
 
 /**
  * Whether a refusal should grey the execute button out.
  *
- * Both panels ask this rather than each spelling the set out: two copies of
+ * Derived from {@link refusalToastKey} rather than restating its partition:
+ * the two answer one question — can the user act on this — and a refusal that
+ * speaks is one a click must be able to reach. Written out twice they were two
+ * lists to extend, and a refusal added to one and not the other is either a
+ * dead click or a message about a button nobody can press.
+ *
+ * Every panel asks this rather than each spelling the set out: two copies of
  * "which refusals grey the button" would drift, and that drift is the shape
  * #1949 set out to remove.
  *
- * `prompt-missing`, `prompt-too-long`, `voice-missing` and `ref-audio-missing`
- * leave the button
- * live, because they are the ones the user can act on — the click then says
- * what is wrong, which a greyed-out button cannot (GOV.UK and Adam Silver both
- * name the disabled-until-valid button an anti-pattern for exactly this: it
- * never tells anyone why). The other three are facts about the environment,
- * and a button that invites a click it will not honour is worse than one that
- * plainly cannot be pressed.
+ * The refusals that speak leave the button live, because they are the ones the
+ * user can act on — the click then says what is wrong, which a greyed-out
+ * button cannot (GOV.UK and Adam Silver both name the disabled-until-valid
+ * button an anti-pattern for exactly this: it never tells anyone why). The
+ * silent ones are facts about the environment, and a button that invites a
+ * click it will not honour is worse than one that plainly cannot be pressed.
  * @param refusal - The failing condition from {@link evaluateExecute}, or null.
  * @returns True when the button must be disabled.
  */
 export function isExecuteButtonDisabled(
   refusal: ExecuteRefusal | null,
 ): boolean {
-  return (
-    refusal != null &&
-    refusal !== 'prompt-missing' &&
-    refusal !== 'prompt-too-long' &&
-    refusal !== 'voice-missing' &&
-    refusal !== 'ref-audio-missing'
-  );
+  return refusal != null && refusalToastKey(refusal) === null;
 }
 
 /**
- * The i18n key a refusal says out loud on click, or null when it says nothing.
+ * What each refusal says out loud on click, and null for the ones that say
+ * nothing.
  *
  * The other half of {@link isExecuteButtonDisabled}, and here for the same
  * reason: "which refusals speak" was written out twice, once per panel, in
  * blocks that were byte-for-byte identical. Two copies of a policy are two
  * chances to change one and forget the other.
  *
- * Silent is not the same as unhandled. Both silent refusals keep the button
- * disabled, so neither is reachable from a click in the same render. The
+ * A record keyed on the union rather than a chain of comparisons, so a refusal
+ * added without a sentence fails typecheck here. A chain ends in a fallback,
+ * and falling through it means both no toast and — since
+ * {@link isExecuteButtonDisabled} reads this — a button greyed with nothing
+ * said, which is the one outcome this whole mechanism exists to prevent.
+ *
+ * Silent is not the same as unhandled. A silent refusal keeps the button
+ * disabled, so none of them is reachable from a click in the same render. The
  * submit path re-derives from live Yjs, so each has one narrow window where it
  * arrives anyway, and they differ in what the user sees:
  *
@@ -211,27 +282,34 @@ export function isExecuteButtonDisabled(
  * panel vanishing already says it.
  *
  * `no-model` — unreachable since #1951, which is why it stays silent. This
- * function once carried a note that #1951 would give it a voice; the opposite
+ * table once carried a note that #1951 would give it a voice; the opposite
  * happened. Availability became the test at every layer that decides which
  * mode is current, so the mode a panel is on always has a model, and the
  * panel does not open at all for a modality that serves none. Writing copy
  * for it would have been describing a state instead of removing it (user
- * 2026-08-18). The branch stays as defence against a layer above breaking.
+ * 2026-08-18). The entry stays as defence against a layer above breaking.
+ *
+ * `submitting` — the button is a spinner while the POST is out, and the click
+ * that got past it dies on the latch a frame later.
+ */
+export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
+  'node-gone': null,
+  'no-model': null,
+  submitting: null,
+  'prompt-missing': 'canvas.generatePanel.refuseExecuteNoPrompt',
+  'style-missing': 'canvas.generatePanel.refuseExecuteNoStyle',
+  'prompt-too-long': 'canvas.generatePanel.refuseExecuteTooLong',
+  'voice-missing': 'canvas.generatePanel.refuseExecuteNoVoice',
+  'ref-audio-missing': 'canvas.generatePanel.errorNoRefAudio',
+  'reference-missing': 'canvas.generatePanel.refuseExecuteNoReference',
+  'lyrics-missing': 'canvas.generatePanel.lyricsMissing',
+};
+
+/**
+ * The i18n key a refusal says out loud on click, or null when it says nothing.
  * @param refusal - The failing condition from {@link evaluateExecute}.
  * @returns The i18n key to warn with, or null to refuse in silence.
  */
 export function refusalToastKey(refusal: ExecuteRefusal): string | null {
-  if (refusal === 'prompt-missing') {
-    return 'canvas.generatePanel.refuseExecuteNoPrompt';
-  }
-  if (refusal === 'prompt-too-long') {
-    return 'canvas.generatePanel.refuseExecuteTooLong';
-  }
-  if (refusal === 'voice-missing') {
-    return 'canvas.generatePanel.refuseExecuteNoVoice';
-  }
-  if (refusal === 'ref-audio-missing') {
-    return 'canvas.generatePanel.errorNoRefAudio';
-  }
-  return null;
+  return REFUSAL_TOAST_KEY[refusal];
 }

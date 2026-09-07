@@ -92,11 +92,15 @@ export function referenceMentionContent(item: ReferenceRailItem): {
  * itself never changed.
  * @param editor - The prompt editor.
  * @param pool - The current reference pool (source of live text content).
+ * @param blockSeparator - What joins two blocks. TipTap's own default is a
+ *   blank line, which is what a prompt reads as; a lyrics box asks for lines
+ *   and passes a single newline (#1960).
  * @returns The backend-bound prompt string.
  */
 export function serializePromptText(
   editor: Editor,
   pool: ReadonlyArray<ReferenceRailItem>,
+  blockSeparator = '\n\n',
 ): string {
   const textById = new Map(
     pool
@@ -104,6 +108,7 @@ export function serializePromptText(
       .map((r) => [r.sourceNodeId, r.textContent ?? '']),
   );
   return editor.getText({
+    blockSeparator,
     textSerializers: {
       [REFERENCE_MENTION_NODE]: ({ node }): string => {
         if (node.attrs[MENTION_KIND_ATTR] !== 'text') return '';

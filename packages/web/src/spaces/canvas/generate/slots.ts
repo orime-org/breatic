@@ -69,8 +69,16 @@ export interface SlotSpec {
   tipKey: string;
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;
-  /** Translation key for the refusal shown when execute finds it empty. */
-  errorKey: string;
+  /**
+   * Translation key for the refusal shown when execute finds this slot empty.
+   *
+   * Only on a slot whose panel looks the sentence up here — the video
+   * container does (`VideoGeneratePanelContainer`). The audio panel reaches
+   * every refusal sentence through `refusalToastKey`, the way it reaches every
+   * other one, so its slots carry none and there is one place per panel
+   * where a refusal is worded.
+   */
+  errorKey?: string;
 }
 
 /** A registry of slots, keyed by the name its panel calls each one. */
@@ -110,8 +118,8 @@ function usableUrl(value: unknown): string | undefined {
  * was accepted and billed.
  *
  * An empty string is a string and no URL. A poster that is missing or
- * malformed leaves the slot covering itself with the asset node's icon rather
- * than an empty frame, which at least names what it holds (#1946).
+ * malformed leaves the slot with nothing to paint, so the button keeps its own
+ * icon and label and lights its border (#1946, user 2026-09-06).
  * @param spec - The slot being read, which states its stored shape.
  * @param value - The raw node-data value for that slot's field.
  * @returns The asset URL and what to show for it, or null when there is no pick.
@@ -167,7 +175,8 @@ export function readSlotUrls<K extends string>(
  * missing is absent from this map rather than falling back to the asset:
  * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
  * even a broken-image marker. Absent here does not mean the slot looks empty —
- * the toolbar covers it with the asset node's icon instead (#1946).
+ * with nothing to paint, the toolbar keeps the slot's own icon and label and
+ * lights its border instead (#1946, user 2026-09-06).
  * @param registry - The panel's slot registry.
  * @param content - The node's content view, if it has one.
  * @returns The URLs to display, by slot.
