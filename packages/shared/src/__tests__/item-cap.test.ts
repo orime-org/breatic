@@ -82,9 +82,7 @@ describe("the effective cap on a capped list param", () => {
     // both read these as "no cap"; this function has to agree with them or the
     // three gates diverge on exactly the values yaml can hold by mistake.
     for (const max_items of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(
-        effectiveItemCap({ description: "d", max_items, default: null }, {}),
-      ).toBeUndefined();
+      expect(effectiveItemCap({ max_items }, {})).toBeUndefined();
     }
   });
 

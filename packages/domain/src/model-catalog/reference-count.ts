@@ -5,8 +5,12 @@
  * Reference-count gate rule (#1735). THE single source of truth for "how many
  * items may a capped list param carry". A model's `max_items` per param comes
  * from config (config/models/<modality>/*.yaml) and rides the wire on
- * {@link ParamDescriptor.max_items}; the frontend reads it to gate the picker,
- * the server calls {@link violatesReferenceCount} to reject before enqueue.
+ * {@link ParamDescriptor.max_items}, which a model may state as moving with
+ * another param it carries ({@link ParamDescriptor.max_items_when_present},
+ * #1928); the number in force comes from `effectiveItemCap`, the one function
+ * this rule, the frontend picker gate and the worker's truncation all read.
+ * The frontend reads it to gate the picker, the server calls
+ * {@link violatesReferenceCount} to reject before enqueue.
  *
  * This mirrors the condition the worker silently truncates on
  * (`spec.max_items && Array.isArray(value) && value.length > spec.max_items`,
@@ -19,7 +23,7 @@
  * `max_items` wire type + integer yaml convention never produce.)
  */
 
-import type { ParamDescriptor } from "@breatic/shared";
+import { effectiveItemCap, type ParamDescriptor } from "@breatic/shared";
 
 /** A reference-count overflow: which capped param, its limit, and what was submitted. */
 export interface ReferenceCountViolation {
@@ -46,8 +50,12 @@ export function violatesReferenceCount(
   params: Record<string, unknown>,
 ): ReferenceCountViolation | null {
   for (const [field, descriptor] of Object.entries(paramDescriptors)) {
-    const limit = descriptor.max_items;
-    if (typeof limit !== "number" || !Number.isFinite(limit) || limit < 1) {
+    // The cap this submission is judged against, which a model may state as
+    // moving with another param it carries (#1928) — read through the one
+    // function the panel and the worker read, so all three agree on the number
+    // for one submission.
+    const limit = effectiveItemCap(descriptor, params);
+    if (limit === undefined) {
       continue; // uncapped param
     }
     const value = params[field];

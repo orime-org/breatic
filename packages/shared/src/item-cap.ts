@@ -22,6 +22,18 @@
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 /**
+ * The two fields this reads.
+ *
+ * Narrower than {@link ParamDescriptor} on purpose: the backend holds the same
+ * param under its own yaml-side type, where every field is optional, and a
+ * rule about caps has no business asking for a description as well.
+ */
+export type CappedParam = Pick<
+  ParamDescriptor,
+  "max_items" | "max_items_when_present"
+>;
+
+/**
  * Whether a number can serve as a cap.
  * @param value - The candidate, straight off a descriptor.
  * @returns True for a finite number of at least 1.
@@ -58,7 +70,7 @@ function isPresent(value: unknown): boolean {
  * @returns The cap, or undefined when this param is uncapped.
  */
 export function effectiveItemCap(
-  descriptor: ParamDescriptor,
+  descriptor: CappedParam,
   params: Readonly<Record<string, unknown>>,
 ): number | undefined {
   const base = descriptor.max_items;

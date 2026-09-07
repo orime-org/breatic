@@ -68,7 +68,7 @@ export interface ParamDescriptor {
   type?: string;
   max_items?: number;
   /**
-   * Caps that replace {@link max_items} while another param carries a value,
+   * Caps that replace `max_items` while another param carries a value,
    * keyed by that param's name (#1928).
    *
    * A vendor may state one list's limit in terms of another input:

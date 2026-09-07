@@ -311,6 +311,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
 export { effectiveItemCap } from "@shared/item-cap.js";
+export type { CappedParam } from "@shared/item-cap.js";
 
 // The rules the per-user tab order needs on both sides of the wire: collab
 // seeds a user's list and moves one tab within it, the browser dedupes what it
