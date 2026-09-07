@@ -37,6 +37,7 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { extractPromptText } from "@breatic/domain";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
+import { storeCover } from "@worker/handlers/store-cover.js";
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -287,56 +288,31 @@ export async function resolveVideoCovers(
   outputs: Array<{ url?: string; cover_url?: string }>,
   ctx: { taskId: string; userId: string; projectId: string | undefined },
 ): Promise<void> {
-  // The ENTIRE body sits inside this try. The dynamic import can throw outside
-  // any per-output handler (video-cover.js statically imports Sharp, so a
-  // broken native binary fails at import time), and an escaping throw would
-  // fail the whole video task, which #1824 forbids.
+  // The ENTIRE body sits inside this try, and every output sits inside one of
+  // its own. #1824 forbids a cover failure of ANY shape from failing the
+  // video, and the inner handler can only cover what it can see: this one
+  // holds whatever the loop itself does.
   try {
-    const { extractVideoCover } = await import("@worker/providers/video-cover.js");
     for (const out of outputs) {
       if (typeof out.url !== "string" || out.cover_url) continue;
+      if (!ctx.projectId) {
+        // No project → no owner studio to store it against → degrade to Film
+        // (leave cover_url unset), never pin an untracked orphan key.
+        logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
+        continue;
+      }
       try {
-        const cover = await extractVideoCover(out.url);
-        if (!cover) {
-          logger.warn(
-            { taskId: ctx.taskId, videoUrl: out.url },
-            "video_cover_extraction_returned_empty_non_fatal",
-          );
-          continue;
-        }
-        if (!ctx.projectId) {
-          // No project → no owner studio to store it against → degrade to
-          // Film (leave cover_url unset), never pin an untracked orphan key.
-          logger.warn({ taskId: ctx.taskId }, "video_cover_no_project_degraded_to_film_non_fatal");
-          continue;
-        }
-        try {
-          // Lane ②: the frame is a buffer we are holding, so it goes to R2 the
-          // way every other asset does. What comes back is the registered
-          // row's canonical url — on a dedup hit that is an existing row whose
-          // key differs from the one just written, and pinning the fresh key
-          // would point the node at an object the reclaim job is about to
-          // remove (storage rule ②).
-          const stored = await backendUploadService.uploadBytesToStorage(
-            new Blob([cover.png]),
-            {
-              projectId: ctx.projectId,
-              actingUserId: ctx.userId,
-              assetSource: "cover",
-              generationTaskId: ctx.taskId,
-              taskType: "video",
-              ext: "_cover.png",
-              // The mime comes from the cover itself (it owns its format, §8
-              // PNG) so the stored object and the ledger row cannot drift.
-              contentType: cover.mimeType,
-            },
-          );
-          out.cover_url = stored.fileUrl;
-        } catch (err) {
-          // Nothing to show → degrade to Film (cover_url unset). A cover
-          // failure never fails the video (#1824).
-          logger.warn({ taskId: ctx.taskId, err }, "video_cover_register_failed_non_fatal");
-        }
+        // What comes back is the registered row's canonical url — on a dedup
+        // hit that is an existing row whose key differs from the one just
+        // written, and pinning the fresh key would point the node at an object
+        // the reclaim job is about to remove (storage rule ②).
+        const stored = await storeCover(out.url, {
+          projectId: ctx.projectId,
+          actingUserId: ctx.userId,
+          generationTaskId: ctx.taskId,
+          log: { taskId: ctx.taskId },
+        });
+        if (stored) out.cover_url = stored.fileUrl;
       } catch (err) {
         logger.warn({ taskId: ctx.taskId, err }, "video_cover_extraction_failed_non_fatal");
       }

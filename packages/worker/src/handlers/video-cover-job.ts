@@ -28,13 +28,13 @@ import {
 } from "@breatic/core";
 import {
   assetRepo,
-  backendUploadService,
   nodeHistoryService,
   nodeTaskService,
   emitNodeTaskCounts,
   type VideoCoverJobData,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
+import { storeCover } from "@worker/handlers/store-cover.js";
 
 /** The BullMQ job shape this handler reads. */
 export interface VideoCoverJobLike {
@@ -135,39 +135,12 @@ export async function announceUpload(
 async function resolveCover(
   data: VideoCoverJobData,
 ): Promise<string | undefined> {
-  const { extractVideoCover } = await import(
-    "@worker/providers/video-cover.js"
-  );
-  const cover = await extractVideoCover(data.videoUrl);
-  if (!cover) {
-    logger.warn(
-      { storageKey: data.storageKey, videoUrl: data.videoUrl },
-      "video_cover_extraction_returned_empty_non_fatal",
-    );
-    return undefined;
-  }
-
-  // Lane ②: the frame is a buffer we are holding, so it goes to R2 the way
-  // every other asset does, and the report that lands it is what files it.
-  let stored;
-  try {
-    stored = await backendUploadService.uploadBytesToStorage(new Blob([cover.png]), {
-      projectId: data.projectId,
-      actingUserId: data.userId,
-      assetSource: "cover",
-      taskType: "video",
-      ext: "_cover.png",
-      contentType: cover.mimeType,
-    });
-  } catch (err) {
-    // No row means no cover anyone may serve. The video keeps its own
-    // registration, so this degrades to a video without a cover.
-    logger.warn(
-      { err, storageKey: data.storageKey },
-      "video_cover_register_failed_non_fatal",
-    );
-    return undefined;
-  }
+  const stored = await storeCover(data.videoUrl, {
+    projectId: data.projectId,
+    actingUserId: data.userId,
+    log: { storageKey: data.storageKey },
+  });
+  if (!stored) return undefined;
 
   // The url is guaranteed by the store; the ledger row's id is not, and
   // pointing the video at its cover needs the id.
@@ -179,11 +152,11 @@ async function resolveCover(
     return undefined;
   }
 
-  // Thrown rather than degraded, which is what separates it from the failure
-  // above. The cover row is real and keyed on this frame's hash, so the retry
-  // finds it by dedup and has only the pointer left to write; going on without
-  // it would leave that row with nothing pointing at it and a node that never
-  // gets a cover.
+  // Thrown rather than degraded, which is what separates it from the failures
+  // inside the store. The cover row is real and keyed on this frame's hash, so
+  // the retry finds it by dedup and has only the pointer left to write; going
+  // on without it would leave that row with nothing pointing at it and a node
+  // that never gets a cover.
   await assetRepo.setCoverAsset(data.videoAssetId, stored.assetId);
   return stored.fileUrl;
 }

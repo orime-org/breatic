@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The guard around `resolveVideoCovers`'s setup step (#1824 best-effort).
+ * A broken Sharp binary degrades to Film rather than failing the video
+ * (#1824 best-effort).
  *
  * `video-cover.js` statically imports Sharp, so a broken native binary makes
- * the dynamic import itself reject — before any output is reached and outside
- * every per-output handler. Only the outer try covers that, and an escape
- * there fails a video task that already produced its video.
+ * the dynamic import itself reject. It is the one cover failure that happens
+ * before a frame is ever asked for, and the video it belongs to is already
+ * registered and already paid for.
  *
  * This lives in its own file because the failure has to happen at module load:
  * a mock factory that throws cannot be installed per-test, and the sibling file
@@ -67,8 +68,8 @@ vi.mock("ai", () => ({
 
 import { resolveVideoCovers } from "@worker/handlers/dispatch.js";
 
-describe("resolveVideoCovers — the setup guard", () => {
-  it("swallows a load failure and leaves the video cover-less", async () => {
+describe("resolveVideoCovers — a cover extractor that will not load", () => {
+  it("swallows the load failure and leaves the video cover-less", async () => {
     const out: { url?: string; cover_url?: string } = { url: "https://cdn/clip.mp4" };
 
     await expect(
@@ -79,7 +80,7 @@ describe("resolveVideoCovers — the setup guard", () => {
     expect(out.cover_url).toBeUndefined();
     expect(mockWarn).toHaveBeenCalledWith(
       expect.objectContaining({ taskId: "t1" }),
-      "video_cover_setup_failed_non_fatal",
+      "video_cover_extraction_failed_non_fatal",
     );
   });
 });
