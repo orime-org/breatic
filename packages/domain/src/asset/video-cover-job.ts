@@ -56,8 +56,6 @@ export interface VideoCoverJobData {
    * stored, so this is that row's URL, never the key just written.
    */
   videoUrl: string;
-  /** The studio the cover is registered under, read off the upload grant. */
-  ownerStudioId: string;
   /** Who uploaded, credited as the cover's registrant and the feed's actor. */
   userId: string;
   projectId: string;

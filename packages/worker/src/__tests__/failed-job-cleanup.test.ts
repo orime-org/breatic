@@ -36,7 +36,6 @@ vi.mock("@breatic/core", () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
-  downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
   storageKey: vi.fn(),
 }));

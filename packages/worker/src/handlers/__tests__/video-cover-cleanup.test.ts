@@ -68,7 +68,6 @@ const DATA: VideoCoverJobData = {
   storageKey: "uploads/abc.mp4",
   videoAssetId: "video-row-1",
   videoUrl: "https://cdn/uploads/registered.mp4",
-  ownerStudioId: "studio-1",
   userId: "user-1",
   projectId: "proj-1",
   spaceId: "space-1",

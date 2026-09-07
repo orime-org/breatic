@@ -27,7 +27,6 @@ vi.mock("@breatic/core", () => ({
   getRedis: vi.fn(),
   env: { ENV: "test", CREDIT_MULTIPLIER: 1 },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
   storageKey: vi.fn(),
 }));

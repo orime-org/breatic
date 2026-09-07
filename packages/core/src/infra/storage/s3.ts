@@ -9,9 +9,6 @@
  * SigV4-signed requests, and the public base, which is what a browser fetches.
  * A URL built on the first is unreadable, and it is the URL that gets pinned
  * onto nodes and into node_history.
- *
- * For persistFromUrl: downloads the file then uploads. The S3 API has no
- * server-side copy from an external URL.
  */
 
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
@@ -20,9 +17,7 @@ import { env } from "@core/config/env.js";
 import type {
   StorageAdapter,
   ObjectHead,
-  PersistedObject,
 } from "@core/infra/storage/index.js";
-import { downloadValidated, sha256Hex } from "@core/infra/storage/index.js";
 
 /** Everything needed to reach one S3-compatible bucket. */
 export interface S3CompatibleConfig {
@@ -143,18 +138,7 @@ export class S3StorageAdapter implements StorageAdapter {
     return `${this.publicBaseUrl}/${key}`;
   }
 
-  /**
-   * Download a remote file and upload it to S3 under `key`.
-   * @param sourceUrl - the remote URL to download (120s timeout)
-   * @param key - the S3 object key to store the file under
-   * @returns the public URL of the uploaded object
-   * @throws {Error} when the download fails, is truncated, or is empty
-   */
-  async persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject> {
-    const { buffer, contentType } = await downloadValidated(sourceUrl);
-    const url = await this.upload(key, buffer, contentType);
-    return { url, sha256: sha256Hex(buffer), sizeBytes: buffer.length, contentType };
-  }
+
 
   /**
    * Generate a presigned PUT URL for client-side direct upload.

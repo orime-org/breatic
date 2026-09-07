@@ -64,7 +64,7 @@ vi.mock("ai", () => ({
 // Strategy:
 //   1. Mock resolveMiniToolEntry → always return { kind: 'local', handler: 'test/mock' }
 //   2. Mock runLocalHandler → return values from a per-test controller object
-//   3. Mock downloadAndStore + getStorageAdapter → no-op URL passthrough
+//   3. Mock getStorageAdapter + backendUploadService → no-op URL passthrough
 //   4. Everything else (DB, Redis, BullMQ) is real
 //
 // This intercepts at the highest-level boundary: the provider call in runMiniTool.
@@ -168,7 +168,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
   return {
     ...orig,
-    downloadAndStore: async (url: string, key: string) => persist(url, key),
     getStorageAdapter: async () => ({
       upload: async (key: string, _data: Buffer, _contentType: string) => {
         const url = `https://oss/uploaded/${key}`;

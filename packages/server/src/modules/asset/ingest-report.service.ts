@@ -280,7 +280,6 @@ async function queueVideoCover(
       // The registered row's URL, which a dedup hit resolves to a different
       // object than this upload stored.
       videoUrl: asset.fileUrl,
-      ownerStudioId: grant.studioId,
       userId: grant.userId,
       projectId: grant.projectId,
       spaceId: grant.spaceId,

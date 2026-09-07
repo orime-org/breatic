@@ -787,7 +787,7 @@ describe("a video, which needs a cover before the node hears anything", () => {
     expect(events[0]!.counts).toMatchObject({ running: 1, done: 0 });
   });
 
-  it("hands the worker the registered video, its studio and its node", async () => {
+  it("hands the worker the registered video and the node waiting on it", async () => {
     const seed = await seedEditor();
     const { key, nodeId } = await uploadVideo(seed);
 
@@ -800,7 +800,10 @@ describe("a video, which needs a cover before the node hears anything", () => {
       storageKey: key,
       videoAssetId: rows[0]!.id,
       videoUrl: rows[0]!.file_url,
-      ownerStudioId: seed.studioId,
+      // No owner studio travels on the job. The cover is uploaded the way
+      // every asset is, and that path resolves the owner from the project —
+      // a second copy on the payload would be a second answer to the same
+      // question, free to disagree with the first.
       userId: seed.userId,
       projectId: seed.projectId,
       spaceId: seed.spaceId,

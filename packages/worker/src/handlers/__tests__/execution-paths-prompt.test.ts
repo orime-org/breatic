@@ -38,10 +38,8 @@ vi.mock("@breatic/core", () => ({
   getAgentConfig: vi.fn(),
   projectActivitiesRepo: {},
   publishActivityNew: vi.fn(),
-  downloadAndStore: vi.fn(),
   getStorageAdapter: vi.fn(),
   storageKey: vi.fn(),
-  sha256Hex: vi.fn(),
   NotFoundError: class NotFoundError extends Error {},
 }));
 

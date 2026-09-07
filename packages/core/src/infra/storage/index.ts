@@ -10,9 +10,8 @@
  * - aliyun_oss: Alibaba Cloud OSS (uploads buffer to OSS)
  */
 
-import { createHash } from "node:crypto";
 
-import { newId, httpRequest } from "@breatic/shared";
+import { newId } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
 
@@ -23,30 +22,12 @@ export interface ObjectHead {
   exists: boolean;
 }
 
-/** Result of persisting a remote URL: URL + content sha256 + byte size. */
-export interface PersistedObject {
-  url: string;
-  sha256: string;
-  sizeBytes: number;
-  contentType: string;
-}
 
 /** Storage adapter interface. */
 export interface StorageAdapter {
   /** Upload binary data and return a public URL. */
   upload(key: string, data: Buffer, contentType: string): Promise<string>;
 
-  /**
-   * Persist a file from a remote URL to our storage. Returns the
-   * permanent URL plus the content's sha256 + byte size, computed on
-   * the transfer stream (the bytes flow through here anyway, so hashing
-   * costs no extra download). The asset layer uses the sha256 as its
-   * dedup column (spec 2026-07-04-asset-layer-v1).
-   *
-   * - local: downloads to disk, serves via static route
-   * - s3/oss: downloads then uploads to cloud storage
-   */
-  persistFromUrl(sourceUrl: string, key: string): Promise<PersistedObject>;
 
   /**
    * Generate a presigned PUT URL for client-side direct upload.
@@ -180,118 +161,5 @@ export function storageKey(opts: { taskType: string; ext: string }): string {
   return `${opts.taskType}/${date}/${filename}`;
 }
 
-/**
- * Download from a temporary URL and persist to storage. Delegates to
- * the adapter's persistFromUrl(), which also returns the content sha256
- * + byte size (computed on the transfer stream) for the asset layer.
- * @param url - the temporary source URL to download from
- * @param key - the storage key to persist the object under
- * @returns the permanent URL + content sha256 + byte size + contentType
- */
-export async function downloadAndStore(
-  url: string,
-  key: string,
-): Promise<PersistedObject> {
-  const adapter = await getStorageAdapter();
-  return adapter.persistFromUrl(url, key);
-}
 
-/**
- * sha256 hex digest of a buffer — the asset layer's dedup key. Shared by
- * the storage adapters (URL transfer path) and the worker (local-buffer
- * path) so both compute the hash identically.
- * @param data - The bytes to hash.
- * @returns Lowercase hex sha256.
- */
-export function sha256Hex(data: Buffer): string {
-  return createHash("sha256").update(data).digest("hex");
-}
 
-/**
- * Fetch the bytes, then check the transfer actually completed.
- *
- * Retrying is the transport's, declared by `replaySafe: true` — a download
- * is a pure GET, so a replay costs nothing and changes nothing. That
- * declaration also buys something the loop this replaced never had: a
- * dropped connection is retried. The old loop only recognised its own
- * `TransientDownloadError` (5xx / 429), and `fetch`'s connection errors are
- * not that, so exactly the failure most worth retrying went straight out.
- *
- * What stays here is the part that is about the CONTENT rather than the
- * transfer: whether these bytes are a complete asset.
- * @param sourceUrl - The remote URL to download (120s per delivery).
- * @returns The full downloaded bytes plus the resolved content type.
- * @throws {Error} On a non-ok status, a content-length mismatch
- *   (truncation), or a zero-byte body; or the transport's own failure when
- *   no delivery produced a response.
- */
-async function downloadOnce(
-  sourceUrl: string,
-): Promise<{ buffer: Buffer; contentType: string }> {
-  const response = await httpRequest(
-    sourceUrl,
-    {
-      // Request an uncompressed transfer so content-length equals the bytes
-      // we receive and the completeness check below actually validates the
-      // wire (adversarial #B round-3: undici does NOT throw on a truncated
-      // gzip/br stream — it silently returns the partial decoded bytes; an
-      // identity transfer restores real truncation detection). If a server
-      // ignores this and still encodes, the isEncoded fallback skips the
-      // length check to avoid a false "truncated" on a complete body.
-      headers: { "accept-encoding": "identity" },
-    },
-    { replaySafe: true, timeoutMs: 120_000 },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to download ${sourceUrl}: HTTP ${response.status}`);
-  }
-  const contentType =
-    response.headers.get("content-type") ?? "application/octet-stream";
-  const buffer = Buffer.from(await response.arrayBuffer());
-  // content-length is the COMPRESSED size when the body is content-encoded
-  // (fetch/undici auto-decompresses), so it will not equal the decoded
-  // buffer length — only assert equality for unencoded responses
-  // (adversarial #B: a gzip/br response must not read as "truncated").
-  const encoding = response.headers.get("content-encoding");
-  const isEncoded = encoding !== null && encoding.toLowerCase() !== "identity";
-  const declared = response.headers.get("content-length");
-  if (!isEncoded && declared !== null && Number(declared) !== buffer.length) {
-    throw new Error(
-      `Truncated download ${sourceUrl}: content-length ${declared} != received ${buffer.length} bytes`,
-    );
-  }
-  if (buffer.length === 0) {
-    throw new Error(`Empty download ${sourceUrl}: received 0 bytes`);
-  }
-  return { buffer, contentType };
-}
-
-/**
- * Download a remote file with transfer-stream completeness guards, shared
- * by every StorageAdapter.persistFromUrl. A silently-truncated or empty
- * response must NOT be hashed / stored / registered / billed as a
- * complete asset (asset-layer adversarial holes #3 truncation / #5
- * zero-byte): it throws so the worker's Stage-2 persist path fails the
- * task (markFailed + no charge) instead of storing wrong content.
- *
- * Transient failures are the transport's business now, declared through
- * `replaySafe: true` in `downloadOnce`: 5xx and 429 as before, and — new
- * here — a dropped connection, which the loop this replaced could never
- * retry because `fetch`'s connection errors are not the sentinel it keyed
- * on.
- *
- * Permanent failures still throw at once, for two different reasons. A 4xx
- * throws from the `!response.ok` branch: the transport already declined to
- * replay it, a 4xx being a fact about the request that a replay cannot
- * change. Truncation and zero-byte are thrown after a 200, where no retry
- * policy could reach them at all.
- * @param sourceUrl - The remote URL to download (120s per delivery).
- * @returns The full downloaded bytes plus the resolved content type.
- * @throws {Error} On a permanent failure, or when no delivery produced a
- *   response.
- */
-export async function downloadValidated(
-  sourceUrl: string,
-): Promise<{ buffer: Buffer; contentType: string }> {
-  return downloadOnce(sourceUrl);
-}
