@@ -135,7 +135,8 @@
       "support": "Questions about this purchase? Write to {email}."
     },
     "chat": {
-      "message_too_long": "This message is too long. It may hold at most {limit, number} characters, attached content included; this one holds {actual, number}."
+      "message_too_long": "This message is too long. It may hold at most {limit, number} characters, attached content included; this one holds {actual, number}.",
+      "ask_user_hint": "A number is enough, or tell me what you have in mind."
     }
   },
   "chat": {

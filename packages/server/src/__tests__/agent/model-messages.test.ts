@@ -418,3 +418,46 @@ describe("history on its way to the model", () => {
     expect(toModelMessages(history)).toEqual([{ role: "user", content: "search" }]);
   });
 });
+
+describe("the question a turn ended on", () => {
+  it("goes back as the reply's own words and not as a call as well", () => {
+    // The server writes the question into the reply as text, so the words are
+    // already in the history the model reads. Sending the call and its result
+    // alongside them puts the same question in the context twice, every turn
+    // from here on.
+    const out = toModelMessages([
+      stored("assistant", [
+        { type: "text", text: "哪一种？\n\n1. 一\n2. 二" },
+        {
+          type: "tool",
+          toolCallId: "tc-9",
+          toolName: "ask_user",
+          input: { question: "哪一种？", options: ["一", "二"] },
+          status: "success",
+          output: { question: "哪一种？", options: ["一", "二"] } as unknown as string,
+        },
+      ]),
+    ]);
+
+    expect(out).toEqual([{ role: "assistant", content: "哪一种？\n\n1. 一\n2. 二" }]);
+  });
+
+  it("leaves every other tool's call and result where they were", () => {
+    const out = toModelMessages([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-10",
+          toolName: "web_search",
+          input: { query: "cyberpunk" },
+          status: "success",
+          output: "three links",
+        },
+      ]),
+    ]);
+
+    expect(out).toHaveLength(2);
+    expect(out[0]).toMatchObject({ role: "assistant" });
+    expect(out[1]).toMatchObject({ role: "tool" });
+  });
+});

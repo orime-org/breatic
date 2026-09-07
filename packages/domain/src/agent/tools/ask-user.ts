@@ -2,38 +2,53 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Ask-user tool — pause the agent loop to request user input.
- *
- * Ported from backend/agent/tools/builtin/ask_user.py.
+ * Ask-user tool — put a question to the reader and end the turn there.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
+/** One line of what the reader will read: not blank, and not a paragraph. */
+const line = (max: number): z.ZodString =>
+  z.string().trim().min(1).max(max).regex(/^[^\n]+$/);
+
 /**
  * Ask the user a clarifying question before proceeding.
  *
- * Returns the question and its suggested answers. The client picks the tool
- * part out of the stream by its own name and renders them; nothing has to be
- * parsed out of a marked-up string for that to work.
+ * These arguments are the format. The question and its options are drawn as a
+ * paragraph in the reply, so what the schema accepts is what a reader can end
+ * up looking at: a question folded into three lines arrives as three lines,
+ * and a blank one arrives as an empty space above a row saying the turn is
+ * waiting for an answer to it.
+ *
+ * Strict, because the default is to drop an unknown field in silence -- the
+ * model would lose whatever it was trying to say with no error to read.
  */
-const inputSchema = z.object({
-  question: z.string().describe("The question to ask the user"),
-  options: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Optional list of suggested answers for the user to choose from",
-    ),
-});
+const inputSchema = z
+  .object({
+    question: line(200).describe("The question to ask the user, in one line"),
+    options: z
+      .array(line(60))
+      .max(5)
+      // Empty is what an open question has always looked like here. Fewer than
+      // two is a reason to draw no list rather than a reason to refuse.
+      .refine((given) => given.length === 0 || given.length >= 2, {
+        message: "Give two to five options, or none at all",
+      })
+      .optional()
+      .describe("Two to five answers to choose from, one line each"),
+  })
+  .strict();
 
-/** What the panel needs to put the question on screen. */
+/** What the turn needs to draw the question. */
 type AskUserPayload = { question: string; options: string[] };
 
 export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
   description:
     "Ask the user a clarifying question. Use when you need more " +
-    "information to proceed. You can optionally provide a list of " +
-    "suggested options for the user to choose from.",
+    "information to proceed. Put the question here rather than writing it " +
+    "yourself, and put every option in `options` -- both are drawn for you. " +
+    "Keep each option to one line saying what it is, with no argument for " +
+    "or against it.",
   inputSchema,
   execute: async (
     input: z.infer<typeof inputSchema>,

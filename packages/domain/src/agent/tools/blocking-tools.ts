@@ -15,10 +15,18 @@
 /**
  * Ask the user something and wait.
  *
- * These two put a question to the reader, and the answer opens the next turn
- * -- so the question is the end of what the current turn can do. The other two
- * interaction tools put something on screen and the model is meant to keep
- * writing around them; stopping on those would make the first card a turn
- * draws the last thing it says.
+ * Putting a question to the reader is the end of what the current turn can
+ * do: the answer opens the next one. The other interaction tools put
+ * something on screen and the model is meant to keep writing around them;
+ * stopping on those would make the first card a turn draws the last thing it
+ * says.
+ *
+ * The name is written once, here, and every list that needs it reads it from
+ * here -- including the registry key the tool answers to. Written out a second
+ * time, a disagreement throws nothing: the match simply never happens, and a
+ * turn carries on talking past the question it just asked.
  */
-export const TOOLS_THAT_BLOCK: readonly string[] = ["ask_user_question", "ask_user_choice"];
+// eslint-disable-next-line jsdoc/require-jsdoc -- the block above documents it
+export const ASK_USER = "ask_user";
+
+export const TOOLS_THAT_BLOCK: readonly string[] = [ASK_USER];

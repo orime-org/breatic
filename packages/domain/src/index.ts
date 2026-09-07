@@ -46,6 +46,7 @@ export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js"
 export {
   buildToolSet,
   BASELINE_TOOLS,
+  ASK_USER,
   TOOLS_THAT_BLOCK,
 } from "@domain/agent/tools/index.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";

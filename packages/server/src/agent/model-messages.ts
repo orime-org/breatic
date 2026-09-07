@@ -20,7 +20,7 @@ import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY } from "@breatic/shared";
-import { renderSearchForModel } from "@breatic/domain";
+import { renderSearchForModel, ASK_USER } from "@breatic/domain";
 import type { SearchAnswer } from "@breatic/domain";
 import type { MessageData, MessagePart } from "@breatic/shared";
 
@@ -58,6 +58,11 @@ const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
  * @returns True when it reaches the model.
  */
 export function reachesTheModel(part: ToolPart): boolean {
+  // A question the model asked is in the reply as words, written there by the
+  // turn from this call's own payload. Sending the call and its result too
+  // would put the same question in the context twice, on this turn and every
+  // one after it, saying nothing the words do not.
+  if (part.toolName === ASK_USER) return false;
   return part.status !== "pending" && part.argumentsIncomplete !== true;
 }
 

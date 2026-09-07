@@ -8,7 +8,7 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
-import { askUserChoice } from "@domain/agent/tools/ask-user-choice.js";
+import { ASK_USER } from "@domain/agent/tools/blocking-tools.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { showSearchResults } from "@domain/agent/tools/show-search-results.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
@@ -28,12 +28,13 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
   web_search: () => makeSearchTools().web_search,
-  ask_user_question: () => askUser,
-  // Interaction tools (spec/07 §10.18.4 v13). LLM calls these to send
-  // structured payloads the frontend renders as UI components, not for
-  // execution. main-agent detects sentinel-prefixed results and yields
-  // matching SSE events.
-  ask_user_choice: () => askUserChoice,
+  // The name a tool answers to is this key. Three more lists below repeat it,
+  // and the one deciding whether a turn waits for an answer fails in silence
+  // when they disagree -- `TOOLS_THAT_BLOCK` simply never matches.
+  [ASK_USER]: () => askUser,
+  // Interaction tools. The model calls these to hand back a payload rather
+  // than to have something done: `ask_user`'s is drawn into the reply by the
+  // turn, and the other two are drawn by the panel.
   propose_canvas_action: () => proposeCanvasAction,
   show_search_results: () => showSearchResults,
 } as const;
@@ -52,8 +53,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
-  "ask_user_question",
-  "ask_user_choice",
+  ASK_USER,
   "propose_canvas_action",
   "show_search_results",
 ];
@@ -67,13 +67,12 @@ export const BASELINE_TOOLS: readonly string[] = [
  * request back as the answer.
  */
 export const INTERACTION_TOOLS: readonly string[] = [
-  "ask_user_question",
-  "ask_user_choice",
+  ASK_USER,
   "propose_canvas_action",
   "show_search_results",
 ];
 
-export { TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
+export { ASK_USER, TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
 
 /**
  * What each tool needs configured before it can do anything.
@@ -133,7 +132,6 @@ export function buildToolSet(toolNames: readonly string[]): Record<string, Tool>
 
 export {
   askUser,
-  askUserChoice,
   makeSearchTools,
   proposeCanvasAction,
   showSearchResults,
