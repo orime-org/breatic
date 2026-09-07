@@ -161,10 +161,15 @@ async function sendAndDrain(
   projectId: string,
   cookie: string,
   text: string,
+  acceptLanguage?: string,
 ): Promise<void> {
   const res = await app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+      ...(acceptLanguage === undefined ? {} : { "Accept-Language": acceptLanguage }),
+    },
     body: JSON.stringify({
       message: text,
       project_id: projectId,
@@ -344,4 +349,38 @@ describe("what one turn leaves in the store", () => {
   // 「哨兵前缀不许进库」那条删了:哨兵机制本身在这次迁移里删掉了,四个交互
   // 工具改成直接返回 payload 对象。它们返回什么、怎么落库,由
   // `domain/src/agent/tools/__tests__/interaction-tools-payload.test.ts` 钉。
+});
+
+describe("the language of the line the turn writes itself", () => {
+  it("is the one the request asked for, not the one the process happens to hold", async () => {
+    // The closing line under a question is ours, so it is translated -- and
+    // the only thing saying which language is the header on this request. It
+    // is negotiated in middleware, which has returned by the time the stream
+    // is read, so a turn reading the locale where it writes gets whatever the
+    // process was left holding instead.
+    stream.parts = [
+      {
+        type: "tool-call",
+        toolCallId: "tc-locale",
+        toolName: "ask_user",
+        input: JSON.stringify({ question: "Which pace?", options: ["Fast", "Slow"] }),
+      },
+      FINISHED_ASKING_FOR_A_TOOL,
+    ];
+    const { projectId, cookie } = await seedProject();
+    const conversationId = await openConversation(projectId, cookie);
+    // Asked for in a language that is not the process default, so the
+    // assertion can tell the header being read from it being ignored.
+    await sendAndDrain(conversationId, projectId, cookie, "help me pick", "zh-CN");
+
+    const rows = await storedRows(conversationId);
+    const reply = rows.find((r) => r.role === "assistant");
+    const said = (reply?.parts ?? [])
+      .filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("");
+
+    expect(said).toContain("Which pace?");
+    expect(said).toContain("回一个数字就行");
+  });
 });

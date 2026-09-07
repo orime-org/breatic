@@ -22,7 +22,7 @@ import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
-import { SSE_HEARTBEAT_MISSES_ALLOWED } from '@breatic/shared';
+import { SSE_HEARTBEAT_MISSES_ALLOWED, getLocale } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -197,6 +197,11 @@ function transportFor(
         .map((part) => part.text)
         .join('');
       return {
+        // The turn writes some of the reply itself -- the closing line under
+        // a question it asked -- and it takes the language from here. Without
+        // it the server negotiates from the browser's own language, which is
+        // not the one the reader picked in the switch.
+        headers: { 'Accept-Language': getLocale() },
         body: {
           message: said,
           project_id: projectId,
