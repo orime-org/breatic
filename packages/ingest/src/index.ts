@@ -21,6 +21,7 @@ import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import {
   assembleObject,
   hashStoredObject,
+  writeStreamAsParts,
   type RecordedPart,
 } from "@ingest/stored-object.js";
 import {
@@ -376,7 +377,45 @@ async function completeUpload(
     );
   }
 
-  const claim = await claimFinalize(env, session.storageKey, uploadId);
+  return finishUpload(env, {
+    storageKey: session.storageKey,
+    uploadId,
+    contentType: session.contentType,
+    parts,
+  });
+}
+
+/**
+ * Take the permission, assemble, hash and report.
+ *
+ * Both ways bytes reach R2 end here — the browser sending parts, and this
+ * Worker fetching a URL — because everything after the last byte lands is the
+ * same for either: what the ledger records is computed over the stored object,
+ * so how it got there stops mattering.
+ *
+ * The permission is taken before R2 is touched, because what it stops is a
+ * write: a replayed ticket opening a second multipart upload over a key the
+ * ledger already describes.
+ * @param env - The Worker's bindings.
+ * @param upload - What was written.
+ * @param upload.storageKey - The key it was written to.
+ * @param upload.uploadId - R2's id for the multipart upload.
+ * @param upload.contentType - What the ticket signed for these bytes.
+ * @param upload.parts - Every part R2 accepted.
+ * @returns What the server registered, or why this could not finish.
+ */
+async function finishUpload(
+  env: Env,
+  upload: {
+    storageKey: string;
+    uploadId: string;
+    contentType: string;
+    parts: RecordedPart[];
+  },
+): Promise<Response> {
+  const { storageKey, uploadId, contentType, parts } = upload;
+
+  const claim = await claimFinalize(env, storageKey, uploadId);
   if (claim === null) {
     return new Response("Could not reach the server", { status: 502 });
   }
@@ -395,33 +434,28 @@ async function completeUpload(
     );
   }
 
-  const assembled = await assembleObject(
-    env.BUCKET,
-    session.storageKey,
-    uploadId,
-    parts,
-  )
+  const assembled = await assembleObject(env.BUCKET, storageKey, uploadId, parts)
     .then((sizeBytes) => ({ sizeBytes }))
     .catch(noted("ingest_assemble_failed", {
-      storageKey: session.storageKey,
+      storageKey,
       uploadId,
       parts: parts.length,
     }));
   if (assembled === null) {
     await reportOutcome(env, {
-      storage_key: session.storageKey,
+      storage_key: storageKey,
       outcome: "aborted",
       reason: "assembly failed",
     });
     return new Response("Could not assemble the object", { status: 502 });
   }
 
-  const sha256 = await hashStoredObject(env.BUCKET, session.storageKey).catch(
-    noted("ingest_hash_failed", { storageKey: session.storageKey }),
+  const sha256 = await hashStoredObject(env.BUCKET, storageKey).catch(
+    noted("ingest_hash_failed", { storageKey }),
   );
   if (sha256 === null) {
     await reportOutcome(env, {
-      storage_key: session.storageKey,
+      storage_key: storageKey,
       outcome: "aborted",
       reason: "hashing failed",
     });
@@ -429,22 +463,131 @@ async function completeUpload(
   }
 
   const reported = await reportOutcome(env, {
-    storage_key: session.storageKey,
+    storage_key: storageKey,
     outcome: "completed",
     sha256,
     size_bytes: assembled.sizeBytes,
-    content_type: session.contentType,
+    content_type: contentType,
   });
   if (reported === null) {
     // The bytes are in R2 and nothing describes them. This delivery did not
-    // finish, and retrying it is the browser's to do (design §6.6).
+    // finish, and retrying it is the caller's to do (design §6.6).
     return new Response("The server did not take the report", { status: 502 });
   }
   // Flat, the way opening an upload and writing a part answer. What the
   // server registered is already the payload of its own envelope; wrapping it
-  // again would leave the browser reading `fileUrl` off a field that holds
+  // again would leave the caller reading `fileUrl` off a field that holds
   // another envelope.
   return Response.json(reported);
+}
+
+/** What the backend hands us to fetch. */
+interface FetchBody {
+  url?: string;
+}
+
+/**
+ * Whether two secrets are the same, without leaking where they diverge.
+ * @param a - One secret.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+function secretsMatch(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let differing = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    differing |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return differing === 0;
+}
+
+/**
+ * Fetch a URL straight into R2 (#181, lane ③).
+ *
+ * An AIGC provider hands back a link that expires, and the bytes behind it
+ * never need to touch our servers: pulling them here keeps them inside
+ * Cloudflare's network, where the wait costs no CPU time and the egress is
+ * free. Waiting is nearly all this does.
+ *
+ * It takes the shared secret as well as a ticket. A ticket alone authorises
+ * the key being written to, which is all the other endpoints need — but this
+ * one also makes the Worker fetch whatever address the body names, and every
+ * browser holds a ticket. The secret is what only our own backend has.
+ * @param request - The backend's request, carrying the ticket and the URL.
+ * @param env - The Worker's bindings.
+ * @returns What the server registered, or why the transfer did not finish.
+ */
+async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
+  const secret = request.headers.get("x-ingest-secret");
+  if (secret === null || !secretsMatch(secret, env.INGEST_SHARED_SECRET)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  const ticket = request.headers.get("x-upload-ticket");
+  if (ticket === null) return new Response("Unauthorized", { status: 401 });
+  const verified = await verifyUploadTicket(
+    ticket,
+    env.INGEST_SHARED_SECRET,
+    Date.now(),
+  );
+  if (!verified.ok) return new Response("Unauthorized", { status: 401 });
+  const { storageKey, contentType, partSize, totalParts } = verified.payload;
+
+  const body = await request.json<FetchBody>().catch(() => null);
+  const source = body?.url;
+  if (typeof source !== "string" || !source.startsWith("https://")) {
+    return new Response("A https source url is required", { status: 400 });
+  }
+
+  const upstream = await fetch(source).catch(
+    noted("ingest_source_unreachable", { storageKey }),
+  );
+  if (upstream === null || !upstream.ok || upstream.body === null) {
+    if (upstream !== null && !upstream.ok) {
+      noteFailure("ingest_source_refused", {
+        storageKey,
+        status: upstream.status,
+      });
+    }
+    // Nothing was written, so the grant is voided rather than left for the
+    // sweep, and the caller's task settles on this answer.
+    await reportOutcome(env, {
+      storage_key: storageKey,
+      outcome: "aborted",
+      reason: "source unreadable",
+    });
+    return new Response("Could not read the source", { status: 502 });
+  }
+
+  const created = await env.BUCKET.createMultipartUpload(storageKey, {
+    httpMetadata: { contentType },
+  });
+  const written = await writeStreamAsParts(
+    env.BUCKET,
+    storageKey,
+    created.uploadId,
+    upstream.body,
+    partSize,
+    totalParts,
+  ).catch(noted("ingest_source_write_failed", { storageKey }));
+  if (written === null || written === "over_cap") {
+    await reportOutcome(env, {
+      storage_key: storageKey,
+      outcome: "aborted",
+      reason: written === "over_cap" ? "over cap" : "write failed",
+    });
+    return written === "over_cap"
+      ? new Response("The source is larger than this ticket allows", {
+          status: 413,
+        })
+      : new Response("Could not store the source", { status: 502 });
+  }
+
+  return finishUpload(env, {
+    storageKey,
+    uploadId: created.uploadId,
+    contentType,
+    parts: written,
+  });
 }
 
 /**
@@ -606,6 +749,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/uploads") {
     return startUpload(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/fetch") {
+    return fetchIntoUpload(request, env);
   }
 
   const part = PART_PATH.exec(pathname);
