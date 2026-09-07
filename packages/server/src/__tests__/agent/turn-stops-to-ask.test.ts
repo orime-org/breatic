@@ -211,7 +211,7 @@ describe("a turn that asked the user something", () => {
 
   it("says on the wire that it is waiting, so the panel need not read the tool list", async () => {
     // The panel draws a neutral line for this ending and no retry: it is not
-    // a fault. Which tools block is `TOOLS_THAT_BLOCK`, which lives in
+    // a fault. Which tool blocks is the one name `ASK_USER`, which lives in
     // `@breatic/domain` -- a package the web build may not import. Telling it
     // here is what keeps the list in one place instead of two.
     const { sent } = await runTurn([asksFor("ask_user"), carriesOn]);
@@ -237,7 +237,7 @@ describe("a turn that asked the user something", () => {
   });
 
   it("keeps going after proposing a canvas action, which is also just shown", async () => {
-    // 这一条跟下面那条是两个不同的工具，各钉一次：`TOOLS_THAT_BLOCK` 是一份
+    // 这一条跟下面那条是两个不同的工具，各钉一次：能挡住这一轮的只有
     // 名单，只钉住「名单里的会停」证明不了「名单外的不停」——把这个工具误加
     // 进名单，画布建议一出现这一轮就结束，用户得再说一句才拿得到后面的话。
     const { modelCalls } = await runTurn([asksFor("propose_canvas_action"), carriesOn]);

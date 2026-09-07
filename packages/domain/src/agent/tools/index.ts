@@ -30,7 +30,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   web_search: () => makeSearchTools().web_search,
   // The name a tool answers to is this key. Three more lists below repeat it,
   // and the one deciding whether a turn waits for an answer fails in silence
-  // when they disagree -- `TOOLS_THAT_BLOCK` simply never matches.
+  // when they disagree -- the turn simply never stops for the answer.
   [ASK_USER]: () => askUser,
   // Interaction tools. The model calls these to hand back a payload rather
   // than to have something done: `ask_user`'s is drawn into the reply by the
@@ -72,7 +72,7 @@ export const INTERACTION_TOOLS: readonly string[] = [
   "show_search_results",
 ];
 
-export { ASK_USER, TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
+export { ASK_USER } from "@domain/agent/tools/blocking-tools.js";
 
 /**
  * What each tool needs configured before it can do anything.
@@ -129,6 +129,8 @@ export function buildToolSet(toolNames: readonly string[]): Record<string, Tool>
   }
   return result;
 }
+
+export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 
 export {
   askUser,

@@ -47,8 +47,8 @@ export {
   buildToolSet,
   BASELINE_TOOLS,
   ASK_USER,
-  TOOLS_THAT_BLOCK,
 } from "@domain/agent/tools/index.js";
+export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 // The model's half of what `web_search` answers with. The panel reads the
 // structured object; the request assembler renders it, and only it knows how

@@ -38,13 +38,35 @@ describe("a question with options", () => {
     // A single newline is folded away in the chat body, so a question sitting
     // directly above its list would run into the first item.
     const drawn = askUserMarkdown({ question: "哪一种？", options: ["一", "二"] });
-    expect(drawn).toContain("哪一种？\n\n1. 一");
+    expect(drawn).toBe("\n\n哪一种？\n\n1. 一\n2. 二\n\n");
   });
 
   it("ends on the last option when the model said nothing about answering", () => {
     const drawn = askUserMarkdown({ question: "哪一种？", options: ["一", "二"] });
     const lines = drawn.split("\n").filter((line) => line !== "");
     expect(lines[lines.length - 1]).toBe("2. 二");
+  });
+});
+
+describe("where this paragraph starts and ends", () => {
+  it("is fenced by blank lines, because the panel concatenates text parts raw", () => {
+    // `to-chat-message.ts` builds one string with `content += part.text` and
+    // hands it to one markdown render. Without a blank line of its own, this
+    // paragraph runs into whatever the model wrote before it, and a second
+    // question lands inside the first one's last option.
+    const drawn = askUserMarkdown({ question: "哪一种？", options: ["一", "二"] });
+
+    expect(drawn.startsWith("\n\n")).toBe(true);
+    expect(drawn.endsWith("\n\n")).toBe(true);
+  });
+
+  it("keeps two of them apart when they are concatenated", () => {
+    const first = askUserMarkdown({ question: "先定节奏？", options: ["快", "慢"] });
+    const second = askUserMarkdown({ question: "再定时长？", options: ["30 秒", "60 秒"] });
+
+    // What the panel would render: the second question must be its own
+    // paragraph, not the tail of the first list's last item.
+    expect(first + second).toContain("2. 慢\n\n\n\n再定时长？");
   });
 });
 
@@ -58,7 +80,7 @@ describe("what the model says about answering", () => {
       howToAnswer: "回一个数字就行，也可以直接说你的想法。",
     });
 
-    expect(drawn).toBe("哪一种？\n\n1. 一\n2. 二\n\n回一个数字就行，也可以直接说你的想法。");
+    expect(drawn).toBe("\n\n哪一种？\n\n1. 一\n2. 二\n\n回一个数字就行，也可以直接说你的想法。\n\n");
   });
 
   it("sits under an open question too, when there is one", () => {
@@ -68,14 +90,14 @@ describe("what the model says about answering", () => {
       howToAnswer: "随便说说就行。",
     });
 
-    expect(drawn).toBe("这段片子给谁看？\n\n随便说说就行。");
+    expect(drawn).toBe("\n\n这段片子给谁看？\n\n随便说说就行。\n\n");
   });
 });
 
 describe("a question with nothing to choose from", () => {
   it("is the question and nothing else", () => {
     const drawn = askUserMarkdown({ question: "这段片子给谁看？", options: [] });
-    expect(drawn).toBe("这段片子给谁看？");
+    expect(drawn).toBe("\n\n这段片子给谁看？\n\n");
   });
 });
 
@@ -92,6 +114,6 @@ describe("what language the paragraph comes out in", () => {
     );
 
     expect(en).toBe(zh);
-    expect(zh).toBe("哪一种？\n\n1. 一\n2. 二");
+    expect(zh).toBe("\n\n哪一种？\n\n1. 一\n2. 二\n\n");
   });
 });

@@ -18,7 +18,6 @@ import { describe, it, expect } from "vitest";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
 import { TOOL_MAP, BASELINE_TOOLS, INTERACTION_TOOLS } from "@domain/agent/tools/index.js";
-import { TOOLS_THAT_BLOCK } from "@domain/agent/tools/blocking-tools.js";
 
 /** The schema, in the one shape a test can call. */
 const schema = askUser.inputSchema as unknown as {
@@ -42,16 +41,15 @@ describe("the one name this tool has", () => {
   });
 
   it("reads the same in every list that copies it", () => {
-    // Four lists hold this name. The turn only waits for an answer because
-    // the blocking one matches, and nothing else fails when it does not.
+    // Three lists hold this name beyond the registry key itself, and the
+    // turn only waits for an answer because the name it matches is the same.
     expect(BASELINE_TOOLS).toContain("ask_user");
     expect(INTERACTION_TOOLS).toContain("ask_user");
-    expect(TOOLS_THAT_BLOCK).toEqual(["ask_user"]);
   });
 
   it("leaves no list naming a tool the registry does not hold", () => {
     const registered = Object.keys(TOOL_MAP);
-    for (const name of [...BASELINE_TOOLS, ...INTERACTION_TOOLS, ...TOOLS_THAT_BLOCK]) {
+    for (const name of [...BASELINE_TOOLS, ...INTERACTION_TOOLS]) {
       expect(registered).toContain(name);
     }
   });
@@ -111,6 +109,31 @@ describe("what the model says about answering", () => {
     expect(accepts({ question: "Which?", howToAnswer: "one\ntwo" })).toBe(false);
     expect(accepts({ question: "Which?", howToAnswer: "c".repeat(120) })).toBe(true);
     expect(accepts({ question: "Which?", howToAnswer: "c".repeat(121) })).toBe(false);
+  });
+});
+
+describe("what a line may not hold, because the reader sees it as markdown", () => {
+  it("refuses every line ending, not just the newline", () => {
+    // A carriage return is a line ending to CommonMark: an option carrying one
+    // renders as two numbered items, so the numbers the reader answers with
+    // stop matching the ones the call carried.
+    expect(accepts({ question: "Which?", options: ["keep it\r3. wipe all", "b"] })).toBe(false);
+    expect(accepts({ question: "a\rb" })).toBe(false);
+    expect(accepts({ question: "a\u2028b" })).toBe(false);
+  });
+
+  it("refuses a line that opens a markdown block of its own", () => {
+    // The numbering is drawn for the model. An option that numbers itself
+    // renders as a list inside a list; a question opening with a hash renders
+    // as a heading in the middle of the reply.
+    expect(accepts({ question: "Which?", options: ["1. 快切", "b"] })).toBe(false);
+    expect(accepts({ question: "Which?", options: ["- 快切", "b"] })).toBe(false);
+    expect(accepts({ question: "# 用哪个标签？" })).toBe(false);
+    expect(accepts({ question: "> 引用" })).toBe(false);
+    expect(accepts({ question: "Which?", howToAnswer: "1) 回一个数字" })).toBe(false);
+    // A hash or a dash inside the line is just a character.
+    expect(accepts({ question: "用 #tag 还是 @mention？" })).toBe(true);
+    expect(accepts({ question: "Which?", options: ["16:9 横屏", "9-16 竖屏"] })).toBe(true);
   });
 });
 

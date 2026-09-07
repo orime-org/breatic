@@ -159,7 +159,10 @@ describe("a question with options", () => {
       asks([{ question: "这段片子的节奏，你想要哪种？", options: ["快切", "中速", "慢"] }]),
     );
 
-    expect(text).toBe("这段片子的节奏，你想要哪种？\n\n1. 快切\n2. 中速\n3. 慢");
+    // The whole string, blank lines included: what runs into what is exactly
+    // what this paragraph has to survive, and a `toContain` would pass on a
+    // reply where it ran into the sentence before it.
+    expect(text).toBe("\n\n这段片子的节奏，你想要哪种？\n\n1. 快切\n2. 中速\n3. 慢\n\n");
   });
 });
 
@@ -171,7 +174,7 @@ describe("a question with nothing to choose from", () => {
   it("is in the reply on its own, with no list under it", async () => {
     const text = await replyText(asks([{ question: "这段片子给谁看？" }]));
 
-    expect(text).toBe("这段片子给谁看？");
+    expect(text).toBe("\n\n这段片子给谁看？\n\n");
   });
 });
 
@@ -188,8 +191,8 @@ describe("two questions in one step", () => {
       asks([{ question: "先定节奏？" }, { question: "再定时长？" }]),
     );
 
-    expect(text).toContain("先定节奏？");
-    expect(text).toContain("再定时长？");
-    expect(text.indexOf("先定节奏？")).toBeLessThan(text.indexOf("再定时长？"));
+    // Both in full, and the blank lines between them: two paragraphs, not the
+    // second question tacked onto the end of the first one's last option.
+    expect(text).toBe("\n\n先定节奏？\n\n\n\n再定时长？\n\n");
   });
 });

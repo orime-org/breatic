@@ -17,8 +17,8 @@ import {
   buildAgentConfig,
   finalizeTurn,
   ASK_USER,
-  TOOLS_THAT_BLOCK,
 } from "@breatic/domain";
+import type { AskUserPayload } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
@@ -36,8 +36,7 @@ import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
-import { askUserMarkdown } from "@server/agent/ask-user-text.js";
-import type { AskUserPayload } from "@server/agent/ask-user-text.js";
+import { writeAskUserText } from "@server/agent/ask-user-text.js";
 
 /**
  * What a client is told when the turn's own code fails.
@@ -239,7 +238,7 @@ export class MainAgent {
       // complaint telling it which field to fix, and the reader is left with
       // nothing to answer.
       const asked = (options.steps[options.steps.length - 1]?.content ?? []).some(
-        (part) => part.type === "tool-result" && TOOLS_THAT_BLOCK.includes(part.toolName),
+        (part) => part.type === "tool-result" && part.toolName === ASK_USER,
       );
       if (asked) askedTheUser = true;
       return asked;
@@ -423,33 +422,21 @@ export class MainAgent {
           // overwrites, so which of them ran first stops mattering. For a call
           // that did run, it is the one below: a tool ending is reported as it
           // happens, and a step ends after everything in it has.
-          for (const part of content) {
-            if (part.type !== "tool-error") continue;
-            if (howToolEnded.has(part.toolCallId)) continue;
-            howToolEnded.set(part.toolCallId, endingOf(part.error));
-          }
-
-          // A question the model asked reaches the reader as words. The tool
-          // hands back a payload, and a payload on a tool part is not
-          // something the panel draws -- what it draws is the reply. So the
-          // turn writes the question into the reply, where it is copyable,
-          // stored, and rebuilt on a reload like any other line of an answer.
           //
-          // Here rather than inside the tool: the tool assembles a value, and
-          // the stream is on this side of it. One call, one paragraph, in the
-          // order the calls came back -- a model may ask twice in a step, and
-          // drawing one of them leaves the reader answering a question that
-          // is not on screen.
+          // The second branch is a question the model asked. It reaches the
+          // reader as words rather than as a payload on a tool part, and here
+          // rather than inside the tool because the stream is on this side of
+          // it. One call, one paragraph, in the order the calls came back -- a
+          // model may ask twice in a step, and drawing one of them leaves the
+          // reader answering a question that is not on screen.
           for (const part of content) {
-            if (part.type !== "tool-result" || part.toolName !== ASK_USER) continue;
-            const id = `ask-${part.toolCallId}`;
-            writer.write({ type: "text-start", id });
-            writer.write({
-              type: "text-delta",
-              id,
-              delta: askUserMarkdown(part.output as AskUserPayload),
-            });
-            writer.write({ type: "text-end", id });
+            if (part.type === "tool-error") {
+              if (!howToolEnded.has(part.toolCallId)) {
+                howToolEnded.set(part.toolCallId, endingOf(part.error));
+              }
+            } else if (part.type === "tool-result" && part.toolName === ASK_USER) {
+              writeAskUserText(writer, part.toolCallId, part.output as AskUserPayload);
+            }
           }
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {

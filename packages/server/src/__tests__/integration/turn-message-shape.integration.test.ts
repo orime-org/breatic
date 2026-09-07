@@ -161,14 +161,12 @@ async function sendAndDrain(
   projectId: string,
   cookie: string,
   text: string,
-  acceptLanguage?: string,
 ): Promise<void> {
   const res = await app.request("/api/v1/chat/message", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Cookie: cookie,
-      ...(acceptLanguage === undefined ? {} : { "Accept-Language": acceptLanguage }),
     },
     body: JSON.stringify({
       message: text,

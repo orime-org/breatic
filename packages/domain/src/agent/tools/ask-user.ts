@@ -8,25 +8,26 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 /**
- * One line of what the reader will read: not blank, and not a paragraph.
- * @param max - How many characters this line may run to.
- * @returns A schema accepting one non-blank line no longer than that.
+ * One line of prose, as CommonMark will read it.
+ *
+ * Two things it may not be. It may not run past a line ending -- a carriage
+ * return counts, and an option carrying one renders as two numbered items, so
+ * the numbers the reader answers with stop matching the ones the call carried.
+ * And it may not open a block of its own: the numbering, the paragraphs and the
+ * list are drawn for the model, so an option that numbers itself renders as a
+ * list inside a list and a question opening with a hash as a heading in the
+ * middle of the reply. A hash or a dash further along the line is a character.
  */
-const line = (max: number): z.ZodString =>
-  z.string().trim().min(1).max(max).regex(/^[^\n]+$/);
+const PROSE_LINE = /^(?![#>|]|[-*+][ \t]|\d+[.)][ \t]|```|~~~)[^\n\r\u2028\u2029]+$/;
 
 /**
- * Ask the user a clarifying question before proceeding.
- *
- * These arguments are the format. The question and its options are drawn as a
- * paragraph in the reply, so what the schema accepts is what a reader can end
- * up looking at: a question folded into three lines arrives as three lines,
- * and a blank one arrives as an empty space above a row saying the turn is
- * waiting for an answer to it.
- *
- * Strict, because the default is to drop an unknown field in silence -- the
- * model would lose whatever it was trying to say with no error to read.
+ * One line of what the reader will read: not blank, and prose.
+ * @param max - How many characters this line may run to.
+ * @returns A schema accepting one such line no longer than that.
  */
+const line = (max: number): z.ZodString =>
+  z.string().trim().min(1).max(max).regex(PROSE_LINE);
+
 const inputSchema = z
   .object({
     question: line(200).describe("The question to ask the user, in one line"),
@@ -50,8 +51,14 @@ const inputSchema = z
   })
   .strict();
 
-/** What the turn needs to draw the question. */
-type AskUserPayload = { question: string; options: string[]; howToAnswer?: string };
+/**
+ * What the turn needs to draw the question.
+ *
+ * Read off the schema so there is one declaration of the shape: a field added
+ * there arrives here, and at the one place that draws it, without anyone
+ * remembering to say so twice.
+ */
+export type AskUserPayload = z.infer<typeof inputSchema>;
 
 export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
   description:
@@ -69,12 +76,5 @@ export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
     // to abandon. Declared so the shape is the same across every tool — the
     // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
     _options: { abortSignal?: AbortSignal },
-  ): Promise<AskUserPayload> => {
-    const payload = {
-      question: input.question,
-      options: input.options ?? [],
-      ...(input.howToAnswer === undefined ? {} : { howToAnswer: input.howToAnswer }),
-    };
-    return payload;
-  },
+  ): Promise<AskUserPayload> => input,
 });

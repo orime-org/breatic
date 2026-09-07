@@ -197,10 +197,12 @@ function transportFor(
         .map((part) => part.text)
         .join('');
       return {
-        // The turn writes some of the reply itself -- the closing line under
-        // a question it asked -- and it takes the language from here. Without
-        // it the server negotiates from the browser's own language, which is
-        // not the one the reader picked in the switch.
+        // Not for the reply -- every word of that is the model's, and it
+        // answers in the language it is being spoken to in. This is for what
+        // the server says on its own: a message refused for being too long
+        // comes back as our text, and without this header it is negotiated
+        // from the browser's language rather than the one picked in the
+        // switch.
         headers: { 'Accept-Language': getLocale() },
         body: {
           message: said,

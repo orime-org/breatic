@@ -27,5 +27,3 @@
  * turn carries on talking past the question it just asked.
  */
 export const ASK_USER = "ask_user";
-
-export const TOOLS_THAT_BLOCK: readonly string[] = [ASK_USER];
