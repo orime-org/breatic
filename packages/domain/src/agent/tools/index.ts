@@ -28,9 +28,10 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // -- gets a fresh one per turn from here, and a tool that carries none
   // hands back the same object every time.
   web_search: () => makeSearchTools().web_search,
-  // The name a tool answers to is this key. Two more lists below repeat it,
-  // and so does the turn's own test for whether to wait for an answer, which
-  // fails in silence when they disagree -- the turn simply never stops.
+  // The name a tool answers to is this key, and it is the constant rather
+  // than the string: the two lists below and the turn's own test for whether
+  // to wait for an answer read the same one, so there is no second spelling
+  // of it to keep in step.
   [ASK_USER]: () => askUser,
   // Interaction tools. The model calls these to hand back a payload rather
   // than to have something done: `ask_user`'s is drawn into the reply by the

@@ -9,10 +9,10 @@
  * a question is one line, an option is one line, and anything the schema lets
  * through is something a reader will see.
  *
- * The name is checked alongside the shape because the name is not written in
- * this file -- it is a key in the registry, copied into two more lists, and
- * the test that decides whether the turn waits for an answer fails silently
- * when it is missed.
+ * The name is checked alongside the shape because a caller is offered tools
+ * by name: the registry key, the two lists a caller is handed, and the test
+ * that decides whether the turn waits for an answer all read one constant,
+ * and this file is where a reader can see what that name is.
  */
 import { describe, it, expect } from "vitest";
 
@@ -40,9 +40,10 @@ describe("the one name this tool has", () => {
     expect(Object.keys(TOOL_MAP)).not.toContain("ask_user_choice");
   });
 
-  it("reads the same in every list that copies it", () => {
-    // Two lists hold this name beyond the registry key itself, and the turn
-    // only waits for an answer because the name it matches is the same.
+  it("is in every list a caller is offered", () => {
+    // A caller that declares no tools gets `BASELINE_TOOLS`, and one with no
+    // reader is refused `INTERACTION_TOOLS`. Missing from either, the model
+    // is never handed the tool at all.
     expect(BASELINE_TOOLS).toContain("ask_user");
     expect(INTERACTION_TOOLS).toContain("ask_user");
   });
@@ -83,9 +84,9 @@ describe("the options", () => {
   });
 
   it("are at most five, and one is drawn rather than refused", () => {
-    // The floor cannot reach the model: `zodSchema` renders this array as
-    // `maxItems: 5` and drops a `.refine` on the way, so refusing a call for
-    // having one option enforces a rule the model was never shown.
+    // One option is a question with one thing worth naming, and drawing it is
+    // an answer to it. Refusing it costs a round trip and puts nothing on the
+    // reader's screen.
     expect(accepts({ question: "Which?", options: ["one"] })).toBe(true);
     expect(accepts({ question: "Which?", options: ["one", "two"] })).toBe(true);
     expect(accepts({ question: "Which?", options: ["1", "2", "3", "4", "5"] })).toBe(true);
@@ -144,9 +145,8 @@ describe("what the model is shown of all this", () => {
     // A call refused over a rule the model was never shown costs the reader a
     // whole round trip in silence: the refusal produces no result, so the turn
     // does not stop, and a tool error is not drawn today. Which rules survive
-    // the trip is the SDK's business -- a `.refine` is dropped on the way,
-    // which is why there is no floor on `options` -- so what it emits is
-    // pinned here rather than assumed.
+    // the trip is the SDK's business, so what it emits is pinned here rather
+    // than assumed.
     //
     // `.trim()` is a transform rather than a check, so it leaves no trace
     // here and cannot: the only input it turns away is one that is nothing

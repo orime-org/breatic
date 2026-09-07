@@ -196,7 +196,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **交互工具(3)**:`ask_user` | `propose_canvas_action` | `show_search_results` —— LLM 调用它们发送结构化 payload,不执行动作,`execute` 直接返回 payload 对象。
 
-`propose_canvas_action` 和 `show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(`tool-propose_canvas_action` 这类类型),前端按类型认,画成组件。
+`propose_canvas_action` 和 `show_search_results` 的 payload 经 SDK 的原生 tool part 到前端(`tool-propose_canvas_action` 这类类型),前端按类型认。今天只有 `show_search_results` 有读它的那一段(`to-chat-message.ts` 读成 `assets`,画成一行方块);`propose_canvas_action` 走同一条协议,但前端还没有认它的分支,跑的时候只显示工具名。
 
 **`ask_user` 不是这样**:它的 payload 画出来就是一段文字,所以由服务端在 `onStepFinish` 拼成 markdown、写成文本 part,落进这一轮回复的正文,前端拿现成的 markdown 渲染器画。它也因此不回灌给模型 —— 问题已经在正文里了。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次,注册表和判断这一轮停不停的那一处都从那儿读。判定题:**这个 payload 画出来是一段文字,还是一个组件?文字 → 服务端写进正文;组件 → 前端从 tool part 画。**
 

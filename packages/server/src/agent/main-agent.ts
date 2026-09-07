@@ -230,7 +230,7 @@ export class MainAgent {
       steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
     }): Promise<boolean> => {
       // A question counts once it exists, which is what a `tool-result` on
-      // one of these tools says. The SDK's own `hasToolCall` answers a
+      // `ask_user` says. The SDK's own `hasToolCall` answers a
       // different question -- whether the step holds a call by that name --
       // and a call refused over its arguments is still one of those: it is
       // enqueued first and the error follows. Stopping on it ends the turn

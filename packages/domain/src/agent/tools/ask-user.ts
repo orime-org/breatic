@@ -30,11 +30,8 @@ const inputSchema = z
     question: line(200).describe("The question to ask the user, in one line"),
     options: z
       .array(line(60))
-      // A ceiling and nothing else, because a ceiling is what the model is
-      // shown: `zodSchema` renders this array as `maxItems` and drops a
-      // `.refine` on the way, so a floor enforced here would refuse calls over
-      // a rule that never reached the model. Empty is an open question, and one
-      // is drawn as a list of one.
+      // A ceiling and nothing else: every count below it is drawn. Empty is an
+      // open question, and one is drawn as a list of one.
       .max(5)
       .optional()
       .describe("Up to five answers to choose from, one line each"),

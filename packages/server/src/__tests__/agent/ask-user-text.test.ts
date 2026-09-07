@@ -4,10 +4,11 @@
 /**
  * A question the model asked is written into the reply as markdown.
  *
- * The payload is a question and a few options, and drawn it is the question on
- * its own above a numbered list. Assembling that here rather than asking the
- * model for it is what makes the shape a fact instead of a request -- and the
- * chat body folds single newlines away, so the options have to be a real list.
+ * The payload is a question, a few options and a line on how to answer, and
+ * drawn it is the question on its own above a numbered list with that line
+ * under it. Assembling that here rather than asking the model for it is what
+ * makes the shape a fact instead of a request -- and the chat body folds
+ * single newlines away, so the options have to be a real list.
  *
  * Built as a document and serialised, so what a line renders as is decided by
  * a serialiser that owns the whole of CommonMark rather than by a rule of ours
@@ -16,9 +17,9 @@
  *
  * Every word in it is the model's own, which is what keeps the whole paragraph
  * in the language the conversation is being held in. Telling the reader that a
- * number will do is something the model says in its question when it helps;
- * a line of ours pinned underneath would be the one part of the paragraph in
- * a language nobody chose for it.
+ * number will do is a field of the call, drawn on its own under the list; a
+ * line of ours pinned underneath would be the one part of the paragraph in a
+ * language nobody chose for it.
  */
 import { describe, it, expect } from "vitest";
 import { runWithLocale } from "@breatic/core";
