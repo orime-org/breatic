@@ -151,6 +151,39 @@ describe('what the stylesheet reaches a quote by', () => {
     );
   });
 
+  it('counts the levels a quoted block sits in, however many', () => {
+    // The number the two offsets above are multiplied by, so every one of
+    // them is only as right as this is. A container's depth counts TWO per
+    // level of indentation — `blockGroup` then `blockContainer` — which one
+    // level cannot tell apart from counting one, or from subtracting a
+    // constant. Three levels can.
+    const editor = open([
+      {
+        ...QUOTED,
+        content: 'top',
+        children: [
+          {
+            ...QUOTED,
+            content: 'one in',
+            children: [{ ...QUOTED, content: 'two in' }],
+          },
+        ],
+      },
+    ]);
+
+    const depths = Array.from(
+      editor.prosemirrorView.dom.querySelectorAll('[data-quoted="true"]'),
+    ).map((element) => ({
+      text: element.textContent,
+      depth: (element as HTMLElement).style.getPropertyValue('--quote-depth'),
+    }));
+    expect(depths).toEqual([
+      { text: 'top', depth: '0' },
+      { text: 'one in', depth: '1' },
+      { text: 'two in', depth: '2' },
+    ]);
+  });
+
   it('keeps every space around a quoted block on the margin', () => {
     // Which side of the border the space falls on decides what the rule
     // covers: the rule is drawn on the box, so a margin stays outside it and

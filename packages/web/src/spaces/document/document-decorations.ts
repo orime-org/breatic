@@ -4,7 +4,7 @@
 /**
  * What the stylesheet needs that the document does not hold.
  *
- * Two things reach the screen from here, both computed from the document and
+ * Three things reach the screen from here, all computed from the document and
  * never written back: recomputing on every change is what keeps opening a
  * document from touching a byte or filling a collaborator's undo stack.
  *
@@ -20,6 +20,13 @@
  * declarations that are per block. The other three belong to the whole quote
  * (its outer margins, and the two blocks whose own margins give way to them),
  * so the ends of each run are marked here.
+ *
+ * **How far in a quoted block sits.** The rule beside a quote is that block's
+ * own border, so indentation carries it along — one `blockGroup` margin per
+ * level. The stylesheet gives those back and takes them again on the padding,
+ * which it can only do knowing how many there are, and nothing in the DOM
+ * says: the levels are `blockGroup` elements the block is nested inside. So
+ * the count rides on `--quote-depth`.
  */
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';

@@ -220,3 +220,28 @@ describe('the shorthand sets rather than toggles', () => {
     });
   });
 });
+
+describe('the code shorthand carries the language typed after the ticks', () => {
+  // The one thing a menu row cannot say: there is a single code row, so the
+  // language can only arrive from what the writer typed. The first whitespace
+  // is what closes the pattern, so the name never holds one.
+  it('sets it from what was typed', () => {
+    const editor = open({ type: 'paragraph', content: '' });
+    type(editor, '```ts ');
+
+    const block = (editor.document as { type: string; props: Record<string, unknown> }[])[0]!;
+    expect(block.type).toBe('codeBlock');
+    expect(block.props['language']).toBe('ts');
+  });
+
+  it('leaves the schema default when the ticks stand alone', () => {
+    const typed = open({ type: 'paragraph', content: '' });
+    type(typed, '``` ');
+    const byMenu = open({ type: 'paragraph', content: '' });
+    runBlockType(byMenu, 'code-block');
+
+    const languageOf = (editor: ReturnType<typeof open>): unknown =>
+      (editor.document as { props: Record<string, unknown> }[])[0]!.props['language'];
+    expect(languageOf(typed)).toBe(languageOf(byMenu));
+  });
+});

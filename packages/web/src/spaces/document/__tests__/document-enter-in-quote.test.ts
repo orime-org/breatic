@@ -269,6 +269,39 @@ describe('Enter at the end of a quoted line', () => {
     }
   });
 
+  it('moves what is indented under an empty line the way BlockNote does', () => {
+    // The one branch that hands `openBlockAt` a child group. A quoted block
+    // reaches it by being empty, at the top level, with something indented
+    // under it — a writer gets there by clearing the text off a quoted line
+    // that has an indented line below it. What it has to do is what BlockNote
+    // does for the same shape unquoted, since the quote is the only thing
+    // this handler exists to add, so the two are read side by side.
+    const shapeOf = (quoted: boolean): unknown[] => {
+      const props = quoted ? { props: { quoted: true } } : {};
+      const editor = open([
+        {
+          type: 'paragraph',
+          ...props,
+          content: '',
+          children: [{ type: 'paragraph', ...props, content: 'kid' }],
+        },
+      ]);
+      editor.setTextCursorPosition(blocksOf(editor)[0].id, 'start');
+      pressEnter(editor);
+      return blocksOf(editor).map((block) => ({
+        children: block.children.length,
+        quoted: block.props['quoted'] === true,
+      }));
+    };
+
+    expect(shapeOf(true)).toEqual(
+      shapeOf(false).map((block) => ({
+        ...(block as Record<string, unknown>),
+        quoted: true,
+      })),
+    );
+  });
+
   it('lifts an empty indented line out a level, keeping the quote', () => {
     // The one case this handler declines: an empty quoted block that sits
     // indented. BlockNote lifts it a level, which creates no block, so nothing

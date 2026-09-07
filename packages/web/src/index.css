@@ -1002,11 +1002,11 @@ body {
    | the space between two blocks of a run | every block after the first |
    | the run's outer margins | its first and last block |
 
-   THE RULE IS DRAWN PER BLOCK, so what sits between two of them decides
-   whether a run reads as one quote or as several. Which side of the border
-   that space falls on is what makes it one: a margin sits outside the box the
-   border is drawn on and breaks the rule, padding sits inside it and the rule
-   arrives unbroken.
+   THE RULE IS DRAWN PER BLOCK, so what sits between two of them decides what
+   the rule covers. The space is held as margin, outside the box the border is
+   drawn on: each segment ends at its own text and the segments part between
+   two blocks (user 2026-09-07). What carries the eye down a run is the one x
+   they share, given by the offset below.
 
    The 2px is the value this quote already shipped with; it is not a new
    heavier rule. (`one-px-border` reads Tailwind classes, so this file is
@@ -1033,6 +1033,13 @@ body {
 .doc-body-editor .ProseMirror [data-quoted='true'] {
   margin-inline-start: calc(-24px * var(--quote-depth, 0));
   padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em);
+  /* BlockNote gives this element `width: 100%` (`Block.css:20`), and a box of
+     a definite width does not grow back when its start margin goes negative —
+     it slides, taking its far edge with it. Measured, an indented quoted
+     block ended 24px short of its neighbours, one level's worth. The width
+     gives back exactly what the margin took, so the line a reader writes on
+     ends where every other line ends. */
+  width: calc(100% + 24px * var(--quote-depth, 0));
   border-inline-start: 2px solid var(--color-border);
   color: var(--color-muted-foreground);
 }

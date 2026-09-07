@@ -98,6 +98,8 @@ interface QuoteBox {
   readonly ruleDrawn: boolean;
   /** The rule's own box, in page coordinates. */
   readonly ruleX: number;
+  /** The box's right edge, which the indentation offset must not move. */
+  readonly boxRight: number;
   readonly ruleTop: number;
   readonly ruleHeight: number;
   readonly ruleWidth: number;
@@ -131,6 +133,7 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
         textBottom: textRect ? textRect.bottom : rect.bottom,
         ruleDrawn: width > 0,
         ruleX: rect.left,
+        boxRight: rect.right,
         ruleTop: rect.top,
         ruleHeight: rect.height,
         ruleWidth: width,
@@ -243,7 +246,7 @@ async function runEdges(p: Page): Promise<RunEdges> {
 }
 
 test.describe('a run of quoted blocks', () => {
-  test('draws one unbroken rule down all three (A8)', async () => {
+  test('draws a segment down each of the three, on one line (A8)', async () => {
     await openFreshDocument(page);
     await writeQuotedRun(page);
 
@@ -298,6 +301,13 @@ test.describe('a run of quoted blocks', () => {
     expect(
       Math.abs(indented.ruleX - top.ruleX),
       `indented block draws at ${indented.ruleX}, top-level at ${top.ruleX}`,
+    ).toBeLessThan(1);
+
+    // Pulling the box back out must not cost it width: the line the reader
+    // writes on ends where every other line ends.
+    expect(
+      Math.abs(indented.boxRight - top.boxRight),
+      `indented block ends at ${indented.boxRight}, top-level at ${top.boxRight}`,
     ).toBeLessThan(1);
 
     // Each segment covers its own block's text without a break.
