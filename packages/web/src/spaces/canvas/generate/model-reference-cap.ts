@@ -3,13 +3,13 @@
 
 /**
  * How many reference images the model in front of the user takes right now
- * (#1928) — the one number both readers of that question ask for.
+ * (#1928).
  *
- * The panel refuses a submit carrying more; the canvas refuses to ADD one
- * past it, on a connection, a pick click or a focus crop. The canvas used to
- * ask a narrower question — its own site-wide sanity knob, which knows nothing
- * about models — so a cap that moves with another param would have let a
- * fifth image be connected and only said so at submit.
+ * Two readers, both in the video Generate panel: the submit gate refuses a
+ * submission carrying more than this, and the slot row refuses a clip pick
+ * that would drop the number below what is already picked. Adding a reference
+ * image on the canvas is a separate question with a separate answer — the
+ * site-wide pool cap, which knows nothing about models (#2112).
  *
  * The presence conditions come from the params this mode would actually send,
  * not from the raw slot values: a slot's pick stays on the node across a mode

@@ -36,9 +36,8 @@ export type VideoSlot =
  * The execute gate refuses on the first empty REQUIRED slot and words the
  * refusal from that slot's own `errorKey`, so a required slot without one
  * would refuse with a blank message. An optional slot is never refused on and
- * carries no such key. Stating the two shapes here rather than leaving both
- * fields optional is what makes the gate's narrowing hold: `'optional' in
- * spec` tells the compiler which of the two it has.
+ * carries no such key. The two shapes are stated so that a required slot
+ * missing its `errorKey` fails to compile.
  */
 type VideoSlotSpec =
   | (SlotSpec & { optional?: never; errorKey: string })

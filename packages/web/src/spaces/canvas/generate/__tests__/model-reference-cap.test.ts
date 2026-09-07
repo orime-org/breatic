@@ -5,12 +5,11 @@
  * How many reference images the model in front of the user takes right now
  * (#1928).
  *
- * Two readers ask it. The panel refuses a submit carrying more than this, and
- * the canvas refuses to ADD one past it — a connection, a pick click, a focus
- * crop. The canvas asked a narrower question until now (its own site-wide
- * sanity knob, which knows nothing about models), so a cap that moves with
- * another param would have let a user connect a fifth image and only hear
- * about it at submit.
+ * Two readers ask it, both in the video Generate panel: the submit gate
+ * refuses a submission carrying more, and the slot row refuses a clip pick
+ * that would drop the cap below what is already picked. Adding a reference
+ * image on the canvas asks a different question and gets a different answer —
+ * the site-wide pool cap, which knows nothing about models (#2112).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -79,9 +78,9 @@ describe('the reference-image cap the model is holding right now', () => {
   });
 
   it('is undefined when the catalog has not answered yet', () => {
-    // The canvas asks before the panel is open, so this is the ordinary case
-    // on a fresh space, not an edge: the caller falls back to the site-wide
-    // knob rather than inventing a number.
+    // The panel renders before the catalog query resolves, so this is the
+    // ordinary case on a fresh space, not an edge: the callers fall back to
+    // no cap rather than inventing a number.
     expect(modelReferenceCap(undefined, 'ref', {})).toBeUndefined();
   });
 

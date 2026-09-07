@@ -324,8 +324,8 @@ export function buildVideoPanelViewModel(input: {
     // as an entry (#1978).
     focusImages,
     referenceUrls,
-    // Through the shared rule, so the panel's submit gate and the canvas's
-    // add-time refusal hold the same number for one node (#1928).
+    // Through the shared rule, so this number and the one the server
+    // re-checks before enqueue are the same arithmetic (#1928).
     maxReferences: modelReferenceCap(current, mode, slotUrls),
     // The model states it (#1966). This used to be inferred from a `prompt`
     // entry under `params` — a per-catalog writing habit, not a rule. Four of
