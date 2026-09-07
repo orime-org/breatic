@@ -161,8 +161,20 @@ test('leaves the same space above every block but the first', async () => {
   // used to match the same rule and sit flush against its parent while every
   // other pair stood 13.6px apart.
   expect(gaps[0]!.marginTop, 'the document opens flush').toBe(0);
+  // Every block after it carries space, and two items of one list carry less
+  // of it than two kinds of block do (user 2026-09-07): all four blocks here
+  // are bulleted items, so each pair is a list-internal one.
   for (const row of gaps.slice(1)) {
-    expect(row.marginTop, `the space above "${row.text}"`).toBeGreaterThan(8);
+    expect(row.marginTop, `the space above "${row.text}"`).toBeGreaterThan(0);
+  }
+  const listInternal = gaps.slice(1).map((row) => row.marginTop);
+  const betweenKinds = await page.evaluate((sel) => {
+    const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+    return parseFloat(getComputedStyle(all[0]!).marginTop);
+  }, EDITOR);
+  void betweenKinds;
+  for (const margin of listInternal) {
+    expect(margin, 'inside one list').toBeLessThan(12.75);
   }
 });
 
@@ -359,4 +371,155 @@ test('marks a node-selected block in our colour and no other (A15)', async () =>
     'rgba(0, 0, 0, 0)',
   );
   expect(seen.overlayShadow, 'no second ring inside the block').toBe('none');
+});
+
+test.describe('the values the visual review settled (user 2026-09-07)', () => {
+  test('sets the three heading levels at 24, 20 and 18', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('# One');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('## Two');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('### Three');
+
+    const sizes = await page.evaluate(
+      (sel) =>
+        [
+          ...document.querySelectorAll(`${sel} [data-content-type="heading"]`),
+        ].map((element) => parseFloat(getComputedStyle(element).fontSize)),
+      EDITOR,
+    );
+    // A level 3 heading led the body by 2px, the smallest step in the ladder,
+    // and 17px is the one size in the document off the project's scale.
+    expect(sizes).toEqual([24, 20, 18]);
+  });
+
+  test('sets the code block at the small step of the scale', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('const a = 1');
+    await page.keyboard.press(`${MOD}+Alt+c`);
+
+    const measured = await page.evaluate((sel) => {
+      const pre = document.querySelector(`${sel} pre`) as HTMLElement;
+      const root = getComputedStyle(document.documentElement);
+      return {
+        size: parseFloat(getComputedStyle(pre).fontSize),
+        want: parseFloat(root.getPropertyValue('--text-sm')),
+      };
+    }, EDITOR);
+    expect(measured.size).toBe(measured.want);
+  });
+
+  test('gives the code panel the same weight in both themes', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('const a = 1');
+    await page.keyboard.press(`${MOD}+Alt+c`);
+
+    const read = async (): Promise<{ panel: number; page: number }> =>
+      page.evaluate((sel) => {
+        const pre = document.querySelector(`${sel} pre`) as HTMLElement;
+        const star = (value: string): number => {
+          const [r, g, b] = value.match(/\d+/g)!.map(Number) as [
+            number,
+            number,
+            number,
+          ];
+          const ch = (v: number): number => {
+            const c = v / 255;
+            return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+          };
+          const y = 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+          return y <= 216 / 24389 ? y * (24389 / 27) : y ** (1 / 3) * 116 - 16;
+        };
+        return {
+          panel: star(getComputedStyle(pre).backgroundColor),
+          page: star(getComputedStyle(document.body).backgroundColor),
+        };
+      }, EDITOR);
+
+    const light = await read();
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    });
+    await page.waitForTimeout(300);
+    const dark = await read();
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.removeAttribute('data-theme');
+    });
+
+    // A surface lifts off its ground by moving toward the light the theme
+    // has: down in a light theme, up in a dark one (user 2026-09-07).
+    // Measured before: 5.6 L* under the page in light and 3.0 UNDER it in
+    // dark as well, so the same object read as a solid plate in one theme and
+    // as nearly absent in the other.
+    const lightStep = light.page - light.panel;
+    const darkStep = dark.panel - dark.page;
+    expect(lightStep, 'the light panel sits below the page').toBeGreaterThan(4);
+    expect(darkStep, 'the dark panel sits above the page').toBeGreaterThan(4);
+    expect(
+      Math.abs(lightStep - darkStep),
+      `light ${lightStep.toFixed(1)} against dark ${darkStep.toFixed(1)}`,
+    ).toBeLessThan(1.5);
+  });
+
+  test('holds a list together more tightly than it holds two kinds apart', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('- one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('two');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('a paragraph');
+
+    const margins = await page.evaluate(
+      (sel) =>
+        [...document.querySelectorAll(`${sel} .bn-block-content`)].map(
+          (element) => ({
+            text: (element.textContent ?? '').trim(),
+            marginTop: parseFloat(getComputedStyle(element).marginTop),
+          }),
+        ),
+      EDITOR,
+    );
+    const [, second, third] = margins as { text: string; marginTop: number }[];
+    // One margin for every relationship read as one undifferentiated column:
+    // the paragraph stood no further from the list than the list's own two
+    // items stood from each other.
+    expect(second!.marginTop, 'inside one list').toBeLessThan(third!.marginTop);
+  });
+
+  test('holds a quote run together more tightly than it stands apart', async () => {
+    await openFreshDocument(page);
+    // Two ordinary blocks first: the document's own first block carries no
+    // space above it, so the pair below is what "two unrelated blocks" means.
+    await page.keyboard.type('first');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('second');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('quoted one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('quoted two');
+    await page.locator(`${EDITOR} .bn-block-content`).nth(2).click({ clickCount: 3 });
+    await page.keyboard.press(`${MOD}+Shift+b`);
+    await page.locator(`${EDITOR} .bn-block-content`).nth(3).click({ clickCount: 3 });
+    await page.keyboard.press(`${MOD}+Shift+b`);
+    await page.waitForTimeout(300);
+
+    const margins = await page.evaluate((sel) => {
+      const quoted = [...document.querySelectorAll(`${sel} [data-quoted="true"]`)];
+      const all = [...document.querySelectorAll(`${sel} .bn-block-content`)];
+      return {
+        insideRun: parseFloat(getComputedStyle(quoted[1]!).marginTop),
+        betweenBlocks: parseFloat(getComputedStyle(all[1]!).marginTop),
+      };
+    }, EDITOR);
+    // Two blocks of one quote stood exactly as far apart as two unrelated
+    // blocks — the same 12.75px — and the rule breaks between them, so
+    // nothing held the run together.
+    expect(margins.insideRun, 'inside the run').toBeLessThan(
+      margins.betweenBlocks,
+    );
+  });
 });

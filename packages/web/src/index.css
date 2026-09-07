@@ -844,6 +844,57 @@ body {
   margin-top: 0;
 }
 
+/* TWO BLOCKS OF ONE LIST SIT CLOSER THAN TWO KINDS OF BLOCK DO. One margin
+   for every relationship read as a single undifferentiated column: a
+   paragraph stood no further from the list beneath it than the list's own
+   items stood from each other, and five rows of mixed markers ran together
+   (user 2026-09-07).
+
+   Two shapes make "the item above": the previous sibling, and — for the first
+   item of an indented group — the block that group hangs off. Measured, that
+   group is the content node's own next sibling inside `.bn-block`, so `+`
+   reaches it.
+
+   The kind of the block above is read with `:has()` on its own outer, since
+   `data-content-type` sits on the content node one level in and no sibling
+   combinator reaches a descendant's attribute. BlockNote's `data-prev-type`
+   would say it directly — measured, it is null on every block here; the
+   library sets it only while a type change animates. */
+.doc-body-editor .ProseMirror {
+  & .bn-block-outer:has(> .bn-block > [data-content-type='bulletListItem'])
+    + .bn-block-outer
+    > .bn-block
+    > .bn-block-content[data-content-type='bulletListItem'],
+  & .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
+    + .bn-block-outer
+    > .bn-block
+    > .bn-block-content[data-content-type='numberedListItem'],
+  & .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
+    + .bn-block-outer
+    > .bn-block
+    > .bn-block-content[data-content-type='checkListItem'],
+  & .bn-block
+    > [data-content-type='bulletListItem']
+    + .bn-block-group
+    > .bn-block-outer:first-child
+    > .bn-block
+    > .bn-block-content[data-content-type='bulletListItem'],
+  & .bn-block
+    > [data-content-type='numberedListItem']
+    + .bn-block-group
+    > .bn-block-outer:first-child
+    > .bn-block
+    > .bn-block-content[data-content-type='numberedListItem'],
+  & .bn-block
+    > [data-content-type='checkListItem']
+    + .bn-block-group
+    > .bn-block-outer:first-child
+    > .bn-block
+    > .bn-block-content[data-content-type='checkListItem'] {
+    margin-top: var(--space-2);
+  }
+}
+
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'] {
   font-size: calc(var(--font-size-base) * 8 / 5); /* 24px */
 }
@@ -861,7 +912,10 @@ body {
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
-  font-size: calc(var(--font-size-base) * 17 / 15); /* 17px */
+  /* `--text-lg`, written as a ratio so it tracks the base the way the two
+     levels above it do. 17px cleared the body by 2px and was the one size in
+     the document off the project's scale (user 2026-09-07). */
+  font-size: calc(var(--font-size-base) * 6 / 5); /* 18px */
 }
 
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='heading'][data-level='3'] {
@@ -1050,7 +1104,11 @@ body {
    numbered one). Measured without it, an h2 in a run stood 34px from the
    block above it and an h3 25.5px, against the 12.75px a paragraph takes. */
 .doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted='true'] {
-  margin-top: var(--doc-paragraph-margin);
+  /* Closer than two unrelated blocks stand. Both measured 12.75px, and the
+     rule parts between them, so a run of two read as two ordinary blocks
+     that happen to share an x (user 2026-09-07). The run's outer edges are
+     the rules below, which is what leaves it standing apart. */
+  margin-top: var(--space-4);
   padding-top: 0;
 }
 
@@ -1107,7 +1165,7 @@ body {
    code came out in a different face from the code block beside it. */
 .doc-body-editor .ProseMirror :not(pre) > code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: var(--text-sm);
   padding: 0.1em 0.35em;
   background: var(--color-muted);
   border-radius: var(--radius-content-xs);
@@ -1124,11 +1182,14 @@ body {
    else. The value it carried came from the editor this Space replaced, where
    `pre` WAS the block. */
 .doc-body-editor .ProseMirror pre {
-  font-size: 0.9em;
+  /* The scale's small step, which every other piece of secondary text in the
+     product sits on; 0.9em of a 15px base landed on 13.5, a size the scale
+     has no rung for (user 2026-09-07). */
+  font-size: var(--text-sm);
   line-height: 1.6;
   margin: 0;
   padding: 0.75em 1em;
-  background: var(--color-muted);
+  background: var(--color-code-panel);
   border-radius: var(--radius-content-sm);
 }
 
@@ -1141,6 +1202,13 @@ body {
 .doc-body-editor .ProseMirror .bn-block-content[data-content-type='codeBlock'] {
   color: var(--color-foreground);
   background-color: transparent;
+  /* The panel's own corners are on the `pre` above. BlockNote puts an 8px
+     radius here as well, and a quote draws its rule on this element — a
+     rounded box curves that border away at both ends, so the segment beside
+     a quoted code block came out as a bracket 6px shorter than the panel,
+     hooking 3px off the x its neighbours sit on (measured, light theme:
+     segment y 506-541 against the panel's 503-544). */
+  border-radius: 0;
 }
 
 /* A LINK HAS TO BE TELLABLE FROM THE WORDS AROUND IT, and here an underline
