@@ -185,7 +185,12 @@ async function writeQuotedRun(p: Page): Promise<void> {
   await expect(p.locator(QUOTED)).toHaveCount(4, { timeout: 10_000 });
 
   // And the top one back out, leaving three. Taking it by triple click keeps
-  // the take over the moment the click is.
+  // the take over the moment the click is — with the bar out of the way
+  // first, since it sits over the selection the press before this one made.
+  await p.keyboard.press('ArrowLeft');
+  await expect(p.getByTestId('doc-bubble-block-type')).toBeHidden({
+    timeout: 10_000,
+  });
   await p.locator(`${EDITOR} .bn-block-content`).first().click({ clickCount: 3 });
   await p.keyboard.press(`${MOD}+Shift+B`);
   await expect(p.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
@@ -197,6 +202,14 @@ async function writeQuotedRun(p: Page): Promise<void> {
  * @param index - Which block, in document order.
  */
 async function quoteBlockAt(p: Page, index: number): Promise<void> {
+  // Collapse whatever is selected first. The bubble bar sits over the
+  // selection it belongs to, and where the block above is near the top of the
+  // body it takes the side below — measured, it covered the third block whole
+  // and the click for it waited out the timeout.
+  await p.keyboard.press('ArrowLeft');
+  await expect(p.getByTestId('doc-bubble-block-type')).toBeHidden({
+    timeout: 10_000,
+  });
   await p
     .locator(`${EDITOR} .bn-block-content`)
     .nth(index)

@@ -868,38 +868,44 @@ body {
    `data-content-type` sits on the content node one level in and no sibling
    combinator reaches a descendant's attribute. BlockNote's `data-prev-type`
    would say it directly — measured, it is null on every block here; the
-   library sets it only while a type change animates. */
+   library sets it only while a type change animates.
+
+   The block below a quoted run is left out. Two list items either side of a
+   quote's edge are not one list to a reader, and that block already answers
+   to `[data-after-quoted]`, whose `margin-top: 0` keeps the run's two edges
+   equal — measured, this rule outranks it and put 4px back, so the run stood
+   20.5px above the block below against 16.5px below the one above. */
 .doc-body-editor .ProseMirror {
   & .bn-block-outer:has(> .bn-block > [data-content-type='bulletListItem'])
     + .bn-block-outer
     > .bn-block
-    > .bn-block-content[data-content-type='bulletListItem'],
+    > .bn-block-content:not([data-after-quoted])[data-content-type='bulletListItem'],
   & .bn-block-outer:has(> .bn-block > [data-content-type='numberedListItem'])
     + .bn-block-outer
     > .bn-block
-    > .bn-block-content[data-content-type='numberedListItem'],
+    > .bn-block-content:not([data-after-quoted])[data-content-type='numberedListItem'],
   & .bn-block-outer:has(> .bn-block > [data-content-type='checkListItem'])
     + .bn-block-outer
     > .bn-block
-    > .bn-block-content[data-content-type='checkListItem'],
+    > .bn-block-content:not([data-after-quoted])[data-content-type='checkListItem'],
   & .bn-block
     > [data-content-type='bulletListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
-    > .bn-block-content[data-content-type='bulletListItem'],
+    > .bn-block-content:not([data-after-quoted])[data-content-type='bulletListItem'],
   & .bn-block
     > [data-content-type='numberedListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
-    > .bn-block-content[data-content-type='numberedListItem'],
+    > .bn-block-content:not([data-after-quoted])[data-content-type='numberedListItem'],
   & .bn-block
     > [data-content-type='checkListItem']
     + .bn-block-group
     > .bn-block-outer:first-child
     > .bn-block
-    > .bn-block-content[data-content-type='checkListItem'] {
+    > .bn-block-content:not([data-after-quoted])[data-content-type='checkListItem'] {
     margin-top: var(--space-2);
   }
 }
