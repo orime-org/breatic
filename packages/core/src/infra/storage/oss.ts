@@ -60,8 +60,6 @@ export class AliyunOSSStorageAdapter implements StorageAdapter {
     return url;
   }
 
-
-
   /**
    * Generate a presigned PUT URL for client-side direct upload.
    * @param key - the OSS object key the client will PUT to

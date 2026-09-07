@@ -14,8 +14,10 @@
  * extraction has none of.
  *
  * The payload carries everything the worker needs, because a worker holds no
- * request context: the studio that pays for the cover, where the node lives,
- * and where on the canvas the write-back lands.
+ * request context: which video this is, where its node lives, and where on the
+ * canvas the write-back lands. Who pays is not among them — the cover is
+ * uploaded the way every asset is, and that path resolves the owner studio
+ * from the project.
  */
 
 /** The queue a video cover extraction is asked for on. */

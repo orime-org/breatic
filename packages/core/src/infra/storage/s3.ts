@@ -138,8 +138,6 @@ export class S3StorageAdapter implements StorageAdapter {
     return `${this.publicBaseUrl}/${key}`;
   }
 
-
-
   /**
    * Generate a presigned PUT URL for client-side direct upload.
    * @param key - the S3 object key the client will PUT to

@@ -167,8 +167,6 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
   }
 
-
-
   /**
    * Inspect a stored object's size, existence, and BACKEND-AUTHORITATIVE
    * content type by key. Unlike the old hardcoded `application/octet-stream`

@@ -10,7 +10,6 @@
  * - aliyun_oss: Alibaba Cloud OSS (uploads buffer to OSS)
  */
 
-
 import { newId } from "@breatic/shared";
 
 import { env } from "@core/config/env.js";
@@ -22,12 +21,10 @@ export interface ObjectHead {
   exists: boolean;
 }
 
-
 /** Storage adapter interface. */
 export interface StorageAdapter {
   /** Upload binary data and return a public URL. */
   upload(key: string, data: Buffer, contentType: string): Promise<string>;
-
 
   /**
    * Generate a presigned PUT URL for client-side direct upload.
@@ -160,6 +157,3 @@ export function storageKey(opts: { taskType: string; ext: string }): string {
   const filename = `${Date.now()}_${newId()}${opts.ext}`;
   return `${opts.taskType}/${date}/${filename}`;
 }
-
-
-

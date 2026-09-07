@@ -217,15 +217,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...orig,
     backendUploadService: {
+      // A Blob, the way the real one takes it: what a caller hands over may be
+      // backed by a file rather than resident bytes.
       uploadBytesToStorage: async (
-        bytes: Buffer,
+        bytes: Blob,
         ctx: Parameters<typeof orig.backendUploadService.uploadBytesToStorage>[1],
       ) => {
         const key = `test/key-${++keySeq}.png`;
+        const resident = Buffer.from(await bytes.arrayBuffer());
         return fileIt(
-          storageCtrl.contentKey ?? bytes.toString("base64"),
+          storageCtrl.contentKey ?? resident.toString("base64"),
           `https://oss/uploaded/${key}`,
-          bytes.length,
+          resident.length,
           ctx,
         );
       },

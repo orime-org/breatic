@@ -196,14 +196,16 @@ describe("a part the Worker takes", () => {
   // between two parts is also the ceiling on the whole upload — which is
   // the opposite of why it is re-issued at all.
   it("starts the window again on every part", async () => {
-    const ttlSeconds = 10;
-    const { uploadId, token } = await openUpload({
-      sessionTokenTtlSeconds: ttlSeconds,
-    });
+    const gapMs = 200;
+    const { uploadId, token } = await openUpload();
+    const opened = await verifySessionToken(
+      token,
+      env.INGEST_SHARED_SECRET,
+      Date.now(),
+    );
 
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await new Promise((resolve) => setTimeout(resolve, gapMs));
 
-    const sentAt = Date.now();
     const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
     const next = await response.json<{ token: string }>();
 
@@ -212,10 +214,13 @@ describe("a part the Worker takes", () => {
       env.INGEST_SHARED_SECRET,
       Date.now(),
     );
-    // A second short of the full window, to leave room for the time this
-    // request itself took.
+    // Measured against the token this one replaces, which is the whole claim:
+    // carrying the remaining life forward would land on the same instant the
+    // first one did, however long the gap was. An absolute deadline here would
+    // instead be a race between this test and its own token's window, and a
+    // loaded machine wins it.
     expect(payload?.expiresAt).toBeGreaterThanOrEqual(
-      sentAt + (ttlSeconds - 1) * 1_000,
+      (opened?.expiresAt ?? 0) + gapMs,
     );
   });
 });
