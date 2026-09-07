@@ -216,16 +216,15 @@ export async function fetchUrlToIngest(
  * @param options - What only the caller knows about this delivery.
  * @param options.timeoutMs - One delivery's deadline; the transport's default when absent.
  * @param options.replaySafe - Whether sending this again produces no second
- *   side effect. True for the three endpoints the browser drives: they carry
- *   the upload id it already holds, so a repeat writes the same part under the
- *   same number or is refused by R2 rather than written twice.
+ *   side effect. The test is whether the request names the upload it writes
+ *   into: a part and a completion do, and opening one does not.
  * @returns The parsed answer.
  * @throws {UploadHttpError} When the Worker refuses.
  */
 async function askWorker<T>(
   url: string,
   init: RequestInit,
-  { timeoutMs, replaySafe = true }: { timeoutMs?: number; replaySafe?: boolean } = {},
+  { timeoutMs, replaySafe }: { timeoutMs?: number; replaySafe: boolean },
 ): Promise<T> {
   const res = await httpRequest(url, init, {
     replaySafe,
@@ -236,7 +235,7 @@ async function askWorker<T>(
 }
 
 /**
- * Open the upload, or reopen one already open.
+ * Open a multipart upload for this ticket's key.
  * @param target - The signed ticket and where to send it.
  * @param cfg - The upload knobs.
  * @returns The upload's id and its first session token.
@@ -249,7 +248,10 @@ async function openUpload(
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,
     { method: "POST", headers: { "x-upload-ticket": target.ticket } },
-    { timeoutMs: cfg.clientRequestTimeoutMs },
+    // This request carries no upload id: it mints one, and the Worker opens a
+    // fresh multipart upload on every delivery. A replay leaves the first one
+    // abandoned, holding parts R2 charges for.
+    { timeoutMs: cfg.clientRequestTimeoutMs, replaySafe: false },
   );
 }
 
@@ -278,7 +280,9 @@ async function sendPart(
     // The deadline is a stall guard sized to this part, not to the file: a
     // part that is transferring at all must not be cut off, and a part that
     // has stopped should not hold the upload for the whole file's budget.
-    { timeoutMs: computePutTimeoutMs(bytes.size, cfg) },
+    // The part number is in the path, so a repeat writes the same part under
+    // the same number; R2 keeps the later write of a part, never both.
+    { timeoutMs: computePutTimeoutMs(bytes.size, cfg), replaySafe: true },
   );
 }
 
@@ -313,5 +317,8 @@ async function completeUpload(
       },
       body: JSON.stringify({ parts }),
     },
+    // The request names the upload it finishes, and a finished one is answered
+    // out of the ledger rather than assembled again.
+    { replaySafe: true },
   );
 }

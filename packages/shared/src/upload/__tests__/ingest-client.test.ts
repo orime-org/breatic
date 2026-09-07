@@ -181,16 +181,19 @@ function optionsOf(nth: number): { replaySafe: boolean; timeoutMs?: number } {
 // when one is given up on. Neither is visible in the response, so it is stated
 // here or nowhere.
 describe('what the shared transport is told', () => {
-  // A repeated part is written under its own number, and a repeated finish is
-  // refused by R2 rather than written twice — so delivering any of the three
-  // again costs nothing.
-  it('declares every step replay-safe', async () => {
+  // The test is whether a request names the upload it writes into. A part and
+  // a completion do, so a repeat writes the same part under its own number or
+  // is answered out of the ledger. Opening carries no id: it mints one, and
+  // the Worker opens a fresh multipart upload on every delivery, so a replay
+  // abandons the first one holding parts R2 charges for.
+  it('declares opening unsafe to replay, and the rest safe', async () => {
     wireHappyPath(2, {});
 
     await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
-    expect(optionsOf(0).replaySafe).toBe(true);
+    expect(optionsOf(0).replaySafe).toBe(false);
     expect(optionsOf(1).replaySafe).toBe(true);
+    expect(optionsOf(2).replaySafe).toBe(true);
     expect(optionsOf(3).replaySafe).toBe(true);
   });
 
