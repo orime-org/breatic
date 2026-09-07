@@ -303,3 +303,68 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
     expect(out.params.images).toBeNull();
   });
 });
+
+/**
+ * The reference video that rides alongside the `@`-picked images (#1928).
+ *
+ * This mode is the first to take both kinds at once: the images arrive through
+ * the rail, the one video the vendor reads for motion guidance through a slot.
+ * The slot is optional, so both shapes — with and without — reach the builder
+ * in practice, and the payload has to say the right thing about each.
+ */
+describe('buildVideoTaskPayload — reference-to-video and its motion clip', () => {
+  const CLIP = 'https://cdn/clip.mp4';
+
+  it('sends the picked clip as the `video` param', () => {
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'ref',
+      slotUrls: { referenceVideo: CLIP },
+      referenceUrls: ['https://cdn/a.png'],
+    });
+    expect(out.params).toMatchObject({ video: CLIP, images: ['https://cdn/a.png'] });
+  });
+
+  it('sends no clip URL when the slot is empty', () => {
+    // Not "no key": `kling-o3-pro-ref` declares `video` with a null default,
+    // so the key arrives with the model's own params the way `seed` and
+    // `images` do; the worker drops nulls before mapping to vendor names.
+    // What A4 needs is that no URL is claimed, which is what this asserts.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      params: { ...BASE.params, video: null },
+      mode: 'ref',
+      slotUrls: {},
+      referenceUrls: ['https://cdn/a.png'],
+    });
+    expect(out.params.video).toBeNull();
+  });
+
+  it('leaves the clip out of every other mode', () => {
+    // A stale pick sits on the node across a mode switch by design, so the
+    // guard is the mode's own slot list rather than the stored value.
+    for (const mode of ['t2v', 'i2v', 'first_last', 'animate', 'talking_head']) {
+      const out = buildVideoTaskPayload({
+        ...BASE,
+        mode,
+        slotUrls: { referenceVideo: CLIP },
+      });
+      expect(out.params.video, `${mode} sends no reference clip`).toBeUndefined();
+    }
+  });
+
+  it('keeps the clip apart from the driving video image animation takes', () => {
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      mode: 'animate',
+      slotUrls: {
+        characterImage: 'https://cdn/who.png',
+        drivingVideo: 'https://cdn/drive.mp4',
+        referenceVideo: CLIP,
+      },
+    });
+    // Both slots name the same upstream param, and only the one this mode
+    // collects may reach the payload.
+    expect(out.params.video).toBe('https://cdn/drive.mp4');
+  });
+});

@@ -28,7 +28,7 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { positiveCap } from '@web/spaces/canvas/generate/reference-cap';
+import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
   modeTakesReferences,
@@ -288,6 +288,7 @@ export function buildVideoPanelViewModel(input: {
   );
   const current = models.find((m) => m.name === model);
 
+  const slotUrls = readSlotUrls(VIDEO_SLOTS, content);
   const references = deriveReferences(nodeId, nodes, input.edges, input.textById);
   // Only the `@`-mentioned ones travel, and only under a mode that asked for
   // them (#1927). A reference survives a mode switch — that is deliberate, so
@@ -315,7 +316,7 @@ export function buildVideoPanelViewModel(input: {
     nodeStatus: content?.status,
     mode,
     slots: slotsForMode(mode),
-    slotUrls: readSlotUrls(VIDEO_SLOTS, content),
+    slotUrls,
     slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,
     // Yjs data, untrusted — sanitized through the one shared reader so this
@@ -323,7 +324,9 @@ export function buildVideoPanelViewModel(input: {
     // as an entry (#1978).
     focusImages,
     referenceUrls,
-    maxReferences: positiveCap(current?.params.images?.max_items),
+    // Through the shared rule, so the panel's submit gate and the canvas's
+    // add-time refusal hold the same number for one node (#1928).
+    maxReferences: modelReferenceCap(current, mode, slotUrls),
     // The model states it (#1966). This used to be inferred from a `prompt`
     // entry under `params` — a per-catalog writing habit, not a rule. Four of
     // the six video model files wrote one (kling / seedance / veo / wan); the

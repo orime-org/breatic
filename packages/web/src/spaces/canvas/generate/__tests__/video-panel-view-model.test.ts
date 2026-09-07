@@ -729,6 +729,35 @@ describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板�
  * time — the same reason the image panel does it this way.
  */
 describe('buildVideoPanelViewModel — references (#1927)', () => {
+  /** The same model once its cap moves with the reference video (#1928). */
+  const CONDITIONAL_REF_MODELS = [
+    makeModel('kling-o3-pro-ref', {
+      mode: 'ref',
+      params: {
+        images: {
+          description: '',
+          type: 'list',
+          max_items: 7,
+          max_items_when_present: { video: 4 },
+          default: null,
+        },
+        video: { description: '', default: null },
+      },
+    }),
+    makeModel('kling-o3-pro', {
+      mode: 't2v',
+      params: {
+        images: {
+          description: '',
+          type: 'list',
+          max_items: 7,
+          max_items_when_present: { video: 4 },
+          default: null,
+        },
+      },
+    }),
+  ];
+
   const REF_MODELS = [
     makeModel('kling-o3-pro-ref', {
       mode: 'ref',
@@ -843,6 +872,57 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
   it('reads the model\'s reference cap off the wire', () => {
     const { nodes, edges } = twoConnectedImages();
     const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
+    expect(vm.maxReferences).toBe(7);
+  });
+
+  it('lowers the cap while a reference video rides along (#1928)', () => {
+    // A5's first half: the number the panel shows and gates on moves with the
+    // slot, because the vendor takes fewer images once it also has a clip.
+    const { nodes, edges } = twoConnectedImages();
+    const withClip = nodes.map((n) =>
+      n.id === 'n1'
+        ? {
+          ...n,
+          data: {
+            ...n.data,
+            referenceVideo: { url: 'https://cdn/clip.mp4' },
+          },
+        }
+        : n,
+    ) as typeof nodes;
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: withClip,
+      edges,
+      models: CONDITIONAL_REF_MODELS,
+      mode: 'ref',
+    });
+    expect(vm.maxReferences).toBe(4);
+  });
+
+  it('keeps the plain cap when that clip belongs to another mode (#1928)', () => {
+    // The slot's pick stays on the node across a mode switch by design; a clip
+    // this mode never sends lowers nothing.
+    const { nodes, edges } = twoConnectedImages();
+    const withClip = nodes.map((n) =>
+      n.id === 'n1'
+        ? {
+          ...n,
+          data: {
+            ...n.data,
+            mode: 't2v',
+            referenceVideo: { url: 'https://cdn/clip.mp4' },
+          },
+        }
+        : n,
+    ) as typeof nodes;
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: withClip,
+      edges,
+      models: CONDITIONAL_REF_MODELS,
+      mode: 't2v',
+    });
     expect(vm.maxReferences).toBe(7);
   });
 
