@@ -99,6 +99,21 @@ describe("the options", () => {
   });
 });
 
+describe("what the model says about answering", () => {
+  it("is optional, since a question often speaks for itself", () => {
+    expect(accepts({ question: "Which?", options: ["one", "two"] })).toBe(true);
+  });
+
+  it("is one line and not blank, like everything else the reader will read", () => {
+    expect(accepts({ question: "Which?", howToAnswer: "A number will do." })).toBe(true);
+    expect(accepts({ question: "Which?", howToAnswer: "" })).toBe(false);
+    expect(accepts({ question: "Which?", howToAnswer: "   " })).toBe(false);
+    expect(accepts({ question: "Which?", howToAnswer: "one\ntwo" })).toBe(false);
+    expect(accepts({ question: "Which?", howToAnswer: "c".repeat(120) })).toBe(true);
+    expect(accepts({ question: "Which?", howToAnswer: "c".repeat(121) })).toBe(false);
+  });
+});
+
 describe("what the model may not send", () => {
   it("is refused rather than dropped when a field is not in the schema", () => {
     // The default is to strip an unknown key in silence, which loses whatever

@@ -351,36 +351,31 @@ describe("what one turn leaves in the store", () => {
   // `domain/src/agent/tools/__tests__/interaction-tools-payload.test.ts` 钉。
 });
 
-describe("the language of the line the turn writes itself", () => {
-  it("is the one the request asked for, not the one the process happens to hold", async () => {
-    // The closing line under a question is ours, so it is translated -- and
-    // the only thing saying which language is the header on this request. It
-    // is negotiated in middleware, which has returned by the time the stream
-    // is read, so a turn reading the locale where it writes gets whatever the
-    // process was left holding instead.
-    stream.parts = [
-      {
-        type: "tool-call",
-        toolCallId: "tc-locale",
-        toolName: "ask_user",
-        input: JSON.stringify({ question: "Which pace?", options: ["Fast", "Slow"] }),
-      },
-      FINISHED_ASKING_FOR_A_TOOL,
-    ];
+describe("the language an error about the request comes back in", () => {
+  it("is the one the request asked for, not the browser's own", async () => {
+    // Chat posts through the SDK's own transport, which sent no language at
+    // all until this task added one. Without it the server negotiates from
+    // whatever the browser advertises, so a reader on an English interface in
+    // a Chinese browser is told off in Chinese.
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
-    // Asked for in a language that is not the process default, so the
-    // assertion can tell the header being read from it being ignored.
-    await sendAndDrain(conversationId, projectId, cookie, "help me pick", "zh-CN");
 
-    const rows = await storedRows(conversationId);
-    const reply = rows.find((r) => r.role === "assistant");
-    const said = (reply?.parts ?? [])
-      .filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join("");
+    const res = await app.request("/api/v1/chat/message", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookie,
+        "Accept-Language": "zh-CN",
+      },
+      body: JSON.stringify({
+        message: "x".repeat(100_000),
+        project_id: projectId,
+        conversation_id: conversationId,
+      }),
+    });
 
-    expect(said).toContain("Which pace?");
-    expect(said).toContain("回一个数字就行");
+    const body = (await res.json()) as { error?: { message?: string } };
+    expect(res.status).toBe(422);
+    expect(body.error?.message).toContain("这条消息太长了");
   });
 });

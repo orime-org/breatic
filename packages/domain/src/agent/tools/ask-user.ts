@@ -40,19 +40,28 @@ const inputSchema = z
       })
       .optional()
       .describe("Two to five answers to choose from, one line each"),
+    howToAnswer: line(120)
+      .optional()
+      .describe(
+        "One line telling the user how to answer, in your own words and in " +
+          "the language you are replying in. Drawn on its own under the " +
+          "options. Leave it out when the question speaks for itself.",
+      ),
   })
   .strict();
 
 /** What the turn needs to draw the question. */
-type AskUserPayload = { question: string; options: string[] };
+type AskUserPayload = { question: string; options: string[]; howToAnswer?: string };
 
 export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
   description:
     "Ask the user a clarifying question. Use when you need more " +
     "information to proceed. Put the question here rather than writing it " +
-    "yourself, and put every option in `options` -- both are drawn for you. " +
-    "Keep each option to one line saying what it is, with no argument for " +
-    "or against it.",
+    "yourself, and put every option in `options` -- both are drawn for you, " +
+    "the options numbered from one. Keep each option to one line saying what " +
+    "it is, with no argument for or against it. Nothing is written for you " +
+    "beyond the numbering: what the reader is told about answering is " +
+    "`howToAnswer`, in your own words.",
   inputSchema,
   execute: async (
     input: z.infer<typeof inputSchema>,
@@ -61,7 +70,11 @@ export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
     // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
     _options: { abortSignal?: AbortSignal },
   ): Promise<AskUserPayload> => {
-    const payload = { question: input.question, options: input.options ?? [] };
+    const payload = {
+      question: input.question,
+      options: input.options ?? [],
+      ...(input.howToAnswer === undefined ? {} : { howToAnswer: input.howToAnswer }),
+    };
     return payload;
   },
 });

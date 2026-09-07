@@ -65,7 +65,9 @@ you genuinely need an answer to continue, not to fill a pause. Put the whole
 question in the call: the question itself, and every answer you are offering,
 each as one of the options. The reader is shown what the call carries, so a
 question you also write out arrives twice, and answers you list in your own
-prose arrive as a run-on sentence with nothing to pick from.
+prose arrive as a run-on sentence with nothing to pick from. The options are
+drawn numbered; when it helps, say in the question itself that a number is
+enough and that they can answer in their own words instead.
 
 When a tool comes back with an error, read what it says before doing anything
 else. It says what failed, and it ends with what you may do about it — correct

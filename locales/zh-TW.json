@@ -135,8 +135,7 @@
       "support": "對這筆購買有疑問，請寫信到 {email}。"
     },
     "chat": {
-      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit, number} 個字元，這則有 {actual, number} 個。",
-      "ask_user_hint": "回一個數字就行，也可以直接說你的想法。"
+      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit, number} 個字元，這則有 {actual, number} 個。"
     }
   },
   "chat": {

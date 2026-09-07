@@ -9,10 +9,13 @@
  * So the turn writes it, and what it writes is the reply -- copyable, stored,
  * and rebuilt on a reload the way every other line of a reply is.
  *
+ * What it writes is the model's own words and nothing else, which is what
+ * keeps the whole paragraph in the language the conversation is in.
+ *
  * Two questions can land in one step, since nothing stops a model calling a
  * tool twice at once, and both have to be there.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ToolSet } from "ai";
 import type * as CoreModule from "@breatic/core";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
@@ -41,7 +44,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
     runWithLocale: actual.runWithLocale,
-    loadLocales: actual.loadLocales,
     logger: { ...logger, child: () => logger },
   };
 });
@@ -107,13 +109,7 @@ vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
-const { runWithContext, loadLocales } = await import("@breatic/core");
-
-// The real catalogue, so the closing line is asserted as the reader gets it.
-// A service entry point does this at boot; nothing has booted here.
-beforeAll(() => {
-  loadLocales();
-});
+const { runWithContext } = await import("@breatic/core");
 
 /**
  * One model call that asks the question and ends there.
@@ -158,16 +154,12 @@ describe("a question with options", () => {
     vi.clearAllMocks();
   });
 
-  it("is in the reply, numbered, with the line saying a number is enough", async () => {
+  it("is in the reply, numbered, and ends on the last option", async () => {
     const text = await replyText(
       asks([{ question: "这段片子的节奏，你想要哪种？", options: ["快切", "中速", "慢"] }]),
     );
 
-    expect(text).toContain("这段片子的节奏，你想要哪种？");
-    expect(text).toContain("1. 快切");
-    expect(text).toContain("2. 中速");
-    expect(text).toContain("3. 慢");
-    expect(text).toContain("A number is enough");
+    expect(text).toBe("这段片子的节奏，你想要哪种？\n\n1. 快切\n2. 中速\n3. 慢");
   });
 });
 
@@ -176,12 +168,10 @@ describe("a question with nothing to choose from", () => {
     vi.clearAllMocks();
   });
 
-  it("is in the reply on its own, with no list and no closing line", async () => {
+  it("is in the reply on its own, with no list under it", async () => {
     const text = await replyText(asks([{ question: "这段片子给谁看？" }]));
 
-    expect(text).toContain("这段片子给谁看？");
-    expect(text).not.toContain("1. ");
-    expect(text).not.toContain("A number is enough");
+    expect(text).toBe("这段片子给谁看？");
   });
 });
 

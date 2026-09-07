@@ -135,8 +135,7 @@
       "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
     },
     "chat": {
-      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
-      "ask_user_hint": "番号だけで大丈夫です。考えをそのまま書いてもかまいません。"
+      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。"
     }
   },
   "chat": {
