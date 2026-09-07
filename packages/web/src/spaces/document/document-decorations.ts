@@ -30,6 +30,7 @@ import { createExtension } from '@blocknote/core';
 
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
+import { QUOTED } from '@web/spaces/document/document-list-block';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
@@ -52,6 +53,20 @@ const QUOTE_LAST_ATTRIBUTE = 'data-quoted-last';
 const AFTER_QUOTE_ATTRIBUTE = 'data-after-quoted';
 
 const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
+
+/**
+ * How many levels in a block sits.
+ *
+ * The shape is `doc > blockGroup > blockContainer`, and each level of
+ * indentation adds a `blockGroup` and a `blockContainer` under the block above
+ * — so a container's depth counts two per level, starting at one.
+ * @param doc - The document the position belongs to.
+ * @param pos - The position before the block's container.
+ * @returns Zero for a top-level block, one for a block indented under it.
+ */
+function indentDepth(doc: PMNode, pos: number): number {
+  return (doc.resolve(pos).depth - 1) / 2;
+}
 
 /**
  * Builds one decoration per block that needs one, on the block's own content
@@ -102,6 +117,15 @@ function blockDecorations(doc: PMNode): DecorationSet {
       attrs[AFTER_QUOTE_ATTRIBUTE] = '';
     }
     const content = node.firstChild;
+    if (content !== null && content.attrs[QUOTED] === true) {
+      // How far in this block sits, for the rule beside it to come back out.
+      // That rule is the block's own border, so indentation carries it along
+      // — one `blockGroup` margin per level. The stylesheet gives exactly
+      // that many back on the margin and takes them again on the padding, so
+      // every segment lands on the editor's left edge with the text where the
+      // indentation put it.
+      attrs['style'] = `--quote-depth:${indentDepth(doc, pos)}`;
+    }
     if (Object.keys(attrs).length === 0 || content === null) {
       return true;
     }

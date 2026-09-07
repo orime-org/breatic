@@ -137,14 +137,29 @@ describe('what the stylesheet reaches a quote by', () => {
     );
   });
 
-  it('puts the space inside a run on the padding, and the run’s own on the margin', () => {
-    // Which side of the border the space falls on is what decides whether a
-    // run reads as one quote or as several: the rule is drawn on the box, so a
-    // margin between two blocks breaks it and padding does not. Measured
-    // before the padding form: a 13.6px break in the rule between every pair.
+  it('pulls the rule back out by however deep the block sits', () => {
+    // The rule is the box's border, so indentation would carry it along —
+    // one `blockGroup` margin of 24px per level (BlockNote's `Block.css:80`).
+    // The box gives that back and the text takes it again, so every segment
+    // lands on the editor's own left edge with the text where it was.
+    const quoted = ruleFor('.ProseMirror [data-quoted=\'true\']');
+    expect(quoted).toContain(
+      'margin-inline-start: calc(-24px * var(--quote-depth, 0))',
+    );
+    expect(quoted).toContain(
+      'padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em)',
+    );
+  });
+
+  it('keeps every space around a quoted block on the margin', () => {
+    // Which side of the border the space falls on decides what the rule
+    // covers: the rule is drawn on the box, so a margin stays outside it and
+    // each segment ends at its own text (user 2026-09-07). The segments part
+    // between two blocks; what carries the eye down a run is the one x they
+    // share, held by the offset below.
     const between = ruleFor('.bn-block-content[data-quoted=\'true\']');
-    expect(between).toContain('margin-top: 0');
-    expect(between).toContain('padding-top: var(--doc-paragraph-margin)');
+    expect(between).toContain('margin-top: var(--doc-paragraph-margin)');
+    expect(between).toContain('padding-top: 0');
 
     // And the first block of a run hands that space back to the margin, where
     // it holds the whole run apart from the paragraph above it.

@@ -1015,25 +1015,42 @@ body {
 
    Everything below this block is the container version, still reached by the
    chat markdown renderer and the two editors that have not migrated. */
+/* Three things are asked of the rule (user 2026-09-07): every segment at the
+   same x however deep its block is indented, each segment running the height
+   of its own block's text unbroken, and nothing drawn past that text.
+
+   The rule is the box's border, so the box's own left edge is where it lands
+   — and indentation moves that edge, one `blockGroup` margin of 24px per
+   level (BlockNote's `Block.css:80`). Pulling the box back out by exactly
+   that many and pushing the text back in by the same amount puts every
+   segment on the editor's own left edge while the text stays where the
+   indentation put it. `--quote-depth` comes from the decoration layer, which
+   is already walking the document.
+
+   The height is the box's, so what the rule covers is decided by where the
+   space between two quoted blocks sits: as margin it falls outside the box
+   and the rule stops at the text, which is the third thing asked. */
 .doc-body-editor .ProseMirror [data-quoted='true'] {
-  padding-inline-start: 1em;
+  margin-inline-start: calc(-24px * var(--quote-depth, 0));
+  padding-inline-start: calc(24px * var(--quote-depth, 0) + 1em);
   border-inline-start: 2px solid var(--color-border);
   color: var(--color-muted-foreground);
 }
 
-/* Inside a run the space between two blocks goes INSIDE the box. The rule is
-   drawn on the box's border, and a margin sits outside it — measured, a 13.6px
-   break in the rule between every pair. Padding puts the same gap where the
-   border can reach it, so the rule arrives unbroken.
+/* Inside a run the space between two blocks stays OUTSIDE the box, where the
+   border cannot reach it: the segments part between two blocks and each one
+   ends at its own text. What carries the eye down the run is that they share
+   one x, not that they touch.
 
-   Written through the block's own wrappers so it outranks the heading rules
-   above: those name two attributes for levels 2 and 3, so matching their
-   count is not enough — measured, an h2 in a run kept its 34px margin and an
-   h3 its 25.5px, each a break of that size in the rule beside it. A quote
-   holds any block, headings included (C9b covers a numbered one). */
+   One value for every block in a run, whatever type it is. Written through
+   the block's own wrappers so it outranks the heading rules above — those
+   name two attributes for levels 2 and 3, so matching their count is not
+   enough, and a quote holds any block, headings included (C9b covers a
+   numbered one). Measured without it, an h2 in a run stood 34px from the
+   block above it and an h3 25.5px, against the 12.75px a paragraph takes. */
 .doc-body-editor .ProseMirror .bn-block-outer > .bn-block > .bn-block-content[data-quoted='true'] {
-  margin-top: 0;
-  padding-top: var(--doc-paragraph-margin);
+  margin-top: var(--doc-paragraph-margin);
+  padding-top: 0;
 }
 
 /* The run's own outer space, held as margin on the blocks at its two ends —

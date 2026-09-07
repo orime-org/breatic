@@ -5,15 +5,17 @@
  * #904 验收 A8 · A8b: a run of quoted blocks reads as one quote (task #904).
  *
  * The half jsdom cannot reach. A quote is a prop on each block here, so the
- * rule down its side is drawn per block, and whether a run reads as ONE quote
- * comes down to whether those segments meet — which is a question about laid
- * out boxes, and jsdom reports every rectangle as zero.
+ * rule down its side is drawn per block, and where each segment lands is a
+ * question about laid out boxes — jsdom reports every rectangle as zero.
  *
- * What makes them meet is where the space between two quoted blocks goes: the
- * rule is drawn on the box's border, so a gap held as margin breaks it and the
- * same gap held as padding does not. A8 measures the seams. A8b measures the
- * run's outer edges, which are margins — there the run has to stand apart from
- * what surrounds it.
+ * The rule the user settled (2026-09-07) is three things: every segment sits
+ * at the SAME x however deep its block is indented, each segment runs the
+ * height of its own block's text without a break, and no segment reaches past
+ * that text. Segments of neighbouring blocks may part; what carries the eye
+ * down a run is that they share one vertical line, not that they touch.
+ *
+ * A8 measures those three. A8b measures the run's outer edges, which are
+ * margins — there the run has to stand apart from what surrounds it.
  *
  * Wants dev running and a smoke account:
  *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
@@ -89,8 +91,17 @@ async function openFreshDocument(p: Page): Promise<void> {
 interface QuoteBox {
   readonly top: number;
   readonly bottom: number;
-  readonly borderWidth: number;
-  readonly borderColor: string;
+  /** Where the block's own text starts and ends. */
+  readonly textTop: number;
+  readonly textBottom: number;
+  /** Whether this block draws a rule at all. */
+  readonly ruleDrawn: boolean;
+  /** The rule's own box, in page coordinates. */
+  readonly ruleX: number;
+  readonly ruleTop: number;
+  readonly ruleHeight: number;
+  readonly ruleWidth: number;
+  readonly ruleColor: string;
   readonly paddingLeft: number;
   readonly fontSize: number;
   readonly color: string;
@@ -108,11 +119,22 @@ async function quoteBoxes(p: Page): Promise<QuoteBox[]> {
     return [...document.querySelectorAll(sel)].map((element) => {
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
+      // The rule is the box's own border, so the box is where it lands: its
+      // left edge is the rule's x and its height is the rule's height.
+      const width = parseFloat(style.borderInlineStartWidth);
+      const text = element.querySelector('.bn-inline-content');
+      const textRect = text?.getBoundingClientRect();
       return {
         top: rect.top,
         bottom: rect.bottom,
-        borderWidth: parseFloat(style.borderInlineStartWidth),
-        borderColor: style.borderInlineStartColor,
+        textTop: textRect ? textRect.top : rect.top,
+        textBottom: textRect ? textRect.bottom : rect.bottom,
+        ruleDrawn: width > 0,
+        ruleX: rect.left,
+        ruleTop: rect.top,
+        ruleHeight: rect.height,
+        ruleWidth: width,
+        ruleColor: style.borderInlineStartColor,
         paddingLeft: parseFloat(style.paddingInlineStart),
         fontSize: parseFloat(style.fontSize),
         color: style.color,
@@ -154,6 +176,19 @@ async function writeQuotedRun(p: Page): Promise<void> {
   await p.locator(`${EDITOR} .bn-block-content`).first().click({ clickCount: 3 });
   await p.keyboard.press(`${MOD}+Shift+B`);
   await expect(p.locator(QUOTED)).toHaveCount(3, { timeout: 10_000 });
+}
+
+/**
+ * Puts the whole of one block in the selection and quotes it.
+ * @param p - The page.
+ * @param index - Which block, in document order.
+ */
+async function quoteBlockAt(p: Page, index: number): Promise<void> {
+  await p
+    .locator(`${EDITOR} .bn-block-content`)
+    .nth(index)
+    .click({ clickCount: 3 });
+  await p.keyboard.press(`${MOD}+Shift+B`);
 }
 
 /** What a run's two outer edges measure, and the kind of block at each end. */
@@ -216,19 +251,60 @@ test.describe('a run of quoted blocks', () => {
     expect(boxes).toHaveLength(3);
 
     for (const box of boxes) {
-      expect(box.borderWidth, 'each block draws the rule').toBe(2);
+      expect(box.ruleDrawn, 'each block draws the rule').toBe(true);
+      expect(box.ruleWidth).toBe(2);
       expect(box.paddingLeft).toBeGreaterThan(0);
     }
 
-    // The seam between two blocks: the rule is continuous when one box ends
-    // exactly where the next begins. Sub-pixel layout makes an exact equality
-    // the wrong assertion; a gap a reader could see is a whole pixel.
-    for (let i = 1; i < boxes.length; i += 1) {
-      const gap = boxes[i]!.top - boxes[i - 1]!.bottom;
+    // One vertical line: every segment at the same x, whatever the block is.
+    const xs = boxes.map((box) => box.ruleX);
+    for (const x of xs) {
+      expect(Math.abs(x - xs[0]!), `segments sit at ${xs.join(', ')}`).toBeLessThan(1);
+    }
+
+    // Nothing outside the block's own text, at either end.
+    for (const [i, box] of boxes.entries()) {
+      expect(box.ruleTop, `block ${i} draws above its text`).toBeGreaterThanOrEqual(
+        box.textTop - 1,
+      );
       expect(
-        Math.abs(gap),
-        `blocks ${i - 1} and ${i} leave a ${gap}px gap in the rule`,
-      ).toBeLessThan(1);
+        box.ruleTop + box.ruleHeight,
+        `block ${i} draws below its text`,
+      ).toBeLessThanOrEqual(box.textBottom + 1);
+    }
+  });
+
+  test('draws one segment down each block, at one x whatever the indent (A8)', async () => {
+    await openFreshDocument(page);
+    // A quoted block at the top level and another indented under a list item:
+    // the rule is what tells a reader they belong to one quote, and it can
+    // only do that from one x.
+    await page.keyboard.type('1. one');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('two');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.type('three');
+    await quoteBlockAt(page, 1);
+    await quoteBlockAt(page, 2);
+
+    const boxes = await quoteBoxes(page);
+    expect(boxes).toHaveLength(2);
+    for (const box of boxes) {
+      expect(box.ruleDrawn).toBe(true);
+    }
+    const [indented, top] = boxes as [QuoteBox, QuoteBox];
+    expect(
+      Math.abs(indented.ruleX - top.ruleX),
+      `indented block draws at ${indented.ruleX}, top-level at ${top.ruleX}`,
+    ).toBeLessThan(1);
+
+    // Each segment covers its own block's text without a break.
+    for (const box of boxes) {
+      expect(box.ruleHeight).toBeGreaterThan(
+        (box.textBottom - box.textTop) * 0.9,
+      );
     }
   });
 
@@ -257,13 +333,15 @@ test.describe('a run of quoted blocks', () => {
     }, QUOTED);
 
     expect(margins).toHaveLength(3);
-    // The run's own margins, on the blocks at its ends and nowhere else —
-    // which is what keeps the seams inside it at zero while the run as a
-    // whole stands apart from what surrounds it.
-    expect(margins[0]!.top).toBeGreaterThan(8);
+    // The run's own margins stand it apart from what surrounds it, and they
+    // are larger than the space between two blocks inside it. That inner
+    // space is a margin too — outside the box, where the border cannot reach
+    // it, which is what parts the segments and stops each at its own text.
+    const outer = margins[0]!.top;
+    expect(outer).toBeGreaterThan(8);
     expect(margins[margins.length - 1]!.bottom).toBeGreaterThan(8);
-    expect(margins[1]!.top).toBe(0);
-    expect(margins[1]!.bottom).toBe(0);
+    expect(margins[1]!.top).toBeGreaterThan(0);
+    expect(margins[1]!.top).toBeLessThan(outer);
   });
 
   test('sits the same distance from what is above and below it (A8b)', async () => {
@@ -419,12 +497,24 @@ test.describe('a run of quoted blocks', () => {
 
     const boxes = await quoteBoxes(page);
     expect(boxes).toHaveLength(3);
-    for (let i = 1; i < boxes.length; i += 1) {
-      const gap = boxes[i]!.top - boxes[i - 1]!.bottom;
+    // A heading takes its own space above it, and the segments part over that
+    // space the way they do between two paragraphs. What has to survive the
+    // taller block is the x they share and the text each one covers.
+    const xs = boxes.map((box) => box.ruleX);
+    for (const x of xs) {
       expect(
-        Math.abs(gap),
-        `blocks ${i - 1} and ${i} leave a ${gap}px gap in the rule`,
+        Math.abs(x - xs[0]!),
+        `segments sit at ${xs.join(', ')}`,
       ).toBeLessThan(1);
+    }
+    for (const [i, box] of boxes.entries()) {
+      expect(box.ruleTop, `block ${i} draws above its text`).toBeGreaterThanOrEqual(
+        box.textTop - 1,
+      );
+      expect(
+        box.ruleTop + box.ruleHeight,
+        `block ${i} draws below its text`,
+      ).toBeLessThanOrEqual(box.textBottom + 1);
     }
   });
 
@@ -454,12 +544,14 @@ test.describe('a run of quoted blocks', () => {
       // the muted text is the only signal besides the rule that a block is
       // quoted, and an inequality passes on a unit slip.
       expect(box.color, 'the quote draws its text muted').toBe(tokens.muted);
-      expect(box.borderColor, 'the rule is drawn in the border token').toBe(
+      expect(box.ruleColor, 'the rule is drawn in the border token').toBe(
         tokens.border,
       );
-      expect(box.borderWidth, 'the rule is 2px').toBe(2);
+      expect(box.ruleWidth, 'the rule is 2px').toBe(2);
       // `1em`, which is the block's own size — writing the pixel here would
-      // pin the body's font size in a case that is about the quote.
+      // pin the body's font size in a case that is about the quote. Every
+      // block in this run is at the top level; an indented one carries the
+      // indentation it gives back on top of this.
       expect(box.paddingLeft, 'the text stands 1em clear of the rule').toBe(
         box.fontSize,
       );

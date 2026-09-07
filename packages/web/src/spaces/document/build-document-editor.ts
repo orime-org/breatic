@@ -94,6 +94,15 @@ export function buildDocumentEditor(
       // exception it raises reaches the test runner from anywhere in the suite
       // that renders a document.
       'sideMenu',
+      // §14 keeps our own bubble bar, so BlockNote's is never drawn — and a
+      // toolbar that is never drawn still tracks the selection: enabled, it
+      // mounts, subscribes to every change and every selection change, and
+      // each one walks a copy of the selected slice
+      // (`FormattingToolbar.ts:11-46,52-72`). Nothing in this Space reads that
+      // store; inside BlockNote only its own Tab binding does
+      // (`KeyboardShortcutsExtension.ts:963`), which declines the key for
+      // every non-empty selection so a reader can tab INTO the toolbar.
+      'formattingToolbar',
     ],
   });
 
