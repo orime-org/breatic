@@ -73,9 +73,11 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     value: 'ref',
     label: 'Reference to Video',
     testId: 'generate-video-mode-ref',
-    // No slots at all — the first mode whose sources come from the reference
-    // rail instead of a control the toolbar renders.
-    slots: [],
+    // The first mode taking both kinds at once: its reference images come from
+    // the rail, and the one video the vendor reads for motion guidance is a
+    // slot, because it is a single asset with a role rather than something the
+    // prompt refers to. Optional, so the panel runs on the images alone.
+    slots: ['referenceVideo'],
     takesReferences: true,
   },
   {

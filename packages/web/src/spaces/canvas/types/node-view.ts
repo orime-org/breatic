@@ -140,6 +140,14 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   drivingVideo?: { url: string; cover?: string };
   /**
+   * Reference-to-video's motion guidance (`data.referenceVideo`) — `url` is
+   * sent as `params.video` at execute time (#1928). Same one-field shape as
+   * `drivingVideo` and for the same reason, and a separate field from it: the
+   * two modes mean different things by a video, so switching between them
+   * leaves each one's pick where it was.
+   */
+  referenceVideo?: { url: string; cover?: string };
+  /**
    * The driving audio for the talking-head mode (#1935, wire
    * `data.drivingAudio`) — `url` is sent as `params.audio` at execute time.
    * Same one-field shape as `drivingVideo` above and for the same reason;
@@ -329,6 +337,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
     drivingVideo: data.drivingVideo,
+    referenceVideo: data.referenceVideo,
     drivingAudio: data.drivingAudio,
     refAudio: data.refAudio,
     musicSong: data.musicSong,

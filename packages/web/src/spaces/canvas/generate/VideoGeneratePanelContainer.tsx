@@ -434,6 +434,9 @@ function VideoGeneratePanelBody({
     (s) => s.startCharacterImagePick,
   );
   const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
+  const startReferenceVideoPick = useCanvasStore(
+    (s) => s.startReferenceVideoPick,
+  );
   const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
   const referencePicking = useCanvasStore(
     (s) =>
@@ -463,6 +466,7 @@ function VideoGeneratePanelBody({
       endFrame: startEndFramePick,
       characterImage: startCharacterImagePick,
       drivingVideo: startDrivingVideoPick,
+      referenceVideo: startReferenceVideoPick,
       drivingAudio: startDrivingAudioPick,
     }),
     [
@@ -470,6 +474,7 @@ function VideoGeneratePanelBody({
       startEndFramePick,
       startCharacterImagePick,
       startDrivingVideoPick,
+      startReferenceVideoPick,
       startDrivingAudioPick,
     ],
   );
@@ -621,10 +626,17 @@ function VideoGeneratePanelBody({
     // missing. Reject BEFORE the submitting latch — the button stays clickable
     // (not disabled), so this is an actionable message rather than a dead
     // control. The server re-checks before billing (defence in depth).
-    const emptySlot = fresh.slots.find((slot) => !fresh.slotUrls[slot]);
+    // An optional slot is skipped here (#1928): the vendor generates without
+    // it, so an empty one is a run the user meant to make.
+    const emptySlot = fresh.slots.find(
+      (slot) => !('optional' in VIDEO_SLOTS[slot]) && !fresh.slotUrls[slot],
+    );
     if (emptySlot) {
-      toast.warning(t(VIDEO_SLOTS[emptySlot].errorKey));
-      return;
+      const spec = VIDEO_SLOTS[emptySlot];
+      if (!('optional' in spec)) {
+        toast.warning(t(spec.errorKey));
+        return;
+      }
     }
     // The same question for the mode whose sources are references rather than
     // slots (#1927): connecting an image offers it, `@`-mentioning it uses it,

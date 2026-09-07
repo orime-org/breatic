@@ -70,6 +70,16 @@ export interface SlotSpec {
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;
   /**
+   * True when the mode may run without this slot filled (#1928).
+   *
+   * Every slot before it was required, so the execute gate simply refused on
+   * the first empty one. A vendor may take an asset it does not need — kling's
+   * reference-to-video accepts one video for motion guidance and generates
+   * without it — and such a slot carries no `errorKey`, since the gate never
+   * words a refusal for it.
+   */
+  optional?: true;
+  /**
    * Translation key for the refusal shown when execute finds this slot empty.
    *
    * Only on a slot whose panel looks the sentence up here — the video

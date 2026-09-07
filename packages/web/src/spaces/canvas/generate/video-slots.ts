@@ -27,7 +27,22 @@ export type VideoSlot =
   | 'endFrame'
   | 'characterImage'
   | 'drivingVideo'
-  | 'drivingAudio';
+  | 'drivingAudio'
+  | 'referenceVideo';
+
+/**
+ * A video slot, in one of its two shapes.
+ *
+ * The execute gate refuses on the first empty REQUIRED slot and words the
+ * refusal from that slot's own `errorKey`, so a required slot without one
+ * would refuse with a blank message. An optional slot is never refused on and
+ * carries no such key. Stating the two shapes here rather than leaving both
+ * fields optional is what makes the gate's narrowing hold: `'optional' in
+ * spec` tells the compiler which of the two it has.
+ */
+type VideoSlotSpec =
+  | (SlotSpec & { optional?: never; errorKey: string })
+  | (SlotSpec & { optional: true });
 
 /** Every slot, by name. */
 export const VIDEO_SLOTS = {
@@ -108,7 +123,25 @@ export const VIDEO_SLOTS = {
     clearLabelKey: 'canvas.generatePanel.removeDrivingAudio',
     errorKey: 'canvas.generatePanel.errorNoDrivingAudio',
   },
-} as const satisfies Record<VideoSlot, SlotSpec>;
+  referenceVideo: {
+    field: 'referenceVideo',
+    // Optional because the vendor generates without it: the reference images
+    // carry the subject, this one video only guides the motion. A slot the
+    // gate never refuses on needs no `errorKey`.
+    optional: true,
+    storesCover: true,
+    param: 'video',
+    purpose: 'referenceVideo',
+    accepts: 'video',
+    Icon: Video,
+    testId: 'generate-video-tool-reference-video',
+    thumbnailTestId: 'generate-video-reference-video-thumbnail',
+    clearTestId: 'generate-video-reference-video-clear',
+    labelKey: 'canvas.generatePanel.referenceVideo',
+    tipKey: 'canvas.generatePanel.referenceVideoTip',
+    clearLabelKey: 'canvas.generatePanel.removeReferenceVideo',
+  },
+} as const satisfies Record<VideoSlot, VideoSlotSpec>;
 
 /**
  * One URL per slot. Absent means this map has nothing for that slot — which
